@@ -7846,6 +7846,14 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
+  <data name="SandboxPage_SharedFilePolicy.Text" xml:space="preserve"><value>Les actions sur les fichiers et system.run utilisent les mêmes paramètres Sandbox enregistrés. Les modifications s'appliquent aux nouvelles opérations ; les opérations en cours conservent leurs paramètres initiaux. Sur une version de Windows non prise en charge, aucune de ces opérations n'est isolée.</value></data>
+  <data name="SandboxPage_UploadStorage.Header" xml:space="preserve"><value>Emplacement des fichiers téléversés</value></data>
+  <data name="SandboxPage_UploadStorageHelp.Text" xml:space="preserve"><value>Choisissez un dossier parent pour OpenClaw-upload-staging. Ce choix n'accorde aucun accès. Lorsque Sandbox est actif, accordez l'accès en lecture et écriture ci-dessous. Les fichiers sont conservés pendant 24 heures, dans la limite de 64 dossiers ou 256 MiB. Retirer l'accès peut bloquer le nettoyage.</value></data>
+  <data name="SandboxPage_ChooseUploadParent.Content" xml:space="preserve"><value>Choisir le dossier parent…</value></data>
+  <data name="SandboxPage_TransferBudget.Description" xml:space="preserve"><value>Nombre maximal d'octets par transfert de fichier, en MiB (de 1 à 1024 ; 50 par défaut). Certaines commandes peuvent imposer une limite inférieure.</value></data>
+  <data name="SandboxPage_TransferBudgetLabel.Text" xml:space="preserve"><value>Limite de transfert de fichiers (MiB)</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Le nettoyage des fichiers téléversés est bloqué</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Vérifiez l'accès aux dossiers et les autorisations des données privées. Les anciens fichiers peuvent subsister jusqu'au rétablissement du nettoyage. Ne relancez pas automatiquement les téléversements terminés.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Supprimer l’élément</value>
   </data>

@@ -7899,6 +7899,14 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>
+  <data name="SandboxPage_SharedFilePolicy.Text" xml:space="preserve"><value>As ações de arquivo e system.run usam as mesmas configurações salvas do Sandbox. As alterações se aplicam a novas operações; operações em andamento mantêm as configurações originais. Em versões do Windows sem suporte, nenhuma delas é isolada.</value></data>
+  <data name="SandboxPage_UploadStorage.Header" xml:space="preserve"><value>Local de armazenamento de uploads</value></data>
+  <data name="SandboxPage_UploadStorageHelp.Text" xml:space="preserve"><value>Escolha uma pasta pai para OpenClaw-upload-staging. Escolher um local não concede acesso. Quando o Sandbox estiver ativo, conceda acesso de leitura e gravação abaixo. Os uploads são mantidos por 24 horas, com limite de 64 pastas ou 256 MiB. Remover o acesso pode bloquear a limpeza.</value></data>
+  <data name="SandboxPage_ChooseUploadParent.Content" xml:space="preserve"><value>Escolher pasta pai…</value></data>
+  <data name="SandboxPage_TransferBudget.Description" xml:space="preserve"><value>Máximo de bytes por transferência de arquivo, em MiB (de 1 a 1024; padrão 50). Comandos individuais podem ter limites menores.</value></data>
+  <data name="SandboxPage_TransferBudgetLabel.Text" xml:space="preserve"><value>Limite de transferência de arquivos (MiB)</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>A limpeza de uploads está bloqueada</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Revise o acesso às pastas e as permissões dos dados privados. Uploads antigos podem permanecer até que a limpeza seja restabelecida. Não repita automaticamente uploads concluídos.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remover item</value>
   </data>

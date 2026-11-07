@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using OpenClaw.Shared.FileTransfer;
 
 if (args is ["--echo-args", .. var echoedArgs])
 {
@@ -15,6 +16,43 @@ if (args is ["--echo-args", .. var echoedArgs])
 if (args is ["--process-fixture", .. var fixtureArgs])
 {
     return await RunProcessFixtureAsync(fixtureArgs);
+}
+
+Assembly cacheAssembly = Assembly.GetExecutingAssembly();
+if (args is ["--file-worker-cache-manifest", var fixtureProduct, var fixtureCache, var fixtureManifest, var fixtureMode])
+{
+    cacheAssembly = new CacheManifestAssembly(File.ReadAllBytes(fixtureManifest));
+    args = ["--file-worker-cache", fixtureProduct, fixtureCache, fixtureMode];
+}
+if (args is ["--file-worker-cache", var productDirectory, var cacheRoot, var cacheMode])
+{
+    using var watcher = cacheMode == "crash-preparation" ? new FileSystemWatcher(cacheRoot) : null;
+    if (watcher is not null)
+    {
+        watcher.Created += (_, e) =>
+        {
+            if (e.Name?.StartsWith("win-", StringComparison.Ordinal) == true)
+                Process.GetCurrentProcess().Kill();
+        };
+        watcher.EnableRaisingEvents = true;
+    }
+    try
+    {
+        // Reuse the existing filesystem-boundary constructor without adding a product test API.
+        var constructor = typeof(InstalledFileWorkerResolver).GetConstructor(
+            BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(Assembly), typeof(string)], null)!;
+        var resolver = (InstalledFileWorkerResolver)constructor.Invoke([cacheAssembly, productDirectory]);
+        using var lease = resolver.Resolve(cacheRoot);
+        Console.WriteLine(lease.PayloadDirectory);
+        Console.Out.Flush();
+        await Console.In.ReadLineAsync();
+        return 0;
+    }
+    catch (NotSupportedException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 2;
+    }
 }
 
 if (args is ["--browser-proxy", var gatewayPortText, var proxyMode]

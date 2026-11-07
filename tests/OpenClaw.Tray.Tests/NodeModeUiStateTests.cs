@@ -190,8 +190,11 @@ public sealed class NodeModeUiStateTests
     {
         var service = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
         var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "SettingsManager.cs");
-        Assert.Contains("_settings?.SnapshotSystemRunSettings()", service);
+        Assert.Contains("_settings?.SandboxPolicies", service);
+        Assert.Contains("return new MxcCommandRunner(_sandboxExecutor)", service);
+        Assert.Contains("FileOperations(_sandboxExecutor!)", service);
         Assert.Contains("MxcRequestBuilder.Snapshot(_data)", settings);
+        Assert.Contains("SandboxPolicies.Persist", settings);
         Assert.DoesNotContain("SystemRunAllowWindowsUi", service);
     }
 

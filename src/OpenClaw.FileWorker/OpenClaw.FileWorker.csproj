@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+    <!-- This worker has no native speech stack. The payload verifier rejects VC runtime imports. -->
+    <DirectoryBuildTargetsPath>$(MSBuildThisFileDirectory)..\..\Directory.Build.targets</DirectoryBuildTargetsPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Remove="VCRuntime.CefSharp.140" />
+    <Compile Include="..\OpenClaw.Shared\NodeCommandException.cs" Link="Protocol\NodeCommandException.cs" />
+    <Compile Include="..\OpenClaw.Shared\FileTransfer\FileContracts.cs" Link="Protocol\FileContracts.cs" />
+    <Compile Include="..\OpenClaw.Shared\FileTransfer\FileCommandParser.cs" Link="Protocol\FileCommandParser.cs" />
+    <Compile Include="..\OpenClaw.Shared\FileTransfer\FileWorkerProtocol.cs" Link="Protocol\FileWorkerProtocol.cs" />
+    <Compile Include="..\OpenClaw.Shared\Mxc\SandboxPathRules.cs" Link="Protocol\SandboxPathRules.cs" />
+    <InternalsVisibleTo Include="OpenClaw.FileWorker.Tests" />
+  </ItemGroup>
+</Project>

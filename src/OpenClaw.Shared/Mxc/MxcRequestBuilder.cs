@@ -27,6 +27,8 @@ public static class MxcRequestBuilder
             settings.SandboxCustomFolders,
             settings.SandboxTimeoutMs,
             settings.SandboxMaxOutputBytes,
+            settings.SandboxUploadStagingPath,
+            settings.SandboxMaxTransferBytes,
         })));
 
     public static ContainerRequest Build(
@@ -47,8 +49,6 @@ public static class MxcRequestBuilder
         Func<string, MxcFolderAdmission.Metadata?>? readPhysicalMetadata = null)
     {
         context ??= MxcRequestContext.Capture(settingsDirectory);
-        var scope = settings.SystemRunFilesystemScope ?? SystemRunFilesystemScope.SelectedFolders;
-        if (!Enum.IsDefined(scope)) throw new NotSupportedException("The file access scope is unsupported. Review Node Sandbox settings.");
         if (command.Env is { Count: > 0 })
             throw new NotSupportedException("Custom environment variables are not bound to command approval.");
         if (command.Argv is not { Count: > 0 })
@@ -60,12 +60,45 @@ public static class MxcRequestBuilder
             Path.GetExtension(image).Equals(".bat", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Batch files require an explicitly approved canonical cmd carrier.");
 
+        var resources = ComposeResources(settings, settingsDirectory, scratchDirectory, context,
+            readMetadata, readPhysicalMetadata);
+        var cwd = string.IsNullOrWhiteSpace(command.Cwd) ? Normalize(scratchDirectory) : Normalize(command.Cwd);
+        if ((!string.IsNullOrWhiteSpace(command.Cwd) &&
+                resources.DataAccess.ExecutorPrivatePaths.Any(d => Within(cwd, d))) ||
+            resources.DataAccess.ExecutorPrivatePaths.Any(d => Within(image, d)))
+            throw new NotSupportedException("Executor runtime folders cannot be selected as command data, executables or working folders.");
+        MxcFolderAdmission.Validate(cwd, readMetadata);
+        if (resources.DataAccess.ProtectedPaths.Any(d => Within(cwd, d)) ||
+            MxcFolderPermissions.EffectiveAccess(cwd, resources.ReadonlyPaths, resources.ReadwritePaths,
+                resources.DeniedPaths) is null or SandboxFolderAccess.NoAccess)
+            throw new NotSupportedException("The working folder is outside the granted scope. Grant it in Node Sandbox settings before retrying.");
+        if (resources.DataAccess.ProtectedPaths.Any(d => Within(image, d)) ||
+            MxcFolderPermissions.EffectiveAccess(image, resources.ReadonlyPaths, resources.ReadwritePaths,
+                resources.DeniedPaths) is null or SandboxFolderAccess.NoAccess)
+            throw new NotSupportedException("The approved executable is outside the granted scope. Grant its tools folder before retrying.");
+
+        return CreateRequest(command.Argv, cwd, settings, resources);
+    }
+
+    internal static NodeSandboxResources ComposeResources(
+        SettingsData settings, string settingsDirectory, string scratchDirectory, MxcRequestContext context,
+        Func<string, MxcFolderAdmission.Metadata?> readMetadata,
+        Func<string, MxcFolderAdmission.Metadata?>? readPhysicalMetadata = null,
+        string? fixedWorkerDirectory = null)
+    {
+        var scope = settings.SystemRunFilesystemScope ?? SystemRunFilesystemScope.SelectedFolders;
+        if (!Enum.IsDefined(scope)) throw new NotSupportedException("The file access scope is unsupported. Review Node Sandbox settings.");
         var scratch = Normalize(scratchDirectory);
         var protectedDenies = MxcPhysicalPaths.ProtectedPaths(context.ProtectedPaths.Append(settingsDirectory),
                 readPhysicalMetadata ?? MxcFolderAdmission.ReadMetadata)
             .Select(ProtectedBoundary).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // Unlike immutable sensitive roots, this namespace has executor-issued child grants.
+        // Caller data still vetoes the entire logical/physical namespace independently.
+        var privateDenies = MxcPhysicalPaths.ProtectedPaths(context.ExecutorPrivatePaths,
+                readPhysicalMetadata ?? MxcFolderAdmission.ReadMetadata)
+            .Select(ProtectedBoundary).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var ro = new List<string>();
-        var rw = new List<string> { scratch };
+        var rw = new List<string>();
         var userDenies = new List<string>();
         if (scope is SystemRunFilesystemScope.UserFilesReadOnly or SystemRunFilesystemScope.UserFilesReadWrite)
         {
@@ -76,6 +109,8 @@ public static class MxcRequestBuilder
             if (folder.Access is not null && folder.Error is not null)
                 throw new NotSupportedException(
                     $"{string.Join(", ", folder.KnownFolders)} {folder.Path}: {folder.Error} Review Node Sandbox settings and retry.");
+            if (folder.Access is not null && privateDenies.Any(p => Within(Normalize(folder.Path), p)))
+                throw new NotSupportedException("Executor runtime folders are private and cannot be overridden in Node Sandbox settings.");
             if (folder.Access == SandboxFolderAccess.NoAccess)
                 userDenies.Add(Normalize(folder.Path));
             else
@@ -84,8 +119,10 @@ public static class MxcRequestBuilder
 
         var windows = Normalize(context.WindowsDirectory);
         var runtimePaths = new[] { windows, Normalize(context.SystemDirectory) }.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        ro.AddRange(runtimePaths);
-        foreach (var path in ro.Concat(rw))
+        var infrastructureRo = runtimePaths.ToList();
+        if (fixedWorkerDirectory is not null) infrastructureRo.Add(Normalize(fixedWorkerDirectory));
+        var infrastructureRw = new[] { scratch };
+        foreach (var path in ro.Concat(rw).Concat(infrastructureRo).Concat(infrastructureRw))
         {
             if (protectedDenies.Any(d => Within(path, d)))
                 throw new NotSupportedException("A selected folder is protected. Choose No access for the conflicting grant in Node Sandbox settings.");
@@ -107,16 +144,13 @@ public static class MxcRequestBuilder
                     $"The parent of No access folder '{path}' is unavailable. Restore that exact location and retry.");
         }
 
-        var cwd = string.IsNullOrWhiteSpace(command.Cwd) ? scratch : Normalize(command.Cwd);
-        MxcFolderAdmission.Validate(cwd, readMetadata);
-        if (protectedDenies.Any(d => Within(cwd, d)) ||
-            MxcFolderPermissions.EffectiveAccess(cwd, ro, rw, userDenies) is null or SandboxFolderAccess.NoAccess)
-            throw new NotSupportedException("The working folder is outside the granted scope. Grant it in Node Sandbox settings before retrying.");
-        if (protectedDenies.Any(d => Within(image, d)) ||
-            MxcFolderPermissions.EffectiveAccess(image, ro, rw, userDenies) is null or SandboxFolderAccess.NoAccess)
-            throw new NotSupportedException("The approved executable is outside the granted scope. Grant its tools folder before retrying.");
+        return new(new(ro, rw, userDenies, protectedDenies, privateDenies), new(infrastructureRo, infrastructureRw));
+    }
 
-        return new ContainerRequest(RenderArgv(command.Argv))
+    internal static ContainerRequest CreateRequest(IReadOnlyList<string> argv, string cwd,
+        SettingsData settings, NodeSandboxResources resources)
+    {
+        return new ContainerRequest(RenderArgv(argv))
         {
             Containment = new Containment.ProcessContainer
             {
@@ -131,9 +165,9 @@ public static class MxcRequestBuilder
             },
             Filesystem = new FilesystemPolicy
             {
-                ReadonlyPaths = ro.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                ReadwritePaths = rw.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                DeniedPaths = protectedDenies.Concat(userDenies).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                ReadonlyPaths = resources.ReadonlyPaths.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                ReadwritePaths = resources.ReadwritePaths.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                DeniedPaths = resources.DeniedPaths.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                 ClearPolicyOnExit = true,
             },
             Network = new NetworkPolicy
@@ -263,7 +297,7 @@ public static class MxcRequestBuilder
         Path.TrimEndingDirectorySeparator(Path.GetPathRoot(path)!),
         Path.TrimEndingDirectorySeparator(path), StringComparison.OrdinalIgnoreCase);
 
-    private static bool Within(string path, string parent) =>
+    internal static bool Within(string path, string parent) =>
         string.Equals(path, parent, StringComparison.OrdinalIgnoreCase) ||
         (!IsVolumeRoot(parent) && path.StartsWith(Path.TrimEndingDirectorySeparator(parent) + Path.DirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase));

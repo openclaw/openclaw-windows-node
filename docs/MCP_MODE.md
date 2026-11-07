@@ -24,7 +24,8 @@ Follow the [new-command checklist](../AGENTS.md#ui-mcp-and-pr-proof).
 ## Non-goals (for this iteration)
 
 - **No remote authentication.** Loopback bind + Origin/Host checks keep the endpoint unreachable from any other machine. A local bearer token guards against untrusted local processes on the same box (see [Authentication](#authentication) below). We will revisit ACLs / multi-user when we want remote MCP, multiple users on one box, or shared dev VMs.
-- **No SSE / streaming.** Plain JSON-RPC request/response is enough for the synchronous capabilities we have today.
+- **No SSE or second listener.** Unary calls remain plain JSON-RPC. Optional file
+  duplex uses the authenticated bounded polling extension below.
 - **No per-tool input schemas.** Capabilities don't expose schemas; MCP `inputSchema` is permissive (`{type: "object", additionalProperties: true}`). When/if `INodeCapability` grows a schema property, the MCP bridge picks it up with no other changes.
 - **No port configuration UI.** Default `8765` is hardcoded. Easy to lift into `SettingsManager` later.
 
@@ -91,6 +92,92 @@ no command-specific transport deadlines are applied.
 `OpenClaw.Shared/Mcp/McpHttpServer.cs` is `System.Net.HttpListener` bound to `http://127.0.0.1:8765/`. Loopback-only by construction; not reachable from any other machine even with firewall holes. A defensive `IPAddress.IsLoopback` check on each request acts as belt-and-suspenders.
 
 `GET /` returns a friendly text probe. `POST /` is JSON-RPC. Anything else → `405`. When a bearer token is configured, every verb must pass the token gate before method dispatch.
+
+### File channel extension v1
+
+This OpenClaw-specific extension is advertised by `initialize` under
+`capabilities.experimental["openclaw/file-channel"]`. It is not an MCP standard.
+The existing authenticated HTTP listener serves it; no SSE, second port, or
+WebSocket binary frames are involved. Clients not implementing it retain unary
+file commands and preflight. Explicit binary/create execution requires a channel.
+
+1. Call `openclaw/files/open` with
+   `{v:1,command:"file.fetch"|"file.create",requestId:"unique-call-id",timeoutMs:60000}`.
+   Retain the unpredictable `lease` from the response.
+2. Attach once to the real `tools/call` with that exact JSON-RPC request ID and
+   command. Put `{v:1,lease}` in `params._meta["openclaw/file-channel"]`, **not**
+   inside canonical command `arguments`.
+3. Call `openclaw/files/poll` with `{v:1,lease,ack:0}`. Polls return immediately
+   with `{v:1,frames:[{seq,payloadJSON}],completed}`. Each subsequent `ack` is the
+   next output sequence after consumed frames. Unacknowledged frames are retained;
+   retry a lost poll with the same cursor. Polls are not long-lived handlers.
+4. Feed received JSON strings to the v1 framing parser. Send framed input with
+   `openclaw/files/input` and `{v:1,lease,seq:0,payloadJSON:"..."}`. Input sequence
+   increases per frame. Retrying the immediately preceding identical input is
+   idempotent; changed or out-of-order input closes the transfer.
+5. Call `openclaw/files/close` with `{v:1,lease}` on completion or cancellation.
+   Timeout (at most ten minutes), token replacement, profile/server teardown also
+   cancel channels. Sandbox settings changes do not cancel admitted work.
+
+The HTTP server snapshots the bearer and file-channel epoch as one immutable
+authentication generation. Rotation first invalidates existing channels, then
+publishes the replacement generation. Requests holding an older snapshot cannot
+open or attach channels in the new generation, including requests concurrent
+with rotation.
+
+Frames match upstream `82df040c9c584fce0decbac9ebf260ec134e04c4`:
+`{v:1,kind:"ready"}` or
+`{v:1,kind:"data",message:0,index:0,last:true,data:"canonical-padded-base64"}`.
+Exact keys, safe integer counters, strict ordering, 8192-byte nonfinal fragments
+and a 16384-byte UTF-8 wire cap are enforced. File logical messages cap at 1 MiB.
+Pre-listener buffering caps at eight messages and 1 MiB including unfinished
+messages; active asynchronous delivery caps at eight messages and 2 MiB.
+Readiness is sent only after the worker registers its listener. Fetch receives
+opaque UTF-8 `start`, then repeatedly emits a nonempty logical message of up to
+1 MiB and waits for an opaque UTF-8 `ack` before reading the next chunk. The client
+must acknowledge every logical message, including the last, independently of
+the wire-frame polling cursor above. An empty file still requires `start` but
+emits no data messages and expects no `ack`. Fetch completes with the command
+result; it does not send an empty EOF message. Create receives messages, ACKs
+each nonempty one, and verifies size/hash at empty-message EOF. The client need
+not send reciprocal readiness.
+
+Gateway output sends at most sixteen ordered wire frames before waiting for
+all correlated progress responses. Readiness still waits for its response before
+delivering buffered input. Heartbeats share the same sequence and send gate.
+This does not change the wire format or the logical-message `ack` requirement.
+Local MCP retains its existing cursor-based backpressure.
+
+There are four leases/streaming handlers, sixteen ordinary tool handlers, eight
+independent control handlers, and thirty-two bounded ingress readers. Authentication
+and bounded parsing precede classification; full tool slots cannot consume the
+control slots needed for ACK/cancellation. Each output queue retains at most
+sixteen wire frames and backpressures producers until a poll acknowledges them.
+
+Normal bodies remain capped at 4 MiB. A client declaring an implemented file
+command in `X-OpenClaw-File-Command` gets a file-specific bounded allowance
+(`FileTransportJson.EnvelopeBytes`); the parsed `tools/call` command must match.
+Only two unary file envelopes/results can be retained concurrently; declared
+streaming calls release that reservation after their bounded metadata is parsed.
+Responses use a
+separate bounded file allowance accounting for base64 and nested MCP text.
+The file response bound does not apply to other tools; their previous response
+contract remains unchanged. File requests cannot escape their depth/size bounds
+through generic JSON fallback. Gateway file results use the same command-specific
+classification, including unary/preflight calls. Generic Gateway results retain
+their original serializer casing, depth and escaping. Invalid or oversized file
+result serialization settles the invoke with an explicit error on either
+Gateway invoke envelope.
+`winnode` sends this declaration automatically for file calls and supports
+`--input-file` / no-clobber `--output-file`; see its shipped command reference.
+
+Gateway transport uses the same frame parser with correlated
+`node.invoke.progress` RPC acknowledgments, ordered `node.invoke.input` events
+(`id`, not `invokeId`), and separate `node.invoke.cancel` events. Five-second
+empty progress heartbeats share the progress sequence. Connection generation,
+target node, deadline and cancellation are checked independently from file
+arguments. Plugin inner failures remain unchanged on the Gateway wire but count
+as telemetry failures and MCP `isError`, giving the CLI a nonzero exit.
 
 ## Authentication
 

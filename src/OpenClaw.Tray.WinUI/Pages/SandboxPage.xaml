@@ -2,6 +2,7 @@
 <Page x:Class="OpenClawTray.Pages.SandboxPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:helpers="using:OpenClawTray.Helpers">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
@@ -33,6 +34,34 @@
                 </StackPanel>
 
             </Grid>
+
+            <TextBlock x:Uid="SandboxPage_SharedFilePolicy"
+                       Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
+
+            <toolkit:SettingsCard x:Uid="SandboxPage_UploadStorage">
+                <toolkit:SettingsCard.Description>
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Uid="SandboxPage_UploadStorageHelp" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                        <TextBlock x:Name="UploadStoragePath" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+                </toolkit:SettingsCard.Description>
+                <Button x:Uid="SandboxPage_ChooseUploadParent" Click="OnChooseUploadParent" />
+            </toolkit:SettingsCard>
+
+            <toolkit:SettingsCard x:Uid="SandboxPage_TransferBudget">
+                <NumberBox x:Name="TransferBudgetBox" Minimum="1" Maximum="1024" SmallChange="1"
+                           SpinButtonPlacementMode="Compact" ValueChanged="OnTransferBudgetChanged"
+                           AutomationProperties.LabeledBy="{Binding ElementName=TransferBudgetLabel}" />
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="SandboxPage_TransferBudgetLabel" x:Name="TransferBudgetLabel"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                </toolkit:SettingsCard.Header>
+            </toolkit:SettingsCard>
+
+            <InfoBar x:Name="UploadCleanupWarning" x:Uid="SandboxPage_UploadCleanupWarning"
+                     Severity="Warning" IsOpen="False" IsClosable="False" />
 
             <Expander x:Name="ScopeExpander"
                       AutomationProperties.LabeledBy="{Binding ElementName=ScopeExpanderLabel}"

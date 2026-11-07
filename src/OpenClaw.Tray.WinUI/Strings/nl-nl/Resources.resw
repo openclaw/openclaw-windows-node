@@ -7847,6 +7847,14 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
+  <data name="SandboxPage_SharedFilePolicy.Text" xml:space="preserve"><value>Bestandsacties en system.run gebruiken dezelfde opgeslagen Sandbox-instellingen. Wijzigingen gelden voor nieuwe bewerkingen; lopende bewerkingen behouden hun oorspronkelijke instellingen. Op niet-ondersteunde Windows-versies wordt geen van beide geïsoleerd.</value></data>
+  <data name="SandboxPage_UploadStorage.Header" xml:space="preserve"><value>Opslaglocatie voor uploads</value></data>
+  <data name="SandboxPage_UploadStorageHelp.Text" xml:space="preserve"><value>Kies een bovenliggende map voor OpenClaw-upload-staging. Een locatie kiezen verleent geen toegang. Verleen hieronder lees- en schrijftoegang wanneer Sandbox actief is. Uploads worden 24 uur bewaard, tot maximaal 64 mappen of 256 MiB. Toegang intrekken kan het opruimen blokkeren.</value></data>
+  <data name="SandboxPage_ChooseUploadParent.Content" xml:space="preserve"><value>Bovenliggende map kiezen…</value></data>
+  <data name="SandboxPage_TransferBudget.Description" xml:space="preserve"><value>Maximaal aantal bytes per bestandsoverdracht, in MiB (1 tot 1024; standaard 50). Afzonderlijke opdrachten kunnen lagere limieten hebben.</value></data>
+  <data name="SandboxPage_TransferBudgetLabel.Text" xml:space="preserve"><value>Limiet voor bestandsoverdracht (MiB)</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Uploads opruimen is geblokkeerd</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Controleer de maptoegang en machtigingen voor privégegevens. Oude uploads kunnen blijven staan totdat opruimen weer mogelijk is. Probeer voltooide uploads niet automatisch opnieuw.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Item verwijderen</value>
   </data>

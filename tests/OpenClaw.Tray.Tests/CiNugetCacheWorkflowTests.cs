@@ -21,6 +21,7 @@ public sealed class CiNugetCacheWorkflowTests
         "tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj",
         "tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj",
         "tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj",
+        "tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj",
     ];
 
     [Fact]
@@ -75,7 +76,7 @@ public sealed class CiNugetCacheWorkflowTests
         var cacheStep = ExtractStep(coreJob, "Cache NuGet packages", "Restore core test projects");
 
         var projectGraph = GetProjectGraph(root);
-        Assert.Equal(9, projectGraph.Count);
+        Assert.Equal(11, projectGraph.Count);
 
         foreach (var buildInput in GetBuildInputs(root, projectGraph))
             Assert.Contains($"'{buildInput}'", cacheStep, StringComparison.Ordinal);

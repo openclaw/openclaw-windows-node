@@ -229,6 +229,10 @@ public record class SettingsData
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
+
+    /// <summary>A staging location, not a permission grant. Null uses the OS Downloads folder.</summary>
+    public string? SandboxUploadStagingPath { get; set; }
+    public long SandboxMaxTransferBytes { get; set; } = FileTransfer.FileLimits.DefaultCreateBytes;
     public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
 
     /// <summary>

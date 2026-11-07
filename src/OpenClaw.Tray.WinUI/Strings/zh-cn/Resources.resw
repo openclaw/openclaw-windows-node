@@ -7846,6 +7846,14 @@
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
+  <data name="SandboxPage_SharedFilePolicy.Text" xml:space="preserve"><value>文件操作和 system.run 使用相同的已保存 Sandbox 设置。更改仅适用于新操作，正在运行的操作会保留原始设置。在不受支持的 Windows 版本上，这两类操作都不会被隔离。</value></data>
+  <data name="SandboxPage_UploadStorage.Header" xml:space="preserve"><value>上传文件存储位置</value></data>
+  <data name="SandboxPage_UploadStorageHelp.Text" xml:space="preserve"><value>为 OpenClaw-upload-staging 选择父文件夹。选择位置不会授予访问权限。启用 Sandbox 时，请在下方授予读写权限。上传文件保留 24 小时，最多占用 64 个文件夹或 256 MiB。撤销访问权限可能会阻止清理。</value></data>
+  <data name="SandboxPage_ChooseUploadParent.Content" xml:space="preserve"><value>选择父文件夹…</value></data>
+  <data name="SandboxPage_TransferBudget.Description" xml:space="preserve"><value>每次文件传输的最大字节数，以 MiB 为单位（1 至 1024，默认为 50）。各命令可能有更低的限制。</value></data>
+  <data name="SandboxPage_TransferBudgetLabel.Text" xml:space="preserve"><value>文件传输限额 (MiB)</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上传文件清理受阻</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>请检查文件夹访问权限和私有状态数据的权限。恢复清理前，旧上传文件可能会继续保留。请勿自动重试已完成的上传。</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>移除项目</value>
   </data>

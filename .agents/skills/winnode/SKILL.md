@@ -72,6 +72,13 @@ winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev
 - `--verbose` - log endpoint + ignored flags to stderr. Without `--verbose`,
   HTTP error bodies are emitted only as the first line; with `--verbose`, the
   full body is shown (after sanitization + token-shape redaction).
+- `--input-file <path>` - raw local input for `file.create`. Computes size and
+  SHA256, checks any caller-supplied values, and streams bounded messages.
+- `--output-file <new-path>` - raw local output for `file.fetch`; requires
+  explicit positive `maxBytes`. Never overwrites. Validates returned size and
+  SHA256 before publishing its owned partial file at the requested destination.
+  Both options use one `--invoke-timeout` deadline, preserve supplied expected
+  identity, and use ordinary preflight only to fill missing binding/path fields.
 
 **Output contract:** stdout receives the capability payload as pretty-printed
 JSON (matches `openclaw nodes invoke`). stderr receives errors. Exit code:
@@ -90,6 +97,89 @@ the loopback-only threat model the tray's MCP server relies on.
 ---
 
 ## Commands
+
+## Files and directories
+
+All eight commands use the **existing Node Sandbox configuration and executor**,
+the same as `system.run`. Supported Windows runs the fixed worker through MXC.
+Positively unsupported Windows uses explicit uncontained compatibility, with no
+Sandbox filesystem/network enforcement; failed probes, SDK or launch errors do
+not downgrade. Existing Node/MCP enablement applies, without new file permission
+switches or shell exec approval prompts. Remote Gateway trust/allowlists and
+admin checks remain independent. Settings changes apply to new operations only.
+
+Unary reads/archives default to 8 MiB and cap at 16 MiB. Writes/uploads cap at
+16 MiB decoded. CLI file envelopes use a command-specific bounded HTTP allowance,
+not an increase to every tool's request/response limit. Ordinary MCP clients can
+use unary and preflight calls without the optional framed extension.
+
+### file.stat
+Inspect metadata: `{ "path": "C:\\Data\\sample.txt" }`.
+Optional `followSymlinks`, `preflightOnly`, `expectedCanonicalPath`,
+`expectedBinding`. Returns `{ok,path,type,size,mtimeMs,binding}` and
+an opaque identity `binding`. Preserve returned bindings without rewriting IDs.
+Ordinary local drive paths are supported. Reparse points, Cloud Files hydration,
+case-sensitive directories and `followSymlinks:true` fail explicitly.
+
+### file.fetch
+Unary read: `{ "path": "C:\\Data\\sample.txt", "maxBytes": 16777216 }`.
+Returns `{ok,path,size,mimeType,base64,sha256,binding}`. Optional shared identity
+fields and `preflightOnly`. For binary, require `transport:"binary"`, explicit
+positive `maxBytes`, an existing `expectedBinding`, and framed IO.
+
+```powershell
+winnode --command file.fetch --params '{"path":"C:\\Data\\sample.bin","maxBytes":52428800}' --output-file .\received.bin --invoke-timeout 60000
+```
+
+### dir.list
+`{ "path": "C:\\Data", "maxEntries": 200, "pageToken": "0" }`.
+Returns entries, `nextPageToken`, path and binding. Page size caps at 5000.
+Optional `preflightOnly`, `followSymlinks` and shared identity fields.
+
+### dir.fetch
+`{ "path": "C:\\Data", "maxBytes": 16777216 }`.
+Returns `tarBase64`, `tarBytes`, `sha256`, `fileCount`, entries and binding.
+Expanded archive data caps at 64 MiB; entry count caps at 5000. Optional
+`preflightOnly`, `followSymlinks` and shared identity fields.
+
+### file.write
+`{ "path": "C:\\Data\\sample.txt", "contentBase64": "YWJj", "overwrite": false }`.
+Accepts canonical standard/base64url, padded or unpadded. Optional
+`createParents`, `rejectHardlinks`, `expectedSha256`,
+`expectedCanonicalPath`, `expectedBinding`, `preflightOnly`.
+Returns `{ok,path,size,sha256,overwritten,binding}`. No overwrite by default.
+
+### file.create
+Requires `path`, `sizeBytes`, `expectedSha256`. Optional `maxBytes` (default
+50 MiB), `createParents`, identity fields and `preflightOnly`.
+Preflight needs no channel; real creation streams messages of at most 1 MiB,
+waits for an `ack` after each, and sends an empty message for EOF.
+Returns `{ok,path,size,sha256,status:"created",binding}` when created. An existing
+target returns `status:"exists"` without size/hash fields and is not read back
+to verify content equality. Never overwrites.
+
+```powershell
+winnode --command file.create --params '{"path":"C:\\Data\\new.bin"}' --input-file .\source.bin --invoke-timeout 60000
+```
+
+### fs.listDir
+Directory navigation, with optional `{ "path": "C:\\Data" }`. Remote calls are
+Gateway-admin-gated; local calls use the existing MCP bearer. Neither grants
+elevation or bypasses contained data access.
+
+### terminal.upload
+`{ "name": "sample.txt", "contentBase64": "YWJj" }`.
+Requires canonical padded standard base64. Returns `{path,size}`.
+The raw node command stages an upload without a terminal session. Remote calls
+require genuine Gateway admin authorization. The app schedules retained cleanup;
+the same mode-selected worker scans and deletes only identity-owned upload data.
+
+**Error semantics:** the six plugin commands retain the Gateway outer success
+envelope with inner `{ok:false,code,message}`. The two admin commands use outer
+errors. MCP converts typed semantic failure to `isError:true`; `winnode` exits 1.
+An explicit binary/create call without a channel returns `DUPLEX_REQUIRED`.
+See [local framed transport](../../../docs/MCP_MODE.md#file-channel-extension-v1)
+for the optional authenticated lease protocol. It is not standard MCP streaming.
 
 ### system.notify
 Show a Windows toast notification.
