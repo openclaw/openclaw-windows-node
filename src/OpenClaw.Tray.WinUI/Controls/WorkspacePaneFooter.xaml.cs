@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Controls;
@@ -25,11 +26,13 @@ public sealed partial class WorkspacePaneFooter : UserControl
 {
     private const double ButtonGap = 4;
     private const double TitleBarButtonHeight = 32;
+    private const string BellGlyph = "\uEA8F";
+    private const string DoNotDisturbBellGlyph = "\uE7ED";
     private readonly double _paneButtonHeight;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
     private string _automationIdPrefix = "Workspace";
-    private AppNotificationService? _notifications;
-    private Action? _viewAllNotifications;
+    private InboxFeed? _inbox;
+    private InboxViewCommands? _inboxCommands;
     private string _ownerName = "";
     private string _connectionLabel = "";
 
@@ -98,18 +101,26 @@ public sealed partial class WorkspacePaneFooter : UserControl
         ApplyOwnerToolTip();
     }
 
-    internal void ApplyNotificationCount(int count, string helpText)
+    /// <summary>
+    /// Applies the Inbox bell: hidden badge at zero, capped text, caution tone while an approval
+    /// waits, and the slashed bell while Do not disturb is on (the badge still counts).
+    /// </summary>
+    internal void ApplyInboxBadge(InboxBadge badge, bool doNotDisturb, string helpText)
     {
-        NotificationsBadge.Value = count;
-        NotificationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var attention = badge.Tone == InboxBadgeTone.Attention;
+        NotificationsGlyph.Glyph = doNotDisturb ? DoNotDisturbBellGlyph : BellGlyph;
+        NotificationsBadgeText.Text = badge.Text;
+        NotificationsAttentionBadgeText.Text = badge.Text;
+        NotificationsBadge.Visibility = badge.IsVisible && !attention ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsAttentionBadge.Visibility = badge.IsVisible && attention ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetHelpText(NotificationsButton, helpText);
     }
 
-    /// <summary>Supplies the notification list shown by the bell flyout and its "view all" route.</summary>
-    internal void BindNotifications(AppNotificationService notifications, Action viewAll)
+    /// <summary>Supplies the Inbox shown by the bell flyout and the window commands its rows use.</summary>
+    internal void BindNotifications(InboxFeed inbox, InboxViewCommands commands)
     {
-        _notifications = notifications;
-        _viewAllNotifications = viewAll;
+        _inbox = inbox;
+        _inboxCommands = commands;
     }
 
     internal void HideFlyouts()
@@ -122,8 +133,8 @@ public sealed partial class WorkspacePaneFooter : UserControl
     {
         HideFlyouts();
         NotificationContent.Unbind();
-        _notifications = null;
-        _viewAllNotifications = null;
+        _inbox = null;
+        _inboxCommands = null;
     }
 
     /// <summary>The connection badge style for an accent, shared with the account menu status item.</summary>
@@ -133,12 +144,31 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     private void OnNotificationsOpening(object sender, object e)
     {
-        if (_notifications is null) return;
-        NotificationContent.Initialize(_notifications, () =>
-        {
-            NotificationsFlyout.Hide();
-            _viewAllNotifications?.Invoke();
-        });
+        if (_inbox is null || _inboxCommands is not { } commands) return;
+        // Every Inbox command leaves the flyout before navigating.
+        NotificationContent.Initialize(_inbox, new InboxViewCommands(
+            route =>
+            {
+                NotificationsFlyout.Hide();
+                commands.OpenRoute(route);
+            },
+            () =>
+            {
+                NotificationsFlyout.Hide();
+                commands.OpenSettings();
+            },
+            () =>
+            {
+                NotificationsFlyout.Hide();
+                commands.OpenPage?.Invoke();
+            },
+            commands.AskOpenClaw is { } ask
+                ? question =>
+                {
+                    NotificationsFlyout.Hide();
+                    ask(question);
+                }
+                : null));
     }
 
     private void OnNotificationsClosed(object sender, object e) => NotificationContent.Unbind();

@@ -1,96 +1,61 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClawTray.Controls;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
-using OpenClawTray.ViewModels;
-using System.Collections.ObjectModel;
 
 namespace OpenClawTray.Pages;
 
+/// <summary>Full-size Inbox. Rows, tabs and actions come from the shared <see cref="InboxView"/>.</summary>
 public sealed partial class NotificationsPage : Page
 {
     private static App CurrentApp => (App)Application.Current!;
-    private readonly ObservableCollection<NotificationItemViewModel> _notificationItems = new();
-    private AppNotificationService? _notificationService;
 
     public NotificationsPage()
     {
         InitializeComponent();
-        NotificationsList.ItemsSource = _notificationItems;
-        Unloaded += OnUnloaded;
+        Inbox.UsePageLayout();
+        // Each navigation creates a new page, so its Unloaded ends this page's Inbox binding.
+        Unloaded += (_, _) => Inbox.Unbind();
     }
 
-    internal void Initialize(AppNotificationService? notificationService)
+    /// <summary>
+    /// Binds the Inbox. Without host commands (the Settings companion), routes use the
+    /// app-wide navigation commands.
+    /// </summary>
+    internal void Initialize(InboxFeed? inbox, InboxViewCommands? commands = null)
     {
-        if (!ReferenceEquals(_notificationService, notificationService))
+        if (inbox is null)
         {
-            if (_notificationService is not null)
-                _notificationService.Changed -= OnNotificationsChanged;
-
-            _notificationService = notificationService;
-
-            if (_notificationService is not null)
-                _notificationService.Changed += OnNotificationsChanged;
+            Inbox.Unbind();
+            return;
         }
 
-        Render(notificationService?.Snapshot);
+        Inbox.Initialize(inbox, commands ?? new InboxViewCommands(
+            OpenAppRoute,
+            () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings),
+            AskOpenClaw: AskOpenClaw));
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private static void AskOpenClaw(string question)
     {
-        if (_notificationService is not null)
-            _notificationService.Changed -= OnNotificationsChanged;
-        _notificationService = null;
+        if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
+            OpenAppRoute(AppNotificationActionRoutes.Chat(sessionKey));
+        else
+            ((IAppCommands)CurrentApp).Navigate("connection");
     }
 
-    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs e)
+    private static void OpenAppRoute(string route)
     {
-        DispatcherQueue?.TryEnqueue(() => Render(e.Snapshot));
-    }
-
-    private void Render(AppNotificationSnapshot? snapshot)
-    {
-        _notificationItems.Clear();
-
-        if (snapshot is not null)
-        {
-            foreach (var notification in snapshot.ActiveNotifications)
-                _notificationItems.Add(NotificationItemViewModel.From(notification));
-        }
-
-        var hasNotifications = _notificationItems.Count > 0;
-        NotificationsList.Visibility = hasNotifications ? Visibility.Visible : Visibility.Collapsed;
-        EmptyState.Visibility = hasNotifications ? Visibility.Collapsed : Visibility.Visible;
-        ClearButton.IsEnabled = hasNotifications;
-    }
-
-    private void OnClearClick(object sender, RoutedEventArgs e)
-        => _notificationService?.ClearAll();
-
-    private void OnDismissNotificationClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: string notificationId })
+        if (ThisPcAlertSource.TryOpenPrivacySettings(route))
             return;
-
-        _notificationService?.Dismiss(notificationId);
-    }
-
-    private void OnNotificationActionClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: NotificationItemViewModel item })
-            return;
-
-        if (string.IsNullOrWhiteSpace(item.ActionRoute))
-            return;
-
-        if (AppNotificationActionRoutes.TryGetChatSessionKey(item.ActionRoute, out var sessionKey))
+        if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
         {
             CurrentApp.PendingChatSessionKey = sessionKey;
             ((IAppCommands)CurrentApp).Navigate("chat");
-            _notificationService?.Dismiss(item.Id);
             return;
         }
 
-        ((IAppCommands)CurrentApp).Navigate(item.ActionRoute);
-        _notificationService?.Dismiss(item.Id);
+        ((IAppCommands)CurrentApp).Navigate(route);
     }
 }
