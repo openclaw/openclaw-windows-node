@@ -12,6 +12,21 @@ namespace OpenClawTray.Chat;
 /// <summary>Presentation hooks only. Parsing and sanitization remain in the timeline.</summary>
 internal static class ChatMarkdownPresentation
 {
+    internal static Element Disclosures(
+        IReadOnlyList<ChatMarkdownPart> parts, Func<string, Element> renderMarkdown)
+    {
+        if (parts is [ChatMarkdownText markdown])
+            return renderMarkdown(markdown.Text);
+        return VStack(ChatVisuals.BlockGap, parts.Select((part, index) => part switch
+        {
+            ChatMarkdownText text => renderMarkdown(text.Text),
+            ChatMarkdownDisclosure disclosure =>
+                Component<ChatMarkdownDisclosureView, ChatMarkdownDisclosureProps>(
+                    new(disclosure, renderMarkdown)).WithKey($"disclosure:{index}"),
+            _ => throw new InvalidOperationException("Unknown chat Markdown part."),
+        }).ToArray());
+    }
+
     /// <summary>Only direct message blocks share rhythm; list and quote interiors remain untouched.</summary>
     internal static Element MessageBlocks(Element element) => element is StackElement stack
         ? stack with
@@ -98,5 +113,25 @@ internal static class ChatMarkdownPresentation
     {
         var value = LocalizationHelper.GetString(key);
         return string.IsNullOrWhiteSpace(value) || value == key ? fallback : value;
+    }
+}
+
+internal sealed record ChatMarkdownDisclosureProps(
+    ChatMarkdownDisclosure Disclosure, Func<string, Element> RenderMarkdown);
+
+internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclosureProps>
+{
+    public override Element Render()
+    {
+        var disclosure = Props.Disclosure;
+        var (expanded, setExpanded) = UseState(disclosure.InitiallyExpanded);
+        return Expander(
+                disclosure.Summary,
+                ChatMarkdownPresentation.Disclosures(disclosure.Body, Props.RenderMarkdown),
+                expanded,
+                setExpanded)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationName(disclosure.Summary);
     }
 }
