@@ -30,6 +30,8 @@ internal sealed class WorkspaceSessionMenuController
     private readonly Action<string> _leaveSession;
     private readonly Action<string, InfoBarSeverity> _showMessage;
     private readonly Action<string, Exception> _reportError;
+    private readonly Func<bool> _canMutate;
+    private readonly Action _mutationBlocked;
     private bool _dialogOpen;
 
     public WorkspaceSessionMenuController(
@@ -41,7 +43,9 @@ internal sealed class WorkspaceSessionMenuController
         Func<SessionCreateRequest, Task> forkSession,
         Action<string> leaveSession,
         Action<string, InfoBarSeverity> showMessage,
-        Action<string, Exception> reportError)
+        Action<string, Exception> reportError,
+        Func<bool>? canMutate = null,
+        Action? mutationBlocked = null)
     {
         _client = client;
         _findSession = findSession;
@@ -52,6 +56,8 @@ internal sealed class WorkspaceSessionMenuController
         _leaveSession = leaveSession;
         _showMessage = showMessage;
         _reportError = reportError;
+        _canMutate = canMutate ?? (() => true);
+        _mutationBlocked = mutationBlocked ?? (() => { });
         Flyout.Opening += OnFlyoutOpening;
     }
 
@@ -154,7 +160,7 @@ internal sealed class WorkspaceSessionMenuController
                 ? null
                 : FluentIconCatalog.Build(IconGlyph(entry.Icon)),
             AccessKey = entry.AccessKey,
-            IsEnabled = entry.IsEnabled,
+            IsEnabled = entry.IsEnabled && (!IsMutation(entry.Action) || _canMutate()),
         };
         AutomationProperties.SetAutomationId(item, $"WorkspaceSessionMenu{entry.Action}");
         if (entry.IsDestructive)
@@ -225,6 +231,8 @@ internal sealed class WorkspaceSessionMenuController
             _showMessage(WorkspaceWindow.Text("ConnectionRequired"), InfoBarSeverity.Error);
             return;
         }
+        if (IsMutation(action) && !EnsureMutationAllowed())
+            return;
 
         var operation = client is null ? null : new WorkspaceSessionOperation(client, _client);
         switch (action)
@@ -291,6 +299,8 @@ internal sealed class WorkspaceSessionMenuController
                 return;
             }
         }
+        if (!EnsureMutationAllowed())
+            return;
         await operation.PatchAsync(session.Key, new SessionPatch { Archived = !session.IsArchived });
         if (!session.IsArchived)
             _leaveSession(session.Key);
@@ -299,6 +309,8 @@ internal sealed class WorkspaceSessionMenuController
 
     private async Task PatchAsync(WorkspaceSessionOperation operation, string key, SessionPatch patch)
     {
+        if (!EnsureMutationAllowed())
+            return;
         await operation.PatchAsync(key, patch);
         await RefreshAsync(operation);
     }
@@ -430,6 +442,8 @@ internal sealed class WorkspaceSessionMenuController
         if (prompt is not null && !await ConfirmAsync(prompt))
             return;
         operation.RequireCurrent();
+        if (!EnsureMutationAllowed())
+            return;
 
         if (kind == SessionActionKind.Delete)
         {
@@ -467,6 +481,19 @@ internal sealed class WorkspaceSessionMenuController
             }
         }
     }
+
+    private bool EnsureMutationAllowed()
+    {
+        if (_canMutate())
+            return true;
+        _mutationBlocked();
+        return false;
+    }
+
+    private static bool IsMutation(WorkspaceSessionMenuAction action) => action is
+        WorkspaceSessionMenuAction.TogglePin or WorkspaceSessionMenuAction.Rename or WorkspaceSessionMenuAction.ToggleUnread
+        or WorkspaceSessionMenuAction.ToggleArchive or WorkspaceSessionMenuAction.Fork or WorkspaceSessionMenuAction.Reset
+        or WorkspaceSessionMenuAction.Compact or WorkspaceSessionMenuAction.Delete;
 
     private async Task<bool> ConfirmAsync(SessionActionPrompt prompt)
     {

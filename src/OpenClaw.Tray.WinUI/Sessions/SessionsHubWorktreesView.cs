@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
+using Windows.ApplicationModel.DataTransfer;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Sessions;
@@ -37,7 +39,7 @@ internal static class SessionsHubWorktreesView
                 state.IsConnected && admin && idle && worktrees.Load == SessionsHubLoad.Loaded, "SessionsHubCleanWorktrees",
                 adminTip ?? T("CleanNowTip")),
             When(worktrees.IsCleaning, () => ProgressRing().IsActive(true).Size(16, 16).VAlign(VerticalAlignment.Center)
-                .AutomationName(T("Cleaning")))).Margin(0, 0, 0, 8);
+                .AutomationName(T("Cleaning"))));
 
         var adminBar = state.IsConnected && !admin && worktrees.Load != SessionsHubLoad.Unsupported
             ? (InfoBar(T("AdminRequiredTitle"), T("AdminRequiredBody")) with { IsOpen = true })
@@ -47,9 +49,9 @@ internal static class SessionsHubWorktreesView
                 .AutomationId("SessionsHubWorktreesAdminRequired")
             : Empty();
         return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star()],
-            adminBar.Grid(row: 0),
-            toolbar.Grid(row: 1),
-            Body(context).Grid(row: 2));
+            adminBar.WithKey("admin").Grid(row: 0),
+            toolbar.WithKey("toolbar").Margin(0, 0, 0, 10).AutomationId("SessionsHubWorktreeCommands").Grid(row: 1),
+            Body(context).WithKey("body").Grid(row: 2));
     }
 
     private static Element AdminButton(string label, string glyph, Action onClick, bool enabled, string automationId,
@@ -95,25 +97,29 @@ internal static class SessionsHubWorktreesView
 
         var titles = SessionsHubPresentation.Titles(state.Rows);
         string? SessionTitle(string key) => titles.TryGetValue(key, out var title) ? title : null;
-        var header = Border(Grid(Columns, [GridSize.Auto],
-                Header(T("WorktreeColName"), 0), Header(T("WorktreeColRepo"), 1), Header(T("WorktreeColOwner"), 2),
-                Header(T("WorktreeColActive"), 3), Header(T("WorktreeColStatus"), 4)))
-            .Padding(12, 0, 12, 4);
-        var list = rows.Select(record => Row(context, record, SessionTitle).WithKey(record.Id)).ToArray();
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
-            header.Grid(row: 0),
-            ScrollView(VStack(6, list)
-                    .WithTransitions(new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition { IsStaggeringEnabled = true },
-                        new Microsoft.UI.Xaml.Media.Animation.RepositionThemeTransition())
-                    .Padding(0, 0, 12, 8))
-                .AutomationId("SessionsHubWorktreeList").Grid(row: 1));
+        var active = rows.Where(record => !record.IsRemoved).ToArray();
+        var removed = rows.Where(record => record.IsRemoved).ToArray();
+        var sections = new List<Element>();
+        if (active.Length > 0)
+            sections.Add(WorktreeGroup(context, T("WorktreesActiveGroup"), active, SessionTitle));
+        if (removed.Length > 0)
+            sections.Add(WorktreeGroup(context, T("WorktreesRemovedGroup"), removed, SessionTitle));
+        return VStack(18, sections.ToArray())
+                .WithTransitions(new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition { IsStaggeringEnabled = true },
+                    new Microsoft.UI.Xaml.Media.Animation.RepositionThemeTransition())
+                .Padding(0, 0, 12, 8)
+            .AutomationId("SessionsHubWorktreeList");
     }
 
-    private static readonly GridSize[] Columns =
-        [GridSize.Star(2), GridSize.Star(1.4), GridSize.Star(1.4), GridSize.Px(110), GridSize.Px(170), GridSize.Px(140)];
-
-    private static Element Header(string text, int column) =>
-        TextBlock(text).FontSize(12).FontWeight(FontWeights.SemiBold).Foreground(Theme.SecondaryText).Grid(column: column);
+    private static Element WorktreeGroup(
+        SessionsHubViewContext context,
+        string title,
+        IReadOnlyList<WorktreeRecord> rows,
+        Func<string, string?> sessionTitle) =>
+        VStack(10,
+            SessionsHubView.SectionTitle(title, rows.Count),
+            VStack(PageResponsiveLayout.GapInner,
+                rows.Select(record => Row(context, record, sessionTitle).WithKey(record.Id)).ToArray()));
 
     private static Element Row(SessionsHubViewContext context, WorktreeRecord record, Func<string, string?> sessionTitle)
     {
@@ -123,59 +129,103 @@ internal static class SessionsHubWorktreesView
         var busy = state.Worktrees.BusyId == record.Id;
         var idle = state.Worktrees.BusyId is null && !state.Worktrees.IsCleaning;
         var owner = SessionsHubPresentation.WorktreeOwner(record, sessionTitle);
-        var status = record.IsRemoved ? T("WorktreeRestorable") : T("WorktreeActive");
         var lastActive = SessionsHubPresentation.RelativeTime(record.LastActiveAt, context.NowUtc);
-
-        var repoName = WorktreesProjection.RepoName(record.RepoRoot);
-        var repoColor = SessionAppearance.PaletteColor(repoName);
-        var (ownerGlyph, ownerColor) = record.OwnerKind switch
+        var repoName = string.IsNullOrWhiteSpace(record.RepoRoot)
+            ? T("NotAvailable")
+            : WorktreesProjection.RepoName(record.RepoRoot);
+        var status = record.IsRemoved ? T("WorktreeRestorable") : T("WorktreeActive");
+        var headerActions = new List<Element>
         {
-            "session" => (FluentIconCatalog.Chat, "blue"),
-            "workboard" => (FluentIconCatalog.DashboardView, "purple"),
-            _ => (FluentIconCatalog.Operator, "cyan"),
+            TextBlock(lastActive).FontSize(12).Foreground(Theme.SecondaryText)
+                .VAlign(VerticalAlignment.Center).Margin(8, 0),
         };
-        Element ownerText = record.OwnerKind == "session" && record.OwnerId is { } ownerKey
-            ? HyperlinkButton(owner, onClick: () => controller.OpenInChat(ownerKey))
-                .AutomationName(F("WorktreeOpenOwner", owner))
-                .ToolTip(ownerKey)
-                .Padding(0)
-                .AutomationId("SessionsHubWorktreeOwner:" + record.Id)
-            : TextBlock(owner).TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center);
-        var ownerCell = HStack(8, SessionsHubView.IconTile(ownerGlyph, ownerColor, 24), ownerText.VAlign(VerticalAlignment.Center));
+        if (record.OwnerKind == "session" && record.OwnerId is { } ownerKey)
+        {
+            headerActions.Add(SessionsHubView.IconButton(FluentIconCatalog.Chat, F("WorktreeOpenOwner", owner),
+                () => controller.OpenInChat(ownerKey), automationId: "SessionsHubWorktreeOwner:" + record.Id));
+        }
+        var header = Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            SessionsHubView.IconTile(BranchGlyph, record.IsRemoved ? "yellow" : "green", 36).Grid(column: 0),
+            VStack(3,
+                    HStack(8,
+                        TextBlock(record.Name).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis),
+                        TextBlock(record.Branch).FontSize(12).FontFamily("Cascadia Mono, Consolas")
+                            .Foreground(Theme.SecondaryText).TextTrimming(TextTrimming.CharacterEllipsis)),
+                    TextBlock($"{owner} · {repoName}").FontSize(12).Foreground(Theme.SecondaryText)
+                        .TextTrimming(TextTrimming.CharacterEllipsis))
+                .VAlign(VerticalAlignment.Center).Margin(12, 0, 8, 0).Grid(column: 1),
+            HStack(2, headerActions.ToArray()).VAlign(VerticalAlignment.Center).Grid(column: 2));
+        var details = WorktreeDetails(context, record, owner, admin, idle, busy);
+        var expanded = state.Worktrees.DetailsId == record.Id;
+        return (Expander("", details, expanded, value =>
+            {
+                if (value)
+                    controller.SetWorktreeDetails(record.Id);
+                else if (controller.State.Worktrees.DetailsId == record.Id)
+                    controller.SetWorktreeDetails(null);
+            }) with { HeaderTemplate = header })
+            .Background(Theme.Ref("CardBackgroundFillColorSecondaryBrush"))
+            .WithBorder(Theme.CardStroke, 1)
+            .CornerRadius(8)
+            .HAlign(HorizontalAlignment.Stretch)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .AutomationName(F("WorktreeRowName", record.Name, record.Branch, owner, status))
+            .AutomationId("SessionsHubWorktree:" + record.Id);
+    }
 
-        Element action = record.IsRemoved
+    private static Element WorktreeDetails(
+        SessionsHubViewContext context, WorktreeRecord record, string owner, bool admin, bool idle, bool busy)
+    {
+        var controller = context.Controller;
+        var copyPath = NonBlank(record.Path) ?? NonBlank(record.RepoRoot);
+        var action = record.IsRemoved
             ? AdminButton(T("Restore"), FluentIconCatalog.Unarchive, () => _ = controller.RestoreWorktreeAsync(record),
                 admin && idle, "SessionsHubWorktreeRestore:" + record.Id, admin ? null : T("AdminRequiredTip"))
             : AdminButton(T("Remove"), FluentIconCatalog.Delete, () => _ = controller.RemoveWorktreeAsync(record),
                 admin && idle, "SessionsHubWorktreeRemove:" + record.Id, admin ? null : T("AdminRequiredTip"));
-
-        var cells = new Element[]
+        var command = Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            SessionsHubView.CommandButton(FluentIconCatalog.Copy, LocalizationHelper.GetString("WorkspacePage_CopyPath"),
+                () => CopyPath(copyPath!),
+                enabled: copyPath is not null,
+                automationId: "SessionsHubWorktreeCopy:" + record.Id).Grid(column: 0),
+            Border(Empty()).Grid(column: 1),
+            (busy ? ProgressRing().IsActive(true).Size(16, 16) : action).Grid(column: 2));
+        var facts = new (string Label, string Value)[]
         {
-            Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                    SessionsHubView.IconTile(BranchGlyph, record.IsRemoved ? "yellow" : "green", 36).Grid(column: 0),
-                    VStack(2,
-                            TextBlock(record.Name).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis),
-                            TextBlock(record.Branch).FontSize(12).FontFamily("Cascadia Mono, Consolas")
-                                .Foreground(Theme.SecondaryText).TextTrimming(TextTrimming.CharacterEllipsis)
-                                .ToolTip(record.BaseRef is null ? record.Branch : F("WorktreeFromBase", record.Branch, record.BaseRef)))
-                        .VAlign(VerticalAlignment.Center).Margin(12, 0, 8, 0).Grid(column: 1))
-                .Grid(column: 0),
-            HStack(8,
-                    SessionsHubView.ColorDot(repoColor, 10),
-                    TextBlock(repoName).TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center))
-                .VAlign(VerticalAlignment.Center).ToolTip(record.Path is null ? record.RepoRoot : $"{record.RepoRoot}\n{record.Path}")
-                .Grid(column: 1),
-            ownerCell.VAlign(VerticalAlignment.Center).Grid(column: 2),
-            TextBlock(lastActive).FontSize(12).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center).Grid(column: 3),
-            (record.IsRemoved
-                ? SessionsHubView.Pill(status, "yellow", FluentIconCatalog.Archive)
-                : SessionsHubView.Pill(status, "green", FluentIconCatalog.StatusOk))
-                .HAlign(HorizontalAlignment.Left).Grid(column: 4),
-            (busy ? ProgressRing().IsActive(true).Size(16, 16).HAlign(HorizontalAlignment.Right) : action.HAlign(HorizontalAlignment.Right))
-                .Grid(column: 5),
+            (T("FactPath"), NonBlank(record.Path) ?? NonBlank(record.RepoRoot) ?? T("NotAvailable")),
+            (T("WorktreeColRepo"), NonBlank(record.RepoRoot) ?? T("NotAvailable")),
+            (T("WorktreeBranch"), NonBlank(record.Branch) is { } branch
+                ? NonBlank(record.BaseRef) is { } baseRef ? F("WorktreeBranchFrom", branch, baseRef) : branch
+                : T("NotAvailable")),
+            (T("WorktreeColOwner"), owner),
+            (T("FactCreated"), SessionsHubPresentation.RelativeTime(record.CreatedAt, context.NowUtc)),
+            (T("WorktreeColActive"), SessionsHubPresentation.RelativeTime(record.LastActiveAt, context.NowUtc)),
         };
-        return SessionsHubView.Card(Grid(Columns, [GridSize.Auto], cells), 12, 8)
-            .AutomationName(F("WorktreeRowName", record.Name, record.Branch, owner, status))
-            .AutomationId("SessionsHubWorktree:" + record.Id);
+        var cells = new List<Element>();
+        for (var i = 0; i < facts.Length; i++)
+        {
+            cells.Add(TextBlock(facts[i].Label).FontSize(12).Foreground(Theme.SecondaryText)
+                .Margin(0, 0, 12, 6).Grid(row: i, column: 0));
+            cells.Add(TextBlock(facts[i].Value).FontSize(12).TextWrapping(TextWrapping.Wrap)
+                .IsTextSelectionEnabled().Margin(0, 0, 0, 6).Grid(row: i, column: 1));
+        }
+        return VStack(10,
+                command,
+                Border(Empty()).Height(1).Background(Theme.Ref("DividerStrokeColorDefaultBrush")),
+                !admin
+                    ? TextBlock(T("AdminRequiredBody")).FontSize(12).Foreground(Theme.SecondaryText)
+                        .TextWrapping(TextWrapping.Wrap)
+                    : Empty(),
+                Grid([GridSize.Auto, GridSize.Star()], facts.Select(_ => GridSize.Auto).ToArray(), cells.ToArray()))
+            .Padding(4, 4, 4, 8);
     }
+
+    private static void CopyPath(string path)
+    {
+        var package = new DataPackage();
+        package.SetText(path);
+        Clipboard.SetContent(package);
+    }
+
+    private static string? NonBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }

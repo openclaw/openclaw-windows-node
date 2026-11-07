@@ -105,6 +105,13 @@ public sealed class SessionsHubTests
         Assert.Equal("bot", row.Icon);
     }
 
+    [Fact]
+    public void ParseSessionListPage_RejectsMissingInventoryInsteadOfInventingEmpty()
+    {
+        using var client = NewClient();
+        Assert.Throws<InvalidOperationException>(() => client.ParseSessionListPage(Json("""{"totalCount":0}""")));
+    }
+
     [Theory]
     [InlineData("false", "off")]
     [InlineData("\"auto\"", "auto")]
@@ -170,6 +177,8 @@ public sealed class SessionsHubTests
         Assert.Equal(new PreservedWorktreeInfo("w", "b", "p", "busy"), outcome.PreservedWorktree);
         Assert.Throws<InvalidOperationException>(() =>
             OpenClawGatewayClient.ParseSessionDeleteOutcome(Json("""{"ok":false,"reason":"nope"}"""), "k"));
+        Assert.Throws<InvalidOperationException>(() =>
+            OpenClawGatewayClient.ParseSessionDeleteOutcome(Json("""{"ok":true,"key":"k"}"""), "k"));
     }
 
     [Fact]
@@ -209,6 +218,19 @@ public sealed class SessionsHubTests
         Assert.True(gc.IsPending);
         Assert.Equal(["w1"], gc.Removed);
         Assert.Equal(["locked"], gc.IssueReasons);
+    }
+
+    [Fact]
+    public void WorktreeParsers_KeepMissingGatewayFactsUnavailable()
+    {
+        Assert.Throws<InvalidOperationException>(() => OpenClawGatewayClient.ParseWorktrees(Json("""{}""")));
+        var worktree = Assert.Single(OpenClawGatewayClient.ParseWorktrees(Json("""
+            {"worktrees":[{"id":"w1","name":"fix-a","repoRoot":"","branch":"","createdAt":0,"lastActiveAt":0}]}
+            """)));
+        Assert.Equal("", worktree.OwnerKind);
+        Assert.Throws<InvalidOperationException>(() => OpenClawGatewayClient.ParseWorktreeGc(Json("""
+            {"state":"completed","removed":[]}
+            """)));
     }
 
     // ── Grouping and sorting ──
@@ -508,14 +530,15 @@ public sealed class SessionsHubTests
     [Fact]
     public void LiveSignature_IgnoresActivityTicksButTracksRosterChanges()
     {
-        SessionInfo Row(string status = "active", string? activity = null, string owner = "Ada") =>
+        SessionInfo Row(string status = "active", string? activity = null, string owner = "Ada", string? error = null) =>
             new() { Key = "agent:main:a", Status = status, CurrentActivity = activity, LastSeen = DateTime.UtcNow,
-                Owner = new SessionOwnerInfo("human", "profile-1", owner) };
+                Owner = new SessionOwnerInfo("human", "profile-1", owner), LastRunError = error };
         var baseline = SessionsHubProjection.LiveSignature([Row()]);
 
         Assert.Equal(baseline, SessionsHubProjection.LiveSignature([Row(activity: "Reading files")]));
         Assert.NotEqual(baseline, SessionsHubProjection.LiveSignature([Row(status: "done")]));
         Assert.NotEqual(baseline, SessionsHubProjection.LiveSignature([Row(owner: "Ada L.")]));
+        Assert.NotEqual(baseline, SessionsHubProjection.LiveSignature([Row(error: "Updated failure details")]));
         Assert.NotEqual(baseline, SessionsHubProjection.LiveSignature([Row(), new SessionInfo { Key = "agent:main:b" }]));
     }
 

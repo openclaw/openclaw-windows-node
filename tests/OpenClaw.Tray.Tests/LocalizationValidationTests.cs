@@ -975,6 +975,75 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void SessionsHub_AllRuntimeReferencesResolveInEveryLocale()
+    {
+        var keys = ReadSessionsHubReferences();
+        Assert.Contains("SessionsHub_CloudWorker", keys);
+        Assert.Contains("SessionsHub_ColorRed", keys);
+        Assert.Contains("SessionsPage_Status_Ready", keys);
+        var failures = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var locale = Path.GetFileName(localeDir);
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            failures.AddRange(keys
+                .Where(key => !resources.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                .Select(key => $"{locale}: missing {key}"));
+        }
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    private static string[] ReadSessionsHubReferences()
+    {
+        const string prefix = "SessionsHub_";
+        var sources = Directory.GetFiles(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Sessions"), "*.cs").Select(File.ReadAllText).ToArray();
+        // A missing key renders as fallback text instead of throwing, so follow every T/F call
+        // site; otherwise catalog entries lost in a merge surface only in mounted UI tests.
+        Assert.Contains(sources, source => source.Contains(
+            "internal static string T(string key) => LocalizationHelper.GetString(\"SessionsHub_\" + key);",
+            StringComparison.Ordinal));
+        static string Pascal(string id) => char.ToUpperInvariant(id[0]) + id[1..];
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var unclassified = new List<string>();
+        foreach (var source in sources)
+        {
+            foreach (Match call in Regex.Matches(source, """(?<!\w)[TF]\((?<arg>[^)]*)"""))
+            {
+                var arg = call.Groups["arg"].Value.Trim();
+                if (Regex.IsMatch(arg, """^(string key\b|key$|key,)"""))
+                    continue;
+                if (Regex.Match(arg, """^"(?<key>\w+)"\s*(,|$)""") is { Success: true } literal)
+                {
+                    keys.Add(prefix + literal.Groups["key"].Value);
+                }
+                else if (Regex.Match(arg, """\?\s*"(?<a>\w+)"\s*:\s*"(?<b>\w+)"$""") is { Success: true } choice)
+                {
+                    keys.Add(prefix + choice.Groups["a"].Value);
+                    keys.Add(prefix + choice.Groups["b"].Value);
+                }
+                else if (arg == "\"Color\" + Pascal(colorId")
+                {
+                    keys.UnionWith(OpenClaw.Shared.Sessions.SessionAppearance.ColorIds.Select(id => prefix + "Color" + Pascal(id)));
+                }
+                else if (arg == "\"Icon\" + Pascal(iconId")
+                {
+                    keys.UnionWith(OpenClaw.Shared.Sessions.SessionAppearance.IconIds.Select(id => prefix + "Icon" + Pascal(id)));
+                }
+                else
+                {
+                    unclassified.Add(arg);
+                }
+            }
+            foreach (Match call in Regex.Matches(source, """LocalizationHelper\.GetString\("(?<key>[^"]+)"\)"""))
+                keys.Add(call.Groups["key"].Value);
+        }
+        Assert.True(unclassified.Count == 0,
+            "Update this source contract for new Sessions localization call shapes: " + string.Join("; ", unclassified));
+        return keys.ToArray();
+    }
+
+    [Fact]
     public void NoLocale_HasDuplicateKeys()
     {
         var stringsDir = GetStringsDirectory();

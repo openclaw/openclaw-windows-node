@@ -4,10 +4,13 @@ using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Reactor.Layout;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using static Microsoft.UI.Reactor.Factories;
 using MenuFlyoutItemBase = Microsoft.UI.Reactor.Core.MenuFlyoutItemBase;
 
@@ -20,10 +23,6 @@ internal static class SessionsHubSessionsView
     private static string T(string key) => SessionsHubPresentation.T(key);
     private static string F(string key, params object?[] args) => SessionsHubPresentation.F(key, args);
 
-    private static readonly SessionsGroupBy[] GroupModes =
-        [SessionsGroupBy.None, SessionsGroupBy.Category, SessionsGroupBy.Person, SessionsGroupBy.Channel,
-         SessionsGroupBy.Kind, SessionsGroupBy.Agent, SessionsGroupBy.Date];
-
     public static Element Render(SessionsHubViewContext context)
     {
         var state = context.State;
@@ -32,14 +31,151 @@ internal static class SessionsHubSessionsView
             ? SessionsHubSearchView.Render(context, titles)
             : Roster(context, titles);
 
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star()],
-            Toolbar(context).Grid(row: 0),
-            SelectionBar(context).Grid(row: 1),
-            main.Grid(row: 2));
+        return Grid([GridSize.Star()],
+                [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                Overview(context).Grid(row: 0),
+                InventoryTitle(context).Margin(0, 4, 0, 10).Grid(row: 1),
+                Toolbar(context).Grid(row: 2),
+                FilterNote(state).Grid(row: 3),
+                TranscriptPrompt(context).Grid(row: 4),
+                SelectionBar(context).Grid(row: 5),
+                main.Grid(row: 6))
+            .Padding(0, 0, 12, 12);
     }
 
-    /// <summary>Reveals a loaded transcript hit in its roster page and group before expanding it.</summary>
-    public static void RevealDetails(SessionsHubViewContext context, string key)
+    private static Element InventoryTitle(SessionsHubViewContext context)
+    {
+        var state = context.State;
+        var title = state.Filters.Search.Trim().Length > 0 ? T("MatchingSessions") : state.Filters.Status switch
+        {
+            SessionArchiveFilter.Archived => T("ArchivedSessions"),
+            SessionArchiveFilter.All => T("StatAll"),
+            _ => T("CurrentSessions"),
+        };
+        var shown = SessionsHubProjection.Page(Ordered(context), state.PageIndex, state.PageSize).Rows.Count;
+        return HStack(8,
+                SessionsHubView.SectionTitle(title),
+                TextBlock(F("ShownOfLoaded", shown, state.Rows.Count)).FontSize(12)
+                    .Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center)
+                    .AutomationId("SessionsHubInventoryCount"))
+            .AutomationId("SessionsHubAllSessions");
+    }
+
+    private static Element FilterNote(SessionsHubState state)
+    {
+        var filters = state.Filters;
+        return TextBlock(F("ViewFilterNote", filters.ApplyClientFilters(state.Rows).Count(),
+                T(filters.ShowBackground ? "BackgroundShown" : "BackgroundHidden"),
+                T(filters.ShowCompleted || filters.Status != SessionArchiveFilter.Active ? "CompletedShown" : "CompletedHidden"),
+                T(filters.IncludeUnknown ? "UnroutedShown" : "UnroutedHidden")))
+            .FontSize(12).Foreground(Theme.SecondaryText).TextWrapping(TextWrapping.Wrap)
+            .Margin(0, 0, 0, PageResponsiveLayout.GapInner)
+            .AutomationId("SessionsHubFilterNote");
+    }
+
+    private static Element Overview(SessionsHubViewContext context)
+    {
+        var state = context.State;
+        if (!state.IsConnected)
+            return Empty();
+        var attention = SessionsHubPresentation.AttentionRows(state).ToArray();
+        if (attention.Length == 0)
+            return Empty();
+        var titles = SessionsHubPresentation.Titles(state.TrackedRows);
+        var cards = attention.Select(row => AttentionCard(context, row, titles)).ToArray();
+        return VStack(10,
+                SessionsHubView.SectionTitle(T("NeedsYou"), attention.Length, "SessionsHubNeedsYouTitle", countColor: "red"),
+                CardGrid(context, cards, 280, 2, "attention"))
+            .AutomationId("SessionsHubNeedsYou")
+            .Margin(0, 0, 0, 20);
+    }
+
+    private static Element CardGrid(
+        SessionsHubViewContext context, IReadOnlyList<Element> cards, double minTile, int maxColumns, string keyPrefix)
+    {
+        var columns = context.IsWide
+            ? PageResponsiveLayout.TileColumns(context.ContentWidth, minTile, maxColumns)
+            : 1;
+        var rows = Math.Max(1, (cards.Count + columns - 1) / columns);
+        var cells = cards.Select((card, index) =>
+            card.Margin(
+                    index % columns == 0 ? 0 : PageResponsiveLayout.GapGroup / 2,
+                    index < columns ? 0 : PageResponsiveLayout.GapGroup / 2,
+                    index % columns == columns - 1 ? 0 : PageResponsiveLayout.GapGroup / 2,
+                    index >= (rows - 1) * columns ? 0 : PageResponsiveLayout.GapGroup / 2)
+                .Grid(row: index / columns, column: index % columns)
+                .WithKey($"{keyPrefix}:{index}")).ToArray();
+        return Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
+            Enumerable.Repeat(GridSize.Auto, rows).ToArray(), cells);
+    }
+
+    private static Element AttentionCard(
+        SessionsHubViewContext context, SessionInfo row, IReadOnlyDictionary<string, string> titles)
+    {
+        var title = titles.TryGetValue(row.Key, out var known) ? known : row.Key;
+        var message = string.IsNullOrWhiteSpace(row.LastRunError) ? T("NeedsAttentionFallback") : row.LastRunError!;
+        var openEnabled = row.Kind != "global";
+        return Border(
+                Grid([GridSize.Px(4), GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                    Border(Empty()).Background(SessionsHubView.Strong("red"))
+                        .AutomationId("SessionsHubAttentionStripe:" + row.Key)
+                        .Grid(column: 0),
+                    SessionsHubView.IconTile(FluentIconCatalog.StatusWarn, "red", 40)
+                        .Margin(16, 16, 0, 16).VAlign(VerticalAlignment.Top).Grid(column: 1),
+                    VStack(8,
+                        TextBlock(F("StoppedTitle", title)).FontSize(15).FontWeight(FontWeights.SemiBold)
+                            .TextTrimming(TextTrimming.CharacterEllipsis),
+                        TextBlock(message).FontSize(12).Foreground(Theme.SecondaryText)
+                            .TextWrapping(TextWrapping.Wrap).MaxLines(3),
+                        HStack(8,
+                            SessionsHubView.CommandButton(FluentIconCatalog.Chat, T("OpenChatShort"),
+                                () => context.Controller.OpenInChat(row.Key), openEnabled,
+                                "SessionsHubAttentionOpen:" + row.Key, accent: true),
+                            Button(T("DetailsShort"), () => _ = RevealAttentionDetailsAsync(context, row.Key))
+                                .SubtleButton().AutomationName(F("ShowDetailsNamed", title))
+                                .AutomationId("SessionsHubAttentionDetails:" + row.Key)))
+                        .Margin(12, 16, 16, 16).Grid(column: 2)))
+            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
+            .WithBorder(Theme.CardStroke, 1)
+            .CornerRadius(12)
+            .AutomationId("SessionsHubAttention:" + row.Key)
+            .HAlign(HorizontalAlignment.Stretch);
+    }
+
+    private static Element TranscriptPrompt(SessionsHubViewContext context)
+    {
+        var state = context.State;
+        var query = state.Filters.Search.Trim();
+        if (state.Transcript.IsOpen || query.Length == 0 || !state.IsConnected
+            || !state.Permissions.Supports("sessions.search"))
+            return Empty();
+        return Border(Button(
+                    HStack(8,
+                        SessionsHubView.Glyph("\uE721", 14, Theme.Accent),
+                        TextBlock(F("SearchMessagesFor", query)).Foreground(Theme.Accent)
+                            .FontWeight(FontWeights.SemiBold),
+                        SessionsHubView.Glyph(FluentIconCatalog.ChevronR, 12, Theme.Accent)),
+                    context.Controller.SearchTranscriptsForCurrentQuery)
+                .SubtleButton()
+                .HAlign(HorizontalAlignment.Stretch)
+                .HorizontalContentAlignment(HorizontalAlignment.Left)
+                .AutomationName(F("SearchMessagesFor", query)))
+            .Background(Theme.Ref("AccentFillColorSecondaryBrush"))
+            .WithBorder(Theme.Accent, 1)
+            .CornerRadius(8)
+            .Padding(4)
+            .Margin(0, 0, 0, 8)
+            .AutomationId("SessionsHubTranscriptPrompt");
+    }
+
+    private static async Task RevealAttentionDetailsAsync(SessionsHubViewContext context, string key)
+    {
+        if (await context.Controller.LoadAttentionRowAsync(key))
+            RevealDetails(context, key);
+    }
+
+    /// <summary>Reveals a loaded session in its roster page and group before expanding it.</summary>
+    public static void RevealDetails(SessionsHubViewContext context, string key, bool focus = false)
     {
         var controller = context.Controller;
         var state = controller.State;
@@ -66,6 +202,7 @@ internal static class SessionsHubSessionsView
             context.SetCollapsedGroups(collapsed);
         }
         controller.SetTranscriptOpen(false);
+        controller.RequestRowReveal(key, focus);
     }
 
     // ── Toolbar ──
@@ -94,13 +231,20 @@ internal static class SessionsHubSessionsView
             .AutomationName(T("AgentFilter"))
             .ToolTip(T("AgentFilter"))
             .MinWidth(160)
-            .AutomationId("SessionsHubAgentFilter");
+            // WinUI's ComboBox style defaults to Top; center it with the toolbar buttons.
+            .VAlign(VerticalAlignment.Center)
+            .AutomationId("SessionsHubAgentFilter")
+            .WithKey("agent");
 
         var search = TextBox(filters.Search, controller.SetSearch, T("SearchPlaceholder"))
+            .AcceptsReturn(false)
+            .TextWrapping(TextWrapping.NoWrap)
+            .VAlign(VerticalAlignment.Center)
             .IsEnabled(enabled && !state.Transcript.IsOpen)
             .AutomationName(T("SearchPlaceholder"))
             .MinWidth(220)
-            .AutomationId("SessionsHubSearch");
+            .AutomationId("SessionsHubSearch")
+            .WithKey("search");
 
         var status = SelectorBar(
                 [SelectorBarItem(T("StatusActive")), SelectorBarItem(T("StatusArchived")), SelectorBarItem(T("StatusAll"))],
@@ -111,121 +255,127 @@ internal static class SessionsHubSessionsView
                         controller.SetFilters(filters with { Status = (SessionArchiveFilter)index });
                 })
             .Set(bar => SessionsHubView.TagItems(bar, "SessionsPageStatus", ["Active", "Archived", "All"]))
+            .Set(bar =>
+            {
+                if (bar.Items.Count > 0)
+                    ToolTipService.SetToolTip(bar.Items[0], T("StatusCurrentHelp"));
+            })
             .IsEnabled(enabled)
             .AutomationName(T("StatusFilter"))
-            .AutomationId("SessionsHubStatus");
+            .AutomationId("SessionsHubStatus")
+            .WithKey("status");
 
-        var groupBy = ComboBox(GroupModes.Select(SessionsHubPresentation.GroupByLabel).ToArray(),
-                Array.IndexOf(GroupModes, state.GroupBy),
-                index =>
-                {
-                    if (index >= 0 && index < GroupModes.Length)
-                        controller.SetGroupBy(GroupModes[index]);
-                })
-            .AutomationName(T("GroupBy"))
-            .ToolTip(T("GroupBy"))
-            .MinWidth(150)
-            .AutomationId("SessionsHubGroupBy");
-
-        var sort = DropDownButton(SortLabel(state), MenuItems(
-                SortItem(context, SessionsSortColumn.Updated, true, T("SortNewest")),
-                SortItem(context, SessionsSortColumn.Updated, false, T("SortOldest")),
-                SortItem(context, SessionsSortColumn.Name, false, T("SortNameAsc")),
-                SortItem(context, SessionsSortColumn.Name, true, T("SortNameDesc"))))
-            .AutomationName(T("Sort"))
-            .ToolTip(T("Sort"))
-            .AutomationId("SessionsHubSort");
-
-        var filterCount = FilterCount(filters);
-        var filtersButton = DropDownButton(filterCount > 0 ? F("FiltersCount", filterCount) : T("Filters"),
-                ContentFlyout(FiltersPanel(context)))
+        var optionsLabel = T("Options");
+        var options = DropDownButton(optionsLabel, MenuItems(OptionItems(context)))
             .IsEnabled(enabled)
-            .AutomationName(T("Filters"))
-            .AutomationId("SessionsHubFilters");
+            .AutomationName(optionsLabel)
+            .ToolTip(optionsLabel)
+            .AutomationId("SessionsHubOptions")
+            .WithKey("options");
 
-        var transcript = ToggleButton(T("SearchTranscripts"), state.Transcript.IsOpen, controller.SetTranscriptOpen)
-            .IsEnabled(enabled && state.Permissions.Supports("sessions.search"))
-            .ToolTip(state.Permissions.Supports("sessions.search") ? T("SearchTranscriptsTip") : T("Unsupported"))
-            .AutomationId("SessionsHubTranscriptToggle");
-
+        var canSelect = state.Filters.ApplyClientFilters(state.Rows).Any();
         var select = ToggleButton(T("Select"), state.SelectionMode, controller.SetSelectionMode)
-            .IsEnabled(enabled && !state.Transcript.IsOpen)
-            .ToolTip(T("SelectTip"))
-            .AutomationId("SessionsHubSelectToggle");
+            .IsEnabled(enabled && !state.Transcript.IsOpen && (canSelect || state.SelectionMode))
+            .ToolTip(T(canSelect || state.SelectionMode ? "SelectTip" : "NoMatchingSelection"))
+            .AutomationId("SessionsHubSelectToggle")
+            .WithKey("select");
 
-        var trailing = new List<Element> { transcript, select };
-        if (state.GroupBy == SessionsGroupBy.Category)
-            trailing.Add(SessionsHubView.CommandButton(FluentIconCatalog.Add, T("NewGroup"), () => _ = controller.NewGroupAsync(),
-                enabled && state.Permissions.CanCreateGroup && !state.IsBusy, "SessionsHubNewGroup",
-                tooltip: !state.Permissions.SupportsGroupCreation ? T("Unsupported")
-                    : state.Permissions.CanCreateGroup ? T("NewGroup") : T("NeedsWrite")));
-        if (filters.Status == SessionArchiveFilter.Archived)
-            trailing.Add(SessionsHubView.CommandButton(FluentIconCatalog.Delete, T("DeleteAllArchived"),
+        var deleteAllArchivedHelp = state.CanMutateRows
+            ? state.Permissions.CanWrite ? T("DeleteAllArchivedTip") : T("NeedsWrite")
+            : T("RosterNotCurrent");
+        Element archiveDelete = filters.Status == SessionArchiveFilter.Archived
+            ? SessionsHubView.CommandButton(FluentIconCatalog.Delete, T("DeleteAllArchived"),
                 () => _ = controller.DeleteAllArchivedAsync(),
-                enabled && state.Permissions.CanWrite && state.Rows.Any(row => row.Archived) && !state.IsBusy,
+                enabled && state.Permissions.CanWrite && state.Rows.Any(row => row.Archived) && state.CanMutateRows,
                 "SessionsHubDeleteAllArchived",
-                tooltip: state.Permissions.CanWrite ? T("DeleteAllArchivedTip") : T("NeedsWrite")));
+                tooltip: deleteAllArchivedHelp)
+                .HelpText(deleteAllArchivedHelp)
+            : Empty();
+        archiveDelete = archiveDelete.WithKey("archive-delete");
 
-        return VStack(8,
-                (FlexRow(search.Flex(grow: 1, basis: 220), agent, status) with
-                    { Wrap = FlexWrap.Wrap, ColumnGap = 8, RowGap = 8, AlignItems = FlexAlign.Center }),
-                (FlexRow([groupBy, sort, filtersButton, Border(Empty()).Flex(grow: 1, basis: 0), .. trailing]) with
-                    { Wrap = FlexWrap.Wrap, ColumnGap = 8, RowGap = 8, AlignItems = FlexAlign.Center }))
-            .Margin(0, 0, 0, 8);
+        Element toolbar = context.Tier switch
+        {
+            PageWidthTier.Wide => Grid(
+                [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Px(360), GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto],
+                status.Grid(column: 0),
+                agent.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 1),
+                Border(Empty()).Grid(column: 2),
+                search.Grid(column: 3),
+                options.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 4),
+                select.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 5),
+                archiveDelete.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 6)),
+            PageWidthTier.Medium => Grid(
+                [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto, GridSize.Auto],
+                status.Grid(row: 0, column: 0),
+                agent.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(row: 0, column: 1),
+                Border(Empty()).Grid(row: 0, column: 2),
+                options.Grid(row: 0, column: 3),
+                select.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(row: 0, column: 4),
+                archiveDelete.Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(row: 0, column: 5),
+                search.Margin(0, PageResponsiveLayout.GapGroup, 0, 0).HAlign(HorizontalAlignment.Stretch)
+                    .Grid(row: 1, column: 0, columnSpan: 6)),
+            _ => Grid(
+                [GridSize.Star(), GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                status.Grid(row: 0, column: 0, columnSpan: 4),
+                agent.Margin(0, PageResponsiveLayout.GapGroup, 0, 0).Grid(row: 1, column: 0),
+                options.Margin(PageResponsiveLayout.GapInner, PageResponsiveLayout.GapGroup, 0, 0).Grid(row: 1, column: 1),
+                select.Margin(PageResponsiveLayout.GapInner, PageResponsiveLayout.GapGroup, 0, 0).Grid(row: 1, column: 2),
+                archiveDelete.Margin(PageResponsiveLayout.GapInner, PageResponsiveLayout.GapGroup, 0, 0).Grid(row: 1, column: 3),
+                search.Margin(0, PageResponsiveLayout.GapGroup, 0, 0).HAlign(HorizontalAlignment.Stretch)
+                    .Grid(row: 2, column: 0, columnSpan: 4)),
+        };
+        return toolbar.Margin(0, 0, 0, PageResponsiveLayout.GapInner)
+            .AutomationId("SessionsHubToolbar");
     }
+
+    private static MenuFlyoutItemBase[] OptionItems(SessionsHubViewContext context)
+    {
+        var state = context.State;
+        var controller = context.Controller;
+        var filters = state.Filters;
+        return
+        [
+            MenuHeader(T("GroupBy")),
+            GroupItem(context, SessionsGroupBy.Date),
+            GroupItem(context, SessionsGroupBy.Agent),
+            GroupItem(context, SessionsGroupBy.Category),
+            GroupItem(context, SessionsGroupBy.None),
+            MenuSeparator(),
+            MenuHeader(T("Sort")),
+            SortItem(context, SessionsSortColumn.Updated, true, T("SortNewest")),
+            SortItem(context, SessionsSortColumn.Name, false, T("SortNameAsc")),
+            MenuSeparator(),
+            MenuHeader(T("Filters")),
+            ToggleItem(LocalizationHelper.GetString("SessionsPage_ShowBackground.Header"), filters.ShowBackground,
+                () => controller.SetFilters(filters with { ShowBackground = !filters.ShowBackground })),
+            ToggleItem(LocalizationHelper.GetString("SessionsPage_ShowCompleted.Header"), filters.ShowCompleted,
+                () => controller.SetFilters(filters with { ShowCompleted = !filters.ShowCompleted })),
+            ToggleItem(T("IncludeGlobal"), filters.IncludeGlobal,
+                () => controller.SetFilters(filters with { IncludeGlobal = !filters.IncludeGlobal })),
+            ToggleItem(T("IncludeUnknown"), filters.IncludeUnknown,
+                () => controller.SetFilters(filters with { IncludeUnknown = !filters.IncludeUnknown })),
+            MenuSeparator(),
+            SessionsHubView.Item(T("NewGroupUnsupported"), FluentIconCatalog.Add, () => { }, enabled: false),
+        ];
+    }
+
+    private static MenuFlyoutItemBase MenuHeader(string text) =>
+        SessionsHubView.Item(text, null, () => { }, enabled: false);
+
+    private static MenuFlyoutItemBase GroupItem(SessionsHubViewContext context, SessionsGroupBy mode) =>
+        new RadioMenuFlyoutItemData(SessionsHubPresentation.GroupByLabel(mode), "sessions-group",
+            context.State.GroupBy == mode, () => context.Controller.SetGroupBy(mode));
+
+    private static MenuFlyoutItemBase ToggleItem(string label, bool isChecked, Action toggle) =>
+        SessionsHubView.Item(label, isChecked ? FluentIconCatalog.Check : null, toggle);
 
     private static MenuFlyoutItemBase SortItem(SessionsHubViewContext context, SessionsSortColumn column, bool descending, string label) =>
         new RadioMenuFlyoutItemData(label, "sessions-sort",
             context.State.SortColumn == column && context.State.SortDescending == descending,
             () => context.Controller.SetSort(column, descending));
-
-    private static string SortLabel(SessionsHubState state) => (state.SortColumn, state.SortDescending) switch
-    {
-        (SessionsSortColumn.Updated, true) => T("SortNewest"),
-        (SessionsSortColumn.Updated, false) => T("SortOldest"),
-        (SessionsSortColumn.Name, false) => T("SortNameAsc"),
-        _ => T("SortNameDesc"),
-    };
-
-    private static int FilterCount(SessionsHubFilters filters) =>
-        (SessionListQuery.ParsePositiveInteger(filters.ActiveMinutes) is not null && filters.Status == SessionArchiveFilter.Active ? 1 : 0)
-        + (!filters.IncludeGlobal ? 1 : 0) + (filters.IncludeUnknown ? 1 : 0)
-        + (filters.ShowBackground ? 1 : 0)
-        + (SessionListQuery.ParsePositiveInteger(filters.Limit) is { } limit && limit != SessionListQuery.DefaultLimit ? 1 : 0);
-
-    private static Element FiltersPanel(SessionsHubViewContext context)
-    {
-        var controller = context.Controller;
-        var filters = context.State.Filters;
-        var activeOnly = filters.Status == SessionArchiveFilter.Active;
-        return VStack(12,
-                TextBlock(T("Filters")).FontWeight(FontWeights.SemiBold),
-                TextBox(filters.ActiveMinutes, text => controller.SetFilters(filters with { ActiveMinutes = text }), T("ActiveMinutesPlaceholder"), T("ActiveMinutes"))
-                    .NumericInput()
-                    .AutomationName(T("ActiveMinutes"))
-                    .Description(activeOnly ? T("ActiveMinutesHelp") : T("ActiveMinutesDisabled"))
-                    .IsEnabled(activeOnly)
-                    .AutomationId("SessionsHubActiveMinutes"),
-                TextBox(filters.Limit, text => controller.SetFilters(filters with { Limit = text }), SessionListQuery.DefaultLimit.ToString(), T("Limit"))
-                    .NumericInput()
-                    .AutomationName(T("Limit"))
-                    .Description(T("LimitHelp"))
-                    .AutomationId("SessionsHubLimit"),
-                ToggleSwitch(filters.IncludeGlobal, value => controller.SetFilters(filters with { IncludeGlobal = value }), header: T("IncludeGlobal"))
-                    .AutomationId("SessionsHubIncludeGlobal"),
-                ToggleSwitch(filters.IncludeUnknown, value => controller.SetFilters(filters with { IncludeUnknown = value }), header: T("IncludeUnknown"))
-                    .AutomationId("SessionsHubIncludeUnknown"),
-                ToggleSwitch(filters.ShowCompleted, value => controller.SetFilters(filters with { ShowCompleted = value }),
-                        header: LocalizationHelper.GetString("SessionsPage_ShowCompleted.Header"))
-                    .IsEnabled(activeOnly)
-                    .AutomationId("SessionsPageShowCompleted"),
-                ToggleSwitch(filters.ShowBackground, value => controller.SetFilters(filters with { ShowBackground = value }),
-                        header: LocalizationHelper.GetString("SessionsPage_ShowBackground.Header"))
-                    .AutomationId("SessionsPageShowBackground"),
-                Button(T("ResetFilters"), controller.ClearFilters).AutomationName(T("ResetFilters")).AutomationId("SessionsHubResetFilters"))
-            .Width(280)
-            .AutomationId("SessionsHubFiltersPanel");
-    }
 
     // ── Selection ──
 
@@ -239,20 +389,25 @@ internal static class SessionsHubSessionsView
         var pageState = state.Selection.PageState(pageKeys);
         var selectedRows = state.Filters.ApplyClientFilters(state.Rows).Where(row => state.Selection.Contains(row.Key)).ToArray();
         var deletable = selectedRows.Count(row => state.Permissions.CanDelete(row) && !controller.IsMain(row));
-        return SessionsHubView.Card(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
-                    CheckBox(pageState, selected => controller.SetSelected(pageKeys, selected), T("SelectPage"))
-                        .AutomationName(T("SelectPage"))
-                        .AutomationId("SessionsHubSelectPage").Grid(column: 0),
+        return Border(Grid([GridSize.Star(), GridSize.Auto, GridSize.Auto, GridSize.Auto], [GridSize.Auto],
                     TextBlock(state.Selection.Count == 1 ? T("SelectedOne") : F("SelectedMany", state.Selection.Count))
-                        .VAlign(VerticalAlignment.Center).Margin(12, 0).LiveRegion().AutomationId("SessionsHubSelectedCount")
-                        .Grid(column: 1),
+                        .VAlign(VerticalAlignment.Center).LiveRegion().AutomationId("SessionsHubSelectedCount")
+                        .Grid(column: 0),
+                    Button(T("SelectPage"), () => controller.SetSelected(pageKeys, pageState != true))
+                        .SubtleButton().AutomationName(T("SelectPage")).AutomationId("SessionsHubSelectPage")
+                        .Margin(8, 0).Grid(column: 1),
                     SessionsHubView.CommandButton(FluentIconCatalog.Delete, T("DeleteSelected"), () => _ = controller.DeleteSelectedAsync(),
-                            deletable > 0 && !state.IsBusy && !state.IsReloading, "SessionsHubDeleteSelected",
-                            tooltip: deletable > 0 ? T("DeleteSelected") : T("DeleteSelectedNoneAllowed"))
+                            deletable > 0 && state.CanMutateRows, "SessionsHubDeleteSelected",
+                            tooltip: !state.CanMutateRows ? T("RosterNotCurrent")
+                                : deletable > 0 ? T("DeleteSelected") : T("DeleteSelectedNoneAllowed"))
+                        .HelpText(!state.CanMutateRows ? T("RosterNotCurrent")
+                            : deletable > 0 ? T("DeleteSelected") : T("DeleteSelectedNoneAllowed"))
                         .Margin(0, 0, 8, 0).Grid(column: 2),
-                    Button(T("ClearSelection"), () => controller.SetSelected(state.Selection.Keys.ToArray(), false)).AutomationName(T("ClearSelection"))
-                        .IsEnabled(state.Selection.Count > 0).AutomationId("SessionsHubClearSelection").Grid(column: 3))
-                , 12, 8)
+                    Button(T("Cancel"), () => controller.SetSelectionMode(false)).SubtleButton()
+                        .AutomationName(T("Cancel")).AutomationId("SessionsHubClearSelection").Grid(column: 3)))
+            .Padding(12, 8)
+            .Background(Theme.Ref("AccentFillColorSecondaryBrush"))
+            .CornerRadius(8)
             .Margin(0, 0, 0, 8)
             .AutomationId("SessionsHubSelectionBar");
     }
@@ -294,12 +449,9 @@ internal static class SessionsHubSessionsView
             return SessionsHubView.EmptyState(FluentIconCatalog.StatusErr, T("LoadFailedTitle"), state.LoadError ?? "",
                 Button(T("Retry"), () => _ = controller.ReloadAsync()).AutomationName(T("Retry")).AutomationId("SessionsHubRetry"), "SessionsHubLoadFailed");
         if (state.Load is SessionsHubLoad.Loading or SessionsHubLoad.Idle && state.Rows.Count == 0)
-            return HStack(12, ProgressRing().IsActive(true).Size(20, 20), TextBlock(T("Loading")).VAlign(VerticalAlignment.Center))
-                .HAlign(HorizontalAlignment.Center).Margin(0, 48).AutomationId("SessionsPageLoading");
+            return LoadingRows();
 
         var ordered = Ordered(context, titles);
-        if (ordered.Count == 0)
-            return EmptyRoster(context);
 
         var (pageRows, pageIndex, pageCount) = SessionsHubProjection.Page(ordered, state.PageIndex, state.PageSize);
         var pageKeys = pageRows.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
@@ -326,9 +478,36 @@ internal static class SessionsHubSessionsView
             items.AddRange(rows.Select(row => new RosterItem("row:" + row.Key, null, row)));
         }
 
+        if (items.Count == 0)
+            return EmptyRoster(context);
+
         return Grid([GridSize.Star()], [GridSize.Star(), GridSize.Auto],
             Component<RosterList, RosterListProps>(new(context, items, titles)).Grid(row: 0),
-            Pager(context, ordered.Count, pageIndex, pageCount).Grid(row: 1));
+            Footer(context, ordered.Count, pageRows.Count).Grid(row: 1));
+    }
+
+    private static Element LoadingRows()
+    {
+        var rows = Enumerable.Range(0, 5).Select(index =>
+            SessionsHubView.Card(
+                Grid([GridSize.Auto, GridSize.Star(), GridSize.Px(120)], [GridSize.Auto],
+                    Border(Empty()).Size(36, 36).CornerRadius(18)
+                        .Background(Theme.Ref("SubtleFillColorSecondaryBrush")).Grid(column: 0),
+                    VStack(7,
+                            Border(Empty()).Height(12).MaxWidth(320)
+                                .Background(Theme.Ref("SubtleFillColorSecondaryBrush")).CornerRadius(4),
+                            Border(Empty()).Height(9).MaxWidth(220)
+                                .Background(Theme.Ref("SubtleFillColorTertiaryBrush")).CornerRadius(4))
+                        .Margin(12, 0, 0, 0).Grid(column: 1),
+                    Border(Empty()).Height(12)
+                        .Background(Theme.Ref("SubtleFillColorSecondaryBrush")).CornerRadius(4)
+                        .Grid(column: 2)),
+                12, 10).Opacity(0.75).WithKey("skeleton:" + index)).ToArray();
+        return VStack(8,
+                TextBlock(T("Loading")).AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Content)
+                    .LiveRegion(),
+                VStack(6, rows))
+            .AutomationId("SessionsPageLoading");
     }
 
     private sealed record RosterListProps(
@@ -339,40 +518,57 @@ internal static class SessionsHubSessionsView
         public override Element Render()
         {
             var reference = this.UseElementRef<ItemsView>();
-            // WinUI starts the Expander's collapse storyboard as IsExpanded changes, before the page
-            // re-renders. Keep the last expanded row's body mounted (hidden once collapsed) so that
-            // animation slides real content instead of an empty panel.
-            var shownKey = UseRef<string?>(null);
-            var retainedKey = UseRef<string?>(null);
-            var detailsKey = Props.Context.State.DetailsKey;
-            if (detailsKey != shownKey.Current)
-            {
-                retainedKey.Current = shownKey.Current;
-                shownKey.Current = detailsKey;
-            }
-            var retained = retainedKey.Current;
+            var request = Props.Context.State.RowReveal;
             UseEffect((Func<Action>)(() =>
             {
                 var view = reference.Current;
-                if (view is null) return () => { };
+                if (view is null || request is null) return () => { };
+                void FocusRestored(object? sender, object args)
+                {
+                    var controller = Props.Context.Controller;
+                    if (!ReferenceEquals(controller.State.RowReveal, request))
+                        return;
+                    if (controller.State.Dialog is not null)
+                    {
+                        controller.CompleteRowReveal(request);
+                        return;
+                    }
+                    var row = FindRow(view, request.Key);
+                    if (row is not null && row.Focus(FocusState.Programmatic))
+                        controller.CompleteRowReveal(request);
+                }
                 void Reveal(object sender, RoutedEventArgs args)
                 {
                     view.Loaded -= Reveal;
-                    var key = Props.Context.Controller.State.DetailsKey;
+                    var controller = Props.Context.Controller;
+                    if (!ReferenceEquals(controller.State.RowReveal, request))
+                        return;
+                    var key = request.Key;
                     var index = Props.Items.ToList().FindIndex(item => item.Row?.Key == key);
-                    if (key is not null && index >= 0)
+                    if (index >= 0)
+                    {
                         view.StartBringItemIntoView(index, new BringIntoViewOptions
                         {
                             AnimationDesired = false,
                             VerticalAlignmentRatio = 0,
                         });
+                        if (!request.Focus)
+                            controller.CompleteRowReveal(request);
+                    }
                 }
-                if (view.IsLoaded) Reveal(view, new RoutedEventArgs());
+                if (view.IsLoaded)
+                    view.DispatcherQueue.TryEnqueue(() => Reveal(view, new RoutedEventArgs()));
                 else view.Loaded += Reveal;
-                return () => view.Loaded -= Reveal;
-            }), Array.Empty<object>());
+                if (request.Focus)
+                    view.LayoutUpdated += FocusRestored;
+                return () =>
+                {
+                    view.Loaded -= Reveal;
+                    view.LayoutUpdated -= FocusRestored;
+                };
+            }), request, Props.Items);
             return (ItemsView(Props.Items, static item => item.Key,
-                    (item, _) => RosterContainer(Props.Context, item, Props.Titles, retained)) with
+                    (item, _) => RosterContainer(Props.Context, item, Props.Titles)) with
                 {
                     LayoutKind = ItemsViewLayoutKind.StackLayout,
                     SelectionMode = ItemsViewSelectionMode.None,
@@ -380,12 +576,25 @@ internal static class SessionsHubSessionsView
                 })
                 .Ref(reference).AutomationName(T("ListLabel")).AutomationId("SessionsHubList");
         }
+
+        private static Expander? FindRow(DependencyObject parent, string key)
+        {
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is Expander row && AutomationProperties.GetAutomationId(row) == "SessionsHubRow:" + key)
+                    return row;
+                if (FindRow(child, key) is { } found)
+                    return found;
+            }
+            return null;
+        }
     }
 
     private sealed record RosterItem(string Key, SessionRowGroup? Group, SessionInfo? Row, bool IsEmptyGroup = false);
 
-    private static Element RosterContainer(SessionsHubViewContext context, RosterItem item, IReadOnlyDictionary<string, string> titles,
-        string? retainedKey)
+    private static Element RosterContainer(
+        SessionsHubViewContext context, RosterItem item, IReadOnlyDictionary<string, string> titles)
     {
         Element content;
         string name;
@@ -393,7 +602,7 @@ internal static class SessionsHubSessionsView
         {
             var title = titles.TryGetValue(row.Key, out var known) ? known : row.Key;
             name = RowAccessibleName(context, row, title);
-            content = Row(context, row, title, titles, retainedKey);
+            content = Row(context, row, title, titles);
         }
         else if (item.IsEmptyGroup)
         {
@@ -405,7 +614,8 @@ internal static class SessionsHubSessionsView
             name = SessionsHubPresentation.GroupLabel(item.Group!, context.State.GroupBy, context.State.Agents);
             content = GroupHeader(context, item.Group!);
         }
-        return ItemContainer(content.Margin(0, 0, 12, 4).HAlign(HorizontalAlignment.Stretch))
+        var bottomMargin = item.Row is null ? 4 : PageResponsiveLayout.GapInner;
+        return ItemContainer(content.Margin(0, 0, 12, bottomMargin).HAlign(HorizontalAlignment.Stretch))
             .Resources(resources => resources
                 .Set("ItemContainerPointerOverBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
                 .Set("ItemContainerPressedBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -440,6 +650,17 @@ internal static class SessionsHubSessionsView
             ? Button(T("LoadMore"), () => _ = context.Controller.LoadMoreAsync()).AutomationName(T("LoadMore"))
                 .IsEnabled(!state.IsBusy && !state.IsReloading).AutomationId("SessionsHubLoadMore")
             : null;
+        // Ahead of IsNarrowed: a search that matches only completed sessions is not fixed by clearing it.
+        var hiddenCompleted = filters.CountHiddenCompleted(state.Rows);
+        if (hiddenCompleted > 0)
+        {
+            var showCompletedLabel = LocalizationHelper.GetString("SessionsPage_ShowCompleted.Header");
+            var showCompleted = Button(showCompletedLabel, () => context.Controller.SetFilters(filters with { ShowCompleted = true }))
+                .AutomationName(showCompletedLabel).AutomationId("SessionsHubShowCompleted");
+            return SessionsHubView.EmptyState(FluentIconCatalog.StatusOk, T("EmptyCompletedTitle"),
+                hiddenCompleted == 1 ? T("EmptyCompletedOne") : F("EmptyCompletedMany", hiddenCompleted),
+                loadMore is null ? showCompleted : HStack(8, showCompleted, loadMore).HAlign(HorizontalAlignment.Center), "SessionsPageEmpty");
+        }
         if (filters.IsNarrowed)
         {
             var showAll = Button(T("ShowAll"), context.Controller.ClearFilters).AutomationName(T("ShowAll")).AutomationId("SessionsHubShowAll");
@@ -518,13 +739,13 @@ internal static class SessionsHubSessionsView
         _ => SessionsHubView.Glyph(FluentIconCatalog.Folder, 14, Theme.SecondaryText).VAlign(VerticalAlignment.Center),
     };
 
-    private static Element Row(SessionsHubViewContext context, SessionInfo row, string title, IReadOnlyDictionary<string, string> titles,
-        string? retainedKey)
+    private static Element Row(
+        SessionsHubViewContext context, SessionInfo row, string title, IReadOnlyDictionary<string, string> titles)
     {
         var state = context.State;
         var controller = context.Controller;
         var (statusLabel, tone) = SessionsHubPresentation.Status(row);
-        var selected = state.DetailsKey == row.Key;
+        var selected = state.ExpandedKeys.Contains(row.Key);
         var display = SessionDisplayResolver.Resolve(row);
         var agent = display.AgentId is { } agentId ? state.Agents.FirstOrDefault(entry => entry.Id == agentId) : null;
         var colorId = SessionAppearance.NormalizeColor(row.Color);
@@ -541,10 +762,6 @@ internal static class SessionsHubSessionsView
             titleLine.Add(SessionsHubView.Glyph(FluentIconCatalog.Pin, 12, SessionsHubView.Strong("yellow")).VAlign(VerticalAlignment.Center));
         if (row.Unread)
             titleLine.Add(SessionsHubView.Badge(T("Unread"), Theme.Accent, Theme.Ref("TextOnAccentFillColorPrimaryBrush"), "SessionsHubUnread:" + row.Key));
-        if (tone == SessionsHubPresentation.StatusTone.Working)
-            titleLine.Add(SessionsHubView.Pill(statusLabel, "green", FluentIconCatalog.Sync));
-        else if (tone == SessionsHubPresentation.StatusTone.Attention)
-            titleLine.Add(SessionsHubView.Pill(statusLabel, "red", FluentIconCatalog.StatusWarn));
         if (row.Category is { } category && state.GroupBy != SessionsGroupBy.Category)
             titleLine.Add(SessionsHubView.Pill(category, SessionAppearance.PaletteColor(category), FluentIconCatalog.Folder));
         if (SessionsHubProjection.IsCloudWorker(row))
@@ -591,30 +808,33 @@ internal static class SessionsHubSessionsView
         var menu = MenuItems(SessionsHubMenus.SessionMenu(context, row, title));
         var actions = new List<Element>
         {
+            HStack(5,
+                SessionsHubView.Glyph(tone == SessionsHubPresentation.StatusTone.Working ? "\uE915"
+                    : tone == SessionsHubPresentation.StatusTone.Attention ? FluentIconCatalog.StatusWarn
+                    : tone == SessionsHubPresentation.StatusTone.Ready ? FluentIconCatalog.StatusOk : FluentIconCatalog.About,
+                    11, tone == SessionsHubPresentation.StatusTone.Working ? SessionsHubView.Strong("green")
+                        : tone == SessionsHubPresentation.StatusTone.Attention ? SessionsHubView.Strong("red") : Theme.SecondaryText),
+                TextBlock(statusLabel).FontSize(12).Foreground(Theme.SecondaryText))
+                .VAlign(VerticalAlignment.Center),
             TextBlock(SessionsHubPresentation.RelativeTime(row.UpdatedAt, context.NowUtc))
                 .FontSize(12).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center).Margin(8, 0)
                 .ToolTip(SessionsHubPresentation.AbsoluteTime(row.UpdatedAt)),
         };
         if (row.Archived)
-            actions.Add(SessionsHubView.IconButton(FluentIconCatalog.Unarchive, F("UnarchiveNamed", title),
-                () => _ = controller.UnarchiveAsync(row, title), state.Permissions.CanWrite && !state.IsBusy,
-                "SessionsPageUnarchive:" + row.Key));
-        actions.Add(SessionsHubView.IconButton(FluentIconCatalog.Chat, F("OpenInChatNamed", title),
-            () => controller.OpenInChat(row.Key), row.Kind != "global", "SessionsHubOpen:" + row.Key));
-        actions.Add(SessionsHubView.IconButton(FluentIconCatalog.MoreOverflow, F("MoreNamed", title), () => { },
-                automationId: "SessionsHubMore:" + row.Key)
-            .WithFlyout(menu));
+            actions.Add(SessionsHubView.WithMutationHelp(
+                SessionsHubView.IconButton(FluentIconCatalog.Unarchive, F("UnarchiveNamed", title),
+                    () => _ = controller.UnarchiveAsync(row, title), state.Permissions.CanWrite && state.CanMutateRows,
+                    "SessionsPageUnarchive:" + row.Key),
+                state, F("UnarchiveNamed", title)));
+        if (!state.SelectionMode)
+            actions.Add(SessionsHubView.IconButton(FluentIconCatalog.Chat, F("OpenInChatNamed", title),
+                () => controller.OpenInChat(row.Key), row.Kind != "global", "SessionsHubOpen:" + row.Key));
 
         var columns = new List<GridSize> { GridSize.Px(4) };
         var cells = new List<Element>
         {
             // Session color stripe; an uncolored row keeps the column so titles stay aligned.
-            (colorId is null
-                ? Empty()
-                : Border(Empty()).Width(4).CornerRadius(2).Background(SessionsHubView.Strong(colorId))
-                    .VAlign(VerticalAlignment.Stretch).Margin(0, 10, 0, 10)
-                    .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw))
-                .Grid(column: 0),
+            Empty().Grid(column: 0),
         };
         if (state.SelectionMode)
         {
@@ -628,13 +848,13 @@ internal static class SessionsHubSessionsView
         columns.Add(GridSize.Auto);
         cells.Add(HStack(2, actions.ToArray()).VAlign(VerticalAlignment.Center).Margin(0, 0, 8, 0).Grid(column: columns.Count - 1));
 
-        return (Expander("", selected || row.Key == retainedKey ? SessionsHubDetailsView.Render(context, row, titles) : Empty(),
+        return (Expander("", selected ? SessionsHubDetailsView.Render(context, row, titles) : Empty(),
                 selected, expanded =>
                 {
-                    if (expanded && controller.State.DetailsKey != row.Key)
+                    if (expanded && !controller.State.ExpandedKeys.Contains(row.Key))
                         controller.OpenDetails(row.Key);
-                    else if (!expanded && controller.State.DetailsKey == row.Key)
-                        controller.CloseDetails();
+                    else if (!expanded && controller.State.ExpandedKeys.Contains(row.Key))
+                        controller.CloseDetails(row.Key);
                 }) with
                 {
                     // Archived rows in All are dimmed to tell them apart, but only in the header:
@@ -674,42 +894,28 @@ internal static class SessionsHubSessionsView
                 .Size(12, 12)
                 .CornerRadius(6)
                 .Background(SessionsHubView.Strong(badgeColor))
-                .WithBorder(Theme.CardBackground, 2)
+                .WithBorder(Theme.Ref("CardBackgroundFillColorDefaultBrush"), 2)
                 .HAlign(HorizontalAlignment.Right)
                 .VAlign(VerticalAlignment.Bottom)
                 .Margin(0, 0, -2, -2)
                 .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw));
     }
-    private static Element Pager(SessionsHubViewContext context, int total, int pageIndex, int pageCount)
+    private static Element Footer(SessionsHubViewContext context, int total, int shown)
     {
         var state = context.State;
         var controller = context.Controller;
-        var start = total == 0 ? 0 : pageIndex * state.PageSize + 1;
-        var end = Math.Min(total, (pageIndex + 1) * state.PageSize);
-        var sizes = SessionsHubProjection.PageSizes;
-        var info = state.TotalCount is { } server && server > state.Rows.Count
-            ? F("PageRangeOfServer", start, end, total, server)
-            : F("PageRange", start, end, total);
+        var info = F("FooterLoaded", shown, total, state.Rows.Count) + (state.HasMore ? " · " + T("MoreAvailableShort") : "");
         return Border(Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 TextBlock(info).FontSize(12).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center)
                     .AutomationId("SessionsHubPageInfo").Grid(column: 0),
                 HStack(8,
-                        ComboBox(sizes.Select(size => F("RowsPerPage", size)).ToArray(),
-                                Math.Max(0, sizes.ToList().IndexOf(state.PageSize)),
-                                index =>
-                                {
-                                    if (index >= 0 && index < sizes.Count)
-                                        controller.SetPageSize(sizes[index]);
-                                })
-                            .AutomationName(T("PageSize")).AutomationId("SessionsHubPageSize"),
+                        total > shown
+                            ? Button(T("ShowMore"), () => controller.SetPageSize(state.PageSize + 25))
+                                .AutomationName(T("ShowMore")).AutomationId("SessionsHubShowMore")
+                            : Empty(),
                         state.HasMore
                             ? Button(T("LoadMore"), () => _ = controller.LoadMoreAsync()).AutomationName(T("LoadMore")).IsEnabled(!state.IsBusy && !state.IsReloading).AutomationId("SessionsHubLoadMore")
-                            : Empty(),
-                        SessionsHubView.IconButton(ChevronLeftGlyph, T("PreviousPage"), () => controller.SetPage(pageIndex - 1),
-                            pageIndex > 0, "SessionsHubPrevPage"),
-                        TextBlock(F("PageOf", pageIndex + 1, pageCount)).FontSize(12).VAlign(VerticalAlignment.Center),
-                        SessionsHubView.IconButton(FluentIconCatalog.ChevronR, T("NextPage"), () => controller.SetPage(pageIndex + 1),
-                            pageIndex < pageCount - 1, "SessionsHubNextPage"))
+                            : Empty())
                     .Grid(column: 1)))
             .Padding(0, 8, 12, 0);
     }

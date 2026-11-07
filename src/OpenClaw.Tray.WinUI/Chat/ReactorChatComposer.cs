@@ -511,7 +511,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .AcceptsReturn(true)
             .FontSize(16)
             .Foreground(Theme.Ref("ChatTextBrush"))
-            .ItemStatus(renderItemStatus)
+            .ItemStatus(renderItemStatus ?? string.Empty)
             .Set(control =>
             {
                 inputControl.Current = control;

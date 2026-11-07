@@ -2,6 +2,7 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Sessions;
 using System;
@@ -18,12 +19,14 @@ namespace OpenClawTray.Pages;
 /// <see cref="SessionsHubController"/>. Routes: <c>sessions</c> keeps the user's
 /// agent choice; <c>agent:{id}:sessions</c> scopes the roster to that agent.
 /// </summary>
-public sealed partial class SessionsPage : Page, ISessionsHubHost
+public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPageContentInset
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private SessionsHubController? _controller;
     private ReactorHostControl? _reactorHost;
     private AppState? _appState;
+    private int? _selfProfileRevision;
+    private readonly SessionsHubPresentationState _presentation = new();
 
     public SessionsPage()
     {
@@ -43,6 +46,9 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState;
         if (_appState != null) _appState.PropertyChanged += OnAppStateChanged;
+        var profileRevisionChanged = _selfProfileRevision is { } previousRevision
+            && _appState is { } currentState && previousRevision != currentState.SelfProfileRevision;
+        _selfProfileRevision = _appState?.SelfProfileRevision;
         var controller = EnsureMounted();
 
         // The real-process accessibility suite has no gateway. Give it an
@@ -138,6 +144,8 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost
         }
 
         controller.Activate(agentId);
+        if (profileRevisionChanged)
+            _ = controller.RefreshOwnerCatalogAsync();
     }
 
     private SessionsHubController EnsureMounted()
@@ -151,10 +159,14 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost
         });
         var controller = _controller;
         _reactorHost = new ReactorHostControl();
-        _reactorHost.Mount(_ => Component<SessionsHubRoot, SessionsHubRootProps>(new SessionsHubRootProps(controller)));
+        _reactorHost.Mount(_ => Component<SessionsHubRoot, SessionsHubRootProps>(
+            new SessionsHubRootProps(controller, _presentation)));
         HubHost.Child = _reactorHost;
         return controller;
     }
+
+    void ISettingsPageContentInset.ApplyTopInset(double topInset) =>
+        _presentation.ApplyTopInset(topInset);
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -165,6 +177,13 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost
                 break;
             case nameof(AppState.AgentsList):
                 _controller?.RefreshAgents();
+                break;
+            case nameof(AppState.SelfProfileRevision):
+                if (_appState is { } state && state.SelfProfileRevision != _selfProfileRevision)
+                {
+                    _selfProfileRevision = state.SelfProfileRevision;
+                    _ = _controller?.RefreshOwnerCatalogAsync();
+                }
                 break;
         }
     }
@@ -184,9 +203,20 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost
 
     IOperatorGatewayClient? ISessionsHubHost.Client => CurrentApp.GatewayClient;
 
-    IReadOnlyList<SessionInfo> ISessionsHubHost.TrackedSessions => _appState?.Sessions ?? Array.Empty<SessionInfo>();
+    IReadOnlyList<SessionInfo> ISessionsHubHost.TrackedSessions
+    {
+        get
+        {
+            var client = CurrentApp.GatewayClient;
+            return _appState?.GetSessionsForEpoch(
+                client?.SessionMutationConnectionEpoch,
+                client?.IsConnectedToGateway == true) ?? Array.Empty<SessionInfo>();
+        }
+    }
 
     JsonElement? ISessionsHubHost.AgentsList => _appState?.AgentsList;
+
+    ElementTheme ISessionsHubHost.ActualTheme => ActualTheme;
 
     bool ISessionsHubHost.ShowCompletedSessions
     {
@@ -213,4 +243,6 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost
     }
 
     void ISessionsHubHost.OpenConnection() => ((IAppCommands)CurrentApp).Navigate("connection");
+
+    void ISessionsHubHost.OpenDashboard() => ((IAppCommands)CurrentApp).OpenDashboard();
 }

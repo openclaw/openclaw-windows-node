@@ -1,15 +1,40 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
+using Windows.UI;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Sessions;
 
-internal sealed record SessionsHubRootProps(SessionsHubController Controller);
+internal sealed record SessionsHubRootProps(
+    SessionsHubController Controller,
+    SessionsHubPresentationState Presentation);
+
+internal sealed class SessionsHubPresentationState
+{
+    private double _topInset;
+
+    public double TopInset => _topInset;
+    public event Action? Changed;
+
+    public void ApplyTopInset(double topInset)
+    {
+        if (!double.IsFinite(topInset) || topInset < 0)
+            throw new ArgumentOutOfRangeException(nameof(topInset));
+        if (_topInset.Equals(topInset))
+            return;
+
+        _topInset = topInset;
+        Changed?.Invoke();
+    }
+}
 
 /// <summary>
 /// Reactor root for the Settings Sessions page: the Sessions and Worktrees tabs,
@@ -19,16 +44,24 @@ internal sealed record SessionsHubRootProps(SessionsHubController Controller);
 /// </summary>
 internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
 {
-    internal const double WideLayoutWidth = 1080;
-    private const double MaxContentWidth = 1600;
     private static readonly IReadOnlySet<string> NoCollapsedGroups = new HashSet<string>(StringComparer.Ordinal);
 
     public override Element Render()
     {
         var controller = Props.Controller;
+        var presentation = Props.Presentation;
         var (state, setState) = UseState(controller.State, threadSafe: true);
         var (width, setWidth) = UseState(1200d);
+        var (mastHeight, setMastHeight) = UseState(220d);
+        var (topInset, setTopInset) = UseState(presentation.TopInset, threadSafe: true);
         var (collapsed, setCollapsed) = UseState(NoCollapsedGroups);
+        var announce = this.UseAnnounce();
+
+        UseEffect(() =>
+        {
+            if (state.Notice is { } notice)
+                announce.Announce(NoticeMessage(notice), assertive: notice.Severity == InfoBarSeverity.Error);
+        }, state.Notice);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -38,35 +71,81 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
             return () => controller.Changed -= changed;
         }), controller);
 
+        UseEffect((Func<Action>)(() =>
+        {
+            Action changed = () => setTopInset(presentation.TopInset);
+            presentation.Changed += changed;
+            setTopInset(presentation.TopInset);
+            return () => presentation.Changed -= changed;
+        }), presentation);
+
         var context = new SessionsHubViewContext(
             controller, state, width, DateTime.UtcNow, collapsed, setCollapsed);
+
+        UseEffect((Func<Action>)(() =>
+        {
+            void RevealRestored(string key) => SessionsHubSessionsView.RevealDetails(context, key, focus: true);
+            controller.ArchiveRestored += RevealRestored;
+            return () => controller.ArchiveRestored -= RevealRestored;
+        }), controller, collapsed, width);
 
         var body = state.Tab == SessionsHubTab.Worktrees
             ? SessionsHubWorktreesView.Render(context)
             : SessionsHubSessionsView.Render(context);
-        return Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Star()],
-                    Header(context).Grid(row: 0),
-                    Banners(context).Grid(row: 1),
-                    Stats(context).Grid(row: 2),
-                    body.Grid(row: 3),
-                    SessionsHubDialogView.Render(context))
-                .MaxWidth(MaxContentWidth)
-                // Stretch (not Left) so star columns get real width on every tab; MaxWidth still caps it.
-                .HAlign(HorizontalAlignment.Stretch))
-            .Padding(24, 20, 24, 12)
+        var header = Border(Header(context, UseHighContrast()))
+            .Width(context.ContentWidth)
+            .Padding(0, 18, 0, 8)
+            .Margin(0, 0, 0, 12)
+            .HAlign(HorizontalAlignment.Center)
+            .OnSizeChanged((_, args) =>
+            {
+                if (args.NewSize.Height > 0 && Math.Abs(args.NewSize.Height - mastHeight) > 1)
+                    setMastHeight(args.NewSize.Height);
+            })
+            .AutomationId("SessionsHubContentColumn")
+            .WithKey("header");
+        var banners = Border(Banners(context).WithKey("banners"))
+            .Width(context.ContentWidth)
+            .HAlign(HorizontalAlignment.Center)
+            .WithKey("banner-host");
+        var pageBody = Border(body.WithKey("body"))
+            .Width(context.ContentWidth)
+            .Padding(0, 0, 0, 12)
+            .HAlign(HorizontalAlignment.Center)
+            .WithKey("body-host");
+        var pageScroll = ScrollView(VStack(0, header, banners, pageBody))
+            .AutomationId("SessionsHubPageScroll")
+            .HAlign(HorizontalAlignment.Stretch)
+            .Margin(0, topInset, 0, 0);
+        return Grid([GridSize.Star()], [GridSize.Star()],
+                Border(Empty()).Background(MastBrush())
+                    .Height(mastHeight + topInset)
+                    .HAlign(HorizontalAlignment.Stretch)
+                    .VAlign(VerticalAlignment.Top)
+                    .Set(border => border.IsHitTestVisible = false)
+                    .AutomationId("SessionsHubMastBackdrop")
+                    .Grid(row: 0),
+                pageScroll.Grid(row: 0),
+                Toast(context).Grid(row: 0).WithKey("notice-toast"),
+                SessionsHubDialogView.Render(context).WithKey("dialog"),
+                announce.Region.LiveRegion(state.Notice?.Severity == InfoBarSeverity.Error
+                        ? AutomationLiveSetting.Assertive : AutomationLiveSetting.Polite)
+                    .AutomationId("SessionsHubAnnouncements").WithKey("announcements"))
+            .AutomationId("SessionsHubRoot")
+            .HAlign(HorizontalAlignment.Stretch)
             .OnSizeChanged((_, args) =>
             {
                 if (Math.Abs(args.NewSize.Width - width) > 1)
                     setWidth(args.NewSize.Width);
-            })
-            .AutomationId("SessionsHubRoot");
+            });
     }
 
-    private static Element Header(SessionsHubViewContext context)
+    private static Element Header(SessionsHubViewContext context, bool useHighContrast)
     {
         var state = context.State;
         var controller = context.Controller;
         string T(string key) => SessionsHubPresentation.T(key);
+        var (headline, subtitle) = SessionsHubPresentation.MastCopy(state);
         var tabs = SelectorBar(
                 [SelectorBarItem(T("TabSessions")), SelectorBarItem(T("TabWorktrees"))],
                 state.Tab == SessionsHubTab.Worktrees ? 1 : 0,
@@ -77,71 +156,72 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
                 })
             .Set(bar => SessionsHubView.TagItems(bar, "SessionsHubTab", ["Sessions", "Worktrees"]))
             .AutomationName(T("TabsLabel"))
-            .Margin(-12, 4, 0, 0);
-        var refresh = SessionsHubView.CommandButton(FluentIconCatalog.Refresh, T("Refresh"), () =>
+            .Margin(-12, 12, 0, 0);
+        var refresh = SessionsHubView.IconButton(FluentIconCatalog.Refresh, T("Refresh"), () =>
             {
                 if (state.Tab == SessionsHubTab.Worktrees) _ = controller.LoadWorktreesAsync();
                 else _ = controller.ReloadAsync(preserveCount: true);
             },
             enabled: state.IsConnected, automationId: "SessionsPageRefresh");
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
-                VStack(2,
-                    Title(T("Title")).HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level1)
-                        .AutomationId("SessionsPageMarker"),
-                    TextBlock(T("Subtitle")).FontSize(12).Foreground(Theme.SecondaryText)
-                        .TextWrapping(TextWrapping.Wrap))
-                    .Grid(row: 0, column: 0),
-                HStack(8,
-                        When(state.Load == SessionsHubLoad.Loading && state.Rows.Count > 0
-                            || state.Worktrees.Load == SessionsHubLoad.Loading && state.Tab == SessionsHubTab.Worktrees,
-                            () => ProgressRing().IsActive(true).Size(16, 16).AutomationName(T("Loading"))),
-                        refresh)
-                    .VAlign(VerticalAlignment.Center)
-                    .Grid(row: 0, column: 1),
-                tabs.Grid(row: 1, column: 0, columnSpan: 2))
-            .Margin(0, 0, 0, 8);
+        var web = SessionsHubView.CommandButton("\uE8A7", T("OpenGatewayWeb"), controller.OpenDashboard,
+            enabled: state.IsConnected, automationId: "SessionsHubOpenGatewayWeb");
+        var eyebrowIcon = useHighContrast
+            ? SessionsHubView.Glyph(FluentIconCatalog.Sessions, 20, Theme.SecondaryText)
+                .AutomationId("SessionsHubEyebrowGlyph")
+            : Image("ms-appx:///Assets/SidebarIcons/Sessions.svg")
+                .Size(20, 20)
+                .AccessibilityHidden()
+                .AutomationId("SessionsHubEyebrowGlyph");
+        var text = VStack(8,
+                            HStack(PageResponsiveLayout.GapInner,
+                                eyebrowIcon.VAlign(VerticalAlignment.Center),
+                                TextBlock(T("Title")).FontSize(14).FontWeight(FontWeights.SemiBold)
+                                    .Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center)
+                                    .AutomationId("SessionsPageMarker")),
+                            TextBlock(headline).FontSize(32).FontWeight(FontWeights.SemiBold)
+                                .TextWrapping(TextWrapping.Wrap)
+                                .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level1)
+                                .AutomationId("SessionsHubMastHeadline"),
+                            TextBlock(subtitle).FontSize(14).Foreground(Theme.SecondaryText)
+                                .TextWrapping(TextWrapping.WrapWholeWords))
+                        .Grid(row: 0, column: 0);
+        var actions = HStack(PageResponsiveLayout.GapInner,
+                When(state.IsReloading
+                    || state.Load == SessionsHubLoad.Loading && state.Rows.Count > 0
+                    || state.Worktrees.Load == SessionsHubLoad.Loading && state.Tab == SessionsHubTab.Worktrees,
+                    () => ProgressRing().IsActive(true).Size(16, 16).AutomationName(T("Loading")))
+                    .WithKey("loading"),
+                web.WithKey("web"),
+                refresh.WithKey("refresh"))
+            .VAlign(VerticalAlignment.Top)
+            .AutomationId("SessionsHubMastActions");
+        Element mast = context.IsNarrow
+            ? Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                text.Grid(row: 0),
+                actions.HAlign(HorizontalAlignment.Left).Margin(0, PageResponsiveLayout.GapGroup, 0, 0).Grid(row: 1),
+                tabs.Grid(row: 2).Margin(-12, 12, 0, 0))
+            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
+                text.Grid(row: 0, column: 0),
+                actions.Grid(row: 0, column: 1),
+                tabs.Grid(row: 1, column: 0, columnSpan: 2));
+        return mast;
     }
 
-    /// <summary>At-a-glance figures for the loaded roster, each in its own hue.</summary>
-    private static Element Stats(SessionsHubViewContext context)
+    private static Brush MastBrush()
     {
-        var state = context.State;
-        if (state.Tab != SessionsHubTab.Sessions || !state.IsConnected || state.Load != SessionsHubLoad.Loaded || state.Rows.Count == 0)
-            return Empty();
-        string T(string key) => SessionsHubPresentation.T(key);
-        var rows = state.Filters.ApplyClientFilters(state.Rows).ToArray();
-        var tones = rows.Select(row => SessionsHubPresentation.Status(row).Tone).ToArray();
-        // Once every page is loaded the visible rows are exact; the server total also counts hidden background rows.
-        var total = state.HasMore ? state.TotalCount ?? rows.Length : rows.Length;
-        string N(int value) => value.ToString(System.Globalization.CultureInfo.CurrentCulture);
-        var label = state.Filters.Status switch
+        var accent = Application.Current.Resources["SystemAccentColor"] is Color color
+            ? color
+            : Color.FromArgb(255, 0, 103, 192);
+        return new LinearGradientBrush
         {
-            OpenClaw.Shared.Sessions.SessionArchiveFilter.Archived => T("StatArchived"),
-            OpenClaw.Shared.Sessions.SessionArchiveFilter.All => T("StatAll"),
-            _ => T("StatActive"),
+            StartPoint = new global::Windows.Foundation.Point(0, 0),
+            EndPoint = new global::Windows.Foundation.Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop { Color = Color.FromArgb(16, accent.R, accent.G, accent.B), Offset = 0 },
+                new GradientStop { Color = Color.FromArgb(0, accent.R, accent.G, accent.B), Offset = 1 },
+            },
         };
-        var tiles = new List<Element>
-        {
-            SessionsHubView.StatTile(FluentIconCatalog.Sessions, "blue", N(total), label, "SessionsHubStatTotal"),
-            SessionsHubView.StatTile(FluentIconCatalog.Sync, "green",
-                N(tones.Count(tone => tone == SessionsHubPresentation.StatusTone.Working)), T("StatWorking"), "SessionsHubStatWorking"),
-            SessionsHubView.StatTile(FluentIconCatalog.StatusWarn, "red",
-                N(tones.Count(tone => tone == SessionsHubPresentation.StatusTone.Attention)), T("StatAttention"), "SessionsHubStatAttention"),
-        };
-        if (context.Width >= 760)
-        {
-            tiles.Add(SessionsHubView.StatTile(FluentIconCatalog.MarkUnread, "orange", N(rows.Count(row => row.Unread)), T("StatUnread"),
-                "SessionsHubStatUnread"));
-            tiles.Add(SessionsHubView.StatTile(FluentIconCatalog.Pin, "purple", N(rows.Count(row => row.Pinned)), T("StatPinned"),
-                "SessionsHubStatPinned"));
-        }
-        var cells = tiles.Select((tile, index) => tile.Margin(index == 0 ? 0 : 6, 0, index == tiles.Count - 1 ? 0 : 6, 0)
-            .Grid(column: index).WithKey("stat" + index)).ToArray();
-        return Grid(Enumerable.Repeat(GridSize.Star(), tiles.Count).ToArray(), [GridSize.Auto], cells)
-            .WithTransitions(new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition { IsStaggeringEnabled = true })
-            .Margin(0, 4, 0, 14)
-            .AutomationName(T("StatsLabel"))
-            .AutomationId("SessionsHubStats");
     }
 
     private static Element Banners(SessionsHubViewContext context)
@@ -172,6 +252,17 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
                 .AutomationId("SessionsHubReadOnly")
                 .WithKey("readonly"));
         }
+        else if (state.Tab == SessionsHubTab.Sessions && state.Permissions.CanWrite && !state.Permissions.IsAdmin)
+        {
+            children.Add((InfoBar(SessionsHubPresentation.T("WriteOnlyTitle"), SessionsHubPresentation.T("WriteOnlyBody")) with
+                {
+                    IsOpen = true,
+                })
+                .Severity(InfoBarSeverity.Informational)
+                .IsClosable(false)
+                .AutomationId("SessionsHubWriteOnly")
+                .WithKey("write-only"));
+        }
         if (state.Tab == SessionsHubTab.Sessions && state.Load == SessionsHubLoad.Failed && state.Rows.Count > 0)
         {
             children.Add((InfoBar(SessionsHubPresentation.T("LoadFailedTitle"), state.LoadError) with
@@ -195,24 +286,62 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
                 .Severity(InfoBarSeverity.Error).IsClosable(false).LiveRegion()
                 .AutomationId("SessionsHubWorktreesReloadFailed").WithKey("worktrees-reload-failed"));
         }
-        if (state.Notice is { } notice)
-        {
-            var bar = InfoBar(notice.Title.Length > 0 ? notice.Title : null, notice.Message) with
-            {
-                IsOpen = true,
-                ActionButtonContent = notice.ActionLabel,
-                OnActionButtonClick = notice.Action is { } act ? () => { act(); } : null,
-            };
-            children.Add(bar
-                .Severity(notice.Severity)
-                .IsClosable(true)
-                .Closed(controller.DismissNotice)
-                .LiveRegion()
-                .AutomationId("SessionsHubNotice")
-                .WithKey("notice:" + notice.GetHashCode()));
-        }
         return VStack(8, children.ToArray()).Margin(0, 0, 0, children.Count > 0 ? 8 : 0);
     }
+
+    private static Element Toast(SessionsHubViewContext context)
+    {
+        if (context.State.Notice is not { } notice)
+            return Empty();
+        var (glyph, color) = notice.Severity switch
+        {
+            InfoBarSeverity.Error => (FluentIconCatalog.StatusErr, "red"),
+            InfoBarSeverity.Warning => (FluentIconCatalog.StatusWarn, "yellow"),
+            InfoBarSeverity.Success => (FluentIconCatalog.StatusOk, "green"),
+            _ => (FluentIconCatalog.StatusOk, "blue"),
+        };
+        var message = NoticeMessage(notice);
+        var toast = Border(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
+                    SessionsHubView.Glyph(glyph, 18, SessionsHubView.Strong(color))
+                        .AccessibilityHidden().VAlign(VerticalAlignment.Center).Grid(column: 0),
+                    TextBlock(message).TextWrapping(TextWrapping.Wrap)
+                        .VAlign(VerticalAlignment.Center).Margin(10, 0).Grid(column: 1),
+                    notice.Action is { } action && notice.ActionLabel is { Length: > 0 } label
+                        ? Button(label, () =>
+                            {
+                                action();
+                                context.Controller.DismissNotice(notice);
+                            }).SubtleButton().AutomationName(label).AutomationId("SessionsHubNoticeAction").Grid(column: 2)
+                        : Empty(),
+                    SessionsHubView.IconButton("\uE711", SessionsHubPresentation.T("DismissNotice"),
+                            () => context.Controller.DismissNotice(notice), automationId: "SessionsHubNoticeDismiss")
+                        .Grid(column: 3)))
+                .Background(Theme.Ref("FlyoutPresenterBackground"))
+                .WithBorder(Theme.Ref("FlyoutBorderThemeBrush"), 1)
+                .CornerRadius(8)
+                .Padding(14, 10)
+                .MaxWidth(480)
+                .HAlign(HorizontalAlignment.Center)
+                .VAlign(VerticalAlignment.Bottom)
+                .Margin(20)
+                .Set(border =>
+                {
+                    border.Shadow = new ThemeShadow();
+                    border.RequestedTheme = context.Controller.ActualTheme;
+                })
+                .Translation(0, 0, 16)
+                .LiveRegion(notice.Severity == InfoBarSeverity.Error
+                    ? AutomationLiveSetting.Assertive
+                    : AutomationLiveSetting.Polite)
+                .AutomationId("SessionsHubNotice")
+                .WithKey("notice");
+        return toast;
+    }
+
+    private static string NoticeMessage(SessionsHubNotice notice) =>
+        string.IsNullOrWhiteSpace(notice.Title)
+            ? notice.Message
+            : $"{notice.Title}: {notice.Message}";
 }
 
 /// <summary>Per-render inputs shared by the tab views.</summary>
@@ -224,7 +353,11 @@ internal sealed record SessionsHubViewContext(
     IReadOnlySet<string> CollapsedGroups,
     Action<IReadOnlySet<string>> SetCollapsedGroups)
 {
-    public bool IsWide => Width >= SessionsHubRoot.WideLayoutWidth;
+    public PageWidthTier Tier => PageResponsiveLayout.TierFor(Width);
+    public double ContentWidth => PageResponsiveLayout.ContentWidth(Width);
+    public bool IsWide => Tier == PageWidthTier.Wide;
+    public bool IsMedium => Tier == PageWidthTier.Medium;
+    public bool IsNarrow => Tier == PageWidthTier.Narrow;
 }
 
 /// <summary>Small shared view builders: glyphs, buttons, badges, and empty states.</summary>
@@ -251,6 +384,12 @@ internal static class SessionsHubView
             .IsEnabled(enabled)
             .ToolTip(tooltip ?? label)
             .AutomationId(automationId ?? "");
+    }
+
+    public static Element WithMutationHelp(Element control, SessionsHubState state, string actionTooltip)
+    {
+        var help = state.CanMutateRows ? actionTooltip : SessionsHubPresentation.T("RosterNotCurrent");
+        return control.ToolTip(help).HelpText(help);
     }
 
     public static Element IconButton(string glyph, string label, Action onClick, bool enabled = true, string? automationId = null) =>
@@ -371,9 +510,26 @@ internal static class SessionsHubView
     public static Element Card(Element child, double horizontalPadding, double verticalPadding) =>
         Border(child)
             .Padding(horizontalPadding, verticalPadding)
-            .Background(Theme.CardBackground)
+            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
             .WithBorder(Theme.CardStroke, 1)
             .CornerRadius(8);
+
+    public static Element Stage(Element child, string? automationId = null) =>
+        Border(child)
+            .Padding(16)
+            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
+            .WithBorder(Theme.CardStroke, 1)
+            .CornerRadius(12)
+            .AutomationId(automationId ?? "");
+
+    public static Element SectionTitle(string title, int? count = null, string? automationId = null, string countColor = "blue") =>
+        HStack(8,
+                TextBlock(title).FontSize(20).FontWeight(FontWeights.SemiBold)
+                    .VAlign(VerticalAlignment.Center)
+                    .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2),
+                count is { } value ? Pill(value.ToString(System.Globalization.CultureInfo.CurrentCulture), countColor) : Empty())
+            .VAlign(VerticalAlignment.Center)
+            .AutomationId(automationId ?? "");
 
     /// <summary>SelectorBar items are data records, so stable automation IDs are applied to the native items.</summary>
     public static void TagItems(SelectorBar bar, string prefix, IReadOnlyList<string> ids)

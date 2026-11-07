@@ -23,7 +23,7 @@ internal static class SessionsHubPresentation
     public static string RelativeTime(DateTime? utc, DateTime nowUtc)
     {
         if (utc is not { } value || value <= DateTime.UnixEpoch)
-            return T("TimeNever");
+            return T("NotAvailable");
         var delta = nowUtc - value;
         if (delta.TotalMinutes < 1) return T("TimeJustNow");
         if (delta.TotalHours < 1) return F("TimeMinutes", (int)delta.TotalMinutes);
@@ -33,17 +33,24 @@ internal static class SessionsHubPresentation
     }
 
     public static string RelativeTime(long epochMs, DateTime nowUtc) =>
-        epochMs > 0 ? RelativeTime(DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime, nowUtc) : T("TimeNever");
+        epochMs >= 1000 ? RelativeTime(DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime, nowUtc) : T("NotAvailable");
 
     public static string AbsoluteTime(DateTime? utc) =>
-        utc is { } value && value > DateTime.UnixEpoch ? value.ToLocalTime().ToString("g") : T("TimeNever");
+        utc is { } value && value > DateTime.UnixEpoch ? value.ToLocalTime().ToString("g") : T("NotAvailable");
 
-    public enum StatusTone { Working, Attention, Ready }
+    public enum StatusTone { Working, Attention, Ready, Unknown }
+
+    /// <summary>Attention membership comes only from the connected Gateway's tracked feed, never the inventory query.</summary>
+    public static IEnumerable<SessionInfo> AttentionRows(SessionsHubState state) => state.IsConnected
+        ? state.TrackedRows.Where(row => !row.Archived && Status(row).Tone == StatusTone.Attention)
+        : Enumerable.Empty<SessionInfo>();
 
     public static (string Label, StatusTone Tone) Status(SessionInfo row)
     {
         if (row.Status?.Equals("queued", StringComparison.OrdinalIgnoreCase) == true)
             return (T("StatusQueued"), StatusTone.Attention);
+        if (row.HasActiveRun != true && SessionRunState.ResolveStatus(row.Status) == SessionRunStatus.Unknown)
+            return (T("NotAvailable"), StatusTone.Unknown);
         return SessionRunState.GetDisplayState(row) switch
         {
             SessionDisplayState.Working => (LocalizationHelper.GetString("SessionsPage_Status_Working"), StatusTone.Working),
@@ -140,7 +147,8 @@ internal static class SessionsHubPresentation
         "draining" or "reconciling" => T("PlacementStopping"),
         "reclaimed" => T("PlacementReclaimed"),
         "failed" => T("PlacementFailed"),
-        _ => T("PlacementLocal"),
+        "local" => T("PlacementLocal"),
+        _ => T("NotAvailable"),
     };
 
     public static string Tokens(SessionInfo row)
@@ -159,6 +167,40 @@ internal static class SessionsHubPresentation
         >= 1_000 => (value / 1_000.0).ToString("0.#", System.Globalization.CultureInfo.CurrentCulture) + "K",
         _ => value.ToString(System.Globalization.CultureInfo.CurrentCulture),
     };
+
+    public static string Count(int value)
+    {
+        if (System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName != "en")
+            return value.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        return value switch
+        {
+            0 => "Zero",
+            1 => "One",
+            2 => "Two",
+            3 => "Three",
+            4 => "Four",
+            5 => "Five",
+            6 => "Six",
+            7 => "Seven",
+            8 => "Eight",
+            9 => "Nine",
+            _ => value.ToString(System.Globalization.CultureInfo.CurrentCulture),
+        };
+    }
+
+    public static (string Headline, string Subtitle) MastCopy(SessionsHubState state)
+    {
+        if (state.Tab == SessionsHubTab.Worktrees)
+        {
+            if (state.Worktrees.Rows is not { } worktrees)
+                return (T("WorktreeMastTitle"), T("NotAvailable"));
+            return (T("WorktreeMastTitle"), F("WorktreeMastSubtitle",
+                worktrees.Count(row => !row.IsRemoved), worktrees.Count(row => row.IsRemoved)));
+        }
+
+        // Rows belong to the list's current query, not a Gateway-wide summary.
+        return (T("Title"), T("Subtitle"));
+    }
 
     // ── Appearance ──
 
@@ -203,6 +245,7 @@ internal static class SessionsHubPresentation
     {
         "session" => record.OwnerId is { } key ? sessionTitle(key) ?? key : T("WorktreeOwnerSession"),
         "workboard" => T("WorktreeOwnerWorkboard"),
-        _ => T("WorktreeOwnerManual"),
+        "manual" => T("WorktreeOwnerManual"),
+        _ => T("NotAvailable"),
     };
 }

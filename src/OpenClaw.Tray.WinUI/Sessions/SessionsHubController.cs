@@ -8,6 +8,9 @@ using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using Windows.System;
 
 namespace OpenClawTray.Sessions;
 
@@ -19,9 +22,11 @@ internal interface ISessionsHubHost
     IOperatorGatewayClient? Client { get; }
     IReadOnlyList<SessionInfo> TrackedSessions { get; }
     JsonElement? AgentsList { get; }
+    ElementTheme ActualTheme { get; }
     bool ShowCompletedSessions { get; set; }
     void OpenChat(string sessionKey);
     void OpenConnection();
+    void OpenDashboard();
 }
 
 /// <summary>
@@ -49,6 +54,8 @@ internal sealed class SessionsHubController
     private int _transcriptGeneration;
     private int _worktreeGeneration;
     private int _branchGeneration;
+    private int _noticeGeneration;
+    private int _profileGeneration;
     // The client and authenticated connection the page currently shows; null while disconnected.
     // Actions capture it before any prompt, and every later step runs only while it is still
     // current, so nothing confirmed on one connection runs on another.
@@ -68,13 +75,19 @@ internal sealed class SessionsHubController
             () => _host.XamlRoot,
             () => _host.WindowHandle,
             ForkAsync,
-            key => { if (_state.DetailsKey == key) Update(s => s with { DetailsKey = null }); },
+            key => CloseDetails(key),
             (message, severity) => ShowNotice("", message, severity),
-            (_, ex) => ShowNotice(T("ActionFailed"), ex.Message, InfoBarSeverity.Error));
+            (_, ex) => ShowNotice(T("ActionFailed"), ex.Message, InfoBarSeverity.Error),
+            () => _state.CanMutateRows,
+            NotifyRowsUnavailable);
     }
 
     public SessionsHubState State => _state;
+    public bool CanMutateRows => _state.CanMutateRows;
+    public ElementTheme ActualTheme => _host.ActualTheme;
     public event Action? Changed;
+    /// <summary>Requests view-owned page/group reveal and focus after response-confirmed archive Undo.</summary>
+    public event Action<string>? ArchiveRestored;
 
     internal static string T(string key) => LocalizationHelper.GetString("SessionsHub_" + key);
     internal static string F(string key, params object?[] args) => LocalizationHelper.Format("SessionsHub_" + key, args);
@@ -107,7 +120,7 @@ internal sealed class SessionsHubController
         CloseDialog(false);
         Unsubscribe();
         _loadGeneration++;
-        Update(s => s with { IsReloading = false, IsBusy = false });
+        Update(s => s with { IsReloading = false, IsBusy = false, RowReveal = null });
     }
 
     public void RefreshAgents() => Update(s => s with { Agents = ReadAgents(_host.AgentsList) });
@@ -125,6 +138,7 @@ internal sealed class SessionsHubController
             Permissions = new SessionsHubPermissions(true, ["operator.read"], ["sessions.list"]),
             Load = SessionsHubLoad.Loaded,
             Rows = rows,
+            TrackedRows = rows,
         });
     }
 
@@ -159,6 +173,7 @@ internal sealed class SessionsHubController
             Permissions = permissions,
             Load = connected ? s.Load : SessionsHubLoad.Idle,
             Rows = connected ? s.Rows : Array.Empty<SessionInfo>(),
+            TrackedRows = connected ? _host.TrackedSessions : Array.Empty<SessionInfo>(),
             Selection = connected ? s.Selection : SessionsHubSelection.Empty,
             Transcript = connected ? s.Transcript : s.Transcript with { IsSearching = false, Result = null, Error = null },
             Worktrees = connected ? s.Worktrees : new WorktreesState(),
@@ -177,7 +192,9 @@ internal sealed class SessionsHubController
         _loadGeneration++;
         _transcriptGeneration++;
         _worktreeGeneration++;
+        _profileGeneration++;
         _profilesLoaded = false;
+        _liveSignature = null;
         // Pending prompts resolve as cancelled so a confirmed action never runs on the new connection.
         CloseDialog(false);
         Update(s => s with
@@ -187,10 +204,13 @@ internal sealed class SessionsHubController
             Load = connected ? SessionsHubLoad.Loading : SessionsHubLoad.Idle,
             LoadError = null,
             Rows = Array.Empty<SessionInfo>(),
+            TrackedRows = Array.Empty<SessionInfo>(),
             HasMore = false,
             NextOffset = null,
             TotalCount = null,
             DetailsKey = null,
+            ExpandedKeys = new HashSet<string>(StringComparer.Ordinal),
+            RowReveal = null,
             LabelDraft = (null, "", null),
             IsBusy = false,
             IsReloading = false,
@@ -214,15 +234,21 @@ internal sealed class SessionsHubController
         _subscribed = null;
     }
 
-    private void OnSessionsUpdated(object? sender, SessionInfo[] sessions) => _post(() =>
+    private void OnSessionsUpdated(object? sender, SessionInfo[] _)
     {
-        // Tracked updates also fire for activity ticks; reload only when something shown changed.
-        if (!ReferenceEquals(sender, _subscribed)) return;
-        var signature = SessionsHubProjection.LiveSignature(sessions);
-        if (signature == _liveSignature) return;
-        _liveSignature = signature;
-        ScheduleChangeReload();
-    });
+        var binding = _binding;
+        _post(() =>
+        {
+            // Tracked updates also fire for activity ticks; reload only when something shown changed.
+            if (!ReferenceEquals(sender, _subscribed) || !IsCurrent(binding)) return;
+            var sessions = _host.TrackedSessions;
+            var signature = SessionsHubProjection.LiveSignature(sessions);
+            if (signature == _liveSignature) return;
+            _liveSignature = signature;
+            Update(s => s with { TrackedRows = sessions.ToArray() });
+            ScheduleChangeReload();
+        });
+    }
 
     /// <summary>The Gateway reported a real change, which may affect archived rows the tracked list omits.</summary>
     private void OnSessionListChanged(object? sender, SessionListChange change) => _post(() =>
@@ -290,6 +316,7 @@ internal sealed class SessionsHubController
             Load = s.Load == SessionsHubLoad.Loaded ? SessionsHubLoad.Loaded : SessionsHubLoad.Loading,
             LoadError = null,
             IsReloading = true,
+            TrackedRows = _host.TrackedSessions,
         });
         try
         {
@@ -372,12 +399,13 @@ internal sealed class SessionsHubController
     private async Task LoadCatalogsAsync(IOperatorGatewayClient client, int generation)
     {
         var permissions = _state.Permissions;
+        var profileGeneration = _profileGeneration;
         if (permissions.Supports("sessions.groups.list"))
         {
             try
             {
                 var catalog = await client.ListSessionGroupsAsync();
-                if (generation == _loadGeneration)
+                if (generation == _loadGeneration && IsCurrent(_binding))
                     Update(s => s with { GroupCatalog = catalog.Names, GroupsSupported = catalog.IsSupported });
             }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
@@ -385,43 +413,87 @@ internal sealed class SessionsHubController
                 new AppLogger().Warn($"[SessionsHub] Group catalog unavailable ({ex.GetType().Name}).");
             }
         }
-        if (!_profilesLoaded && permissions.CanWrite && permissions.Supports("users.list"))
+        if (generation != _loadGeneration || !ReferenceEquals(_host.Client, client)
+            || !IsCurrent(_binding) || profileGeneration != _profileGeneration)
+            return;
+        if (!_profilesLoaded)
+            await LoadOwnerCatalogAsync(client, profileGeneration);
+    }
+
+    /// <summary>Reloads assignable owners after the authenticated Gateway identity changes.</summary>
+    public Task RefreshOwnerCatalogAsync()
+    {
+        if (_snapshotOnly || _host.Client is not { IsConnectedToGateway: true } client || !IsCurrent(_binding))
+            return Task.CompletedTask;
+
+        var generation = ++_profileGeneration;
+        _profilesLoaded = false;
+        Update(s => s with { Profiles = Array.Empty<GatewayUserProfile>(), SelfProfileId = null });
+        return LoadOwnerCatalogAsync(client, generation);
+    }
+
+    private async Task LoadOwnerCatalogAsync(IOperatorGatewayClient client, int generation)
+    {
+        if (!IsOwnerCatalogRequestCurrent(client, generation))
+            return;
+        var permissions = _state.Permissions;
+        if (!permissions.CanWrite || !permissions.Supports("users.list"))
+            return;
+
+        _profilesLoaded = true;
+        try
         {
-            _profilesLoaded = true;
-            try
-            {
-                var profiles = await client.ListUserProfilesAsync();
-                var self = permissions.Supports("users.self") ? await client.GetSelfProfileIdAsync() : null;
-                // A reconnect while this was in flight must not show another Gateway's people.
-                if (generation == _loadGeneration && ReferenceEquals(_host.Client, client))
-                    Update(s => s with { Profiles = profiles, SelfProfileId = self });
-                else
-                    _profilesLoaded = false;
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
-            {
-                if (ReferenceEquals(_host.Client, client))
-                    _profilesLoaded = false;
-                new AppLogger().Warn($"[SessionsHub] Owner roster unavailable ({ex.GetType().Name}).");
-            }
+            var profiles = await client.ListUserProfilesAsync();
+            var self = permissions.Supports("users.self") ? await client.GetSelfProfileIdAsync() : null;
+            if (!IsOwnerCatalogRequestCurrent(client, generation))
+                return;
+            Update(s => s with { Profiles = profiles, SelfProfileId = self });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or NotSupportedException)
+        {
+            if (generation == _profileGeneration)
+                _profilesLoaded = false;
+            new AppLogger().Warn($"[SessionsHub] Owner roster unavailable ({ex.GetType().Name}).");
         }
     }
+
+    private bool IsOwnerCatalogRequestCurrent(IOperatorGatewayClient client, int generation) =>
+        generation == _profileGeneration && ReferenceEquals(_host.Client, client) && IsCurrent(_binding);
+
+    public int OwnerCatalogGeneration => _profileGeneration;
 
     // ── View state ──
 
     public void SetTab(SessionsHubTab tab)
     {
         if (tab == _state.Tab) return;
-        Update(s => s with { Tab = tab });
+        Update(s => s with { Tab = tab, RowReveal = null });
         if (tab == SessionsHubTab.Worktrees && _state.Worktrees.Load is SessionsHubLoad.Idle or SessionsHubLoad.Failed)
             _ = LoadWorktreesAsync();
     }
+
+    public void OpenWorktree(string id)
+    {
+        var needsReload = _state.Worktrees.Load != SessionsHubLoad.Loaded
+            || _state.Worktrees.Rows is null
+            || _state.Worktrees.Rows.All(record => record.Id != id);
+        Update(s => s with
+        {
+            Tab = SessionsHubTab.Worktrees,
+            Worktrees = s.Worktrees with { DetailsId = id },
+        });
+        if (needsReload)
+            _ = LoadWorktreesAsync();
+    }
+
+    public void SetWorktreeDetails(string? id) =>
+        Update(s => s with { Worktrees = s.Worktrees with { DetailsId = id } });
 
     /// <param name="persist">False for a temporary reveal (transcript Show details) that must not change the saved preference.</param>
     public void SetFilters(SessionsHubFilters filters, bool reload = true, bool persist = true)
     {
         var previous = _state.Filters;
-        Update(s => s with { Filters = filters, PageIndex = 0 });
+        Update(s => s with { Filters = filters, PageIndex = 0, RowReveal = null });
         if (persist && filters.ShowCompleted != previous.ShowCompleted)
             _host.ShowCompletedSessions = filters.ShowCompleted;
         if (!previous.ToQuery().ToSearchScope().SequenceEqual(filters.ToQuery().ToSearchScope()))
@@ -462,6 +534,7 @@ internal sealed class SessionsHubController
             LoadError = null,
             IsReloading = false,
             Rows = Array.Empty<SessionInfo>(),
+            RowReveal = null,
             HasMore = false,
             NextOffset = null,
             TotalCount = null,
@@ -473,23 +546,91 @@ internal sealed class SessionsHubController
     private static bool SameServerQuery(SessionsHubFilters a, SessionsHubFilters b) => a.ToQuery() == b.ToQuery();
 
     public void ClearFilters() => SetFilters(_state.Filters.Cleared());
-    public void SetGroupBy(SessionsGroupBy groupBy) => Update(s => s with { GroupBy = groupBy, PageIndex = 0 });
-    public void SetSort(SessionsSortColumn column, bool descending) => Update(s => s with { SortColumn = column, SortDescending = descending });
-    public void SetPageSize(int size) => Update(s => s with { PageSize = size, PageIndex = 0 });
-    public void SetPage(int index) => Update(s => s with { PageIndex = Math.Max(0, index) });
+    public void SetGroupBy(SessionsGroupBy groupBy) => Update(s => s with { GroupBy = groupBy, PageIndex = 0, RowReveal = null });
+    public void SetSort(SessionsSortColumn column, bool descending) => Update(s => s with { SortColumn = column, SortDescending = descending, RowReveal = null });
+    public void SetPageSize(int size) => Update(s => s with { PageSize = size, PageIndex = 0, RowReveal = null });
+    public void SetPage(int index) => Update(s => s with { PageIndex = Math.Max(0, index), RowReveal = null });
     /// <summary>Expands <paramref name="key"/> in the roster without toggling an already open row.</summary>
     public void OpenDetails(string key) => Update(s => s with
     {
         DetailsKey = key,
-        LabelDraft = s.DetailsKey == key ? s.LabelDraft : (null, "", null),
+        ExpandedKeys = new HashSet<string>(s.ExpandedKeys, StringComparer.Ordinal) { key },
     });
-    public void CloseDetails() => Update(s => s with { DetailsKey = null, LabelDraft = (null, "", null) });
+
+    public void RequestRowReveal(string key, bool focus) =>
+        Update(s => s with { RowReveal = new SessionsHubRowReveal(key, focus) });
+
+    public void CompleteRowReveal(SessionsHubRowReveal request)
+    {
+        if (ReferenceEquals(_state.RowReveal, request))
+            Update(s => s with { RowReveal = null });
+    }
+
+    /// <summary>Loads an attention card's session when the inventory currently filters it out.</summary>
+    public async Task<bool> LoadAttentionRowAsync(string key)
+    {
+        if (_state.Rows.Any(row => row.Key == key))
+            return true;
+        if (PromptBinding() is not { } binding)
+            return false;
+
+        SetFilters(_state.Filters.Cleared() with
+        {
+            AgentId = null,
+            Search = key,
+            Status = SessionArchiveFilter.All,
+            IncludeUnknown = true,
+        }, reload: false, persist: false);
+        SetTranscriptOpen(false);
+        var generation = _loadGeneration + 1;
+        await ReloadAsync();
+        if (!IsCurrent(binding) || generation != _loadGeneration || _state.Load != SessionsHubLoad.Loaded)
+            return false;
+
+        // Search matches keys and titles by substring, so a small limit can put the exact key on a later page.
+        while (_state.Rows.All(row => row.Key != key) && _state.HasMore && _state.NextOffset is { } offset)
+        {
+            var count = _state.Rows.Count;
+            var notice = _state.Notice;
+            await LoadMoreAsync();
+            if (!IsCurrent(binding) || generation != _loadGeneration)
+                return false;
+            if (_state.Rows.Count == count || _state.NextOffset is not { } nextOffset || nextOffset <= offset)
+            {
+                if (_state.Notice is not null && !ReferenceEquals(_state.Notice, notice))
+                    return false;
+                break;
+            }
+        }
+        if (_state.Rows.Any(row => row.Key == key))
+            return true;
+
+        ShowNotice(T("LoadFailedTitle"), T("SessionUnavailable"), InfoBarSeverity.Warning);
+        return false;
+    }
+
+    public void CloseDetails(string? key = null) => Update(s =>
+    {
+        var expanded = new HashSet<string>(s.ExpandedKeys, StringComparer.Ordinal);
+        if (key is null) expanded.Clear();
+        else expanded.Remove(key);
+        return s with
+        {
+            ExpandedKeys = expanded,
+            DetailsKey = key is null || s.DetailsKey == key ? null : s.DetailsKey,
+            LabelDraft = key is null || s.LabelDraft.Key == key ? (null, "", null) : s.LabelDraft,
+        };
+    });
     public void SetLabelDraft(string key, string text)
     {
-        if (_state.DetailsKey == key)
-            Update(s => s with { LabelDraft = (key, text, s.DetailsRow?.SessionId) });
+        if (_state.ExpandedKeys.Contains(key))
+            Update(s => s with { LabelDraft = (key, text, s.Rows.FirstOrDefault(row => row.Key == key)?.SessionId) });
     }
-    public void DismissNotice() => Update(s => s with { Notice = null });
+    public void DismissNotice(SessionsHubNotice? expected = null)
+    {
+        if (expected is null || ReferenceEquals(_state.Notice, expected))
+            Update(s => s with { Notice = null });
+    }
 
     public void SetSelectionMode(bool enabled) => Update(s => s with
     {
@@ -500,14 +641,42 @@ internal sealed class SessionsHubController
     public void ToggleSelected(string key) => Update(s => s with { Selection = s.Selection.Toggle(key) });
     public void SetSelected(IEnumerable<string> keys, bool selected) => Update(s => s with { Selection = s.Selection.Set(keys, selected) });
 
-    private void ShowNotice(string title, string message, InfoBarSeverity severity, string? actionLabel = null, Action? action = null) =>
-        Update(s => s with { Notice = new SessionsHubNotice(title, message, severity, actionLabel, action) });
+    private void ShowNotice(string title, string message, InfoBarSeverity severity, string? actionLabel = null, Action? action = null,
+        bool persistent = false)
+    {
+        var notice = new SessionsHubNotice(title, message, severity, actionLabel, action);
+        var generation = ++_noticeGeneration;
+        Update(s => s with { Notice = notice });
+        if (!persistent)
+            _ = DismissNoticeAfterAsync(generation, actionLabel is null ? 4000 : 7000);
+    }
+
+    private async Task DismissNoticeAfterAsync(int generation, int delayMs)
+    {
+        await Task.Delay(delayMs);
+        if (generation == _noticeGeneration && _state.Notice is not null)
+            Update(s => s with { Notice = null });
+    }
 
     // ── Session actions ──
 
     public void OpenInChat(string key) => _host.OpenChat(key);
 
     public void OpenConnection() => _host.OpenConnection();
+
+    public void OpenDashboard() => _host.OpenDashboard();
+
+    public void SearchTranscriptsForCurrentQuery()
+    {
+        var query = _state.Filters.Search.Trim();
+        if (query.Length == 0)
+            return;
+        Update(s => s with
+        {
+            Transcript = s.Transcript with { Query = query, IsOpen = true, Result = null, Error = null },
+        });
+        _ = RunTranscriptSearchAsync();
+    }
 
     public SessionMainState MainState(SessionInfo row) => SessionActionPlanner.ResolveMainState(
         row.Key, rowIsMain: row.IsMain, mainSessionKey: _host.Client?.MainSessionKey, sessions: _host.TrackedSessions.ToArray());
@@ -520,6 +689,18 @@ internal sealed class SessionsHubController
     /// <summary>Pin, rename, read state, fork, copy, reset, compact, and export use the shared Workspace menu runner.</summary>
     public async Task RunSharedActionAsync(WorkspaceSessionMenuAction action, SessionInfo row, string title)
     {
+        if (IsRowMutation(action) && !RequireCurrentRoster())
+            return;
+        if (action == WorkspaceSessionMenuAction.Reset)
+        {
+            await ResetAsync(row, title);
+            return;
+        }
+        if (action == WorkspaceSessionMenuAction.ExportTranscript)
+        {
+            await ExportTranscriptAsync(row);
+            return;
+        }
         await _menu.ExecuteAsync(action, ToWorkspaceSession(row, title), row);
         if (action is not (WorkspaceSessionMenuAction.CopyKey or WorkspaceSessionMenuAction.CopySessionId
             or WorkspaceSessionMenuAction.CopyMarkdown or WorkspaceSessionMenuAction.ExportTranscript))
@@ -528,18 +709,143 @@ internal sealed class SessionsHubController
 
     private async Task ForkAsync(SessionCreateRequest request)
     {
-        if (_host.Client is not { IsConnectedToGateway: true } client)
-        {
-            ShowNotice("", WorkspaceWindow.Text("ConnectionRequired"), InfoBarSeverity.Error);
+        if (!RequireCurrentRoster() || PromptBinding() is not { } binding)
             return;
-        }
-        var result = await client.CreateSessionAsync(request);
+        var parent = _state.Rows.FirstOrDefault(row => row.Key == request.ParentSessionKey);
+        var parentTitle = parent is null
+            ? request.ParentSessionKey ?? T("UntitledSession")
+            : SessionsHubPresentation.Titles([parent])[parent.Key];
+        var name = await PromptAsync(T("ForkDialogTitle"), T("ForkDialogBody"), WorkspaceWindow.Text("SessionMenu_Fork"),
+            F("ForkDefaultName", parentTitle), T("LabelPlaceholder"), FluentIconCatalog.Fork,
+            T("Label"),
+            parent is null ? null :
+            [
+                new SessionsHubDialogFact(T("FactAgent"),
+                    SessionsHubProjection.AgentId(parent) is { } agentId
+                        ? _state.Agents.FirstOrDefault(agent => agent.Id == agentId)?.Name ?? agentId
+                        : T("NotAvailable")),
+            ]);
+        if (name is null)
+            return;
+        if (!RequireCurrentRoster())
+            return;
+        RequireBound(binding);
+        var result = await binding.Client.CreateSessionAsync(request);
+        RequireBound(binding);
         if (!result.IsSupported)
             ShowNotice("", WorkspaceWindow.Text("ForkUnsupported"), InfoBarSeverity.Informational);
         else if (!result.Ok || string.IsNullOrWhiteSpace(result.Key))
             ShowNotice(WorkspaceWindow.Text("ForkFailed"), result.Error ?? "", InfoBarSeverity.Error);
         else
-            _host.OpenChat(result.Key);
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                try { await binding.PatchAsync(result.Key, WorkspaceSessionMenu.RenamePatch(name)); }
+                catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or NotSupportedException)
+                {
+                    ShowNotice(T("ForkCreatedTitle"), F("ForkRenameFailed", ex.Message), InfoBarSeverity.Warning,
+                        T("OpenInChat"), () => _host.OpenChat(result.Key));
+                    return;
+                }
+            }
+            ShowNotice("", F("ForkCreated", name), InfoBarSeverity.Success,
+                T("OpenInChat"), () => _host.OpenChat(result.Key));
+        }
+    }
+
+    private async Task ResetAsync(SessionInfo row, string title)
+    {
+        if (PromptBinding() is not { } binding)
+            return;
+        if (!await ConfirmAsync(F("ResetSessionTitle", title),
+                T("ResetSessionBody"),
+                LocalizationHelper.GetString("SessionActionPrompt_Reset_ConfirmLabel"), destructive: true,
+                icon: FluentIconCatalog.Reset,
+                facts:
+                [
+                    new SessionsHubDialogFact(T("WorktreeOwnerSession"), title),
+                    new SessionsHubDialogFact(T("FactAgent"),
+                        SessionsHubProjection.AgentId(row) is { } agentId
+                            ? _state.Agents.FirstOrDefault(agent => agent.Id == agentId)?.Name ?? agentId
+                            : T("NotAvailable")),
+                ]))
+            return;
+        var reset = await GuardedAsync(T("ActionFailed"), async operation =>
+        {
+            if (!await operation.Client.ResetSessionAsync(row.Key))
+                throw new InvalidOperationException(T("ResetRejected"));
+        }, binding, requireCurrentRoster: true);
+        if (reset)
+        {
+            ShowNotice("", F("ResetDone", title), InfoBarSeverity.Success);
+            await ReloadAsync(preserveCount: true);
+        }
+    }
+
+    private async Task ExportTranscriptAsync(SessionInfo row)
+    {
+        var client = _host.Client;
+        if (client is not { IsConnectedToGateway: true } || _host.WindowHandle == IntPtr.Zero)
+        {
+            ShowNotice("", WorkspaceWindow.Text("ExportEmpty"), InfoBarSeverity.Informational);
+            return;
+        }
+        ChatHistoryInfo history;
+        try
+        {
+            history = await client.RequestChatHistoryAsync(row.Key);
+        }
+        catch (NotSupportedException)
+        {
+            ShowNotice("", WorkspaceWindow.Text("HistoryUnsupported"), InfoBarSeverity.Informational);
+            return;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            ShowNotice(T("ActionFailed"), ex.Message, InfoBarSeverity.Error);
+            return;
+        }
+        if (history.Messages.Count == 0)
+        {
+            ShowNotice("", WorkspaceWindow.Text("ExportEmpty"), InfoBarSeverity.Informational);
+            return;
+        }
+        try
+        {
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.Desktop,
+                SuggestedFileName = Path.GetFileNameWithoutExtension(SessionTranscriptFormatter.SuggestFileName(row.Key)),
+            };
+            picker.FileTypeChoices.Add("Text file", [".txt"]);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _host.WindowHandle);
+            var file = await picker.PickSaveFileAsync();
+            if (file is null)
+                return;
+            await FileIO.WriteTextAsync(file, SessionTranscriptFormatter.Format(history));
+            var folder = Path.GetDirectoryName(file.Path);
+            ShowNotice("", LocalizationHelper.Format("WorkspaceShell_ExportDone", history.Messages.Count, file.Name),
+                InfoBarSeverity.Success,
+                string.IsNullOrWhiteSpace(folder) ? null : T("OpenFolder"),
+                string.IsNullOrWhiteSpace(folder) ? null : () => _ = OpenFolderAsync(folder));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ShowNotice(T("ActionFailed"), ex.Message, InfoBarSeverity.Error);
+        }
+    }
+
+    private static async Task OpenFolderAsync(string folderPath)
+    {
+        try
+        {
+            var folder = await StorageFolder.GetFolderFromPathAsync(folderPath);
+            await Launcher.LaunchFolderAsync(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            new AppLogger().Warn($"[SessionsHub] Couldn't open exported transcript folder ({ex.GetType().Name}).");
+        }
     }
 
     /// <summary>
@@ -566,9 +872,31 @@ internal sealed class SessionsHubController
             throw new WorkspaceSessionConnectionChangedException();
     }
 
+    private void NotifyRowsUnavailable() =>
+        ShowNotice("", T("RosterNotCurrent"), InfoBarSeverity.Informational);
+
+    private bool RequireCurrentRoster()
+    {
+        if (!IsCurrent(_binding))
+        {
+            PromptBinding();
+            return false;
+        }
+        if (_state.CanMutateRows)
+            return true;
+        if (!_state.IsBusy)
+            NotifyRowsUnavailable();
+        return false;
+    }
+
+    private static bool IsRowMutation(WorkspaceSessionMenuAction action) => action is
+        WorkspaceSessionMenuAction.TogglePin or WorkspaceSessionMenuAction.Rename or WorkspaceSessionMenuAction.ToggleUnread
+        or WorkspaceSessionMenuAction.ToggleArchive or WorkspaceSessionMenuAction.Fork or WorkspaceSessionMenuAction.Reset
+        or WorkspaceSessionMenuAction.Compact or WorkspaceSessionMenuAction.Delete;
+
     /// <param name="binding">The connection the action started on, captured before any prompt. Defaults to the live one.</param>
     private async Task<bool> GuardedAsync(string failureTitle, Func<WorkspaceSessionOperation, Task> work,
-        WorkspaceSessionOperation? binding = null)
+        WorkspaceSessionOperation? binding = null, bool requireCurrentRoster = false)
     {
         if (_state.IsBusy)
             return false;
@@ -581,6 +909,11 @@ internal sealed class SessionsHubController
         if (!IsCurrent(operation))
         {
             ShowNotice(failureTitle, WorkspaceWindow.Text("SessionConnectionChanged"), InfoBarSeverity.Error);
+            return false;
+        }
+        if (requireCurrentRoster && !_state.CanMutateRows)
+        {
+            NotifyRowsUnavailable();
             return false;
         }
         Update(s => s with { IsBusy = true });
@@ -621,7 +954,7 @@ internal sealed class SessionsHubController
         {
             await operation.PatchAsync(row.Key, patch);
             await ReloadAsync(preserveCount: true);
-        }, binding);
+        }, binding, requireCurrentRoster: true);
 
     public async Task SaveLabelAsync(SessionInfo row, string text)
     {
@@ -629,7 +962,8 @@ internal sealed class SessionsHubController
         if (trimmed == (row.Label ?? "").Trim())
             return;
         if (!await GuardedAsync(T("UpdateFailed"), operation =>
-                operation.PatchAsync(row.Key, WorkspaceSessionMenu.RenamePatch(trimmed))))
+                operation.PatchAsync(row.Key, WorkspaceSessionMenu.RenamePatch(trimmed)),
+                requireCurrentRoster: true))
             return;
         Update(s => s with
         {
@@ -655,30 +989,50 @@ internal sealed class SessionsHubController
             return;
         }
         var binding = _binding;
-        var archived = await GuardedAsync(T("ArchiveFailed"), operation => operation.PatchAsync(row.Key, new SessionPatch { Archived = true }), binding);
+        var archived = await GuardedAsync(T("ArchiveFailed"), operation => operation.PatchAsync(row.Key, new SessionPatch { Archived = true }),
+            binding, requireCurrentRoster: true);
         if (!archived) return;
-        if (_state.DetailsKey == row.Key)
-            Update(s => s with { DetailsKey = null });
+        CloseDetails(row.Key);
         // Undo stays bound to the connection that archived the row.
-        ShowNotice("", F("ArchivedFormat", title), InfoBarSeverity.Success, T("Undo"), () => _ = UndoArchiveAsync(row, binding));
+        var channel = SessionDisplayResolver.Resolve(row).Channel;
+        var ambiguous = _state.Rows.Any(other => other.Key != row.Key
+            && OpenClawTray.Services.SessionTitleFormatter.Format(other) == OpenClawTray.Services.SessionTitleFormatter.Format(row));
+        var message = ambiguous && !string.IsNullOrWhiteSpace(channel)
+            ? F("ArchivedNamedChannel", title, channel)
+            : F("ArchivedFormat", title);
+        ShowNotice("", message, InfoBarSeverity.Success, T("Undo"), () => _ = UndoArchiveAsync(row, binding), persistent: true);
         await ReloadAsync(preserveCount: true);
     }
 
     private async Task UndoArchiveAsync(SessionInfo row, WorkspaceSessionOperation? binding)
     {
+        var navigationGeneration = _loadGeneration;
+        var navigation = _state;
+        bool NavigationChanged() => navigation.Tab != _state.Tab || navigation.Filters != _state.Filters
+            || navigation.PageIndex != _state.PageIndex || navigation.PageSize != _state.PageSize
+            || navigation.GroupBy != _state.GroupBy || navigation.SortColumn != _state.SortColumn
+            || navigation.SortDescending != _state.SortDescending;
         var restored = await GuardedAsync(T("UndoFailed"), operation =>
-            operation.PatchAsync(row.Key, SessionsHubDeletion.UndoArchivePatch(row.Pinned)), binding);
+            operation.PatchAsync(row.Key, SessionsHubDeletion.UndoArchivePatch(row.Pinned)), binding, requireCurrentRoster: true);
         if (restored)
         {
+            if (!IsCurrent(binding)) return;
             DismissNotice();
+            if (navigationGeneration != _loadGeneration || NavigationChanged())
+                return;
+            var generation = _loadGeneration + 1;
             await ReloadAsync(preserveCount: true);
+            if (!IsCurrent(binding) || generation != _loadGeneration || NavigationChanged())
+                return;
+            if (await LoadAttentionRowAsync(row.Key) && IsCurrent(binding))
+                ArchiveRestored?.Invoke(row.Key);
         }
     }
 
     public async Task UnarchiveAsync(SessionInfo row, string title)
     {
         var restored = await GuardedAsync(T("UnarchiveFailed"), operation =>
-            operation.PatchAsync(row.Key, new SessionPatch { Archived = false }));
+            operation.PatchAsync(row.Key, new SessionPatch { Archived = false }), requireCurrentRoster: true);
         if (!restored) return;
         ShowNotice("", F("UnarchivedFormat", title), InfoBarSeverity.Success);
         await ReloadAsync(preserveCount: true);
@@ -687,6 +1041,8 @@ internal sealed class SessionsHubController
     /// <summary>Single delete uses the shared lifecycle prompt wording, then the archive-aware delete contract.</summary>
     public async Task DeleteAsync(SessionInfo row, string title)
     {
+        if (!RequireCurrentRoster())
+            return;
         var mainState = MainState(row);
         if (!SessionActionPlanner.IsAllowed(SessionActionKind.Delete, mainState, out var blocked))
         {
@@ -704,7 +1060,10 @@ internal sealed class SessionsHubController
         if (prompt is not null)
         {
             var localized = SessionActionPromptLocalizer.Localize(prompt);
-            if (!await ConfirmAsync(localized.Title, localized.Body, localized.ConfirmLabel, destructive: true))
+            if (!await ConfirmAsync(F("DeleteSessionTitle", title), T("DeleteSessionBody"), localized.ConfirmLabel, destructive: true,
+                    icon: FluentIconCatalog.Delete, facts: SessionFacts(row),
+                    noteTitle: row.Worktree is null ? null : T("DeleteSessionWorktreeNoteTitle"),
+                    noteMessage: row.Worktree is null ? null : T("DeleteSessionWorktreeNoteBody")))
                 return;
         }
         if (string.IsNullOrWhiteSpace(row.SessionId)
@@ -718,6 +1077,8 @@ internal sealed class SessionsHubController
 
     public async Task DeleteSelectedAsync()
     {
+        if (!RequireCurrentRoster())
+            return;
         // Only rows the user can currently see; a hidden selection must never be deleted.
         var rows = _state.Filters.ApplyClientFilters(_state.Rows).Where(row => _state.Selection.Contains(row.Key)).ToArray();
         if (rows.Length == 0) return;
@@ -732,7 +1093,18 @@ internal sealed class SessionsHubController
             body += "\n\n" + F("DeleteSelectedSkipped", plan.Blocked.Count);
         if (PromptBinding() is not { } binding) return;
         var rowsBefore = _state.Rows;
-        if (!await ConfirmAsync(T("DeleteSelectedTitle"), body, T("Delete"), destructive: true))
+        var kept = plan.Blocked.Select(blocked => new SessionsHubDialogListItem(
+            SessionsHubPresentation.Titles([blocked])[blocked.Key],
+            IsMain(blocked) ? T("DialogReasonMain") : T("DialogReasonNeedsAdmin"))).ToArray();
+        if (!await ConfirmAsync(T("DeleteSelectedTitle"), body, F("DeleteCount", plan.Requests.Count), destructive: true,
+                icon: FluentIconCatalog.Delete,
+                facts:
+                [
+                    new SessionsHubDialogFact(T("Selected"), rows.Length.ToString(System.Globalization.CultureInfo.CurrentCulture)),
+                    new SessionsHubDialogFact(T("DialogWillDelete"), plan.Requests.Count.ToString(System.Globalization.CultureInfo.CurrentCulture)),
+                ],
+                itemsLabel: kept.Length > 0 ? T("DialogKept") : null,
+                items: kept))
             return;
         // The roster may have reloaded while the dialog was open. Delete only confirmed rows that
         // are still loaded, visible and selected. Requests carry the session id the user confirmed,
@@ -755,6 +1127,8 @@ internal sealed class SessionsHubController
     /// <summary>Loads every archived page first so the confirmation states the real count.</summary>
     public async Task DeleteAllArchivedAsync()
     {
+        if (!RequireCurrentRoster())
+            return;
         var binding = _binding;
         if (!IsCurrent(binding) || _state.IsBusy) return;
         var client = binding!.Client;
@@ -784,6 +1158,7 @@ internal sealed class SessionsHubController
                 Update(s => s with { IsBusy = false });
         }
         if (!IsCurrent(binding)) return;
+        if (!RequireCurrentRoster()) return;
         var plan = SessionsHubDeletion.PlanDeleteAllArchived(rows, _state.Permissions, IsMain);
         if (plan.Requests.Count == 0)
         {
@@ -794,7 +1169,18 @@ internal sealed class SessionsHubController
         var body = F("DeleteAllArchivedBody", plan.Requests.Count);
         if (withWorktrees > 0)
             body += "\n\n" + (withWorktrees == 1 ? T("DeleteAllArchivedWorktreesOne") : F("DeleteAllArchivedWorktrees", withWorktrees));
-        if (!await ConfirmAsync(T("DeleteAllArchivedTitle"), body, T("DeleteAll"), destructive: true))
+        if (!await ConfirmAsync(T("DeleteAllArchivedTitle"), body, F("DeleteCount", plan.Requests.Count), destructive: true,
+                icon: FluentIconCatalog.Delete,
+                facts:
+                [
+                    new SessionsHubDialogFact(T("DialogScope"),
+                        _state.Filters.AgentId is { } agentId
+                            ? _state.Agents.FirstOrDefault(agent => agent.Id == agentId)?.Name ?? agentId
+                            : T("AllAgents")),
+                    new SessionsHubDialogFact(T("StatArchived"),
+                        plan.Requests.Count.ToString(System.Globalization.CultureInfo.CurrentCulture)),
+                    new SessionsHubDialogFact(T("DialogNeverDeleted"), T("DialogMainSession")),
+                ]))
             return;
         await ExecutePlanAsync(plan, T("DeleteFailed"), binding);
     }
@@ -825,12 +1211,12 @@ internal sealed class SessionsHubController
                     failures.Add(ex.Message);
                 }
             }
-        }, binding);
+        }, binding, requireCurrentRoster: true);
         if (!completed && deleted == 0 && refused == 0) return;
         if (!completed && _host.Client is { IsConnectedToGateway: true } current)
             RefreshTrackedSessions(current);
-        if (_state.DetailsKey is { } details && plan.Requests.Any(request => request.Key == details))
-            Update(s => s with { DetailsKey = null });
+        foreach (var request in plan.Requests)
+            CloseDetails(request.Key);
         var message = deleted == 1 ? T("DeletedOne") : F("DeletedMany", deleted);
         if (failures.Count > 0)
             message += " " + F("DeleteFailures", failures.Count, failures[0]);
@@ -857,23 +1243,39 @@ internal sealed class SessionsHubController
         _ => T("PreservedCleanupFailed"),
     };
 
-    public async Task AssignOwnerAsync(SessionInfo row, string type, string id)
+    public async Task AssignOwnerAsync(SessionInfo row, string type, string id, int ownerCatalogGeneration)
     {
+        if (type == "human" &&
+            (ownerCatalogGeneration != _profileGeneration || !_profilesLoaded ||
+             (id != _state.SelfProfileId && _state.Profiles.All(profile => profile.Id != id))))
+        {
+            ShowNotice(T("AssignFailed"), T("OwnerCatalogChanged"), InfoBarSeverity.Informational);
+            return;
+        }
         var assigned = await GuardedAsync(T("AssignFailed"), async operation =>
         {
             await operation.Client.AssignSessionOwnerAsync(row.Key, SessionsHubProjection.AgentId(row), type, id);
-        });
+        }, requireCurrentRoster: true);
         if (assigned)
             await ReloadAsync(preserveCount: true);
     }
 
     public async Task StopCloudWorkerAsync(SessionInfo row, string title)
     {
+        if (!RequireCurrentRoster())
+            return;
         if (PromptBinding() is not { } binding) return;
-        if (!await ConfirmAsync(T("StopWorkerTitle"), F("StopWorkerBody", title), T("StopWorker"), destructive: true))
+        if (!await ConfirmAsync(T("StopWorkerTitle"), F("StopWorkerBody", title), T("StopWorker"), destructive: true,
+                icon: FluentIconCatalog.Stop,
+                facts:
+                [
+                    new SessionsHubDialogFact(T("WorktreeOwnerSession"), title),
+                    new SessionsHubDialogFact(T("CloudWorker"), T("PlacementActive")),
+                ]))
             return;
         var stopped = await GuardedAsync(T("StopWorkerFailed"),
-            operation => operation.Client.ReclaimSessionAsync(row.Key, SessionsHubProjection.AgentId(row)), binding);
+            operation => operation.Client.ReclaimSessionAsync(row.Key, SessionsHubProjection.AgentId(row)),
+            binding, requireCurrentRoster: true);
         if (!stopped) return;
         ShowNotice("", F("StopWorkerDone", title), InfoBarSeverity.Success);
         await ReloadAsync(preserveCount: true);
@@ -905,6 +1307,8 @@ internal sealed class SessionsHubController
 
     public async Task NewGroupAsync(SessionInfo? moveRow = null)
     {
+        if (moveRow is not null && !RequireCurrentRoster())
+            return;
         if (PromptBinding() is not { } binding) return;
         if (!_state.Permissions.CanCreateGroup)
         {
@@ -913,8 +1317,10 @@ internal sealed class SessionsHubController
             return;
         }
         var name = await PromptAsync(T("NewGroupTitle"), T("NewGroupBody"), T("Create"),
-            placeholder: T("NewGroupPlaceholder"));
+            placeholder: T("NewGroupPlaceholder"), icon: FluentIconCatalog.Add, inputLabel: T("Label"));
         if (name is null) return;
+        if (moveRow is not null && !RequireCurrentRoster())
+            return;
         if (!await CreateGroupAsync(name, binding)) return;
         if (moveRow is not null)
             await MoveToGroupAsync(moveRow, name, binding);
@@ -933,7 +1339,8 @@ internal sealed class SessionsHubController
     public async Task RenameGroupAsync(string name)
     {
         if (PromptBinding() is not { } binding) return;
-        var to = await PromptAsync(T("RenameGroupTitle"), T("RenameGroupBody"), T("Save"), name);
+        var to = await PromptAsync(T("RenameGroupTitle"), T("RenameGroupBody"), T("Save"), name,
+            icon: FluentIconCatalog.Rename, inputLabel: T("Label"));
         if (to is null || to == name) return;
         var renamed = await GuardedAsync(T("GroupFailed"), async operation =>
         {
@@ -947,7 +1354,8 @@ internal sealed class SessionsHubController
     public async Task DeleteGroupAsync(string name)
     {
         if (PromptBinding() is not { } binding) return;
-        if (!await ConfirmAsync(T("DeleteGroupTitle"), F("DeleteGroupBody", name), T("DeleteGroup"), destructive: false))
+        if (!await ConfirmAsync(T("DeleteGroupTitle"), F("DeleteGroupBody", name), T("DeleteGroup"), destructive: true,
+                icon: FluentIconCatalog.Delete))
             return;
         var deleted = await GuardedAsync(T("GroupFailed"), async operation =>
         {
@@ -1084,15 +1492,20 @@ internal sealed class SessionsHubController
             false, new TaskCompletionSource<SessionsHubDialog?>())
         {
             Repo = DefaultWorktreeRepo(),
+            Icon = FluentIconCatalog.Add,
         };
         if (PromptBinding() is not { } binding) return;
         var pending = OpenDialog(dialog);
-        _ = LoadDialogBranchesAsync();
+        // Mount the controlled ContentDialog before branch loading can invalidate it again.
+        // The queued load rechecks the live dialog, connection binding and generation.
+        _post(() => _ = LoadDialogBranchesAsync());
         var request = await pending;
         if (request is null) return;
+        WorktreeRecord? createdRecord = null;
         var created = await WorktreeOperationAsync(null, T("WorktreeCreateFailed"),
-            client => client.CreateWorktreeAsync(request.Repo.Trim(), NullIfBlank(request.Name), NullIfBlank(request.BaseRef)), binding);
-        if (!created) return;
+            async client => createdRecord = await client.CreateWorktreeAsync(
+                request.Repo.Trim(), NullIfBlank(request.Name), NullIfBlank(request.BaseRef)), binding);
+        if (!created || createdRecord is null) return;
         ShowNotice("", T("WorktreeCreated"), InfoBarSeverity.Success);
         await LoadWorktreesAsync();
     }
@@ -1118,7 +1531,8 @@ internal sealed class SessionsHubController
     public async Task RemoveWorktreeAsync(WorktreeRecord record)
     {
         if (PromptBinding() is not { } binding) return;
-        if (!await ConfirmAsync(T("RemoveWorktreeTitle"), F("RemoveWorktreeBody", record.Name), T("Remove"), destructive: true))
+        if (!await ConfirmAsync(T("RemoveWorktreeTitle"), F("RemoveWorktreeBody", record.Name), T("Remove"), destructive: true,
+                icon: FluentIconCatalog.Delete, facts: WorktreeFacts(record)))
             return;
         WorktreeRemoveResult? result = null;
         if (!await WorktreeOperationAsync(record.Id, T("RemoveWorktreeFailed"),
@@ -1130,7 +1544,9 @@ internal sealed class SessionsHubController
             if (!IsCurrent(binding))
                 return;
             var reason = result.SnapshotError ?? T("RemoveWorktreeRefused");
-            if (!await ConfirmAsync(T("ForceRemoveTitle"), F("ForceRemoveBody", record.Name, reason), T("ForceRemove"), destructive: true))
+            if (!await ConfirmAsync(T("ForceRemoveTitle"), F("ForceRemoveBody", record.Name, reason), T("ForceRemove"), destructive: true,
+                    icon: FluentIconCatalog.StatusWarn, facts: WorktreeFacts(record),
+                    noteTitle: T("ForceRemoveTitle"), noteMessage: reason))
             {
                 await LoadWorktreesAsync();
                 return;
@@ -1139,13 +1555,23 @@ internal sealed class SessionsHubController
                     async client => result = await client.RemoveWorktreeAsync(record.Id, force: true), binding))
                 return;
         }
-        ShowNotice("", F("WorktreeRemoved", record.Name), InfoBarSeverity.Success);
+        if (result?.Removed != true)
+        {
+            ShowNotice(T("RemoveWorktreeFailed"), result?.SnapshotError ?? T("RemoveWorktreeRefused"), InfoBarSeverity.Warning);
+            await LoadWorktreesAsync();
+            return;
+        }
+        ShowNotice("", F("WorktreeRemoved", record.Name), InfoBarSeverity.Success,
+            T("Restore"), () => _ = RestoreWorktreeAsync(record));
         await LoadWorktreesAsync();
     }
 
     public async Task RestoreWorktreeAsync(WorktreeRecord record)
     {
-        if (!await WorktreeOperationAsync(record.Id, T("RestoreWorktreeFailed"), client => client.RestoreWorktreeAsync(record.Id)))
+        WorktreeRecord? restoredRecord = null;
+        if (!await WorktreeOperationAsync(record.Id, T("RestoreWorktreeFailed"),
+                async client => restoredRecord = await client.RestoreWorktreeAsync(record.Id))
+            || restoredRecord is null)
             return;
         ShowNotice("", F("WorktreeRestored", record.Name), InfoBarSeverity.Success);
         await LoadWorktreesAsync();
@@ -1221,13 +1647,68 @@ internal sealed class SessionsHubController
         dialog.Completion.TrySetResult(confirmed && dialog.IsValid ? dialog : null);
     }
 
-    private async Task<bool> ConfirmAsync(string title, string body, string confirmLabel, bool destructive) =>
+    private async Task<bool> ConfirmAsync(
+        string title,
+        string body,
+        string confirmLabel,
+        bool destructive,
+        string? icon = null,
+        IReadOnlyList<SessionsHubDialogFact>? facts = null,
+        string? itemsLabel = null,
+        IReadOnlyList<SessionsHubDialogListItem>? items = null,
+        string? noteTitle = null,
+        string? noteMessage = null) =>
         await OpenDialog(new SessionsHubDialog(SessionsHubDialogKind.Confirm, title, body, confirmLabel, destructive,
-            new TaskCompletionSource<SessionsHubDialog?>())) is not null;
+            new TaskCompletionSource<SessionsHubDialog?>())
+        {
+            Icon = icon ?? (destructive ? FluentIconCatalog.Delete : FluentIconCatalog.StatusOk),
+            Facts = facts ?? Array.Empty<SessionsHubDialogFact>(),
+            ItemsLabel = itemsLabel,
+            Items = items ?? Array.Empty<SessionsHubDialogListItem>(),
+            NoteTitle = noteTitle,
+            NoteMessage = noteMessage,
+        }) is not null;
 
-    private async Task<string?> PromptAsync(string title, string body, string confirmLabel, string initial = "", string? placeholder = null) =>
+    private async Task<string?> PromptAsync(
+        string title,
+        string body,
+        string confirmLabel,
+        string initial = "",
+        string? placeholder = null,
+        string? icon = null,
+        string? inputLabel = null,
+        IReadOnlyList<SessionsHubDialogFact>? facts = null) =>
         (await OpenDialog(new SessionsHubDialog(SessionsHubDialogKind.Prompt, title, body, confirmLabel, false,
-            new TaskCompletionSource<SessionsHubDialog?>()) { Text = initial, Placeholder = placeholder }))?.Text.Trim();
+            new TaskCompletionSource<SessionsHubDialog?>())
+        {
+            Text = initial,
+            Placeholder = placeholder,
+            Icon = icon ?? FluentIconCatalog.Rename,
+            InputLabel = inputLabel,
+            Facts = facts ?? Array.Empty<SessionsHubDialogFact>(),
+        }))?.Text.Trim();
+
+    private IReadOnlyList<SessionsHubDialogFact> SessionFacts(SessionInfo row)
+    {
+        var display = SessionDisplayResolver.Resolve(row);
+        var facts = new List<SessionsHubDialogFact>
+        {
+            new(T("FactAgent"), display.AgentId is { } agentId
+                ? _state.Agents.FirstOrDefault(agent => agent.Id == agentId)?.Name ?? agentId
+                : T("NotAvailable")),
+            new(T("FactUpdated"), SessionsHubPresentation.AbsoluteTime(row.UpdatedAt)),
+        };
+        if (row.Worktree is { } worktree)
+            facts.Add(new SessionsHubDialogFact(T("FactWorktree"), $"{worktree.Branch} · {WorktreesProjection.RepoName(worktree.RepoRoot ?? "")}"));
+        return facts;
+    }
+
+    private static IReadOnlyList<SessionsHubDialogFact> WorktreeFacts(WorktreeRecord record) =>
+    [
+        new(T("NewWorktreeBase"), record.Branch),
+        new(T("FactPath"), record.Path ?? record.RepoRoot),
+        new(T("WorktreeColOwner"), record.OwnerKind),
+    ];
 
     /// <summary>Loads branches for the dialog's repository; the base field stays editable when they are unavailable.</summary>
     public async Task LoadDialogBranchesAsync()

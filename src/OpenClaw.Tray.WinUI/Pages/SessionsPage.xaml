@@ -5,6 +5,17 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     NavigationCacheMode="Enabled">
 
-    <!-- The Sessions page is a Reactor tree (OpenClawTray.Sessions.SessionsHubRoot) mounted into this host. -->
-    <Border x:Name="HubHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+    <Grid>
+        <!-- The Sessions page is a Reactor tree (OpenClawTray.Sessions.SessionsHubRoot) mounted into this host. -->
+        <Border x:Name="HubHost" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        <ProgressBar
+            x:Name="ResponsiveHostMarker"
+            Height="1"
+            Opacity="0"
+            IsHitTestVisible="False"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"
+            AutomationProperties.AutomationId="SessionsHubHost"
+            AutomationProperties.Name="Sessions responsive host"/>
+    </Grid>
 </Page>

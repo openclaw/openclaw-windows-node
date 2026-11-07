@@ -109,6 +109,11 @@ public partial class OpenClawGatewayClient
 
     internal SessionListPage ParseSessionListPage(JsonElement payload)
     {
+        if (payload.ValueKind != JsonValueKind.Array
+            && (payload.ValueKind != JsonValueKind.Object
+                || !payload.TryGetProperty("sessions", out var sessionRows)
+                || sessionRows.ValueKind != JsonValueKind.Array))
+            throw new InvalidOperationException("The Gateway returned an invalid sessions list response.");
         var sessions = ParseDetachedSessionRows(payload);
         if (payload.ValueKind != JsonValueKind.Object)
             return new SessionListPage { Sessions = sessions };
@@ -255,11 +260,13 @@ public partial class OpenClawGatewayClient
                 GetString(worktree, "id") ?? "",
                 GetString(worktree, "branch") ?? "",
                 GetString(worktree, "path") ?? "",
-                GetString(worktree, "reason") ?? "cleanup-failed");
+                GetString(worktree, "reason") ?? "");
         }
+        var deleted = GetOptionalBool(payload, "deleted")
+            ?? throw new InvalidOperationException("The Gateway returned an invalid session deletion response.");
         return new SessionDeleteOutcome(
             GetString(payload, "key") ?? key,
-            GetOptionalBool(payload, "deleted") ?? true,
+            deleted,
             preserved);
     }
 
@@ -347,7 +354,8 @@ public partial class OpenClawGatewayClient
         var parameters = new Dictionary<string, object?> { ["repoRoot"] = repoRoot.Trim() };
         if (!string.IsNullOrWhiteSpace(name)) parameters["name"] = name.Trim();
         if (!string.IsNullOrWhiteSpace(baseRef)) parameters["baseRef"] = baseRef.Trim();
-        return ParseWorktree(await MutateAsync("worktrees.create", parameters, timeoutMs).ConfigureAwait(false));
+        return ParseWorktree(await MutateAsync("worktrees.create", parameters, timeoutMs).ConfigureAwait(false))
+            ?? throw new InvalidOperationException("The Gateway returned an invalid worktree creation response.");
     }
 
     public async Task<WorktreeRemoveResult> RemoveWorktreeAsync(string id, bool force, int timeoutMs = 120000)
@@ -364,7 +372,8 @@ public partial class OpenClawGatewayClient
     public async Task<WorktreeRecord?> RestoreWorktreeAsync(string id, int timeoutMs = 120000)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return ParseWorktree(await MutateAsync("worktrees.restore", new { id }, timeoutMs).ConfigureAwait(false));
+        return ParseWorktree(await MutateAsync("worktrees.restore", new { id }, timeoutMs).ConfigureAwait(false))
+            ?? throw new InvalidOperationException("The Gateway returned an invalid worktree restore response.");
     }
 
     public async Task<WorktreeGcResult> RunWorktreeGcAsync(string? jobId = null, int timeoutMs = 60000)
@@ -374,10 +383,12 @@ public partial class OpenClawGatewayClient
         return ParseWorktreeGc(await MutateAsync("worktrees.gc", parameters, timeoutMs).ConfigureAwait(false));
     }
 
-    internal static IReadOnlyList<WorktreeRecord> ParseWorktrees(JsonElement payload) =>
-        TryGetArray(payload, "worktrees") is { } rows
-            ? rows.EnumerateArray().Select(ParseWorktree).OfType<WorktreeRecord>().ToArray()
-            : Array.Empty<WorktreeRecord>();
+    internal static IReadOnlyList<WorktreeRecord> ParseWorktrees(JsonElement payload)
+    {
+        if (TryGetArray(payload, "worktrees") is not { } rows)
+            throw new InvalidOperationException("The Gateway returned an invalid worktree list response.");
+        return rows.EnumerateArray().Select(ParseWorktree).OfType<WorktreeRecord>().ToArray();
+    }
 
     internal static WorktreeRecord? ParseWorktree(JsonElement item)
     {
@@ -393,7 +404,7 @@ public partial class OpenClawGatewayClient
             GetString(item, "path"),
             GetString(item, "branch") ?? "",
             GetString(item, "baseRef"),
-            GetString(item, "ownerKind") ?? "manual",
+            GetString(item, "ownerKind") ?? "",
             NonBlank(GetString(item, "ownerId")),
             GetLongOrNull(item, "createdAt") ?? 0,
             GetLongOrNull(item, "lastActiveAt") ?? 0,
@@ -424,7 +435,13 @@ public partial class OpenClawGatewayClient
     internal static WorktreeGcResult ParseWorktreeGc(JsonElement payload)
     {
         if (payload.ValueKind != JsonValueKind.Object)
-            return new WorktreeGcResult(null, null, null, null, Array.Empty<string>(), 0, 0, Array.Empty<string>());
+            throw new InvalidOperationException("The Gateway returned an invalid worktree cleanup response.");
+        var state = NonBlank(GetString(payload, "state"))
+            ?? throw new InvalidOperationException("The Gateway returned a worktree cleanup response without a state.");
+        if (TryGetArray(payload, "removed") is not { } removedRows
+            || GetLongOrNull(payload, "orphansDeleted") is not { } orphansDeleted
+            || GetLongOrNull(payload, "snapshotsPruned") is not { } snapshotsPruned)
+            throw new InvalidOperationException("The Gateway returned an incomplete worktree cleanup response.");
         var issues = TryGetArray(payload, "issues") is { } rows
             ? rows.EnumerateArray()
                 .Where(row => row.ValueKind == JsonValueKind.Object)
@@ -435,12 +452,16 @@ public partial class OpenClawGatewayClient
             : Array.Empty<string>();
         return new WorktreeGcResult(
             NonBlank(GetString(payload, "jobId")),
-            NonBlank(GetString(payload, "state")),
+            state,
             NonBlank(GetString(payload, "outcome")),
             NonBlank(GetString(payload, "error")),
-            GetStringArrayList(payload, "removed"),
-            (int)(GetLongOrNull(payload, "orphansDeleted") ?? 0),
-            (int)(GetLongOrNull(payload, "snapshotsPruned") ?? 0),
+            removedRows.EnumerateArray()
+                .Where(row => row.ValueKind == JsonValueKind.String)
+                .Select(row => row.GetString())
+                .OfType<string>()
+                .ToArray(),
+            (int)Math.Min(orphansDeleted, int.MaxValue),
+            (int)Math.Min(snapshotsPruned, int.MaxValue),
             issues);
     }
 

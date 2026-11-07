@@ -40,16 +40,19 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("SessionActionPlanner.IsAllowed(SessionActionKind.Delete", controller);
         Assert.Contains("SessionActionPlanner.BuildPrompt(SessionActionKind.Delete", controller);
         Assert.Contains("SessionActionPromptLocalizer.Localize(prompt)", controller);
-        // Reset and Compact run through the Workspace menu runner, which owns their confirmation.
+        // Reset uses the page's controlled dialog; other shared actions keep the Workspace runner.
+        Assert.Contains("ResetAsync(row, title)", controller);
         Assert.Contains("_menu.ExecuteAsync(action, ToWorkspaceSession(row, title), row)", controller);
         // Bulk, delete-all-archived, cloud-worker stop, and forced worktree removal confirm first.
         Assert.Contains("ConfirmAsync(T(\"DeleteSelectedTitle\")", controller);
         Assert.Contains("ConfirmAsync(T(\"DeleteAllArchivedTitle\")", controller);
         Assert.Contains("ConfirmAsync(T(\"StopWorkerTitle\")", controller);
         Assert.Contains("ConfirmAsync(T(\"ForceRemoveTitle\")", controller);
-        // Runtime dialogs use runtime keys, and destructive dialogs default to Cancel.
+        // Runtime dialogs use localized keys. Destructive dialogs keep the action accent-styled
+        // while explicitly focusing the non-accent Close button.
         Assert.Contains("SessionActionPrompt_CancelLabel", dialog);
-        Assert.Contains("destructive ? ContentDialogButton.Close : ContentDialogButton.Primary", dialog);
+        Assert.Contains("destructive ? ContentDialogButton.None : ContentDialogButton.Primary", dialog);
+        Assert.Contains("FocusCloseButton(native)", dialog);
     }
 
     [Fact]
@@ -150,6 +153,16 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("if (PromptBinding() is not { } binding) return;", controller);
         // Identity-less rows are never deleted on a confirmation made before a reload.
         Assert.Contains("reloaded && plan.Requests.Any(request => request.ExpectedSessionId is null)", controller);
+    }
+
+    [Fact]
+    public void SessionsPage_RefreshesOwnerCatalogWhenSelfProfileRevisionChanges()
+    {
+        var page = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
+
+        Assert.Contains("case nameof(AppState.SelfProfileRevision):", page);
+        Assert.Contains("_controller?.RefreshOwnerCatalogAsync()", page);
+        Assert.Contains("profileRevisionChanged", page);
     }
 
     [Fact]

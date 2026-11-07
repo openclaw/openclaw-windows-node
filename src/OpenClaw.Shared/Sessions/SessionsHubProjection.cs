@@ -66,7 +66,7 @@ public static class SessionsHubProjection
         ArgumentNullException.ThrowIfNull(sessions);
         return string.Join("\n", sessions.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => string.Join("\u001f",
             s.Key, s.SessionId, s.Status, s.HasActiveRun, s.AbortedLastRun, s.UpdatedAt?.Ticks, s.Label, s.DisplayName,
-            s.DerivedTitle, s.Archived, s.ArchivedAt, s.Pinned, s.Unread, s.Category, s.Color, s.Icon, s.Kind, s.Channel,
+            s.DerivedTitle, s.LastRunError, s.Archived, s.ArchivedAt, s.Pinned, s.Unread, s.Category, s.Color, s.Icon, s.Kind, s.Channel,
             s.Owner?.Type, s.Owner?.Id, s.Owner?.Label, s.Model, s.ThinkingLevel, s.ReasoningLevel, s.VerboseLevel, s.FastMode,
             s.Worktree?.Id, s.Worktree?.Branch, s.TotalTokens, s.PlacementState, s.PlacementRecoveryAction)));
     }

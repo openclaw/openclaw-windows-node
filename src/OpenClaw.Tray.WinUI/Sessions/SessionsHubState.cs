@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Sessions;
 
@@ -51,8 +52,17 @@ internal sealed record SessionsHubFilters(
 
     /// <summary>The Windows completed/background toggles stay client-side and apply to the active roster.</summary>
     public IEnumerable<SessionInfo> ApplyClientFilters(IEnumerable<SessionInfo> rows) =>
-        rows.Where(row => SessionDisplayResolver.IsVisible(row, ShowBackground))
-            .Where(row => Status != SessionArchiveFilter.Active || ShowCompleted || !SessionRunState.IsCompleted(row));
+        rows.Where(row => SessionDisplayResolver.IsVisible(row, ShowBackground) && !HidesCompleted(row));
+
+    /// <summary>
+    /// Completed rows that only the Show completed toggle keeps off the list. Without this count an
+    /// all-completed page reads as a Gateway with nothing to show.
+    /// </summary>
+    public int CountHiddenCompleted(IEnumerable<SessionInfo> rows) =>
+        rows.Count(row => SessionDisplayResolver.IsVisible(row, ShowBackground) && HidesCompleted(row));
+
+    private bool HidesCompleted(SessionInfo row) =>
+        Status == SessionArchiveFilter.Active && !ShowCompleted && SessionRunState.IsCompleted(row);
 
     public SessionsHubFilters Cleared() => this with
     {
@@ -68,6 +78,8 @@ internal sealed record SessionsHubNotice(
     string? ActionLabel = null,
     Action? Action = null);
 
+internal sealed record SessionsHubRowReveal(string Key, bool Focus);
+
 internal sealed record TranscriptSearchState(
     string Query = "",
     bool IsOpen = false,
@@ -80,7 +92,10 @@ internal sealed record WorktreesState(
     IReadOnlyList<WorktreeRecord>? Rows = null,
     string? Error = null,
     string? BusyId = null,
-    bool IsCleaning = false);
+    bool IsCleaning = false)
+{
+    public string? DetailsId { get; init; }
+}
 
 /// <summary>Immutable snapshot rendered by <see cref="SessionsHubRoot"/>.</summary>
 internal sealed record SessionsHubState
@@ -99,6 +114,8 @@ internal sealed record SessionsHubState
     public SessionsHubLoad Load { get; init; }
     public string? LoadError { get; init; }
     public IReadOnlyList<SessionInfo> Rows { get; init; } = Array.Empty<SessionInfo>();
+    /// <summary>Gateway-wide attention input, independent of the roster query and its loading state.</summary>
+    public IReadOnlyList<SessionInfo> TrackedRows { get; init; } = Array.Empty<SessionInfo>();
     public bool HasMore { get; init; }
     public int? NextOffset { get; init; }
     public int? TotalCount { get; init; }
@@ -106,12 +123,16 @@ internal sealed record SessionsHubState
     public bool GroupsSupported { get; init; }
 
     public string? DetailsKey { get; init; }
+    public IReadOnlySet<string> ExpandedKeys { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+    public SessionsHubRowReveal? RowReveal { get; init; }
     public (string? Key, string Text, string? SessionId) LabelDraft { get; init; } = (null, "", null);
     public bool SelectionMode { get; init; }
     public SessionsHubSelection Selection { get; init; } = SessionsHubSelection.Empty;
     public bool IsBusy { get; init; }
     /// <summary>A roster reload is in flight; appending a page now would mix filters.</summary>
     public bool IsReloading { get; init; }
+    /// <summary>Row writes require a loaded, current roster and no operation/reload in flight.</summary>
+    public bool CanMutateRows => IsConnected && Load == SessionsHubLoad.Loaded && !IsBusy && !IsReloading;
     public SessionsHubNotice? Notice { get; init; }
 
     public TranscriptSearchState Transcript { get; init; } = new();
@@ -131,6 +152,10 @@ internal enum SessionsHubDialogKind
     NewWorktree,
 }
 
+internal sealed record SessionsHubDialogFact(string Label, string Value);
+
+internal sealed record SessionsHubDialogListItem(string Text, string Reason);
+
 /// <summary>
 /// One pending dialog. <see cref="Completion"/> resolves with the final dialog on confirm, null on cancel;
 /// text and worktree fields are drafts updated as the user types.
@@ -145,6 +170,13 @@ internal sealed record SessionsHubDialog(
 {
     public string Text { get; init; } = "";
     public string? Placeholder { get; init; }
+    public string? InputLabel { get; init; }
+    public string Icon { get; init; } = FluentIconCatalog.StatusOk;
+    public IReadOnlyList<SessionsHubDialogFact> Facts { get; init; } = Array.Empty<SessionsHubDialogFact>();
+    public string? ItemsLabel { get; init; }
+    public IReadOnlyList<SessionsHubDialogListItem> Items { get; init; } = Array.Empty<SessionsHubDialogListItem>();
+    public string? NoteTitle { get; init; }
+    public string? NoteMessage { get; init; }
     public string Repo { get; init; } = "";
     public string Name { get; init; } = "";
     public string BaseRef { get; init; } = "";

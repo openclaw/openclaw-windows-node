@@ -1,11 +1,13 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Layout;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Sessions;
@@ -15,47 +17,116 @@ internal static class SessionsHubDetailsView
 {
     private static string T(string key) => SessionsHubPresentation.T(key);
     private static string F(string key, params object?[] args) => SessionsHubPresentation.F(key, args);
+    private static string W(string key) => OpenClawTray.Windows.WorkspaceWindow.Text(key);
 
     private static readonly string[] FastValues = ["", "auto", "on", "off"];
     private static readonly string[] VerboseValues = ["", "off", "on", "full"];
     private static readonly string[] ReasoningValues = ["", "off", "on", "stream"];
     private static readonly string[] DefaultThinkingValues = ["off", "minimal", "low", "medium", "high"];
+    private const double OrganizationActionWidth = 150;
 
     public static Element Render(SessionsHubViewContext context, SessionInfo row, IReadOnlyDictionary<string, string> titles)
     {
         var state = context.State;
         var controller = context.Controller;
         var title = titles.TryGetValue(row.Key, out var known) ? known : row.Key;
-        var canWrite = state.Permissions.CanWrite && !state.IsBusy;
+        var canWrite = state.Permissions.CanWrite && state.CanMutateRows;
 
-        // The expander header is the session's identity and action bar (name, status, chat,
-        // unarchive, full menu), so the body holds only what the header cannot show.
-        var editing = VStack(16, Overrides(context, row, title, canWrite), Appearance(context, row, title, canWrite));
-        var information = new List<Element> { Organization(context, row, title, canWrite), Facts(context, row) };
+        var customize = Expander(T("Appearance"),
+                VStack(16,
+                    Overrides(context, row, title, canWrite),
+                    Appearance(context, row, title, canWrite),
+                    Organization(context, row, title, canWrite))
+                    .HAlign(HorizontalAlignment.Stretch),
+                true, _ => { })
+            .HAlign(HorizontalAlignment.Stretch)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .AutomationId("SessionsHubCustomize");
+        var technical = Expander("",
+                TechnicalFacts(context, row), false, _ => { })
+            .HeaderTemplate(HStack(8,
+                SessionsHubView.Glyph("\uE9D9", 14),
+                TextBlock(LocalizationHelper.GetString("ConnectionPage_NodeTechnicalDetails.Text"))))
+            .HAlign(HorizontalAlignment.Stretch)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .AutomationId("SessionsHubTechnicalDetails");
+        var information = new List<Element> { About(context, row) };
         if (SessionsHubProjection.IsCloudWorker(row))
             information.Add(CloudWorker(context, row, title, canWrite));
-        var facts = VStack(16, information.ToArray());
+        var about = VStack(16, information.ToArray());
+        var editing = VStack(10, customize, technical)
+            .HAlign(HorizontalAlignment.Stretch);
         Element body = context.IsWide
             ? Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
-                editing.Margin(0, 0, 20, 0).Grid(column: 0), facts.Margin(20, 0, 0, 0).Grid(column: 1))
-            : VStack(20, editing, facts);
-        var sections = new List<Element> { body };
+                about.Margin(0, 0, 20, 0).Grid(column: 0), editing.Margin(20, 0, 0, 0).Grid(column: 1))
+            : VStack(20, about, editing);
+        var sections = new List<Element> { CommandBar(context, row, title), body };
         if (!string.IsNullOrWhiteSpace(row.LastRunError))
-            sections.Insert(0, (InfoBar(T("LastRunError"), row.LastRunError) with { IsOpen = true })
+            sections.Insert(1, (InfoBar(T("LastRunError"), row.LastRunError) with { IsOpen = true })
                 .Severity(InfoBarSeverity.Error).IsClosable(false));
+        else if (controller.IsMain(row))
+            sections.Insert(1, (InfoBar(T("MainSessionTitle"), T("MainSessionBody")) with { IsOpen = true })
+                .Severity(InfoBarSeverity.Informational).IsClosable(false));
         return Border(VStack(16, sections.ToArray())).Padding(4, 4, 4, 8)
             .AutomationName(F("DetailsFor", title))
             .Landmark(Microsoft.UI.Xaml.Automation.Peers.AutomationLandmarkType.Custom)
             .AutomationId("SessionsHubDetails");
     }
 
+    private static Element CommandBar(SessionsHubViewContext context, SessionInfo row, string title)
+    {
+        var state = context.State;
+        var controller = context.Controller;
+        var canWrite = state.Permissions.CanWrite && state.CanMutateRows;
+        var canArchive = canWrite && !controller.IsMain(row);
+        Element Command(string glyph, string label, Action action, bool enabled, string automationId, string? tooltip = null) =>
+            SessionsHubView.WithMutationHelp(Button(HStack(6,
+                    SessionsHubView.Glyph(glyph, 13),
+                    TextBlock(label).FontSize(12)),
+                    action)
+                .SubtleButton()
+                .Padding(8, 5)
+                .IsEnabled(enabled)
+                .AutomationName(label)
+                .AutomationId(automationId), state, tooltip ?? label);
+        var menu = MenuItems(SessionsHubMenus.SessionMenu(context, row, title));
+        return VStack(6,
+            (FlexRow(
+                Command(FluentIconCatalog.Rename, W("SessionMenu_Rename"), () => controller.SetLabelDraft(row.Key, row.Label ?? ""), canWrite,
+                    "SessionsHubCommandRename"),
+                Command(row.Pinned ? FluentIconCatalog.Unpin : FluentIconCatalog.Pin,
+                    W(row.Pinned ? "SessionMenu_Unpin" : "SessionMenu_Pin"),
+                    () => _ = controller.RunSharedActionAsync(WorkspaceSessionMenuAction.TogglePin, row, title), canWrite,
+                    "SessionsHubCommandPin"),
+                Command(row.Unread ? FluentIconCatalog.MarkRead : FluentIconCatalog.MarkUnread,
+                    W(row.Unread ? "SessionMenu_MarkRead" : "SessionMenu_MarkUnread"),
+                    () => _ = controller.RunSharedActionAsync(WorkspaceSessionMenuAction.ToggleUnread, row, title), canWrite,
+                    "SessionsHubCommandUnread"),
+                Command(row.Archived ? FluentIconCatalog.Unarchive : FluentIconCatalog.Archive,
+                    W(row.Archived ? "SessionMenu_Unarchive" : "SessionMenu_Archive"),
+                    () => _ = row.Archived ? controller.UnarchiveAsync(row, title) : controller.ArchiveAsync(row, title),
+                    canArchive || row.Archived && canWrite, "SessionsHubCommandArchive",
+                    controller.IsMain(row) ? T("MainCannotArchive")
+                        : W(row.Archived ? "SessionMenu_Unarchive" : "SessionMenu_Archive")),
+                Border(Empty()).Flex(grow: 1, basis: 0),
+                SessionsHubView.IconButton(FluentIconCatalog.MoreOverflow, F("MoreNamed", title), () => { },
+                        automationId: "SessionsHubCommandMore")
+                    .WithFlyout(menu)) with
+                { Wrap = FlexWrap.Wrap, ColumnGap = 4, RowGap = 4, AlignItems = FlexAlign.Center }),
+            Border(Empty()).Height(1).Background(Theme.Ref("DividerStrokeColorDefaultBrush")));
+    }
+
     private static Element Section(string title, params Element[] children) =>
         VStack(8, [TextBlock(title).FontSize(12).FontWeight(FontWeights.SemiBold).Foreground(Theme.SecondaryText)
-            .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level3), .. children]);
+            .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level3), .. children])
+            .HAlign(HorizontalAlignment.Stretch);
 
     private static Element Overrides(SessionsHubViewContext context, SessionInfo row, string title, bool canWrite)
     {
         var controller = context.Controller;
+        var state = context.State;
+        var labelHelp = state.CanMutateRows ? T("Label") : T("RosterNotCurrent");
+        var saveHelp = state.CanMutateRows ? T("Save") : T("RosterNotCurrent");
         var draft = context.State.LabelDraft.Key == row.Key ? context.State.LabelDraft.Text : row.Label ?? "";
         var dirty = draft.Trim() != (row.Label ?? "").Trim();
         var thinkingValues = ThinkingValues(row);
@@ -65,6 +136,8 @@ internal static class SessionsHubDetailsView
                     .MaxLength(120)
                     .AutomationName(T("Label"))
                     .IsEnabled(canWrite)
+                    .ToolTip(labelHelp)
+                    .HelpText(labelHelp)
                     .OnKeyDown((_, args) =>
                     {
                         if (args.Key == global::Windows.System.VirtualKey.Enter && dirty)
@@ -76,12 +149,14 @@ internal static class SessionsHubDetailsView
                     .AutomationId("SessionsHubLabel")
                     .Grid(column: 0),
                 Button(T("Save"), () => _ = controller.SaveLabelAsync(row, draft)).AutomationName(T("Save"))
-                    .IsEnabled(canWrite && dirty).VAlign(VerticalAlignment.Bottom).Margin(8, 0, 0, 0)
+                    .IsEnabled(canWrite && dirty).ToolTip(saveHelp).HelpText(saveHelp)
+                    .VAlign(VerticalAlignment.Bottom).Margin(8, 0, 0, 0)
                     .AutomationId("SessionsHubLabelSave").Grid(column: 1)),
             Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto, GridSize.Auto],
                 Choice(T("Thinking"), thinkingValues, row.ThinkingLevel, value =>
                         _ = controller.PatchAsync(row, new SessionPatch { ThinkingLevel = value is null ? SessionPatch.Clear : value }),
-                        canWrite, "SessionsHubThinking", ThinkingLabel)
+                        canWrite, "SessionsHubThinking", ThinkingLabel,
+                        state.CanMutateRows ? T("Thinking") : T("RosterNotCurrent"))
                     .Margin(0, 0, 6, 8).Grid(row: 0, column: 0),
                 Choice(T("Fast"), FastValues, row.FastMode, value =>
                         _ = controller.PatchAsync(row, new SessionPatch
@@ -94,15 +169,18 @@ internal static class SessionsHubDetailsView
                                 _ => SessionFastMode.Auto,
                             },
                         }),
-                        canWrite, "SessionsHubFast", LevelLabel)
+                        canWrite, "SessionsHubFast", LevelLabel,
+                        state.CanMutateRows ? T("Fast") : T("RosterNotCurrent"))
                     .Margin(6, 0, 0, 8).Grid(row: 0, column: 1),
                 Choice(T("Verbose"), VerboseValues, row.VerboseLevel, value =>
                         _ = controller.PatchAsync(row, new SessionPatch { VerboseLevel = value is null ? SessionPatch.Clear : value }),
-                        canWrite, "SessionsHubVerbose", LevelLabel)
+                        canWrite, "SessionsHubVerbose", LevelLabel,
+                        state.CanMutateRows ? T("Verbose") : T("RosterNotCurrent"))
                     .Margin(0, 0, 6, 0).Grid(row: 1, column: 0),
                 Choice(T("Reasoning"), ReasoningValues, row.ReasoningLevel, value =>
                         _ = controller.PatchAsync(row, new SessionPatch { ReasoningLevel = value is null ? SessionPatch.Clear : value }),
-                        canWrite, "SessionsHubReasoning", LevelLabel)
+                        canWrite, "SessionsHubReasoning", LevelLabel,
+                        state.CanMutateRows ? T("Reasoning") : T("RosterNotCurrent"))
                     .Margin(6, 0, 0, 0).Grid(row: 1, column: 1)));
     }
 
@@ -140,7 +218,7 @@ internal static class SessionsHubDetailsView
 
     /// <summary>A current value outside the known set stays visible rather than being misreported as Inherit.</summary>
     private static Element Choice(string header, string[] values, string? current, Action<string?> apply, bool enabled,
-        string automationId, Func<string, string> label)
+        string automationId, Func<string, string> label, string helpText)
     {
         var options = values.ToList();
         var value = current ?? "";
@@ -154,6 +232,8 @@ internal static class SessionsHubDetailsView
             })
             .Header(header)
             .IsEnabled(enabled)
+            .ToolTip(helpText)
+            .HelpText(helpText)
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId(automationId);
     }
@@ -162,28 +242,31 @@ internal static class SessionsHubDetailsView
     private static Element Appearance(SessionsHubViewContext context, SessionInfo row, string title, bool canWrite)
     {
         var controller = context.Controller;
+        var state = context.State;
+        var unavailableReason = !state.CanMutateRows ? T("RosterNotCurrent") : null;
         var colorId = SessionAppearance.NormalizeColor(row.Color);
         var iconId = SessionAppearance.NormalizeIcon(row.Icon);
         var swatches = new List<Element>
         {
-            Swatch(null, colorId is null, canWrite, () => _ = controller.PatchAsync(row, new SessionPatch { Color = SessionPatch.Clear })),
+            Swatch(null, colorId is null, canWrite, () => _ = controller.PatchAsync(row, new SessionPatch { Color = SessionPatch.Clear }),
+                unavailableReason),
         };
         foreach (var id in SessionAppearance.ColorIds)
         {
             var value = id;
             swatches.Add(Swatch(value, colorId == value, canWrite,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Color = value })));
+                () => _ = controller.PatchAsync(row, new SessionPatch { Color = value }), unavailableReason));
         }
         var icons = new List<Element>
         {
             IconChoice(null, colorId, string.IsNullOrWhiteSpace(row.Icon), canWrite,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = SessionPatch.Clear })),
+                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = SessionPatch.Clear }), unavailableReason),
         };
         foreach (var id in SessionAppearance.IconIds)
         {
             var value = id;
             icons.Add(IconChoice(value, colorId, iconId == value, canWrite,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = value })));
+                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = value }), unavailableReason));
         }
         return Section(T("Appearance"),
             TextBlock(T("ColorHeader")).FontSize(12),
@@ -192,7 +275,7 @@ internal static class SessionsHubDetailsView
             HStack(2, icons.ToArray()).AutomationName(F("IconFor", title)).AutomationId("SessionsHubIconPicker"));
     }
 
-    private static Element Swatch(string? colorId, bool selected, bool enabled, Action apply)
+    private static Element Swatch(string? colorId, bool selected, bool enabled, Action apply, string? unavailableReason)
     {
         var label = colorId is null ? T("ColorNone") : SessionsHubPresentation.ColorLabel(colorId);
         Element dot = colorId is null
@@ -210,11 +293,13 @@ internal static class SessionsHubDetailsView
             .IsEnabled(enabled)
             .AutomationName(label)
             .ItemStatus(selected ? T("Selected") : "")
-            .ToolTip(label)
+            .ToolTip(unavailableReason ?? label)
+            .HelpText(unavailableReason ?? label)
             .AutomationId("SessionsHubColor:" + (colorId ?? "none"));
     }
 
-    private static Element IconChoice(string? iconId, string? colorId, bool selected, bool enabled, Action apply)
+    private static Element IconChoice(
+        string? iconId, string? colorId, bool selected, bool enabled, Action apply, string? unavailableReason)
     {
         var label = iconId is null ? T("IconDefault") : SessionsHubPresentation.IconLabel(iconId);
         var tint = colorId ?? "blue";
@@ -230,7 +315,8 @@ internal static class SessionsHubDetailsView
             .IsEnabled(enabled)
             .AutomationName(label)
             .ItemStatus(selected ? T("Selected") : "")
-            .ToolTip(label)
+            .ToolTip(unavailableReason ?? label)
+            .HelpText(unavailableReason ?? label)
             .AutomationId("SessionsHubIcon:" + (iconId ?? "default"));
     }
 
@@ -239,54 +325,91 @@ internal static class SessionsHubDetailsView
         var state = context.State;
         var owner = row.Owner is { } value ? SessionsHubPresentation.OwnerLabel(value, state.Agents) : T("Unassigned");
         var group = row.Category ?? T("Ungrouped");
+        var assign = SessionsHubView.WithMutationHelp(DropDownButton(T("Assign"), MenuItems(SessionsHubMenus.OwnerItems(context, row)))
+            .Width(OrganizationActionWidth)
+            .HAlign(HorizontalAlignment.Right)
+            .IsEnabled(canWrite && state.Permissions.Supports("sessions.assignOwner"))
+            .AutomationName(F("AssignOwnerNamed", title))
+            .AutomationId("SessionsHubAssignOwner").Margin(0, 0, 0, 6), state, T("Assign"));
+        var move = SessionsHubView.WithMutationHelp(DropDownButton(T("Move"), MenuItems(SessionsHubMenus.GroupItems(context, row)))
+            .Width(OrganizationActionWidth)
+            .HAlign(HorizontalAlignment.Right)
+            .IsEnabled(canWrite)
+            .AutomationName(F("MoveToGroupNamed", title))
+            .AutomationId("SessionsHubMoveGroup"), state, T("Move"));
         return Section(T("Organization"),
             Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
                 TextBlock(T("Owner")).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 0),
                 TextBlock(owner).TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center).Margin(12, 0)
                     .AutomationId("SessionsHubOwner").Grid(row: 0, column: 1),
-                DropDownButton(T("Assign"), MenuItems(SessionsHubMenus.OwnerItems(context, row)))
-                    .IsEnabled(canWrite && state.Permissions.Supports("sessions.assignOwner"))
-                    .AutomationName(F("AssignOwnerNamed", title))
-                    .AutomationId("SessionsHubAssignOwner").Margin(0, 0, 0, 6).Grid(row: 0, column: 2),
+                assign.Grid(row: 0, column: 2),
                 TextBlock(T("Group")).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center).Grid(row: 1, column: 0),
                 (row.Category is { } category
                         ? SessionsHubView.Pill(category, SessionAppearance.PaletteColor(category), FluentIconCatalog.Folder)
                             .HAlign(HorizontalAlignment.Left)
                         : TextBlock(group).TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center))
                     .Margin(12, 0).AutomationName(group).AutomationId("SessionsHubGroupValue").Grid(row: 1, column: 1),
-                DropDownButton(T("Move"), MenuItems(SessionsHubMenus.GroupItems(context, row)))
-                    .IsEnabled(canWrite)
-                    .AutomationName(F("MoveToGroupNamed", title))
-                    .AutomationId("SessionsHubMoveGroup").Grid(row: 1, column: 2)));
+                move.Grid(row: 1, column: 2)));
     }
 
-    private static Element Facts(SessionsHubViewContext context, SessionInfo row)
+    private static Element About(SessionsHubViewContext context, SessionInfo row)
+    {
+        var display = SessionDisplayResolver.Resolve(row);
+        var agent = display.AgentId is { } agentId
+            ? context.State.Agents.FirstOrDefault(entry => entry.Id == agentId)
+            : null;
+        var owner = row.Owner is { } value
+            ? SessionsHubPresentation.OwnerLabel(value, context.State.Agents)
+            : T("Unassigned");
+        var facts = new List<(string Label, string Value)>
+        {
+            (T("FactAgent"), agent?.Name ?? display.AgentId ?? T("NotAvailable")),
+            (T("Owner"), owner),
+            (T("FactModel"), row.Model ?? T("NotAvailable")),
+            (T("FactTokens"), SessionsHubPresentation.Tokens(row)),
+            (T("FactChannel"), display.Channel is { } channel ? SessionsHubPresentation.ChannelLabel(channel) : T("NotAvailable")),
+            (T("FactUpdated"), SessionsHubPresentation.AbsoluteTime(row.UpdatedAt)),
+        };
+        var children = new List<Element> { FactGrid(facts, "SessionsHubAbout") };
+        if (row.Worktree is { } worktree)
+        {
+            facts.Add((T("FactWorktree"), $"{worktree.Branch} · {WorktreesProjection.RepoName(worktree.RepoRoot ?? "")}"));
+            children[0] = FactGrid(facts, "SessionsHubAbout");
+            if (!string.IsNullOrWhiteSpace(worktree.Id))
+            {
+                var worktreeId = worktree.Id;
+                children.Add(Button(T("ShowInWorktrees"), () => context.Controller.OpenWorktree(worktreeId))
+                    .SubtleButton().AutomationName(T("ShowInWorktrees"))
+                    .AutomationId("SessionsHubShowWorktree"));
+            }
+        }
+        return Section(LocalizationHelper.GetString("SettingsPage_About.Text"), children.ToArray());
+    }
+
+    private static Element TechnicalFacts(SessionsHubViewContext context, SessionInfo row)
     {
         var facts = new List<(string Label, string Value)>
         {
             (T("FactKey"), row.Key),
-            (T("FactUpdated"), SessionsHubPresentation.AbsoluteTime(row.UpdatedAt)),
-            (T("FactTokens"), SessionsHubPresentation.Tokens(row)),
         };
         void Add(string label, string? value)
         {
             if (!string.IsNullOrWhiteSpace(value)) facts.Add((label, value));
         }
-        var display = SessionDisplayResolver.Resolve(row);
-        Add(T("FactAgent"), display.AgentId is { } agentId
-            ? context.State.Agents.FirstOrDefault(agent => agent.Id == agentId)?.Name ?? agentId : null);
-        Add(T("FactChannel"), display.Channel is { } channel ? SessionsHubPresentation.ChannelLabel(channel) : null);
-        Add(T("FactModel"), row.Model);
         Add(T("FactProvider"), row.Provider);
         Add(T("FactSessionId"), row.SessionId);
         Add(T("FactCreated"), row.CreatedAt is { } created
             ? SessionsHubPresentation.AbsoluteTime(DateTimeOffset.FromUnixTimeMilliseconds(created).UtcDateTime) : null);
-        Add(T("FactWorktree"), row.Worktree is { } worktree ? $"{worktree.Branch} ({WorktreesProjection.RepoName(worktree.RepoRoot ?? "")})" : null);
+        Add(T("FactWorktree"), row.Worktree is { } worktree ? $"{worktree.Id} · {worktree.RepoRoot}" : null);
         Add(T("FactArchiveReason"), row.Archived ? SessionsHubPresentation.ArchiveReason(row.ArchiveReason) : null);
         Add(T("FactArchivedAt"), row.ArchivedAt is { } archivedAt
             ? SessionsHubPresentation.AbsoluteTime(DateTimeOffset.FromUnixTimeMilliseconds(archivedAt).UtcDateTime) : null);
         Add(T("FactPinned"), row.Pinned ? T("Yes") : null);
+        return FactGrid(facts, "SessionsHubFacts");
+    }
 
+    private static Element FactGrid(IReadOnlyList<(string Label, string Value)> facts, string automationId)
+    {
         var cells = new List<Element>();
         for (var i = 0; i < facts.Count; i++)
         {
@@ -296,9 +419,9 @@ internal static class SessionsHubDetailsView
                 .AutomationName($"{facts[i].Label}: {facts[i].Value}")
                 .Margin(0, 0, 0, 6).Grid(row: i, column: 1));
         }
-        return Section(T("Details"),
-            Grid([GridSize.Auto, GridSize.Star()], facts.Select(_ => GridSize.Auto).ToArray(), cells.ToArray())
-                .AutomationId("SessionsHubFacts"));
+        return Grid([GridSize.Auto, GridSize.Star()], facts.Select(_ => GridSize.Auto).ToArray(), cells.ToArray())
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationId(automationId);
     }
 
     private static Element CloudWorker(SessionsHubViewContext context, SessionInfo row, string title, bool canWrite)
@@ -309,7 +432,9 @@ internal static class SessionsHubDetailsView
         return Section(T("CloudWorker"),
             TextBlock(SessionsHubPresentation.Placement(row.PlacementState)).AutomationId("SessionsHubPlacement"),
             TextBlock(help).FontSize(12).Foreground(Theme.SecondaryText).TextWrapping(TextWrapping.Wrap),
-            SessionsHubView.CommandButton(FluentIconCatalog.Stop, T("StopWorker"), () => _ = controller.StopCloudWorkerAsync(row, title),
-                canWrite && canStop && context.State.Permissions.Supports("sessions.reclaim"), "SessionsHubStopWorker"));
+            SessionsHubView.WithMutationHelp(
+                SessionsHubView.CommandButton(FluentIconCatalog.Stop, T("StopWorker"), () => _ = controller.StopCloudWorkerAsync(row, title),
+                    canWrite && canStop && context.State.Permissions.Supports("sessions.reclaim"), "SessionsHubStopWorker"),
+                context.State, T("StopWorker")));
     }
 }

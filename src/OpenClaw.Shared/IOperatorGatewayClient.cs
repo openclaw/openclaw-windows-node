@@ -233,7 +233,6 @@ public interface IOperatorGatewayClient
             Error = "sessions.create is not supported by this gateway client."
         });
 
-    IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
     Task<OpenClaw.Shared.Sessions.SessionListPage> ListSessionsPageAsync(
         OpenClaw.Shared.Sessions.SessionListQuery query, int timeoutMs = 15000)
         => Task.FromResult(new OpenClaw.Shared.Sessions.SessionListPage { IsSupported = false });
@@ -292,9 +291,6 @@ public interface IOperatorGatewayClient
         => Task.FromException<OpenClaw.Shared.Sessions.WorktreeGcResult>(
             new NotSupportedException("worktrees.gc is not supported."));
 
-    /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
-    Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
-        => Task.FromResult(new SessionListResult { IsSupported = false });
     /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
     Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
         => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));

@@ -52,6 +52,40 @@ status filter, using the same paged `sessions.list` roster as active rows
 drop results from an older one. The removed Workspace responsibility is marked
 closed in the architecture ledger.
 
+The page keeps the last roster visible during refresh and after a failed refresh,
+but row-scoped mutations are disabled and rechecked before dispatch until a
+current roster is loaded. Empty custom categories remain manageable without
+session rows. Owner choices are refreshed when the authenticated self-profile
+revision changes, late responses from an older profile refresh are ignored, and
+an owner-menu action from an older catalog generation is rejected before the
+Gateway call.
+
+**Needs you** uses the Gateway-wide tracked session feed, independently of the
+inventory's Current/Archived/All selection, agent, search, options, and paging.
+Loading or failing a filtered inventory request does not hide attention cards.
+Resolved or archived sessions leave the section when the tracked feed updates;
+disconnecting clears it. A card's **Details** action reveals its session in the
+inventory, searching by its key if the current filters exclude it.
+
+The inventory section title follows Current/Archived/All or name search, while
+the Sessions masthead stays stable. Its count is the current client page size
+against the loaded server-filtered rows, not the Gateway total. The caption
+reports matches among those loaded rows and the effective background, completed,
+and unrouted visibility settings. Completed sessions remain visible in Archived
+and All regardless of the Current-only completed toggle. Empty selection is
+disabled, but an existing selection mode can still be cancelled.
+
+Native session expanders stay open independently. Ordinary expansion does not
+request scrolling; explicit Details and archive Undo reveal the necessary page
+and group. Motion remains owned by the native Expander and Windows animation
+preferences, not a custom 220 ms timer. Archive Undo uses the supported,
+connection-bound unarchive patch and returns focus to the restored row, unless
+navigation or connection changed while it was pending. Its toast stays until
+used, dismissed, or replaced by another notice; duplicate names include the
+reported channel. Delete does not offer fabricated recovery. The page clears
+connection data on disconnect, so it does not invent a last-seen timestamp or
+offline working count.
+
 ## Scope delivered
 
 Right-click menu on Workspace chat sidebar session rows, mirroring the web chat session menu plus Windows extras. Archive browsing and restoration live in Settings Sessions.

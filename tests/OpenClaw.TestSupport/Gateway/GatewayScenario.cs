@@ -419,6 +419,8 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (RespondSessionsHub(method, parameters) is { } hubResponse)
+            return hubResponse;
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
         if (_contextUsage is not null && method == "chat.send")
@@ -502,14 +504,18 @@ public sealed partial class GatewayScenario
 
     private object ListSessions(JsonElement p)
     {
-        ValidateProperties(p, "agentId", "limit", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived");
+        ValidateProperties(p, "agentId", "limit", "offset", "activeMinutes", "includeGlobal", "includeUnknown",
+            "includeDerivedTitles", "includeLastMessage", "archived", "source", "excludeDock");
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         var limit = PositiveInt(p, "limit", int.MaxValue);
+        var offset = PositiveInt(p, "offset", 0);
         var activeMinutes = PositiveInt(p, "activeMinutes", int.MaxValue);
         foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage" })
             OptionalBoolean(p, flag);
+        _ = OptionalString(p, "source");
+        _ = OptionalBoolean(p, "excludeDock");
         JsonObject[] rows;
         lock (_sessionChanges)
         {
@@ -519,7 +525,7 @@ public sealed partial class GatewayScenario
                     ? changed?.DeepClone().AsObject() : JsonSerializer.SerializeToNode(s.Row)!.AsObject())
                 .OfType<JsonObject>()
                 .Where(row => (row["archived"]?.GetValue<bool>() ?? false) == (OptionalBoolean(p, "archived") ?? false))
-                .Take(limit).ToArray();
+                .Skip(offset).Take(limit).ToArray();
         }
         var listing = JsonSerializer.SerializeToElement(new
         {

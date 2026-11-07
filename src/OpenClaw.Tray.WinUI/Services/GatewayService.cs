@@ -65,6 +65,7 @@ internal sealed class GatewayService
 
         _clientGeneration++;
         _currentClient = newClient;
+        _state.InvalidateSessionsSnapshot();
         _state.AgentsListUnsupported = newClient?.IsAgentsListUnsupported ?? false;
 
         // Clear service-level caches on actual client swap
@@ -179,6 +180,8 @@ internal sealed class GatewayService
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         if (sender != _currentClient) return;
+        var statusClient = _currentClient;
+        var statusEpoch = statusClient?.SessionMutationConnectionEpoch;
 
         DiagnosticsJsonlService.Write("connection.status", new
         {
@@ -193,6 +196,11 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(statusClient, _currentClient) ||
+                statusClient?.SessionMutationConnectionEpoch != statusEpoch)
+                return;
+            if (status != ConnectionStatus.Connected)
+                _state.InvalidateSessionsSnapshot();
             if (status == ConnectionStatus.Connected)
             {
                 _state.AuthFailureMessage = null;
@@ -214,6 +222,8 @@ internal sealed class GatewayService
     private void OnAuthenticationFailed(object? sender, string message)
     {
         if (sender != _currentClient) return;
+        var authClient = _currentClient;
+        var authEpoch = authClient?.SessionMutationConnectionEpoch;
 
         Logger.Error($"Authentication failed: {message}");
         DiagnosticsJsonlService.Write("connection.auth_failed", new { message });
@@ -223,6 +233,10 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(authClient, _currentClient) ||
+                authClient?.SessionMutationConnectionEpoch != authEpoch)
+                return;
+            _state.InvalidateSessionsSnapshot();
             _state.AuthFailureMessage = message;
             AuthenticationFailed?.Invoke(this, message);
         });
@@ -322,14 +336,15 @@ internal sealed class GatewayService
 
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
     {
-        if (sender != _currentClient) return;
+        if (sender != _currentClient || sender is not IOperatorGatewayClient client) return;
+        var generation = _clientGeneration;
+        var epoch = client.SessionMutationConnectionEpoch;
+        if (!client.IsConnectedToGateway) return;
 
         var activeKeys = new HashSet<string>(sessions.Select(s => s.Key), StringComparer.Ordinal);
 
         // Throttled preview request (capture client ref for safety)
-        var client = _currentClient;
-        if (client != null &&
-            sessions.Length > 0 &&
+        if (sessions.Length > 0 &&
             DateTime.UtcNow - _lastPreviewRequestUtc > TimeSpan.FromSeconds(5))
         {
             _lastPreviewRequestUtc = DateTime.UtcNow;
@@ -339,7 +354,17 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
-            _state.Sessions = sessions;
+            if (!ReferenceEquals(client, _currentClient) ||
+                generation != _clientGeneration || !client.IsConnectedToGateway ||
+                epoch != client.SessionMutationConnectionEpoch)
+                return;
+            // Older facade implementations expose no epoch. Preserve their
+            // tracked rows, but never promote those rows to a fresh badge.
+            if (epoch is null)
+                _state.Sessions = sessions;
+            else if (!_state.TryPublishSessions(sessions, generation, _clientGeneration,
+                         epoch, client.SessionMutationConnectionEpoch, client.IsConnectedToGateway))
+                return;
             _state.PruneSessionPreviews(activeKeys);
         });
     }

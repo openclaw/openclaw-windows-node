@@ -66,14 +66,16 @@ internal static class SessionsHubMenus
             return MenuSubItem(label, (entry.Children ?? []).Select(child => Render(context, child, row, title)).ToArray())
                 with { IconElement = FontIcon(FluentIconCatalog.Copy) };
         }
-        var enabled = entry.IsEnabled && entry.Action switch
+        var isMutation = entry.Action is not (WorkspaceSessionMenuAction.CopyKey or WorkspaceSessionMenuAction.CopySessionId
+            or WorkspaceSessionMenuAction.CopyMarkdown or WorkspaceSessionMenuAction.ExportTranscript);
+        var enabled = entry.IsEnabled && (entry.Action switch
         {
             WorkspaceSessionMenuAction.CopyKey or WorkspaceSessionMenuAction.CopySessionId
                 or WorkspaceSessionMenuAction.CopyMarkdown or WorkspaceSessionMenuAction.ExportTranscript => true,
             WorkspaceSessionMenuAction.Reset or WorkspaceSessionMenuAction.Compact => permissions.IsAdmin,
             WorkspaceSessionMenuAction.Delete => permissions.CanDelete(row),
             _ => permissions.CanWrite,
-        } && !context.State.IsBusy;
+        }) && !context.State.IsBusy && (!isMutation || context.State.CanMutateRows);
         Action onClick = entry.Action switch
         {
             WorkspaceSessionMenuAction.ToggleArchive when row.Archived => () => _ = controller.UnarchiveAsync(row, title),
@@ -81,7 +83,10 @@ internal static class SessionsHubMenus
             WorkspaceSessionMenuAction.Delete => () => _ = controller.DeleteAsync(row, title),
             _ => () => _ = controller.RunSharedActionAsync(entry.Action, row, title),
         };
-        return SessionsHubView.Item(label, Glyph(entry.Icon), onClick, enabled);
+        return WithRosterHelp(
+            SessionsHubView.Item(label, Glyph(entry.Icon), onClick, enabled),
+            context.State,
+            isMutation);
     }
 
     private static string? Glyph(WorkspaceSessionMenuIcon icon) => icon switch
@@ -107,7 +112,7 @@ internal static class SessionsHubMenus
     {
         var controller = context.Controller;
         var state = context.State;
-        var canWrite = state.Permissions.CanWrite && !state.IsBusy;
+        var canWrite = state.Permissions.CanWrite && state.CanMutateRows;
         string T(string key) => SessionsHubPresentation.T(key);
         yield return MenuSubItem(T("MoveToGroup"), GroupItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.Folder) };
         yield return MenuSubItem(T("ColorMenu"), ColorItems(context, row)) with { IconElement = FontIcon(ColorGlyph) };
@@ -115,9 +120,11 @@ internal static class SessionsHubMenus
         if (state.Permissions.Supports("sessions.assignOwner"))
             yield return MenuSubItem(T("AssignOwner"), OwnerItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.People) };
         if (SessionsHubProjection.IsCloudWorker(row))
-            yield return SessionsHubView.Item(T("StopWorker"), FluentIconCatalog.Stop,
+            yield return WithRosterHelp(SessionsHubView.Item(T("StopWorker"), FluentIconCatalog.Stop,
                 () => _ = controller.StopCloudWorkerAsync(row, title),
-                canWrite && SessionsHubProjection.CanStopCloudWorker(row) && state.Permissions.Supports("sessions.reclaim"));
+                canWrite && SessionsHubProjection.CanStopCloudWorker(row) && state.Permissions.Supports("sessions.reclaim")),
+                state,
+                mutation: true);
     }
 
     private const string ColorGlyph = "\uE790";
@@ -125,18 +132,20 @@ internal static class SessionsHubMenus
     public static MenuFlyoutItemBase[] ColorItems(SessionsHubViewContext context, SessionInfo row)
     {
         var controller = context.Controller;
-        var enabled = context.State.Permissions.CanWrite && !context.State.IsBusy;
+        var state = context.State;
+        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
+        var unavailableReason = !state.CanMutateRows ? SessionsHubPresentation.T("RosterNotCurrent") : null;
         var current = SessionAppearance.NormalizeColor(row.Color);
         var items = new List<MenuFlyoutItemBase>
         {
             Radio(SessionsHubPresentation.T("ColorNone"), "session-color", current is null,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Color = SessionPatch.Clear }), enabled),
+                () => _ = controller.PatchAsync(row, new SessionPatch { Color = SessionPatch.Clear }), enabled, unavailableReason),
         };
         foreach (var id in SessionAppearance.ColorIds)
         {
             var value = id;
             items.Add(Radio(SessionsHubPresentation.ColorLabel(value), "session-color", current == value,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Color = value }), enabled));
+                () => _ = controller.PatchAsync(row, new SessionPatch { Color = value }), enabled, unavailableReason));
         }
         return items.ToArray();
     }
@@ -144,45 +153,55 @@ internal static class SessionsHubMenus
     public static MenuFlyoutItemBase[] IconItems(SessionsHubViewContext context, SessionInfo row)
     {
         var controller = context.Controller;
-        var enabled = context.State.Permissions.CanWrite && !context.State.IsBusy;
+        var state = context.State;
+        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
+        var unavailableReason = !state.CanMutateRows ? SessionsHubPresentation.T("RosterNotCurrent") : null;
         var current = SessionAppearance.NormalizeIcon(row.Icon);
         var items = new List<MenuFlyoutItemBase>
         {
             Radio(SessionsHubPresentation.T("IconDefault"), "session-icon", string.IsNullOrWhiteSpace(row.Icon),
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = SessionPatch.Clear }), enabled),
+                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = SessionPatch.Clear }), enabled, unavailableReason),
         };
         foreach (var id in SessionAppearance.IconIds)
         {
             var value = id;
             items.Add(Radio(SessionsHubPresentation.IconLabel(value), "session-icon", current == value,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = value }), enabled));
+                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = value }), enabled, unavailableReason));
         }
         return items.ToArray();
     }
 
     /// <summary>Radio entry that degrades to a disabled, checkmarked item without write access.</summary>
-    private static MenuFlyoutItemBase Radio(string text, string group, bool isChecked, Action onClick, bool enabled) =>
+    private static MenuFlyoutItemBase Radio(
+        string text, string group, bool isChecked, Action onClick, bool enabled, string? disabledReason = null) =>
         enabled
             ? new RadioMenuFlyoutItemData(text, group, isChecked, onClick)
-            : SessionsHubView.Item(text, isChecked ? FluentIconCatalog.Check : null, () => { }, enabled: false);
+            : WithRosterHelp(
+                SessionsHubView.Item(text, isChecked ? FluentIconCatalog.Check : null, () => { }, enabled: false),
+                disabledReason);
 
     public static MenuFlyoutItemBase[] GroupItems(SessionsHubViewContext context, SessionInfo row)
     {
         var controller = context.Controller;
-        var enabled = context.State.Permissions.CanWrite && !context.State.IsBusy;
+        var state = context.State;
+        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
+        var unavailableReason = !state.CanMutateRows ? SessionsHubPresentation.T("RosterNotCurrent") : null;
         string T(string key) => SessionsHubPresentation.T(key);
         var items = new List<MenuFlyoutItemBase>();
         foreach (var group in controller.KnownGroups())
         {
             var name = group;
-            items.Add(Radio(name, "session-group", row.Category == name, () => _ = controller.MoveToGroupAsync(row, name), enabled));
+            items.Add(Radio(name, "session-group", row.Category == name, () => _ = controller.MoveToGroupAsync(row, name), enabled,
+                unavailableReason));
         }
         if (items.Count > 0)
             items.Add(MenuSeparator());
-        items.Add(SessionsHubView.Item(T("NewGroupEllipsis"), FluentIconCatalog.Add,
-            () => _ = controller.NewGroupAsync(row), enabled && context.State.Permissions.CanCreateGroup));
+        items.Add(WithRosterHelp(SessionsHubView.Item(T("NewGroupEllipsis"), FluentIconCatalog.Add,
+            () => _ = controller.NewGroupAsync(row), enabled && state.Permissions.CanCreateGroup),
+            unavailableReason));
         if (row.Category is not null)
-            items.Add(SessionsHubView.Item(T("RemoveFromGroup"), null, () => _ = controller.MoveToGroupAsync(row, null), enabled));
+            items.Add(WithRosterHelp(SessionsHubView.Item(T("RemoveFromGroup"), null,
+                () => _ = controller.MoveToGroupAsync(row, null), enabled), unavailableReason));
         return items.ToArray();
     }
 
@@ -190,19 +209,21 @@ internal static class SessionsHubMenus
     {
         var controller = context.Controller;
         var state = context.State;
-        var enabled = state.Permissions.CanWrite && !state.IsBusy;
+        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
+        var unavailableReason = !state.CanMutateRows ? T("RosterNotCurrent") : null;
         string T(string key) => SessionsHubPresentation.T(key);
         var current = row.Owner;
         bool IsCurrent(string type, string id) => current?.Type == type && current.Id == id;
         var items = new List<MenuFlyoutItemBase>();
+        var ownerCatalogGeneration = controller.OwnerCatalogGeneration;
         if (state.SelfProfileId is { } self)
             items.Add(new RadioMenuFlyoutItemData(T("AssignToMe"), "session-owner", IsCurrent("human", self),
-                () => _ = controller.AssignOwnerAsync(row, "human", self)));
+                () => _ = controller.AssignOwnerAsync(row, "human", self, ownerCatalogGeneration)));
         foreach (var profile in state.Profiles.Where(profile => profile.Id != state.SelfProfileId))
         {
             var id = profile.Id;
             items.Add(new RadioMenuFlyoutItemData(profile.Label, "session-owner", IsCurrent("human", id),
-                () => _ = controller.AssignOwnerAsync(row, "human", id)));
+                () => _ = controller.AssignOwnerAsync(row, "human", id, ownerCatalogGeneration)));
         }
         if (state.Agents.Count > 0)
         {
@@ -211,19 +232,34 @@ internal static class SessionsHubMenus
             {
                 var id = agent.Id;
                 items.Add(new RadioMenuFlyoutItemData(F("AgentOwner", agent.Name), "session-owner", IsCurrent("agent", id),
-                    () => _ = controller.AssignOwnerAsync(row, "agent", id)));
+                    () => _ = controller.AssignOwnerAsync(row, "agent", id, ownerCatalogGeneration)));
             }
         }
         if (items.Count == 0)
             items.Add(SessionsHubView.Item(T("NoOwners"), null, () => { }, enabled: false));
-        return enabled ? items.ToArray() : items.Select(Disable).ToArray();
+        return enabled ? items.ToArray() : items.Select(item => Disable(item, unavailableReason)).ToArray();
 
         static string F(string key, params object?[] args) => SessionsHubPresentation.F(key, args);
-        static MenuFlyoutItemBase Disable(MenuFlyoutItemBase item) => item switch
+        static MenuFlyoutItemBase Disable(MenuFlyoutItemBase item, string? reason) => item switch
         {
-            RadioMenuFlyoutItemData radio => SessionsHubView.Item(radio.Text, radio.IsChecked ? FluentIconCatalog.Check : null, () => { }, enabled: false),
-            _ => item,
+            RadioMenuFlyoutItemData radio => WithRosterHelp(
+                SessionsHubView.Item(radio.Text, radio.IsChecked ? FluentIconCatalog.Check : null, () => { }, enabled: false),
+                reason),
+            _ => WithRosterHelp(item, reason),
         };
+    }
+
+    private static MenuFlyoutItemBase WithRosterHelp(
+        MenuFlyoutItemBase item, SessionsHubState state, bool mutation) =>
+        mutation && !state.CanMutateRows
+            ? WithRosterHelp(item, SessionsHubPresentation.T("RosterNotCurrent"))
+            : item;
+
+    private static MenuFlyoutItemBase WithRosterHelp(MenuFlyoutItemBase item, string? reason)
+    {
+        return reason is not null && item is MenuFlyoutItemData data
+            ? data with { Description = reason }
+            : item;
     }
 
     public static MenuFlyoutItemBase[] GroupHeaderMenu(SessionsHubViewContext context, string group)

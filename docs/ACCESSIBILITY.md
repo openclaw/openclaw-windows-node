@@ -66,4 +66,33 @@ pairing.
 
 ## Relationship to other validation
 
+### Settings navigation keyboard contract
+
+The Settings pane toggle exposes **Expand navigation** or **Collapse navigation**
+according to its state. Escape closes an expanded pane only while focus is in
+its navigation controls and returns focus to the toggle. Page controls keep
+their own Escape behavior; native search flyouts, menus and ContentDialogs
+handle dismissal before the shell. Collapsing the pane does not change the page.
+`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`
+checks the mounted Settings boundary in Light and Dark themes.
+
+Workspace still has an 800-DIP minimum width. The mock's below-720-DIP rail is
+not a supported window-size claim: pinned pages reserve a 256-DIP Chat sidebar,
+and existing page controls can require more space. Supporting smaller windows
+requires a cross-route layout change, not only reducing the minimum or changing
+the Settings rail. `WorkspaceSettingsLayout` prepares that shared seam using
+the host window width, not an embedded page's smaller content width. Below 720
+it projects a compact Settings rail and presents pins through the same retained
+frame, without the Chat sidebar. Narrow expansion is temporary; returning to
+wide restores the saved pane preference and requested embedding. This branch
+is not reachable through normal window resizing while the minimum remains 800.
+
+The integrated adaptive Config, Local AI, Default Model, Voice, Notifications,
+Event Stream and Diagnostics source uses each page's allocated width after
+rail/sidebar subtraction. Config additionally measures its editor grid and
+keeps draft controls mounted while stacking tree/detail panes. Source guards
+and XAML parsing do not establish native layout, focus retention, text scaling
+or six-locale action reachability; those assertions still require an isolated
+current-build proof slot before any window-minimum reduction.
+
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

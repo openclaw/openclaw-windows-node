@@ -28,30 +28,18 @@ internal static class SessionsHubSearchView
         var transcript = state.Transcript;
         var scope = ScopeText(state);
 
-        var input = Grid([GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
-            TextBox(transcript.Query, controller.SetTranscriptQuery, T("TranscriptPlaceholder"))
-                .IsEnabled(state.IsConnected)
-                .OnKeyDown((_, args) =>
-                {
-                    if (args.Key == global::Windows.System.VirtualKey.Enter)
-                    {
-                        args.Handled = true;
-                        _ = controller.RunTranscriptSearchAsync();
-                    }
-                })
-                .AutomationName(T("TranscriptLabel"))
-                .AutomationId("SessionsHubTranscriptQuery")
-                .Grid(column: 0),
-            SessionsHubView.CommandButton(SearchGlyph, T("Search"), () => _ = controller.RunTranscriptSearchAsync(),
-                    state.IsConnected && transcript.Query.Trim().Length > 0 && !transcript.IsSearching, "SessionsHubTranscriptRun", accent: true)
-                .Margin(8, 0, 0, 0).Grid(column: 1),
-            Button(T("CloseSearch"), () => controller.SetTranscriptOpen(false)).AutomationName(T("CloseSearch"))
-                .Margin(8, 0, 0, 0).AutomationId("SessionsHubTranscriptClose").Grid(column: 2));
-
         var children = new List<Element>
         {
-            input,
-            TextBlock(F("TranscriptScope", scope)).FontSize(12).Foreground(Theme.SecondaryText).TextWrapping(TextWrapping.Wrap),
+            Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                HStack(8,
+                    TextBlock(F("MessagesMatching", transcript.Query)).FontSize(16).FontWeight(FontWeights.SemiBold)
+                        .VAlign(VerticalAlignment.Center),
+                    SessionsHubView.Pill(scope, "blue", automationId: "SessionsHubTranscriptScope")
+                        .VAlign(VerticalAlignment.Center))
+                    .Grid(column: 0),
+                SessionsHubView.IconButton("\uE711", T("CloseSearch"), () => controller.SetTranscriptOpen(false),
+                        automationId: "SessionsHubTranscriptClose")
+                    .Grid(column: 1)),
         };
 
         if (!state.IsConnected)
@@ -84,8 +72,10 @@ internal static class SessionsHubSearchView
                 automationId: "SessionsHubTranscriptIdle"));
         }
 
-        return ScrollView(VStack(8, children.ToArray()).Padding(0, 0, 12, 12))
-            .AutomationId("SessionsHubTranscript");
+        return SessionsHubView.Stage(
+            ScrollView(VStack(10, children.ToArray()).Padding(0, 0, 8, 8)),
+            "SessionsHubTranscript")
+            .Margin(0, 0, 0, 8);
     }
 
     private static string ScopeText(SessionsHubState state)
@@ -100,13 +90,6 @@ internal static class SessionsHubSearchView
             _ => T("StatusActive"),
         };
         var parts = new List<string> { agent, status };
-        if (state.Filters.Status == SessionArchiveFilter.Active
-            && SessionListQuery.ParsePositiveInteger(state.Filters.ActiveMinutes) is { } minutes)
-            parts.Add(F("ScopeActiveWithin", minutes));
-        if (state.Filters.Search.Trim() is { Length: > 0 } name)
-            parts.Add(F("ScopeNameContains", name));
-        parts.Add(T(state.Filters.IncludeGlobal ? "ScopeGlobalIncluded" : "ScopeGlobalExcluded"));
-        parts.Add(T(state.Filters.IncludeUnknown ? "ScopeUnknownIncluded" : "ScopeUnknownExcluded"));
         return string.Join(" · ", parts);
     }
 

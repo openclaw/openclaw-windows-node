@@ -1,10 +1,23 @@
 using OpenClaw.Shared;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
 public sealed class SessionTitleFormatterTests
 {
+    [Theory]
+    [InlineData(1400, PageWidthTier.Wide, 1200)]
+    [InlineData(1000, PageWidthTier.Wide, 936)]
+    [InlineData(760, PageWidthTier.Medium, 696)]
+    [InlineData(520, PageWidthTier.Narrow, 480)]
+    public void ResponsiveLayout_UsesSharedTiersAndContentWidth(
+        double width, PageWidthTier tier, double contentWidth)
+    {
+        Assert.Equal(tier, PageResponsiveLayout.TierFor(width));
+        Assert.Equal(contentWidth, PageResponsiveLayout.ContentWidth(width));
+    }
+
     [Fact]
     public void Format_DistinguishesForkFromCanonicalSessionWithSameDisplayName()
     {
@@ -218,9 +231,9 @@ public sealed class SessionTitleFormatterTests
 
         // Titles are disambiguated across the whole loaded roster and keyed by the original session key.
         Assert.Contains("SessionTitleFormatter.FormatUnique(rows)", presentation, StringComparison.Ordinal);
-        // Background sessions use the shared resolver; the toggle keeps its automation ID.
+        // Background sessions use the shared resolver; the Options toggle mutates that exact filter.
         Assert.Contains("SessionDisplayResolver.IsVisible(row, ShowBackground)", state, StringComparison.Ordinal);
-        Assert.Contains("AutomationId(\"SessionsPageShowBackground\")", view, StringComparison.Ordinal);
+        Assert.Contains("ShowBackground = !filters.ShowBackground", view, StringComparison.Ordinal);
         // Open in chat hands off the original key, never the display title.
         Assert.Contains("controller.OpenInChat(row.Key)", view, StringComparison.Ordinal);
     }
