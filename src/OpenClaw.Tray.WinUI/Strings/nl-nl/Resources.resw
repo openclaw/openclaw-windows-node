@@ -3209,24 +3209,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>Kan {0} niet starten: {1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Meldingen</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Bekijk en wis actieve OpenClaw-meldingen.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Wissen</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>Geen meldingen</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>Nieuwe app-meldingen verschijnen hier totdat u ze sluit of wist.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>{0} sluiten</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Uitvoeringsgoedkeuring</value>
   </data>
@@ -5759,10 +5741,10 @@ Controleer of de gateway actief is.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Actieve app-meldingen bekijken</value>
+    <value>Verzoeken en waarschuwingen bekijken die op u wachten</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Ga naar Meldingen</value>
+    <value>Ga naar Postvak IN</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6461,18 +6443,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7595,8 +7565,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingen</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Postvak IN</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Postvak IN</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Dashboard openen</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Dashboard openen (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vooruit</value></data>
@@ -7865,4 +7835,54 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Postvak IN</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Getoonde sluiten</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Meldingsinstellingen</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingsinstellingen</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Categorieën in Postvak IN</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>Alles</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Goedkeuringen</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Vermeldingen</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automatiseringen</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>Systeem</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Niets in afwachting</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Niets in afwachting</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Nieuwe verzoeken en waarschuwingen komen hier binnen.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Postvak IN openen</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} in afwachting</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>{0} sluiten</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>nu</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} u</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Vraag het OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Automatiseringen openen</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Mislukt</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>Achterstallig</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>Deze automatisering is mislukt: {0}. Leg uit waarom en hoe ik dit oplos.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>Deze automatisering is achterstallig: {0}, gepland voor {1}. Leg uit waarom deze niet is uitgevoerd en hoe ik dit oplos.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>Deze inloggegevens van de modelprovider vragen aandacht: {0}. Leg uit wat er is verlopen en hoe ik opnieuw kan verifiëren.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Goedkeuring voor opdracht nodig</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Goedkeuring voor plug-in nodig</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Goedkeuring nodig</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Verloopt over {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Verlopen</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gatewaydienst</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Apparaat</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox-omgeving</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, totdat dit wordt ingetrokken (herroepbaar)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, gedurende {1} dagen (herroepbaar)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Verzendt naar {0} ontvanger(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Betaalt {0} {1} aan {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Plaatst extern op {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Account vraagt aandacht: {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Aanmelden vereist</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API-sleutel vraagt aandacht</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Account vraagt aandacht</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Aanmelden</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>API-sleutel bijwerken</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Account controleren</value></data>
 </root>

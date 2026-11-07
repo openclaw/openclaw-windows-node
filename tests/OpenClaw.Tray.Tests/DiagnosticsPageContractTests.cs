@@ -684,6 +684,27 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void InboxApprovalRows_LabelTheGatewayHostAndShowTheWholeCommand()
+    {
+        var row = Read("src", "OpenClaw.Tray.WinUI", "ViewModels", "InboxItemViewModel.cs");
+        // "gateway" execution is the Gateway's machine, which may be remote.
+        Assert.Contains("\"gateway\" => LocalizationHelper.GetString(\"Inbox_ApprovalHostGateway\")", row);
+        Assert.DoesNotContain("Inbox_ApprovalHostThisComputer", row);
+        Assert.Contains("InboxGatewayItems.DisplayCommand(approval.Command)", row);
+
+        var xaml = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml"));
+        var command = xaml.Descendants().Single(element =>
+            element.Name.LocalName == "TextBlock" && (string?)element.Attribute("Text") == "{Binding CommandText}");
+        Assert.Null(command.Attribute("MaxLines"));
+        Assert.Null(command.Attribute("TextTrimming"));
+        Assert.Equal("True", (string?)command.Attribute("IsTextSelectionEnabled"));
+        Assert.Equal("ScrollViewer", command.Parent!.Name.LocalName);
+
+        // The App owns the single Inbox feed; a window-created fallback would leak its subscription.
+        Assert.DoesNotContain("new InboxFeed(", Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+    }
+
+    [Fact]
     public void ShellFlyoutContent_HasFocusedOwners()
     {
         var hub = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
@@ -691,16 +712,22 @@ public sealed class DiagnosticsPageContractTests
         var footer = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml.cs");
         foreach (var shell in new[] { hub, workspace, footer })
         {
-            Assert.DoesNotContain("SyncBellItems(", shell);
+            Assert.DoesNotContain("SyncInboxItems(", shell);
             Assert.DoesNotContain("GatewayRowDetail.Text", shell);
             Assert.DoesNotContain("CountEnabledCapabilities(", shell);
         }
-        Assert.Contains("SyncBellItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "NotificationFlyoutContent.xaml.cs"));
+        Assert.Contains("SyncInboxItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        // Hosts own the Inbox binding: a late Unloaded from a quick close/reopen must not unbind the open flyout.
+        Assert.DoesNotContain("Unloaded +=", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        Assert.Contains("Unloaded += (_, _) => Inbox.Unbind();", Read("src", "OpenClaw.Tray.WinUI", "Pages", "NotificationsPage.xaml.cs"));
+        // Rows, tab counts and badge share InboxFeed; no host reads either source on its own.
+        Assert.DoesNotContain("AppNotificationService", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        Assert.DoesNotContain("InboxProjection.Build(", workspace);
         Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml");
         Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);
         Assert.DoesNotContain("Click=\"OnNotifications\"", xaml);
-        Assert.Contains("_notifications.Changed -= OnNotificationsChanged;", workspace);
+        Assert.Contains("_inbox.Changed -= OnNotificationsChanged;", workspace);
         Assert.Contains("footer.Close();", workspace);
         Assert.Contains("NotificationContent.Unbind();", footer);
     }
