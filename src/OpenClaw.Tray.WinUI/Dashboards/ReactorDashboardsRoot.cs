@@ -29,9 +29,19 @@ internal sealed class ReactorDashboardsRoot : Component<DashboardsRootProps>
         var version = UseRef(0);
         UseEffect((Func<Action>)(() =>
         {
-            void OnChanged() => state.Post(() => setVersion(++version.Current));
+            var current = true;
+            void OnChanged() => state.Post(() =>
+            {
+                if (current)
+                    setVersion(++version.Current);
+            });
             state.Changed += OnChanged;
-            return () => state.Changed -= OnChanged;
+            OnChanged();
+            return () =>
+            {
+                current = false;
+                state.Changed -= OnChanged;
+            };
         }), state);
 
         var announce = this.UseAnnounce();
@@ -51,13 +61,15 @@ internal sealed class ReactorDashboardsRoot : Component<DashboardsRootProps>
         }), state.CopyNoticeRevision, state.Connected);
 
         if (state.Client is not { } client || !state.Connected)
-            return DashboardsStates.Disconnected(state);
+            return Border(DashboardsStates.Disconnected(state))
+                .Margin(0, state.TopInset, 0, 0)
+                .AutomationId("DashboardsDisconnectedViewport");
 
         Element content = state.OpenTarget is { } target
-            ? Component<ReactorBoardView, BoardViewProps>(new BoardViewProps(state, client, target, state.ConnectionRevision, state.ViewportWidth))
+            ? Component<ReactorBoardView, BoardViewProps>(new BoardViewProps(state, client, target, state.ConnectionRevision, state.ViewportWidth, state.TopInset))
                 .WithKey("board:" + target.AgentId + "\0" + target.SessionKey)
             : Component<ReactorDashboardGallery, DashboardGalleryProps>(
-                    new DashboardGalleryProps(state, client, state.AgentId, state.ConnectionRevision, state.ViewportWidth))
+                    new DashboardGalleryProps(state, client, state.AgentId, state.ConnectionRevision, state.ViewportWidth, state.TopInset))
                 .WithKey("gallery");
         Element notice = Empty();
         if (state.CopySucceeded is { } copied)
@@ -205,7 +217,8 @@ internal sealed record DashboardGalleryProps(
     IBoardGatewayClient Client,
     string AgentId,
     int ConnectionRevision,
-    double ViewportWidth = 0);
+    double ViewportWidth = 0,
+    double TopInset = 0);
 
 /// <summary>
 /// Gallery of every session dashboard for the selected agent. Cards are
@@ -220,13 +233,40 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
     {
         var props = Props;
         var (snapshot, setSnapshot) = UseState(DashboardGallerySnapshot.Initial, threadSafe: true);
-        var (query, setQuery) = UseState("");
-        var (sort, setSort) = UseState(DashboardGallerySort.Updated);
-        var (shown, setShown) = UseState(24);
+        var (query, updateQuery) = UseState(props.State.GalleryQuery);
+        var (sort, updateSort) = UseState(props.State.GallerySort);
+        var (shown, updateShown) = UseState(props.State.GalleryShown);
+        void setQuery(string value) { props.State.GalleryQuery = value; updateQuery(value); }
+        void setSort(DashboardGallerySort value) { props.State.GallerySort = value; updateSort(value); }
+        void setShown(int value) { props.State.GalleryShown = value; updateShown(value); }
         var (measuredWidth, setWidth) = UseState(MinWidth);
         var (backdropHeight, setBackdropHeight) = UseState(0d);
         var width = props.ViewportWidth > 0 ? props.ViewportWidth : measuredWidth;
         var model = UseRef<DashboardGalleryModel?>(null);
+        var focusRoot = UseRef<FrameworkElement?>(null);
+
+        UseEffect((Func<Action>)(() =>
+        {
+            var current = true;
+            if (props.State.ReturnFocusPending && snapshot.Status == DashboardLoadStatus.Ready)
+            {
+                props.State.Post(async () =>
+                {
+                    if (!current || !props.State.ReturnFocusPending || focusRoot.Current is not { IsLoaded: true } root)
+                        return;
+                    var elements = Descendants(root).ToArray();
+                    var card = elements.OfType<Button>().FirstOrDefault(button =>
+                        AutomationProperties.GetAutomationId(button) == props.State.ReturnCardId);
+                    if (card is not null && card.Focus(FocusState.Programmatic))
+                        props.State.CompleteGalleryReturn();
+                    else if (elements.FirstOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "DashboardsTitle") is { } heading &&
+                        (await Microsoft.UI.Xaml.Input.FocusManager.TryFocusAsync(heading, FocusState.Programmatic)).Succeeded)
+                        props.State.CompleteGalleryReturn();
+                });
+            }
+            return () => current = false;
+        }), snapshot, props.State.ReturnFocusPending);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -321,6 +361,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         }
         children.Add(body.Grid(row: 2));
         var column = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto], children.ToArray()))
+            .Set(control => focusRoot.Current = control)
             .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
             .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
             .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
@@ -328,10 +369,11 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             .AutomationId("DashboardsGallery");
         return Grid([GridSize.Star()], [GridSize.Star()],
                 Border(Empty()).Background(Theme.Ref(DashboardHues.Hero))
-                    .Height(backdropHeight).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
+                    .Height(backdropHeight + props.TopInset).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
                     .Set(border => border.IsHitTestVisible = false)
                     .AccessibilityView(AccessibilityView.Raw).AutomationId("DashboardsBackdrop"),
                 DashboardsStates.VerticalScroll(column)
+                    .Margin(0, props.TopInset, 0, 0)
                     .AutomationName(LocalizationHelper.GetString("Dashboards_GalleryLabel"))
                     .AutomationId("DashboardsGalleryScroll"))
             .OnSizeChanged((_, args) =>
@@ -365,6 +407,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                 .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
                 .ToolTip(headline)
                 .HeadingLevel(AutomationHeadingLevel.Level1)
+                .IsTabStop(true)
                 .AutomationId("DashboardsTitle"),
             TextBlock(subtitle).FontSize(14)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
@@ -488,10 +531,8 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             : Cards(props, visible.Take(shown).ToImmutableArray(), fallbackAgentId, reducedMotion, width);
 
         var sections = new List<Element>();
-        var fresh = snapshot.Rows.Where(row => row.UpdatedAtMs is { } ms &&
-            ms >= DateTimeOffset.Now.Date.ToUniversalTime().Subtract(DateTime.UnixEpoch).TotalMilliseconds)
-            .OrderByDescending(row => row.UpdatedAtMs).Take(3).ToImmutableArray();
-        if (snapshot.Rows.Length >= 5 && !fresh.IsEmpty && string.IsNullOrEmpty(query))
+        var fresh = DashboardsPresentation.FreshToday(snapshot.Rows, DateTimeOffset.Now);
+        if (!fresh.IsEmpty && string.IsNullOrEmpty(query))
         {
             sections.Add(TextBlock(LocalizationHelper.GetString("Dashboards_FreshToday")).FontSize(22).SemiBold());
             var now = DateTimeOffset.UtcNow;
@@ -545,7 +586,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         return Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
                 Enumerable.Repeat(GridSize.Auto, (rows.Length + columns - 1) / columns).ToArray(),
                 // The layout cell owns Grid placement; entrance motion stays inside it.
-                rows.Select((row, index) => Border(Card(props, row, fallbackAgentId, now, reducedMotion, ""))
+                rows.Select((row, index) => Border(Card(props, row, fallbackAgentId, now, reducedMotion, "", compact: rows.Length > 9))
                     .Grid(row: index / columns, column: index % columns)
                     .WithKey(row.AgentId + "\0" + row.Key)).ToArray())
             .Set(grid => { grid.ColumnSpacing = GapGroup; grid.RowSpacing = GapGroup; })
@@ -562,45 +603,41 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         var updated = DashboardsPresentation.UpdatedText(row, now);
         var hue = DashboardHues.For(row.AgentId ?? fallbackAgentId);
 
-        var heading = Grid(
-            [GridSize.Star(), GridSize.Auto],
-            [GridSize.Auto],
-                    TextBlock(title).FontSize(18).SemiBold()
-                        .TextTrimming(TextTrimming.CharacterEllipsis)
-                        .ToolTip(title).Grid(column: 0),
-            (row.IsLive ? DashboardsArt.LiveBadge(reducedMotion) : Empty())
-                .Margin(8, 0, 0, 0).VAlign(VerticalAlignment.Top)
-                .Grid(column: 1));
-        Element summary = string.IsNullOrWhiteSpace(row.LastMessagePreview)
-            ? Empty()
-            : TextBlock(row.LastMessagePreview!).FontSize(13)
+        var heading = TextBlock(title).FontSize(featured ? 24 : 18).SemiBold()
+            .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
+            .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(title);
+        var summaryText = DashboardsPresentation.Summary(row);
+        Element summary = TextBlock(summaryText).FontSize(13)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
                 .TextWrapping(TextWrapping.WrapWholeWords)
                 .TextTrimming(TextTrimming.CharacterEllipsis)
-                .MaxLines(2)
-                .ToolTip(row.LastMessagePreview!)
-                .Margin(16, 8, 16, 12)
+                .MaxLines(featured ? 3 : 2).MaxWidth(440).HAlign(HorizontalAlignment.Left)
+                .ToolTip(summaryText)
                 .VAlign(VerticalAlignment.Top);
 
-        var cover = Border(DashboardsStates.Glyph(DashboardsGlyphs.Dashboard, 40, DashboardHues.Strong(hue)).Center())
-            .Height(featured || compact ? double.NaN : 112)
-            .MinHeight(featured ? 168 : compact ? 64 : 112)
+        var cover = Border(Border(TextBlock(DashboardsPresentation.TitleInitials(title)).FontSize(20).SemiBold()
+                    .Foreground(Theme.Ref(DashboardHues.Strong(hue))).Center().AccessibilityHidden())
+                .Size(48, 48).CornerRadius(8).Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
+                .HAlign(HorizontalAlignment.Left).Margin(16, 12))
+            .Height(compact ? 64 : 80)
             .Background(Theme.Ref(DashboardHues.Subtle(hue))).CornerRadius(12, 12, 0, 0);
         var content = Grid(
             [GridSize.Star()],
-            [featured || compact ? GridSize.Star() : GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
-            cover.Grid(row: 0),
-            heading.Margin(16, 12, 16, 0).Grid(row: 1),
-            summary.Grid(row: 2),
-            Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                DashboardsArt.Avatar(author.Initial, DashboardHues.For(author.Id), 20).Margin(0, 0, 6, 0).Grid(column: 0),
+            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+            (featured ? Empty() : cover).Grid(row: 0),
+            VStack(8, heading, summary).Margin(16, 16, 16, 12).Grid(row: 1),
+            Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
                 TextBlock(author.Label + " · " + updated).FontSize(12)
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextTrimming(TextTrimming.CharacterEllipsis)
-                    .ToolTip(author.Label + " · " + updated).Grid(column: 1))
-                .Margin(16, 0, 52, 16).Grid(row: 3));
+                    .ToolTip(author.Label + " · " + updated).Grid(row: 0),
+                (row.IsLive ? DashboardsArt.LiveBadge(reducedMotion) : Empty()).Margin(0, 4, 0, 0).Grid(row: 1),
+                TextBlock(LocalizationHelper.GetString("Dashboards_OpenAction")).FontSize(12).SemiBold()
+                    .Foreground(Theme.Ref("AccentTextFillColorPrimaryBrush")).VAlign(VerticalAlignment.Center)
+                    .Margin(8, 0, 0, 0).Grid(row: 0, column: 1, rowSpan: 2))
+                .Margin(16, 0, 16, 16).Grid(row: 2));
         var label = string.Join(", ", new[]
         {
-            title,
+            LocalizationHelper.Format("Dashboards_OpenBoardFor", title),
             row.IsLive ? LocalizationHelper.GetString("Dashboards_Live") : null,
             LocalizationHelper.Format("Dashboards_ByAuthorFormat", author.Label),
             updated,
@@ -608,7 +645,8 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
 
         // The card surface is one native subtle button (click, Enter, and Space open the
         // dashboard); the outer frame owns the backplate, stroke, and hover lift.
-        var button = Button(content, () => props.State.Open(new BoardSessionTarget(row.Key, row.AgentId), title, row))
+        var cardId = "DashboardCard" + prefix + "_" + row.Key;
+        var button = Button(content, () => props.State.Open(new BoardSessionTarget(row.Key, row.AgentId), title, row, cardId))
             .SubtleButton()
             .Padding(0)
             .Set(b =>
@@ -620,15 +658,21 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
             .AutomationName(label)
-            .AutomationId("DashboardCard" + prefix + "_" + row.Key);
+            .HelpText(summaryText)
+            .AutomationId(cardId);
 
         // The chat action is a sibling, never an interactive control inside the card button.
-        Element card = Border(Grid([GridSize.Star()], [GridSize.Star()],
-                button,
+        Element card = Border(Grid([GridSize.Star()], [GridSize.Star(), GridSize.Auto],
+                button.Grid(row: 0),
                 props.State.OpenChat is { } chat
-                    ? DashboardsStates.ChatButton(title, () => chat(row.Key), "DashboardCardChat" + prefix + "_" + row.Key)
-                        .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom).Margin(8)
+                    ? Button(HStack(8, DashboardsStates.Glyph(DashboardsGlyphs.Chat, 14).VAlign(VerticalAlignment.Center),
+                            TextBlock(LocalizationHelper.GetString("Dashboards_OpenChat"))), () => chat(row.Key))
+                        .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", title))
+                        .AutomationId("DashboardCardChat" + prefix + "_" + row.Key)
+                        .BorderThickness(1).BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
+                        .HAlign(HorizontalAlignment.Right).Margin(16, 0, 16, 12).Grid(row: 1)
                     : Empty()))
+            .MinHeight(featured ? 300 : compact ? 280 : 304)
             .VAlign(featured || compact ? VerticalAlignment.Stretch : VerticalAlignment.Top)
             .CornerRadius(12)
             .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
@@ -644,6 +688,18 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         return DashboardsArt.Enter(card, reducedMotion)
             .Margin(0).HAlign(HorizontalAlignment.Stretch)
             .VAlign(featured || compact ? VerticalAlignment.Stretch : VerticalAlignment.Top);
+    }
+
+    private static IEnumerable<FrameworkElement> Descendants(DependencyObject root)
+    {
+        for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, index);
+            if (child is FrameworkElement element)
+                yield return element;
+            foreach (var descendant in Descendants(child))
+                yield return descendant;
+        }
     }
 
     private static Element Skeleton(double width)

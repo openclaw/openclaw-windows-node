@@ -17,6 +17,8 @@ public interface IBoardGatewayClient
 
     event EventHandler<BoardChangedEvent>? BoardChanged;
     event EventHandler<BoardCommandEvent>? BoardCommandReceived;
+    /// <summary>The operator owner's authoritative session publication, not detached gallery responses.</summary>
+    event EventHandler<SessionInfo[]>? SessionsUpdated;
 
     Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000);
     Task<BoardSnapshot> GetBoardAsync(BoardSessionTarget target, int timeoutMs = 15000);

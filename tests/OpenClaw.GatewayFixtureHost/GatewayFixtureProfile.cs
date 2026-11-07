@@ -170,10 +170,18 @@ public sealed class GatewayFixtureProfile : IDisposable
         var cleanup = Stopwatch.StartNew();
         while (true)
         {
-            EnsureNoReparsePoints(RunDirectory);
             try
             {
+                EnsureNoReparsePoints(RunDirectory);
                 Directory.Delete(RunDirectory, recursive: true);
+                return;
+            }
+            catch (DirectoryNotFoundException) when (!Directory.Exists(RunDirectory))
+            {
+                return;
+            }
+            catch (FileNotFoundException) when (!Directory.Exists(RunDirectory))
+            {
                 return;
             }
             catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33 && cleanup.Elapsed < CleanupTimeout)
@@ -190,11 +198,33 @@ public sealed class GatewayFixtureProfile : IDisposable
             throw new IOException("Refusing fixture cleanup through a reparse point.");
         foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
         {
-            var attributes = File.GetAttributes(entry);
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(entry);
+            }
+            catch (FileNotFoundException)
+            {
+                // WebView2 may remove a temporary file after enumeration.
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
             if ((attributes & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Refusing fixture cleanup containing a reparse point.");
             if ((attributes & FileAttributes.Directory) != 0)
-                EnsureNoReparsePoints(entry);
+            {
+                try
+                {
+                    EnsureNoReparsePoints(entry);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // The enumerated child directory has already disappeared.
+                }
+            }
         }
     }
 }

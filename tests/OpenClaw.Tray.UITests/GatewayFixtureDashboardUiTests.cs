@@ -12,6 +12,207 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task DashboardsPinnedHost_RecordsBothThemesAcrossPaneAndScrollStates()
+    {
+        var previousTheme = Environment.GetEnvironmentVariable("OPENCLAW_FIXTURE_APP_THEME");
+        try
+        {
+            foreach (var theme in new[] { "Light", "Dark" })
+            {
+                Environment.SetEnvironmentVariable("OPENCLAW_FIXTURE_APP_THEME", theme);
+                await WithAppAsync(async run =>
+                {
+                    await run.InvokeAsync("app.navigate", new { page = "dashboards" });
+                    await WaitUiAsync(run, () => FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}") is not null,
+                        "pinned-host gallery ready");
+                    var hub = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "DashboardsTitle")) is not null);
+                    var hwnd = new IntPtr(hub.Current.NativeWindowHandle);
+                    ((WindowPattern)hub.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Normal);
+                    var scale = DashboardWindowDpi(hwnd) / 96d;
+                    DashboardResize(hwnd, (int)Math.Round(1000 * scale), (int)Math.Round(900 * scale));
+                    await WaitUiAsync(run, () => Math.Abs(DashboardRect(hwnd).Width / scale - 1000) <= 2, "1000-DIP pinned window");
+                    bool IsWithin(AutomationElement element, AutomationElement ancestor)
+                    {
+                        for (AutomationElement? current = element; current is not null;
+                             current = TreeWalker.RawViewWalker.GetParent(current))
+                            if (current.GetRuntimeId().SequenceEqual(ancestor.GetRuntimeId()))
+                                return true;
+                        return false;
+                    }
+                    void AssertToggleHit(string id)
+                    {
+                        var button = FindById(run, id)
+                            ?? throw new InvalidOperationException($"Pinned pane button {id} is missing.");
+                        Assert.False(button.Current.IsOffscreen);
+                        Assert.True(button.Current.IsEnabled);
+                        var bounds = button.Current.BoundingRectangle;
+                        Assert.True(bounds.Width > 0 && bounds.Height > 0);
+                        var point = new System.Windows.Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+                        var hit = AutomationElement.FromPoint(point);
+                        var belongsToButton = IsWithin(hit, button);
+                        if (!belongsToButton)
+                        {
+                            object DescribeHitElement(AutomationElement element) => new
+                            {
+                                runtimeId = element.GetRuntimeId(),
+                                automationId = element.Current.AutomationId,
+                                name = element.Current.Name,
+                                className = element.Current.ClassName,
+                                controlType = element.Current.ControlType.ProgrammaticName,
+                                processId = element.Current.ProcessId,
+                                nativeWindowHandle = element.Current.NativeWindowHandle,
+                                bounds = element.Current.BoundingRectangle,
+                                isOffscreen = element.Current.IsOffscreen,
+                                isEnabled = element.Current.IsEnabled
+                            };
+                            var ancestry = new List<object>();
+                            for (AutomationElement? current = hit; current is not null;
+                                 current = TreeWalker.RawViewWalker.GetParent(current))
+                                ancestry.Add(DescribeHitElement(current));
+                            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"{theme}-{id}-center-hit-failure.json"),
+                                JsonSerializer.Serialize(new
+                                {
+                                    run.ArtifactsDirectory,
+                                    run.AppProcessId,
+                                    theme,
+                                    target = DescribeHitElement(button),
+                                    point,
+                                    hwnd = hwnd.ToInt64(),
+                                    windowRect = DashboardRect(hwnd),
+                                    scale,
+                                    ancestry
+                                }));
+                        }
+                        Assert.True(belongsToButton,
+                            $"Pinned pane button {id} is occluded at its center by {hit.Current.AutomationId}.");
+                    }
+                    foreach (var board in new[] { false, true })
+                    {
+                        if (board)
+                        {
+                            Invoke(FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}")!);
+                            await WaitUiAsync(run, () => FindById(run, "DashboardView") is not null, "pinned board ready");
+                        }
+                        var surface = board ? "board" : "gallery";
+                        double? openHostTop = null;
+                        foreach (var paneState in new[] { "open", "collapsed", "reopened" })
+                        {
+                            var collapsed = paneState == "collapsed";
+                            if (collapsed)
+                            {
+                                AssertToggleHit("WorkspaceTogglePane");
+                                Invoke(FindById(run, "WorkspaceTogglePane")
+                                    ?? throw new InvalidOperationException("Workspace collapse control is missing."));
+                            }
+                            else if (FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } reopen)
+                            {
+                                AssertToggleHit("WorkspaceReopenPane");
+                                Invoke(reopen);
+                            }
+                            await WaitUiAsync(run, () => FindById(run, collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane")
+                                is { Current.IsOffscreen: false }, "pinned pane state");
+                            double? previousHostWidth = null;
+                            var lastHostRead = DateTimeOffset.MinValue;
+                            await WaitUiAsync(run, () =>
+                            {
+                                if ((DateTimeOffset.UtcNow - lastHostRead).TotalMilliseconds < 300)
+                                    return false;
+                                lastHostRead = DateTimeOffset.UtcNow;
+                                if (!collapsed &&
+                                    (FindById(run, "WorkspacePagesCustomize") is not { Current.IsOffscreen: false } ||
+                                     FindById(run, "WorkspaceSessionsAdd") is not { Current.IsOffscreen: false }))
+                                    return false;
+                                var current = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle.Width / scale;
+                                var settled = current > 0 && previousHostWidth is { } before && Math.Abs(before - current) < 0.5;
+                                previousHostWidth = current;
+                                return settled;
+                            }, "settled pinned host and visible expanded pane actions");
+                            var name = $"dashboards-{theme}-pinned-{surface}-{paneState}.png";
+                            await WaitForDashboardPixelsAsync(run, hub, name,
+                                board ? ["99.97", "Uptime", "Tickets closed"] : ["Dashboards"]);
+                            var host = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
+                            var viewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!.Current.BoundingRectangle;
+                            if (!collapsed)
+                                openHostTop = host.Top;
+                            var measuredInset = (viewport.Top - host.Top) / scale;
+                            var measuredHostMargin = (host.Top - openHostTop!.Value) / scale;
+                            Assert.InRange(Math.Abs(measuredInset - (collapsed ? 56 : 0)), 0, 1);
+                            Assert.InRange(Math.Abs(measuredHostMargin), 0, 1);
+                            AssertToggleHit(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane");
+                            if (collapsed)
+                            {
+                                var reopen = FindById(run, "WorkspaceReopenPane")!;
+                                var toggleBounds = reopen.Current.BoundingRectangle;
+                                foreach (var id in new[] { "SettingsBack", "SettingsForward" })
+                                {
+                                    var history = FindById(run, id)!;
+                                    Assert.True(toggleBounds.Right <= history.Current.BoundingRectangle.Left,
+                                        $"Pinned reopen overlaps {id}.");
+                                }
+                                reopen.SetFocus();
+                                await WaitUiAsync(run, () => reopen.Current.HasKeyboardFocus, "pinned reopen keyboard focus");
+                                foreach (var id in new[] { "SettingsBack", "SettingsForward" })
+                                {
+                                    var history = FindById(run, id)!;
+                                    if (!history.Current.IsEnabled)
+                                        continue;
+                                    Send(run, hub, "{TAB}");
+                                    await WaitUiAsync(run, () => history.Current.HasKeyboardFocus,
+                                        $"pinned toggle/history tab order: {id}");
+                                }
+                                Send(run, hub, "{TAB}");
+                                await WaitUiAsync(run, () => IsWithin(AutomationElement.FocusedElement,
+                                    FindById(run, "DashboardsContentHost")!), "pinned history-to-page tab order");
+                                if (FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false } feedback)
+                                    Assert.True(toggleBounds.Bottom <= feedback.Current.BoundingRectangle.Top,
+                                        "Pinned operation feedback overlaps the reopen button.");
+                            }
+                            await File.WriteAllTextAsync(Path.ChangeExtension(Path.Combine(run.ArtifactsDirectory, name), ".host.json"),
+                                JsonSerializer.Serialize(new { theme, surface, collapsed, hostMode = "standalone ContentOnly",
+                                    windowWidthDip = DashboardRect(hwnd).Width / scale,
+                                    hostWidthDip = host.Width / scale, hostTopDip = host.Top / scale,
+                                    externalHistoryBandDip = measuredHostMargin, internalInsetDip = measuredInset }));
+                            if (!collapsed)
+                                continue;
+                            var scroll = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!;
+                            var pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
+                            Assert.True(pattern.Current.VerticallyScrollable);
+                            pattern.SetScrollPercent(ScrollPattern.NoScroll, 25);
+                            await WaitUiAsync(run, () => pattern.Current.VerticalScrollPercent > 0, "partial pinned scroll");
+                            var scrolled = name.Replace(".png", "-scrolled.png", StringComparison.Ordinal);
+                            await DismissDashboardContainmentNoticeAsync(run, hub, scrolled);
+                            OwnedWindowCapture.Save(run, hub, scrolled);
+                            pattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                            await WaitUiAsync(run, () => pattern.Current.VerticalScrollPercent <= 0.1, "restore pinned scroll");
+                        }
+                        if (board)
+                        {
+                            ((SelectionItemPattern)(FindById(run, "DashboardTab_mixed")
+                                ?? throw new InvalidOperationException("Mixed content tab is missing."))
+                                .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+                            await WaitUiAsync(run, () => FindById(run, "BoardWebsiteOpen_mixed-website") is not null,
+                                "mixed report and website ready");
+                            var reportBounds = FindById(run, "BoardWidget_mixed-report")!.Current.BoundingRectangle;
+                            var websiteBounds = FindById(run, "BoardWidget_mixed-website")!.Current.BoundingRectangle;
+                            Assert.True(reportBounds.Right <= websiteBounds.Left);
+                            Assert.InRange(Math.Abs(reportBounds.Top - websiteBounds.Top) / scale, 0, 1);
+                            Assert.InRange(Math.Abs(reportBounds.Bottom - websiteBounds.Bottom) / scale, 0, 1);
+                            await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-pinned-mixed.png",
+                                ["A saved report line", "status.example.com"]);
+                        }
+                    }
+                }, scenario: GatewayScenario.CreateDashboards());
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_FIXTURE_APP_THEME", previousTheme);
+        }
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task DashboardsBackdropSpansGalleryAndBoardInBothThemes()
     {
         var previousTheme = Environment.GetEnvironmentVariable("OPENCLAW_FIXTURE_APP_THEME");
@@ -60,6 +261,7 @@ public sealed partial class GatewayFixtureUiTests
                         var name = $"dashboards-{theme}-backdrop-{surface}-{(minimum ? "minimum" : "wide")}.png";
                         try
                         {
+                            await DismissDashboardContainmentNoticeAsync(run, hub, name);
                             await StableHost();
                             var before = DashboardRect(hwnd);
                             var chrome = before.Width - HostWidth() * scale;
@@ -240,8 +442,8 @@ public sealed partial class GatewayFixtureUiTests
                         if ((DateTimeOffset.UtcNow - lastRead).TotalMilliseconds < 300)
                             return false;
                         var value = HostWidth();
-                        var navElement = FindById(run, "HubNavDashboards")
-                            ?? throw new InvalidOperationException("The navigation-item stability anchor is missing.");
+                        var navElement = FindById(run, "WorkspacePinnedPage:dashboards")
+                            ?? throw new InvalidOperationException("The persistent dashboard pin stability anchor is missing.");
                         var nav = navElement.Current.BoundingRectangle.Width;
                         var moved = priorHost is null || direction == 0 ||
                             (direction > 0 ? value > priorHost.Value : value < priorHost.Value);
@@ -297,7 +499,8 @@ public sealed partial class GatewayFixtureUiTests
                         if (collapsed)
                         {
                             var openWidth = HostWidth();
-                            Invoke(FindById(run, "SettingsTogglePane")!);
+                            Invoke(FindById(run, "WorkspaceTogglePane")
+                                ?? throw new InvalidOperationException("Standalone Dashboard workspace collapse control is missing."));
                             paneCollapsed = true;
                             await WaitStableHost("stable collapsed-pane host and nav widths", openWidth, 1);
                         }
@@ -375,7 +578,8 @@ public sealed partial class GatewayFixtureUiTests
                             try
                             {
                                 var closedWidth = HostWidth();
-                                Invoke(FindById(run, "SettingsTogglePane")!);
+                                Invoke(FindById(run, "WorkspaceReopenPane")
+                                    ?? throw new InvalidOperationException("Standalone Dashboard workspace reopen control is missing."));
                                 await WaitUiAsync(run, () => HostWidth() < closedWidth - 100, "navigation pane reopened");
                             }
                             catch (Exception paneError)
@@ -788,7 +992,7 @@ public sealed partial class GatewayFixtureUiTests
                         requireDeploymentPlot: true);
                     AxeHelper.AssertNoAccessibilityErrors(new IntPtr(hub.Current.NativeWindowHandle),
                         context: $"Dashboards widgets ({theme})", targetProcessId: run.AppProcessId);
-                    ScrollAncestorToBottom(FindById(run, "BoardWidget_broken-widget")!);
+                    ScrollAncestorToBottom(run, FindById(run, "BoardWidget_broken-widget")!);
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-approval-error.png",
                         ["Needs approval", "contained to this card"]);
 
@@ -853,15 +1057,40 @@ public sealed partial class GatewayFixtureUiTests
                         "empty dashboard action");
                     Assert.True(((SelectionItemPattern)FindById(run, "WorkspacePinnedPage:dashboards")!
                         .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
-                    Assert.Equal("Your agent can pin widgets here.", FindById(run, "DashboardEmptyDetail")!.Current.Name);
+                    Assert.Equal("No content was supplied for this section. Ask your agent in chat.", FindById(run, "DashboardEmptyDetail")!.Current.Name);
                     OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-empty.png");
 
                     await run.InvokeAsync("app.navigate", new { page = "dashboards" });
                     AutomationElement? search = null;
                     await WaitUiAsync(run, () => (search = FindById(run, "DashboardsSearch")) is not null, "gallery search");
-                    ((ValuePattern)search!.GetCurrentPattern(ValuePattern.Pattern))
-                        .SetValue("no matching synthetic dashboard");
-                    await WaitUiAsync(run, () => FindById(run, "DashboardsNoResultsTitle") is not null, "no-results state");
+                    var searchPattern = (ValuePattern)search!.GetCurrentPattern(ValuePattern.Pattern);
+                    searchPattern.SetValue("no matching synthetic dashboard");
+                    var valueAfterInput = searchPattern.Current.Value;
+                    try
+                    {
+                        await WaitUiAsync(run, () => FindById(run, "DashboardsNoResultsTitle") is not null, "no-results state");
+                    }
+                    catch (TimeoutException)
+                    {
+                        var currentSearch = FindById(run, "DashboardsSearch");
+                        await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "no-results-timeout.json"),
+                            JsonSerializer.Serialize(new
+                            {
+                                valueAfterInput,
+                                currentValue = currentSearch is null ? null :
+                                    ((ValuePattern)currentSearch.GetCurrentPattern(ValuePattern.Pattern)).Current.Value,
+                                sameSearchControl = currentSearch is not null && search.GetRuntimeId().SequenceEqual(currentSearch.GetRuntimeId()),
+                                loadingPresent = FindById(run, "DashboardsLoading") is not null,
+                                emptyPresent = FindById(run, "DashboardsEmpty") is not null,
+                                cardsPresent = FindById(run, "DashboardsCards") is not null,
+                                noResultsPresent = FindById(run, "DashboardsNoResults") is not null,
+                                title = FindById(run, "DashboardsTitle")?.Current.Name,
+                                count = FindById(run, "DashboardsSubtitle")?.Current.Name,
+                                searchOffscreen = currentSearch?.Current.IsOffscreen,
+                            }));
+                        OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-no-results-timeout.png");
+                        throw;
+                    }
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-no-results.png", ["No matching dashboards"]);
 
                     // Stop only this synthetic Gateway, then observe the real connection/UI boundary.
@@ -898,6 +1127,7 @@ public sealed partial class GatewayFixtureUiTests
             ?? throw new InvalidOperationException("English Windows OCR is required to verify the sandbox's rendered pixels.");
         await run.WaitForAsync(async () =>
         {
+            await DismissDashboardContainmentNoticeAsync(run, hub, imageName);
             OwnedWindowCapture.Save(run, hub, imageName);
             var path = Path.Combine(run.ArtifactsDirectory, imageName);
             var file = await StorageFile.GetFileFromPathAsync(path);
@@ -909,6 +1139,48 @@ public sealed partial class GatewayFixtureUiTests
             return expectedText.All(text => result.Text.Contains(text, StringComparison.OrdinalIgnoreCase))
                 && (!requireDeploymentPlot || DeploymentPlotHasVisibleInk(path, result));
         }, $"visible dashboard pixels: {string.Join(", ", expectedText)}", TimeSpan.FromSeconds(30));
+    }
+
+    private static async Task DismissDashboardContainmentNoticeAsync(GatewayFixtureRun run, AutomationElement hub,
+        string imageName)
+    {
+        var evidencePath = Path.Combine(run.ArtifactsDirectory, Path.GetFileNameWithoutExtension(imageName) + ".notice.json");
+        var notice = FindById(run, "AppNotificationInfoBar");
+        if (notice is null || notice.Current.IsOffscreen)
+        {
+            if (!File.Exists(evidencePath))
+                await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(new { present = false, dismissed = false }));
+            return;
+        }
+        const string title = "Windows containment unavailable: commands run uncontained";
+        var hasKnownTitle = notice.Current.Name.Contains(title, StringComparison.Ordinal)
+            || notice.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, title)) is not null;
+        if (!hasKnownTitle)
+        {
+            if (!File.Exists(evidencePath))
+                await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(new { present = false, dismissed = false }));
+            return;
+        }
+        if (notice.Current.ProcessId != run.AppProcessId || hub.Current.ProcessId != run.AppProcessId)
+            throw new InvalidOperationException("Containment notice is not owned by the fixture app.");
+        // Native banner close hides all active banners. Refuse to hide another notice.
+        var bell = FindById(run, "WorkspaceTitleBarNotifications")
+            ?? throw new InvalidOperationException("Owned notification count is unavailable.");
+        Assert.Equal(run.AppProcessId, bell.Current.ProcessId);
+        Assert.Equal("1 active", bell.Current.HelpText);
+        var close = notice.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "CloseButton"))
+            ?? throw new InvalidOperationException("Known containment notice has no native close button.");
+        var noticeImage = Path.GetFileNameWithoutExtension(imageName) + "-containment-notice.png";
+        OwnedWindowCapture.Save(run, hub, noticeImage);
+        await File.WriteAllTextAsync(evidencePath,
+            JsonSerializer.Serialize(new { present = true, dismissed = false, noticeImage, title }));
+        Invoke(close);
+        await WaitUiAsync(run, () => FindById(run, "AppNotificationInfoBar") is not { Current.IsOffscreen: false },
+            "owned containment notice dismissed before dashboard capture");
+        await File.WriteAllTextAsync(evidencePath,
+            JsonSerializer.Serialize(new { present = true, dismissed = true, noticeImage, title }));
     }
 
     private static bool DeploymentPlotHasVisibleInk(string imagePath, OcrResult content)

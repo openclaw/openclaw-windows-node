@@ -17,6 +17,18 @@ internal sealed class DashboardsPageState
     public IBoardGatewayClient? Client { get; private set; }
     public bool Connected { get; private set; }
     public double ViewportWidth { get; private set; }
+    public double TopInset { get; private set; }
+    public void SetTopInset(double topInset)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(topInset);
+        if (!double.IsFinite(topInset))
+            throw new ArgumentOutOfRangeException(nameof(topInset));
+        if (TopInset == topInset)
+            return;
+        TopInset = topInset;
+        Changed?.Invoke();
+    }
+
     public void SetViewportWidth(double width)
     {
         if (PageResponsiveLayout.Snap(ViewportWidth) == PageResponsiveLayout.Snap(width))
@@ -40,6 +52,13 @@ internal sealed class DashboardsPageState
 
     /// <summary>Gallery row of the open dashboard (author, live, updated), when opened from the gallery.</summary>
     public DashboardSessionRow? OpenRow { get; private set; }
+
+    public string? ReturnCardId { get; private set; }
+    public bool ReturnFocusPending { get; private set; }
+    public int GalleryShown { get; set; } = 24;
+    public string GalleryQuery { get; set; } = "";
+    public DashboardGallerySort GallerySort { get; set; } = DashboardGallerySort.Updated;
+    public void CompleteGalleryReturn() => ReturnFocusPending = false;
 
     public Action<string>? OpenChat { get; init; }
     public Action<string>? OpenAgentChat { get; init; }
@@ -112,6 +131,8 @@ internal sealed class DashboardsPageState
         if (agentId == AgentId || !AgentIds.Contains(agentId))
             return;
         AgentId = agentId;
+        ReturnCardId = null;
+        ReturnFocusPending = false;
         Changed?.Invoke();
     }
 
@@ -126,10 +147,13 @@ internal sealed class DashboardsPageState
             SelectAgent(agent);
     }
 
-    public void Open(BoardSessionTarget? target, string? title = null, DashboardSessionRow? row = null)
+    public void Open(BoardSessionTarget? target, string? title = null, DashboardSessionRow? row = null, string? returnCardId = null)
     {
         if (target == OpenTarget && title == OpenTitle && ReferenceEquals(row, OpenRow))
             return;
+        ReturnFocusPending = target is null && OpenTarget is not null && ReturnCardId is not null;
+        if (target is not null)
+            ReturnCardId = returnCardId;
         OpenTarget = target;
         OpenTitle = target is null ? null : title;
         OpenRow = target is null ? null : row;

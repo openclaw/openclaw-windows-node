@@ -8224,7 +8224,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Niet verbonden met een gateway</value>
   </data>
   <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
-    <value>Dashboards komen van je gateway. Ze komen terug zodra de verbinding is hersteld.</value>
+    <value>Maak opnieuw verbinding met je gateway om je dashboards te lezen. Op deze computer wordt geen offline galerij opgeslagen.</value>
   </data>
   <data name="Dashboards_Disconnected_Action" xml:space="preserve">
     <value>Verbindingsinstellingen openen</value>
@@ -8251,7 +8251,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Een leeg bord, klaar voor gebruik</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Je agent kan hier widgets vastmaken.</value>
+    <value>Voor deze sectie is geen inhoud aangeleverd. Vraag je agent in de chat.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Dashboardwidgets</value>
@@ -8398,7 +8398,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Auteurs</value>
   </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
-    <value>Openen</value>
+    <value>Dashboard openen</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>Dashboard openen: {0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>Geen samenvatting beschikbaar</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Vragen in chat</value>
@@ -8511,4 +8517,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>De sessiesleutel kon niet worden gekopieerd.</value>
   </data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Navigatie uitklappen</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Navigatie inklappen</value></data>
 </root>

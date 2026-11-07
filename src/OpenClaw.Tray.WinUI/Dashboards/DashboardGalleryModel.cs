@@ -47,6 +47,7 @@ internal sealed class DashboardGalleryModel : IDisposable
         _client = client;
         _post = post;
         _client.BoardChanged += OnBoardChanged;
+        _client.SessionsUpdated += OnSessionsUpdated;
     }
 
     public DashboardGallerySnapshot Snapshot { get; private set; } = DashboardGallerySnapshot.Initial;
@@ -127,8 +128,14 @@ internal sealed class DashboardGalleryModel : IDisposable
     }
 
     private void OnBoardChanged(object? sender, BoardChangedEvent e)
+        => QueueRefresh();
+
+    private void OnSessionsUpdated(object? sender, OpenClaw.Shared.SessionInfo[] sessions)
+        => QueueRefresh();
+
+    private void QueueRefresh()
     {
-        // Coalesce bursts of board revisions into one gallery refresh.
+        // Coalesce authoritative session and board changes into one gallery refresh.
         if (_disposed || Interlocked.Exchange(ref _refreshQueued, 1) == 1)
             return;
         _post(() =>
@@ -139,7 +146,7 @@ internal sealed class DashboardGalleryModel : IDisposable
     }
 
     /// <summary>
-    /// Reloads for a board change. While a load runs, the change waits and
+    /// Reloads for a session or board change. While a load runs, the change waits and
     /// reloads once afterwards, so a burst of changes never stacks full
     /// multi-page reloads or keeps every response stale.
     /// </summary>
@@ -189,6 +196,7 @@ internal sealed class DashboardGalleryModel : IDisposable
         _disposed = true;
         Interlocked.Increment(ref _generation);
         _client.BoardChanged -= OnBoardChanged;
+        _client.SessionsUpdated -= OnSessionsUpdated;
         Changed = null;
     }
 }

@@ -17,7 +17,8 @@ internal sealed record BoardViewProps(
     IBoardGatewayClient Client,
     BoardSessionTarget Target,
     int ConnectionRevision,
-    double ViewportWidth = 0);
+    double ViewportWidth = 0,
+    double TopInset = 0);
 
 /// <summary>
 /// One open session dashboard: header, tab strip, and the 12-column widget
@@ -40,6 +41,30 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var (backdropHeight, setBackdropHeight) = UseState(0d);
         var width = props.ViewportWidth > 0 ? props.ViewportWidth : measuredWidth;
         var model = UseRef<BoardDocumentModel?>(null);
+        var tabStrip = UseRef<SelectorBar?>(null);
+        var overflowFocus = UseRef<string?>(null);
+        var tabPanels = UseRef(new Dictionary<string, FrameworkElement>(StringComparer.Ordinal));
+        UseEffect((Func<Action>)(() =>
+        {
+            var current = true;
+            props.State.Post(() =>
+            {
+                if (!current || tabStrip.Current is not { IsLoaded: true } strip)
+                    return;
+                foreach (var item in strip.Items)
+                {
+                    var peers = Microsoft.UI.Xaml.Automation.AutomationProperties.GetControlledPeers(item);
+                    peers.Clear();
+                    var id = Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(item)["DashboardTab_".Length..];
+                    if (tabPanels.Current.TryGetValue(id, out var panel) && panel.IsLoaded)
+                        peers.Add(panel);
+                }
+                if (overflowFocus.Current == snapshot.ActiveTabId && strip.SelectedItem is { } selected &&
+                    selected.Focus(FocusState.Programmatic))
+                    overflowFocus.Current = null;
+            });
+            return () => current = false;
+        }), snapshot);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -50,6 +75,8 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             return () =>
             {
                 model.Current = null;
+                tabStrip.Current = null;
+                tabPanels.Current.Clear();
                 document.Dispose();
             };
         }), props.Client, props.Target, props.ConnectionRevision);
@@ -87,7 +114,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                 Button(LocalizationHelper.GetString("Dashboards_Retry"), refresh).AutomationName(LocalizationHelper.GetString("Dashboards_Retry")).AutomationId("DashboardRetry"),
                 alert: true),
             DashboardLoadStatus.Ready when snapshot.Board is not null =>
-                Board(props, snapshot, model, latestHeights, setContentHeights, width, reducedMotion),
+                Board(props, snapshot, model, latestHeights, setContentHeights, width, reducedMotion, tabStrip, overflowFocus, tabPanels),
             _ => ProgressRing().IsActive(true).Size(32, 32).Center()
                 .AutomationName(LocalizationHelper.GetString("Dashboards_Loading"))
                 .AutomationId("DashboardLoading"),
@@ -112,10 +139,11 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             .AutomationId("DashboardView");
         return Grid([GridSize.Star()], [GridSize.Star()],
                 Border(Empty()).Background(Theme.Ref(DashboardHues.Hero))
-                    .Height(backdropHeight).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
+                    .Height(backdropHeight + props.TopInset).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
                     .Set(border => border.IsHitTestVisible = false)
                     .AccessibilityView(AccessibilityView.Raw).AutomationId("DashboardBackdrop"),
                 DashboardsStates.VerticalScroll(column)
+                    .Margin(0, props.TopInset, 0, 0)
                     .AutomationName(LocalizationHelper.GetString("Dashboards_GridLabel"))
                     .AutomationId("DashboardPageScroll"))
             .OnSizeChanged((_, args) =>
@@ -221,47 +249,34 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         Ref<ImmutableDictionary<string, double>> contentHeights,
         Action<ImmutableDictionary<string, double>> setContentHeights,
         double width,
-        bool reducedMotion)
+        bool reducedMotion,
+        Ref<SelectorBar?> tabStrip,
+        Ref<string?> overflowFocus,
+        Ref<Dictionary<string, FrameworkElement>> tabPanels)
     {
         var board = snapshot.Board!;
         var tabs = board.OrderedTabs;
         var stacked = TierFor(width) == PageWidthTier.Narrow;
         var grids = snapshot.VisitedTabs
             .OrderBy(tab => tab, StringComparer.Ordinal)
-            .Select(tabId => TabGrid(props, snapshot, tabId, model, contentHeights, setContentHeights, stacked, reducedMotion)
+            .Select(tabId => TabGrid(props, snapshot, tabId, model, contentHeights, setContentHeights, stacked, reducedMotion, tabPanels)
                 .IsVisible(tabId == snapshot.ActiveTabId)
                 .Grid(row: 0)
                 .WithKey("tab:" + tabId))
             .ToArray();
-        var empty = board.WidgetsForTab(snapshot.ActiveTabId).IsEmpty;
-        // The grid host stays mounted (only hidden) on an empty tab, so widgets on
-        // visited tabs keep their loaded documents when the user switches back.
+        // Visited panels remain mounted, including when an empty section opens.
         var gridHost = Border(Grid([GridSize.Star()], [GridSize.Auto], grids)
                 .Margin(0, 0, 0, 24))
-            .IsVisible(!empty)
             .AutomationName(LocalizationHelper.GetString("Dashboards_GridLabel"))
             .AutomationId("DashboardGrid");
-        var emptyState = empty
-            ? DashboardsStates.Status(
-                "DashboardEmpty",
-                DashboardsGlyphs.Dashboard,
-                LocalizationHelper.GetString("Dashboards_BoardEmpty_Title"),
-                LocalizationHelper.GetString("Dashboards_BoardEmpty_Detail"),
-                props.State.OpenChat is { } openChat
-                    ? Button(LocalizationHelper.GetString("Dashboards_OpenChat"), () => openChat(props.Target.SessionKey)).AccentButton()
-                        .AutomationName(LocalizationHelper.GetString("Dashboards_OpenChat"))
-                        .AutomationId("DashboardEmptyOpenChat")
-                    : null,
-                art: DashboardsArt.Mosaic(1.2, reducedMotion))
-            : Empty();
 
         return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
-            Tabs(tabs, snapshot.ActiveTabId, tabId => model.Current?.SelectTab(tabId), width).Grid(row: 0),
-            gridHost.Grid(row: 1),
-            emptyState.Grid(row: 1));
+            Tabs(tabs, snapshot.ActiveTabId, tabId => model.Current?.SelectTab(tabId), width, tabStrip, overflowFocus).Grid(row: 0),
+            gridHost.Grid(row: 1));
     }
 
-    private static Element Tabs(ImmutableArray<BoardTab> tabs, string activeTabId, Action<string> select, double width)
+    private static Element Tabs(ImmutableArray<BoardTab> tabs, string activeTabId, Action<string> select, double width,
+        Ref<SelectorBar?> tabStrip, Ref<string?> overflowFocus)
     {
         if (tabs.Length <= 1)
             return Empty();
@@ -282,11 +297,14 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                 })
             .Set(bar =>
             {
-                foreach (var item in bar.Items)
+                tabStrip.Current = bar;
+                for (var index = 0; index < bar.Items.Count; index++)
                 {
+                    var item = bar.Items[index];
                     item.MaxWidth = Math.Max(40, (ContentWidth(width) - 120) / Math.Max(1, visible.Count));
                     ToolTipService.SetToolTip(item, item.Text);
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, item.Text);
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, "DashboardTab_" + visible[index].TabId);
                 }
             })
             .AutomationName(LocalizationHelper.GetString("Dashboards_TabsLabel"))
@@ -294,11 +312,27 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         if (overflow.Length == 0)
             return strip.Margin(0, 0, 0, 12);
         var menu = new MenuFlyout();
+        var selectedFromMenu = false;
+        menu.Closed += (_, _) =>
+        {
+            if (selectedFromMenu && tabStrip.Current is { } bar)
+                bar.DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (tabStrip.Current is { IsLoaded: true, SelectedItem: { } selected })
+                        selected.Focus(FocusState.Programmatic);
+                });
+        };
         foreach (var tab in overflow)
         {
             var item = new MenuFlyoutItem { Text = tab.Title };
             var tabId = tab.TabId;
-            item.Click += (_, _) => select(tabId);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, "DashboardOverflowTab_" + tabId);
+            item.Click += (_, _) =>
+            {
+                selectedFromMenu = true;
+                overflowFocus.Current = tabId;
+                select(tabId);
+            };
             menu.Items.Add(item);
         }
         return HStack(8,
@@ -318,9 +352,25 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         Ref<ImmutableDictionary<string, double>> contentHeights,
         Action<ImmutableDictionary<string, double>> setContentHeights,
         bool stacked,
-        bool reducedMotion)
+        bool reducedMotion,
+        Ref<Dictionary<string, FrameworkElement>> tabPanels)
     {
         var widgets = snapshot.Board!.WidgetsForTab(tabId);
+        var tabTitle = snapshot.Board.OrderedTabs.First(tab => tab.TabId == tabId).Title;
+        var emptyId = tabId == snapshot.ActiveTabId ? "DashboardEmpty" : "DashboardEmpty_" + tabId;
+        if (widgets.IsEmpty)
+            return Grid([GridSize.Star()], [GridSize.Auto], DashboardsStates.Status(
+                    emptyId, DashboardsGlyphs.Dashboard,
+                    LocalizationHelper.GetString("Dashboards_BoardEmpty_Title"),
+                    LocalizationHelper.GetString("Dashboards_BoardEmpty_Detail"),
+                    props.State.OpenChat is { } openChat
+                        ? Button(LocalizationHelper.GetString("Dashboards_OpenChat"), () => openChat(props.Target.SessionKey)).AccentButton()
+                            .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", tabTitle))
+                            .AutomationId(emptyId + "OpenChat")
+                        : null,
+                    art: DashboardsArt.Mosaic(1.2, reducedMotion)))
+                .Set(grid => tabPanels.Current[tabId] = grid)
+                .AutomationName(tabTitle).AutomationId("DashboardTabGrid_" + tabId);
         var byName = widgets.ToDictionary(widget => widget.Name, StringComparer.Ordinal);
         var rects = BoardGridLayout.Layout(widgets.Select(widget => new BoardGridItem(
             widget.Name,
@@ -329,10 +379,15 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             widget.Position)));
         var rowCount = Math.Max(1, BoardGridLayout.RowCount(rects));
         var kinds = snapshot.PluginWidgetKinds;
+        var reportRows = rects
+            .Where(rect => BoardWidgetBodyPolicy.Resolve(byName[rect.Name], kinds) == BoardWidgetBodyKind.Report)
+            .SelectMany(rect => Enumerable.Range(rect.Y, rect.H))
+            .ToHashSet();
         var cells = rects.Select((rect, index) =>
         {
             var widget = byName[rect.Name];
             var body = BoardWidgetBodyPolicy.Resolve(widget, kinds);
+            var allocatedHeight = rect.H * BoardGridLayout.RowHeight + (rect.H - 1) * BoardGridLayout.Gap;
             return Component<ReactorBoardWidgetCell, BoardWidgetCellProps>(new BoardWidgetCellProps(
                     widget,
                     body,
@@ -351,21 +406,30 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                         setContentHeights(contentHeights.Current);
                     }),
                     reducedMotion,
-                    props.State.OpenWebDashboards))
+                    props.State.OpenWebDashboards,
+                    allocatedHeight))
+                .MinHeight(allocatedHeight)
+                .VAlign(VerticalAlignment.Stretch)
                 .PositionInSet(index + 1, rects.Length)
                 .Grid(row: rect.Y, column: rect.X, rowSpan: rect.H, columnSpan: rect.W)
                 .WithKey(widget.Name);
         }).ToArray();
         return Grid(
                 Enumerable.Repeat(GridSize.Star(), BoardGridLayout.Columns).ToArray(),
-                Enumerable.Repeat(GridSize.Px(BoardGridLayout.RowHeight), rowCount).ToArray(),
+                Enumerable.Range(0, rowCount)
+                    .Select(row => reportRows.Contains(row) ? GridSize.Auto : GridSize.Px(BoardGridLayout.RowHeight)).ToArray(),
                 cells)
             .Set(grid =>
             {
+                tabPanels.Current[tabId] = grid;
                 grid.ColumnSpacing = BoardGridLayout.Gap;
                 grid.RowSpacing = BoardGridLayout.Gap;
+                // Native reports grow their shared rows; HTML retains its bounded row allocation.
+                foreach (var row in reportRows)
+                    grid.RowDefinitions[row].MinHeight = BoardGridLayout.RowHeight;
             })
             .Stagger(TimeSpan.FromMilliseconds(reducedMotion ? 0 : 45))
+            .AutomationName(tabTitle)
             .AutomationId("DashboardTabGrid_" + tabId);
     }
 }

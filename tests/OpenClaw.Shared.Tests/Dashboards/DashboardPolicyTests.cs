@@ -289,6 +289,7 @@ public class BoardAccessPolicyTests
         public IReadOnlyList<string> AdvertisedServerMethods => methods;
         public event EventHandler<BoardChangedEvent>? BoardChanged { add { } remove { } }
         public event EventHandler<BoardCommandEvent>? BoardCommandReceived { add { } remove { } }
+        public event EventHandler<SessionInfo[]>? SessionsUpdated { add { } remove { } }
         public Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000) => throw new NotSupportedException();
         public Task<BoardSnapshot> GetBoardAsync(BoardSessionTarget target, int timeoutMs = 15000) => throw new NotSupportedException();
     }

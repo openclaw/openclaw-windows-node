@@ -517,11 +517,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await run.InvokeAsync("app.navigate", new { page = "sessions" });
             await WaitUiAsync(run, () => FindById(run, "SessionsPageArchived") is not null, "Settings archive section");
             var section = FindById(run, "SessionsPageArchived")!;
-            ScrollAncestorToBottom(section);
+            ScrollAncestorToBottom(run, section);
             ((ExpandCollapsePattern)section.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             var restoreId = $"SessionsPageUnarchive:{GatewayScenario.OtherSessionKey}";
             await WaitUiAsync(run, () => FindById(run, restoreId) is not null, "archived conversation in Settings");
-            ScrollAncestorToBottom(FindById(run, restoreId)!);
+            ScrollAncestorToBottom(run, FindById(run, restoreId)!);
             await WaitUiAsync(run, () => FindById(run, restoreId)?.Current.IsOffscreen == false, "visible unarchive action");
             await CaptureIfRequestedAsync(run, "settings-archived-conversation.png");
             Invoke(FindById(run, restoreId)!);
@@ -535,17 +535,71 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }, allowSessionMutations: true);
     }
 
-    private static void ScrollAncestorToBottom(AutomationElement element)
+    private static void ScrollAncestorToBottom(GatewayFixtureRun run, AutomationElement element)
     {
+        object Describe(AutomationElement node) => new
+        {
+            runtimeId = node.GetRuntimeId(),
+            automationId = node.Current.AutomationId,
+            className = node.Current.ClassName,
+            controlType = node.Current.ControlType.ProgrammaticName,
+            bounds = node.Current.BoundingRectangle,
+            isOffscreen = node.Current.IsOffscreen
+        };
+        var targetBefore = Describe(element);
+        var ancestors = new List<object>();
+        var receiptPath = Path.Combine(run.ArtifactsDirectory, $"scroll-to-bottom-{Guid.NewGuid():N}.json");
         for (AutomationElement? parent = element; parent is not null; parent = TreeWalker.ControlViewWalker.GetParent(parent))
         {
-            if (parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern)
-                && ((ScrollPattern)pattern).Current.VerticallyScrollable)
+            var hasPattern = parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern);
+            var scroll = hasPattern ? (ScrollPattern)pattern : null;
+            ancestors.Add(new
             {
-                ((ScrollPattern)pattern).SetScrollPercent(ScrollPattern.NoScroll, 100);
+                element = Describe(parent),
+                pattern = hasPattern ? ScrollPattern.Pattern.ProgrammaticName : null,
+                verticallyScrollable = scroll?.Current.VerticallyScrollable,
+                verticalScrollPercent = scroll?.Current.VerticalScrollPercent
+            });
+            if (scroll is not null && scroll.Current.VerticallyScrollable)
+            {
+                var selectedBefore = Describe(parent);
+                var before = scroll.Current.VerticalScrollPercent;
+                try
+                {
+                    scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+                }
+                finally
+                {
+                    var viewport = parent.Current.BoundingRectangle;
+                    var target = element.Current.BoundingRectangle;
+                    File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+                    {
+                        run.ArtifactsDirectory,
+                        run.AppProcessId,
+                        targetBefore,
+                        targetAfter = Describe(element),
+                        selectedBefore,
+                        selectedAfter = Describe(parent),
+                        pattern = ScrollPattern.Pattern.ProgrammaticName,
+                        before,
+                        after = scroll.Current.VerticalScrollPercent,
+                        targetVisibleContainment = !element.Current.IsOffscreen && !target.IsEmpty &&
+                            !viewport.IsEmpty && viewport.Contains(target),
+                        ancestors
+                    }));
+                }
                 return;
             }
         }
+        File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+        {
+            run.ArtifactsDirectory,
+            run.AppProcessId,
+            targetBefore,
+            outcome = "No vertically scrollable ControlView ancestor",
+            ancestors
+        }));
+        throw new InvalidOperationException($"No vertically scrollable ancestor for {element.Current.AutomationId}. Diagnostics: {receiptPath}");
     }
 
     [GatewayFixtureUiFact]

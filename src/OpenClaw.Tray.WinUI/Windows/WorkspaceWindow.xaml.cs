@@ -26,6 +26,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly WorkspaceIdentitySource _identity;
     private readonly WorkspaceSessionMenuController _sessionMenu;
     private readonly WorkspaceNavigationHistory _navigation = new();
+    private bool _settingsResizeDeferred;
     private readonly WorkspaceSessionOrder _sessionOrder = new();
     private readonly ChatPage _chat = new();
     private readonly GatewayStatusContent _gatewayStatusContent = new();
@@ -129,6 +130,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chat.SessionSelected += OnChatSessionSelected;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
+        Root.SizeChanged += OnWorkspaceSizeChanged;
         // The no-gateway accessibility fixture publishes its explicit roster before this window exists.
         RefreshSidebar(rosterUpdated:
             _state.AgentsListUnsupported ||
@@ -469,6 +471,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
         view.PageNavigationChanged = UpdateHistoryButtons;
+        view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.PruneRequested = PruneSettingsHistory;
         view.CommandCenterRequested = OpenCommandCenter;
@@ -527,6 +530,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
+        _settings?.SetHostContentTopInset(0);
         SettingsSection.Margin = new Thickness(0);
         EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
@@ -949,7 +953,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         OperationInfo.IsOpen = true;
         EmbeddedOperationInfo.Severity = severity;
         EmbeddedOperationInfo.Message = message;
-        EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded;
+        EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && _settings is { ContentOnly: true };
     }
 
     // Only the user's close button dismisses the shared message; hiding the mirror must not.
@@ -1207,22 +1211,84 @@ public sealed partial class WorkspaceWindow : WindowEx
     // history unless the pane is collapsed, when the Settings history bar returns.
     private void ApplySettingsPresentation(SettingsShellView view)
     {
-        var embedded = Destination.Embedded;
+        var layout = WorkspaceSettingsLayout.Project(Root.ActualWidth, Destination.Embedded);
+        var embedded = layout.Embedded;
+        var focusSettingsNavigation = embedded && !view.ContentOnly && view.HasNavigationFocus;
+        var focusChatNavigation = !embedded && NavigationSection.Visibility == Visibility.Visible &&
+            HasChatNavigationFocus();
+        if (view.ContentOnly != embedded)
+            HideFooterFlyouts();
+        view.ApplyHostWidth(Root.ActualWidth);
         if (embedded && !view.ContentOnly)
             view.Footer.HideFlyouts();
+        UpdateEmbeddedPageTopAllocation(view, embedded);
         view.ContentOnly = embedded;
         NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
-        SettingsSection.Margin = embedded
-            ? (paneOpen ? new Thickness(NavView.OpenPaneLength, 0, 0, 0) : new Thickness(0, 56, 0, 0))
-            : new Thickness(0);
         EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
         EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
         UpdateTitleBarActions();
+        if (focusChatNavigation || focusSettingsNavigation)
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (IsClosed || !IsSettingsVisible) return;
+                if (view.ContentOnly)
+                    (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
+                else
+                    view.FocusNavigation();
+            });
+    }
+
+    private void UpdateEmbeddedPageTopAllocation(SettingsShellView view, bool? isEmbedded = null)
+    {
+        var embedded = isEmbedded ??
+            (IsSettingsVisible && WorkspaceSettingsLayout.Project(Root.ActualWidth, Destination.Embedded).Embedded);
+        var paneOpen = NavView.IsPaneOpen;
+        var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(
+            embedded, paneOpen, view.CurrentPage is ISettingsPageContentInset);
+        view.SetHostContentTopInset(allocation.PageTopInset);
+        SettingsSection.Margin = embedded
+            ? new Thickness(paneOpen ? NavView.OpenPaneLength : 0, allocation.HostMarginTop, 0, 0)
+            : new Thickness(0);
+        EmbeddedOperationInfo.Margin = new Thickness(0, allocation.PageTopInset, 0, 0);
+    }
+
+    private bool HasChatNavigationFocus()
+    {
+        for (var element = Root.XamlRoot is { } root
+                 ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as DependencyObject : null;
+             element is not null; element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element == ContentHost) return false;
+            if (element == NavigationSection || element == PaneToggleChrome) return true;
+        }
+        return false;
+    }
+
+    private void OnWorkspaceSizeChanged(object sender, SizeChangedEventArgs e)
+        => ApplySettingsLayoutAfterResize();
+
+    private void ApplySettingsLayoutAfterResize()
+    {
+        if (_settings is not { } view || !IsSettingsVisible) return;
+        if (OpenModalDialog() is { } dialog)
+        {
+            // Resize is presentation, not a navigation intent. Never replace
+            // the user's pending Back/Forward or destination with a layout refresh.
+            if (_settingsResizeDeferred) return;
+            _settingsResizeDeferred = true;
+            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                _settingsResizeDeferred = false;
+                if (!IsClosed) ApplySettingsLayoutAfterResize();
+            });
+            return;
+        }
+        ApplySettingsPresentation(view);
     }
 
     private void UpdateTitleBarActions()

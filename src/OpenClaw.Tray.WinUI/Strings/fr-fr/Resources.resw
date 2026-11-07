@@ -8223,7 +8223,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Non connecté à une passerelle</value>
   </data>
   <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
-    <value>Les tableaux de bord proviennent de votre passerelle. Ils reviennent lorsque la connexion est rétablie.</value>
+    <value>Reconnectez-vous à votre passerelle pour lire vos tableaux de bord. Aucune galerie hors ligne n'est enregistrée sur cet ordinateur.</value>
   </data>
   <data name="Dashboards_Disconnected_Action" xml:space="preserve">
     <value>Ouvrir les paramètres de connexion</value>
@@ -8250,7 +8250,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Un tableau vide, prêt à l'emploi</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Votre agent peut épingler des widgets ici.</value>
+    <value>Aucun contenu n'a été fourni pour cette section. Demandez à votre agent dans le chat.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Widgets du tableau de bord</value>
@@ -8397,7 +8397,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Auteurs</value>
   </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
-    <value>Ouvrir</value>
+    <value>Ouvrir le tableau</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>Ouvrir le tableau : {0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>Aucun résumé disponible</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Demander dans la conversation</value>
@@ -8510,4 +8516,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>Impossible de copier la clé de session.</value>
   </data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Développer la navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Réduire la navigation</value></data>
 </root>

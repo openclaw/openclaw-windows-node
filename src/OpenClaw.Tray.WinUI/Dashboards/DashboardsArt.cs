@@ -153,6 +153,7 @@ internal static class DashboardsArt
             .Padding(5, 2, 9, 2)
             .CornerRadius(999)
             .Background(Theme.Ref("SystemFillColorSuccessBackgroundBrush"))
+            .HAlign(HorizontalAlignment.Left)
             .VAlign(VerticalAlignment.Center)
             .AutomationName(LocalizationHelper.GetString("Dashboards_Live"));
 

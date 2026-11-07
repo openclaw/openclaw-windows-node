@@ -203,6 +203,101 @@ public sealed class DashboardGalleryModelTests
     }
 
     [Fact]
+    public async Task SessionChanges_RefreshLiveTitleAndTimestampWithoutABoardEdit()
+    {
+        var client = new FakeBoardClient();
+        DashboardSessionPage State(string title, bool live, long updated) => new([
+            new DashboardSessionRow
+            {
+                Session = new SessionInfo { Key = "a", AgentId = "main", DisplayName = title },
+                Status = live ? "running" : "idle", UpdatedAtMs = updated,
+            }], false, null, 1);
+        client.Pages.Enqueue(State("Before", false, 100));
+        using var model = new DashboardGalleryModel(client, action => action());
+        await model.LoadAsync("main");
+        client.Pages.Enqueue(State("Running", true, 200));
+        client.RaiseSessionsUpdated();
+        Assert.True(model.Snapshot.Rows[0].IsLive);
+        Assert.Equal("Running", model.Snapshot.Rows[0].Session.DisplayName);
+        Assert.Equal(200, model.Snapshot.Rows[0].UpdatedAtMs);
+        client.Pages.Enqueue(State("Finished", false, 300));
+        client.RaiseSessionsUpdated();
+        Assert.False(model.Snapshot.Rows[0].IsLive);
+        Assert.Equal("Finished", model.Snapshot.Rows[0].Session.DisplayName);
+        Assert.Equal(300, model.Snapshot.Rows[0].UpdatedAtMs);
+    }
+
+    [Fact]
+    public async Task SessionChanges_CoalesceWithBoardChangesDuringLoadAndStopAfterDispose()
+    {
+        var client = new FakeBoardClient();
+        client.Pages.Enqueue(Page(false, null, "a"));
+        var model = new DashboardGalleryModel(client, action => action());
+        await model.LoadAsync("main");
+        var inFlight = new TaskCompletionSource<DashboardSessionPage?>();
+        client.PendingPages.Enqueue(inFlight);
+        client.Pages.Enqueue(Page(false, null, "latest"));
+        client.RaiseSessionsUpdated();
+        client.RaiseSessionsUpdated();
+        client.RaiseChanged(new BoardChangedEvent("a", 2, null));
+        Assert.Equal(2, client.ListCalls.Count);
+        await CompleteOffContext(() => inFlight.SetResult(Page(false, null, "during")));
+        Assert.Equal(3, client.ListCalls.Count);
+        Assert.Equal("latest", model.Snapshot.Rows.Single().Key);
+        model.Dispose();
+        client.RaiseSessionsUpdated();
+        client.RaiseChanged(new BoardChangedEvent("a", 3, null));
+        Assert.Equal(3, client.ListCalls.Count);
+    }
+
+    [Fact]
+    public async Task SessionChanges_QueuedBurstRefreshesOnceAndQueuedWorkIsFencedOnDispose()
+    {
+        var queue = new System.Collections.Concurrent.ConcurrentQueue<Action>();
+        var client = new FakeBoardClient();
+        client.Pages.Enqueue(Page(false, null, "before"));
+        using var model = new DashboardGalleryModel(client, queue.Enqueue);
+        await DashboardTestDispatcher.Pump(queue, model.LoadAsync("main"));
+        client.Pages.Enqueue(Page(false, null, "after"));
+        client.RaiseSessionsUpdated();
+        client.RaiseSessionsUpdated();
+        client.RaiseSessionsUpdated();
+        Assert.Single(queue);
+        while (queue.TryDequeue(out var action))
+            action();
+        Assert.Equal(2, client.ListCalls.Count);
+        Assert.Equal("after", model.Snapshot.Rows.Single().Key);
+        client.RaiseSessionsUpdated();
+        model.Dispose();
+        while (queue.TryDequeue(out var action))
+            action();
+        Assert.Equal(2, client.ListCalls.Count);
+    }
+
+    [Fact]
+    public async Task SessionRefresh_OldAgentResponseCannotOverwriteNewScopeOrDisposedModel()
+    {
+        var client = new FakeBoardClient();
+        client.Pages.Enqueue(Page(false, null, "old"));
+        using var model = new DashboardGalleryModel(client, action => action());
+        await model.LoadAsync("main");
+        var inFlight = new TaskCompletionSource<DashboardSessionPage?>();
+        client.PendingPages.Enqueue(inFlight);
+        client.RaiseSessionsUpdated();
+        client.Pages.Enqueue(Page(false, null, "new"));
+        await model.LoadAsync("research");
+        await CompleteOffContext(() => inFlight.SetResult(Page(false, null, "stale")));
+        Assert.Equal("research", model.Snapshot.AgentId);
+        Assert.Equal("new", model.Snapshot.Rows.Single().Key);
+        var pending = new TaskCompletionSource<DashboardSessionPage?>();
+        client.PendingPages.Enqueue(pending);
+        client.RaiseSessionsUpdated();
+        model.Dispose();
+        await CompleteOffContext(() => pending.SetResult(Page(false, null, "disposed")));
+        Assert.Equal("new", model.Snapshot.Rows.Single().Key);
+    }
+
+    [Fact]
     public async Task BoardChanged_RefreshesTheGallery()
     {
         var client = new FakeBoardClient();
@@ -267,6 +362,44 @@ public sealed class DashboardGalleryModelTests
 
 public sealed class DashboardsPageStateTests
 {
+    [Fact]
+    public void TopInset_ChangesIndependentlyOfWidthWithoutReplacingNavigationOrConnection()
+    {
+        var state = new DashboardsPageState { Post = action => action(), Schedule = new FakeScheduler().Schedule };
+        var client = new FakeBoardClient();
+        var target = new BoardSessionTarget("agent:main:report", "main");
+        state.SetConnection(client, true);
+        state.Open(target);
+        state.SetViewportWidth(900);
+        var revision = state.ConnectionRevision;
+        var changes = 0;
+        state.Changed += () => changes++;
+
+        state.SetTopInset(56);
+        state.SetTopInset(56);
+        Assert.Equal(1, changes);
+        Assert.Equal(56, state.TopInset);
+        Assert.Equal(900, state.ViewportWidth);
+        Assert.Same(client, state.Client);
+        Assert.Same(target, state.OpenTarget);
+        Assert.Equal(revision, state.ConnectionRevision);
+
+        state.SetTopInset(0);
+        Assert.Equal(2, changes);
+        Assert.Equal(0, state.TopInset);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void TopInset_RejectsInvalidAllocation(double inset)
+    {
+        var state = new DashboardsPageState { Post = action => action(), Schedule = new FakeScheduler().Schedule };
+        Assert.Throws<ArgumentOutOfRangeException>(() => state.SetTopInset(inset));
+        Assert.Equal(0, state.TopInset);
+    }
+
     [Fact]
     public void FirstGallery_ChoosesTheLatestKnownAgentButNeverReplacesAnExplicitSelection()
     {
@@ -690,9 +823,11 @@ internal sealed class FakeBoardClient : IBoardGatewayClient
 
     public event EventHandler<BoardChangedEvent>? BoardChanged;
     public event EventHandler<BoardCommandEvent>? BoardCommandReceived;
+    public event EventHandler<SessionInfo[]>? SessionsUpdated;
 
     public void RaiseChanged(BoardChangedEvent e) => BoardChanged?.Invoke(this, e);
     public void RaiseCommand(BoardCommandEvent e) => BoardCommandReceived?.Invoke(this, e);
+    public void RaiseSessionsUpdated() => SessionsUpdated?.Invoke(this, []);
 
     public Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000)
     {

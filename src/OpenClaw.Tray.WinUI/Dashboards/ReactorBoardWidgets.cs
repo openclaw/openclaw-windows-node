@@ -34,7 +34,8 @@ internal sealed record BoardWidgetCellProps(
     Action<string> OnRetryAuthorization,
     Action<string, double> OnContentHeight,
     bool ReducedMotion = false,
-    Action? OpenWebDashboards = null);
+    Action? OpenWebDashboards = null,
+    double? AllocatedHeight = null);
 
 internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
 {
@@ -50,7 +51,7 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
         var body = props.Body switch
         {
             BoardWidgetBodyKind.Frame => Frame(props, hostState, setHostState, retryToken, setRetryToken),
-            BoardWidgetBodyKind.Report => DashboardsStates.VerticalScroll(ReactorBoardWidgets.Report(widget).Margin(16, 4, 16, 16)),
+            BoardWidgetBodyKind.Report => ReactorBoardWidgets.Report(widget).Margin(16, 4, 16, 16),
             BoardWidgetBodyKind.Website => ReactorBoardWidgets.Website(widget),
             BoardWidgetBodyKind.NeedsApproval => ReactorBoardWidgets.NeedsApproval(widget, web),
             BoardWidgetBodyKind.Rejected => ReactorBoardWidgets.Notice(
@@ -76,13 +77,19 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
         };
 
         var framed = widget.Presentation == BoardWidgetPresentation.Card || props.Body != BoardWidgetBodyKind.Frame;
+        var bodyRow = props.Body == BoardWidgetBodyKind.Report ? GridSize.Auto :
+            props.AllocatedHeight is { } allocation
+                ? GridSize.Px(Math.Max(0, allocation - BoardGridLayout.ChromeHeaderHeight - BoardGridLayout.BorderWidth * 2))
+                : GridSize.Star();
         Element cell = Border(Grid(
                 [GridSize.Star()],
-                [GridSize.Auto, GridSize.Star()],
+                [GridSize.Auto, bodyRow],
                 header.Grid(row: 0),
                 Border(body)
                     .Padding(framed && props.Body == BoardWidgetBodyKind.Frame ? BoardGridLayout.FrameInset : 0)
-                    .Grid(row: 1)))
+                    .Grid(row: 1))
+                .VAlign(props.AllocatedHeight is null && props.Body != BoardWidgetBodyKind.Report
+                    ? VerticalAlignment.Stretch : VerticalAlignment.Top))
             .Background(Theme.Ref(widget.Presentation == BoardWidgetPresentation.Frameless && props.Body == BoardWidgetBodyKind.Frame
                 ? "SubtleFillColorTransparentBrush"
                 : "CardBackgroundFillColorDefaultBrush"))
@@ -351,30 +358,31 @@ internal static class ReactorBoardWidgets
         {
             return Error(LocalizationHelper.GetString("Dashboards_Widget_ReportInvalid"), ex.Message);
         }
-        return VStack(16, report.Blocks.Select((block, index) => Block(block).WithKey("block" + index)).ToArray())
+        return VStack(16, report.Blocks.Select((block, index) => Block(block, "BoardReport_" + widget.Name + "_" + index,
+                index == 0 ? widget.Label : null).WithKey("block" + index)).ToArray())
             .AutomationName(widget.Label)
             .AutomationId("BoardReport_" + widget.Name);
     }
 
-    private static Element Block(BoardReportBlock block) => block switch
+    private static Element Block(BoardReportBlock block, string id, string? cardTitle = null) => block switch
     {
         BoardReportTextBlock text => VStack(4, Titled(text.Title,
             TextBlock(text.Text).FontSize(14).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(ProseMaxWidth)
-                .HAlign(HorizontalAlignment.Left).IsTextSelectionEnabled(true))),
+                .HAlign(HorizontalAlignment.Left).IsTextSelectionEnabled(true), cardTitle)),
         BoardReportMetricsBlock metrics => WrapGrid(metrics.Items.Select((metric, index) => Metric(metric, index).WithKey("metric" + index)).ToArray())
             .Set(grid =>
             {
                 grid.Orientation = Orientation.Horizontal;
                 grid.ItemWidth = 160;
             }),
-        BoardReportTableBlock table => VStack(4, Titled(table.Title, Table(table))),
-        BoardReportChartBlock chart => VStack(4, Titled(chart.Title, Chart(chart))),
-        BoardReportLinksBlock links => VStack(4, Titled(links.Title, VStack(4, links.Items.Select(Link).ToArray()))),
+        BoardReportTableBlock table => VStack(4, Titled(table.Title, Table(table, id), cardTitle)),
+        BoardReportChartBlock chart => VStack(4, Titled(chart.Title, Chart(chart, id), cardTitle)),
+        BoardReportLinksBlock links => VStack(4, Titled(links.Title, VStack(4, links.Items.Select(Link).ToArray()), cardTitle)),
         _ => Empty(),
     };
 
-    private static Element[] Titled(string? title, Element content) =>
-        string.IsNullOrWhiteSpace(title)
+    private static Element[] Titled(string? title, Element content, string? cardTitle = null) =>
+        string.IsNullOrWhiteSpace(title) || (cardTitle is not null && string.Equals(title.Trim(), cardTitle.Trim(), StringComparison.Ordinal))
             ? [content]
             : [TextBlock(title).FontSize(14).SemiBold().HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level3), content];
 
@@ -403,14 +411,16 @@ internal static class ReactorBoardWidgets
             .AutomationName($"{metric.Label}: {metric.Value}");
     }
 
-    private static Element Table(BoardReportTableBlock table)
+    private static Element Table(BoardReportTableBlock table, string id)
     {
-        var columns = Enumerable.Repeat(GridSize.Auto, table.Columns.Length).ToArray();
+        var columns = Enumerable.Repeat(GridSize.Star(), table.Columns.Length).ToArray();
         var rows = Enumerable.Repeat(GridSize.Auto, table.Rows.Length + 1).ToArray();
         var cells = new List<Element>();
         for (var c = 0; c < table.Columns.Length; c++)
         {
             cells.Add(Border(TextBlock(table.Columns[c]).FontSize(12).SemiBold()
+                    .TextWrapping(TextWrapping.Wrap)
+                    .TextAlignment(TextAlignment.Left)
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
                 .Padding(10, 6)
                 .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
@@ -420,35 +430,30 @@ internal static class ReactorBoardWidgets
         {
             for (var c = 0; c < table.Columns.Length; c++)
             {
-                cells.Add(Border(TextBlock(table.Rows[r][c]).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(360))
+                cells.Add(Border(TextBlock(table.Rows[r][c]).FontSize(13).TextWrapping(TextWrapping.Wrap).MaxWidth(360)
+                        .TextAlignment(TextAlignment.Left)
+                        .AutomationId($"{id}_Cell_{r}_{c}"))
                     .Padding(10, 7)
                     .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
                     .BorderThickness(0, 1, 0, 0)
                     .Grid(row: r + 1, column: c));
             }
         }
-        return ScrollViewer(Border(Grid(columns, rows, cells.ToArray()))
+        return Border(Grid(columns, rows, cells.ToArray()))
                 .CornerRadius(8)
                 .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
                 .BorderThickness(1)
-                .HAlign(HorizontalAlignment.Left))
-            .Set(viewer =>
-            {
-                viewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-                viewer.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                viewer.HorizontalScrollMode = ScrollMode.Auto;
-                viewer.VerticalScrollMode = ScrollMode.Disabled;
-            });
+                .HAlign(HorizontalAlignment.Stretch);
     }
 
-    private static Element Chart(BoardReportChartBlock chart)
+    private static Element Chart(BoardReportChartBlock chart, string id)
     {
         var values = chart.Points.Select(point => point.Value).ToArray();
         var minimum = Math.Min(0, values.Min());
         var span = Math.Max(0, values.Max()) - minimum;
         if (span <= 0)
             span = 1;
-        double Y(double value) => (ChartHeight - 8) - ((value - minimum) / span) * (ChartHeight - 24);
+        double Y(double value) => (ChartHeight - 8) - ((value - minimum) / span) * (ChartHeight - 32);
         var baseline = Y(0);
         var slot = ChartWidth / chart.Points.Length;
         const string series = "AccentFillColorDefaultBrush";
@@ -502,22 +507,27 @@ internal static class ReactorBoardWidgets
                 .CornerRadius(6, 6, 0, 0)
                 .Background(Theme.Ref(series))
                 .Opacity(index == peak ? 1 : 0.55)
+                .AutomationId(id + "_Bar_" + index)
                 .Canvas(point.X - barWidth / 2, Math.Min(point.Y, baseline))));
         }
         var labelWidth = chart.Line && chart.Points.Length > 1
             ? Math.Min(slot, (ChartWidth - 16) / (chart.Points.Length - 1))
             : slot;
-        shapes.AddRange(chart.Points.Select((point, index) =>
+        for (var index = 0; index < chart.Points.Length; index++)
         {
-            var value = point.Value.ToString("G6", System.Globalization.CultureInfo.CurrentCulture);
-            return (Element)VStack(0,
-                    TextBlock(point.Label).FontSize(11).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                        .TextTrimming(TextTrimming.CharacterEllipsis).TextAlignment(TextAlignment.Center),
-                    TextBlock(value).FontSize(12).SemiBold().TextAlignment(TextAlignment.Center))
+            var point = chart.Points[index];
+            var value = point.Value.ToString("G", System.Globalization.CultureInfo.CurrentCulture);
+            shapes.Add(TextBlock(value).FontSize(12).SemiBold().TextAlignment(TextAlignment.Center)
+                .Width(labelWidth).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(value)
+                .AutomationName($"{point.Label}: {value}")
+                .AutomationId(id + "_Value_" + index)
+                .Canvas(points[index].X - labelWidth / 2, Math.Min(points[index].Y, baseline) - 20));
+            shapes.Add(TextBlock(point.Label).FontSize(11).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                .TextTrimming(TextTrimming.CharacterEllipsis).TextAlignment(TextAlignment.Center).ToolTip(point.Label)
                 .Width(labelWidth)
                 .AutomationName($"{point.Label}: {value}")
-                .Canvas(points[index].X - labelWidth / 2, ChartHeight + 4);
-        }));
+                .Canvas(points[index].X - labelWidth / 2, ChartHeight + 4));
+        }
         return Viewbox(Canvas(shapes.ToArray()).Size(ChartWidth, ChartHeight + ChartLabelHeight))
             .Stretch(Microsoft.UI.Xaml.Media.Stretch.Uniform)
             .MaxWidth(ChartWidth)

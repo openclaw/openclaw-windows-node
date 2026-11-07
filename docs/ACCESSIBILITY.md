@@ -66,4 +66,28 @@ pairing.
 
 ## Relationship to other validation
 
+### Settings navigation keyboard contract
+
+The Settings toggle exposes **Expand navigation** or **Collapse navigation**
+according to its state. Unhandled Escape closes an expanded pane only while
+focus is in navigation and returns focus to the toggle. Page controls, native
+search flyouts, menus and ContentDialogs retain their own dismissal behavior.
+The mounted boundary is covered by
+`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`.
+
+Workspace retains its 800-DIP minimum. `WorkspaceSettingsLayout` projects host
+window width, not the allocated page width, without replacing the current
+destination, frame or history. The below-720 compact rail is preparation only,
+not reachable through normal resizing at the current minimum. Narrow expansion
+is temporary and does not overwrite the saved wide preference. Dashboards
+retains its standalone session route and native reader state.
+Source integration is not evidence of mounted rendering, focus or text scaling.
+
+Config, Local AI, Default Model, Voice, Notifications, Event Stream and
+Diagnostics adapt to each page's allocated width after rail/sidebar subtraction.
+Config additionally measures its editor grid at the 728-DIP stacking boundary
+and retains draft controls while moving tree/detail panes. The integrated source
+guards and XAML parsing do not establish native layout, six-locale reachability
+or focused-control retention. Those require current isolated runtime proof.
+
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

@@ -26,6 +26,30 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
 {
+    [Theory]
+    [InlineData("Quarterly operating review", "QO")]
+    [InlineData("  board   notes ", "BN")]
+    [InlineData("One", "O")]
+    [InlineData("", "")]
+    [InlineData("预算 报告", "预报")]
+    public void IdentityTile_UsesOnlyTheFirstTwoTitleWords(string title, string expected) =>
+        Assert.Equal(expected, DashboardsPresentation.TitleInitials(title));
+
+    [Fact]
+    public void FreshToday_ExcludesTomorrowAndInvalidTimestamps()
+    {
+        var now = DateTimeOffset.Now;
+        var today = new DateTimeOffset(now.LocalDateTime.Date).ToUnixTimeMilliseconds();
+        var tomorrow = new DateTimeOffset(now.LocalDateTime.Date.AddDays(1)).ToUnixTimeMilliseconds();
+        var rows = new long?[] { today, now.ToUnixTimeMilliseconds(), tomorrow, -1, long.MaxValue, null }
+            .Select((timestamp, index) => new DashboardSessionRow
+            {
+                Session = new SessionInfo { Key = "board-" + index, AgentId = "main" },
+                UpdatedAtMs = timestamp,
+            }).ToImmutableArray();
+        Assert.Equal(new[] { "board-1", "board-0" }, DashboardsPresentation.FreshToday(rows, now).Select(row => row.Key));
+    }
+
     [Fact]
     public async Task DashboardContentHost_IsReachableInTheAutomationPeerTree()
     {
@@ -106,6 +130,316 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             yield return peer;
             foreach (var child in peer.GetChildren() ?? [])
                 pending.Push(child);
+        }
+    }
+
+    [Theory]
+    [InlineData(4, 2, false)]
+    [InlineData(5, 1, false)]
+    [InlineData(5, 2, true)]
+    [InlineData(6, 3, true)]
+    public async Task FreshToday_RequiresFiveBoardsAndTwoUpdatesInTheCurrentLocalDay(int count, int todayCount, bool expected)
+    {
+        var today = DateTimeOffset.Now;
+        var rows = Enumerable.Range(0, count).Select(index => new DashboardSessionRow
+        {
+            Session = new SessionInfo { Key = "agent:main:fresh:" + index, AgentId = "main", DisplayName = "Board " + index },
+            UpdatedAtMs = (index < todayCount ? today : today.AddDays(-1)).ToUnixTimeMilliseconds(),
+        }).ToImmutableArray();
+        var client = new SnapshotBoardClient(new BoardSnapshot("unused", 1, [], []))
+        {
+            Gallery = new DashboardSessionPage(rows, false, null, count),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        await WithMountedAsync(() => Component<ReactorDashboardGallery, DashboardGalleryProps>(
+            new DashboardGalleryProps(state, client, "main", 1)), host =>
+        {
+            Assert.Equal(expected, FindDescendants<FrameworkElement>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "DashboardsFreshLayout"));
+            var card = ById<Button>(host, "DashboardCard_agent:main:fresh:0");
+            Assert.StartsWith("Open board: Board 0", AutomationProperties.GetName(card));
+            Assert.Equal("No summary available", AutomationProperties.GetHelpText(card));
+            Assert.Contains(FindDescendants<TextBlock>(card), text => text.Text == "B0");
+            Assert.Equal(0, client.BoardLoads);
+        }, ready: host => FindDescendants<Grid>(host).Any(element =>
+            AutomationProperties.GetAutomationId(element) == "DashboardsCards"), width: 1400);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReturningFromBoard_FocusesExactOpeningCardOrNamedHeadingWhenRemoved(bool removeBoard)
+    {
+        var rows = Enumerable.Range(0, 30).Select(index => new DashboardSessionRow
+        {
+            Session = new SessionInfo { Key = "agent:main:return:" + index, AgentId = "main", DisplayName = "Board " + index },
+            UpdatedAtMs = DateTimeOffset.Now.AddDays(-1).ToUnixTimeMilliseconds(),
+        }).ToImmutableArray();
+        var client = new SnapshotBoardClient(new BoardSnapshot(rows[29].Key, 1, [], []))
+        {
+            Gallery = new DashboardSessionPage(rows, false, null, 30),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+            GalleryQuery = "Board",
+            GallerySort = DashboardGallerySort.Title,
+        };
+        state.SetConnection(client, true);
+        await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
+            host => Invoke(ById<Button>(host, "DashboardsShowMore")),
+            ready: host => FindDescendants<Button>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "DashboardsShowMore"),
+            width: 1400, afterMounted: async host =>
+            {
+                const string cardId = "DashboardCard_agent:main:return:29";
+                await WaitForMountedStateAsync(host, root => ById<Grid>(root, "DashboardsCards").Children.Count == 30);
+                await ui.RunOnUIAsync(() =>
+                {
+                    var card = ById<Button>(host, cardId);
+                    Assert.True(card.Focus(FocusState.Keyboard));
+                    Invoke(card);
+                });
+                await WaitForMountedStateAsync(host, root => FindDescendants<FrameworkElement>(root).Any(element =>
+                    AutomationProperties.GetAutomationId(element) == "DashboardEmpty"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    if (removeBoard)
+                        client.Gallery = new DashboardSessionPage(rows.RemoveAt(29), false, null, 29);
+                    state.Open(null);
+                });
+                var focusId = removeBoard ? "DashboardsTitle" : cardId;
+                await WaitForMountedStateAsync(host, root =>
+                    Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root.XamlRoot) is DependencyObject focused &&
+                    AutomationProperties.GetAutomationId(focused) == focusId);
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Equal("Board", ById<TextBox>(host, "DashboardsSearch").Text);
+                    Assert.Equal(1, ById<ComboBox>(host, "DashboardsSort").SelectedIndex);
+                    Assert.Equal(removeBoard ? 29 : 30, ById<Grid>(host, "DashboardsCards").Children.Count);
+                    Assert.False(state.ReturnFocusPending);
+                });
+            });
+    }
+
+    [Fact]
+    public async Task OverflowTab_SelectsItsNamedPanelRestoresTabFocusAndOffersSectionChat()
+    {
+        const string session = "agent:main:tabs";
+        var client = new SnapshotBoardClient(new BoardSnapshot(session, 1,
+            [.. Enumerable.Range(0, 8).Select(index => new BoardTab("section-" + index, "Section " + index, index, "right"))], []));
+        var chats = new List<string>();
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+            OpenChat = chats.Add,
+        };
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+            new BoardViewProps(state, client, new BoardSessionTarget(session, "main"), 1)),
+            _ => { }, ready: host => FindDescendants<DropDownButton>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "DashboardMoreTabs"),
+            width: 1400, afterMounted: async host =>
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    var button = ById<DropDownButton>(host, "DashboardMoreTabs");
+                    var menu = Assert.IsType<MenuFlyout>(button.Flyout);
+                    menu.ShowAt(button);
+                    Invoke(menu.Items.OfType<MenuFlyoutItem>().Single(item =>
+                        AutomationProperties.GetAutomationId(item) == "DashboardOverflowTab_section-7"));
+                    menu.Hide();
+                });
+                await WaitForMountedStateAsync(host, root =>
+                    Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root.XamlRoot) is DependencyObject focused &&
+                    AutomationProperties.GetAutomationId(focused) == "DashboardTab_section-7");
+                await ui.RunOnUIAsync(() =>
+                {
+                    var tab = ById<SelectorBar>(host, "DashboardTabs").SelectedItem;
+                    Assert.Equal("Section 7", AutomationProperties.GetName(tab));
+                    var panel = Assert.Single(AutomationProperties.GetControlledPeers(tab));
+                    Assert.Equal("Section 7", AutomationProperties.GetName(panel));
+                    Assert.Equal("DashboardTabGrid_section-7", AutomationProperties.GetAutomationId(panel));
+                    var chat = ById<Button>(host, "DashboardEmptyOpenChat");
+                    Assert.Equal("Open chat for Section 7", AutomationProperties.GetName(chat));
+                    Invoke(chat);
+                    Assert.Equal(new[] { session }, chats);
+                });
+            });
+    }
+
+    [Fact]
+    public Task ReportTable_UntypedPayloadCellsStayLeftAlignedWithoutGuessingDatesOrCurrency() =>
+        WithMountedAsync(() => Component<ReactorBoardWidgetCell, BoardWidgetCellProps>(Cell(
+            Plugin("table", "session:report", """
+            {"blocks":[{"type":"table","columns":["Prose","Date","Status","Count","Cost"],"rows":[["Review","2026-11-06","Ready","12","$4.50"]]}]}
+            """), BoardWidgetBodyKind.Report)), host =>
+        {
+            for (var column = 0; column < 5; column++)
+                Assert.Equal(TextAlignment.Left, ById<TextBlock>(host, $"BoardReport_table_0_Cell_0_{column}").TextAlignment);
+        });
+
+    [Fact]
+    public Task ReportChart_ExactValuesAreAboveBarsAndZeroAndNegativeValuesRemainHonest() =>
+        WithMountedAsync(() => Component<ReactorBoardWidgetCell, BoardWidgetCellProps>(Cell(
+            Plugin("chart", "session:report", """
+            {"blocks":[{"type":"chart","points":[{"label":"A","value":123.456789012345},{"label":"B","value":0},{"label":"C","value":-10}]}]}
+            """), BoardWidgetBodyKind.Report)), host =>
+        {
+            var values = new[] { "123.456789012345", "0", "-10" };
+            for (var index = 0; index < values.Length; index++)
+            {
+                var label = ById<TextBlock>(host, "BoardReport_chart_0_Value_" + index);
+                var bar = ById<Border>(host, "BoardReport_chart_0_Bar_" + index);
+                Assert.Equal(values[index], label.Text);
+                Assert.True(Microsoft.UI.Xaml.Controls.Canvas.GetTop(label) + label.ActualHeight
+                    <= Microsoft.UI.Xaml.Controls.Canvas.GetTop(bar));
+            }
+            Assert.True(ById<Border>(host, "BoardReport_chart_0_Bar_0").Height >= 110);
+            Assert.Equal(1, ById<Border>(host, "BoardReport_chart_0_Bar_1").Height);
+        });
+
+    [Theory]
+    [InlineData(728, "Light")]
+    [InlineData(984, "Dark")]
+    public async Task GalleryLivePills_FitTheirContentWithoutStretchingOrClipping(double width, string theme)
+    {
+        var client = new SnapshotBoardClient(new BoardSnapshot("unused", 1, [], []))
+        {
+            Gallery = new DashboardSessionPage([.. Enumerable.Range(0, 6).Select(index => new DashboardSessionRow
+            {
+                Session = new SessionInfo { Key = "live-" + index, AgentId = "main", DisplayName = "Live board " + index },
+                Status = "running",
+                UpdatedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            })], false, null, 6),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        await WithMountedAsync(() => Component<ReactorDashboardGallery, DashboardGalleryProps>(
+                new DashboardGalleryProps(state, client, "main", 1, width)), host =>
+            {
+                var pills = FindDescendants<Border>(host).Where(border =>
+                    AutomationProperties.GetName(border) == LocalizationHelper.GetString("Dashboards_Live")).ToArray();
+                Assert.NotEmpty(pills);
+                foreach (var pill in pills)
+                {
+                    Assert.Equal(HorizontalAlignment.Left, pill.HorizontalAlignment);
+                    var label = Assert.Single(FindDescendants<TextBlock>(pill));
+                    var labelBounds = Bounds(label, pill);
+                    Assert.True(pill.ActualWidth < width / 2, "Live pill stretched across the card.");
+                    Assert.InRange(labelBounds.Left, 0, pill.ActualWidth);
+                    Assert.True(labelBounds.Right <= pill.ActualWidth);
+                    Assert.InRange(labelBounds.Top, 0, pill.ActualHeight);
+                    Assert.True(labelBounds.Bottom <= pill.ActualHeight, "Live label is vertically clipped.");
+                }
+            }, ready: host => FindDescendants<Border>(host).Any(border =>
+                AutomationProperties.GetName(border) == LocalizationHelper.GetString("Dashboards_Live")),
+            width: width, theme: theme);
+    }
+
+    [Theory]
+    [InlineData(728, "Light")]
+    [InlineData(984, "Dark")]
+    public async Task NativeReports_GrowSharedRowsAndKeepEveryTableCellInsideWithoutNestedScroll(double width, string theme)
+    {
+        var rows = Enumerable.Range(0, 20).Select(index => new[] { "Queue " + index, "A long unbroken value: abcdefghijklmnopqrstuvwxyz0123456789" }).ToArray();
+        var tall = Plugin("tall", "session:report", JsonSerializer.Serialize(new
+        {
+            blocks = new[] { new { type = "table", title = "Top queues", columns = new[] { "Queue", "Description" }, rows } },
+        })) with { SizeH = 4, Position = 0 };
+        var shortReport = Plugin("short", "session:report",
+            """{"blocks":[{"type":"text","title":"Service health","text":"All services operational."}]}""")
+            with { Title = "Service health", SizeH = 4, Position = 1 };
+        var key = "agent:main:report-sizing";
+        var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [new BoardTab("main", "Overview", 0, "right")], [tall, shortReport]))
+        {
+            Kinds = [new PluginWidgetKind("session", "session:report", "Report")],
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        state.SetConnection(client, true);
+        state.Open(new BoardSessionTarget(key, "main"), "Report sizing");
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+                new BoardViewProps(state, client, new BoardSessionTarget(key, "main"), 1, width)), host =>
+            {
+                var tallCard = ById<Border>(host, "BoardWidget_tall");
+                var shortCard = ById<Border>(host, "BoardWidget_short");
+                Assert.InRange(Math.Abs(tallCard.ActualHeight - shortCard.ActualHeight), 0, 1);
+                Assert.True(tallCard.ActualHeight > 4 * 56 + 3 * 12, "Report remains capped at its saved grid height.");
+                Assert.Empty(FindDescendants<ScrollViewer>(tallCard));
+                Assert.Empty(FindDescendants<ScrollViewer>(shortCard));
+                var cells = FindDescendants<TextBlock>(tallCard).Where(text =>
+                    AutomationProperties.GetAutomationId(text).StartsWith("BoardReport_tall_0_Cell_", StringComparison.Ordinal)).ToArray();
+                Assert.Equal(40, cells.Length);
+                foreach (var cell in cells)
+                {
+                    var bounds = Bounds(cell, tallCard);
+                    Assert.True(bounds.Left >= 0 && bounds.Right <= tallCard.ActualWidth + 0.5);
+                    Assert.True(bounds.Top >= 0 && bounds.Bottom <= tallCard.ActualHeight + 0.5);
+                }
+                Assert.Single(FindDescendants<TextBlock>(shortCard), text => text.Text == "Service health");
+                Assert.Single(FindDescendants<TextBlock>(tallCard), text => text.Text == "Top queues");
+                var pageScroll = ById<ScrollViewer>(host, "DashboardPageScroll");
+                Assert.True(pageScroll.ScrollableHeight > 0, "Overflow must remain accessible through page scroll.");
+            }, ready: host => FindDescendants<TextBlock>(host).Any(text =>
+                AutomationProperties.GetAutomationId(text) == "BoardReport_tall_0_Cell_19_1"),
+            width: width, theme: theme);
+    }
+
+    [Fact]
+    public async Task NativeReportRowGrowth_AlignsCardSurfacesWithoutEnlargingNeighborContent()
+    {
+        var report = Plugin("tall", "session:report", JsonSerializer.Serialize(new
+        {
+            blocks = new[] { new { type = "text", text = string.Join("\n", Enumerable.Repeat("Saved report line.", 40)) } },
+        }));
+        var website = Plugin("website", "session:website", """{"url":"https://status.example.com/"}""")
+            with { Position = 1 };
+        var key = "agent:main:mixed-sizing";
+        var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [new BoardTab("main", "Overview", 0, "right")], [report, website]))
+        {
+            Kinds = [new PluginWidgetKind("session", "session:report", "Report"), new PluginWidgetKind("session", "session:website", "Website")],
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+                new BoardViewProps(state, client, new BoardSessionTarget(key, "main"), 1, 984)), host =>
+            {
+                var tallCard = ById<Border>(host, "BoardWidget_tall");
+                var boundedCard = ById<Border>(host, "BoardWidget_website");
+                Assert.InRange(Math.Abs(tallCard.ActualHeight - boundedCard.ActualHeight), 0, 1);
+                var boundedContent = Assert.IsType<Grid>(boundedCard.Child);
+                Assert.InRange(Math.Abs(boundedContent.ActualHeight - (4 * 56 + 3 * 12 - 2)), 0, 1);
+                Assert.Equal(VerticalAlignment.Top, boundedContent.VerticalAlignment);
+                Assert.InRange(Math.Abs(Bounds(tallCard, host).Top - Bounds(boundedCard, host).Top), 0, 1);
+                Assert.Contains(FindDescendants<HyperlinkButton>(boundedCard), button =>
+                    AutomationProperties.GetAutomationId(button) == "BoardWebsiteOpen_website");
+            }, ready: host => FindDescendants<Border>(host).Any(border =>
+                AutomationProperties.GetAutomationId(border) == "BoardWidget_website"), width: 984,
+            capture: "mixed-report-website");
+    }
+
+    private async Task WaitForMountedStateAsync(ReactorHostControl host, Func<ReactorHostControl, bool> ready)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!await ui.RunOnUIAsync(() => Task.FromResult(ready(host))))
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Mounted dashboard did not reach the expected state.");
+            await ui.YieldToRenderAsync();
         }
     }
 
@@ -209,6 +543,112 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
 
     private static T ById<T>(DependencyObject root, string id) where T : FrameworkElement =>
         Assert.Single(FindDescendants<T>(root), element => AutomationProperties.GetAutomationId(element) == id);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ContentInset_MovesOnlyRetainedViewportAndExtendsBackdropWithoutHeaderResize(bool board)
+    {
+        var key = "agent:main:inset";
+        var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [], []))
+        {
+            Gallery = new DashboardSessionPage([], false, null, 0),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        state.SetConnection(client, true);
+        if (board)
+            state.Open(new BoardSessionTarget(key, "main"), "Saved report");
+        var backdropId = board ? "DashboardBackdrop" : "DashboardsBackdrop";
+        var columnId = board ? "DashboardView" : "DashboardsGallery";
+        var scrollId = board ? "DashboardPageScroll" : "DashboardsGalleryScroll";
+        await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
+            _ => { },
+            ready: host => BackdropMatchesMast(host, backdropId, columnId),
+            width: 900, onViewportChanged: state.SetViewportWidth,
+            afterMounted: async host =>
+            {
+                Border? column = null;
+                Border? backdrop = null;
+                ScrollViewer? scroll = null;
+                double originalHeight = 0;
+                double headerHeight = 0;
+                await ui.RunOnUIAsync(() =>
+                {
+                    column = ById<Border>(host, columnId);
+                    backdrop = ById<Border>(host, backdropId);
+                    scroll = ById<ScrollViewer>(host, scrollId);
+                    originalHeight = backdrop.ActualHeight;
+                    headerHeight = Assert.IsType<Grid>(column.Child).RowDefinitions[0].ActualHeight;
+                    state.SetTopInset(56);
+                });
+                foreach (var inset in new[] { 56d, 0d })
+                {
+                    await ui.RunOnUIAsync(() => state.SetTopInset(inset));
+                    var deadline = DateTime.UtcNow.AddSeconds(10);
+                    while (!await ui.RunOnUIAsync(() => Task.FromResult(
+                        Math.Abs(ById<Border>(host, backdropId).ActualHeight - originalHeight - inset) <= 0.5 &&
+                        ById<ScrollViewer>(host, scrollId).Margin.Top == inset)))
+                    {
+                        Assert.True(DateTime.UtcNow < deadline, "Inset-only layout did not settle.");
+                        await ui.YieldToRenderAsync();
+                    }
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        Assert.Same(column, ById<Border>(host, columnId));
+                        Assert.Same(backdrop, ById<Border>(host, backdropId));
+                        Assert.Same(scroll, ById<ScrollViewer>(host, scrollId));
+                        Assert.InRange(Math.Abs(Bounds(backdrop!, host).Top), 0, 0.5);
+                        Assert.InRange(Math.Abs(Bounds(scroll!, host).Top - inset), 0, 0.5);
+                        Assert.InRange(Math.Abs(backdrop!.ActualWidth - host.ActualWidth), 0, 0.5);
+                        Assert.InRange(Math.Abs(Assert.IsType<Grid>(column!.Child).RowDefinitions[0].ActualHeight - headerHeight), 0, 0.5);
+                    });
+                }
+            });
+    }
+
+    [Fact]
+    public async Task InitialMount_ReconcilesImmediateInsetAtConstantWidth()
+    {
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        state.SetViewportWidth(900);
+        await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
+            host =>
+            {
+                Assert.Equal(900, state.ViewportWidth);
+                Assert.Equal(56, ById<Border>(host, "DashboardsDisconnectedViewport").Margin.Top);
+                Assert.Equal(0, host.Margin.Top);
+            },
+            ready: host => FindDescendants<Border>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "DashboardsDisconnectedViewport" && element.Margin.Top == 56),
+            afterMount: () => state.SetTopInset(56));
+    }
+
+    [Fact]
+    public async Task DisconnectedContent_RetainsInsetWithoutAConnectedBoardOrBackdrop()
+    {
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        state.SetTopInset(56);
+        await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
+            host =>
+            {
+                var viewport = ById<Border>(host, "DashboardsDisconnectedViewport");
+                Assert.Equal(56, viewport.Margin.Top);
+                Assert.InRange(Math.Abs(Bounds(viewport, host).Top - 56), 0, 0.5);
+                Assert.Equal(0, host.Margin.Top);
+            });
+    }
 
     private static void AssertFullWidthBackdrop(ReactorHostControl host, string backdropId, string columnId, double width)
     {
@@ -593,11 +1033,11 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 var empty = ById<FrameworkElement>(host, "DashboardEmpty");
                 var allowedCopy = new[]
                 {
-                    "A clear board, ready for work", "Your agent can pin widgets here.", "Open chat",
+                    "A clear board, ready for work", "No content was supplied for this section. Ask your agent in chat.", "Open chat",
                     DashboardsGlyphsExtra.Report, DashboardsGlyphsExtra.Code,
                     DashboardsGlyphsExtra.Globe, DashboardsGlyphsExtra.Sparkle,
                 };
-                Assert.Equal("Your agent can pin widgets here.", ById<TextBlock>(empty, "DashboardEmptyDetail").Text);
+                Assert.Equal("No content was supplied for this section. Ask your agent in chat.", ById<TextBlock>(empty, "DashboardEmptyDetail").Text);
                 Assert.All(FindDescendants<TextBlock>(empty), text => Assert.Contains(text.Text, allowedCopy));
                 var chat = Assert.Single(FindDescendants<Button>(empty));
                 Assert.Equal("DashboardEmptyOpenChat", AutomationProperties.GetAutomationId(chat));
@@ -932,7 +1372,8 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 Invoke(button);
                 var chat = Assert.Single(FindDescendants<Button>(host),
                     candidate => AutomationProperties.GetAutomationId(candidate) == "DashboardCardChat_agent:main:dashboard:ops");
-                Assert.Equal(new Microsoft.UI.Xaml.Thickness(0), chat.Padding);
+                Assert.Equal(new Microsoft.UI.Xaml.Thickness(1), chat.BorderThickness);
+                Assert.Contains(FindDescendants<TextBlock>(chat), text => text.Text == "Open chat");
                 Assert.Contains(FindDescendants<TextBlock>(chat), text => text.Text == "\uE8BD");
                 var card = Assert.Single(FindDescendants<Button>(host),
                     candidate => AutomationProperties.GetAutomationId(candidate) == "DashboardCard_agent:main:dashboard:ops");
@@ -1017,7 +1458,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
 
     private async Task WithMountedAsync(Func<Element> render, Action<ReactorHostControl> assert, Func<ReactorHostControl, bool>? ready = null,
         string theme = "Light", string? capture = null, double width = 900, Action<double>? onViewportChanged = null,
-        Func<ReactorHostControl, Task>? afterMounted = null)
+        Func<ReactorHostControl, Task>? afterMounted = null, Action? afterMount = null)
     {
         ReactorHostControl? host = null;
         Border? captureFrame = null;
@@ -1033,6 +1474,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 host = new ReactorHostControl { Width = width, Height = capture is null ? 600 : 760, RequestedTheme = requested };
                 host.SizeChanged += (_, args) => onViewportChanged?.Invoke(args.NewSize.Width);
                 host.Mount(_ => render());
+                afterMount?.Invoke();
                 captureFrame = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Background=\"{ThemeResource SolidBackgroundFillColorBaseBrush}\" />");
                 captureFrame.RequestedTheme = requested;
@@ -1135,7 +1577,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
 
     private sealed class SnapshotBoardClient(BoardSnapshot board) : IBoardGatewayClient
     {
-        public DashboardSessionPage? Gallery { get; init; }
+        public DashboardSessionPage? Gallery { get; set; }
         public Exception? Failure { get; set; }
         public bool Pending { get; init; }
         public IReadOnlyList<string> ReadScopes { get; init; } = ["operator.read"];
@@ -1148,6 +1590,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         public IReadOnlyList<string> AdvertisedServerMethods => ["board.get"];
         public event EventHandler<BoardChangedEvent>? BoardChanged { add { } remove { } }
         public event EventHandler<BoardCommandEvent>? BoardCommandReceived { add { } remove { } }
+        public event EventHandler<SessionInfo[]>? SessionsUpdated { add { } remove { } }
         public Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000) =>
             Failure is not null ? Task.FromException<DashboardSessionPage?>(Failure) :
             Pending ? new TaskCompletionSource<DashboardSessionPage?>().Task :

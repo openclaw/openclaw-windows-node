@@ -8275,7 +8275,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Não conectado a um gateway</value>
   </data>
   <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
-    <value>Os painéis vêm do seu gateway. Eles voltam quando a conexão for restaurada.</value>
+    <value>Reconecte-se ao seu gateway para ler seus painéis. Nenhuma galeria offline é salva neste computador.</value>
   </data>
   <data name="Dashboards_Disconnected_Action" xml:space="preserve">
     <value>Abrir configurações de conexão</value>
@@ -8302,7 +8302,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Um painel limpo, pronto para o trabalho</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Seu agente pode fixar widgets aqui.</value>
+    <value>Nenhum conteúdo foi fornecido para esta seção. Pergunte ao seu agente no chat.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Widgets do painel</value>
@@ -8449,7 +8449,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Autores</value>
   </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
-    <value>Abrir</value>
+    <value>Abrir painel</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>Abrir painel: {0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>Nenhum resumo disponível</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Perguntar no chat</value>
@@ -8562,4 +8568,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>Não foi possível copiar a chave da sessão.</value>
   </data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expandir navegação</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Recolher navegação</value></data>
 </root>

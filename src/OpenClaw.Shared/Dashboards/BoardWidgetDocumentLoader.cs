@@ -37,6 +37,7 @@ public sealed class BoardWidgetDocumentLoader : IDisposable
             : 30);
 
     private readonly HttpClient _http;
+    private readonly HttpClient _directHttp;
 
     public BoardWidgetDocumentLoader(HttpMessageHandler? handler = null)
     {
@@ -44,6 +45,12 @@ public sealed class BoardWidgetDocumentLoader : IDisposable
         {
             Timeout = Timeout.InfiniteTimeSpan,
         };
+        // Loopback view tickets must never reach an inherited process proxy.
+        // Remote Gateways retain their existing proxy policy.
+        _directHttp = handler is not null ? _http : new HttpClient(new HttpClientHandler
+        {
+            AllowAutoRedirect = false, UseCookies = false, UseProxy = false,
+        }) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
     public async Task<string> LoadAsync(Uri documentUrl, CancellationToken cancellationToken)
@@ -55,7 +62,8 @@ public sealed class BoardWidgetDocumentLoader : IDisposable
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, documentUrl);
             request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoStore = true, NoCache = true };
-            response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            var http = documentUrl.IsLoopback ? _directHttp : _http;
+            response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -113,5 +121,10 @@ public sealed class BoardWidgetDocumentLoader : IDisposable
     private static BoardWidgetDocumentException TooLarge() =>
         new(BoardWidgetDocumentFailure.Rejected, "widget HTML exceeds 10 MiB; regenerate a smaller widget");
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        if (!ReferenceEquals(_http, _directHttp))
+            _directHttp.Dispose();
+        _http.Dispose();
+    }
 }

@@ -8223,7 +8223,7 @@
     <value>未連線到閘道</value>
   </data>
   <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
-    <value>儀表板來自閘道。連線恢復後會重新顯示。</value>
+    <value>請重新連線至閘道以閱讀儀表板。此電腦不儲存離線圖庫。</value>
   </data>
   <data name="Dashboards_Disconnected_Action" xml:space="preserve">
     <value>開啟連線設定</value>
@@ -8250,7 +8250,7 @@
     <value>空白看板，隨時可用</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>代理程式可以在這裡釘選小工具。</value>
+    <value>此區段未提供內容。請在聊天中詢問代理程式。</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>儀表板小工具</value>
@@ -8397,7 +8397,13 @@
     <value>作者</value>
   </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
-    <value>開啟</value>
+    <value>開啟儀表板</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>開啟儀表板：{0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>暫無摘要</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>在聊天中詢問</value>
@@ -8510,4 +8516,6 @@
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>無法複製工作階段金鑰。</value>
   </data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>展開導覽</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>摺疊導覽</value></data>
 </root>

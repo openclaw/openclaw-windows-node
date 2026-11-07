@@ -282,10 +282,15 @@ public sealed class FixtureBoards
             Widget.Html("rejected-widget", "metrics", "Rejected widget", 6, 4, 3, "<p>unused</p>", grantState: "rejected",
                 declared: new { netOrigins = new[] { "https://tracker.example.net" } }),
             Widget.Plugin("docs-site", "integrations", "Docs website", 12, 8, 0, "session:website", new { url = "https://example.com/" }),
+            Widget.Plugin("mixed-report", "mixed", "Saved report", 6, 4, 0, "session:report",
+                new { blocks = new[] { new { type = "text", text = string.Join("\n", Enumerable.Repeat("A saved report line.", 16)) } } }),
+            Widget.Plugin("mixed-website", "mixed", "Status website", 6, 4, 1, "session:website",
+                new { url = "https://status.example.com/" }),
         ];
         return new BoardDefinition(
             OpsRow(OpsSessionKey, "main", "Ops overview", "fixture-owner", "Fixture Owner", s_now - 120_000, "running", "Deploy finished; health is green."),
-            [new Tab("overview", "Overview", 0), new Tab("metrics", "Metrics", 1), new Tab("integrations", "Integrations", 2)],
+            [new Tab("overview", "Overview", 0), new Tab("metrics", "Metrics", 1), new Tab("integrations", "Integrations", 2),
+                new Tab("mixed", "Mixed content", 3)],
             widgets);
     }
 

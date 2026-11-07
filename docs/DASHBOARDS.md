@@ -32,9 +32,15 @@ Existing customized pin lists and explicit empty lists are preserved; unpinning
 the last page stays empty after restart. Session links and command navigation
 open the same standalone reader without showing the Settings section list.
 
-The Reactor gallery uses an agent-scoped mast, static agent-tinted covers,
-two-line message summaries, sibling chat buttons, a Fresh today shelf for five
-or more boards, and batches of 24 cards with Show more. Sort and search appear
+The Reactor gallery uses an agent-scoped mast, static title-initial identity
+tiles on agent-tinted bands, readable message summaries (or "No summary
+available"), bordered sibling chat buttons, and batches of 24 cards with Show
+more. Card footers show author/update metadata, Live when reported, and an
+explicit Open board label. Card automation names announce the open action,
+title, live state, author and update time; the summary is help text.
+Fresh today requires five or more boards and at least two updates within the
+current local calendar day. Its featured board leads with a title and summary,
+not an empty cover. Larger inventories use denser bands. Sort and search appear
 above five boards. On the first unscoped visit, the gallery discovers the most
 recent board's configured agent before loading that agent's boards. Explicit
 routes and later picker choices win. Agent labels come from `agents.list`;
@@ -47,7 +53,18 @@ and failed reads do not masquerade as an empty result.
 
 The board header uses the same subtle system-accent gradient and an icon-only
 chat, refresh, and More options group. The Workspace Back button
-returns to the gallery. Board content and ticket/sandbox ownership are unchanged.
+returns to the gallery, retaining search, sort and the shown card count, and
+restoring focus to the exact originating card (including a Fresh today card).
+If it disappeared, focus falls back to the named gallery heading.
+The gallery is not persisted offline: disconnect replaces it with an explicit
+reconnect message, not cached boards. Board content and ticket/sandbox ownership
+are unchanged.
+
+Board tabs select named native panels, with automation control relationships.
+Overflow tabs open through More tabs and return focus to the selected tab.
+An empty section explicitly says that no content was supplied and offers
+Open chat for that section. Tabs display only their supplied widgets; Windows
+does not manufacture category details or subscription records.
 
 ## Responsive layout
 
@@ -66,6 +83,17 @@ The gallery and board use native `ScrollViewer` controls with horizontal
 scrolling disabled. Their content fills the viewport and exposes the native
 ScrollPattern. Each page scrolls its mast, tabs and content together; there is no
 sticky header or scroll-offset compensation.
+
+When narrow full Settings collapses its own rail, the shell supplies a retained
+56-DIP content inset through `ISettingsPageContentInset`. Only the gallery/board
+scroll viewport and disconnected content move down; the page frame, backdrop
+and copy-notice overlay remain at the origin. The backdrop extent adds the
+inset to the measured mast height, including inset-only changes without a
+header resize. Embedded pins also receive the 56-DIP content inset when the
+Workspace Chat pane is collapsed, keeping the outer page host at the origin.
+Expanded panes and standalone content-only hosts receive zero inset. Ordinary
+non-opted-in pages retain the outer host margin instead. This allocation never
+changes board/session keys or remounts the reader.
 
 The mast uses a native bordered **Open in web** button followed by Refresh.
 The action group aligns to the content column's right edge. Explicit native
@@ -148,6 +176,30 @@ metrics and chart values are required payload fields; missing values are rejecte
 not substituted with zero. Missing session, tab or widget collections are errors,
 not evidence of an empty gallery or board. Explicit empty arrays remain valid.
 Refresh failures retain previously received data with an error indication.
+Gallery invalidation observes the operator owner's `SessionsUpdated` event as
+well as `board.changed`, so runs can change card titles, recency and Live without
+editing the board. Both event sources share the same queued-refresh coalescing,
+load generation fence and disposal unsubscribe. Detached gallery reads do not
+publish operator session events.
+
+Report tables contain column labels and string cells, not column types.
+Cells remain left-aligned, including numeric-looking strings: right-aligned
+numbers/currency require a supported typed contract, not guessing from text.
+Native report cards grow their shared grid rows to fit the content, retaining
+the saved row span as a minimum. Tables wrap within the card's column width;
+reports use page-level scrolling, not nested scroll viewers. An identical first
+report heading is omitted when the native card title already presents it.
+Neighboring card surfaces stretch to the shared row height, while HTML and
+other non-report content retain their allocated height and top alignment.
+Ticketed HTML keeps its native identity title even when the untrusted document
+contains the same heading. Windows does not inspect or rewrite the sandboxed
+document to deduplicate it; native report heading suppression uses typed data only.
+Charts require finite numeric values and supplied labels. Values appear above
+bars with round-trip numeric precision, full tooltips and automation names,
+while zero and negative values retain their actual baseline. The schema has no
+typed date axis or illustrative-trend metadata. Windows neither invents dates
+nor labels real numeric reports as shape-only trends. Non-numeric or metadata-only
+chart payloads remain invalid; adding such chart support is deferred.
 
 Loading, disconnected, unsupported and authorization states describe the native
 client's connection/hosting state. The empty gallery shows only its unavailable
@@ -163,8 +215,12 @@ fixture, not the production data path.
 | `board.command` event | `sessionKey`, `command: focus_tab | set_chat_dock` | select tab |
 
 Widget HTML is fetched over HTTP from the active Gateway origin at
-`/__openclaw__/board/<sessionKey>/<name>/index.html?bt=<ticket>`. The sandbox
-proxy document is served by the Gateway's sandbox listener at
+`/__openclaw__/board/<sessionKey>/<name>/index.html?bt=<ticket>`.
+Loopback document requests use a direct, no-proxy transport so inherited
+`HTTP_PROXY`/`ALL_PROXY` cannot receive bearer view tickets or returned HTML.
+Remote Gateway requests preserve their existing proxy routing. Both transports
+disable redirects and cookies. The sandbox proxy document is served by the
+Gateway's sandbox listener at
 `/mcp-app-sandbox` on `sandboxPort` (or the configured `sandboxOrigin`).
 
 ## Parity checklist
@@ -182,7 +238,7 @@ reader, with where the work lives instead).
 | Author filter with all-authors option | Search matches author; no separate author combo | `createdActor`, `owner.actor`, `agentId` fallback | Deferred |
 | Sort by recently updated or title | Sort combo box | `updatedAt`, display title | Done |
 | Result count and total count | Section count and live-region result count (loaded rows only) | filtered rows | Done |
-| Card: title, author avatar initial, "By author", updated relative time, unknown time | Static card: agent-tinted cover, avatar, last message (two lines), relative time, and sibling Open chat action | row fields | Done |
+| Card: title, author, updated relative time, unknown time | Static card: title initials on an agent-tinted band, summary (with explicit missing state), author/update footer, Open board label and bordered sibling Open chat action | row fields | Done |
 | Live indicator for running sessions | Live badge | `status == "running"` | Done |
 | Live board preview on each card | none: cards never load a board, widget ticket, or web content | `board.get` | Deferred: the gallery stays a static list |
 | Open the full dashboard from a card | Card click opens the dashboard view | session key | Done |
@@ -288,6 +344,11 @@ a local relay page in a dedicated WebView2.
   website link cards without an embedded browser, refused website addresses,
   the web handoff from the gallery header (whose static cards load no board),
   display-only widgets, and the board menu, plus the board menu's session-key copy.
+  Designer-delta cases cover the Fresh today thresholds, exact-card/removed-card
+  focus return after Show more, named overflow panels and tab focus, untyped
+  table alignment, and exact chart values above positive, zero and negative bars.
+  Test definitions are not execution evidence; current-source results and
+  Light/Dark 1400-DIP gallery/board frames must be collected separately.
 - Visual proof uses the [Gateway fixture](GATEWAY_FIXTURE_TESTING.md) scenario
   `dashboards`, which serves synthetic boards, widget HTML, and a sandbox proxy.
   Never change real boards or grant real permissions on a production Gateway.

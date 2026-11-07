@@ -8290,7 +8290,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Not connected to a Gateway</value>
   </data>
   <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
-    <value>Dashboards come from your Gateway. They return when the connection is restored.</value>
+    <value>Reconnect to your Gateway to read your boards. No offline gallery is saved on this computer.</value>
   </data>
   <data name="Dashboards_Disconnected_Action" xml:space="preserve">
     <value>Open Connection settings</value>
@@ -8317,7 +8317,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>A clear board, ready for work</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>Your agent can pin widgets here.</value>
+    <value>No content was supplied for this section. Ask your agent in chat.</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>Dashboard widgets</value>
@@ -8464,7 +8464,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Authors</value>
   </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
-    <value>Open</value>
+    <value>Open board</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>Open board: {0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>No summary available</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>Ask in chat</value>
@@ -8577,4 +8583,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>Couldn't copy the session key.</value>
   </data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
 </root>

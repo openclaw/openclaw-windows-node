@@ -8223,7 +8223,7 @@
     <value>未连接到网关</value>
   </data>
   <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
-    <value>仪表板来自网关。连接恢复后会重新显示。</value>
+    <value>请重新连接网关以阅读仪表板。此计算机不保存离线图库。</value>
   </data>
   <data name="Dashboards_Disconnected_Action" xml:space="preserve">
     <value>打开连接设置</value>
@@ -8250,7 +8250,7 @@
     <value>空白看板，随时可用</value>
   </data>
   <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
-    <value>代理可以在此固定小组件。</value>
+    <value>此部分未提供内容。请在聊天中询问代理。</value>
   </data>
   <data name="Dashboards_GridLabel" xml:space="preserve">
     <value>仪表板小组件</value>
@@ -8397,7 +8397,13 @@
     <value>作者</value>
   </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
-    <value>打开</value>
+    <value>打开仪表板</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>打开仪表板：{0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>暂无摘要</value>
   </data>
   <data name="Dashboards_AskInChat" xml:space="preserve">
     <value>在聊天中询问</value>
@@ -8510,4 +8516,6 @@
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>无法复制会话密钥。</value>
   </data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>展开导航</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>折叠导航</value></data>
 </root>

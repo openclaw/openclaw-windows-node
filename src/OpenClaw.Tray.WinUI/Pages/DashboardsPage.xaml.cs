@@ -20,7 +20,7 @@ namespace OpenClawTray.Pages;
 /// host and feeds <see cref="DashboardsPageState"/> from the hub (agent scope,
 /// route) and the app (operator connection). All presentation is Reactor.
 /// </summary>
-public sealed partial class DashboardsPage : Page
+public sealed partial class DashboardsPage : Page, ISettingsPageContentInset
 {
     private static App CurrentApp => (App)Application.Current!;
 
@@ -29,6 +29,7 @@ public sealed partial class DashboardsPage : Page
     private AppState? _appState;
     private SettingsShellView? _hub;
     private IDisposable? _copyNotice;
+    private double _topInset;
     private static readonly TimeSpan s_copyNoticeDuration = TimeSpan.FromSeconds(4);
 
     public DashboardsPage()
@@ -36,6 +37,12 @@ public sealed partial class DashboardsPage : Page
         InitializeComponent();
         Unloaded += (_, _) => Detach();
         ActualThemeChanged += (_, _) => _state?.SetTheme(ActualTheme == ElementTheme.Dark);
+    }
+
+    void ISettingsPageContentInset.ApplyTopInset(double topInset)
+    {
+        _topInset = topInset;
+        _state?.SetTopInset(topInset);
     }
 
     internal void Initialize(SettingsShellView hub, string? tag)
@@ -54,6 +61,7 @@ public sealed partial class DashboardsPage : Page
             OpenWebDashboards = () => ((IAppCommands)CurrentApp).OpenDashboard(DashboardsRoute.WebGalleryPath),
             CopySessionKey = CopySessionKey,
         };
+        _state.SetTopInset(_topInset);
         _hub = hub;
         _state.SetTheme(ActualTheme == ElementTheme.Dark);
         UpdateAgentNames();
