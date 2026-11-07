@@ -455,14 +455,6 @@ public sealed partial class ConnectionPage : Page
         ConnectionToggle.IsOn = toggleOn;
         _suppressConnectionToggle = false;
 
-        // Dashboard icon — top-right of the gateway header. Only when there's
-        // a healthy connection (no point opening the dashboard of a broken one)
-        // and we're not in the focused Add Gateway sub-view.
-        bool showDashboard = plan.Mode == ConnectionPageMode.Cockpit
-                          && plan.StripAccent == ConnectionAccent.Success
-                          && plan.ActiveGatewayDisplayName != null;
-        StripDashboardButton.Visibility = showDashboard ? Visibility.Visible : Visibility.Collapsed;
-
         // Glance chips (presence • channels • $today • topology) — when connected.
         ApplyGlanceChips(plan, hasActive && toggleOn);
     }
@@ -1844,7 +1836,12 @@ public sealed partial class ConnectionPage : Page
             Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
         };
         var flyout = new MenuFlyout();
-        var openDashboard = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_OpenDashboard"), Tag = row.Id };
+        var openDashboard = new MenuFlyoutItem
+        {
+            Text = LocalizationHelper.GetString("ConnectionPage_OpenDashboard"),
+            Icon = new FontIcon { Glyph = Helpers.FluentIconCatalog.DashboardView },
+            Tag = row.Id,
+        };
         openDashboard.Click += OnSavedRowOpenDashboard;
         flyout.Items.Add(openDashboard);
         if (row.HasHostTerminal)
@@ -2134,11 +2131,6 @@ public sealed partial class ConnectionPage : Page
             // paste-setup-code block (RecoveryAuthPasteBlock) own those
             // flows now. Both enum values are retired in ConnectionPagePlan.
         }
-    }
-
-    private void OnOpenDashboard(object sender, RoutedEventArgs e)
-    {
-        ((IAppCommands)CurrentApp).OpenDashboard();
     }
 
     private void OnOpenGatewayTerminal(object sender, RoutedEventArgs e)

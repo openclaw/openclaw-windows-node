@@ -1531,9 +1531,6 @@
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
     <value>無法載入閘道設定結構描述。請使用網頁儀表板編輯設定。</value>
   </data>
-  <data name="OpenDashboardButton.Content" xml:space="preserve">
-    <value>開啟儀表板</value>
-  </data>
   <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
     <value>Saving configuration</value>
   </data>
@@ -5401,7 +5398,7 @@
     <value>連線</value>
   </data>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
-    <value>開啟儀表板</value>
+    <value>在儀表板中開啟</value>
   </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的選項</value>
@@ -5684,12 +5681,6 @@
   </data>
   <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>開啟終端機</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>在瀏覽器中開啟儀表板</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>開啟儀表板</value>
   </data>
   <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>中斷連線/重新連線</value>
@@ -6758,8 +6749,6 @@
   <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>將安裝的內容</value></data>
   <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>登入時啟動 OpenClaw</value></data>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>登入時啟動 OpenClaw</value></data>
-  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>頻道、整合與閘道設定</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是協助您在電腦上完成工作的 AI 助理。</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>設定你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>探索現有提供者對話（選用）</value></data>
@@ -7864,4 +7853,7 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
+  <data name="ConfigPage_OpenInDashboardLabel.Text" xml:space="preserve"><value>在儀表板中開啟</value></data>
+  <data name="ConfigPage_OpenInDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>在儀表板中開啟</value></data>
+  <data name="GatewayDashboard_Title" xml:space="preserve"><value>Dashboard</value></data>
 </root>

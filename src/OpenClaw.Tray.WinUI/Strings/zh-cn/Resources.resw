@@ -1531,9 +1531,6 @@
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
     <value>无法加载网关配置架构。请使用 Web 仪表板编辑设置。</value>
   </data>
-  <data name="OpenDashboardButton.Content" xml:space="preserve">
-    <value>打开仪表板</value>
-  </data>
   <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
     <value>Saving configuration</value>
   </data>
@@ -5401,7 +5398,7 @@
     <value>连接</value>
   </data>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
-    <value>打开仪表板</value>
+    <value>在仪表板中打开</value>
   </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的选项</value>
@@ -5684,12 +5681,6 @@
   </data>
   <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>打开终端</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>在浏览器中打开仪表板</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>打开仪表板</value>
   </data>
   <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>断开/重新连接</value>
@@ -6758,8 +6749,6 @@
   <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>将安装的内容</value></data>
   <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>登录时启动 OpenClaw</value></data>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>登录时启动 OpenClaw</value></data>
-  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>频道、集成和网关设置</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是帮助你在电脑上完成任务的 AI 助手。</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>设置你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>发现现有提供商对话（可选）</value></data>
@@ -7864,4 +7853,7 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
+  <data name="ConfigPage_OpenInDashboardLabel.Text" xml:space="preserve"><value>在仪表板中打开</value></data>
+  <data name="ConfigPage_OpenInDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>在仪表板中打开</value></data>
+  <data name="GatewayDashboard_Title" xml:space="preserve"><value>Dashboard</value></data>
 </root>

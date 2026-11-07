@@ -64,8 +64,8 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
-        // Canonical product surface name, shared with the existing Dashboard action.
-        "ChatDashboardButton.Content",
+        // Canonical product surface name, used as the Dashboard launch failure title.
+        "GatewayDashboard_Title",
         // Native engine executable/product name. Keep the exact llama-server
         // spelling in every locale so it matches diagnostics and process names.
         "LocalAiPage_EngineHeading.Text",

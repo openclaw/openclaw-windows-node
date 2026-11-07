@@ -755,7 +755,10 @@ public sealed partial class ConfigPage : Page
 
     private void OnOpenDashboard(object sender, RoutedEventArgs e)
     {
-        ((IAppCommands)CurrentApp).OpenDashboard("config");
+        // Same contextual route as the pane footer's Dashboard button on this page.
+        var path = OpenClawTray.Presentation.HubSearchCatalog.Counterpart("config",
+            OpenClawTray.Presentation.HubSearchCatalog.SupportsDashboard(_appState?.GatewaySelf?.ServerVersion));
+        ((IAppCommands)CurrentApp).OpenDashboard(path);
     }
 
     private void OnCopySelectedJson(object sender, RoutedEventArgs e)

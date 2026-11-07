@@ -113,16 +113,40 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void DashboardAction_LivesInConnectionCard()
+    public void ConnectionPage_LeavesActiveGatewayDashboardToThePaneFooter()
     {
-        var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
-        var dashboard = Assert.Single(document.Descendants(),
-            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardButton");
-        Assert.Equal("OnOpenDashboard", (string?)dashboard.Attribute("Click"));
-        Assert.Contains(dashboard.Ancestors(),
-            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
-        Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
-            Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
+        var xaml = Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml");
+        var ids = XDocument.Parse(xaml).Descendants()
+            .Select(element => (string?)element.Attribute("AutomationProperties.AutomationId"))
+            .ToHashSet();
+        Assert.DoesNotContain("StripDashboardAction", ids);
+        Assert.DoesNotContain("ConnectionDashboardCard", ids);
+        Assert.DoesNotContain("ConnectionDashboardButton", ids);
+        Assert.DoesNotContain("OnOpenDashboard", xaml);
+        var code = Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs");
+        Assert.DoesNotContain("StripDashboardButton", code);
+        Assert.DoesNotContain("((IAppCommands)CurrentApp).OpenDashboard(", code);
+    }
+
+    [Fact]
+    public void RemainingPageDashboardActions_UseTheFooterDashboardGlyph()
+    {
+        var connection = Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs");
+        var savedRowItem = connection[connection.IndexOf("var openDashboard = new MenuFlyoutItem", StringComparison.Ordinal)..];
+        savedRowItem = savedRowItem[..savedRowItem.IndexOf("};", StringComparison.Ordinal)];
+        Assert.Contains("\"ConnectionPage_OpenDashboard\"", savedRowItem);
+        Assert.Contains("FluentIconCatalog.DashboardView", savedRowItem);
+
+        var config = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConfigPage.xaml"));
+        var button = Assert.Single(config.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConfigOpenInDashboard");
+        Assert.Equal("OnOpenDashboard", (string?)button.Attribute("Click"));
+        Assert.Contains(button.Descendants(), element => element.Name.LocalName == "FontIcon" &&
+            ((string?)element.Attribute("Glyph"))?.Contains("FluentIconCatalog.DashboardView", StringComparison.Ordinal) == true);
+        var configCode = Read(@"src\OpenClaw.Tray.WinUI\Pages\ConfigPage.xaml.cs");
+        Assert.Contains("HubSearchCatalog.Counterpart(\"config\"", configCode);
+        Assert.DoesNotContain("OpenDashboard(\"config\")", configCode);
+        Assert.Contains("DashboardView = \"\\uF246\"", Read(@"src\OpenClaw.Tray.WinUI\Helpers\FluentIconCatalog.cs"));
     }
 
     [Fact]

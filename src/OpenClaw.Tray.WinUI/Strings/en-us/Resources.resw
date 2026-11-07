@@ -1578,9 +1578,6 @@ Use one of these options:
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
     <value>The gateway configuration schema could not be loaded. Use the web dashboard to edit settings.</value>
   </data>
-  <data name="OpenDashboardButton.Content" xml:space="preserve">
-    <value>Open Dashboard</value>
-  </data>
   <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
     <value>Saving configuration</value>
   </data>
@@ -5406,7 +5403,7 @@ Make sure the gateway is running.</value>
     <value>Connect</value>
   </data>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
-    <value>Open dashboard</value>
+    <value>Open in Dashboard</value>
   </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options for {0}</value>
@@ -5689,12 +5686,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Open terminal</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open dashboard (in browser)</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open dashboard</value>
   </data>
   <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Disconnect / reconnect</value>
@@ -6827,8 +6818,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>What setup will install</value></data>
   <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
-  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Channels, integrations and gateway settings</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is your AI assistant for getting things done on your PC.</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Set up your AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Discover existing provider conversations (optional)</value></data>
@@ -7932,4 +7921,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="ConfigPage_OpenInDashboardLabel.Text" xml:space="preserve"><value>Open in Dashboard</value></data>
+  <data name="ConfigPage_OpenInDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open in Dashboard</value></data>
+  <data name="GatewayDashboard_Title" xml:space="preserve"><value>Dashboard</value></data>
 </root>

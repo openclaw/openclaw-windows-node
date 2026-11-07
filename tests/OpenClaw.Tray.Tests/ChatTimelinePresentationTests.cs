@@ -20,18 +20,12 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void GatewayDashboard_StaysInConnectionCardNotChat()
+    public void GatewayDashboard_HasNoChatPageBanner()
     {
         var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages");
         var chat = File.ReadAllText(Path.Combine(pages, "ChatPage.xaml"));
         Assert.DoesNotContain("ChatDashboard", chat);
         Assert.DoesNotContain("OnOpenDashboard", File.ReadAllText(Path.Combine(pages, "ChatPage.xaml.cs")));
-        var connection = System.Xml.Linq.XDocument.Load(Path.Combine(pages, "ConnectionPage.xaml"));
-        var card = connection.Descendants().Single(element =>
-            (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
-        Assert.Contains(card.Descendants(), element => (string?)element.Attribute("Click") == "OnOpenDashboard");
-        Assert.Contains(card.Descendants(), element =>
-            (string?)element.Attribute("Text") == "Channels, integrations and gateway settings");
     }
 
     [Fact]

@@ -1531,9 +1531,6 @@ Utilisez l'une de ces options :
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
     <value>Le schéma de configuration de la passerelle n’a pas pu être chargé. Utilisez le tableau de bord web pour modifier les paramètres.</value>
   </data>
-  <data name="OpenDashboardButton.Content" xml:space="preserve">
-    <value>Ouvrir le tableau de bord</value>
-  </data>
   <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
     <value>Saving configuration</value>
   </data>
@@ -5401,7 +5398,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Connecter</value>
   </data>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
-    <value>Ouvrir le tableau de bord</value>
+    <value>Ouvrir dans le tableau de bord</value>
   </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options pour {0}</value>
@@ -5684,12 +5681,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Ouvrir le terminal</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Ouvrir le tableau de bord (dans le navigateur)</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Ouvrir le tableau de bord</value>
   </data>
   <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Déconnecter / reconnecter</value>
@@ -6758,8 +6749,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>Ce qui sera installé</value></data>
   <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>Lancer OpenClaw à l'ouverture de session</value></data>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Lancer OpenClaw à l'ouverture de session</value></data>
-  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Canaux, intégrations et paramètres de la passerelle</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw est votre assistant IA pour accomplir vos tâches sur votre PC.</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Configurez votre IA</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Découvrir les conversations existantes des fournisseurs (facultatif)</value></data>
@@ -7864,4 +7853,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
+  <data name="ConfigPage_OpenInDashboardLabel.Text" xml:space="preserve"><value>Ouvrir dans le tableau de bord</value></data>
+  <data name="ConfigPage_OpenInDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ouvrir dans le tableau de bord</value></data>
+  <data name="GatewayDashboard_Title" xml:space="preserve"><value>Dashboard</value></data>
 </root>

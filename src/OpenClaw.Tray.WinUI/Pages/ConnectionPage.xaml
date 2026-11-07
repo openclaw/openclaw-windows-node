@@ -210,18 +210,6 @@
                             </Button>
                             <!-- Disconnect/connect toggle. ON = connection is live (or attempting).
                                  Tap OFF → disconnect; tap ON (from off) → reconnect. -->
-                            <Button x:Uid="ConnectionPage_StripDashboardButton"
-                                    x:Name="StripDashboardButton"
-                                    Width="32" Height="32" Padding="0"
-                                    Background="Transparent" BorderThickness="0"
-                                    Visibility="Collapsed"
-                                    Click="OnOpenDashboard"
-                                    ToolTipService.ToolTip="Open dashboard (in browser)"
-                                    AutomationProperties.Name="Open dashboard"
-                                    AutomationProperties.AutomationId="StripDashboardAction">
-                                <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.OpenInBrowser, Mode=OneTime}" FontSize="14"
-                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Button>
                             <ToggleSwitch x:Uid="ConnectionPage_ConnectionToggle"
                                           x:Name="ConnectionToggle"
                                           MinWidth="0" MinHeight="0"
@@ -382,21 +370,6 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-            </Border>
-
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16"
-                    AutomationProperties.AutomationId="ConnectionDashboardCard">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                    <TextBlock x:Uid="ChatDashboardHint"
-                               Text="Channels, integrations and gateway settings"
-                               Style="{StaticResource BodyTextBlockStyle}"
-                               TextWrapping="Wrap" VerticalAlignment="Center" />
-                    <Button x:Uid="ChatDashboardButton" Grid.Column="1"
-                            Content="Dashboard" Click="OnOpenDashboard"
-                            AutomationProperties.AutomationId="ConnectionDashboardButton" />
-                </Grid>
             </Border>
 
             <!-- ═════════════════════════════════════════════════════════

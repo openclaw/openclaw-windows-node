@@ -151,7 +151,7 @@ internal sealed class WindowManager : IWindowManager
         _callbacks.GetAppNotificationService()?.Show(new AppNotification
         {
             Id = GatewayDashboardLauncher.FailureNotificationId,
-            Title = LocalizationHelper.GetString("ChatDashboardButton.Content"),
+            Title = LocalizationHelper.GetString("GatewayDashboard_Title"),
             Message = message,
             Source = "connection",
             Severity = AppNotificationSeverity.Error,
@@ -174,7 +174,7 @@ internal sealed class WindowManager : IWindowManager
             var dialog = new ContentDialog
             {
                 XamlRoot = root,
-                Title = LocalizationHelper.GetString("ChatDashboardButton.Content"),
+                Title = LocalizationHelper.GetString("GatewayDashboard_Title"),
                 Content = message,
                 PrimaryButtonText = retry is null ? "" : LocalizationHelper.GetString("Onboarding_Retry"),
                 CloseButtonText = LocalizationHelper.GetString("ActivityCloseButton.Content"),

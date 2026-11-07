@@ -559,8 +559,11 @@ capabilities, automatic repair, hotkeys, notifications and voice are disabled
 in the synthetic settings. Telemetry export remains unconfigured.
 
 Opening the Gateway Dashboard is also a host side effect. A launch that goes
-through App's `GatewayDashboardLauncher` (the Dashboard buttons and menu items,
-setup receipts and `app.navigate`) ends in `DashboardBrowser`. Outside fixture
+through App's `GatewayDashboardLauncher` (the pane footer Dashboard button, the
+Config page Open in Dashboard action, Dashboard menu items, setup receipts and
+`app.navigate`) ends in `DashboardBrowser`. The saved-gateway row's Open in
+Dashboard item builds that record's URL itself and is not covered by this guard.
+Outside fixture
 mode it hands the exact URL to Windows. In fixture mode it never reaches the
 user's default browser: it logs `Gateway fixture mode: suppressed Dashboard
 browser launch:` plus the redacted target (`http://<host>:PORT/channels`, never

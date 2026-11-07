@@ -308,8 +308,15 @@
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
-                    <Button x:Uid="OpenDashboardButton" x:Name="OpenDashboardButton" Content="Open Dashboard" Click="OnOpenDashboard"
-                            HorizontalAlignment="Center" Style="{ThemeResource AccentButtonStyle}"/>
+                    <Button x:Uid="ConfigPage_OpenInDashboardButton" x:Name="OpenDashboardButton" Click="OnOpenDashboard"
+                            HorizontalAlignment="Center" Style="{ThemeResource AccentButtonStyle}"
+                            AutomationProperties.Name="Open in Dashboard"
+                            AutomationProperties.AutomationId="ConfigOpenInDashboard">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.DashboardView, Mode=OneTime}" FontSize="16"/>
+                            <TextBlock x:Uid="ConfigPage_OpenInDashboardLabel" Text="Open in Dashboard"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Border>
 

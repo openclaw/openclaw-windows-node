@@ -374,8 +374,10 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         var settings = AutomationElement.FromHandle(app.HubWindowHandle);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
-        Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
-        Capture(app, "System", "connection-dashboard-card");
+        Assert.Null(settings.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionDashboardButton")));
+        Assert.True(Find(settings, "SettingsDashboard").Current.IsEnabled);
+        Capture(app, "System", "connection-footer-dashboard");
         ActivateChatLink();
         await WaitUntilAsync(() => IsVisible(workspace, "ChatComposerInput"));
         await AssertChatForegroundAsync();

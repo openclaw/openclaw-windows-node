@@ -1532,9 +1532,6 @@ Gebruik een van deze opties:
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
     <value>Het gatewayconfiguratieschema kan niet worden geladen. Gebruik het webdashboard om instellingen te bewerken.</value>
   </data>
-  <data name="OpenDashboardButton.Content" xml:space="preserve">
-    <value>Dashboard openen</value>
-  </data>
   <data name="ConfigPage_ReconnectDialogTitle" xml:space="preserve">
     <value>Saving configuration</value>
   </data>
@@ -5402,7 +5399,7 @@ Controleer of de gateway actief is.</value>
     <value>Verbinden</value>
   </data>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
-    <value>Dashboard openen</value>
+    <value>Openen in dashboard</value>
   </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Opties voor {0}</value>
@@ -5685,12 +5682,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="ConnectionPage_StripTerminalButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Terminal openen</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Dashboard openen (in browser)</value>
-  </data>
-  <data name="ConnectionPage_StripDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Dashboard openen</value>
   </data>
   <data name="ConnectionPage_ConnectionToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Verbinding verbreken / opnieuw verbinden</value>
@@ -6759,8 +6750,6 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>Wat er wordt geïnstalleerd</value></data>
   <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
-  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Kanalen, integraties en gateway-instellingen</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is uw AI-assistent om dingen gedaan te krijgen op uw pc.</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Stel je AI in</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Bestaande providergesprekken ontdekken (optioneel)</value></data>
@@ -7865,4 +7854,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="ConfigPage_OpenInDashboardLabel.Text" xml:space="preserve"><value>Openen in dashboard</value></data>
+  <data name="ConfigPage_OpenInDashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Openen in dashboard</value></data>
+  <data name="GatewayDashboard_Title" xml:space="preserve"><value>Dashboard</value></data>
 </root>

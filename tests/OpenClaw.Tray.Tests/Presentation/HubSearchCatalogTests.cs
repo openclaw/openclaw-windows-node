@@ -166,6 +166,20 @@ public sealed class HubSearchCatalogTests
             new(WorkspacePageId.Notifications), "agent:work:12345678", isMain: false, "2026.10.9"));
     }
 
+    [Theory]
+    [InlineData("connection", "2026.10.9", "/settings/connection")]
+    [InlineData("config", "2026.10.9", "/settings/general")]
+    [InlineData("connection", "2026.11.1", null)]
+    [InlineData("config", "2026.11.1", null)]
+    [InlineData("config", null, null)]
+    public void FooterReplacementsForRetiredPageButtons_OpenVerifiedSettingsRoutesOrDashboardHome(
+        string tag, string? version, string? expected)
+    {
+        Assert.Equal(expected, HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings(tag), null, null, version));
+        Assert.Equal(expected, HubSearchCatalog.Counterpart(tag, HubSearchCatalog.SupportsDashboard(version)));
+    }
+
     [Fact]
     public void ConfigurationSearchExcludesSensitiveSubtreesAndNeverIndexesValues()
     {
