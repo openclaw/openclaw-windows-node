@@ -20,9 +20,12 @@ Missing or inconsistent scan metadata fails validation, including incomplete
 results for excluded rules. Test-authored context labels are bounded to 128
 characters; use static page/scenario labels, never user content.
 
-The data-only `FullyQualifiedName~AxeHelperTests` filter exercises this failure
-reporting without launching Companion or a native UI fixture. It does not
-replace real accessibility scans.
+The data-only `FullyQualifiedName~AxeHelperTests` filter exercises failure
+reporting and the one-retry workflow without launching Companion or a native UI
+fixture. Scripted scan results and a small UI Automation adapter cover refusal
+for missing automation IDs, foreign processes, missing/offscreen/empty elements,
+and incomplete results, including the second scan. These tests do not replace
+real accessibility scans or prove native UI Automation behavior.
 
 ## Running locally
 

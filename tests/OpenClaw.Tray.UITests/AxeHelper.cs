@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Windows;
 using System.Windows.Automation;
 using Axe.Windows.Automation;
 using Axe.Windows.Automation.Data;
@@ -85,18 +86,31 @@ public static class AxeHelper
             .ForProcessId(processId)
             .WithOutputFileFormat(OutputFileFormat.None)
             .Build();
-        var scanner = ScannerFactory.CreateScanner(config);
         var scanOptions = new ScanOptions(context, hubWindowHandle);
-        var errors = GetErrors(scanner.Scan(scanOptions), excludedRules);
+        AssertScan(
+            () => ScannerFactory.CreateScanner(config).Scan(scanOptions),
+            processId,
+            () => new UiaLayoutElement(AutomationElement.FromHandle(hubWindowHandle)),
+            excludedRules,
+            context);
+    }
+
+    internal static void AssertScan(
+        Func<ScanOutput?> scan,
+        int processId,
+        Func<ILayoutElement> getHub,
+        ISet<RuleId> excludedRules,
+        string? context)
+    {
+        var errors = GetErrors(scan(), excludedRules);
         if (errors.Count > 0
             && errors.All(error => HasCompleteMetadata(error) && IsStaleLayoutSnapshot(
-                hubWindowHandle,
+                getHub,
                 processId,
                 error!.Rule.ID,
                 error.Element.Properties)))
         {
-            scanner = ScannerFactory.CreateScanner(config);
-            errors = GetErrors(scanner.Scan(scanOptions), excludedRules);
+            errors = GetErrors(scan(), excludedRules);
         }
 
         AssertNoErrors(errors, context);
@@ -172,7 +186,7 @@ public static class AxeHelper
     }
 
     private static bool IsStaleLayoutSnapshot(
-        IntPtr hubWindowHandle,
+        Func<ILayoutElement> getHub,
         int processId,
         RuleId ruleId,
         IReadOnlyDictionary<string, string> properties)
@@ -192,23 +206,44 @@ public static class AxeHelper
             return false;
         try
         {
-            var hub = AutomationElement.FromHandle(hubWindowHandle);
-            if (hub.Current.ProcessId != processId)
+            var hub = getHub();
+            if (hub.ProcessId != processId)
                 return false;
-            var element = hub.FindFirst(
-                TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
-            if (element is null || element.Current.ProcessId != processId)
+            var element = hub.FindByAutomationId(automationId);
+            if (element is null || element.ProcessId != processId)
                 return false;
 
-            var bounds = element.Current.BoundingRectangle;
-            return !element.Current.IsOffscreen
+            var bounds = element.Bounds;
+            return !element.IsOffscreen
                 && bounds.Width > 0
                 && bounds.Height > 0;
         }
         catch (ElementNotAvailableException)
         {
             return false;
+        }
+    }
+
+    // Keep UIA access separate from retry policy so tests never query the shared desktop.
+    internal interface ILayoutElement
+    {
+        int ProcessId { get; }
+        Rect Bounds { get; }
+        bool IsOffscreen { get; }
+        ILayoutElement? FindByAutomationId(string automationId);
+    }
+
+    private sealed class UiaLayoutElement(AutomationElement element) : ILayoutElement
+    {
+        public int ProcessId => element.Current.ProcessId;
+        public Rect Bounds => element.Current.BoundingRectangle;
+        public bool IsOffscreen => element.Current.IsOffscreen;
+
+        public ILayoutElement? FindByAutomationId(string automationId)
+        {
+            var child = element.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+            return child is null ? null : new UiaLayoutElement(child);
         }
     }
 }
