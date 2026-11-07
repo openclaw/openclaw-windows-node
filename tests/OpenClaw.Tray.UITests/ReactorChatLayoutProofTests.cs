@@ -1094,7 +1094,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui, Chat
                 Assert.Equal(new Thickness(1), bubble.BorderThickness);
                 var reference = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ChatPendingUserBrush}" Width="0" Height="0"><TextBlock Foreground="{ThemeResource ChatSecondaryTextBrush}" /></Border>""");
-                var layout = Assert.IsType<Grid>(Assert.IsType<Border>(host.Content).Child);
+                var layout = Assert.IsType<Grid>(FindControl<Border>(host, "ChatConversation").Child);
                 layout.Children.Add(reference);
                 try
                 {
@@ -1274,8 +1274,10 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui, Chat
             await ui.RunOnUIAsync(() =>
             {
                 var root = Assert.IsType<Border>(host.Content);
-                var layout = Assert.IsType<Grid>(root.Child);
+                var conversation = FindControl<Border>(host, "ChatConversation");
+                var layout = Assert.IsType<Grid>(conversation.Child);
                 Assert.Null(root.Background);
+                Assert.Null(conversation.Background);
                 Assert.Equal(0, Assert.IsType<SolidColorBrush>(layout.Background).Color.A);
                 Assert.NotNull(surface.Background);
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
