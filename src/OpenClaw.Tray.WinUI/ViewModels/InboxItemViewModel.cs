@@ -18,7 +18,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
 {
     private bool _isExpanded;
     private DateTimeOffset _createdAt;
-    private long? _expiresAtMs;
+    private DateTimeOffset? _expiresAt;
 
     private InboxItemViewModel(string id) => Id = id;
 
@@ -56,7 +56,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     public Visibility WarningVisibility { get; private set; }
     public string ExpiryText { get; private set; } = "";
     public Visibility ExpiryVisibility { get; private set; }
-    public bool HasCountdown => _expiresAtMs is not null;
+    public bool HasCountdown => _expiresAt is not null;
     public string OccurrenceText { get; private set; } = "";
     public Visibility OccurrenceVisibility { get; private set; }
     public Visibility DismissVisibility { get; private set; }
@@ -101,9 +101,9 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             AgeText = age;
             OnPropertyChanged(nameof(AgeText));
         }
-        if (_expiresAtMs is { } expiresAtMs)
+        if (_expiresAt is { } expiresAt)
         {
-            var expiry = FormatExpiry(expiresAtMs, now);
+            var expiry = FormatExpiry(expiresAt, now);
             if (!string.Equals(expiry, ExpiryText, StringComparison.Ordinal))
             {
                 ExpiryText = expiry;
@@ -118,7 +118,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         var state = content.State;
 
         _createdAt = entry.CreatedAt;
-        _expiresAtMs = content.ExpiresAtMs;
+        _expiresAt = content.ExpiresAt;
         Kind = entry.Kind;
         CanDismiss = entry.CanDismiss;
         Glyph = ToGlyph(entry);
@@ -147,8 +147,8 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         ScopeVisibility = Show(content.Scope is not null);
         WarningText = content.Warning ?? "";
         WarningVisibility = Show(content.Warning is not null);
-        ExpiryText = content.ExpiresAtMs is { } expiresAtMs ? FormatExpiry(expiresAtMs, now) : "";
-        ExpiryVisibility = Show(content.ExpiresAtMs is not null);
+        ExpiryText = content.ExpiresAt is { } expiresAt ? FormatExpiry(expiresAt, now) : "";
+        ExpiryVisibility = Show(content.ExpiresAt is not null);
         OccurrenceText = LocalizationHelper.Format("AppNotification_RepeatedBadgeFormat", content.OccurrenceCount);
         OccurrenceVisibility = Show(content.OccurrenceCount > 1);
         DismissVisibility = Show(entry.CanDismiss);
@@ -171,7 +171,8 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         public string? Command { get; init; }
         public string? Scope { get; init; }
         public string? Warning { get; init; }
-        public long? ExpiresAtMs { get; init; }
+        /// <summary>Local-clock approval deadline (see InboxGatewayItem.ExpiresAt).</summary>
+        public DateTimeOffset? ExpiresAt { get; init; }
         public int OccurrenceCount { get; init; } = 1;
     }
 
@@ -192,7 +193,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     // Gateway text (commands, titles, errors) is shown as plain, selectable text only.
     private static RowContent FromGatewayItem(InboxGatewayItem item) => item.Kind switch
     {
-        InboxGatewayItemKind.Approval when item.Approval is { } approval => FromApproval(approval),
+        InboxGatewayItemKind.Approval when item.Approval is { } approval => FromApproval(approval, item.ExpiresAt),
         InboxGatewayItemKind.AutomationFailed => new(item.Label, LocalizationHelper.GetString("Inbox_AutomationFailed"), item.Detail ?? "", "")
         {
             AskQuestion = LocalizationHelper.Format("Inbox_AskAutomationFailedFormat", item.Label),
@@ -210,7 +211,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         _ => new(item.Label, "", "", ""),
     };
 
-    private static RowContent FromApproval(GatewayPendingApproval approval)
+    private static RowContent FromApproval(GatewayPendingApproval approval, DateTimeOffset? expiresAt)
     {
         var title = LocalizationHelper.GetString(approval.Kind switch
         {
@@ -228,10 +229,11 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             ActionRoute = string.IsNullOrWhiteSpace(approval.SessionKey)
                 ? "chat"
                 : AppNotificationActionRoutes.Chat(approval.SessionKey),
-            Command = approval.Kind == GatewayApprovalKind.Plugin ? null : approval.Command,
+            // The full command, never trimmed, so what is reviewed is what would run.
+            Command = approval.Kind == GatewayApprovalKind.Plugin ? null : InboxGatewayItems.DisplayCommand(approval.Command),
             Scope = approval.Scope is { } scope ? ScopeLabel(scope) : null,
             Warning = approval.WarningText,
-            ExpiresAtMs = approval.ExpiresAtMs,
+            ExpiresAt = expiresAt,
         };
     }
 
@@ -272,14 +274,15 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
 
     private static string? HostLabel(string? host) => host switch
     {
-        "gateway" => LocalizationHelper.GetString("Inbox_ApprovalHostThisComputer"),
+        // "gateway" is the Gateway's machine, which may be remote; never present it as this PC.
+        "gateway" => LocalizationHelper.GetString("Inbox_ApprovalHostGateway"),
         "node" => LocalizationHelper.GetString("Inbox_ApprovalHostDevice"),
         "sandbox" => LocalizationHelper.GetString("Inbox_ApprovalHostSandbox"),
         _ => host,
     };
 
-    private static string FormatExpiry(long expiresAtMs, DateTimeOffset now) =>
-        InboxGatewayItems.FormatCountdown(expiresAtMs, now.ToUnixTimeMilliseconds()) is { } remaining
+    private static string FormatExpiry(DateTimeOffset expiresAt, DateTimeOffset now) =>
+        InboxGatewayItems.FormatCountdown(expiresAt.ToUnixTimeMilliseconds(), now.ToUnixTimeMilliseconds()) is { } remaining
             ? LocalizationHelper.Format("Inbox_ApprovalExpiresInFormat", remaining)
             : LocalizationHelper.GetString("Inbox_ApprovalExpired");
 

@@ -7869,7 +7869,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approbation requise</value></data>
   <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expire dans {0}</value></data>
   <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expirée</value></data>
-  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>Cet ordinateur</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Passerelle</value></data>
   <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Appareil</value></data>
   <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Bac à sable</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, jusqu'à révocation (révocable)</value></data>

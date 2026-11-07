@@ -60,6 +60,30 @@ public sealed record GatewayPendingApproval(
     public IReadOnlyList<string> AllowedDecisions { get; init; } = [];
 }
 
+/// <summary>
+/// Gateway epoch-millisecond timestamps are untrusted. Values outside the range that
+/// <see cref="DateTimeOffset"/> can represent make the BCL throw, so every conversion
+/// goes through these checks instead of <see cref="DateTimeOffset.FromUnixTimeMilliseconds"/>.
+/// </summary>
+public static class GatewayUnixTime
+{
+    public static readonly long MinMs = DateTimeOffset.MinValue.ToUnixTimeMilliseconds();
+    public static readonly long MaxMs = DateTimeOffset.MaxValue.ToUnixTimeMilliseconds();
+
+    public static bool IsValid(long ms) => ms >= MinMs && ms <= MaxMs;
+
+    /// <summary>Converts epoch milliseconds, clamping out-of-range values to the representable range.</summary>
+    public static DateTimeOffset ToDateTimeOffset(long ms) =>
+        DateTimeOffset.FromUnixTimeMilliseconds(Math.Clamp(ms, MinMs, MaxMs));
+
+    /// <summary>Adds milliseconds without overflowing the representable range.</summary>
+    public static DateTimeOffset Add(DateTimeOffset value, long ms)
+    {
+        var target = Math.Clamp((decimal)value.ToUnixTimeMilliseconds() + ms, MinMs, MaxMs);
+        return DateTimeOffset.FromUnixTimeMilliseconds((long)target).ToOffset(value.Offset);
+    }
+}
+
 public static class GatewayPendingApprovalParser
 {
     private static readonly string[] KnownDecisions = ["allow-once", "allow-always", "deny"];
@@ -119,7 +143,9 @@ public static class GatewayPendingApprovalParser
         var id = ReadString(payload, "id");
         var createdAtMs = ReadInt64(payload, "createdAtMs");
         var expiresAtMs = ReadInt64(payload, "expiresAtMs");
-        if (id is null || createdAtMs <= 0 || expiresAtMs <= 0)
+        // Out-of-range times cannot be shown or scheduled; treat them like missing ones.
+        if (id is null || createdAtMs <= 0 || expiresAtMs <= 0 ||
+            !GatewayUnixTime.IsValid(createdAtMs) || !GatewayUnixTime.IsValid(expiresAtMs))
             return false;
 
         var title = ReadString(request, "title");
@@ -238,8 +264,14 @@ public static class GatewayPendingApprovalParser
             ? text.Trim()
             : null;
 
-    private static long ReadInt64(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
-            ? value.TryGetInt64(out var whole) ? whole : (long)value.GetDouble()
-            : 0;
+    private static long ReadInt64(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Number)
+            return 0;
+        if (value.TryGetInt64(out var whole))
+            return whole;
+        // Fractional or huge values: keep only those a long can hold; range checks follow at the call site.
+        var number = value.GetDouble();
+        return number is >= long.MinValue and < long.MaxValue ? (long)number : 0;
+    }
 }

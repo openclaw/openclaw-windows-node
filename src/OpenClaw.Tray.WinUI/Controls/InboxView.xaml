@@ -126,10 +126,15 @@
                                 <Border Visibility="{Binding CommandVisibility}"
                                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="1" CornerRadius="4" Padding="8,6">
-                                    <TextBlock Text="{Binding CommandText}" FontFamily="Consolas"
-                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                                               MaxLines="8" TextTrimming="CharacterEllipsis"/>
+                                        BorderThickness="1" CornerRadius="4">
+                                    <!-- The complete command stays reviewable: no trimming or line cap, it scrolls instead. -->
+                                    <ScrollViewer MaxHeight="200"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  Padding="8,6">
+                                        <TextBlock Text="{Binding CommandText}" FontFamily="Consolas"
+                                                   TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                    </ScrollViewer>
                                 </Border>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBlock Text="{Binding Metadata}"

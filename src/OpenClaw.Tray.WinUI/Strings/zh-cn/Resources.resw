@@ -7869,7 +7869,7 @@
   <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>需要批准</value></data>
   <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>{0} 后过期</value></data>
   <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>已过期</value></data>
-  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>此电脑</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>网关</value></data>
   <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>设备</value></data>
   <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>沙盒</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>“始终允许”会为“{0}”运行此确切命令而不再询问，直到撤销（可撤销）</value></data>

@@ -80,7 +80,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         _search = new(CaptureSearch, new Presentation.Adapters.WinUIDispatcher(DispatcherQueue),
             category => Logger.Warn($"[Search] {category}"));
         _notifications = notifications;
-        _inbox = CurrentApp.InboxFeed ?? new InboxFeed(notifications, null);
+        // App creates the feed with the notification service; a window-owned fallback would never unsubscribe.
+        _inbox = CurrentApp.InboxFeed
+            ?? throw new InvalidOperationException("The Inbox feed is created with the app notification service.");
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));

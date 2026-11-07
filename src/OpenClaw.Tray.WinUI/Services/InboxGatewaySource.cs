@@ -38,7 +38,8 @@ internal sealed class InboxGatewaySource : IDisposable
     private readonly IUiDispatcher _dispatcher;
     private readonly Func<DateTimeOffset> _clock;
     private readonly Timer? _timer;
-    private readonly Dictionary<string, GatewayPendingApproval> _approvals = new(StringComparer.Ordinal);
+    // Each pending approval keeps the local deadline fixed when it first arrived.
+    private readonly Dictionary<string, (GatewayPendingApproval Approval, DateTimeOffset Deadline)> _approvals = new(StringComparer.Ordinal);
     private readonly HashSet<string> _resolvedApprovalIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dismissedIds = new(StringComparer.Ordinal);
     private IOperatorGatewayClient? _client;
@@ -167,7 +168,7 @@ internal sealed class InboxGatewaySource : IDisposable
     {
         if (_resolvedApprovalIds.Contains(approval.Id))
             return;
-        _approvals[approval.Id] = approval;
+        Track(approval);
         Recompute();
     });
 
@@ -224,7 +225,7 @@ internal sealed class InboxGatewaySource : IDisposable
         if (!Supports(client, method))
             return;
 
-        var known = _approvals.Values.Where(approval => approval.Kind == kind).Select(approval => approval.Id).ToHashSet(StringComparer.Ordinal);
+        var known = _approvals.Values.Where(entry => entry.Approval.Kind == kind).Select(entry => entry.Approval.Id).ToHashSet(StringComparer.Ordinal);
         IReadOnlyList<GatewayPendingApproval> listed;
         try
         {
@@ -246,7 +247,7 @@ internal sealed class InboxGatewaySource : IDisposable
             foreach (var id in known.Where(id => !listedIds.Contains(id)))
                 _approvals.Remove(id);
             foreach (var approval in listed.Where(approval => !_resolvedApprovalIds.Contains(approval.Id)))
-                _approvals[approval.Id] = approval;
+                Track(approval);
             Recompute();
         });
     }
@@ -290,6 +291,15 @@ internal sealed class InboxGatewaySource : IDisposable
         });
     }
 
+    // A repeated request (event replay or list hydration) keeps its original deadline.
+    private void Track(GatewayPendingApproval approval)
+    {
+        var deadline = _approvals.TryGetValue(approval.Id, out var existing)
+            ? existing.Deadline
+            : InboxGatewayItems.LocalDeadline(approval, _clock());
+        _approvals[approval.Id] = (approval, deadline);
+    }
+
     private void ClearConnectionState()
     {
         _epoch++;
@@ -305,11 +315,11 @@ internal sealed class InboxGatewaySource : IDisposable
     {
         var now = _clock();
         var nowMs = now.ToUnixTimeMilliseconds();
-        foreach (var expired in _approvals.Values.Where(approval => approval.ExpiresAtMs <= nowMs).Select(approval => approval.Id).ToList())
+        foreach (var expired in _approvals.Where(pair => pair.Value.Deadline <= now).Select(pair => pair.Key).ToList())
             _approvals.Remove(expired);
 
         var facts = _approvals.Values
-            .Select(InboxGatewayItems.FromApproval)
+            .Select(entry => InboxGatewayItems.FromApproval(entry.Approval, entry.Deadline))
             .Concat(InboxGatewayItems.BuildCron(_cronList, _schedulerEnabled, nowMs))
             .Concat(InboxGatewayItems.BuildModelAuth(_modelAuthStatus, nowMs))
             .ToList();
@@ -340,7 +350,7 @@ internal sealed class InboxGatewaySource : IDisposable
             due = _modelAuthRefreshAt < now ? TimeSpan.Zero : _modelAuthRefreshAt - now;
         if (_approvals.Count > 0)
         {
-            var nextExpiry = DateTimeOffset.FromUnixTimeMilliseconds(_approvals.Values.Min(approval => approval.ExpiresAtMs));
+            var nextExpiry = _approvals.Values.Min(entry => entry.Deadline);
             var untilExpiry = nextExpiry - now + ExpiryGrace;
             if (untilExpiry < due)
                 due = untilExpiry < TimeSpan.Zero ? TimeSpan.Zero : untilExpiry;
