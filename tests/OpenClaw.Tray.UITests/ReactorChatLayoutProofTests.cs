@@ -29,7 +29,8 @@ using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
-public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
+public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui, ChatThemeProofFixture theme)
+    : IClassFixture<ChatThemeProofFixture>
 {
     private Window? _captureWindow;
     private const string Draft = "Turn this into a schedule for tomorrow.";
@@ -2722,7 +2723,6 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         ChatComposerSession? session = null;
         Border? surface = null;
         Window? proofWindow = null;
-        ChatThemeProofScope? themeScope = null;
         var provider = new ProofProvider(scenario, thinkingLevel, placementGateway);
         var renderErrors = new RenderErrorLogger();
         Microsoft.UI.Xaml.UnhandledExceptionEventHandler reportException = (_, args) =>
@@ -2731,7 +2731,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             await ui.RunOnUIAsync(() =>
             {
-                themeScope = new ChatThemeProofScope(Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") ?? "Light");
+                theme.AssertCurrent();
                 Application.Current.UnhandledException += reportException;
                 session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore,
                     sandboxStatus ?? new SandboxStatusStore()).Create(
@@ -2755,7 +2755,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 }
                 if (scenario == "longtext")
                     session.ViewModel.SetDraft(string.Join("\n", Enumerable.Repeat(Draft, 8)));
-                host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
+                host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = theme.ElementTheme };
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
                     new(provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
                         InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection)));
@@ -2766,7 +2766,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface.Height = 720;
                 surface.HorizontalAlignment = HorizontalAlignment.Left;
                 surface.VerticalAlignment = VerticalAlignment.Top;
-                surface.RequestedTheme = themeScope.ElementTheme;
+                surface.RequestedTheme = theme.ElementTheme;
                 surface.Child = host;
                 proofWindow = new Window { Content = surface, SystemBackdrop = new MicaBackdrop() };
                 _captureWindow = proofWindow;
@@ -2797,7 +2797,6 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 host?.Dispose();
                 proofWindow?.Close();
                 _captureWindow = null;
-                themeScope?.Dispose();
                 Application.Current.UnhandledException -= reportException;
             });
             await provider.DisposeAsync();
