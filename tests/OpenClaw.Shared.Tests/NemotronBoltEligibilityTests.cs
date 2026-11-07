@@ -84,7 +84,7 @@ public class NemotronBoltEligibilityTests
         var hardware = Hardware(48 * GiB, 48 * GiB);
         hardware = hardware with { Gpus = [hardware.Gpus[0],
             new GpuInfo(GpuVendor.Nvidia, "NVIDIA H100", 200 * GiB, 200 * GiB,
-                CudaMajorVersion: 13, StableId: "GPU-H100")] };
+                CudaMajorVersion: 13, StableId: "GPU-H100", ComputeCapability: new Version(12, 0))] };
         var result = LocalInferenceEligibility.Evaluate(hardware, Bolt.Id);
         Assert.Equal("GPU-spark", result.SelectedGpu!.StableId);
     }
@@ -128,6 +128,7 @@ public class NemotronBoltEligibilityTests
 
     private static HostHardwareInfo Hardware(long? free, long? commit, string name = "NVIDIA RTX Spark N1X") =>
         new(RuntimeArchitecture.Arm64, 48 * GiB, 32 * GiB,
-            [new GpuInfo(GpuVendor.Nvidia, name, 48 * GiB, free, CudaMajorVersion: 13, StableId: "GPU-spark")], false)
+            [new GpuInfo(GpuVendor.Nvidia, name, 48 * GiB, free, CudaMajorVersion: 13, StableId: "GPU-spark",
+                ComputeCapability: new Version(12, 0))], false)
         { AvailableCommitMemoryBytes = commit };
 }
