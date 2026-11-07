@@ -397,6 +397,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         _ when entry.Category == InboxCategory.Automations => FluentIconCatalog.Cron,
         _ when entry.GatewayItem?.Kind == InboxGatewayItemKind.ModelAuth => FluentIconCatalog.Plug,
         _ when string.Equals(entry.Notification?.Source, "connection", StringComparison.OrdinalIgnoreCase) => FluentIconCatalog.Plug,
+        _ when string.Equals(entry.Notification?.Source, ThisPcAlerts.Source, StringComparison.OrdinalIgnoreCase) => FluentIconCatalog.System,
         InboxEntryKind.Error => FluentIconCatalog.StatusErr,
         _ => FluentIconCatalog.StatusWarn,
     };
@@ -419,10 +420,12 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         "node.invoke" => LocalizationHelper.GetString("NotificationsPage_MetadataCategoryNodeInvoke"),
         "node" => LocalizationHelper.GetString("NotificationsPage_MetadataNode"),
         "pairing" => LocalizationHelper.GetString("NotificationsPage_MetadataPairing"),
+        "privacy" => LocalizationHelper.GetString("NotificationsPage_MetadataPrivacy"),
         "sandbox" => LocalizationHelper.GetString("NotificationsPage_MetadataSandbox"),
         "settings" => LocalizationHelper.GetString("NotificationsPage_MetadataSettings"),
         "status" => LocalizationHelper.GetString("NotificationsPage_MetadataStatus"),
         "system.run" => LocalizationHelper.GetString("NotificationsPage_MetadataSystemRun"),
+        "this-pc" => LocalizationHelper.GetString("NotificationsPage_MetadataThisPc"),
         _ => value
     };
 }

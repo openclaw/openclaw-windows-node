@@ -7850,6 +7850,21 @@
   <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>新的要求和警示會顯示在這裡。</value></data>
   <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>開啟收件匣</value></data>
   <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} 項待處理</value></data>
+  <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>勿擾</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>勿擾</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>核准要求一律會送達</value></data>
+  <data name="Inbox_DoNotDisturbApprovalsNote.Text" xml:space="preserve"><value>核准要求一律會送達</value></data>
+  <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>勿擾已開啟。{0}</value></data>
+  <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>本機</value></data>
+  <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>隱私權</value></data>
+  <data name="ThisPc_CameraBlockedTitle" xml:space="preserve"><value>本機：相機存取已關閉</value></data>
+  <data name="ThisPc_CameraBlockedMessage" xml:space="preserve"><value>代理程式可以使用相機，但 Windows 隱私權設定封鎖了相機存取，因此拍照和錄製片段會失敗。</value></data>
+  <data name="ThisPc_MicrophoneBlockedTitle" xml:space="preserve"><value>本機：麥克風存取已關閉</value></data>
+  <data name="ThisPc_MicrophoneBlockedMessage" xml:space="preserve"><value>代理程式可以為語音轉文字或相機片段錄製聲音，但 Windows 隱私權設定封鎖了麥克風存取，因此這些要求會失敗。</value></data>
+  <data name="ThisPc_LocationBlockedTitle" xml:space="preserve"><value>本機：位置存取已關閉</value></data>
+  <data name="ThisPc_LocationBlockedMessage" xml:space="preserve"><value>代理程式可以要求本機的位置，但 Windows 隱私權設定封鎖了位置存取，因此位置要求會失敗。</value></data>
+  <data name="ThisPc_ManagedBySystem" xml:space="preserve"><value>此設定由 Windows 或您的組織管理。</value></data>
+  <data name="ThisPc_OpenPrivacySettings" xml:space="preserve"><value>開啟 Windows 隱私權設定</value></data>
   <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>略過 {0}</value></data>
   <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
   <data name="Inbox_AgeNow" xml:space="preserve"><value>剛剛</value></data>

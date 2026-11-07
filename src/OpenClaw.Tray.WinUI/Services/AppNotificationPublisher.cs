@@ -13,7 +13,8 @@ internal sealed record AppNotificationPublishRequest(
 
 internal interface IToastNotificationPublisher
 {
-    void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null);
+    void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null,
+        OpenClawTray.Presentation.AlertKind alertKind = OpenClawTray.Presentation.AlertKind.Standard);
 }
 
 internal static class AppNotificationPublisher
@@ -23,9 +24,12 @@ internal static class AppNotificationPublisher
         IToastNotificationPublisher? toastService,
         AppNotificationPublishRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        // Do not disturb still lets approval toasts through, so the toast carries the Inbox kind.
+        var alertKind = OpenClawTray.Presentation.DoNotDisturbPolicy.KindOf(request.AppNotification);
         Action<ToastContentBuilder, string?, string?>? showToast = toastService is null
             ? null
-            : (builder, tag, deviceId) => toastService.ShowToast(builder, tag, deviceId);
+            : (builder, tag, deviceId) => toastService.ShowToast(builder, tag, deviceId, alertKind);
         Publish(appNotificationService, showToast, request);
     }
 

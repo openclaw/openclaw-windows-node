@@ -26,6 +26,8 @@ public sealed partial class WorkspacePaneFooter : UserControl
 {
     private const double ButtonGap = 4;
     private const double TitleBarButtonHeight = 32;
+    private const string BellGlyph = "\uEA8F";
+    private const string DoNotDisturbBellGlyph = "\uE7ED";
     private readonly double _paneButtonHeight;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
     private string _automationIdPrefix = "Workspace";
@@ -99,10 +101,14 @@ public sealed partial class WorkspacePaneFooter : UserControl
         ApplyOwnerToolTip();
     }
 
-    /// <summary>Applies the Inbox badge: hidden at zero, capped text, caution tone while an approval waits.</summary>
-    internal void ApplyInboxBadge(InboxBadge badge, string helpText)
+    /// <summary>
+    /// Applies the Inbox bell: hidden badge at zero, capped text, caution tone while an approval
+    /// waits, and the slashed bell while Do not disturb is on (the badge still counts).
+    /// </summary>
+    internal void ApplyInboxBadge(InboxBadge badge, bool doNotDisturb, string helpText)
     {
         var attention = badge.Tone == InboxBadgeTone.Attention;
+        NotificationsGlyph.Glyph = doNotDisturb ? DoNotDisturbBellGlyph : BellGlyph;
         NotificationsBadgeText.Text = badge.Text;
         NotificationsAttentionBadgeText.Text = badge.Text;
         NotificationsBadge.Visibility = badge.IsVisible && !attention ? Visibility.Visible : Visibility.Collapsed;
