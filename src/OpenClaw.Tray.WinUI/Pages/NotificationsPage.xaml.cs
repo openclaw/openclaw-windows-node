@@ -15,6 +15,8 @@ public sealed partial class NotificationsPage : Page
     {
         InitializeComponent();
         Inbox.UsePageLayout();
+        // Each navigation creates a new page, so its Unloaded ends this page's Inbox binding.
+        Unloaded += (_, _) => Inbox.Unbind();
     }
 
     /// <summary>

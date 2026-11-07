@@ -696,6 +696,9 @@ public sealed class DiagnosticsPageContractTests
             Assert.DoesNotContain("CountEnabledCapabilities(", shell);
         }
         Assert.Contains("SyncInboxItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        // Hosts own the Inbox binding: a late Unloaded from a quick close/reopen must not unbind the open flyout.
+        Assert.DoesNotContain("Unloaded +=", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        Assert.Contains("Unloaded += (_, _) => Inbox.Unbind();", Read("src", "OpenClaw.Tray.WinUI", "Pages", "NotificationsPage.xaml.cs"));
         Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml");
         Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);

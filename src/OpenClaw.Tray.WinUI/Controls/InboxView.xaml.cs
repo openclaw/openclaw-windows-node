@@ -38,7 +38,8 @@ public sealed partial class InboxView : UserControl
     {
         InitializeComponent();
         ItemsList.ItemsSource = _items;
-        Unloaded += (_, _) => Unbind();
+        // Hosts own the binding lifetime (flyout Closed, page Unloaded). Unbinding here would let a
+        // late Unloaded from a quick close and reopen disconnect the freshly opened Inbox.
     }
 
     /// <summary>Applies the full-page layout: page title, no width cap and no "Open Inbox" link.</summary>
