@@ -17,6 +17,18 @@ public readonly record struct SettingsOwnedForwardBinding(
     int ProcessId);
 
 /// <summary>
+/// Listener chosen for one saved SSH forward.
+/// <see cref="ConnectPort"/> is the port clients and the dashboard use.
+/// <see cref="SshBindPort"/> is the port ssh.exe binds. They differ when a
+/// dashboard guard is already proxying the saved port for the same destination.
+/// </summary>
+internal readonly record struct SharedPortListen(
+    int ConnectPort,
+    int SshBindPort,
+    int? BrowserProxyBindPort,
+    bool Relocated);
+
+/// <summary>
 /// Manages an SSH local port-forward process for gateway access.
 /// </summary>
 public sealed class SshTunnelService : ISshTunnelManager
@@ -31,6 +43,8 @@ public sealed class SshTunnelService : ISshTunnelManager
     private string? _lastSpec;
     private long _lifecycleGeneration;
     private int _browserHandoffLeases;
+    private int _publishedLocalPort;
+    private int _publishedBrowserProxyLocalPort;
     private readonly HashSet<int> _dashboardProtectedPorts = new();
     private readonly List<BrowserHandoffLease> _browserHandoffs = new();
     private long _nextBrowserHandoffId;
@@ -312,7 +326,9 @@ public sealed class SshTunnelService : ISshTunnelManager
         return _browserHandoffs
             .Select(handoff => handoff.LocalPort)
             .Append(_currentConfig?.LocalPort ?? 0)
-            .Where(port => port > 0 && !_dashboardProtectedPorts.Contains(port))
+            .Where(port => port > 0 &&
+                !_dashboardProtectedPorts.Contains(port) &&
+                !IsPinnedAwayFromConfig(_currentConfig, port))
             .Distinct()
             .ToArray();
     }
@@ -356,6 +372,8 @@ public sealed class SshTunnelService : ISshTunnelManager
         _currentConfig = null;
         _currentOwner = SshTunnelOwner.Unspecified;
         _lastSpec = null;
+        _publishedLocalPort = 0;
+        _publishedBrowserProxyLocalPort = 0;
         CurrentBrowserProxyLocalPort = 0;
         CurrentBrowserProxyRemotePort = 0;
         StartedAtUtc = null;
@@ -438,14 +456,15 @@ public sealed class SshTunnelService : ISshTunnelManager
         var localPort = tunnel.LocalPort;
         var includeBrowserProxyForward = tunnel.IncludeBrowserProxyForward;
         var sshPort = tunnel.SshPort;
-        var reuseGuard = DashboardForwardPortGuard.IsHolding(localPort);
+        var plan = SelectSharedPortListen(tunnel, AllocateLoopbackPort);
+        var reuseGuard = !plan.Relocated && DashboardForwardPortGuard.IsHolding(localPort);
         if (reuseGuard &&
             !DashboardForwardPortGuard.AllowsDestination(localPort, user, host, remotePort, sshPort))
         {
             throw new InvalidOperationException("SSH destination does not match the dashboard forward.");
         }
 
-        var sshLocalPort = reuseGuard ? AllocateLoopbackPort() : localPort;
+        var sshLocalPort = plan.SshBindPort;
         var psi = new ProcessStartInfo
         {
             FileName = "ssh",
@@ -456,7 +475,7 @@ public sealed class SshTunnelService : ISshTunnelManager
                 sshLocalPort,
                 includeBrowserProxyForward,
                 sshPort,
-                reuseGuard && includeBrowserProxyForward ? localPort + 2 : null),
+                plan.BrowserProxyBindPort),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -564,9 +583,13 @@ public sealed class SshTunnelService : ISshTunnelManager
                 CurrentUser = user;
                 CurrentHost = host;
                 CurrentRemotePort = remotePort;
-                CurrentLocalPort = localPort;
+                CurrentLocalPort = plan.ConnectPort;
                 CurrentBrowserProxyRemotePort = includeBrowserProxyForward ? remotePort + 2 : 0;
-                CurrentBrowserProxyLocalPort = includeBrowserProxyForward ? localPort + 2 : 0;
+                CurrentBrowserProxyLocalPort = includeBrowserProxyForward
+                    ? plan.BrowserProxyBindPort ?? sshLocalPort + 2
+                    : 0;
+                _publishedLocalPort = plan.Relocated ? plan.ConnectPort : 0;
+                _publishedBrowserProxyLocalPort = plan.Relocated ? CurrentBrowserProxyLocalPort : 0;
                 StartedAtUtc = DateTime.UtcNow;
                 LastError = null;
                 Status = TunnelStatus.Up;
@@ -590,6 +613,8 @@ public sealed class SshTunnelService : ISshTunnelManager
                     _currentConfig = null;
                     _currentOwner = SshTunnelOwner.Unspecified;
                     _lastSpec = null;
+                    _publishedLocalPort = 0;
+                    _publishedBrowserProxyLocalPort = 0;
                 }
             }
             if (processStarted)
@@ -617,10 +642,11 @@ public sealed class SshTunnelService : ISshTunnelManager
             }
         }
 
-        _logger.Info($"SSH tunnel started: 127.0.0.1:{localPort} -> 127.0.0.1:{remotePort} via {user}@{host}:{sshPort}");
+        _logger.Info($"SSH tunnel started: 127.0.0.1:{plan.ConnectPort} -> 127.0.0.1:{remotePort} via {user}@{host}:{sshPort}");
         if (includeBrowserProxyForward)
         {
-            _logger.Info($"SSH tunnel browser proxy forward started: 127.0.0.1:{localPort + 2} -> 127.0.0.1:{remotePort + 2} via {user}@{host}:{sshPort}");
+            var proxyLocalPort = plan.BrowserProxyBindPort ?? sshLocalPort + 2;
+            _logger.Info($"SSH tunnel browser proxy forward started: 127.0.0.1:{proxyLocalPort} -> 127.0.0.1:{remotePort + 2} via {user}@{host}:{sshPort}");
         }
     }
 
@@ -677,6 +703,7 @@ public sealed class SshTunnelService : ISshTunnelManager
         long generation;
         int processId;
         DateTime processStartTimeUtc;
+        var proofDestination = destinationPort;
         lock (_stateLock)
         {
             if (!IsRunningLocked() ||
@@ -690,6 +717,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             process = _process;
             generation = _lifecycleGeneration;
             processId = process.Id;
+            proofDestination = PublishedListenPortLocked(normalizedConfig, destinationPort);
             try
             {
                 processStartTimeUtc = process.StartTime.ToUniversalTime();
@@ -703,13 +731,13 @@ public sealed class SshTunnelService : ISshTunnelManager
 
         try
         {
-            if (DashboardForwardPortGuard.IsHolding(destinationPort) &&
-                !TryConfirmRetainedPublicRoute(destinationPort))
+            if (DashboardForwardPortGuard.IsHolding(proofDestination) &&
+                !TryConfirmRetainedPublicRoute(proofDestination))
             {
                 return Task.FromResult(false);
             }
 
-            var proofPort = ListenerPortToProve(destinationPort);
+            var proofPort = ListenerPortToProve(proofDestination);
             if (proofPort < 1 ||
                 !ValidateListenerOwnership(
                     WindowsTcpListenerSnapshot.Capture(),
@@ -770,6 +798,8 @@ public sealed class SshTunnelService : ISshTunnelManager
                 Host = config.Host.Trim(),
             };
             DateTime processStartTimeUtc;
+            int connectPort;
+            int proxyListenPort;
             lock (_stateLock)
             {
                 if (!IsRunningLocked() ||
@@ -783,11 +813,13 @@ public sealed class SshTunnelService : ISshTunnelManager
                 process = _process;
                 generation = _lifecycleGeneration;
                 processStartTimeUtc = process.StartTime.ToUniversalTime();
+                connectPort = ActiveConnectPortLocked(normalizedConfig);
+                proxyListenPort = ActiveProxyPortLocked(normalizedConfig);
             }
 
             var processId = process.Id;
             await WaitForOwnedLocalListenerAsync(
-                config.LocalPort,
+                connectPort,
                 process,
                 generation,
                 processId,
@@ -796,7 +828,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             if (config.IncludeBrowserProxyForward)
             {
                 await WaitForOwnedLocalListenerAsync(
-                    config.LocalPort + 2,
+                    proxyListenPort,
                     process,
                     generation,
                     processId,
@@ -818,7 +850,7 @@ public sealed class SshTunnelService : ISshTunnelManager
                 return new SettingsOwnedForwardBinding(
                     true,
                     generation,
-                    normalizedConfig.LocalPort,
+                    ActiveConnectPortLocked(normalizedConfig),
                     processId);
             }
         }
@@ -925,7 +957,7 @@ public sealed class SshTunnelService : ISshTunnelManager
         lock (_stateLock)
         {
             watchDeferredStop = false;
-            if (_browserHandoffLeases <= 0 || _currentConfig?.LocalPort != localPort)
+            if (_browserHandoffLeases <= 0 || !IsActiveForwardPortLocked(localPort))
                 return false;
 
             // Process.Start returns before the browser connects. Keep the lease
@@ -1088,7 +1120,7 @@ public sealed class SshTunnelService : ISshTunnelManager
         {
             lock (_stateLock)
             {
-                if (_browserHandoffLeases <= 0 || _currentConfig?.LocalPort != localPort)
+                if (_browserHandoffLeases <= 0 || !IsActiveForwardPortLocked(localPort))
                     return false;
             }
 
@@ -1247,7 +1279,7 @@ public sealed class SshTunnelService : ISshTunnelManager
         return generation == _lifecycleGeneration &&
             IsRunningLocked() &&
             _currentOwner is SshTunnelOwner.Settings or SshTunnelOwner.GatewayConnectionManager &&
-            _currentConfig?.LocalPort == localPort;
+            IsActiveForwardPortLocked(localPort);
     }
 
     /// <summary>
@@ -1346,6 +1378,108 @@ public sealed class SshTunnelService : ISshTunnelManager
         return port;
     }
 
+    /// <summary>
+    /// Chooses the listener for one saved SSH port.
+    /// A dashboard port pinned to another destination stays pinned.
+    /// This connection listens on a new port, and the saved local port is left unchanged.
+    /// </summary>
+    internal static SharedPortListen SelectSharedPortListen(
+        SshTunnelConfig tunnel,
+        Func<int> allocatePort)
+    {
+        ArgumentNullException.ThrowIfNull(tunnel);
+        ArgumentNullException.ThrowIfNull(allocatePort);
+
+        var user = tunnel.User.Trim();
+        var host = tunnel.Host.Trim();
+        var savedPort = tunnel.LocalPort;
+        if (!DashboardForwardPortGuard.IsPinnedToOtherDestination(
+                savedPort,
+                user,
+                host,
+                tunnel.RemotePort,
+                tunnel.SshPort))
+        {
+            var reuseGuard = DashboardForwardPortGuard.IsHolding(savedPort);
+            var sshBindPort = reuseGuard ? allocatePort() : savedPort;
+            int? proxyPort = reuseGuard && tunnel.IncludeBrowserProxyForward ? savedPort + 2 : null;
+            return new SharedPortListen(savedPort, sshBindPort, proxyPort, Relocated: false);
+        }
+
+        var blocked = new HashSet<int> { savedPort };
+        if (tunnel.IncludeBrowserProxyForward && savedPort <= 65533)
+            blocked.Add(savedPort + 2);
+
+        var runtimePort = AllocateUnblockedPort(allocatePort, blocked);
+        int? runtimeProxyPort = null;
+        if (tunnel.IncludeBrowserProxyForward)
+        {
+            blocked.Add(runtimePort);
+            var preferredProxyPort = runtimePort <= 65533 ? runtimePort + 2 : 0;
+            runtimeProxyPort = preferredProxyPort > 0 && !blocked.Contains(preferredProxyPort)
+                ? preferredProxyPort
+                : AllocateUnblockedPort(allocatePort, blocked);
+        }
+
+        return new SharedPortListen(runtimePort, runtimePort, runtimeProxyPort, Relocated: true);
+    }
+
+    private static int AllocateUnblockedPort(Func<int> allocatePort, IReadOnlySet<int> blocked)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var port = allocatePort();
+            if (port is >= 1 and <= 65535 && !blocked.Contains(port))
+                return port;
+        }
+
+        throw new InvalidOperationException("Could not allocate a loopback port for the SSH forward.");
+    }
+
+    /// <summary>Caller holds <see cref="_stateLock"/>.</summary>
+    private int ActiveConnectPortLocked(SshTunnelConfig config) =>
+        _publishedLocalPort > 0 ? _publishedLocalPort : config.LocalPort;
+
+    /// <summary>Caller holds <see cref="_stateLock"/>.</summary>
+    private int ActiveProxyPortLocked(SshTunnelConfig config) =>
+        _publishedBrowserProxyLocalPort > 0
+            ? _publishedBrowserProxyLocalPort
+            : config.LocalPort + 2;
+
+    /// <summary>
+    /// Caller holds <see cref="_stateLock"/>.
+    /// A relocated connection proves its runtime listener instead of the saved port.
+    /// </summary>
+    private int PublishedListenPortLocked(SshTunnelConfig config, int requestedPort)
+    {
+        if (_publishedLocalPort <= 0)
+            return requestedPort;
+        if (requestedPort == config.LocalPort)
+            return _publishedLocalPort;
+        if (config.IncludeBrowserProxyForward && requestedPort == config.LocalPort + 2)
+            return _publishedBrowserProxyLocalPort;
+
+        return requestedPort;
+    }
+
+    /// <summary>Caller holds <see cref="_stateLock"/>.</summary>
+    private bool IsActiveForwardPortLocked(int localPort) =>
+        _currentConfig?.LocalPort == localPort ||
+        (_publishedLocalPort > 0 && _publishedLocalPort == localPort);
+
+    private static bool IsPinnedAwayFromConfig(SshTunnelConfig? config, int port)
+    {
+        if (config is null)
+            return DashboardForwardPortGuard.IsHolding(port);
+
+        return DashboardForwardPortGuard.IsPinnedToOtherDestination(
+            port,
+            config.User,
+            config.Host,
+            config.RemotePort,
+            config.SshPort);
+    }
+
     public async Task<SshTunnelStartResult> StartOwnedAsync(
         SshTunnelConfig config,
         CancellationToken ct)
@@ -1365,6 +1499,8 @@ public sealed class SshTunnelService : ISshTunnelManager
                 Host = config.Host.Trim(),
             };
             DateTime processStartTimeUtc;
+            int connectPort;
+            int proxyListenPort;
             lock (_stateLock)
             {
                 if (!IsRunningLocked() ||
@@ -1378,11 +1514,13 @@ public sealed class SshTunnelService : ISshTunnelManager
                 process = _process;
                 generation = _lifecycleGeneration;
                 processStartTimeUtc = process.StartTime.ToUniversalTime();
+                connectPort = ActiveConnectPortLocked(normalizedConfig);
+                proxyListenPort = ActiveProxyPortLocked(normalizedConfig);
             }
 
             var processId = process.Id;
             await WaitForOwnedLocalListenerAsync(
-                config.LocalPort,
+                connectPort,
                 process,
                 generation,
                 processId,
@@ -1391,7 +1529,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             if (config.IncludeBrowserProxyForward)
             {
                 await WaitForOwnedLocalListenerAsync(
-                    config.LocalPort + 2,
+                    proxyListenPort,
                     process,
                     generation,
                     processId,
@@ -1399,7 +1537,7 @@ public sealed class SshTunnelService : ISshTunnelManager
                     ct).ConfigureAwait(false);
             }
             return new SshTunnelStartResult(
-                $"ws://{LoopbackWebSocketHost(config.LocalPort)}:{config.LocalPort}",
+                $"ws://{LoopbackWebSocketHost(connectPort)}:{connectPort}",
                 normalizedConfig,
                 generation);
         }
@@ -1454,8 +1592,12 @@ public sealed class SshTunnelService : ISshTunnelManager
             DashboardForwardPortGuard.ClearBackend(port);
         StopClaimedProcess(process);
 
-        if (protectedPorts.Length == 0 && stoppedPort > 0)
+        if (protectedPorts.Length == 0 &&
+            stoppedPort > 0 &&
+            !IsPinnedAwayFromConfig(stoppedConfig, stoppedPort))
+        {
             DashboardForwardPortGuard.Release(stoppedPort);
+        }
     }
 
     private bool HandoffNeedsRetainedPort(long handoffId)
@@ -1493,7 +1635,7 @@ public sealed class SshTunnelService : ISshTunnelManager
 
         if (!DashboardForwardPortGuard.IsHolding(localPort))
             DashboardForwardPortGuard.Hold(localPort);
-        if (config is not null && config.LocalPort == localPort)
+        if (config is not null)
         {
             DashboardForwardPortGuard.AllowsDestination(
                 localPort,

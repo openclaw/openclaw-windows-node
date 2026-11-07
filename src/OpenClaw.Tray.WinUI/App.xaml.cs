@@ -4097,6 +4097,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return (DashboardLaunchReadiness.FailedVisible, null);
         }
 
+        // The saved port can stay pinned to an older dashboard. The owned
+        // forward then listens elsewhere, and the browser URL has to follow it.
+        if (after.Tunnel is { } savedTunnel &&
+            sshGate.LocalPort > 0 &&
+            sshGate.LocalPort != savedTunnel.LocalPort)
+        {
+            after = after with { Tunnel = savedTunnel with { LocalPort = sshGate.LocalPort } };
+        }
+
         SettingsOwnedForwardBinding? ownedForward = sshGate.Generation is long generation
             ? new SettingsOwnedForwardBinding(true, generation, sshGate.LocalPort, sshGate.ProcessId)
             : null;

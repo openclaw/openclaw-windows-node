@@ -100,6 +100,26 @@ internal static class DashboardForwardPortGuard
         }
     }
 
+    /// <summary>
+    /// True when <paramref name="port"/> is already pinned to a different SSH destination.
+    /// Does not pin an empty slot and does not replace the saved destination.
+    /// </summary>
+    internal static bool IsPinnedToOtherDestination(int port, string user, string host, int remotePort, int sshPort)
+    {
+        lock (Gate)
+        {
+            if (!Listeners.TryGetValue(port, out var slot))
+                return false;
+            if (slot.User is null || slot.Host is null || slot.RemotePort is null || slot.SshPort is null)
+                return false;
+
+            return !string.Equals(slot.User, user, StringComparison.Ordinal) ||
+                !string.Equals(slot.Host, host, StringComparison.Ordinal) ||
+                slot.RemotePort != remotePort ||
+                slot.SshPort != sshPort;
+        }
+    }
+
     internal static void SetBackend(int port, int backendPort, int backendProcessId, DateTime backendStartTimeUtc)
     {
         lock (Gate)

@@ -238,6 +238,93 @@ public sealed class SshTunnelServiceTests
     }
 
     [Fact]
+    public void SelectSharedPortListen_SecondSavedGatewayUsesARuntimePort()
+    {
+        using var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var savedPort = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        DashboardForwardPortGuard.Release(savedPort);
+        DashboardForwardPortGuard.Hold(savedPort);
+        Assert.True(DashboardForwardPortGuard.AllowsDestination(
+            savedPort, "user", "gateway-a.example", 18789, 22));
+
+        var gatewayA = new SshTunnelConfig("user", "gateway-a.example", 18789, savedPort);
+        var gatewayB = new SshTunnelConfig(
+            "user",
+            "gateway-b.example",
+            18789,
+            savedPort,
+            IncludeBrowserProxyForward: true);
+        var runtimePort = savedPort == 45111 ? 45112 : 45111;
+        try
+        {
+            var sameDestination = SshTunnelService.SelectSharedPortListen(gatewayA, () => 45121);
+            var relocated = SshTunnelService.SelectSharedPortListen(gatewayB, () => runtimePort);
+
+            Assert.False(sameDestination.Relocated);
+            Assert.Equal(savedPort, sameDestination.ConnectPort);
+            Assert.Equal(45121, sameDestination.SshBindPort);
+            Assert.True(relocated.Relocated);
+            Assert.Equal(runtimePort, relocated.ConnectPort);
+            Assert.Equal(runtimePort, relocated.SshBindPort);
+            Assert.NotEqual(savedPort, relocated.BrowserProxyBindPort);
+            Assert.NotEqual(savedPort + 2, relocated.BrowserProxyBindPort);
+            Assert.NotEqual(relocated.ConnectPort, relocated.BrowserProxyBindPort);
+            Assert.Equal(savedPort, gatewayA.LocalPort);
+            Assert.Equal(savedPort, gatewayB.LocalPort);
+            Assert.True(DashboardForwardPortGuard.AllowsDestination(
+                savedPort, "user", "gateway-a.example", 18789, 22));
+            Assert.False(DashboardForwardPortGuard.AllowsDestination(
+                savedPort, "user", "gateway-b.example", 18789, 22));
+        }
+        finally
+        {
+            DashboardForwardPortGuard.Release(savedPort);
+        }
+    }
+
+    [Fact]
+    public void Stop_SecondSavedGatewaySharingTheDashboardPort_KeepsTheFirstDestination()
+    {
+        using var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        DashboardForwardPortGuard.Release(port);
+        DashboardForwardPortGuard.Hold(port);
+        Assert.True(DashboardForwardPortGuard.AllowsDestination(
+            port, "user", "gateway-a.example", 18789, 22));
+
+        using var service = new SshTunnelService(NullLogger.Instance);
+        var gatewayB = new SshTunnelConfig("user", "gateway-b.example", 18789, port);
+        using var process = PlantRunningTunnel(
+            service,
+            gatewayB,
+            SshTunnelOwner.GatewayConnectionManager,
+            generation: 4);
+        try
+        {
+            service.Stop();
+
+            Assert.False(service.IsRunning);
+            Assert.True(DashboardForwardPortGuard.IsHolding(port));
+            Assert.True(DashboardForwardPortGuard.AllowsDestination(
+                port, "user", "gateway-a.example", 18789, 22));
+            Assert.False(DashboardForwardPortGuard.AllowsDestination(
+                port, "user", "gateway-b.example", 18789, 22));
+            Assert.Equal(port, gatewayB.LocalPort);
+            Assert.Throws<InvalidOperationException>(() => process.HasExited);
+        }
+        finally
+        {
+            DashboardForwardPortGuard.Release(port);
+        }
+    }
+
+    [Fact]
     public void AllowsDestination_PinsTheOriginalGateway()
     {
         const int port = 45681;
