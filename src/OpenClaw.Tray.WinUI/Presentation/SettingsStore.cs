@@ -13,11 +13,9 @@ internal sealed class SettingsStore : ISettingsStore
 {
     private readonly SettingsManager _settings;
     private readonly IUiDispatcher _dispatcher;
-    private readonly object _snapshotGate = new();
     private readonly object _originGate = new();
 
     private long _nextOriginId;
-    private long _version;
     private readonly Dictionary<int, SettingsWriteOrigin?> _activeOrigins = new();
     private bool _disposed;
 
@@ -35,10 +33,7 @@ internal sealed class SettingsStore : ISettingsStore
         get
         {
             ThrowIfDisposed();
-            lock (_snapshotGate)
-            {
-                return CreateSnapshot(_version);
-            }
+            return _settings.CapturePresentationSnapshot();
         }
     }
 
@@ -77,15 +72,10 @@ internal sealed class SettingsStore : ISettingsStore
         _disposed = true;
     }
 
-    private void OnManagerSaved(object? sender, EventArgs e)
+    private void OnManagerSaved(object? sender, SettingsSavedEventArgs e)
     {
         var origin = ConsumeMatchingOrigin();
-        SettingsChangedEventArgs args;
-        lock (_snapshotGate)
-        {
-            var version = ++_version;
-            args = new SettingsChangedEventArgs(origin, CreateSnapshot(version));
-        }
+        var args = new SettingsChangedEventArgs(origin, e.Snapshot);
 
         if (_dispatcher.HasThreadAccess)
         {
@@ -120,50 +110,6 @@ internal sealed class SettingsStore : ISettingsStore
             return _activeOrigins.Remove(Environment.CurrentManagedThreadId, out var origin) ? origin : null;
         }
     }
-
-    private SettingsSnapshot CreateSnapshot(long version) => new()
-    {
-        Version = version,
-        SystemRunFilesystemScope = _settings.SystemRunFilesystemScope,
-        SystemRunPolicyFingerprint = _settings.SystemRunPolicyFingerprint,
-        AutoStart = _settings.AutoStart,
-        GlobalHotkeyEnabled = _settings.GlobalHotkeyEnabled,
-        UseLegacyWebChat = _settings.UseLegacyWebChat,
-        ShowNotifications = _settings.ShowNotifications,
-        NotificationSound = _settings.NotificationSound,
-        AppTheme = _settings.AppTheme,
-        ShowDiagnosticsEffective = _settings.ShowDiagnosticsEffective,
-        NotifyHealth = _settings.NotifyHealth,
-        NotifyUrgent = _settings.NotifyUrgent,
-        NotifyReminder = _settings.NotifyReminder,
-        NotifyEmail = _settings.NotifyEmail,
-        NotifyCalendar = _settings.NotifyCalendar,
-        NotifyBuild = _settings.NotifyBuild,
-        NotifyStock = _settings.NotifyStock,
-        NotifyInfo = _settings.NotifyInfo,
-        EnableNodeMode = _settings.EnableNodeMode,
-        EnableMcpServer = _settings.EnableMcpServer,
-        NodeSystemRunEnabled = _settings.NodeSystemRunEnabled,
-        NodeBrowserProxyEnabled = _settings.NodeBrowserProxyEnabled,
-        NodeCameraEnabled = _settings.NodeCameraEnabled,
-        NodeCanvasEnabled = _settings.NodeCanvasEnabled,
-        NodeScreenEnabled = _settings.NodeScreenEnabled,
-        NodeLocationEnabled = _settings.NodeLocationEnabled,
-        NodeTtsEnabled = _settings.NodeTtsEnabled,
-        NodeSttEnabled = _settings.NodeSttEnabled,
-        NodeOllamaInferenceEnabled = _settings.NodeOllamaInferenceEnabled,
-        EnableManagedLocalGatewayAutoRepair = _settings.EnableManagedLocalGatewayAutoRepair,
-        SttModelName = _settings.SttModelName,
-        TtsProvider = _settings.TtsProvider,
-        TtsPiperVoiceId = _settings.TtsPiperVoiceId,
-        TtsElevenLabsApiKey = _settings.TtsElevenLabsApiKey,
-        TtsElevenLabsVoiceId = _settings.TtsElevenLabsVoiceId,
-        ScreenRecordingConsentGiven = _settings.ScreenRecordingConsentGiven,
-        CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
-        LocationConsentGiven = _settings.LocationConsentGiven,
-        ShowChatToolCalls = _settings.ShowChatToolCalls,
-        PinnedPagesByGateway = _settings.PinnedPagesByGateway,
-    };
 
     private void ThrowIfDisposed()
     {

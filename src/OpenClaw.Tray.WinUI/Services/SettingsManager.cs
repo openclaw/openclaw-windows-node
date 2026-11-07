@@ -8,11 +8,18 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mxc;
+using OpenClawTray.Presentation;
 
 namespace OpenClawTray.Services;
 
 internal sealed class SettingsPersistenceConflictException()
     : InvalidOperationException("Settings changed in another writer. Reload before saving.");
+
+/// <summary>Immutable presentation values and version captured by a successful settings commit.</summary>
+public sealed class SettingsSavedEventArgs(SettingsSnapshot snapshot) : EventArgs
+{
+    public SettingsSnapshot Snapshot { get; } = snapshot;
+}
 
 /// <summary>
 /// Manages application settings with JSON persistence.
@@ -37,13 +44,14 @@ public class SettingsManager
     public string SettingsDirectory => _settingsDirectory;
 
     /// <summary>Raised after settings are persisted to disk.</summary>
-    public event EventHandler? Saved;
+    public event EventHandler<SettingsSavedEventArgs>? Saved;
 
     internal event EventHandler? PersistenceStateChanged;
     internal bool HasPersistenceConflict => _hasPersistenceConflict;
     private volatile bool _hasPersistenceConflict;
 
     private readonly object _saveLock = new();
+    private long _saveVersion;
     private SettingsData _data = CreateDefaultData();
     public NodeSandboxPolicyStore SandboxPolicies { get; } = new(CreateDefaultData());
     private volatile bool _persistedSystemRunEnabled;
@@ -682,9 +690,16 @@ public class SettingsManager
         PersistAndNotify(null);
     }
 
+    internal SettingsSnapshot CapturePresentationSnapshot()
+    {
+        lock (_saveLock)
+            return SettingsSnapshot.FromData(ToSettingsData(), _saveVersion);
+    }
+
     private void PersistAndNotify(Action? edit)
     {
         Exception? failure = null;
+        SettingsSavedEventArgs? notification = null;
         var notifyConflict = false;
         lock (_saveLock)
         {
@@ -693,7 +708,7 @@ public class SettingsManager
             try
             {
                 edit?.Invoke();
-                SaveCore();
+                notification = new SettingsSavedEventArgs(SaveCore());
                 notifyConflict = _hasPersistenceConflict;
                 _hasPersistenceConflict = false;
             }
@@ -716,7 +731,7 @@ public class SettingsManager
         if (notifyConflict) NotifyPersistenceStateChanged();
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
         Logger.Info("Settings saved");
-        try { Saved?.Invoke(this, EventArgs.Empty); }
+        try { Saved?.Invoke(this, notification!); }
         catch (Exception ex)
         {
             Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
@@ -732,7 +747,7 @@ public class SettingsManager
         }
     }
 
-    private void SaveCore()
+    private SettingsSnapshot SaveCore()
     {
         lock (_saveLock)
         {
@@ -750,6 +765,7 @@ public class SettingsManager
 
             var data = ToSettingsData();
             var sandboxSnapshot = MxcRequestBuilder.Snapshot(data);
+            var notificationSnapshot = SettingsSnapshot.FromData(data, _saveVersion + 1);
             // Apply DPAPI protection to the API key for on-disk storage only.
             // A failed decrypt keeps the original ciphertext so this save cannot
             // replace it with null.
@@ -791,12 +807,14 @@ public class SettingsManager
                     File.Move(temp, _settingsFilePath, overwrite: true);
                     _persistedJson = json;
                     _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
+                    _saveVersion = notificationSnapshot.Version;
                 });
             }
             finally
             {
                 if (File.Exists(temp)) File.Delete(temp);
             }
+            return notificationSnapshot;
             }
 
         }

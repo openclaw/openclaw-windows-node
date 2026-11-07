@@ -384,7 +384,20 @@ public sealed partial class SandboxPage : Page
     {
         if (_suppress || CurrentApp.Settings is not { } settings || !double.IsFinite(args.NewValue)) return;
         var bytes = (long)Math.Clamp(Math.Round(args.NewValue), 1, 1024) * OpenClaw.Shared.FileTransfer.FileLimits.MessageBytes;
-        settings.UpdateAndSave(() => settings.SandboxMaxTransferBytes = bytes);
+        try
+        {
+            settings.UpdateAndSave(() => settings.SandboxMaxTransferBytes = bytes);
+        }
+        catch
+        {
+            _suppress = true;
+            try
+            {
+                sender.Value = settings.SandboxMaxTransferBytes / (double)OpenClaw.Shared.FileTransfer.FileLimits.MessageBytes;
+            }
+            finally { _suppress = false; }
+            throw;
+        }
         ((IAppCommands)CurrentApp).NotifySettingsSaved();
     }
 

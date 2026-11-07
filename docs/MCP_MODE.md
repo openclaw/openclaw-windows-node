@@ -133,9 +133,14 @@ and a 16384-byte UTF-8 wire cap are enforced. File logical messages cap at 1 MiB
 Pre-listener buffering caps at eight messages and 1 MiB including unfinished
 messages; active asynchronous delivery caps at eight messages and 2 MiB.
 Readiness is sent only after the worker registers its listener. Fetch receives
-opaque UTF-8 `start`, emits one message, and waits for `ack`. Create receives
-messages, ACKs each nonempty one, and verifies size/hash at empty-message EOF.
-The client need not send reciprocal readiness.
+opaque UTF-8 `start`, then repeatedly emits a nonempty logical message of up to
+1 MiB and waits for an opaque UTF-8 `ack` before reading the next chunk. The client
+must acknowledge every logical message, including the last, independently of
+the wire-frame polling cursor above. An empty file still requires `start` but
+emits no data messages and expects no `ack`. Fetch completes with the command
+result; it does not send an empty EOF message. Create receives messages, ACKs
+each nonempty one, and verifies size/hash at empty-message EOF. The client need
+not send reciprocal readiness.
 
 There are four leases/streaming handlers, sixteen ordinary tool handlers, eight
 independent control handlers, and thirty-two bounded ingress readers. Authentication

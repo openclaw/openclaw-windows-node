@@ -207,6 +207,111 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         Assert.False(disk.NotifyHealth);
     }
 
+    [Fact]
+    public async Task DelayedSavedNotificationCannotPublishAConcurrentRejectedEdit()
+    {
+        var settings = new SettingsManager(_root);
+        var committed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var editing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseNotification = new ManualResetEventSlim();
+        using var releaseEdit = new ManualResetEventSlim();
+        settings.Saved += (_, _) =>
+        {
+            committed.SetResult();
+            if (!releaseNotification.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The committed notification was not released.");
+        };
+        using var store = new SettingsStore(settings, new ImmediateDispatcher());
+        var origin = store.CreateOrigin();
+        var events = new System.Collections.Concurrent.ConcurrentQueue<SettingsChangedEventArgs>();
+        store.Changed += (_, args) => events.Enqueue(args);
+        var first = Task.Run(() => store.Update(origin, editor => editor.NotificationSound = "committed"));
+        Task<Exception>? rejected = null;
+        try
+        {
+            await committed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using var locked = new FileStream(Path.Combine(_root, "settings.json"),
+                FileMode.Open, FileAccess.Read, FileShare.Read);
+            rejected = Task.Run(() => Record.Exception(() => store.Update(store.CreateOrigin(), editor =>
+            {
+                editor.NotificationSound = "rejected";
+                editing.SetResult();
+                if (!releaseEdit.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("The rejected edit was not released.");
+            })));
+            try
+            {
+                await editing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                releaseNotification.Set();
+                await first.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally
+            {
+                releaseEdit.Set();
+                Assert.True(await rejected is IOException or UnauthorizedAccessException);
+            }
+        }
+        finally
+        {
+            releaseNotification.Set();
+            releaseEdit.Set();
+            await Task.WhenAll(first, rejected ?? Task.CompletedTask);
+        }
+
+        var notification = Assert.Single(events);
+        Assert.Same(origin, notification.Origin);
+        Assert.Equal(1, notification.Version);
+        Assert.Equal("committed", notification.Snapshot.NotificationSound);
+        Assert.Equal("committed", store.Current.NotificationSound);
+        Assert.Equal(1, store.Current.Version);
+    }
+
+    [Fact]
+    public async Task DelayedSavedNotificationsKeepCommitOrderVersionsAndDetachedValues()
+    {
+        var settings = new SettingsManager(_root);
+        var firstCommitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFirst = new ManualResetEventSlim();
+        var notified = 0;
+        settings.Saved += (_, _) =>
+        {
+            if (Interlocked.Increment(ref notified) != 1) return;
+            firstCommitted.SetResult();
+            if (!releaseFirst.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The first notification was not released.");
+        };
+        using var store = new SettingsStore(settings, new ImmediateDispatcher());
+        var firstOrigin = store.CreateOrigin();
+        var secondOrigin = store.CreateOrigin();
+        var events = new System.Collections.Concurrent.ConcurrentQueue<SettingsChangedEventArgs>();
+        store.Changed += (_, args) => events.Enqueue(args);
+        var first = Task.Run(() => store.Update(firstOrigin, editor =>
+        {
+            editor.NotificationSound = "first";
+            editor.SetPagePinned("gateway", "connection", true);
+        }));
+        try
+        {
+            await firstCommitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Run(() => store.Update(secondOrigin, editor =>
+            {
+                editor.NotificationSound = "second";
+                editor.SetPagePinned("gateway", "connection", false);
+            })).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { releaseFirst.Set(); await first; }
+
+        Assert.Equal(new long[] { 2, 1 }, events.Select(e => e.Version));
+        var earlier = Assert.Single(events, e => ReferenceEquals(e.Origin, firstOrigin));
+        var later = Assert.Single(events, e => ReferenceEquals(e.Origin, secondOrigin));
+        Assert.Equal("first", earlier.Snapshot.NotificationSound);
+        Assert.Equal(new[] { "connection" }, earlier.Snapshot.PinnedPagesFor("gateway"));
+        Assert.Equal("second", later.Snapshot.NotificationSound);
+        Assert.Empty(later.Snapshot.PinnedPagesFor("gateway"));
+        Assert.Equal(2, store.Current.Version);
+        Assert.Equal("second", store.Current.NotificationSound);
+    }
+
     private sealed class ImmediateDispatcher : IUiDispatcher
     {
         public bool HasThreadAccess => true;
