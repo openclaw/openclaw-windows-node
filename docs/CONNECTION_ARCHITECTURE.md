@@ -1,5 +1,32 @@
 # Connection Architecture
 
+## Configuration editor profile admission
+
+The editor captures `IOperatorGatewayClient.ConfigWriteAdmission` with its paired
+configuration/schema read and passes it, with the captured connection epoch, to
+the profile-bound `PatchConfigOnConnectionAsync` overload. Unsupported clients
+fail closed rather than falling back to an unbound write.
+
+`OpenClawGatewayClient` invalidates the previous admission directly when it
+receives `sessions.changed` with reason `profile-identity`, before notifying UI
+observers. Queued writes therefore do not depend on dispatcher delivery of
+`AppState.SelfProfileRevision`. The client rejects tokens from another owner.
+
+After the transport send semaphore, `ConfigWriteAdmission` serializes profile
+invalidation with the synchronous initiation of the actual `WebSocket.SendAsync`.
+That invocation is the linearization point: invalidation first means no frame
+I/O; admission first means an already-started frame may finish. The monitor is
+not held across the asynchronous write. Existing connection-generation and
+transport-cancellation checks remain in force. The editor also rejects a stale
+acknowledgement, preserving the newer owner and retained draft. No transport
+thread reads WinUI state, and profile invalidation does not abort an unrelated
+in-progress shared-socket frame.
+
+`ConfigWriteAdmissionTests` exercises real queued socket I/O and reconnects;
+`OpenClawGatewayClientTests.CapturedProfileChangeWhilePatchQueued_IsRejectedBeforeConfigFrame` exercises real Gateway-client profile events,
+request serialization and response-aware `config.patch` admission. These are not
+installed-upgrade or interactive WinUI proof.
+
 ## Native Local AI ownership and configuration
 
 Native Local AI configuration uses authenticated Gateway RPC, not CLI batch

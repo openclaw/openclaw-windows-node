@@ -1526,10 +1526,10 @@ Utilisez l'une de ces options :
     <value>JSON brut</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
-    <value>Schéma non disponible</value>
+    <value>Configuration indisponible</value>
   </data>
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
-    <value>Le schéma de configuration de la passerelle n’a pas pu être chargé. Utilisez le tableau de bord web pour modifier les paramètres.</value>
+    <value>Actualisez pour réessayer de charger la configuration et le schéma de la passerelle. Vous pouvez aussi ouvrir le panneau de la passerelle.</value>
   </data>
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
@@ -5899,13 +5899,13 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Configuration indisponible</value>
   </data>
   <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
-    <value>La configuration de la passerelle n'a pas pu être affichée. Actualisez et réessayez.</value>
+    <value>La configuration de la passerelle n’a pas pu être chargée ou affichée. Actualisez et réessayez.</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
     <value>Schéma indisponible</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
-    <value>Le schéma de la passerelle n'a pas pu être affiché. Le JSON brut reste disponible en aperçu en lecture seule.</value>
+    <value>Le schéma de la passerelle n’a pas pu être chargé ou affiché. Actualisez et réessayez.</value>
   </data>
   <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
     <value>Redémarrage de la passerelle</value>
@@ -7864,4 +7864,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
+  <data name="ConfigPage_DraftConnectionChanged" xml:space="preserve">
+    <value>La connexion ou le profil a changé. Votre brouillon est conservé, mais ne peut pas être appliqué ici. Abandonnez-le, puis chargez la configuration de la passerelle actuelle.</value>
+  </data>
 </root>

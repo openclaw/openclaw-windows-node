@@ -6,6 +6,23 @@ namespace OpenClaw.Tray.Tests;
 public class ConfigEditorModelTests
 {
     [Theory]
+    [InlineData("{}", true)]
+    [InlineData("""{"integration":{}}""", true)]
+    [InlineData("""{"integration":{"credentials":{}}}""", true)]
+    [InlineData("""{"integration":{"credentials":{"account":{}}}}""", true)]
+    [InlineData("""{"integration":{"credentials":"__OPENCLAW_REDACTED__"}}""", false)]
+    [InlineData("""{"integration":{"credentials":null}}""", false)]
+    [InlineData("""{"integration":{"credentials":[]}}""", false)]
+    [InlineData("""{"integration":{"credentials":42}}""", false)]
+    [InlineData("""{"integration":{"credentials":{"account":"__OPENCLAW_REDACTED__"}}}""", false)]
+    public void SchemaOnlySection_DistinguishesMissingPathsFromOpaqueAncestors(string config, bool expected)
+    {
+        using var document = JsonDocument.Parse(config);
+        Assert.Equal(expected, ConfigEditorModel.CanMaterializeSchemaSection(document.RootElement,
+            "integration.credentials.account"));
+    }
+
+    [Theory]
     [InlineData("optional.enabled", "optional")]
     [InlineData("optional", "optional")]
     [InlineData("optional.nested.value", "optional.nested")]

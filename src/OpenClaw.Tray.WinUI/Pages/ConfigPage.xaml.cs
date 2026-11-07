@@ -36,6 +36,7 @@ public sealed partial class ConfigPage : Page
     private ConfigEditorSnapshot _serverSnapshot = ConfigEditorSnapshot.Empty;
     private ConfigEditorSnapshot _editSnapshot = ConfigEditorSnapshot.Empty;
     private IOperatorGatewayClient? _permissionClient;
+    private GatewayConnectionManager? _observedConnectionManager;
 
     private string _selectedPath = "";
     private string? _searchPath;
@@ -44,7 +45,12 @@ public sealed partial class ConfigPage : Page
     private bool _showSchemaFallback;
     private bool _loading;
     private bool _saving;
-    private bool _initialized;
+    private bool _observing;
+    private bool _refreshConfigOnNextInitialize;
+    private bool _configLoadFailureVisible;
+    private bool _draftConnectionChanged;
+    private int _configLoadGeneration;
+    private ConfigEditorLoadTicket? _snapshotTicket;
     private bool _jsonPreviewVisible = true;
     private bool _jsonPreviewCollapsedByUser;
     private bool _refreshConfigAfterReconnect;
@@ -72,7 +78,11 @@ public sealed partial class ConfigPage : Page
             _searchPath = null;
             _searchField = null;
             CancelDetailRender();
+            _observing = false;
+            _configLoadGeneration++;
+            _loading = false;
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+            SubscribeConnectionManager(null);
             UnsubscribePermissionClient();
             _searchDebounceTimer.Stop();
             _reconnectCompletionTimer.Stop();
@@ -82,6 +92,7 @@ public sealed partial class ConfigPage : Page
         StatusInfoBar.Closed += (_, _) =>
         {
             _statusDismissTimer.Stop();
+            _configLoadFailureVisible = false;
             SetInfoBarOpen(StatusInfoBar, false);
         };
         _searchDebounceTimer.Tick += (_, _) =>
@@ -109,6 +120,8 @@ public sealed partial class ConfigPage : Page
 
     public void Initialize()
     {
+        _observing = true;
+        SubscribeConnectionManager(CurrentApp.ConnectionManager);
         if (_appState != null)
             _appState.PropertyChanged -= OnAppStateChanged;
 
@@ -119,9 +132,9 @@ public sealed partial class ConfigPage : Page
         if (CompleteReconnectIfReady())
             return;
 
-        if (!_initialized || !_serverSnapshot.HasRoot || !_lastSchema.HasValue)
+        if (_refreshConfigOnNextInitialize || !_serverSnapshot.HasRoot || !_lastSchema.HasValue || !SnapshotMatchesCurrentConnection())
         {
-            _initialized = true;
+            _refreshConfigOnNextInitialize = false;
             RefreshFromGateway();
         }
         else
@@ -132,97 +145,66 @@ public sealed partial class ConfigPage : Page
         }
     }
 
-    public void UpdateConfig(JsonElement config)
+    private bool ApplyLoadedConfig(JsonElement config, JsonElement schema)
     {
-        var configSnapshot = config.Clone();
-        RunOnUiThread(() =>
+        var previousConfig = _lastConfig;
+        var previousSchema = _lastSchema;
+        var previousServer = _serverSnapshot;
+        var previousEdit = _editSnapshot;
+        try
         {
-            try
+            _lastConfig = config;
+            _lastSchema = schema;
+            _serverSnapshot = ConfigEditorModel.CaptureSnapshot(config);
+            if (_pendingChanges.Count == 0)
+                _editSnapshot = _serverSnapshot;
+
+            if (config.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.String)
+                ConfigSubtitle.Text = Lf("ConfigPage_EditingPathFormat", path.GetString());
+
+            UpdateConnectionBanner();
+            UpdatePermissionBanner();
+            RenderTree();
+            RestoreSelectedDetail();
+            UpdateSelectedJsonPreviewForCurrentSelection();
+            if (_configLoadFailureVisible)
             {
-                Logger.Info("[ConfigPage] UpdateConfig received");
-                if (GetConfigPermissionState() == ConfigPermissionState.NoRead)
-                {
-                    ClearConfigViewForNoRead();
-                    UpdatePermissionBanner();
-                    UpdateMetaAndButtons();
-                    return;
-                }
-
-                _lastConfig = configSnapshot;
-                _serverSnapshot = ConfigEditorModel.CaptureSnapshot(configSnapshot);
-                if (_pendingChanges.Count == 0)
-                    _editSnapshot = _serverSnapshot;
-
-                if (configSnapshot.TryGetProperty("path", out var pathEl) &&
-                    pathEl.ValueKind == JsonValueKind.String)
-                    ConfigSubtitle.Text = Lf("ConfigPage_EditingPathFormat", pathEl.GetString());
-
-                _loading = false;
-                SetInfoBarOpen(ConnectionInfoBar, CurrentApp.GatewayClient == null);
-                UpdatePermissionBanner();
-                RenderTree();
-                RestoreSelectedDetail();
-                UpdateSelectedJsonPreviewForCurrentSelection();
-                UpdateMetaAndButtons();
+                _configLoadFailureVisible = false;
+                SetInfoBarOpen(StatusInfoBar, false);
             }
-            catch (Exception ex)
-            {
-                Logger.Error($"[ConfigPage] Failed to render config: {ex}");
-                ShowConfigRenderError(
-                    L("ConfigPage_RenderConfigUnavailableTitle"),
-                    L("ConfigPage_RenderConfigUnavailableMessage"));
-            }
-        });
-    }
-
-    public void UpdateConfigSchema(JsonElement schema)
-    {
-        var schemaSnapshot = schema.Clone();
-        RunOnUiThread(() =>
+            return true;
+        }
+        catch (Exception ex)
         {
-            try
-            {
-                if (GetConfigPermissionState() == ConfigPermissionState.NoRead)
-                {
-                    ClearConfigViewForNoRead();
-                    UpdatePermissionBanner();
-                    UpdateMetaAndButtons();
-                    return;
-                }
-
-                _lastSchema = schemaSnapshot;
-                _loading = false;
-                UpdatePermissionBanner();
-                RenderTree();
-                RestoreSelectedDetail();
-                UpdateSelectedJsonPreviewForCurrentSelection();
-                UpdateMetaAndButtons();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[ConfigPage] Failed to render config schema: {ex}");
-                ShowConfigRenderError(
-                    L("ConfigPage_RenderSchemaUnavailableTitle"),
-                    L("ConfigPage_RenderSchemaUnavailableMessage"));
-            }
-        });
+            _lastConfig = previousConfig;
+            _lastSchema = previousSchema;
+            _serverSnapshot = previousServer;
+            _editSnapshot = previousEdit;
+            // Exception messages can embed config values. Record only the type.
+            Logger.Error($"[ConfigPage] Config rendering failed ({ex.GetType().Name})");
+            ShowConfigRenderError(L("ConfigPage_RenderConfigUnavailableTitle"),
+                L("ConfigPage_RenderConfigUnavailableMessage"));
+            return false;
+        }
     }
 
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
-            case nameof(AppState.Config):
-                if (_appState!.Config.HasValue) UpdateConfig(_appState.Config.Value);
-                break;
-            case nameof(AppState.ConfigSchema):
-                if (_appState!.ConfigSchema.HasValue) UpdateConfigSchema(_appState.ConfigSchema.Value);
+            case nameof(AppState.SelfProfileRevision):
+                InvalidateLoadedConnection();
+                RefreshFromGateway();
                 break;
             case nameof(AppState.Status):
                 SubscribePermissionClient(CurrentApp.GatewayClient);
                 UpdateConnectionBanner();
                 UpdatePermissionBanner();
                 var configPermissionState = GetConfigPermissionState();
+                if (configPermissionState == ConfigPermissionState.Disconnected)
+                {
+                    InvalidateLoadedConnection();
+                }
                 if (configPermissionState == ConfigPermissionState.Disconnected && _refreshConfigAfterReconnect)
                 {
                     ShowStatus(
@@ -242,6 +224,20 @@ public sealed partial class ConfigPage : Page
         }
     }
 
+    private void SubscribeConnectionManager(GatewayConnectionManager? manager)
+    {
+        if (ReferenceEquals(_observedConnectionManager, manager))
+            return;
+
+        // Unload detaches the owner actually observed, without resolving a
+        // production App from an embedding host or a changed application owner.
+        if (_observedConnectionManager != null)
+            _observedConnectionManager.OperatorClientChanged -= OnOperatorClientChanged;
+        _observedConnectionManager = manager;
+        if (_observedConnectionManager != null)
+            _observedConnectionManager.OperatorClientChanged += OnOperatorClientChanged;
+    }
+
     private void SubscribePermissionClient(IOperatorGatewayClient? client)
     {
         if (ReferenceEquals(_permissionClient, client))
@@ -250,13 +246,17 @@ public sealed partial class ConfigPage : Page
         UnsubscribePermissionClient();
         _permissionClient = client;
         if (_permissionClient != null)
+        {
             _permissionClient.HandshakeSucceeded += OnGatewayHandshakeSucceeded;
+        }
     }
 
     private void UnsubscribePermissionClient()
     {
         if (_permissionClient != null)
+        {
             _permissionClient.HandshakeSucceeded -= OnGatewayHandshakeSucceeded;
+        }
         _permissionClient = null;
     }
 
@@ -264,6 +264,10 @@ public sealed partial class ConfigPage : Page
     {
         RunOnUiThread(() =>
         {
+            if (!_observing || !ReferenceEquals(sender, CurrentApp.GatewayClient))
+                return;
+            if (!SnapshotMatchesCurrentConnection())
+                InvalidateLoadedConnection();
             UpdatePermissionBanner();
             var permissionState = GetConfigPermissionState();
             if (CompleteReconnectIfReady())
@@ -282,6 +286,48 @@ public sealed partial class ConfigPage : Page
         });
     }
 
+    private void OnOperatorClientChanged(object? sender, OperatorClientChangedEventArgs e)
+    {
+        RunOnUiThread(() =>
+        {
+            if (!_observing || !ReferenceEquals(e.NewClient, CurrentApp.GatewayClient)) return;
+            SubscribePermissionClient(CurrentApp.GatewayClient);
+            RefreshFromGateway();
+        });
+    }
+
+    // AppState retains this revision while the cached page is unloaded.
+    private bool SnapshotMatchesCurrentConnection() =>
+        _snapshotTicket is { } ticket && ticket.MatchesConnection(CurrentApp.GatewayClient,
+            CurrentApp.GatewayClient?.SessionMutationConnectionEpoch, _appState?.SelfProfileRevision ?? 0);
+
+    private void InvalidateLoadedConnection()
+    {
+        _configLoadGeneration++;
+        _detailRenderVersion++;
+        _loading = false;
+        _draftConnectionChanged |= _pendingChanges.Count > 0;
+        _snapshotTicket = null;
+        _lastConfig = null;
+        _lastSchema = null;
+        _serverSnapshot = ConfigEditorSnapshot.Empty;
+        if (!_draftConnectionChanged)
+            _editSnapshot = ConfigEditorSnapshot.Empty;
+        _selectedPath = "";
+        _showSchemaFallback = true;
+        _nodeMap.Clear();
+        ConfigTree.RootNodes.Clear();
+        DetailPanel.Children.Clear();
+        DetailLoadingOverlay.Visibility = Visibility.Collapsed;
+        DetailBreadcrumb.Text = "";
+        DetailPath.Text = "";
+        DetailType.Text = "";
+        ResetSectionButton.Visibility = Visibility.Collapsed;
+        ConfigSubtitle.Text = L("ConfigSubtitle.Text");
+        RenderJsonDiff("{}", "{}");
+        ApplyPaneVisibility();
+    }
+
     private void RenderTree()
     {
         _nodeMap.Clear();
@@ -293,7 +339,8 @@ public sealed partial class ConfigPage : Page
             ApplyPaneVisibility();
 
             var schemaRoot = GetSchemaRoot(_lastSchema.Value);
-            var configRoot = _serverSnapshot.HasRoot ? _serverSnapshot.Root : (JsonElement?)null;
+            var preview = GetPreviewSnapshot();
+            var configRoot = preview.HasRoot ? preview.Root : (JsonElement?)null;
 
             var rootElement = configRoot ?? s_emptyObject;
             var rootNode = new TreeViewNode { IsExpanded = true };
@@ -324,31 +371,22 @@ public sealed partial class ConfigPage : Page
 
     private bool BuildSchemaTreeNodes(IList<TreeViewNode> parent, JsonElement schema, JsonElement? config, string basePath)
     {
-        if (!schema.TryGetProperty("properties", out var properties) ||
-            properties.ValueKind != JsonValueKind.Object)
-            return false;
-
         var anyVisible = false;
-        foreach (var prop in properties.EnumerateObject().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var section in ConfigEditorModel.ReadSchemaSections(schema, config)
+                     .OrderBy(section => section.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var path = string.IsNullOrEmpty(basePath) ? prop.Name : $"{basePath}.{prop.Name}";
-            var propType = ExtractSchemaType(prop.Value);
-            if (propType != "object" && !prop.Value.TryGetProperty("properties", out _))
-                continue;
-
-            var configValue = config.HasValue && config.Value.TryGetProperty(prop.Name, out var cv)
-                ? (JsonElement?)cv
-                : null;
+            var path = string.IsNullOrEmpty(basePath) ? section.Name : $"{basePath}.{section.Name}";
+            var configValue = section.Config;
 
             var node = new TreeViewNode();
-            var childVisible = BuildSchemaTreeNodes(node.Children, prop.Value, configValue, path);
-            var selfMatches = MatchesSearch(path, prop.Value);
+            var childVisible = BuildSchemaTreeNodes(node.Children, section.Schema, configValue, path);
+            var selfMatches = MatchesSearch(path, section.Schema);
             if (!selfMatches && !childVisible && !string.IsNullOrWhiteSpace(_searchText))
                 continue;
 
             var dirtyCount = CountPathsUnder(path, _pendingChanges.Keys);
             var invalidCount = CountPathsUnder(path, _validationErrors.Keys);
-            var label = FriendlyLabel(prop.Name);
+            var label = FriendlyLabel(section.Name);
             if (dirtyCount > 0) label += $" • {dirtyCount} changed";
             if (invalidCount > 0) label += $" • {invalidCount} issue{(invalidCount == 1 ? "" : "s")}";
 
@@ -364,7 +402,8 @@ public sealed partial class ConfigPage : Page
 
     private void RestoreSelectedDetail()
     {
-        if (!_serverSnapshot.HasRoot || !_lastSchema.HasValue)
+        var preview = GetPreviewSnapshot();
+        if (!preview.HasRoot || !_lastSchema.HasValue)
             return;
 
         if (_searchPath is { } requested)
@@ -382,20 +421,20 @@ public sealed partial class ConfigPage : Page
                 (section, section.Length == 0 ? requested : requested[(section.Length + 1)..]);
         }
 
-        if (TryGetElementAtPath(_serverSnapshot.Root, _selectedPath, out var element) &&
-            element.ValueKind == JsonValueKind.Object)
+        if (TryGetElementAtPath(_serverSnapshot.Root, _selectedPath, out var element))
         {
             ShowDetail(_selectedPath, element);
             return;
         }
 
-        if (ConfigEditorModel.ResolveSearchSection(GetSchemaRoot(_lastSchema.Value), _selectedPath) == _selectedPath)
+        if (ConfigEditorModel.ResolveSearchSection(GetSchemaRoot(_lastSchema.Value), _selectedPath) == _selectedPath &&
+            ConfigEditorModel.CanMaterializeSchemaSection(_serverSnapshot.Root, _selectedPath))
         {
             ShowDetail(_selectedPath, s_emptyObject);
             return;
         }
         _selectedPath = "";
-        ShowDetail("", _serverSnapshot.Root);
+        ShowDetail("", preview.Root);
     }
 
     internal void RevealSearchPath(string path)
@@ -542,6 +581,15 @@ public sealed partial class ConfigPage : Page
     private async Task OnSaveAsync()
     {
         if (_saving) return;
+        if (_draftConnectionChanged || !SnapshotMatchesCurrentConnection() ||
+            _snapshotTicket?.Epoch is not long connectionEpoch ||
+            _snapshotTicket?.WriteAdmission is not { IsCurrent: true } writeAdmission)
+        {
+            InvalidateLoadedConnection();
+            ShowDraftConnectionChanged();
+            UpdateMetaAndButtons();
+            return;
+        }
 
         if (_pendingChanges.Count == 0)
         {
@@ -606,13 +654,23 @@ public sealed partial class ConfigPage : Page
         try
         {
             var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
-            var result = await client.PatchConfigDetailedAsync(updated, saveBase.BaseHash);
+            var saveIdentity = _snapshotTicket!.Value;
+            var result = await client.PatchConfigOnConnectionAsync(updated, saveBase.BaseHash, connectionEpoch, writeAdmission);
+            if (!saveIdentity.MatchesConnection(CurrentApp.GatewayClient, client.SessionMutationConnectionEpoch,
+                    _appState?.SelfProfileRevision ?? 0))
+            {
+                // This is UI acknowledgement admission only. Do not let an old
+                // save clear a retained draft or restart UI on a new connection.
+                InvalidateLoadedConnection();
+                ShowDraftConnectionChanged();
+                return;
+            }
             if (!result.Ok)
             {
                 if (result.LooksLikeStaleBaseHash)
                 {
                     _editSnapshot = ConfigEditorSnapshot.Empty;
-                    _ = client.RequestConfigAsync();
+                    RefreshFromGateway();
                     ShowStatus(
                         L("ConfigPage_StatusStaleConfigTitle"),
                         Lf(
@@ -670,41 +728,82 @@ public sealed partial class ConfigPage : Page
 
     private void RefreshFromGateway()
     {
+        // A save may settle after navigation. Do not start a load whose result
+        // observation will necessarily reject, then strand the cached spinner.
+        if (!_observing)
+        {
+            _refreshConfigOnNextInitialize = true;
+            return;
+        }
+        _configLoadGeneration++;
+        _loading = false;
+        var client = CurrentApp.GatewayClient;
+        if (_snapshotTicket.HasValue && !SnapshotMatchesCurrentConnection())
+            InvalidateLoadedConnection();
         UpdateConnectionBanner();
         var permissionState = GetConfigPermissionState();
-        if (CurrentApp.GatewayClient == null)
-        {
-            _loading = false;
-            UpdatePermissionBanner();
-            UpdateMetaAndButtons();
-            return;
-        }
-
-        if (permissionState == ConfigPermissionState.Checking)
-        {
-            _loading = false;
-            SaveStatus.Text = L("ConfigPage_SaveStatusCheckingConfigPermissions");
-            UpdatePermissionBanner();
-            UpdateMetaAndButtons();
-            return;
-        }
-
         if (permissionState == ConfigPermissionState.NoRead)
-        {
             ClearConfigViewForNoRead();
-            UpdatePermissionBanner();
-            UpdateMetaAndButtons();
-            return;
+        if (_draftConnectionChanged)
+            ShowDraftConnectionChanged();
+        else if (client != null && permissionState is ConfigPermissionState.ReadOnly or ConfigPermissionState.ReadWrite)
+        {
+            // Reads belong to this page request, not unrelated AppState events.
+            var ticket = new ConfigEditorLoadTicket(++_configLoadGeneration, client,
+                client.SessionMutationConnectionEpoch, _appState?.SelfProfileRevision ?? 0, client.ConfigWriteAdmission);
+            _loading = true;
+            _ = LoadConfigAsync(client, ticket);
         }
-
-        _loading = true;
-        LoadingState.Visibility = Visibility.Visible;
-        SaveStatus.Text = L("ConfigPage_SaveStatusRefreshing");
         UpdatePermissionBanner();
-        _ = CurrentApp.GatewayClient.RequestConfigSchemaAsync();
-        _ = CurrentApp.GatewayClient.RequestConfigAsync();
         UpdateMetaAndButtons();
     }
+
+    private async Task LoadConfigAsync(IOperatorGatewayClient client, ConfigEditorLoadTicket ticket)
+    {
+        var result = await ConfigEditorLoader.LoadAsync((method, timeout) =>
+            client.SendWizardRequestAsync(method, parameters: null, timeoutMs: timeout)).ConfigureAwait(false);
+        RunOnUiThread(() =>
+        {
+            if (!ticket.IsCurrent(_observing, _configLoadGeneration, CurrentApp.GatewayClient,
+                    client.SessionMutationConnectionEpoch, _appState?.SelfProfileRevision ?? 0,
+                    client.IsConnectedToGateway && client.HasHandshakeSnapshot))
+                return;
+            _loading = false;
+            if (!OperatorScopeHelper.CanReadConfig(client.GrantedOperatorScopes))
+            {
+                ClearConfigViewForNoRead();
+                UpdatePermissionBanner();
+            }
+            else if (result.Succeeded)
+            {
+                _snapshotTicket = ticket;
+                if (ApplyLoadedConfig(result.Config!.Value, result.Schema!.Value) && _appState != null)
+                {
+                    // Keep the existing shared cache authoritative for other pages.
+                    _appState.Config = result.Config;
+                    _appState.ConfigSchema = result.Schema;
+                }
+            }
+            else
+            {
+                var schemaFailed = !result.Schema.HasValue;
+                ShowStatus(L(schemaFailed ? "ConfigPage_RenderSchemaUnavailableTitle" : "ConfigPage_RenderConfigUnavailableTitle"),
+                    L(schemaFailed ? "ConfigPage_RenderSchemaUnavailableMessage" : "ConfigPage_RenderConfigUnavailableMessage"),
+                    InfoBarSeverity.Error);
+                _configLoadFailureVisible = true;
+                // A failed refresh leaves the last valid form and draft intact.
+                if (!_serverSnapshot.HasRoot || !_lastSchema.HasValue)
+                {
+                    _showSchemaFallback = true;
+                    ApplyPaneVisibility();
+                }
+            }
+            UpdateMetaAndButtons();
+        });
+    }
+
+    private void ShowDraftConnectionChanged() => ShowStatus(L("ConfigPage_StatusConfigNotLoadedTitle"),
+        L("ConfigPage_DraftConnectionChanged"), InfoBarSeverity.Warning);
 
     private void UpdateConnectionBanner()
     {
@@ -723,14 +822,21 @@ public sealed partial class ConfigPage : Page
         _pendingChanges.Clear();
         _validationErrors.Clear();
         _editSnapshot = ConfigEditorSnapshot.Empty;
+        var reload = _draftConnectionChanged;
+        _draftConnectionChanged = false;
         ShowStatus(
             L("ConfigPage_StatusChangesDiscardedTitle"),
             L("ConfigPage_StatusChangesDiscardedMessage"),
             InfoBarSeverity.Informational);
-        RenderTree();
-        RestoreSelectedDetail();
-        UpdateSelectedJsonPreviewForCurrentSelection();
-        UpdateMetaAndButtons();
+        if (reload)
+            RefreshFromGateway();
+        else
+        {
+            RenderTree();
+            RestoreSelectedDetail();
+            UpdateSelectedJsonPreviewForCurrentSelection();
+            UpdateMetaAndButtons();
+        }
     }
 
     private void OnResetSection(object sender, RoutedEventArgs e)
@@ -954,12 +1060,15 @@ public sealed partial class ConfigPage : Page
         SetDetailEditingEnabled(!editingLocked);
         ResetSectionButton.IsEnabled = !editingLocked;
 
-        SaveButton.IsEnabled = !_saving && !_loading && canWriteConfig && dirtyCount > 0 && invalidCount == 0;
-        DiscardButton.IsEnabled = !editingLocked && dirtyCount > 0;
+        SaveButton.IsEnabled = !editingLocked &&
+            _serverSnapshot.HasRoot && _lastSchema.HasValue && canWriteConfig && dirtyCount > 0 && invalidCount == 0;
+        DiscardButton.IsEnabled = !_saving && !_loading && dirtyCount > 0;
+        RefreshButton.IsEnabled = !_saving && !_loading &&
+            permissionState is ConfigPermissionState.ReadOnly or ConfigPermissionState.ReadWrite;
     }
 
     private bool IsConfigEditingLocked(ConfigPermissionState permissionState) =>
-        _saving ||
+        _saving || _loading || _draftConnectionChanged || !SnapshotMatchesCurrentConnection() ||
         _refreshConfigAfterReconnect ||
         permissionState is ConfigPermissionState.Disconnected or ConfigPermissionState.Checking or ConfigPermissionState.NoRead;
 
@@ -1180,11 +1289,13 @@ public sealed partial class ConfigPage : Page
         _showSchemaFallback = true;
         ApplyPaneVisibility();
         ShowStatus(title, message, InfoBarSeverity.Error);
+        _configLoadFailureVisible = true;
         UpdateMetaAndButtons();
     }
 
     private void ShowStatus(string title, string message, InfoBarSeverity severity)
     {
+        _configLoadFailureVisible = false;
         _statusDismissTimer.Stop();
         StatusInfoBar.Title = title;
         StatusInfoBar.Message = message;
@@ -1266,6 +1377,9 @@ public sealed partial class ConfigPage : Page
     private void ClearConfigViewForNoRead()
     {
         _detailRenderVersion++;
+        _configLoadGeneration++;
+        _draftConnectionChanged = false;
+        _snapshotTicket = null;
         _loading = false;
         _lastConfig = null;
         _lastSchema = null;
@@ -1275,6 +1389,7 @@ public sealed partial class ConfigPage : Page
         _validationErrors.Clear();
         _selectedPath = "";
         _showSchemaFallback = true;
+        _nodeMap.Clear();
         ConfigTree.RootNodes.Clear();
         DetailPanel.Children.Clear();
         DetailPlaceholder.Text = "Config cannot be loaded because this operator token does not have read permission.";
@@ -1438,6 +1553,8 @@ public sealed partial class ConfigPage : Page
     {
         if (string.IsNullOrWhiteSpace(_searchText))
             return true;
+        if (schemaNode.ValueKind != JsonValueKind.Object)
+            return false;
 
         if (path.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
             return true;

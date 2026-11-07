@@ -12,7 +12,7 @@ using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
-public class OpenClawGatewayClientTests
+public partial class OpenClawGatewayClientTests
 {
     private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
     // Session-event regressions explicitly unset the refresh-window override.

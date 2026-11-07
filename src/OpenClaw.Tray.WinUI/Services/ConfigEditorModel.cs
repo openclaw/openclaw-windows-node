@@ -13,6 +13,8 @@ internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
     public bool HasRoot => Root.ValueKind is not JsonValueKind.Undefined and not JsonValueKind.Null;
 }
 
+internal readonly record struct ConfigSchemaSection(string Name, JsonElement Schema, JsonElement? Config);
+
 internal static class ConfigEditorModel
 {
     internal static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
@@ -43,6 +45,60 @@ internal static class ConfigEditorModel
             if (section.Length == 0) return null;
             var separator = section.LastIndexOf('.');
             section = separator < 0 ? "" : section[..separator];
+        }
+    }
+
+    public static bool HasSchemaFields(JsonElement schema) =>
+        schema.ValueKind == JsonValueKind.Object &&
+        schema.TryGetProperty("properties", out var properties) &&
+        properties.ValueKind == JsonValueKind.Object && properties.EnumerateObject().MoveNext();
+
+    public static bool CanTraverseObjectConfig(JsonElement config) =>
+        config.ValueKind is JsonValueKind.Object or JsonValueKind.Undefined;
+
+    /// <summary>Allows schema-only sections only when absent, without crossing an opaque stored ancestor.</summary>
+    public static bool CanMaterializeSchemaSection(JsonElement root, string path)
+    {
+        var current = root;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (current.ValueKind == JsonValueKind.Undefined)
+                return true;
+            if (current.ValueKind != JsonValueKind.Object)
+                return false;
+            if (!current.TryGetProperty(segment, out current))
+                return true;
+        }
+        return CanTraverseObjectConfig(current);
+    }
+
+    // A Gateway may redact a whole object to its native mask. Keep that value
+    // on the section itself, but never invent editable descendants beneath it.
+    public static IEnumerable<ConfigSchemaSection> ReadSchemaSections(JsonElement schema, JsonElement? config)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object ||
+            (config.HasValue && !CanTraverseObjectConfig(config.Value)))
+            yield break;
+
+        foreach (var property in properties.EnumerateObject())
+        {
+            var child = property.Value;
+            if (child.ValueKind != JsonValueKind.Object)
+                continue;
+            var objectType = child.TryGetProperty("type", out var type) &&
+                (type.ValueKind == JsonValueKind.String && type.GetString() == "object" ||
+                 type.ValueKind == JsonValueKind.Array &&
+                 System.Linq.Enumerable.Any(type.EnumerateArray(), item =>
+                     item.ValueKind == JsonValueKind.String && item.GetString() == "object"));
+            if (!objectType && !child.TryGetProperty("properties", out _))
+                continue;
+
+            var childConfig = config is { ValueKind: JsonValueKind.Object } objectConfig &&
+                objectConfig.TryGetProperty(property.Name, out var value)
+                ? (JsonElement?)value : null;
+            yield return new ConfigSchemaSection(property.Name, child, childConfig);
         }
     }
 

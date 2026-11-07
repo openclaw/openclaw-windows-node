@@ -10,6 +10,36 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class ConfigSearchRevealTests(UIThreadFixture ui)
 {
+    private const int DefaultUnloadTimeoutSeconds = 10;
+    private static readonly TimeSpan UnloadTimeout = TimeSpan.FromSeconds(
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_UI_UNLOAD_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? seconds : DefaultUnloadTimeoutSeconds);
+
+    [Fact]
+    public async Task UninitializedPageUnloadsWithoutResolvingProductionApp()
+    {
+        await ui.RunOnUIAsync(async () =>
+        {
+            Assert.IsType<TestApp>(Application.Current);
+            var page = new ConfigPage();
+            var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            page.Unloaded += (_, _) => unloaded.TrySetResult();
+            ui.Container.Children.Add(page);
+            try
+            {
+                await ui.YieldToRenderAsync();
+                ui.Container.Children.Remove(page);
+                await unloaded.Task.WaitAsync(UnloadTimeout);
+                await ui.YieldToRenderAsync();
+                Assert.True(unloaded.Task.IsCompletedSuccessfully);
+            }
+            finally
+            {
+                ui.Container.Children.Remove(page);
+            }
+        });
+    }
+
     [Fact]
     public async Task SearchRevealDismissesTheCancelledDetailOverlayBeforeItsContinuation()
     {

@@ -875,10 +875,20 @@ public abstract class WebSocketClientBase : IDisposable
     /// Sends only when the captured socket generation still owns the transport immediately before
     /// the write. Used for credential-bearing handshake frames.
     /// </summary>
-    protected virtual async Task<bool> SendRawAsync(
+    protected virtual Task<bool> SendRawAsync(
         string message,
         long expectedConnectionGeneration,
         CancellationToken cancellationToken)
+        => SendRawCoreAsync(message, expectedConnectionGeneration, cancellationToken, null);
+
+    protected virtual Task<bool> SendRawAsync(
+        string message, long expectedConnectionGeneration, CancellationToken cancellationToken,
+        ConfigWriteAdmission writeAdmission)
+        => SendRawCoreAsync(message, expectedConnectionGeneration, cancellationToken, writeAdmission);
+
+    private async Task<bool> SendRawCoreAsync(
+        string message, long expectedConnectionGeneration, CancellationToken cancellationToken,
+        ConfigWriteAdmission? writeAdmission)
     {
         var transportCancellation = _cts.Token;
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -913,12 +923,17 @@ public abstract class WebSocketClientBase : IDisposable
                 var written = Encoding.UTF8.GetBytes(message, buffer);
                 linkedCancellation.Token.ThrowIfCancellationRequested();
                 // A caller may leave the queue, but aborting a partial frame closes the shared socket.
-                await ws.SendAsync(
-                        buffer.AsMemory(0, written),
-                        WebSocketMessageType.Text,
-                        true,
-                        transportCancellation)
-                    .ConfigureAwait(false);
+                ValueTask send;
+                if (writeAdmission != null)
+                {
+                    if (!writeAdmission.TryStartSend(ws, buffer.AsMemory(0, written), transportCancellation, out send))
+                        return false;
+                }
+                else
+                {
+                    send = ws.SendAsync(buffer.AsMemory(0, written), WebSocketMessageType.Text, true, transportCancellation);
+                }
+                await send.ConfigureAwait(false);
                 return IsCurrentConnection(ws, expectedConnectionGeneration);
             }
             catch (OperationCanceledException)
