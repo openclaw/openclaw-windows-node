@@ -13,6 +13,7 @@ public sealed class SshTunnelService : ISshTunnelManager
     private readonly IOpenClawLogger _logger;
     private readonly object _operationLock = new();
     private readonly object _stateLock = new();
+    private readonly SshTunnelOwnershipGuard _ownershipGuard = new();
     private Process? _process;
     private bool _processStarted;
     private SshTunnelConfig? _currentConfig;
@@ -27,6 +28,9 @@ public sealed class SshTunnelService : ISshTunnelManager
     {
         _logger = logger;
     }
+
+    public SshTunnelOwnershipGuard.Scope BeginOwnershipScope(long expectedGeneration) =>
+        _ownershipGuard.Begin(expectedGeneration);
 
     public bool IsRunning
     {
@@ -186,6 +190,7 @@ public sealed class SshTunnelService : ISshTunnelManager
 
             lock (_stateLock)
             {
+                _ownershipGuard.RequireCurrent(_lifecycleGeneration);
                 if (IsRunningLocked() && string.Equals(_lastSpec, spec, StringComparison.Ordinal))
                 {
                     _currentOwner = ResolveOwnerForReuse(_currentOwner, owner);
@@ -217,9 +222,11 @@ public sealed class SshTunnelService : ISshTunnelManager
         Process? process;
         lock (_stateLock)
         {
+            _ownershipGuard.RequireCurrent(_lifecycleGeneration);
             // Claim and clear the current process before stopping it. Exit callbacks can
             // then only observe stale ownership and cannot overwrite a replacement.
             _lifecycleGeneration++;
+            _ownershipGuard.Advance(_lifecycleGeneration);
             process = _process;
             _process = null;
             _processStarted = false;
@@ -360,7 +367,9 @@ public sealed class SshTunnelService : ISshTunnelManager
 
         lock (_stateLock)
         {
+            _ownershipGuard.RequireCurrent(_lifecycleGeneration);
             generation = ++_lifecycleGeneration;
+            _ownershipGuard.Advance(_lifecycleGeneration);
             _process = process;
             _processStarted = false;
             _currentConfig = tunnel;
