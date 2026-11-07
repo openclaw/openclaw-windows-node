@@ -386,13 +386,18 @@ view. Details establishes the authenticated profile through the existing
 connection epoch and signing device. A same-profile name/avatar edit restores
 availability without reconnecting. Pending or failed verification hides the
 content; actual profile replacement retires it until reconnect because main's
-transcript does not yet carry account provenance. Superseded reads cannot
+transcript does not yet carry account provenance. An explicit profile event
+before the first identity read succeeds also retires Details until reconnect,
+even for a same-profile edit: the existing history cannot be qualified without
+that baseline. Ordinary bootstrap retries can still establish initial identity.
+Superseded reads cannot
 restore availability, and failures log only a bounded category.
 Each revalidation advances an opaque admission revision. The root checks that
 revision against the live profile snapshot before an open action, even before
 the next render. A verified same-account refresh can retain the open tab, but
-callbacks captured before the refresh are retired. A failed identity read stays
-unavailable until another profile or connection event retries it.
+callbacks captured before the refresh are retired. When the connection has not
+been retired, a failed identity read stays unavailable until another profile
+or connection event retries it.
 
 This first panel supports only read-only tool details. It is not complete
 multi-content sidebar parity. Files requires the session-file RPCs, canonical
