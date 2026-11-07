@@ -4184,32 +4184,36 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             ownedForward));
     }
 
-    private Task<bool> LaunchDashboardBrowserAsync(string url, DashboardLaunchPreparation? prepared)
+    private async Task<bool> LaunchDashboardBrowserAsync(string url, DashboardLaunchPreparation? prepared)
     {
         if (prepared is null)
-            return Task.FromResult(false);
+            return false;
 
         if (prepared.OwnedForward is not { } owned)
-            return Task.FromResult(DashboardBrowserShell.TryOpen(url, out _));
+            return await OpenFixtureAwareBrowserAsync(url);
 
         if (!DashboardBrowserHandoff.UrlUsesCapturedForward(url, prepared.Snapshot))
-            return Task.FromResult(false);
+            return false;
 
         if (_sshTunnelService is not SshTunnelService tunnel ||
             !tunnel.TryEnterBrowserHandoff(owned.Generation, owned.LocalPort, owned.ProcessId, out var handoffId))
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         if (tunnel.HasDeferredStop || !tunnel.TryBeginDashboardNavigation(handoffId))
         {
             tunnel.ExitBrowserHandoff(handoffId);
-            return Task.FromResult(false);
+            return false;
         }
 
-        var opened = DashboardBrowserShell.TryOpen(url, out var browserProcessId);
+        int? browserProcessId = null;
+        var browser = new DashboardBrowser(
+            address => Task.FromResult(DashboardBrowserShell.TryOpen(address, out browserProcessId)),
+            Logger.Info);
+        var opened = await browser.OpenAsync(url);
         if (!tunnel.CompleteDashboardNavigation(handoffId, opened, browserProcessId))
-            return Task.FromResult(false);
+            return false;
 
         var localPort = owned.LocalPort;
         _ = Task.Run(async () =>
@@ -4235,7 +4239,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             }
         });
 
-        return Task.FromResult(true);
+        return true;
+    }
+
+    private static Task<bool> OpenFixtureAwareBrowserAsync(string url)
+    {
+        var browser = new DashboardBrowser(
+            address => Task.FromResult(DashboardBrowserShell.TryOpen(address, out _)),
+            Logger.Info);
+        return browser.OpenAsync(url);
     }
 
     private SshTunnelConfig? CreateDashboardSshTunnelOrNull()
