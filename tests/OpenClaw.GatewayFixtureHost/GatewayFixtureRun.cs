@@ -16,7 +16,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
 {
     private static readonly TimeSpan McpReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly string _gatewayToken;
-    private readonly string _appPath;
+    private string _appPath;
     private Process? _process;
     private McpClient? _client;
     private LoopbackControlHost? _control;
@@ -69,7 +69,9 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null,
         bool postSetupRestart = false,
-        Action? releasePendingResponses = null)
+        Action? releasePendingResponses = null,
+        Action<GatewayFixtureProfile>? configureProfile = null,
+        bool connectGateway = true)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("The fixture app requires a Windows desktop.");
@@ -81,7 +83,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayFixtureProfile profile;
         try
         {
-            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy);
+            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy, connectGateway);
         }
         catch
         {
@@ -91,6 +93,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayFixtureRun run;
         try
         {
+            configureProfile?.Invoke(profile);
             var handoff = prepareSetupHandoff?.Invoke(profile);
             run = new GatewayFixtureRun(gateway, profile, token, executable, artifactRoot, scenario, handoff, postSetupRestart)
             {
@@ -135,6 +138,11 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
             try
             {
                 await WaitForMcpAsync(cancellationToken);
+                if (!Profile.ConnectGateway)
+                {
+                    _lastStatus = await InvokeAsync("app.status");
+                    return;
+                }
                 await WaitForAsync(async () =>
                 {
                     var status = await InvokeAsync("app.status");
@@ -163,6 +171,22 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                 if (File.Exists(marker)) File.Delete(marker);
             }
         }
+    }
+
+    /// <summary>
+    /// Opens the same disposable profile with another explicit fixture-compatible build.
+    /// For example, a released app can write the baseline before the candidate reads it.
+    /// This uses the fixture's owned-process stop, not an installer or update workflow.
+    /// </summary>
+    public async Task RestartAppAsync(string appPath, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var executable = GatewayFixtureProfile.ValidateApp(appPath);
+        await StopAppAsync();
+        _appPath = executable;
+        _lastStatus = null;
+        await StartAppAsync(cancellationToken);
+        await WriteReportAsync("ready");
     }
 
     private async Task WaitForMcpAsync(CancellationToken cancellationToken)

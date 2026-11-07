@@ -66,6 +66,30 @@ public sealed class SetupDashboardHandoffStoreTests
         lease.Consume();
     }
 
+    [Theory]
+    [InlineData(SetupNativeDestination.WhatsApp, "whatsapp")]
+    [InlineData(SetupNativeDestination.Telegram, "telegram")]
+    public void PendingReceipt_WithLegacyChannelId_StillLoads(
+        SetupNativeDestination destination, string legacyChannelId)
+    {
+        using var directory = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(directory.Path);
+        var completion = new SetupNativeCompletion(Receipt, new(destination, "agent:primary:main"));
+        var handle = store.Issue(completion);
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        // Earlier builds also wrote a derived ChannelId into the persisted target.
+        var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        json["NativeTarget"]!["ChannelId"] = legacyChannelId;
+        File.WriteAllText(path, json.ToJsonString());
+
+        var acquisition = store.Acquire(handle);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Acquired, acquisition.Status);
+        using var lease = acquisition.Lease!;
+        Assert.Equal(destination, lease.NativeTarget!.Destination);
+        Assert.Equal("agent:primary:main", lease.NativeTarget.SessionKey);
+        lease.Consume();
+    }
+
     [Fact]
     public void ExpiryAndBackwardClock_RejectPreviouslyVerifiedReceipt()
     {

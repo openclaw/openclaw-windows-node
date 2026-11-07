@@ -724,11 +724,9 @@ public sealed class NativeGatewaySetupConnectionTests
     }
 
     [Theory]
-    [InlineData(SetupNativeDestination.Chat, false)]
-    [InlineData(SetupNativeDestination.Channels, false)]
-    [InlineData(SetupNativeDestination.Chat, true)]
-    [InlineData(SetupNativeDestination.Channels, true)]
-    public async Task FocusedAi_AllDestinationsReverifyAfterNativeRestartBeforePublication(SetupNativeDestination destination, bool isolated)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FocusedAiPreparation_PublishesOnlyAfterRestartVerification(bool isolated)
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
         using var fixture = CreateFixture(server, isolated);
@@ -743,8 +741,8 @@ public sealed class NativeGatewaySetupConnectionTests
         Assert.True((await client.VerifyAsync()).Ok);
         var proof = client.GetVerifiedCompletion();
         Assert.Empty(fixture.Registry.GetAll());
-        SetupNativeCompletion? published = null;
-        using var chooser = new SetupNativeCompletionCoordinator(proof,
+        SetupNativePreparation? published = null;
+        using var preparation = new SetupCompletionPreparation(proof,
             _ => connection.DisposeAsync().AsTask(), owner.VerifyAsync,
             async (verified, ct) => { await owner.CompleteVerifiedAsync(verified, new CapabilitiesConfig { Camera = false }, ct); },
             (completion, _) =>
@@ -773,10 +771,10 @@ public sealed class NativeGatewaySetupConnectionTests
                 return Task.CompletedTask;
             });
         Assert.Empty(fixture.Registry.GetAll());
-        await chooser.SelectAsync(destination).WaitAsync(TimeSpan.FromSeconds(30));
-        Assert.Equal(destination, Assert.IsType<SetupNativeCompletion>(published).Target.Destination);
-        Assert.Equal(proof.IdentityBinding, published!.Verification.IdentityBinding);
-        Assert.Equal(proof.SessionKey, published.Verification.SessionKey);
+        await preparation.StartAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        var actual = Assert.IsType<SetupNativePreparation>(published);
+        Assert.Equal(proof.IdentityBinding, actual.Verification.IdentityBinding);
+        Assert.Equal(proof.SessionKey, actual.SessionKey);
         Assert.DoesNotContain(server.Requests, request => request.Method == "wizard.start");
         Assert.False(File.Exists(fixture.ConfigPath + ".setup-reload.json"));
     }

@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>ACTIEVE SESSIES</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>KANALEN</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>GATEWAYTOPOLOGIE</value>
   </data>
@@ -166,12 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>Kanaalconfiguratie, skills en geplande automatiseringen zijn gateway-beheerde onderdelen. Gebruik deze koppelingen wanneer de verbonden gateway de bijbehorende dashboardpagina's aanbiedt.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Kanaalconfiguratie / schema's</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Open kanaalconfiguratie voor schema-gestuurde verificatie, QR, aanmelden en dashboardstromen wanneer beschikbaar.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / planningen</value>
@@ -457,9 +448,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Knooppuntinventaris</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Kanaaloverzicht</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Activiteitenoverzicht</value>
@@ -1091,9 +1079,6 @@ Gebruik een van deze opties:
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>Menubalkpaneel openen</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
-    <value>Berichtkanalen verbinden</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
     <value>Spraakactivering proberen</value>
   </data>
@@ -1268,9 +1253,6 @@ Gebruik een van deze opties:
   <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
     <value>Toegang via het systeemvak</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
-    <value>Instellingen → Kanalen</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
     <value>Activeer met uw stem</value>
   </data>
@@ -1423,50 +1405,11 @@ Gebruik een van deze opties:
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>Installatiecode genereren</value>
   </data>
-  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>Agentgebeurtenissen</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Softwareagent</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>Alle agents</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Realtime stroom van agentactiviteit: toolaanroepen, antwoorden, fouten en levenscyclusgebeurtenissen.</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>Alle agents</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>Hulpmiddel</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>Assistent</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>Fout</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>Levenscyclus</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>Planning</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>Goedkeuring</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>Denken</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>Correctie</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>Nog geen agentgebeurtenissen</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>Realtime agentgebeurtenissen (toolaanroepen, antwoorden, fouten) verschijnen hier terwijl agents worden uitgevoerd.</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Wissen</value>
@@ -1480,6 +1423,13 @@ Gebruik een van deze opties:
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>Apparaatmogelijkheden die via de gateway aan agents worden aangeboden. Schakel in wat deze computer mag doen.</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>App-toegang</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>Sta gevoelige vastlegging toe zonder elke keer om bevestiging te vragen. OpenClaw meldt dit nog steeds vóór elke toegang en toont een aftelling vóór opnamen.</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>Lokale MCP-server</value>
   </data>
@@ -1501,14 +1451,8 @@ Gebruik een van deze opties:
   <data name="NodeStatusText.Text" xml:space="preserve">
     <value>Knooppuntmodus uitgeschakeld</value>
   </data>
-  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>📡 Kanalen</value>
-  </data>
   <data name="ConnectionWarning.Title" xml:space="preserve">
     <value>Niet verbonden</value>
-  </data>
-  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
-    <value>Geen kanalen geconfigureerd</value>
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Maak verbinding met de gateway om te chatten</value>
@@ -2224,20 +2168,14 @@ Gebruik een van deze opties:
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>Gesprekken</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>Agentgebeurtenissen</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Softwareagents</value>
   </data>
   <data name="DefaultAgentNavItem.Content" xml:space="preserve">
     <value>main</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
-    <value>Kanalen</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>Instanties</value>
+    <value>Systemen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuratie</value>
@@ -2246,7 +2184,7 @@ Gebruik een van deze opties:
     <value>Gebruik</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Planning</value>
+    <value>Automatiseringen</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Deze computer</value>
@@ -2254,8 +2192,14 @@ Gebruik een van deze opties:
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>Mogelijkheden</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>Systeem</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>App-instellingen</value>
+    <value>Algemeen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Machtigingen</value>
@@ -3823,18 +3767,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="FilterAllButton.Text" xml:space="preserve">
     <value>Alles</value>
   </data>
-  <data name="ChannelsPage_Title.Text" xml:space="preserve">
-    <value>Kanalen</value>
-  </data>
-  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
-    <value>Vernieuwen</value>
-  </data>
-  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
-    <value>GECONFIGUREERD</value>
-  </data>
-  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
-    <value>BESCHIKBAAR</value>
-  </data>
   <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
     <value>Start</value>
   </data>
@@ -3873,27 +3805,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>Sandboxomgeving</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
-    <value>Your gateway didn't list any channels</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
-  </data>
-  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
-    <value>Read the channels guide</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to manage channels.</value>
-  </data>
-  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No channels available</value>
-  </data>
-  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
-    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
   </data>
   <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
     <value>Diagnostics</value>
@@ -4877,8 +4788,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>Herstellen</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>Geavanceerd</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>Instellingen</value>
+    <value>Algemeen</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>Algemeen</value>
@@ -5153,20 +5067,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Niet verbonden</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>Geavanceerd</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>Logfragmenten worden opgeschoond en ingekort. Gevoelige tokens, payloads, opnames en onbewerkte instellingenbestanden worden uitgesloten. Controleer dit voordat u deelt.</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Controleer voor het delen</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>Actueel</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>Wissen</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>Gesprekken die deze gateway momenteel afhandelt, gegroepeerd per kanaal.</value>
@@ -5185,12 +5090,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert, vallen hier niet onder. Als de gateway op deze pc staat, hebben ze mogelijk nog steeds toegang tot uw Windows-bestanden, klembord en netwerk: controleer de configuratie van uw gateway.</value>
-  </data>
-  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>Alle agenten</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} van {1} gebeurtenissen</value>
   </data>
   <data name="CronPage_CreateJobLabel" xml:space="preserve">
     <value>Taak aanmaken</value>
@@ -5760,293 +5659,8 @@ Controleer of de gateway actief is.</value>
   <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
     <value>Time-out bij het wachten op de gatewayverbinding.</value>
   </data>
-  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
-    <value>Dit kanaal vereist een macOS-host. Het kan niet worden geconfigureerd vanaf een Windows-machine.</value>
-  </data>
-  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
-    <value>Inloggegevens vervangen</value>
-  </data>
-  <data name="ChannelsPage_Configuration" xml:space="preserve">
-    <value>Configuratie</value>
-  </data>
-  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Ontkoppel dit apparaat van het kanaal. Scan een nieuwe QR om opnieuw te verbinden: uw account blijft gekoppeld op uw telefoon.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Pauzeer het kanaal tijdelijk: inloggegevens worden bewaard zodat u het opnieuw kunt starten. Of verbreek de verbinding volledig om ze te wissen.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Start het kanaal: het begint berichten te verwerken met de opgeslagen inloggegevens. Of verbreek de verbinding volledig om ze te wissen.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Pauzeer het kanaal: inloggegevens worden bewaard zodat u het opnieuw kunt starten.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Start het kanaal: het begint berichten te verwerken met de opgeslagen inloggegevens.</value>
-  </data>
-  <data name="ChannelsPage_Start" xml:space="preserve">
-    <value>Starten</value>
-  </data>
-  <data name="ChannelsPage_Stop" xml:space="preserve">
-    <value>Stoppen</value>
-  </data>
-  <data name="ChannelsPage_Logout" xml:space="preserve">
-    <value>Afmelden</value>
-  </data>
-  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
-    <value>Verbinding verbreken en inloggegevens vergeten</value>
-  </data>
-  <data name="ChannelsPage_Controls" xml:space="preserve">
-    <value>Besturing</value>
-  </data>
-  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
-    <value>WhatsApp gekoppelde apparaten hulp →</value>
-  </data>
-  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
-    <value>Signal gekoppelde apparaten hulp →</value>
-  </data>
-  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
-    <value>Een Telegram-bot aanmaken →</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>Een Discord-bot aanmaken →</value>
-  </data>
-  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
-    <value>Een Google Chat-webhook toevoegen →</value>
-  </data>
-  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
-    <value>Slack-app-dashboard →</value>
-  </data>
-  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
-    <value>Over Nostr →</value>
-  </data>
-  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
-    <value>Over Berichten op macOS →</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
-    <value>Koppel uw WhatsApp-telefoon</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Klik op "Show QR" in het gedeelte Koppelen hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
-    <value>Op uw telefoon: WhatsApp → Instellingen → Gekoppelde apparaten → Apparaat koppelen.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
-    <value>Scan de QR-code die hier verschijnt.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
-    <value>Koppel uw Signal-telefoon</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Klik op "Show QR" in het gedeelte Koppelen hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
-    <value>Op uw telefoon: Signal → Instellingen → Gekoppelde apparaten → Nieuw apparaat koppelen.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
-    <value>Scan de QR-code die hier verschijnt.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
-    <value>Telegram verbinden via een bot</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
-    <value>Open Telegram en stuur een bericht naar @BotFather.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
-    <value>Stuur /newbot en volg de aanwijzingen. Kopieer het bot-token aan het einde.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
-    <value>Plak het token in het configuratieformulier hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Klik op "Save and start". Het kanaal start automatisch.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Discord verbinden via een bot</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Open de Discord Developer Portal en maak of selecteer een toepassing.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Open Bot, voeg zo nodig een bot toe en stel het token opnieuw in om het te kopiëren.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Plak het bottoken in het configuratieformulier hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Klik op "Save and start" en voeg de bot daarna toe aan uw server met de OAuth2-installatielink.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
-    <value>Google Chat verbinden via een webhook</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
-    <value>Open in Google Chat de ruimte → Webhooks beheren → Webhook toevoegen.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
-    <value>Kopieer de webhook-URL.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
-    <value>Plak de URL in het configuratieformulier hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Klik op "Save and start".</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
-    <value>Slack verbinden via een app</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
-    <value>Maak een Slack-app aan op api.slack.com/apps en installeer deze in uw werkruimte.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
-    <value>Kopieer het bot-token (xoxb-…) en het ondertekeningsgeheim.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
-    <value>Plak beide in het configuratieformulier hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Klik op "Save and start".</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
-    <value>Nostr verbinden via relays</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
-    <value>Genereer of plak een privésleutel (nsec).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
-    <value>Kies een of meer relay-URL's (bijv. wss://relay.damus.io).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
-    <value>Plak beide in het configuratieformulier hieronder.</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Klik op "Save and start".</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
-    <value>iMessage is alleen beschikbaar op macOS</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
-    <value>iMessage leest de lokale Messages.app-database, die alleen op macOS bestaat.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
-    <value>Om iMessage met OpenClaw te gebruiken, voert u de gateway uit op een Mac in plaats van deze Windows-host.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
-    <value>Alle andere kanalen in deze lijst werken prima vanaf een Windows-gehoste gateway.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
-    <value>Dit kanaal verbinden</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>"{0}" is een pluginkanaal. Raadpleeg de documentatie voor de vereiste velden.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Gebruik "Open Config page" in het gedeelte Configuratie hieronder om instellingen toe te voegen onder channels.{0}.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
-    <value>Sla de configuratie op; OpenClaw start het kanaal automatisch.</value>
-  </data>
-  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
-    <value>Bot-token</value>
-  </data>
-  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
-    <value>Discord-bottoken</value>
-  </data>
-  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
-    <value>Plak het Discord-bottoken</value>
-  </data>
-  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
-    <value>Webhook-URL</value>
-  </data>
-  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
-    <value>Ondertekeningsgeheim</value>
-  </data>
-  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
-    <value>Privésleutel (nsec)</value>
-  </data>
-  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
-    <value>Relay-URL's</value>
-  </data>
-  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
-    <value>Verkrijg het via @BotFather (/newbot).</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
-    <value>Kopieer uit de Discord Developer Portal → Bot → Token opnieuw instellen.</value>
-  </data>
-  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
-    <value>Open een ruimte → Webhooks beheren → Webhook toevoegen.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
-    <value>OAuth-tokens van uw Slack-app.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
-    <value>Basisinformatie → App-referenties.</value>
-  </data>
-  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
-    <value>Eén per regel.</value>
-  </data>
-  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
-    <value>Wijzigingen opslaan</value>
-  </data>
-  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
-    <value>Opslaan en starten</value>
-  </data>
-  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
-    <value>Configuratiepagina openen</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
-    <value>Bewerk de instellingen van dit kanaal op de configuratiepagina van de gateway.</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
-    <value>Sla na het volgen van de bovenstaande stappen de configuratie op om het kanaal te starten.</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
-    <value>Niet verbonden</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
-    <value>Maak verbinding met een gateway voordat u de kanaalconfiguratie opslaat.</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
-    <value>Ontbrekend veld</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
-    <value>{0} is vereist.</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
-    <value>{0} opslaan…</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
-    <value>{0} veld(en) schrijven en het kanaal inschakelen.</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
-    <value>Kan gatewayconfiguratie niet laden</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>De gateway heeft de huidige configuratie niet geretourneerd: kan niet veilig opslaan zonder deze. Probeer te vernieuwen en opnieuw op te slaan.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
-    <value>De configuratie van de gateway is tijdens het opslaan gewist. Probeer te vernieuwen en opnieuw op te slaan.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
-    <value>Opslaan geblokkeerd voor {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+  <data name="ConfigPage_BannerGatewayNoResponse" xml:space="preserve">
     <value>De gateway heeft niet gereageerd.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
-    <value>Opslaan mislukt voor {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>Uw gatewayconfiguratie is elders gewijzigd (bijv. vanaf de configuratiepagina). We hebben de cache vernieuwd. Probeer opnieuw op te slaan. Details: {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
-    <value>{0} Als dit lijkt op een mismatch in het draadformaat, open dan de configuratiepagina voor directe JSON-bewerking.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
-    <value>Configuratie van {0} opgeslagen</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
-    <value>Wachten tot de gateway bevestigt dat het kanaal actief is…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL-gateway</value>
@@ -6107,18 +5721,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>WSL-gateway opnieuw starten</value>
-  </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>Actueel</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>Niet verbonden</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6181,10 +5783,22 @@ Controleer of de gateway actief is.</value>
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>Algemene instellingen</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>Open meldingsvoorkeuren</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>Meldingsvoorkeuren configureren</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>Open info</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>App- en gatewaygegevens</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
+    <value>Open Algemeen</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6864,7 +6478,7 @@ Controleer of de gateway actief is.</value>
     <value>Permissions incomplete</value>
   </data>
   <data name="SettingsPage_About.Text" xml:space="preserve">
-    <value>About</value>
+    <value>Info</value>
   </data>
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
     <value>Gateway info</value>
@@ -7007,8 +6621,8 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Laden bij eerste aanvraag</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Naar Lokale AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>Status van llama-server, model en gateway bekijken</value></data>
-  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Model</value></data>
-  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Standaardmodel</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Agents en hulpmiddelen</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Modellen</value></data>
   <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>Naar Standaardmodel</value></data>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Kies het model dat de gateway gebruikt</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
@@ -7034,7 +6648,7 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB van {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Modelwijziging geannuleerd.</value></data>
   <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>Een modelwijziging wordt nog afgerond. U kunt het model opnieuw wijzigen zodra deze klaar is.</value></data>
-  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Standaardmodel</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Modellen</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>De gateway gebruikt dit model voor nieuwe gesprekken. Elke chat kan nog steeds een eigen model kiezen.</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Maak verbinding met een gateway om het model te kiezen</value></data>
   <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>Verbinding openen</value></data>
@@ -7444,12 +7058,9 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Geannuleerd</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} van {1}</value></data>
   <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Uw AI is klaar</value></data>
-  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>Wat wilt u eerst doen?</value></data>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Met mijn agent praten</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat met je agent.</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Met mijn agent praten, aanbevolen</value></data>
-  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Kanalen verbinden</value></data>
-  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram en meer. Jij kiest wanneer je je aanmeldt.</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Met mijn agent praten</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Gereedheid opnieuw controleren</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Je AI-keuzes voorbereiden</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Gateway voorbereiden</value></data>
@@ -7491,15 +7102,13 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Het starten van de native Gateway of het bevestigen van de luisterpoort duurde te lang. Controleer de Gateway-status en probeer opnieuw.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>AI-verificatie is momenteel niet beschikbaar. Controleer de Gateway-verbinding en het model en probeer opnieuw of ga terug naar AI-instellingen.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows-configuratie kon niet worden afgerond. Uw bestemming is niet geopend. Probeer opnieuw of ga terug naar AI-instellingen.</value></data>
-  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>De app kon uw bestemming niet openen. Kies opnieuw om te proberen. Er is geen kanaalaanmelding gestart.</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>De app kon uw bestemming niet openen. Kies opnieuw om te proberen.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Uw gekozen bestemming kon niet worden geopend</value></data>
   <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Deze configuratieoverdracht is onderbroken, incompatibel, verlopen of al gebruikt. Deze kan niet opnieuw worden uitgevoerd. Controleer de opgeslagen gateway in Verbinding en open de AI-configuratie expliciet opnieuw om deze te verifiëren. Eerdere acties worden niet automatisch herhaald.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>De geverifieerde Gateway of agent is gewijzigd. Ga terug naar de oorspronkelijke Gateway en open AI-instellingen opnieuw. Er is geen ander account geopend.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>De geverifieerde Gateway of app-pagina is niet klaar. Controleer Connection en probeer expliciet opnieuw.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Sluiten</value></data>
-  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>Deze Gateway bood het gekozen kanaal niet aan. Bekijk beschikbare kanalen of vernieuw na een Gateway-update.</value></data>
-  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Kanaalbeschikbaarheid kon niet worden bevestigd. Vernieuw om opnieuw te proberen. Er is geen kanaalaanmelding of configuratie gestart.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Meer informatie over risico’s en veiligheid</value></data>
   <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw instellen</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>De Gateway verbindt uw AI-assistent met uw apps en tools. Kies waar deze draait. U kunt dit later wijzigen.</value></data>
@@ -7860,10 +7469,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
-  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -7978,6 +7585,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Eigenaar</value></data>
   <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Gedeelde eigenaar</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · Gedeelde eigenaar</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -8196,6 +7804,49 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Deze vraag wordt afgehandeld. Vernieuw om de status te controleren.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Kies een geldig antwoord voor elke vraag.</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Zoeken in OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Zoeken in OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>Zoekresultaten</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>Geen overeenkomende resultaten.</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>Kanalen</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>Dit resultaat heeft geen equivalent in het dashboard.</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>Meer weergeven</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>Chats</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>In berichten</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>Instellingen</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>Automatiseringen</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>Vaardigheden</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>Modellen</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}: zoeken…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}: verbind met de gateway om te zoeken.</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}: leesmachtiging is vereist.</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}: gebruik maximaal 4096 tekens.</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}: niet beschikbaar op deze gateway.</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}: de resultaten zijn mogelijk onvolledig. Verfijn uw zoekopdracht.</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}: zoeken mislukt. Andere resultaten blijven beschikbaar.</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>Goedkeuringen</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>Geheimen</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>Modelproviders</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>Activering en heartbeat</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>MCP-servers van de gateway</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>Geheugen</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>Gatewaybeveiliging</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>Gatewaylogboeken</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>Systemen</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>Dashboards</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>Plug-ins</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>Apps</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>Vergaderingen</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Gatewayactiviteit</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portalen</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Werkbomen</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Item verwijderen</value>
   </data>

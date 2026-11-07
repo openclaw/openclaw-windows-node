@@ -59,6 +59,11 @@ function Reset-Fixture {
     $state.ancestry = 'ahead'
     $state.runSha = $sourceSha
     $state.jobConclusion = 'success'
+    $state.failedJob = ''
+    $state.jobNames = @('CI Gate', 'release', 'Core and CLI tests', 'Tray, setup, and integration tests',
+        'UI, functional, and accessibility tests', 'Setup and connect E2E', 'Revocation recovery E2E',
+        'Network recovery E2E', 'x64 release publish smoke', 'ARM64 release publish',
+        'MSIX artifacts (x64)', 'MSIX artifacts (arm64)', 'Multi-architecture Store MSIX bundle')
     $state.runAttempt = 1
     $state.failUpload = $false
     $state.collision = $false
@@ -111,11 +116,12 @@ function Invoke-PromotionApi {
             }) }
         }
         '^actions/runs/100/attempts/\d+/jobs\?' {
-            $names = @('CI Gate', 'release', 'Core and CLI tests', 'Tray, setup, and integration tests',
-                'UI, functional, and accessibility tests', 'Setup and connect E2E', 'Revocation recovery E2E',
-                'Network recovery E2E', 'x64 release publish smoke', 'ARM64 release publish',
-                'MSIX artifacts (x64)', 'MSIX artifacts (arm64)', 'Multi-architecture Store MSIX bundle')
-            return [pscustomobject]@{ jobs = @($names | ForEach-Object { [pscustomobject]@{ name = $_; conclusion = $state.jobConclusion } }) }
+            return [pscustomobject]@{ jobs = @($state.jobNames | ForEach-Object {
+                [pscustomobject]@{
+                    name = $_
+                    conclusion = $(if ($_ -ceq $state.failedJob) { 'skipped' } else { $state.jobConclusion })
+                }
+            }) }
         }
         '^environments/stable-release$' {
             return [pscustomobject]@{
@@ -227,6 +233,43 @@ try {
         Assert-Equal $record.stableTag 'v2026.9.5'
         Assert-Equal $record.sourceSha $sourceSha
         Assert-Equal $state.writes 0
+    }
+    Test-Case 'current workflow E2E names remain eligible' {
+        $workflow = Get-Content (Join-Path $RepoRoot '.github\workflows\ci.yml') -Raw
+        foreach ($lane in @(
+            @{ id = 'setup-e2e'; legacy = 'Setup and connect E2E' }
+            @{ id = 'revocation-e2e'; legacy = 'Revocation recovery E2E' }
+            @{ id = 'network-e2e'; legacy = 'Network recovery E2E' }
+        )) {
+            $match = [regex]::Match($workflow, "(?m)^  $($lane.id):\r?`n    name: ([^\r\n]+)")
+            if (-not $match.Success) { throw "Missing workflow lane $($lane.id)." }
+            $state.jobNames = @($state.jobNames | ForEach-Object {
+                if ($_ -ceq $lane.legacy) { $match.Groups[1].Value } else { $_ }
+            })
+        }
+        Assert-Equal (Candidate).stableTag 'v2026.9.5'
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'each E2E lane requires exactly one successful legacy or WSL Latest job' {
+        foreach ($lane in @('Setup and connect E2E', 'Revocation recovery E2E', 'Network recovery E2E')) {
+            foreach ($suffix in @('', ' (WSL Latest)')) {
+                foreach ($fault in @('missing', 'skipped', 'duplicate', 'both names')) {
+                    Reset-Fixture
+                    $name = "$lane$suffix"
+                    $state.jobNames = @($state.jobNames | ForEach-Object {
+                        if ($_ -ceq $lane) { $name } else { $_ }
+                    })
+                    switch ($fault) {
+                        'missing' { $state.jobNames = @($state.jobNames | Where-Object { $_ -cne $name }) }
+                        'skipped' { $state.failedJob = $name }
+                        'duplicate' { $state.jobNames += $name }
+                        'both names' { $state.jobNames += $(if ($suffix) { $lane } else { "$lane (WSL Latest)" }) }
+                    }
+                    Assert-Throws { Candidate } "required job '$lane'"
+                    Assert-Equal $state.writes 0
+                }
+            }
+        }
     }
     Test-Case 'reject noncanonical and injected candidates' {
         foreach ($tag in @('main', 'v2026.9.5', 'v2026.9.5-beta.1', 'v2026.09.5-alpha.1', 'v2026.9.5-alpha.01', "v2026.9.5-alpha.1`n")) {
