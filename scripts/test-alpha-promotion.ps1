@@ -555,10 +555,24 @@ try {
         '$promotionArguments.PromotionAlphaTag = $record.alphaTag', 'Resolve-MsixPackageVersion.ps1 @promotionArguments')) {
         if (-not $reservation.Contains($text)) { throw "MSIX promotion reservation must retain policy validation: $text" }
     }
-    $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*').Value
+    $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*?(?=^  [a-z][a-z0-9-]*:|\z)').Value
     if (-not $publication.Contains('name: stable-release') -or
         -not $publication.Contains('Publish-AlphaPromotion') -or
-        -not $publication.Contains('STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN }}')) { throw 'Publication must remain approval-gated.' }
+        -not $publication.Contains('STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN || steps.publication-token.outputs.token }}')) { throw 'Publication must remain approval-gated and prefer the dedicated token before the scoped App token.' }
+    foreach ($text in @(
+        'CREATE_PUBLICATION_APP_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN == '''' && secrets.CLAWSWEEPER_APP_PRIVATE_KEY != '''' }}',
+        "if: env.CREATE_PUBLICATION_APP_TOKEN == 'true'",
+        'uses: actions/create-github-app-token@', "app-id: '3306130'",
+        'private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}',
+        'owner: ${{ github.repository_owner }}', 'repositories: ${{ github.event.repository.name }}',
+        'permission-contents: write', 'permission-workflows: write', 'GH_TOKEN: ${{ github.token }}')) {
+        if (-not $publication.Contains($text)) { throw "Missing scoped publication App token contract: $text" }
+    }
+    if ($publication.Contains('COPILOT_GITHUB_TOKEN') -or $publication.Contains('skip-token-revoke:') -or
+        [regex]::Matches($publication, '(?m)^        permission-').Count -ne 2 -or
+        $workflow.Replace($publication, '').Contains('CLAWSWEEPER_APP_PRIVATE_KEY')) {
+        throw 'Publication App authority must remain job-local, minimally scoped, and automatically revoked.'
+    }
     $expectedAssets = @('OpenClawCompanion-Setup-x64.exe', 'OpenClawCompanion-Setup-arm64.exe',
         'OpenClawTray-2026.9.5-win-x64.zip', 'OpenClawTray-2026.9.5-win-arm64.zip',
         'OpenClaw-Dev-x64.zip', 'OpenClaw-Dev-arm64.zip') | Sort-Object

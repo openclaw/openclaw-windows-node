@@ -2211,6 +2211,8 @@ jobs:
     permissions:
       contents: write
       actions: read
+    env:
+      CREATE_PUBLICATION_APP_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN == '' && secrets.CLAWSWEEPER_APP_PRIVATE_KEY != '' }}
     concurrency:
       group: openclaw-windows-node-release
       cancel-in-progress: false
@@ -2224,11 +2226,22 @@ jobs:
         artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}
         merge-multiple: true
         path: promotion-assets
+    - name: Create repository-scoped publication token
+      id: publication-token
+      if: env.CREATE_PUBLICATION_APP_TOKEN == 'true'
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+      with:
+        app-id: '3306130'
+        private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+        permission-workflows: write
     - name: Publish approved stable release
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
-        STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN }}
+        STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN || steps.publication-token.outputs.token }}
         PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
         PREPARED_ATTEMPT: ${{ needs.release.outputs.prepared_attempt }}
       run: |

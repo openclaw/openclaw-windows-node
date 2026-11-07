@@ -515,11 +515,20 @@ complete Git trees before creating any public tag and fails closed if that
 permission check cannot complete. GitHub's
 [release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
 requires **Workflows: write** for that historical-workflow exception, which
-`GITHUB_TOKEN` cannot receive. For those candidates only, configure
-`STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`, using a
-GitHub App installation token or fine-grained token restricted to this repository
-with **Contents: write** and **Workflows: write**. The protected token is used
-only for draft creation and final release publication, never for Git refs,
+`GITHUB_TOKEN` cannot receive. The approval-gated publication job uses the
+existing `CLAWSWEEPER_APP_PRIVATE_KEY` secret to mint a short-lived ClawSweeper
+App token (App ID `3306130`), restricted to this repository with **Contents:
+write** and **Workflows: write**. The installation must grant both permissions
+and access to this repository. Token creation failures stop the job; the action
+revokes the token at job completion.
+
+An optional `STABLE_RELEASE_TOKEN` environment secret in `stable-release`
+overrides App token creation, including when that override is invalid or expired.
+Use a GitHub App installation token or fine-grained token restricted to this
+repository with the same two write permissions. If neither secret is available,
+ordinary publication can still use `GITHUB_TOKEN`, but historical-workflow
+candidates fail before tag creation. The selected token is used only for draft
+creation and final release publication, never for Git refs,
 candidate builds, or eligibility checks. Tag creation and asset uploads continue
 to use `GITHUB_TOKEN`, so historical tag workflows are not triggered. Missing or
 malformed exception credentials, or substituted workflow tokens, block before
