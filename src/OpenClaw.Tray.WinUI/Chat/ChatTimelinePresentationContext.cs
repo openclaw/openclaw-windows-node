@@ -30,4 +30,6 @@ public sealed record ChatTimelinePresentationContext(
     Action<string>? OnCancelQueuedMessage = null,
     ChatRunProgressPresentation? RunProgress = null,
     Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
-        DownloadAssistantFileAsync = null);
+        DownloadAssistantFileAsync = null,
+    Action<ChatToolDetailRequest>? OnOpenToolDetails = null,
+    long HistoryRevision = 0);

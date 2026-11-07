@@ -7865,4 +7865,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Details naast het gesprek openen</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tooldetails</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Deze details zijn niet meer beschikbaar. Maak indien nodig opnieuw verbinding en open de tool opnieuw vanuit het huidige gesprek.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Formaat van detailpaneel wijzigen</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Details weergeven</value></data>
 </root>

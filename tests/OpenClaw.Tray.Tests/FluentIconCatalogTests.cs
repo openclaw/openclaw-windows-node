@@ -19,7 +19,7 @@ public sealed class FluentIconCatalogTests
         "StatusOk", "StatusWarn", "StatusErr",
         "Sessions", "Approvals", "Devices", "Hostname", "Permissions", "SandboxStrict",
         "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
-        "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings",
+        "Dashboard", "OpenInBrowser", "OpenPane", "Chat", "CanvasAct", "VoiceAct", "Settings",
         "Setup", "About", "Notifications", "Exit",
         "Add", "Back", "Sync", "Lock", "Key", "Plug", "MoreOverflow",
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
@@ -69,6 +69,12 @@ public sealed class FluentIconCatalogTests
     public void StrictPreset_UsesPublishedLockGlyph()
     {
         Assert.Equal("\uE72E", ParseConstants(ReadCatalogSource())["SandboxStrict"]);
+    }
+
+    [Fact]
+    public void ConversationPanel_UsesPublishedOpenPaneGlyph()
+    {
+        Assert.Equal("\uE8A0", ParseConstants(ReadCatalogSource())["OpenPane"]);
     }
 
     [Fact]
