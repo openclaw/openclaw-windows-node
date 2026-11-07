@@ -22,7 +22,7 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
     private bool _started;
     private bool _disposed;
     private volatile bool _inventoryValid = true;
-    private sealed record ScheduledRoot(UploadRootIdentity? Identity, DateTimeOffset Due);
+    private sealed record ScheduledRoot(UploadRootIdentity? Identity, DateTimeOffset Due, int Uploads = 0);
     public string? BlockedReason { get; private set; }
     public event Action? Changed;
 
@@ -52,6 +52,7 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
             if (_started) return;
             _started = true;
             _operations.RetentionChanged += OnRetentionChanged;
+            _operations.UploadSettled += OnUploadSettled;
             _operations.UploadAdmission = AdmitUploadRoot;
             _timer = new Timer(_ => Refresh(), null, TickInterval, TickInterval);
             _loop = Task.Run(RunAsync);
@@ -78,14 +79,18 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_inventoryValid) throw new FileCommandException("UPLOAD_CLEANUP_BLOCKED", BlockedReason!);
-            if (_roots.TryGetValue(path, out var entry) && entry.Identity is not null) return entry.Identity;
+            if (_roots.TryGetValue(path, out var entry) && entry.Identity is not null)
+            {
+                _roots[path] = entry with { Uploads = entry.Uploads + 1 };
+                return entry.Identity;
+            }
             if (entry is null && _roots.Count >= FileLimits.RetainedRoots)
                 throw new FileCommandException("UPLOAD_QUOTA", "Restore cleanup access to an old staging root before choosing another.");
             // Persist the exact location before mutation, including roots whose worker identity
             // has not yet been returned. Inventory never authorizes filesystem access.
             failed = !SaveInventory(new(new(path, "", ""), 1, 0, null));
             if (!failed)
-                _roots[path] = new(null, DateTimeOffset.UtcNow + FileLimits.RetentionRetry);
+                _roots[path] = new(null, DateTimeOffset.UtcNow + FileLimits.RetentionRetry, (entry?.Uploads ?? 0) + 1);
         }
         if (failed)
         {
@@ -105,11 +110,22 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
             }
             else
             {
-                _roots[state.Root.Path] = new(state.Root, state.NextExpiry ?? DateTimeOffset.MaxValue);
-                SaveInventory(state);
+                var uploads = _roots.TryGetValue(state.Root.Path, out var entry) ? entry.Uploads : 0;
+                _roots[state.Root.Path] = new(state.Root, state.NextExpiry ?? DateTimeOffset.MaxValue, uploads);
+                SaveInventory(uploads > 0 && state.Count == 0 ? state with { Count = 1 } : state);
             }
         }
         PublishChanged();
+        Refresh();
+    }
+
+    private void OnUploadSettled(string path)
+    {
+        lock (_gate)
+        {
+            if (!_roots.TryGetValue(path, out var entry) || entry.Uploads == 0) return;
+            _roots[path] = entry with { Uploads = entry.Uploads - 1, Due = DateTimeOffset.MinValue };
+        }
         Refresh();
     }
 
@@ -123,7 +139,7 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
                 try
                 {
                     KeyValuePair<string, ScheduledRoot>[] due;
-                    lock (_gate) due = _roots.Where(p => p.Value.Due <= DateTimeOffset.UtcNow).ToArray();
+                    lock (_gate) due = _roots.Where(p => p.Value.Uploads == 0 && p.Value.Due <= DateTimeOffset.UtcNow).ToArray();
                     foreach (var (path, entry) in due)
                     {
                         var result = await _operations.RecoverUploadsAsync(path, entry.Identity, _stop.Token).ConfigureAwait(false);
@@ -159,7 +175,7 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
                         PublishChanged();
                     }
                 }
-                catch (Exception ex) when (ex is NodeSandboxExecutionException or IOException or UnauthorizedAccessException or NotSupportedException)
+                catch (Exception ex) when (ex is FileCommandException or NodeSandboxExecutionException or IOException or UnauthorizedAccessException or NotSupportedException)
                 {
                     lock (_gate)
                     {
@@ -250,6 +266,7 @@ public sealed class UploadRetentionCoordinator : IAsyncDisposable
             if (_started)
             {
                 _operations.RetentionChanged -= OnRetentionChanged;
+                _operations.UploadSettled -= OnUploadSettled;
                 _operations.UploadAdmission = null;
             }
         }

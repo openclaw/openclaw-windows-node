@@ -26,6 +26,7 @@ public sealed class UploadRetentionCoordinatorTests : IDisposable
         coordinator.Start();
         Assert.NotNull(ops.UploadAdmission);
         Assert.Null(ops.UploadAdmission!(@"C:\uploads"));
+        ops.Settled(@"C:\uploads");
         coordinator.Refresh(recoverRoots: true);
         Assert.Equal(@"C:\uploads", (await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10))).Path);
     }
@@ -101,6 +102,7 @@ public sealed class UploadRetentionCoordinatorTests : IDisposable
         // A newly admitted root is the scheduling barrier. An empty old root must
         // not appear in the work queue before this independently reserved location.
         Assert.Null(ops.UploadAdmission!(current.Path));
+        ops.Settled(current.Path);
         coordinator.Refresh(recoverRoots: true);
         var second = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(current.Path, second.Path);
@@ -128,6 +130,83 @@ public sealed class UploadRetentionCoordinatorTests : IDisposable
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Contains("denies", coordinator.BlockedReason);
         Assert.Equal(root, Assert.Single(JsonSerializer.Deserialize<UploadRootIdentity[]>(File.ReadAllText(path), FileJson.Options)!));
+    }
+
+    [Fact]
+    public async Task WorkerCommandFailurePublishesBlockedStateAndAllowsLaterRecovery()
+    {
+        var root = new UploadRootIdentity(Path.Combine(_private, "uploads"), "17", "23");
+        var path = Path.Combine(_private, "roots.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new[] { root }, FileJson.Options));
+        var ops = new Operations();
+        await using var coordinator = new UploadRetentionCoordinator(ops, path);
+        var changes = Channel.CreateUnbounded<bool>();
+        coordinator.Changed += () => changes.Writer.TryWrite(true);
+        coordinator.Start();
+        var failed = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        failed.Result.SetException(new FileCommandException("FILE_WORKER_CACHE_PREPARATION_FAILED", "Synthetic cache access failure."));
+        await changes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Contains("blocked", coordinator.BlockedReason);
+        Assert.Equal(root, Assert.Single(JsonSerializer.Deserialize<UploadRootIdentity[]>(File.ReadAllText(path), FileJson.Options)!));
+        coordinator.Refresh(recoverRoots: true);
+        var retry = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(root, retry.Identity);
+        retry.Result.SetResult(new(FileJson.Element(new { reaped = true }), new(true), new(root, 0, 0, null)));
+        await changes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Null(coordinator.BlockedReason);
+        Assert.Empty(JsonSerializer.Deserialize<UploadRootIdentity[]>(File.ReadAllText(path), FileJson.Options)!);
+    }
+
+    [Fact]
+    public async Task ExistingRootAdmissionKeepsReservationWhenOlderCleanupReportsEmpty()
+    {
+        var root = new UploadRootIdentity(Path.Combine(_private, "uploads"), "17", "23");
+        var barrier = new UploadRootIdentity(Path.Combine(_private, "barrier"), "17", "29");
+        var path = Path.Combine(_private, "roots.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new[] { root, barrier }, FileJson.Options));
+        var ops = new Operations();
+        await using var coordinator = new UploadRetentionCoordinator(ops, path);
+        coordinator.Start();
+        var stale = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(root, stale.Identity);
+        Assert.Equal(root, ops.UploadAdmission!(root.Path));
+        stale.Result.SetResult(new(FileJson.Element(new { reaped = true }), new(true), new(root, 0, 0, null)));
+        var next = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(barrier, next.Identity);
+        // Reaching the next root proves the older result was processed, without timing sleeps.
+        Assert.Contains(root, JsonSerializer.Deserialize<UploadRootIdentity[]>(File.ReadAllText(path), FileJson.Options)!);
+    }
+
+    [Fact]
+    public async Task ConcurrentUploadsKeepReservationUntilEveryWorkerSettlesThenRecoverInterruptedState()
+    {
+        var root = new UploadRootIdentity(Path.Combine(_private, "uploads"), "17", "23");
+        var barrier = Path.Combine(_private, "barrier");
+        var path = Path.Combine(_private, "roots.json");
+        var ops = new Operations();
+        await using var coordinator = new UploadRetentionCoordinator(ops, path);
+        var changed = Channel.CreateUnbounded<bool>();
+        coordinator.Changed += () => changed.Writer.TryWrite(true);
+        coordinator.Start();
+        Assert.Null(ops.UploadAdmission!(root.Path));
+        Assert.Null(ops.UploadAdmission!(root.Path));
+        ops.Completed(new(root, 0, 0, null));
+        await changed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(root, Assert.Single(JsonSerializer.Deserialize<UploadRootIdentity[]>(File.ReadAllText(path), FileJson.Options)!));
+        ops.Settled(root.Path);
+        coordinator.Refresh(recoverRoots: true);
+        Assert.Null(ops.UploadAdmission!(barrier));
+        ops.Settled(barrier);
+        var next = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(barrier, next.Path); // The first upload settling must not admit root cleanup.
+        next.Result.SetResult(new(FileJson.Element(new { }), new(false, "NOT_FOUND", "The reserved directory was never created.")));
+        await changed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        ops.Settled(root.Path);
+        var recovery = await ops.Calls.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(root, recovery.Identity);
+        recovery.Result.SetResult(new(FileJson.Element(new { reaped = true }), new(true), new(root, 0, 0, null)));
+        await changed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(JsonSerializer.Deserialize<UploadRootIdentity[]>(File.ReadAllText(path), FileJson.Options)!);
     }
 
     [Fact]
@@ -180,8 +259,10 @@ public sealed class UploadRetentionCoordinatorTests : IDisposable
     {
         public Channel<Call> Calls { get; } = Channel.CreateUnbounded<Call>();
         public event Action<UploadRetentionState>? RetentionChanged;
+        public event Action<string>? UploadSettled;
         public Func<string, UploadRootIdentity?>? UploadAdmission { get; set; }
         public void Completed(UploadRetentionState state) => RetentionChanged?.Invoke(state);
+        public void Settled(string path) => UploadSettled?.Invoke(path);
         public Task<FileOperationResult> RecoverUploadsAsync(string rootPath, UploadRootIdentity? identity, CancellationToken stop)
         {
             var result = new TaskCompletionSource<FileOperationResult>(TaskCreationOptions.RunContinuationsAsynchronously);

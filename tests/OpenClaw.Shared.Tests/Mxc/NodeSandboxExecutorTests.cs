@@ -534,6 +534,58 @@ public sealed class NodeSandboxExecutorTests : IDisposable
 
     private static FixedFileWorkload<bool> Noop() => new((_, _) => Task.FromResult(true), 10_000);
 
+    [Fact]
+    public async Task StreamingTransferOutlivesGeneralCommandDeadlineWithoutChangingUnaryTimeout()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var executor = Executor(new(new SettingsData { SandboxTimeoutMs = 1000 }),
+            _ => Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess()));
+        var streaming = executor.RunFileAsync(new FixedFileWorkload<bool>(async (_, stop) =>
+        {
+            entered.TrySetResult();
+            await release.Task.WaitAsync(stop);
+            return true;
+        }, 10_000, Streaming: true));
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var unary = executor.RunFileAsync(new FixedFileWorkload<bool>(async (_, stop) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, stop);
+                return true;
+            }, 10_000));
+            var error = await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => unary);
+            Assert.Equal(NodeToolErrorCategory.Timeout, error.Category);
+            Assert.False(streaming.IsCompleted);
+        }
+        finally { release.TrySetResult(); }
+        Assert.True(await streaming);
+    }
+
+    [Fact]
+    public async Task StreamingDeadlineStillTerminatesWorkerAndSettlesOnlyAfterFinalization()
+    {
+        var process = new MxcCommandRunnerTests.FakeProcess { RootExited = false };
+        var finalized = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var executor = Executor(new(new SettingsData()),
+            _ => Task.FromResult<IMxcProcess>(process));
+        var execution = executor.RunFileAsync(new FixedFileWorkload<bool>(async (_, stop) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, stop);
+            return true;
+        }, 1000, Streaming: true, ProcessSettled: () =>
+        {
+            Assert.True(process.Killed);
+            Assert.True(process.Finalized);
+            finalized.TrySetResult();
+        }));
+        var error = await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => execution);
+        Assert.Equal(NodeToolErrorCategory.Timeout, error.Category);
+        await finalized.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await process.DisposedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle OpenDirectory(string path, uint access, FileShare share,
         IntPtr security, uint disposition, uint flags, IntPtr template);

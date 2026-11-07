@@ -6,19 +6,19 @@ internal sealed class GatewayFileInvocation : IAsyncDisposable
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(5);
     private readonly SemaphoreSlim _progressGate = new(1);
     private readonly CancellationTokenSource _lifetime;
-    private readonly Func<long, string, CancellationToken, ValueTask> _progress;
+    private readonly Func<long, string, CancellationToken, ValueTask<Task>> _progress;
     private readonly Task _heartbeats;
     private long _progressSequence;
     private long _inputSequence;
     private readonly object _inputGate = new();
 
-    public GatewayFileInvocation(long generation, Func<long, string, CancellationToken, ValueTask> progress,
+    public GatewayFileInvocation(long generation, Func<long, string, CancellationToken, ValueTask<Task>> progress,
         CancellationToken cancellationToken)
     {
         Generation = generation;
         _progress = progress;
         _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Channel = new FileFrameChannel(SendProgressAsync, _lifetime.Token);
+        Channel = new FileFrameChannel(SendProgressAsync, _lifetime.Token, sendBatch: SendProgressBatchAsync);
         _heartbeats = HeartbeatAsync();
     }
 
@@ -40,11 +40,25 @@ internal sealed class GatewayFileInvocation : IAsyncDisposable
         }
     }
 
-    private async ValueTask SendProgressAsync(string chunk, CancellationToken cancellationToken)
+    private ValueTask SendProgressAsync(string chunk, CancellationToken cancellationToken) =>
+        SendProgressBatchAsync([chunk], cancellationToken);
+
+    private async ValueTask SendProgressBatchAsync(IReadOnlyList<string> chunks, CancellationToken cancellationToken)
     {
         await _progressGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try { await _progress(_progressSequence++, chunk, cancellationToken).ConfigureAwait(false); }
-        finally { _progressGate.Release(); }
+        var receipts = new List<Task>(chunks.Count);
+        try
+        {
+            // Each send finishes before assigning the next sequence, but its response need
+            // not arrive yet. Keep only one bounded batch in flight, including heartbeats.
+            foreach (var chunk in chunks)
+                receipts.Add(await _progress(_progressSequence++, chunk, cancellationToken).ConfigureAwait(false));
+        }
+        finally
+        {
+            try { await Task.WhenAll(receipts).ConfigureAwait(false); }
+            finally { _progressGate.Release(); }
+        }
     }
 
     private async Task HeartbeatAsync()

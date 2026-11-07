@@ -12,9 +12,11 @@ public sealed class FileFrameChannel : IFileInvocationChannel, IAsyncDisposable
 {
     public const int FragmentBytes = 8192;
     public const int FrameBytes = 16 * 1024;
+    public const int SendWindowFrames = 16;
     private const int PendingMessages = 8;
     private readonly object _gate = new();
     private readonly Func<string, CancellationToken, ValueTask> _send;
+    private readonly Func<IReadOnlyList<string>, CancellationToken, ValueTask>? _sendBatch;
     private readonly bool _requireReady;
     private readonly bool _announceReady;
     private readonly CancellationTokenSource _lifetime;
@@ -34,9 +36,11 @@ public sealed class FileFrameChannel : IFileInvocationChannel, IAsyncDisposable
     private int _aborted;
 
     public FileFrameChannel(Func<string, CancellationToken, ValueTask> send,
-        CancellationToken cancellationToken = default, bool requireReady = false, bool announceReady = true)
+        CancellationToken cancellationToken = default, bool requireReady = false, bool announceReady = true,
+        Func<IReadOnlyList<string>, CancellationToken, ValueTask>? sendBatch = null)
     {
         _send = send;
+        _sendBatch = sendBatch;
         _requireReady = requireReady;
         _announceReady = announceReady;
         _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -180,6 +184,7 @@ public sealed class FileFrameChannel : IFileInvocationChannel, IAsyncDisposable
             if ((_announceReady && !_sentReady) || _outgoingMessage > FileLimits.SafeInteger) throw Invalid();
             var index = 0;
             var offset = 0;
+            var batch = _sendBatch is null ? null : new List<string>(SendWindowFrames);
             do
             {
                 var length = Math.Min(FragmentBytes, message.Length - offset);
@@ -189,7 +194,17 @@ public sealed class FileFrameChannel : IFileInvocationChannel, IAsyncDisposable
                     last = offset + length == message.Length,
                     data = Convert.ToBase64String(message.Span.Slice(offset, length))
                 }, FileTransportJson.Options);
-                await _send(frame, linked.Token).ConfigureAwait(false);
+                if (batch is null)
+                    await _send(frame, linked.Token).ConfigureAwait(false);
+                else
+                {
+                    batch.Add(frame);
+                    if (batch.Count == SendWindowFrames || offset + length == message.Length)
+                    {
+                        await _sendBatch!(batch, linked.Token).ConfigureAwait(false);
+                        batch.Clear();
+                    }
+                }
                 linked.Token.ThrowIfCancellationRequested();
                 offset += length;
                 index++;

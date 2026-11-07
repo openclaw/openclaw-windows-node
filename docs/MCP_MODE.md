@@ -142,6 +142,12 @@ result; it does not send an empty EOF message. Create receives messages, ACKs
 each nonempty one, and verifies size/hash at empty-message EOF. The client need
 not send reciprocal readiness.
 
+Gateway output sends at most sixteen ordered wire frames before waiting for
+all correlated progress responses. Readiness still waits for its response before
+delivering buffered input. Heartbeats share the same sequence and send gate.
+This does not change the wire format or the logical-message `ack` requirement.
+Local MCP retains its existing cursor-based backpressure.
+
 There are four leases/streaming handlers, sixteen ordinary tool handlers, eight
 independent control handlers, and thirty-two bounded ingress readers. Authentication
 and bounded parsing precede classification; full tool slots cannot consume the

@@ -9,6 +9,7 @@ namespace OpenClaw.Shared.FileTransfer;
 public sealed class FileOperations(NodeSandboxExecutor executor) : IUploadRetentionOperations
 {
     public event Action<UploadRetentionState>? RetentionChanged;
+    public event Action<string>? UploadSettled;
     public Func<string, UploadRootIdentity?>? UploadAdmission { get; set; }
 
     public async Task<byte[]?> ReadContentAsync(string path, long maximumBytes, CancellationToken stop)
@@ -27,9 +28,16 @@ public sealed class FileOperations(NodeSandboxExecutor executor) : IUploadRetent
     public async Task<FileOperationResult> ExecuteAsync(FileCommandRequest command, IFileInvocationChannel? channel = null,
         CancellationToken cancellationToken = default)
     {
+        var streaming = channel is not null && !command.PreflightOnly &&
+            (command.Operation == FileOperation.Create || command.Operation == FileOperation.Fetch && command.Binary);
+        string? admittedUploadRoot = null;
         var result = await executor.RunFileAsync(new FixedFileWorkload<FileOperationResult>(
-            (io, stop) => ExchangeAsync(io, command, channel, null, stop),
-            command.Operation == FileOperation.Archive ? FileLimits.OperationTimeoutMs : 0), cancellationToken).ConfigureAwait(false);
+            (io, stop) => ExchangeAsync(io, command, channel, null, stop, uploadAdmitted: root => admittedUploadRoot = root),
+            streaming ? FileLimits.TransferTimeoutMs : command.Operation == FileOperation.Archive ? FileLimits.OperationTimeoutMs : 0,
+            Streaming: streaming, ProcessSettled: () =>
+            {
+                if (admittedUploadRoot is not null) UploadSettled?.Invoke(admittedUploadRoot);
+            }), cancellationToken).ConfigureAwait(false);
         if (result.Retention is { } retained) RetentionChanged?.Invoke(retained);
         return result;
     }
@@ -40,14 +48,18 @@ public sealed class FileOperations(NodeSandboxExecutor executor) : IUploadRetent
             0), stop);
 
     private async Task<FileOperationResult> ExchangeAsync(NodeSandboxProcessIo io, FileCommandRequest command,
-        IFileInvocationChannel? channel, UploadRootIdentity? reapRoot, CancellationToken stop, string? recoveryPath = null)
+        IFileInvocationChannel? channel, UploadRootIdentity? reapRoot, CancellationToken stop, string? recoveryPath = null,
+        Action<string>? uploadAdmitted = null)
     {
         var input = io.StandardInput ?? throw new IOException("The fixed worker has no input pipe.");
         var output = io.StandardOutput ?? throw new IOException("The fixed worker has no output pipe.");
         var admission = CreateAdmission(io, reapRoot, command.Operation is FileOperation.Upload or FileOperation.ReapUploads);
         if (recoveryPath is not null) admission = admission with { UploadRoot = recoveryPath };
         if (command.Operation == FileOperation.Upload && UploadAdmission is { } authorizeInventory)
+        {
             admission = admission with { ExpectedUploadRoot = authorizeInventory(admission.UploadRoot) };
+            uploadAdmitted?.Invoke(admission.UploadRoot);
+        }
         var writes = Channel.CreateBounded<FilePacket>(new BoundedChannelOptions(1) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
         var reads = Channel.CreateBounded<FilePacket>(new BoundedChannelOptions(1) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
         using var sessionStop = CancellationTokenSource.CreateLinkedTokenSource(stop);

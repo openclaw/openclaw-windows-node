@@ -71,6 +71,9 @@ internal sealed class RetainedFileSystem : IDisposable
         var parts = path[3..].Split('\\', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) throw new FileCommandException("INVALID_PATH", "A file name is required.");
         var parent = OpenTraversalStart(path, out var nextComponent);
+        if (nextComponent == parts.Length)
+            throw new FileCommandException(parent.IsDirectory ? "IS_DIRECTORY" : "UNSUPPORTED_FILE_TYPE",
+                parent.IsDirectory ? "The target is a directory." : "Sandbox writes directly under a drive root are not supported.");
         var missing = new List<string>();
         for (var i = nextComponent; i < parts.Length - 1; i++)
         {

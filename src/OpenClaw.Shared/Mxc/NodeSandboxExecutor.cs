@@ -97,7 +97,7 @@ public sealed class NodeSandboxExecutor : IDisposable
         catch { OwnedOperations.Release(); throw; }
 
         var stop = new CancellationTokenSource();
-        var timeout = EffectiveTimeout(workload.TimeoutMs, policy.Settings.SandboxTimeoutMs);
+        var timeout = workload.ExecutionTimeout(policy.Settings.SandboxTimeoutMs);
         var mode = (int)NodeToolExecutionMode.Sandbox;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(timeout);
@@ -211,7 +211,7 @@ public sealed class NodeSandboxExecutor : IDisposable
                 // the protocol, stream disposal or root observation can execute.
                 await Task.Yield();
                 return await MxcProcessLifetime.RunAsync(process, policy, resources, workload.StartIo, stop,
-                    () => processSettled = true).ConfigureAwait(false);
+                    () => { processSettled = true; workload.ProcessSettled(); }).ConfigureAwait(false);
             }, stop, () => workload.RevalidateAsync(stop, mode));
             if (mode == NodeToolExecutionMode.Host)
                 _logger.Warn("[mxc] operation=compatibility executionMode=host reason=windows_unsupported sandboxControlsEnforced=false");
@@ -264,6 +264,8 @@ public sealed class NodeSandboxExecutor : IDisposable
     internal abstract class Workload<T>
     {
         internal abstract int TimeoutMs { get; }
+        internal virtual int ExecutionTimeout(int setting) => EffectiveTimeout(TimeoutMs, setting);
+        internal virtual void ProcessSettled() { }
         internal virtual string? ExpectedPolicy => null;
         internal virtual void Initialize(NodeSandboxPolicy policy) { }
         internal virtual FixedFileWorkerLease? ResolveImage(string? payloadCacheRoot, CancellationToken stop) => null;
@@ -278,6 +280,10 @@ public sealed class NodeSandboxExecutor : IDisposable
     private sealed class FileWorkload<T>(FixedFileWorkload<T> workload, IFixedFileWorkerResolver? resolver) : Workload<T>
     {
         internal override int TimeoutMs => workload.TimeoutMs;
+        internal override int ExecutionTimeout(int setting) => workload.Streaming
+            ? Math.Clamp(workload.TimeoutMs, 1, FileTransfer.FileLimits.TransferTimeoutMs)
+            : base.ExecutionTimeout(setting);
+        internal override void ProcessSettled() => workload.ProcessSettled?.Invoke();
         internal override FixedFileWorkerLease ResolveImage(string? payloadCacheRoot, CancellationToken stop)
         {
             var image = resolver?.Resolve(payloadCacheRoot, stop) ??

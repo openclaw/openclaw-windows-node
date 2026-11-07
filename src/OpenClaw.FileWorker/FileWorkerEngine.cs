@@ -259,7 +259,20 @@ internal sealed class FileWorkerEngine
             else { stop.ThrowIfCancellationRequested(); stage.Write(bytes!, 0); stage.Finish(size); }
             stop.ThrowIfCancellationRequested();
             if (streaming && target.Existing is not null)
-                return Ok(new { ok = true, path = target.Path, status = "exists", binding = target.Existing.Binding });
+            {
+                NativeEntry current;
+                try { current = fs.OpenChild(target.Anchor, target.Name); }
+                catch (FileCommandException ex) when (ex.Code == "NOT_FOUND")
+                {
+                    throw new FileCommandException("CANONICAL_PATH_CHANGED", "The authorized file no longer exists.");
+                }
+                using (current)
+                {
+                    current.Match(target.Existing.Binding);
+                    if (current.IsDirectory) throw new FileCommandException("CANONICAL_PATH_CHANGED", "The authorized file became a directory.");
+                    return Ok(new { ok = true, path = target.Path, status = "exists", binding = current.Binding });
+                }
+            }
             var parent = fs.MaterializeParents(target);
             if (target.Existing is not null)
             {

@@ -478,6 +478,43 @@ public sealed class FileWorkerTests : IDisposable
         Assert.Equal("different", File.ReadAllText(path));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CreateExistingRejectsDestinationRemovedOrReplacedDuringReception(bool replace)
+    {
+        var path = PathOf("exists");
+        var moved = PathOf("moved");
+        File.WriteAllText(path, "original");
+        var preflight = Run("file.create", new { path, sizeBytes = 3, expectedSha256 = AbcSha, preflightOnly = true });
+        Good(preflight);
+        var messages = new Messages(["abc"u8.ToArray(), []], () =>
+        {
+            File.Move(path, moved);
+            if (replace) File.WriteAllText(path, "replacement");
+        });
+        var result = Run("file.create", new { path, sizeBytes = 3, expectedSha256 = AbcSha, expectedBinding = Binding(preflight) }, messages);
+        Assert.False(result.Outcome.Ok);
+        Assert.Equal("CANONICAL_PATH_CHANGED", result.Outcome.Code);
+        Assert.Equal("original", File.ReadAllText(moved));
+        if (replace) Assert.Equal("replacement", File.ReadAllText(path));
+        else Assert.False(File.Exists(path));
+        Assert.DoesNotContain(Directory.GetFiles(_root), file => Path.GetFileName(file).StartsWith(".openclaw-write-", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ContainedWriteToTopLevelDirectoryDoesNotResolveItAsItsOwnParent()
+    {
+        var volume = Path.GetPathRoot(_root)!;
+        var separator = _root.IndexOf('\\', volume.Length);
+        var directory = _root[..separator];
+        var admission = Host with { ExecutionMode = "sandbox", Reason = null, DataAccess = new([], [directory], [], []) };
+        using var fs = new RetainedFileSystem(admission);
+        // Inspect resolution only. Never create a child under the shared traversal anchor.
+        var error = Assert.Throws<FileCommandException>(() => fs.ResolveWrite(directory, createParents: false));
+        Assert.Equal("IS_DIRECTORY", error.Code);
+    }
+
     [Fact]
     public void EmptyCreateRequiresAndAcceptsAnEmptyEofMessage()
     {
@@ -798,13 +835,19 @@ public sealed class FileWorkerTests : IDisposable
     public void UnsafeNamespacesAreRejectedBeforeOpening(string path) =>
         Assert.Equal("INVALID_PATH", Run("file.stat", new { path }).Outcome.Code);
 
-    private sealed class Messages(IEnumerable<byte[]> incoming) : IWorkerMessages
+    private sealed class Messages(IEnumerable<byte[]> incoming, Action? beforeReceive = null) : IWorkerMessages
     {
         private readonly Queue<byte[]> _incoming = new(incoming);
+        private Action? _beforeReceive = beforeReceive;
         public readonly List<byte[]> Output = [];
         public int Listens { get; private set; }
         public void Listen() => Listens++;
-        public byte[] Receive() { Assert.Equal(1, Listens); return _incoming.Dequeue(); }
+        public byte[] Receive()
+        {
+            Assert.Equal(1, Listens);
+            Interlocked.Exchange(ref _beforeReceive, null)?.Invoke();
+            return _incoming.Dequeue();
+        }
         public void Send(ReadOnlySpan<byte> message) { Assert.Equal(1, Listens); Output.Add(message.ToArray()); }
     }
 

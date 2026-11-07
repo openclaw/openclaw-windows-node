@@ -148,6 +148,72 @@ public class GatewayFileTransportTests
     }
 
     [Fact]
+    public async Task BinaryFetchPipelinesSixteenFramesAndWaitsForEveryCorrelatedAck()
+    {
+        await using var gateway = await SocketFixture.Start();
+        var bytes = Enumerable.Range(0, 49 * 8192).Select(i => (byte)i).ToArray();
+        var capability = new FetchCapability(bytes);
+        gateway.Node.RegisterCapability(capability);
+        await gateway.Invoke("window");
+        await gateway.Ack(await gateway.Read());
+        await gateway.Input("window", gateway.Node.FullDeviceId, 0, "c3RhcnQ=");
+        using var reconstructed = new MemoryStream();
+        long sequence = 1;
+        var index = 0;
+        while (index < 49)
+        {
+            var frames = new List<JsonElement>();
+            for (var i = 0; i < Math.Min(16, 49 - index); i++)
+            {
+                var progress = await gateway.Read().WaitAsync(TimeSpan.FromSeconds(3));
+                var payload = progress.GetProperty("params");
+                Assert.Equal(sequence++, payload.GetProperty("seq").GetInt64());
+                using var frame = JsonDocument.Parse(payload.GetProperty("chunk").GetString()!);
+                Assert.Equal(index + i, frame.RootElement.GetProperty("index").GetInt32());
+                Assert.Equal(0, frame.RootElement.GetProperty("message").GetInt64());
+                Assert.Equal(index + i == 48, frame.RootElement.GetProperty("last").GetBoolean());
+                reconstructed.Write(Convert.FromBase64String(frame.RootElement.GetProperty("data").GetString()!));
+                frames.Add(progress);
+            }
+            await gateway.HealthBarrier();
+            Assert.False(capability.DataAcknowledged.Task.IsCompleted);
+            foreach (var frame in frames.AsEnumerable().Reverse()) await gateway.Ack(frame);
+            index += frames.Count;
+        }
+        await capability.DataAcknowledged.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(bytes, reconstructed.ToArray());
+        await gateway.Input("window", gateway.Node.FullDeviceId, 1, "YWNr", message: 1);
+        Assert.Equal("node.invoke.result", (await gateway.Read()).GetProperty("method").GetString());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(15)]
+    public async Task RejectedFrameInWindowStopsTransferAndLeavesGatewayResponsive(int rejected)
+    {
+        await using var gateway = await SocketFixture.Start();
+        var capability = new FetchCapability(new byte[17 * 8192]);
+        gateway.Node.RegisterCapability(capability);
+        await gateway.Invoke("reject-window");
+        await gateway.Ack(await gateway.Read());
+        await gateway.Input("reject-window", gateway.Node.FullDeviceId, 0, "c3RhcnQ=");
+        var frames = new List<JsonElement>();
+        for (var i = 0; i < 16; i++) frames.Add(await gateway.Read());
+        for (var i = 15; i >= 0; i--)
+        {
+            if (i == rejected)
+                await gateway.Send(new { type = "res", id = frames[i].GetProperty("id").GetString(), ok = false });
+            else await gateway.Ack(frames[i]);
+        }
+        var result = await gateway.Read();
+        Assert.Equal("node.invoke.result", result.GetProperty("method").GetString());
+        Assert.False(result.GetProperty("params").GetProperty("ok").GetBoolean());
+        Assert.False(capability.DataAcknowledged.Task.IsCompleted);
+        Assert.True(gateway.Node.IsConnected);
+        await gateway.HealthBarrier();
+    }
+
+    [Fact]
     public async Task RejectedProgressAckFailsOperationWithoutHandshakeFailure()
     {
         await using var gateway = await SocketFixture.Start();
@@ -194,7 +260,7 @@ public class GatewayFileTransportTests
         await gateway.HealthBarrier();
     }
 
-    private sealed class FetchCapability : INodeCapability
+    private sealed class FetchCapability(byte[]? bytes = null) : INodeCapability
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource DataAcknowledged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -214,7 +280,7 @@ public class GatewayFileTransportTests
             }, ct);
             Assert.Equal("start", await messages.Reader.ReadAsync(ct));
             Started.TrySetResult();
-            await request.FileChannel.SendAsync("abc"u8.ToArray(), ct);
+            await request.FileChannel.SendAsync(bytes ?? "abc"u8.ToArray(), ct);
             DataAcknowledged.TrySetResult();
             Assert.Equal("ack", await messages.Reader.ReadAsync(ct));
             return new()

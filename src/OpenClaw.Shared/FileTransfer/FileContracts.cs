@@ -22,6 +22,7 @@ public static class FileLimits
     public const int ResultBytes = RequestBytes;
     public const long SafeInteger = 9_007_199_254_740_991;
     public const int OperationTimeoutMs = 60_000;
+    public const int TransferTimeoutMs = 600_000;
     public const int RetainedDirectories = 64;
     public const long RetainedBytes = 256L * MessageBytes;
     public const int RetainedRoots = 16;

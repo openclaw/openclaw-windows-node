@@ -2564,7 +2564,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if (_uploadRetention is not null)
         {
             _uploadRetention.Changed -= OnUploadCleanupChanged;
-            await _uploadRetention.DisposeAsync().ConfigureAwait(false);
+            try { await _uploadRetention.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.Debug($"NodeService: Dispose UploadRetentionCoordinator failed: {ex.GetType().Name}"); }
         }
 
         WindowsNodeClient? client;

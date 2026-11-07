@@ -141,8 +141,11 @@ controls remain available on those hosts.
 The committed transfer budget defaults to 50 MiB and is configurable from
 1 to 1024 MiB. It bounds binary fetch/create and unary content before mutation;
 individual command limits can be lower. Archives additionally bound expanded
-bytes by this budget and the 64 MiB archive ceiling. Other file operations use
-the saved Sandbox timeout; archives retain their separate 60-second ceiling.
+bytes by this budget and the 64 MiB archive ceiling. Binary fetch and streaming
+create have a ten-minute executor ceiling, independent of the general Sandbox
+command timeout. A shorter Gateway invocation or MCP channel deadline still
+cancels the transfer. Unary operations use the saved Sandbox timeout; archives
+retain their separate 60-second ceiling.
 Running operations keep their admitted settings snapshot.
 
 The native worker supports ordinary local Windows drive paths. Reparse points,
@@ -150,6 +153,11 @@ Cloud Files hydration, physical aliases, device/ADS names, case-sensitive
 directories and `followSymlinks:true` fail explicitly. `file.fetch.rootPath`
 confines ordinary paths; it does not enable parent-alias following. Contained
 multi-link files fail closed because access to all aliases cannot be proven.
+Contained writes cannot resolve a drive-root file's parent without a drive-root
+grant, so they fail explicitly rather than treating the target as its own parent.
+A directory target returns `IS_DIRECTORY`. Streaming create revalidates an
+existing destination after receiving and verifying the input. A removed or
+replaced destination returns `CANONICAL_PATH_CHANGED`, not a stale `exists`.
 Gzip-tar archives use PAX for Unicode and long names, with bounded member-name,
 metadata, traversal and content budgets, while retaining native file handles.
 Directory listings instead use no-follow native enumeration metadata. An
@@ -174,8 +182,12 @@ Upload retention remains 24 hours, 64 directories and 256 MiB. Before an upload
 can mutate a new root, the private inventory durably remembers its exact path;
 the worker subsequently supplies its retained identity. Startup can recover a
 reserved path without trusting it as a grant. Cleanup always uses the current
-Sandbox admission. Denied cleanup never falls back to host deletion. Inventory
-persistence failures block new uploads and appear in Sandbox and coarse node
+Sandbox admission. Denied cleanup never falls back to host deletion. Reservations
+remain active until all admitted workers for that root have
+finalized, including cancelled workers. An older empty cleanup result cannot
+remove a newer admission. Expected worker-cache failures publish blocked cleanup
+and remain retryable through the existing scheduling/settings refresh path.
+Inventory persistence failures block new uploads and appear in Sandbox and coarse node
 diagnostics. Restore private-state access and restart Companion to reload an
 invalid inventory. Do not retry a completed upload automatically.
 

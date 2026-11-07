@@ -23,6 +23,9 @@ public abstract class FixedFileWorkerLease : IDisposable
 /// The callback must observe cancellation and service all pipes. Registered blocking pipe workers
 /// remain owned through interruption and final drain. Native SDK pipes require synchronous IO on
 /// these owned workers. Resources are null only in positive unsupported-Windows host mode.
+/// Streaming IO uses a bounded transfer deadline instead of the general command timeout.
+/// ProcessSettled runs only after confirmed process finalization and pipe settlement.
 /// </summary>
 public sealed record FixedFileWorkload<T>(
-    Func<NodeSandboxProcessIo, CancellationToken, Task<T>> Protocol, int TimeoutMs);
+    Func<NodeSandboxProcessIo, CancellationToken, Task<T>> Protocol, int TimeoutMs, bool Streaming = false,
+    Action? ProcessSettled = null);

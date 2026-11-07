@@ -705,7 +705,7 @@ public class WindowsNodeClient : WebSocketClientBase
         if (payload.TryGetProperty("timeoutMs", out var value) && value.ValueKind == JsonValueKind.Number &&
             value.TryGetDouble(out var ms) && double.IsFinite(ms) && ms > 0 &&
             ms <= FileLimits.SafeInteger && Math.Truncate(ms) == ms)
-            deadline.CancelAfter((int)Math.Min(ms, 600_000));
+            deadline.CancelAfter((int)Math.Min(ms, FileLimits.TransferTimeoutMs));
         return deadline;
     }
 
@@ -724,7 +724,7 @@ public class WindowsNodeClient : WebSocketClientBase
         catch { invocation.Channel.Abort(); }
     }
 
-    private async ValueTask SendFileProgressAsync(string invokeId, long generation, long seq, string chunk, CancellationToken ct)
+    private async ValueTask<Task> SendFileProgressAsync(string invokeId, long generation, long seq, string chunk, CancellationToken ct)
     {
         var id = Guid.NewGuid().ToString("N");
         var pending = _progressRequests.RegisterApproval(id, "node.invoke.progress");
@@ -737,10 +737,19 @@ public class WindowsNodeClient : WebSocketClientBase
             }, FileTransportJson.Options);
             if (!await SendRawAsync(frame, generation, ct).ConfigureAwait(false))
                 throw new OperationCanceledException(ct);
-            if (!await pending.Task.WaitAsync(ProgressAckTimeout, ct).ConfigureAwait(false))
-                throw new FileCommandException("PROGRESS_REJECTED", "Gateway rejected file progress.");
+            return WaitForReceiptAsync();
         }
-        finally { _progressRequests.TryRemove(pending.Handle); }
+        catch { _progressRequests.TryRemove(pending.Handle); throw; }
+
+        async Task WaitForReceiptAsync()
+        {
+            try
+            {
+                if (!await pending.Task.WaitAsync(ProgressAckTimeout, ct).ConfigureAwait(false))
+                    throw new FileCommandException("PROGRESS_REJECTED", "Gateway rejected file progress.");
+            }
+            finally { _progressRequests.TryRemove(pending.Handle); }
+        }
     }
     
     private async Task SendNodeInvokeResultAsync(
