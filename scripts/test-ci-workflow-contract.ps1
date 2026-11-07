@@ -581,7 +581,10 @@ $trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray
 foreach ($token in @(
         "if: always()",
         "steps.tray-ui-crash-window.outcome == 'success'",
-        "./scripts/Capture-CiTestHostCrashMetadata.ps1",
+        'git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"',
+        '$LASTEXITCODE -ne 0',
+        'Join-Path $env:RUNNER_TEMP',
+        '& $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
         "TRAY_UI_TEST_STARTED_UTC"
     )) {
     Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
