@@ -122,6 +122,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupReadyObservation.cs" Link="Services\SetupReadyObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardLiveFacts.cs" Link="Services\SetupDashboardLiveFacts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDashboardLauncher.cs" Link="Services\GatewayDashboardLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DashboardBrowser.cs" Link="Services\DashboardBrowser.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupCompletion.cs" Link="GatewayAiSetupCompletion.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupModels.cs" Link="GatewayAiSetupModels.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\NativeLocalAiGatewayTarget.cs" Link="NativeLocalAiGatewayTarget.cs" />
@@ -296,12 +297,12 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PendingRequestSlot.cs" Link="Presentation\PendingRequestSlot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ChatVisibilityPolicy.cs" Link="Presentation\ChatVisibilityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceFooterPlacement.cs" Link="Presentation\WorkspaceFooterPlacement.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredFlyoutShowState.cs" Link="Presentation\DeferredFlyoutShowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AgentAvatarPresentation.cs" Link="Presentation\AgentAvatarPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionOrder.cs" Link="Presentation\WorkspaceSessionOrder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceItemsSync.cs" Link="Presentation\WorkspaceItemsSync.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionMenu.cs" Link="Presentation\WorkspaceSessionMenu.cs" />

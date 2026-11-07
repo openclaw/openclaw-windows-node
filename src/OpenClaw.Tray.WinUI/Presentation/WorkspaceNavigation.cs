@@ -16,7 +16,7 @@ internal enum WorkspacePageId
 
 internal enum CompanionPageId
 {
-    Connection, Sessions, Channels, Instances, Cron, AgentEvents, Agents,
+    Connection, Sessions, Instances, Cron, Agents,
     Config, Usage, LocalAi, DefaultModel, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
@@ -64,15 +64,23 @@ internal static class WorkspaceNavigation
     {
         "agents", "agent-detail", "writer-detail", "dashboards", "dashboard-detail", "canvas",
         "systems", "system-detail", "automations", "automation-detail", "plugins", "skills",
-        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more"
+        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more",
+        "agentevents"
     };
 
     /// <summary>Dispatches a route to the Workspace host or companion navigation host.</summary>
     public static void Dispatch(
         string? tag,
         Action<WorkspaceDestination> openWorkspace,
-        Action<string> openCompanion)
+        Action<string> openCompanion,
+        Action<string> openDashboard)
     {
+        if (tag is "channels" or "activity")
+        {
+            openDashboard("channels");
+            return;
+        }
+
         if (TryResolveWorkspace(tag, out var destination))
         {
             openWorkspace(destination);
@@ -82,7 +90,27 @@ internal static class WorkspaceNavigation
         if (tag!.StartsWith("workspace:", StringComparison.Ordinal))
             throw new ArgumentException("Unknown Workspace route. Use workspace:home or workspace:notifications.", nameof(tag));
 
+        if (tag != "command-center" &&
+            HubPageRegistry.ResolvePage(HubPageRegistry.NormalizeTag(tag, "main")) is null)
+            throw new ArgumentException("Unknown companion Settings route.", nameof(tag));
+
         openCompanion(tag);
+    }
+
+    /// <summary>
+    /// Reports destination admission using the same route policy. Native hosts may complete
+    /// synchronously; Dashboard hosts wait for Windows to accept the browser launch.
+    /// </summary>
+    public static Task<bool> DispatchAsync(
+        string? tag,
+        Func<WorkspaceDestination, Task<bool>> openWorkspace,
+        Func<string, Task<bool>> openCompanion,
+        Func<string, Task<bool>> openDashboard)
+    {
+        Task<bool>? admission = null;
+        Dispatch(tag, destination => admission = openWorkspace(destination),
+            section => admission = openCompanion(section), path => admission = openDashboard(path));
+        return admission ?? throw new InvalidOperationException("The navigation route was not dispatched.");
     }
 
     /// <summary>Resolves a tag to a Workspace destination without dispatching it.</summary>
@@ -110,7 +138,6 @@ internal static class WorkspaceNavigation
     {
         CompanionPageId.LocalAi => "local-ai",
         CompanionPageId.DefaultModel => "model",
-        CompanionPageId.AgentEvents => "agentevents",
         CompanionPageId.Agents => $"agent:{agentId}",
         _ => page.ToString().ToLowerInvariant()
     };
@@ -120,7 +147,7 @@ internal static class WorkspaceNavigation
     /// scope stays in the tag, except About, which keeps its own identity so Back restores it.
     /// </summary>
     public static string NormalizeSettingsTag(string tag, string agentId) =>
-        tag is "about" or "info" ? "about" : HubPageRegistry.NormalizeTag(tag, agentId);
+        HubPageRegistry.NormalizeTag(tag, agentId);
 
 }
 

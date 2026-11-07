@@ -46,7 +46,8 @@ internal sealed record WindowManagerCallbacks(
     Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
     Func<ISettingsStore?>? GetSettingsStore = null,
     Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
-    Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null);
+    Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null,
+    Func<SetupNativeCompletion, string, CancellationToken, Task<bool>>? OpenSetupDashboard = null);
 
 /// <summary>
 /// Coordinates every application-owned window and transitions between workspace, onboarding and setup UI.
@@ -196,10 +197,14 @@ internal sealed class WindowManager : IWindowManager
 
     /// <summary>Shows the workspace and optionally navigates it before activation.</summary>
     public void ShowHub(string? navigateTo = null, bool activate = true)
-        => ShowHubCore(navigateTo, activate);
+    {
+        var admission = ShowHubCoreAsync(navigateTo, activate);
+        AsyncEventHandlerGuard.Run(async () => await admission,
+            new AppLogger(), nameof(ShowHub));
+    }
 
-    public bool TryShowHub(string navigateTo, string? chatSessionKey = null) =>
-        ShowHubCore(navigateTo, activate: true, chatSessionKey, usePendingChatSession: false);
+    public Task<bool> TryShowHubAsync(string navigateTo, string? chatSessionKey = null) =>
+        ShowHubCoreAsync(navigateTo, activate: true, chatSessionKey, usePendingChatSession: false);
 
     /// <summary>Shows the native setup completion experience until it is closed or committed.</summary>
     public async Task ShowNativeSetupAsync(SetupNativeCompletion completion, CancellationToken ct)
@@ -227,12 +232,17 @@ internal sealed class WindowManager : IWindowManager
         ct.ThrowIfCancellationRequested();
         if (_isShuttingDown)
             throw new InvalidOperationException(ShuttingDownMessage);
+        if (HubPageRegistry.GetNativeSetupDashboardPath(completion.Target.Destination) is { } dashboardPath)
+        {
+            var openDashboard = _callbacks.OpenSetupDashboard
+                ?? throw new InvalidOperationException("The Gateway dashboard launcher is unavailable.");
+            if (!await openDashboard(completion, dashboardPath, ct))
+                throw new InvalidOperationException("The Gateway dashboard could not be opened.");
+            return;
+        }
         Window window;
         if (request.WorkspaceDestination is { } destination)
             ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request);
-        else
-            ShowWorkspace(WorkspaceDestination.Settings("settings"), activate: false, preserveCurrent: false, nativeRequest: request,
-                settingsTag: request.PageTag);
         if (_workspaceWindow is not { } workspace)
             throw new InvalidOperationException("The native window is unavailable.");
         await workspace.WaitForNativeSetupAsync(request, ct);
@@ -452,16 +462,15 @@ internal sealed class WindowManager : IWindowManager
             retry?.Invoke();
     }
 
-    private bool ShowHubCore(
+    private Task<bool> ShowHubCoreAsync(
         string? navigateTo, bool activate, string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_isShuttingDown)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
-        var admitted = false;
-        WorkspaceNavigation.Dispatch(navigateTo, destination =>
+        return WorkspaceNavigation.DispatchAsync(navigateTo, destination =>
         {
             if (_callbacks.RequiresSetup())
             {
@@ -469,14 +478,14 @@ internal sealed class WindowManager : IWindowManager
                     ShowOnboardingAsync,
                     new AppLogger(),
                     nameof(ShowOnboardingAsync));
-                return;
+                return Task.FromResult(false);
             }
 
-            admitted = ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub",
-                chatSessionKey: chatSessionKey, usePendingChatSession: usePendingChatSession);
-        }, tag => admitted = ShowWorkspace(
-            WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag));
-        return admitted;
+            return Task.FromResult(ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub",
+                chatSessionKey: chatSessionKey, usePendingChatSession: usePendingChatSession));
+        }, tag => Task.FromResult(ShowWorkspace(
+            WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag)),
+            path => ((IAppCommands)Application.Current).TryOpenDashboardAsync(path));
     }
 
     private bool ShowWorkspace(
@@ -503,7 +512,7 @@ internal sealed class WindowManager : IWindowManager
         var admitted = false;
         if (nativeRequest is not null)
         {
-            if (settingsTag is null) nativeRequest.RequireWorkspaceDestination(destination);
+            nativeRequest.RequireWorkspaceDestination(destination);
             _workspaceWindow.NavigateNativeSetup(nativeRequest);
         }
         else if (settingsTag is not null)

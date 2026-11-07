@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 using OpenClawTray.ViewModels;
 using System.Collections.ObjectModel;
@@ -79,6 +80,9 @@ public sealed partial class NotificationsPage : Page
         if (sender is not FrameworkElement { Tag: NotificationItemViewModel item })
             return;
 
-        _notificationService?.NavigateAction(item.Id, ((IAppCommands)CurrentApp).TryNavigate);
+        if (_notificationService is { } notifications)
+            AsyncEventHandlerGuard.Run(
+                () => notifications.NavigateActionAsync(item.Id, ((IAppCommands)CurrentApp).TryNavigateAsync),
+                new AppLogger(), nameof(OnNotificationActionClick));
     }
 }

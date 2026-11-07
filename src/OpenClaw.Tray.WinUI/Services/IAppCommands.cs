@@ -19,13 +19,16 @@ internal interface IAppCommands
 {
     /// <summary>Opens the dashboard, optionally at a supplied path.</summary>
     void OpenDashboard(string? path = null);
+    /// <summary>Returns whether Windows accepted the Dashboard browser launch, not whether the page loaded.</summary>
+    Task<bool> TryOpenDashboardAsync(string? path = null);
     /// <summary>Navigates the application shell to a page tag.</summary>
     void Navigate(string pageTag);
     /// <summary>
-    /// Returns true only for synchronous destination admission. Refused, redirected, unmounted
-    /// and modal-deferred requests return false. A chat key belongs only to this request.
+    /// Returns native destination admission or confirmed Dashboard browser launch.
+    /// Refused, redirected, unmounted and modal-deferred requests return false.
+    /// A chat key belongs only to this request.
     /// </summary>
-    bool TryNavigate(string pageTag, string? chatSessionKey = null);
+    Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null);
     void Reconnect();
     void Disconnect();
     void ShowVoiceOverlay();

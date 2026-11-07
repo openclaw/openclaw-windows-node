@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
+using OpenClawTray.Chat;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
@@ -58,7 +59,8 @@ internal static class WorkspaceProjection
         data is { ValueKind: JsonValueKind.Object } root &&
         root.TryGetProperty("agents", out var agents) && agents.ValueKind == JsonValueKind.Array;
 
-    public static IReadOnlyList<WorkspaceAgent> Agents(JsonElement? data, IReadOnlyList<SessionInfo> sessions)
+    public static IReadOnlyList<WorkspaceAgent> Agents(JsonElement? data, IReadOnlyList<SessionInfo> sessions,
+        IReadOnlyDictionary<string, ChatAgentIdentity>? identities = null)
     {
         if (data is not { ValueKind: JsonValueKind.Object } root ||
             !root.TryGetProperty("agents", out var agents) || agents.ValueKind != JsonValueKind.Array)
@@ -72,10 +74,11 @@ internal static class WorkspaceProjection
                 var identity = agent.TryGetProperty("identity", out var value) && value.ValueKind == JsonValueKind.Object
                     ? value : default;
                 var related = Visible(sessions, id);
-                return new WorkspaceAgent(
-                    id, ReadString(identity, "name") ?? ReadString(agent, "name") ?? id,
-                    related.OrderByDescending(session => session.UpdatedAt).FirstOrDefault()?.Key, ReadString(identity, "emoji"),
-                    ReadString(identity, "avatarUrl") ?? ReadString(identity, "avatar"));
+                return AgentAvatarPresentation.Compose(id,
+                    related.OrderByDescending(session => session.UpdatedAt).FirstOrDefault()?.Key,
+                    ReadString(agent, "name"), ReadString(identity, "name"), ReadString(identity, "emoji"),
+                    ReadString(identity, "avatar"), ReadString(identity, "avatarUrl"),
+                    identities?.GetValueOrDefault(id));
             })
             .Where(agent => !string.IsNullOrWhiteSpace(agent.Id))
             .DistinctBy(agent => agent.Id)

@@ -222,6 +222,17 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("SetCurrentStep(3)", stages);
         Assert.Contains("Unloaded += (_, _) => _operationCts?.Cancel()", source);
         Assert.Contains("new NativeGatewaySetupHost(log, ReportProgress, ReportStage)", source);
+        var operation = source[source.IndexOf("private async Task RunOperationAsync", StringComparison.Ordinal)..
+            source.IndexOf("private async Task ConfigureAsync", StringComparison.Ordinal)];
+        Assert.Contains("var log = SetupWindow.Active?.NativeSetupLog;", operation);
+        Assert.Contains("using var logLease = log?.RetainForOperation();", operation);
+        Assert.Contains("AttachLog(log);", operation);
+        Assert.True(operation.IndexOf("var log = SetupWindow.Active?.NativeSetupLog;", StringComparison.Ordinal) <
+                    operation.IndexOf("using var logLease = log?.RetainForOperation();", StringComparison.Ordinal));
+        Assert.True(operation.IndexOf("using var logLease = log?.RetainForOperation();", StringComparison.Ordinal) <
+                    operation.IndexOf("AttachLog(log);", StringComparison.Ordinal));
+        Assert.True(operation.IndexOf("using var logLease = log?.RetainForOperation();", StringComparison.Ordinal) <
+                    operation.IndexOf("await ", StringComparison.Ordinal));
         Assert.True(source.IndexOf("if (SetupPreview.IsActive)", StringComparison.Ordinal) <
                     source.IndexOf("_operation = RunOperationAsync", StringComparison.Ordinal));
         Assert.DoesNotContain("message => StatusText.Text = message", source);

@@ -2,13 +2,16 @@ using System.Text.Json;
 using System.Collections.Immutable;
 using System.Xml.Linq;
 using OpenClawTray.Presentation;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class HubSearchCatalogTests
 {
-    [Fact]
-    public void NavigationUsesDestinationNamesAndNativeSymbolGlyphsWithoutChangingLegacyCommands()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NavigationUsesDestinationNamesAndNativeSymbolGlyphsWithoutChangingLegacyCommands(bool connected)
     {
         var resources = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"))
@@ -17,17 +20,67 @@ public sealed class HubSearchCatalogTests
         var commands = HubPageRegistry.BuildCommands(new("main", true, null, [],
             resources.ToImmutableDictionary()));
         Assert.Contains(commands, command => command.Title == "Go to Config");
-        var items = HubSearchCatalog.Navigation(commands, true, true, key => resources[key]).ToArray();
+        var items = HubSearchCatalog.Navigation(commands, connected, true, key => resources[key]).ToArray();
         Assert.All(items, item =>
         {
             Assert.DoesNotContain("Go to", item.Title, StringComparison.OrdinalIgnoreCase);
             Assert.Single(item.Icon);
             Assert.InRange(item.Icon[0], '\uE000', '\uF8FF');
         });
-        Assert.Equal("Config", Assert.Single(items, item => item.Target.Value == "config").Title);
-        Assert.Equal("Event Stream", Assert.Single(items, item => item.Target.Value == "agentevents").Title);
-        Assert.Equal("Dashboard", Assert.Single(items, item => item.Target.Kind == HubSearchTargetKind.Dashboard).Title);
-        Assert.Contains(HubSearch.Find(items, "Agent Events"), match => match.Item.Target.Value == "agentevents");
+        if (connected)
+        {
+            Assert.Equal("Config", Assert.Single(items, item => item.Target.Value == "config").Title);
+            Assert.Equal("Systems", Assert.Single(items, item => item.Target.Value == "instances").Title);
+            Assert.Equal("Automations", Assert.Single(items, item => item.Target.Value == "agent:main:cron").Title);
+        }
+        else
+        {
+            Assert.DoesNotContain(items, item => item.Target.Value is "config" or "instances" or "agent:main:cron");
+        }
+        Assert.Equal("Connection", Assert.Single(items, item => item.Target.Value == "connection").Title);
+        var models = Assert.Single(items, item => item.Title == "Models");
+        Assert.Equal(new(HubSearchTargetKind.Page, "model"), models.Target);
+        Assert.Equal(models, Assert.Single(HubSearch.Find(items, "Default model")).Item);
+        var general = Assert.Single(items, item => item.Title == "General");
+        Assert.Equal(new(HubSearchTargetKind.Page, "settings"), general.Target);
+        Assert.Equal("About", Assert.Single(items, item => item.Target.Value == "about").Title);
+        Assert.Equal("Dashboard", Assert.Single(items, item =>
+            item.Target == new HubSearchTarget(HubSearchTargetKind.Dashboard, "")).Title);
+        foreach (var query in new[] { "General", "Notification preferences", "notification-preferences" })
+            Assert.Equal(general, Assert.Single(HubSearch.Find(items, query)).Item);
+        Assert.Contains(HubSearch.Find(items, "notifications"), match => match.Item.Target.Value == "notifications");
+        Assert.Empty(HubSearch.Find(items, "Agent Events"));
+        Assert.Empty(HubSearch.Find(items, "Event Stream"));
+        Assert.DoesNotContain(items, item => item.Target.Value.Contains("agentevents", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Channels", true, true)]
+    [InlineData("Go to Channels", true, false)]
+    [InlineData("Channels", false, false)]
+    public void ChannelsSearchOpensDashboardInsteadOfRetiredNativePage(
+        string query, bool connected, bool dashboardSupported)
+    {
+        var resources = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"))
+            .Root!.Elements("data").ToImmutableDictionary(element => (string)element.Attribute("name")!,
+                element => element.Element("value")!.Value);
+        var commands = HubPageRegistry.BuildCommands(new("main", false, null, [], resources));
+        var items = HubSearchCatalog.Navigation(commands, connected, dashboardSupported, key => resources[key]);
+        var result = Assert.Single(HubSearch.Find(items, query), match => match.Item.Title == "Channels").Item;
+
+        Assert.Equal(HubSearchGroup.Dashboard, result.Group);
+        Assert.True(result.OpensDashboard);
+        Assert.Equal(new HubSearchTarget(HubSearchTargetKind.Dashboard, "channels"), result.Target);
+        Assert.Equal("channels", result.DashboardPath);
+        Assert.Null(HubPageRegistry.ResolvePage("channels"));
+
+        var opened = new List<string?>();
+        var navigated = new List<HubSearchTarget>();
+        var executor = new HubCommandExecutor(() => null, () => null, opened.Add);
+        executor.Execute(result.Target, navigated.Add);
+        Assert.Equal(["channels"], opened);
+        Assert.Empty(navigated);
     }
 
     [Fact]
@@ -79,6 +132,38 @@ public sealed class HubSearchCatalogTests
     {
         Assert.Equal("/chat/work", HubSearchCatalog.SessionPath("agent:work:custom-home", isMain: true));
         Assert.Equal("/chat/work/~key/main", HubSearchCatalog.SessionPath("agent:work:main", isMain: false));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_UsesCurrentChatSessionWhenHomeHistoryHasNoSession()
+    {
+        Assert.Equal("/chat/work/~key/12345678", HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_PrefersVisibleSettingsOverRetainedChat()
+    {
+        Assert.Equal("/usage", HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("usage"), "agent:work:12345678", isMain: false, "2026.10.9"));
+    }
+
+    [Fact]
+    public void ContextualDashboardPath_UsesExplicitSessionAndFallsBackWithoutVerifiedCounterpart()
+    {
+        Assert.Equal("/chat/work/~key/main", HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home, "agent:work:main"), "agent:main:main",
+            isMain: false, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("local-ai"), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("agent:research"), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            WorkspaceDestination.Settings("config"), null, null, "2026.11.1"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Home), null, null, "2026.10.9"));
+        Assert.Null(HubSearchCatalog.ContextualDashboardPath(
+            new(WorkspacePageId.Notifications), "agent:work:12345678", isMain: false, "2026.10.9"));
     }
 
     [Fact]

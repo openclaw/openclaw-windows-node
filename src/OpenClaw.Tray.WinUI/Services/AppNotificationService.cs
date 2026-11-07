@@ -190,11 +190,11 @@ internal sealed class AppNotificationService
     }
 
     /// <summary>
-    /// Opens the current action for an active reminder, dismissing it only when navigation is
-    /// admitted synchronously. Deferred intents retain the reminder, even if they later run.
+    /// Opens the current action for an active reminder, dismissing that version only after native
+    /// admission or a confirmed browser launch. Deferred intents retain it, even if they later run.
     /// This does not approve, abort, or otherwise resolve the underlying Gateway action.
     /// </summary>
-    public bool NavigateAction(string notificationId, Func<string, string?, bool> tryNavigate)
+    public async Task<bool> NavigateActionAsync(string notificationId, Func<string, string?, Task<bool>> tryNavigate)
     {
         var notification = Snapshot.ActiveNotifications.FirstOrDefault(item => item.Id == notificationId);
         if (notification?.ActionRoute is not { Length: > 0 } route)
@@ -203,9 +203,9 @@ internal sealed class AppNotificationService
         try
         {
             var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
-            if (!tryNavigate(isChat ? "chat" : route, sessionKey))
+            if (!await tryNavigate(isChat ? "chat" : route, sessionKey))
             {
-                Logger.Info("[Notifications] Navigation was not admitted synchronously; reminder retained.");
+                Logger.Info("[Notifications] Navigation was not admitted; reminder retained.");
                 return false;
             }
         }
@@ -216,11 +216,13 @@ internal sealed class AppNotificationService
             return false;
         }
 
-        Dismiss(notificationId);
+        TryDismiss(notificationId, notification);
         return true;
     }
 
-    public void Dismiss(string notificationId)
+    public void Dismiss(string notificationId) => TryDismiss(notificationId);
+
+    private void TryDismiss(string notificationId, AppNotification? expected = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(notificationId);
 
@@ -228,7 +230,8 @@ internal sealed class AppNotificationService
         var changed = false;
         lock (_gate)
         {
-            if (_current is not null && string.Equals(_current.Id, notificationId, StringComparison.Ordinal))
+            if (_current is not null && string.Equals(_current.Id, notificationId, StringComparison.Ordinal) &&
+                (expected is null || ReferenceEquals(_current, expected)))
             {
                 _current = _queue.Count > 0 ? DequeueLocked() : null;
                 changed = true;
@@ -237,7 +240,8 @@ internal sealed class AppNotificationService
             {
                 for (var i = 0; i < _queue.Count; i++)
                 {
-                    if (!string.Equals(_queue[i].Id, notificationId, StringComparison.Ordinal))
+                    if (!string.Equals(_queue[i].Id, notificationId, StringComparison.Ordinal) ||
+                        (expected is not null && !ReferenceEquals(_queue[i], expected)))
                         continue;
 
                     _queue.RemoveAt(i);

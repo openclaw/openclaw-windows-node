@@ -5,7 +5,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid HorizontalAlignment="Stretch">
             <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
-            <TextBlock x:Uid="DefaultModelPage_Title" Text="Default model"
+            <TextBlock x:Uid="DefaultModelPage_Title" Text="Models"
                        Style="{StaticResource TitleTextBlockStyle}"
                        AutomationProperties.AutomationId="DefaultModelPageMarker"/>
             <TextBlock x:Uid="DefaultModelPage_Intro"

@@ -1,5 +1,6 @@
 using OpenClawTray.Services;
 using OpenClawTray.Presentation;
+using OpenClaw.Connection;
 using Xunit;
 
 namespace OpenClaw.Tray.Tests.Services;
@@ -9,17 +10,17 @@ public sealed class AppNotificationServiceTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void NavigateAction_DismissesOnlyTheAdmittedReminder(bool admitted)
+    public async Task NavigateAction_DismissesOnlyTheAdmittedReminder(bool admitted)
     {
         var service = new AppNotificationService();
         service.Show(Notification("First", "Open connection") with { Id = "first", ActionRoute = "connection" });
         service.Show(Notification("Second", "Open permissions") with { Id = "second", ActionRoute = "permissions" });
         (string Route, string? Key, int Count)? observed = null;
 
-        var result = service.NavigateAction("second", (route, key) =>
+        var result = await service.NavigateActionAsync("second", (route, key) =>
         {
             observed = (route, key, service.Snapshot.ActiveNotifications.Count);
-            return admitted;
+            return Task.FromResult(admitted);
         });
 
         Assert.Equal(("permissions", (string?)null, 2), observed);
@@ -29,19 +30,19 @@ public sealed class AppNotificationServiceTests
     }
 
     [Fact]
-    public void NavigateAction_ThrowingNavigationRetainsReminder()
+    public async Task NavigateAction_ThrowingNavigationRetainsReminder()
     {
         var service = new AppNotificationService();
         service.Show(Notification("Reminder", "Open connection") with { Id = "reminder", ActionRoute = "connection" });
 
-        Assert.False(service.NavigateAction("reminder", (_, _) =>
+        Assert.False(await service.NavigateActionAsync("reminder", (_, _) =>
             throw new InvalidOperationException("Navigation failed")));
 
         Assert.Equal("reminder", Assert.Single(service.Snapshot.ActiveNotifications).Id);
     }
 
     [Fact]
-    public void NavigateAction_ChatKeyIsPassedExactlyAndRefusalDoesNotConsumeReminder()
+    public async Task NavigateAction_ChatKeyIsPassedExactlyAndRefusalDoesNotConsumeReminder()
     {
         const string key = "agent:Mixed Case:thread/a?x=1&literal=%2F";
         var service = new AppNotificationService();
@@ -52,10 +53,10 @@ public sealed class AppNotificationServiceTests
         });
         (string Route, string? Key)? observed = null;
 
-        Assert.False(service.NavigateAction("chat-reminder", (route, session) =>
+        Assert.False(await service.NavigateActionAsync("chat-reminder", (route, session) =>
         {
             observed = (route, session);
-            return false;
+            return Task.FromResult(false);
         }));
         Assert.Equal(("chat", key), observed);
         Assert.Equal("chat-reminder", Assert.Single(service.Snapshot.ActiveNotifications).Id);
@@ -64,17 +65,17 @@ public sealed class AppNotificationServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void NavigateAction_DeferredIntentNeverDismissesReminder(bool replaceIntent)
+    public async Task NavigateAction_DeferredIntentNeverDismissesReminder(bool replaceIntent)
     {
         var service = new AppNotificationService();
         var deferred = new DeferredNavigation();
         var opened = new List<string>();
         service.Show(Notification("Reminder", "Open connection") with { Id = "reminder", ActionRoute = "connection" });
 
-        Assert.False(service.NavigateAction("reminder", (route, _) =>
+        Assert.False(await service.NavigateActionAsync("reminder", (route, _) =>
         {
             deferred.Defer(() => opened.Add(route));
-            return false;
+            return Task.FromResult(false);
         }));
         if (replaceIntent)
             deferred.Defer(() => opened.Add("permissions"));
@@ -88,20 +89,99 @@ public sealed class AppNotificationServiceTests
     }
 
     [Fact]
-    public void NavigateAction_UsesCurrentReminderRatherThanStalePresentation()
+    public async Task NavigateAction_UsesCurrentReminderRatherThanStalePresentation()
     {
         var service = new AppNotificationService();
         service.Show(Notification("Reminder", "Open connection") with { Id = "reminder", ActionRoute = "connection" });
         service.Dismiss("reminder");
         var navigationCount = 0;
 
-        Assert.False(service.NavigateAction("reminder", (_, _) =>
+        Assert.False(await service.NavigateActionAsync("reminder", (_, _) =>
         {
             navigationCount++;
-            return true;
+            return Task.FromResult(true);
         }));
         Assert.Equal(0, navigationCount);
         Assert.Empty(service.Snapshot.ActiveNotifications);
+    }
+
+    [Theory]
+    [InlineData("channels", true)]
+    [InlineData("channels", false)]
+    [InlineData("activity", true)]
+    [InlineData("activity", false)]
+    public async Task NavigateAction_DashboardWaitsForBrowserResult(string route, bool opened)
+    {
+        var service = new AppNotificationService();
+        service.Show(Notification("Channel issue", "Open Channels") with { Id = "channel", ActionRoute = route });
+        var launch = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? launchedUrl = null;
+        var failures = 0;
+        var launcher = new GatewayDashboardLauncher(() => true,
+            () => new InteractiveGatewayCredential("http://127.0.0.1:18789", "fixture-token", false,
+                CredentialResolver.SourceSharedGatewayToken),
+            url => { launchedUrl = url; return launch.Task; }, () => failures++);
+
+        var action = service.NavigateActionAsync("channel", (target, _) =>
+            WorkspaceNavigation.DispatchAsync(target,
+                _ => throw new Xunit.Sdk.XunitException("Dashboard action reached Workspace."),
+                _ => throw new Xunit.Sdk.XunitException("Dashboard action reached Settings."),
+                path => launcher.OpenAsync(path)));
+
+        Assert.False(action.IsCompleted);
+        Assert.Single(service.Snapshot.ActiveNotifications);
+        Assert.NotNull(launchedUrl);
+        Assert.Equal("/channels", new Uri(launchedUrl).AbsolutePath.TrimEnd('/'));
+        launch.SetResult(opened);
+        Assert.Equal(opened, await action);
+        Assert.Equal(opened ? 0 : 1, service.Snapshot.ActiveNotifications.Count);
+        Assert.Equal(opened ? 0 : 1, failures);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task NavigateAction_DoesNotDismissAnUpdatedOrReplacedReminder(bool queued, bool replace)
+    {
+        var service = new AppNotificationService();
+        if (queued)
+            service.Show(Notification("First", "Unrelated") with { Id = "first" });
+        service.Show(Notification("Original", "Old action", dedupeKey: "stable") with
+        {
+            Id = "reminder", ActionRoute = "channels"
+        });
+        var launch = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var action = service.NavigateActionAsync("reminder", (_, _) => launch.Task);
+        Assert.False(action.IsCompleted);
+
+        if (replace)
+            service.Dismiss("reminder");
+        service.Show(Notification("Updated", "New action", dedupeKey: "stable") with
+        {
+            Id = "reminder", ActionRoute = "connection"
+        });
+        launch.SetResult(true);
+
+        Assert.True(await action);
+        var retained = Assert.Single(service.Snapshot.ActiveNotifications, item => item.Id == "reminder");
+        Assert.Equal("Updated", retained.Title);
+        Assert.Equal("connection", retained.ActionRoute);
+        Assert.Equal(queued ? 2 : 1, service.Snapshot.ActiveNotifications.Count);
+    }
+
+    [Fact]
+    public async Task NavigateAction_AsynchronousFailureRetainsReminder()
+    {
+        var service = new AppNotificationService();
+        service.Show(Notification("Channel issue", "Open Channels") with { Id = "channel", ActionRoute = "channels" });
+        var launch = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var action = service.NavigateActionAsync("channel", (_, _) => launch.Task);
+        launch.SetException(new IOException("Browser failed"));
+
+        Assert.False(await action);
+        Assert.Single(service.Snapshot.ActiveNotifications);
     }
 
     [Fact]

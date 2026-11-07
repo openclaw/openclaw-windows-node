@@ -107,7 +107,7 @@ public sealed partial class GatewayScenario
         ReadMethods = Array.AsReadOnly(new[]
         {
             "sessions.list", "sessions.search", "sessions.subscribe", "sessions.preview", "chat.history",
-            "models.list", "usage.cost"
+            "models.list", "usage.cost", "agent.identity.get"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
@@ -332,11 +332,6 @@ public sealed partial class GatewayScenario
             ["node.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["device.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["question.list"] = JsonSerializer.SerializeToElement(new { questions = Array.Empty<object>() }),
-            ["channels.status"] = JsonSerializer.SerializeToElement(new
-            {
-                ts = Epoch.ToUnixTimeMilliseconds(), channelOrder = Array.Empty<string>(),
-                channels = new { }, channelAccounts = new { }
-            }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
             {
                 updatedAt = Epoch.ToUnixTimeMilliseconds(), providers = Array.Empty<object>()
@@ -481,6 +476,8 @@ public sealed partial class GatewayScenario
                 };
             }
         }
+        if (method == "agent.identity.get")
+            return AgentIdentity(parameters);
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
         if (_allowSessionMutations && method == "sessions.create")
@@ -531,6 +528,24 @@ public sealed partial class GatewayScenario
         if (decision is not ("allow-once" or "allow-always" or "deny"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unsupported approval decision.");
         return new { ok = true, decision };
+    }
+
+    // Name only, like a configured agent without an avatar: the app then renders its generated face.
+    private object AgentIdentity(JsonElement p)
+    {
+        ValidateProperties(p, "agentId");
+        var agentId = RequiredString(p, "agentId");
+        var roster = new List<JsonElement>();
+        if (_reads.TryGetValue("agents.list", out var list))
+            roster.AddRange(list.GetProperty("agents").EnumerateArray());
+        lock (_createdAgents)
+            roster.AddRange(_createdAgents.Select(agent => JsonSerializer.SerializeToElement(agent)));
+        foreach (var agent in roster)
+        {
+            if (agent.GetProperty("id").GetString() == agentId)
+                return new { agentId, name = agent.GetProperty("name").GetString() };
+        }
+        throw new FixtureRequestException("INVALID_REQUEST", $"Unknown agent id \"{agentId}\"");
     }
 
     private object ListSessions(JsonElement p)
@@ -764,7 +779,6 @@ public sealed partial class GatewayScenario
         ValidateProperties(p, method switch
         {
             "health" => ["deep", "probe"],
-            "channels.status" => ["probe", "timeoutMs"],
             "skills.status" => ["agentId"],
             _ => []
         });
@@ -772,11 +786,6 @@ public sealed partial class GatewayScenario
         {
             OptionalBoolean(p, "deep");
             OptionalBoolean(p, "probe");
-        }
-        else if (method == "channels.status")
-        {
-            OptionalBoolean(p, "probe");
-            PositiveInt(p, "timeoutMs", 10000);
         }
         else if (method == "skills.status")
         {

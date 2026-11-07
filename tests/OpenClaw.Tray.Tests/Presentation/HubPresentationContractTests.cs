@@ -16,10 +16,32 @@ public sealed class HubPresentationContractTests
         var end = source.IndexOf("\n    private ", start + handler.Length, StringComparison.Ordinal);
         var action = end < 0 ? source[start..] : source[start..end];
 
-        Assert.Contains(".NavigateAction(", action);
-        Assert.Contains("((IAppCommands)CurrentApp).TryNavigate", action);
+        Assert.Contains("notifications.NavigateActionAsync(", action);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", action);
+        Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync", action);
         Assert.DoesNotContain("PendingChatSessionKey", action);
         Assert.DoesNotContain(".Dismiss(", action);
+    }
+
+    [Fact]
+    public void NotificationAdmission_PreservesAboutIdentityAndAwaitsDashboardLaunchResult()
+    {
+        var view = ReadSource("Controls", "SettingsShellView.xaml.cs");
+        var shown = view[view.IndexOf("internal bool IsSectionShown", StringComparison.Ordinal)..
+            view.IndexOf("internal string? CurrentSectionTag", StringComparison.Ordinal)];
+        Assert.Contains("_currentNavTag == tag", shown);
+        Assert.DoesNotContain("\"settings\"", shown);
+        var section = view[view.IndexOf("internal void ShowSection(", StringComparison.Ordinal)..
+            view.IndexOf("internal void Deactivate()", StringComparison.Ordinal)];
+        Assert.Contains("NavigateInternal(tag)", section);
+        Assert.DoesNotContain("\"about\"", section);
+
+        var manager = ReadSource("Services", "WindowManager.cs");
+        Assert.Contains("return WorkspaceNavigation.DispatchAsync(navigateTo", manager);
+        Assert.Contains("path => ((IAppCommands)Application.Current).TryOpenDashboardAsync(path)", manager);
+        var app = ReadSource("", "App.xaml.cs");
+        Assert.Contains("return launcher.OpenAsync(path)", app);
+        Assert.Contains("_windowManager?.TryShowHubAsync(pageTag, chatSessionKey)", app);
     }
 
     [Fact]
