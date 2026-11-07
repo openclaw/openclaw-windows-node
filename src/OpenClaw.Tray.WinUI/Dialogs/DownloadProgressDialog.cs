@@ -9,6 +9,9 @@ public sealed class DownloadProgressDialog
 {
     private Window? _window;
 
+    /// <summary>Raised when the user or the caller closes the progress window.</summary>
+    public event EventHandler? Closed;
+
     public void ShowAsync()
     {
         _window = new Window { Title = LocalizationHelper.GetString("WindowTitle_Downloading") };
@@ -28,7 +31,8 @@ public sealed class DownloadProgressDialog
         var centerX = (displayArea.WorkArea.Width - 400) / 2;
         var centerY = (displayArea.WorkArea.Height - 200) / 2;
         _window.AppWindow.Move(new global::Windows.Graphics.PointInt32(centerX, centerY));
-        
+        _window.Closed += (_, _) => Closed?.Invoke(this, EventArgs.Empty);
+
         _window.Activate();
     }
 

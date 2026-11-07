@@ -193,7 +193,7 @@ public sealed class UpdateBackendLoaderTests
         public IEnumerable<UpdateReleaseCandidate> GetReleaseCandidates() =>
             throw new InvalidOperationException("Successful checks do not enumerate fallbacks.");
         public string GetChangelog() => "Release notes";
-        public Task<bool> DownloadAndInstallAsync(Action downloadCompleted)
+        public Task<bool> DownloadAndInstallAsync(Action downloadCompleted, CancellationToken cancellationToken = default)
         {
             Events.Add("download");
             downloadCompleted();
