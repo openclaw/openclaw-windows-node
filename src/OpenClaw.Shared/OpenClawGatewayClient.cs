@@ -978,6 +978,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 CompactionTokensBefore = openClawMetadata.TokensBefore,
                 CompactionTokensAfter = openClawMetadata.TokensAfter,
                 StopReason = stopReason,
+                CostUsd = ExtractChatCost(m),
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
                 ResponseTokens = responseTokens,
@@ -986,6 +987,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         info.Messages = list;
         return info;
+    }
+
+    private static double? ExtractChatCost(JsonElement message)
+    {
+        if (message.ValueKind == JsonValueKind.Object &&
+            message.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object &&
+            usage.TryGetProperty("cost", out var cost) && cost.ValueKind == JsonValueKind.Object &&
+            cost.TryGetProperty("total", out var total) && total.ValueKind == JsonValueKind.Number && total.TryGetDouble(out var value) &&
+            double.IsFinite(value) && value >= 0)
+            return value;
+        return null;
     }
 
     private static string ExtractMessageText(JsonElement message, string role)
@@ -4230,7 +4242,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 messageOpenClawMetadata.TokensBefore ?? payloadOpenClawMetadata.TokensBefore,
                 messageOpenClawMetadata.TokensAfter ?? payloadOpenClawMetadata.TokensAfter,
                 contentParts,
-                runId);
+                runId,
+                costUsd: ExtractChatCost(message) ?? ExtractChatCost(payload));
 
             if (notify && role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
@@ -4272,7 +4285,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     openClawMetadata.TokensBefore,
                     openClawMetadata.TokensAfter,
                     projection.ContentParts,
-                    runId);
+                    runId,
+                    costUsd: ExtractChatCost(payload));
 
                 if (notify && role == "assistant" &&
                     (string.IsNullOrWhiteSpace(state) ||
@@ -4353,7 +4367,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         long? compactionTokensBefore = null,
         long? compactionTokensAfter = null,
         IReadOnlyList<ChatMessageContentPartInfo>? contentParts = null,
-        string? runId = null)
+        string? runId = null,
+        double? costUsd = null)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return false;
@@ -4370,6 +4385,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ContentParts = contentParts ?? Array.Empty<ChatMessageContentPartInfo>(),
                 State = state,
                 Ts = tsMs,
+                CostUsd = costUsd,
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
                 ResponseTokens = responseTokens,
