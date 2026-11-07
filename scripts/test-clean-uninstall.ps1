@@ -40,6 +40,8 @@ $environmentNames = @('APPDATA','LOCALAPPDATA','OPENCLAW_TRAY_DATA_DIR','OPENCLA
 foreach ($name in $environmentNames) { $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name) }
 try {
     New-Item -ItemType Directory -Path $fixture | Out-Null
+    # The real root is the developer's own profile. Keep every test inside the fixture.
+    function Get-CleanGatewayCleanupRoot { "$fixture\companion-home\.openclaw-companion\cleanup" }
     Test-Case 'All expands only known opt-ins and never implies destructive confirmation' {
         $attributes = ($ast.ParamBlock.Attributes | ForEach-Object { $_.Extent.Text }) -join "`n"
         $entryPoint = [scriptblock]::Create(
@@ -279,6 +281,67 @@ try {
         $run.OpenClawTray = "$fixture\selected\OpenClaw.Tray.WinUI.exe"
         $task.Principal.UserId = ''
         Assert-Throws { Get-CleanStartup $false @("$fixture\selected") } 'no identifiable principal'
+    }
+    Test-Case 'Gateway cleanup tasks require exact ownership and respect Dev scope, even when their files are gone' {
+        $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        $root = Get-CleanGatewayCleanupRoot
+        $store = 'OpenClawFoundation.OpenClaw_rfcbke2p71se2'
+        $dev = 'OpenClawFoundation.OpenClaw.Dev_h1swxthnmjtwj'
+        $powershell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        function New-CleanupTask([string]$Name, [string]$Execute, [string]$Arguments) {
+            [pscustomobject]@{
+                TaskName = $Name; TaskPath = '\'
+                Principal = [pscustomobject]@{ UserId = $sid }
+                Actions = @([pscustomobject]@{ Execute = $Execute; Arguments = $Arguments })
+            }
+        }
+        $legacy = New-CleanupTask "OpenClaw Gateway cleanup - $sid - $store" $powershell `
+            "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$root\$store\cleanup.ps1`" -Family $store"
+        $hosted = New-CleanupTask "OpenClaw Gateway cleanup - $sid - $dev" "$root\$dev\cleanup-host-$('A' * 64).exe" $dev
+        $otherUser = New-CleanupTask "OpenClaw Gateway cleanup - S-1-5-21-1-2-3-1001 - $store" 'C:\evil.exe' ''
+        $otherFamily = New-CleanupTask "OpenClaw Gateway cleanup - $sid - Contoso.App_abcdefghijklm" 'C:\evil.exe' ''
+        $tasks = @($legacy, $hosted, $otherUser, $otherFamily)
+        function Get-ScheduledTask { $tasks }
+        function Export-ScheduledTask { 'fixture task XML' }
+        Assert-True (-not (Test-Path -LiteralPath $root)) 'Fixture unexpectedly has cleanup files.'
+        $default = @(Get-CleanGatewayCleanupTasks $false)
+        Assert-True ($default.Count -eq 1 -and $default[0].Name -eq $legacy.TaskName) 'Default scope selected the wrong tasks.'
+        $withDev = @(Get-CleanGatewayCleanupTasks $true)
+        Assert-True ($withDev.Count -eq 2 -and $withDev.Name -contains $hosted.TaskName) 'Dev scope did not select the Dev task.'
+        $good = $legacy.Actions[0].Arguments
+        $legacy.Actions[0].Arguments = "-File `"C:\elsewhere\cleanup.ps1`" -Family $store"
+        Assert-Throws { Get-CleanGatewayCleanupTasks $false } 'unexpected ownership'
+        $legacy.Actions = @([pscustomobject]@{ Execute = 'C:\evil\powershell.exe'; Arguments = $good })
+        Assert-Throws { Get-CleanGatewayCleanupTasks $false } 'unexpected ownership'
+        $legacy.Actions = @([pscustomobject]@{ Execute = $powershell; Arguments = $good }, [pscustomobject]@{ Execute = $powershell; Arguments = $good })
+        Assert-Throws { Get-CleanGatewayCleanupTasks $false } 'unexpected ownership'
+        $legacy.Actions = @([pscustomobject]@{ Execute = $powershell; Arguments = $good })
+        $legacy.TaskPath = '\Microsoft\'
+        Assert-Throws { Get-CleanGatewayCleanupTasks $false } 'unexpected ownership'
+        $legacy.TaskPath = '\'
+        $legacy.Principal.UserId = 'S-1-5-21-1-2-3-1001'
+        Assert-Throws { Get-CleanGatewayCleanupTasks $false } 'unexpected ownership'
+        $legacy.Principal.UserId = $sid
+        $hostPath = "$root\$dev\cleanup-host-$('A' * 64).exe"
+        $hosted.Actions = @([pscustomobject]@{ Execute = $hostPath; Arguments = "$dev -Extra" })
+        Assert-Throws { Get-CleanGatewayCleanupTasks $true } 'unexpected ownership'
+        $hosted.Actions = @([pscustomobject]@{ Execute = "$root\$dev\other.exe"; Arguments = $dev })
+        Assert-Throws { Get-CleanGatewayCleanupTasks $true } 'unexpected ownership'
+        $hosted.Actions = @([pscustomobject]@{ Execute = "$root\$store\cleanup-host-$('A' * 64).exe"; Arguments = $dev })
+        Assert-Throws { Get-CleanGatewayCleanupTasks $true } 'unexpected ownership'
+    }
+    Test-Case 'task removal refuses a task that changed after the reviewed plan' {
+        $task = [pscustomobject]@{ TaskName = 'fixture task'; TaskPath = '\' }
+        $entry = [pscustomobject]@{ Name = 'fixture task'; Key = '\'; Value = 'reviewed XML' }
+        $script:unregistered = 0
+        function Get-ScheduledTask { $task }
+        function Unregister-ScheduledTask { $script:unregistered++ }
+        function Export-ScheduledTask { 'changed XML' }
+        Assert-Throws { Remove-CleanTask $entry } 'Startup task changed'
+        Assert-True ($script:unregistered -eq 0) 'A changed task was unregistered.'
+        function Export-ScheduledTask { 'reviewed XML' }
+        Remove-CleanTask $entry
+        Assert-True ($script:unregistered -eq 1) 'The reviewed task was not unregistered.'
     }
     Test-Case 'tree inventory includes hidden files but refuses source checkout' {
         $tree = Join-Path $fixture 'tree'
@@ -750,6 +813,15 @@ try {
     }
     function Get-CleanProcesses { }
     function Get-CleanStartup { }
+    $script:cleanupTasks = @()
+    $script:cleanupTaskRemovedAfter = $null
+    $script:cleanupTaskRemovalFails = $false
+    function Get-CleanGatewayCleanupTasks { $script:cleanupTasks }
+    function Remove-CleanTask {
+        param($Entry)
+        $script:cleanupTaskRemovedAfter = $script:events.Count
+        if (-not $script:cleanupTaskRemovalFails) { $script:cleanupTasks = @() }
+    }
     function Invoke-CleanTeardown {
         $script:events.Add('teardown')
         if ($script:teardownFails) { throw 'TEST native teardown failed' }
@@ -833,6 +905,41 @@ try {
         $events.Clear()
         Invoke-OpenClawClean -Apply $true -Dev $false -Models $false -Wsl $false -Extra @() -Reports "$fixture\repeat-reports"
         Assert-True ($events.Count -eq 0) 'Absent package was acted on.'
+    }
+    Test-Case 'Gateway cleanup tasks are disarmed after teardown but before package removal, and their selected files are removed' {
+        $root = Get-CleanGatewayCleanupRoot
+        $store = "$root\OpenClawFoundation.OpenClaw_rfcbke2p71se2"
+        $dev = "$root\OpenClawFoundation.OpenClaw.Dev_h1swxthnmjtwj"
+        foreach ($directory in @($store, $dev)) {
+            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            Set-Content -LiteralPath "$directory\owned.json" -Value '{}'
+        }
+        $entry = [pscustomobject]@{ Kind = 'Task'; Name = 'fixture cleanup task'; Key = '\'; Value = 'fixture task XML' }
+        $script:cleanupTasks = @($entry)
+        Invoke-OpenClawClean -Apply $false -Dev $false -Models $false -Wsl $false -Extra @()
+        Assert-True ($script:cleanupTasks.Count -eq 1 -and (Test-Path -LiteralPath $store)) 'Preview changed cleanup state.'
+        $script:registered = $true
+        $events.Clear()
+        Invoke-OpenClawClean -Apply $true -Dev $false -Models $false -Wsl $false -Extra @() -Reports "$fixture\cleanup-task-reports"
+        Assert-True ($script:cleanupTaskRemovedAfter -eq 1) 'Cleanup task must be removed after teardown and before package removal.'
+        Assert-True (($events -join ',') -eq 'teardown,package') 'Unexpected lifecycle order.'
+        Assert-True (-not (Test-Path -LiteralPath $store)) 'Selected cleanup files remain.'
+        Assert-True (Test-Path -LiteralPath "$dev\owned.json") 'Unselected Dev cleanup files were removed.'
+        $plan = Get-Content -LiteralPath "$fixture\cleanup-task-reports\plan.json" -Raw | ConvertFrom-Json
+        Assert-True (@($plan.gatewayCleanupTasks).Count -eq 1) 'Cleanup task was not recorded in the plan.'
+        Invoke-OpenClawClean -Apply $true -Dev $true -Models $false -Wsl $false -Extra @() -Reports "$fixture\cleanup-dev-reports"
+        Assert-True (-not (Test-Path -LiteralPath (Split-Path -Parent $root))) 'Empty Companion home remains.'
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+        Set-Content -LiteralPath "$(Split-Path -Parent $root)\unrelated.txt" -Value 'keep'
+        Invoke-OpenClawClean -Apply $true -Dev $true -Models $false -Wsl $false -Extra @() -Reports "$fixture\cleanup-keep-reports"
+        Assert-True (Test-Path -LiteralPath "$(Split-Path -Parent $root)\unrelated.txt") 'Unrelated Companion home data was removed.'
+        Remove-Item -LiteralPath (Split-Path -Parent $root) -Recurse -Force
+        $script:cleanupTasks = @($entry)
+        $script:cleanupTaskRemovalFails = $true
+        Assert-Throws { Invoke-OpenClawClean -Apply $true -Dev $false -Models $false -Wsl $false -Extra @() -Reports "$fixture\cleanup-remains-reports" } 'Gateway cleanup task remains'
+        $script:cleanupTaskRemovalFails = $false
+        $script:cleanupTasks = @()
+        $events.Clear()
     }
     Test-Case 'WSL deletion is opt-in and exact, with dev distro preserved by default' {
         $script:distroInventory = @('OpenClawGateway', 'OpenClawGateway-Dev', 'UnrelatedDistro', 'OpenClawGateway-extra')
