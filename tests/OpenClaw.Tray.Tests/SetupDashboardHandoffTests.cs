@@ -120,7 +120,7 @@ public sealed class SetupDashboardHandoffTests
     public async Task OrdinaryDashboard_UsesRequestedPathAndNormalCredentials(string? path, string suffix)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "synthetic shared", false, CredentialResolver.SourceSharedGatewayToken),
             url => { launched = url; return Task.FromResult(true); },
             () => throw new InvalidOperationException("Unexpected failure"));
@@ -135,7 +135,7 @@ public sealed class SetupDashboardHandoffTests
     public async Task DeviceAndBootstrapTokens_NeverEnterBrowserUrl(string source, bool bootstrap)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "do-not-export", bootstrap, source),
             url => { launched = url; return Task.FromResult(true); },
             () => throw new InvalidOperationException("Unexpected failure"));
@@ -152,7 +152,7 @@ public sealed class SetupDashboardHandoffTests
     {
         var launches = 0;
         var failures = 0;
-        var launcher = new GatewayDashboardLauncher(() => failure != "tunnel",
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(failure != "tunnel"),
             () => failure == "credential" ? null : new(Gateway.Url, "shared", false, CredentialResolver.SourceSharedGatewayToken),
             _ =>
             {
@@ -182,7 +182,7 @@ public sealed class SetupDashboardHandoffTests
         var failures = 0;
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
             _ => { launches++; return Task.FromResult(true); }, () => failures++);
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
@@ -197,7 +197,7 @@ public sealed class SetupDashboardHandoffTests
         var urls = new List<string>();
         var failures = 0;
         var opened = 0;
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
             url => { urls.Add(url); return Task.FromResult(urls.Count == 2); },
             () => failures++, () => opened++);
@@ -223,7 +223,7 @@ public sealed class SetupDashboardHandoffTests
             (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Receipt(), completion.Target.SessionKey)),
             async (_, _) =>
             {
-                var dashboard = new GatewayDashboardLauncher(() => true,
+                var dashboard = new GatewayDashboardLauncher(() => Task.FromResult(true),
                     () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
                     _ => Task.FromResult(++browserCalls > 1), () => { });
                 if (!await dashboard.OpenAsync("channels", () => { }))
