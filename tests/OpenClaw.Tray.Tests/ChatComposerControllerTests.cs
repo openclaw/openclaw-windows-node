@@ -20,6 +20,14 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerControllerTests
 {
+    private const string ReentrancyTimeoutVariable = "OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS";
+    // A deadlocked callback never completes, so a generous bound does not weaken the
+    // reentrancy checks; it only absorbs scheduling latency on loaded runners.
+    private static readonly TimeSpan ReentrancyTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ReentrancyTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ReentrancyHangGuard = ReentrancyTimeout + TimeSpan.FromSeconds(5);
+
     private static ChatThread MakeThread(string id = "session-1", string? thinkingLevel = null) =>
         new()
         {
@@ -1264,7 +1272,7 @@ public sealed class ChatComposerControllerTests
                 callbackObservedDisposed = controller.IsDisposed;
                 controller.StartVoiceRecording();
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
+            callbackWorkCompleted = callbackWork.Wait(ReentrancyTimeout);
         });
 
         var disposeTask = Task.Factory.StartNew(
@@ -1273,9 +1281,9 @@ public sealed class ChatComposerControllerTests
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
         var exception = await Record.ExceptionAsync(
-            async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+            async () => await disposeTask.WaitAsync(ReentrancyHangGuard));
         if (callbackWork is not null)
-            await callbackWork.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackWork.WaitAsync(ReentrancyHangGuard);
 
         Assert.Null(exception);
         Assert.True(callbackInvoked);
@@ -1312,27 +1320,34 @@ public sealed class ChatComposerControllerTests
         Task? callbackWork = null;
         var callbackInvoked = false;
         var callbackWorkCompleted = false;
+        var callbackWorkObservedCleanup = false;
         using var registration = voiceToken.Register(() =>
         {
             callbackInvoked = true;
-            callbackWork = Task.Run(async () =>
+            // Dedicated worker: a blocked shared pool thread here starves the reentrant voice cleanup it waits for.
+            callbackWork = Task.Factory.StartNew(() =>
             {
                 voiceResult.TrySetResult("late transcript");
-                await cleanupReached.Task;
-            });
-            callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
+                callbackWorkObservedCleanup = cleanupReached.Task.Wait(ReentrancyTimeout);
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            callbackWorkCompleted = callbackWork.Wait(ReentrancyTimeout);
         });
 
-        var disposeTask = Task.Run(controller.Dispose);
+        var disposeTask = Task.Factory.StartNew(
+            controller.Dispose,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         var exception = await Record.ExceptionAsync(
-            async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+            async () => await disposeTask.WaitAsync(ReentrancyHangGuard));
         if (callbackWork is not null)
-            await callbackWork.WaitAsync(TimeSpan.FromSeconds(5));
-        await cleanupReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackWork.WaitAsync(ReentrancyHangGuard);
+        await cleanupReached.Task.WaitAsync(ReentrancyHangGuard);
 
         Assert.Null(exception);
         Assert.True(callbackInvoked);
         Assert.True(callbackWorkCompleted);
+        Assert.True(callbackWorkObservedCleanup);
         Assert.Equal(1, voiceRequestCalls);
         Assert.Equal(string.Empty, vm.Draft);
     }
