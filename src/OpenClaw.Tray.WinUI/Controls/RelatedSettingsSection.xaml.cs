@@ -11,7 +11,6 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using OpenClaw.SetupEngine.UI.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -74,7 +73,7 @@ public sealed partial class RelatedSettingsSection : UserControl
         var canAdmin = CurrentApp.GatewayClient?.GrantedOperatorScopes.Contains(AdminScope) == true;
         var links = RelatedDashboardLinks.For(_pageTag, CurrentApp.AppState?.GatewaySelf?.ServerVersion, canAdmin);
         Visibility = links.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        // GatewaySelf is replaced on every health update; keep the existing cards (and focus) when nothing changed.
+        // GatewaySelf is replaced on every health update; keep the existing rows (and focus) when nothing changed.
         var key = string.Join("|", links.Select(link => link.Path));
         if (key == _renderedKey)
             return;
@@ -84,40 +83,36 @@ public sealed partial class RelatedSettingsSection : UserControl
             LinksPanel.Children.Add(BuildCard(link));
     }
 
-    private SetupActionCard BuildCard(RelatedDashboardLink link)
+    private HyperlinkButton BuildCard(RelatedDashboardLink link)
     {
         var title = LocalizationHelper.GetString(link.TitleKey);
-        var badge = new Border
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        content.Children.Add(FluentIconCatalog.Build(Glyph(link.Id), 14));
+        content.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
+        var badge = new TextBlock
         {
-            Style = (Style)Resources["RelatedSettingsBadgeStyle"],
-            Child = new TextBlock
-            {
-                Text = LocalizationHelper.GetString("Search_Dashboard"),
-                Style = (Style)Resources["RelatedSettingsBadgeTextStyle"],
-            },
+            Text = LocalizationHelper.GetString("Search_Dashboard"),
+            Style = (Style)Resources["RelatedSettingsBadgeTextStyle"],
+            VerticalAlignment = VerticalAlignment.Center,
         };
+        // The link name already says it opens in Dashboard; keep the visual cue out of the UIA tree.
         AutomationProperties.SetAccessibilityView(badge, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
-        // AccessibilityView does not inherit; the card name already says it opens in Dashboard.
-        AutomationProperties.SetAccessibilityView(badge.Child, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        content.Children.Add(badge);
+        var external = FluentIconCatalog.Build(FluentIconCatalog.OpenInBrowser, 12);
+        external.VerticalAlignment = VerticalAlignment.Center;
+        content.Children.Add(external);
 
-        // SetupActionCard supplies the UIA Invoke provider the stock Toolkit card rejects.
-        var card = new SetupActionCard
-        {
-            Header = title,
-            Description = LocalizationHelper.GetString(link.DescriptionKey),
-            HeaderIcon = FluentIconCatalog.Build(Glyph(link.Id)),
-            ActionIcon = FluentIconCatalog.Build(FluentIconCatalog.OpenInBrowser),
-            IsClickEnabled = true,
-            Content = badge,
-        };
-        AutomationProperties.SetAutomationId(card, $"RelatedSettings_{link.Id}");
-        AutomationProperties.SetName(card, string.Format(CultureInfo.CurrentCulture,
+        // Compact link rows keep the section secondary to the page's own settings.
+        var row = new HyperlinkButton { Content = content, Padding = new Thickness(4, 4, 4, 4) };
+        ToolTipService.SetToolTip(row, LocalizationHelper.GetString(link.DescriptionKey));
+        AutomationProperties.SetHelpText(row, LocalizationHelper.GetString(link.DescriptionKey));
+        AutomationProperties.SetAutomationId(row, $"RelatedSettings_{link.Id}");
+        AutomationProperties.SetName(row, string.Format(CultureInfo.CurrentCulture,
             LocalizationHelper.GetString("RelatedSettings_OpensInDashboardFormat"), title));
         var path = link.Path;
-        card.InvokeRequested += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard(path);
-        return card;
+        row.Click += (_, _) => ((IAppCommands)CurrentApp).OpenDashboard(path);
+        return row;
     }
-
     private static string Glyph(string routeId) => routeId switch
     {
         "Approvals" => FluentIconCatalog.Check,

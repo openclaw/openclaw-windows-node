@@ -12,25 +12,17 @@
     HorizontalAlignment="Stretch"
     Visibility="Collapsed">
     <UserControl.Resources>
-        <Style x:Key="RelatedSettingsBadgeStyle" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}"/>
-            <Setter Property="Padding" Value="8,2"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
         <Style x:Key="RelatedSettingsBadgeTextStyle" TargetType="TextBlock"
                BasedOn="{StaticResource CaptionTextBlockStyle}">
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
         </Style>
     </UserControl.Resources>
-    <StackPanel Spacing="4" Margin="0,16,0,0">
+    <StackPanel Spacing="2" Margin="0,16,0,0">
         <TextBlock x:Uid="RelatedSettings_Header"
                    Text="Related settings"
                    Style="{StaticResource BodyStrongTextBlockStyle}"
                    AutomationProperties.HeadingLevel="Level2"
-                   Margin="1,0,0,6"/>
-        <StackPanel x:Name="LinksPanel" Spacing="4"/>
+                   Margin="1,0,0,2"/>
+        <StackPanel x:Name="LinksPanel" Spacing="0" Margin="-4,0,0,0"/>
     </StackPanel>
 </UserControl>

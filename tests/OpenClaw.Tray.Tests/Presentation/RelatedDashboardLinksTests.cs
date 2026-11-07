@@ -124,10 +124,11 @@ public sealed class RelatedDashboardLinksTests
         Assert.Contains("RelatedDashboardLinks.For(", code);
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard(path)", code);
         Assert.Contains("var path = link.Path;", code);
-        // Stock Toolkit SettingsCard advertises UIA Invoke but rejects it; rows must stay invokable.
-        Assert.Contains("new SetupActionCard", code);
-        Assert.Contains("card.InvokeRequested +=", code);
+        // Compact link rows: HyperlinkButton keeps a working UIA Invoke, unlike the stock Toolkit SettingsCard.
+        Assert.Contains("new HyperlinkButton", code);
+        Assert.Contains("row.Click +=", code);
         Assert.DoesNotContain("new SettingsCard", code);
+        Assert.DoesNotContain("SetupActionCard", code);
         Assert.DoesNotContain("http", code, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Launcher.", code, StringComparison.Ordinal);
         Assert.DoesNotContain("new Uri", code, StringComparison.Ordinal);
