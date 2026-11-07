@@ -132,6 +132,16 @@ public sealed class PendingRequestRegistryTests
     }
 
     [Fact]
+    public async Task ParameterlessDrain_FaultsWizardRequestWithPlainCancellation_NotConnectionLost()
+    {
+        var registry = OpenRegistry();
+        var wizard = registry.RegisterWizard("wizard-1", "users.setAvatar");
+        registry.Drain();
+        var ex = await Assert.ThrowsAsync<OperationCanceledException>(async () => await wizard.Task);
+        Assert.IsNotType<GatewayConnectionLostException>(ex);
+    }
+
+    [Fact]
     public async Task StaleHandle_CannotRemoveReusedIdFromNewGeneration()
     {
         var registry = OpenRegistry();

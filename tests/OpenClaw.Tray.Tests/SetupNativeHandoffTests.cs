@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
@@ -12,11 +13,473 @@ public sealed class SetupNativeHandoffTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CancelledCallbackReturningSuccess_RetainsReceiptAndRecoveryForExplicitRetry(bool duringVerify)
+    public async Task LegacyInFlightPresentationSurvivesDuplicateBusyWithoutAReadinessProof(bool failVerification)
     {
         using var temp = new TempDirectory();
         var store = new SetupDashboardHandoffStore(temp.Path);
         var handle = store.Issue(Choice);
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        var ownership = new SetupHandoffPresentationOwnership();
+        var verification = new TaskCompletionSource<SetupVerifiedNativeRoute>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var verifies = 0;
+        var navigations = 0;
+        var shellOpen = true;
+        var failures = new List<SetupNativeLaunchFailure>();
+        SetupNativeHandoffLauncher Launcher() => new(() => Gateway,
+            (_, _) => { verifies++; return verification.Task; },
+            (completion, _) =>
+            {
+                Assert.Equal(Choice.Target, completion.Target);
+                navigations++;
+                return Task.CompletedTask;
+            },
+            failures.Add,
+            showPreparing: (_, _) => throw new Exception("A legacy destination cannot become a preparation receipt."),
+            acquisitionDeferred: status =>
+            {
+                var action = SetupDeferredPresentationPolicy.Project(status, hasUnboundStartupShell: shellOpen,
+                    hasInFlightPresentation: ownership.IsActive);
+                if (action == SetupDeferredPresentation.CloseUnboundShell) shellOpen = false;
+            },
+            acquirePresentation: ownership.Acquire);
+        var first = Launcher().OpenAsync(store, handle, restartRecovery: recovery);
+        try
+        {
+            Assert.True(ownership.IsActive);
+            Assert.False(first.IsCompleted);
+            Assert.False(await Launcher().OpenAsync(store, handle, restartRecovery: recovery));
+            Assert.True(shellOpen);
+            Assert.True(ownership.IsActive);
+            Assert.Equal(1, verifies);
+            Assert.Equal(0, navigations);
+            Assert.Empty(failures);
+            Assert.Equal(handle, recovery.Read());
+        }
+        finally
+        {
+            if (failVerification) verification.TrySetException(new IOException("Synthetic verification unavailable"));
+            else verification.TrySetResult(new(Proof, Choice.Target.SessionKey));
+        }
+        Assert.Equal(!failVerification, await first);
+        Assert.False(ownership.IsActive);
+        Assert.Equal(failVerification ? 0 : 1, navigations);
+        Assert.Equal(1, verifies);
+        Assert.Equal(failVerification ? handle : null, recovery.Read());
+        Assert.Equal(failVerification ? SetupHandoffAcquisitionStatus.RetryRequired : SetupHandoffAcquisitionStatus.Invalid,
+            store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public async Task GenuinelyUnboundBusyShellStillClosesWithoutDisturbingTheReceipt()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(Choice);
+        using var otherLease = store.Acquire(handle).Lease;
+        Assert.NotNull(otherLease);
+        var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
+        var before = File.ReadAllBytes(path);
+        var ownership = new SetupHandoffPresentationOwnership();
+        var shellOpen = true;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => throw new Exception("Busy cannot verify"),
+            (_, _) => throw new Exception("Busy cannot navigate"),
+            _ => throw new Exception("Busy cannot report a new failure"),
+            acquisitionDeferred: status =>
+            {
+                Assert.Equal(SetupDeferredPresentation.CloseUnboundShell,
+                    SetupDeferredPresentationPolicy.Project(status, shellOpen, ownership.IsActive));
+                shellOpen = false;
+            },
+            acquirePresentation: ownership.Acquire);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.False(shellOpen);
+        Assert.False(ownership.IsActive);
+        Assert.Equal(before, File.ReadAllBytes(path));
+        otherLease.RetainForExplicitRetry();
+    }
+
+    [Fact]
+    public async Task PersistedRetrySettlesEarlyStartupWithoutVerificationOrRenewingReceipt()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        using (var lease = store.Acquire(handle).Lease) lease!.RetainForExplicitRetry();
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
+        var before = File.ReadAllBytes(path);
+        var presentation = SetupDeferredPresentation.None;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => throw new Exception("Non-explicit startup cannot verify a retry receipt"),
+            (_, _) => throw new Exception("Must not open"),
+            _ => throw new Exception("Legacy failure path must not be replayed"),
+            acquisitionDeferred: status => presentation = SetupDeferredPresentationPolicy.Project(status, true));
+        Assert.False(await launcher.OpenAsync(store, recovery.Read(), restartRecovery: recovery));
+        Assert.Equal(SetupDeferredPresentation.OfferRetry, presentation);
+        Assert.Equal(before, File.ReadAllBytes(path));
+        Assert.Equal(handle, recovery.Read());
+        Assert.Equal(SetupDeferredPresentation.None,
+            SetupDeferredPresentationPolicy.Project(SetupHandoffAcquisitionStatus.RetryRequired, false));
+    }
+
+    [Fact]
+    public async Task DuplicateBusyActivationCannotCloseTheAdmittedPresentation()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var verify = new TaskCompletionSource<SetupVerifiedNativeRoute>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bound = false;
+        var deferred = SetupDeferredPresentation.None;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway, (_, _) => verify.Task,
+            (_, _) => throw new Exception("No destination"), _ => throw new Exception("No failure expected"),
+            showPreparing: (_, _) => { bound = true; return Task.CompletedTask; },
+            showReady: (_, _) => Task.CompletedTask,
+            acquisitionDeferred: status => deferred = SetupDeferredPresentationPolicy.Project(status, !bound));
+        var first = launcher.OpenAsync(store, handle);
+        Assert.True(bound);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupDeferredPresentation.None, deferred);
+        Assert.False(first.IsCompleted);
+        verify.SetResult(new(Proof, Proof.SessionKey!));
+        Assert.True(await first);
+        Assert.Equal(SetupDeferredPresentation.CloseUnboundShell,
+            SetupDeferredPresentationPolicy.Project(SetupHandoffAcquisitionStatus.Busy, true));
+    }
+
+    [Fact]
+    public async Task MissedRevisionEventBeforeSubscriptionCannotMountOrConsumePreparation()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var transport = new ReadinessTransport(Proof);
+        var observation = new ReadinessSubscription();
+        var mounted = false;
+        var consumed = false;
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            async (_, ct) =>
+            {
+                var binding = await SetupNativeReadyBinding.VerifyAsync(transport, Proof, ct);
+                return new(binding.Proof, binding.Proof.SessionKey!, binding);
+            }, (_, _) => throw new Exception("No destination"), failures.Add,
+            showPreparing: (_, _) => Task.CompletedTask,
+            showReady: async (route, ct) =>
+            {
+                using var subscription = await route.ReadyBinding!.ObserveAndCheckAsync(_ =>
+                {
+                    transport.Hash = "changed-without-event";
+                    return observation;
+                }, ct);
+                mounted = true;
+            },
+            readyConsumed: () => consumed = true,
+            confirmStableAuthority: (proof, ct) => SetupNativeReadyBinding.RequireStableAuthorityAsync(transport, proof, ct));
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.False(mounted);
+        Assert.False(consumed);
+        Assert.Equal(1, observation.Disposals);
+        Assert.Equal([SetupNativeLaunchFailure.Unavailable], failures);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+    }
+
+    private sealed class ReadinessSubscription : IDisposable
+    {
+        public int Disposals { get; private set; }
+        public void Dispose() => Disposals++;
+    }
+
+    [Theory]
+    [InlineData("generation")]
+    [InlineData("disconnect")]
+    [InlineData("revision")]
+    public async Task ConfirmedStableFreshnessLossRetainsOriginalLeaseForExplicitReverification(string stale)
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        recovery.Save(handle);
+        var transport = new ReadinessTransport(Proof);
+        var first = true;
+        var confirmations = 0;
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            async (_, ct) =>
+            {
+                var binding = await SetupNativeReadyBinding.VerifyAsync(transport, Proof, ct);
+                if (first) clock.Advance(TimeSpan.FromMinutes(2));
+                return new(binding.Proof, binding.Proof.SessionKey!, binding);
+            }, (_, _) => throw new Exception("No destination was requested"), failures.Add, clock,
+            showPreparing: (_, _) => Task.CompletedTask,
+            showReady: async (route, ct) =>
+            {
+                if (first)
+                {
+                    first = false;
+                    if (stale == "generation") transport.Generation++;
+                    if (stale == "disconnect") transport.IsConnected = false;
+                    if (stale == "revision") transport.Hash = "unrelated-revision";
+                }
+                await route.ReadyBinding!.RequireCurrentAsync(ct);
+            },
+            confirmStableAuthority: async (proof, ct) =>
+            {
+                confirmations++;
+                transport.IsConnected = true; // Synthetic normal-owner reconnect, not setup recovery.
+                await SetupNativeReadyBinding.RequireStableAuthorityAsync(transport, proof, ct);
+            });
+        Assert.False(await launcher.OpenAsync(store, handle, restartRecovery: recovery));
+        Assert.Equal([SetupNativeLaunchFailure.Unavailable], failures);
+        Assert.Equal(handle, recovery.Read());
+        Assert.Equal(1, confirmations);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
+        using var record = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(SetupNativeCompletionTiming.Execution,
+            record.RootElement.GetProperty("ExecutionExpiresUtc").GetDateTimeOffset() -
+            record.RootElement.GetProperty("ExecutionStartedUtc").GetDateTimeOffset());
+        clock.Advance(TimeSpan.FromMinutes(5)); // Beyond admission, but still inside the original execution lease.
+        Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true, restartRecovery: recovery));
+        Assert.Null(recovery.Read());
+        Assert.Equal(2, transport.Verifications);
+        Assert.Equal(1, transport.Discoveries);
+    }
+
+    [Theory]
+    [InlineData("identity", "Changed")]
+    [InlineData("endpoint", "Changed")]
+    [InlineData("agent", "Changed")]
+    [InlineData("session", "Changed")]
+    [InlineData("model", "Changed")]
+    [InlineData("unknown", "Invalid")]
+    [InlineData("expired", "Invalid")]
+    public async Task LostFreshnessCannotRetainReceiptWhenStableAuthorityIsChangedOrUnconfirmed(
+        string change, string expected)
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var transport = new ReadinessTransport(Proof);
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromException<SetupVerifiedNativeRoute>(new SetupNativeReadinessExpiredException()),
+            (_, _) => throw new Exception("Must not open"), failures.Add, clock,
+            showPreparing: (_, _) => Task.CompletedTask,
+            confirmStableAuthority: async (proof, ct) =>
+            {
+                transport.Route = change switch
+                {
+                    "identity" => transport.Route with { IdentityBinding = new string('C', 64) },
+                    "endpoint" => transport.Route with { EndpointBinding = new string('C', 64) },
+                    "agent" => transport.Route with { AgentId = "another", SessionKey = "agent:another:main" },
+                    "session" => transport.Route with { SessionKey = "agent:primary:another" },
+                    _ => transport.Route,
+                };
+                if (change == "model") transport.Model = "other/model";
+                if (change == "unknown") throw new IOException("No current authority evidence");
+                if (change == "expired") clock.Advance(SetupNativeCompletionTiming.Execution);
+                await SetupNativeReadyBinding.RequireStableAuthorityAsync(transport, proof, ct);
+            });
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(expected, Assert.Single(failures).ToString());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+        Assert.Equal(0, transport.Verifications);
+    }
+
+    private sealed class ReadinessTransport(GatewayAiSetupCompletion proof) : IGatewayAiSetupTransport
+    {
+        public GatewayAiSetupRoute Route { get; set; } = new(proof.GatewayId, proof.AgentId, "fixture",
+            proof.EndpointBinding, proof.IdentityBinding, proof.SessionKey);
+        public long Generation { get; set; } = proof.VerifiedGeneration;
+        public bool IsConnected { get; set; } = true;
+        public string Model { get; set; } = proof.ModelRef;
+        public string Hash { get; set; } = "original-revision";
+        public int Verifications { get; private set; }
+        public int Discoveries { get; private set; }
+        public IReadOnlyCollection<string> Methods => ["openclaw.setup.detect", "openclaw.setup.verify", "openclaw.setup.activate"];
+        public IReadOnlyCollection<string> OperatorScopes => ["operator.admin"];
+        public Task<System.Text.Json.JsonElement> RequestAsync(string method, object parameters, int timeoutMs, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (method == "openclaw.setup.verify") Verifications++;
+            if (method == "openclaw.setup.detect") Discoveries++;
+            return Task.FromResult(System.Text.Json.JsonSerializer.SerializeToElement<object>(method switch
+            {
+                "config.get" => new { hash = Hash, valid = true },
+                "openclaw.setup.verify" => new { ok = true, modelRef = Model, latencyMs = 1 },
+                "openclaw.setup.detect" => new { candidates = Array.Empty<object>(), manualProviders = Array.Empty<object>(),
+                    workspace = "fixture", setupComplete = true, configuredModel = Model },
+                _ => throw new Exception("No setup mutations are permitted"),
+            }));
+        }
+    }
+
+    [Fact]
+    public void ReadyObservationRequiresTheVerifiedModelEvenIfAnUnrelatedRuntimeWasCapturedAfterVerification()
+    {
+        var healthy = LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:9999"), DateTimeOffset.UnixEpoch) with
+        {
+            State = LocalAiRuntimeState.Healthy, Ownership = LocalAiOwnership.CompanionManaged,
+            ModelId = "selected", ProcessId = 7, ProcessStartedAtUtc = DateTimeOffset.UnixEpoch,
+        };
+        Assert.True(SetupReadyObservation.IsSameManagedRuntime("llamacpp/selected", healthy, healthy));
+        var other = healthy with { ModelId = "other" };
+        Assert.False(SetupReadyObservation.IsSameManagedRuntime("llamacpp/selected", other, other));
+        Assert.False(SetupReadyObservation.IsSameManagedRuntime("llamacpp/selected", healthy, healthy with { ProcessId = 8 }));
+        Assert.False(SetupReadyObservation.IsSameManagedRuntime("llamacpp/selected", healthy,
+            healthy with { State = LocalAiRuntimeState.Stopped }));
+    }
+
+    [Fact]
+    public async Task PreparationConsumesOnlyAfterFreshReadyMountAndNeverOpensAFabricatedDestination()
+    {
+        Assert.Null(Gateway.NativePackageFamilyName); // Existing/remote receipts use the same destination-free contract.
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var mounted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var mounting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = new List<string>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => { calls.Add("verify"); return Task.FromResult(new SetupVerifiedNativeRoute(Proof with { VerifiedGeneration = 25 }, Proof.SessionKey!)); },
+            (_, _) => throw new Exception("No destination was chosen"),
+            _ => throw new Exception("Must succeed"),
+            showPreparing: (_, _) => { calls.Add("progress"); return Task.CompletedTask; },
+            showReady: async (route, _) =>
+            {
+                Assert.Equal(25, route.Verification.VerifiedGeneration);
+                calls.Add("ready");
+                mounting.SetResult();
+                await mounted.Task;
+            });
+        var launch = launcher.OpenAsync(store, handle);
+        await mounting.Task;
+        Assert.Equal(SetupHandoffAcquisitionStatus.Busy, store.Acquire(handle).Status);
+        mounted.SetResult();
+        Assert.True(await launch);
+        Assert.Equal(["progress", "verify", "ready"], calls);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public void PreparationAndDestinationExplicitlySupersedeOnePendingRecord()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var old = store.Issue(Choice);
+        var preparation = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(old).Status);
+        using (var lease = store.Acquire(preparation).Lease)
+        {
+            Assert.NotNull(lease);
+            Assert.True(lease.IsPreparation);
+            Assert.Null(lease.NativeTarget);
+            Assert.Equal(Proof.SessionKey, lease.SessionKey);
+            lease.RetainForExplicitRetry();
+        }
+        var replacement = store.Issue(Choice);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(preparation, explicitRetry: true).Status);
+        using var destination = store.Acquire(replacement).Lease;
+        Assert.NotNull(destination);
+        Assert.False(destination.IsPreparation);
+    }
+
+    [Theory]
+    [InlineData("session")]
+    [InlineData("identity")]
+    [InlineData("generation")]
+    [InlineData("role")]
+    public void PreparationRequiresFullSessionAuthorityWithoutADestination(string invalid)
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var proof = Proof with
+        {
+            IdentityBinding = invalid == "identity" ? null : Proof.IdentityBinding,
+            VerifiedGeneration = invalid == "generation" ? 0 : Proof.VerifiedGeneration,
+            ModelTarget = invalid == "role" ? "utility" : null,
+        };
+        Assert.Throws<SetupNativeOwnershipException>(() => store.IssuePreparation(new(proof,
+            invalid == "session" ? "agent:primary:other" : Proof.SessionKey!)));
+    }
+
+    [Fact]
+    public async Task PreparationSurvivesFiveMinuteTeardownBeforeFirstAcquisition()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        clock.Advance(TimeSpan.FromSeconds(330));
+        var ready = 0;
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => throw new Exception("Preparation cannot open a destination"), failures.Add, clock,
+            showPreparing: (_, _) => Task.CompletedTask,
+            showReady: (_, _) => { ready++; return Task.CompletedTask; });
+
+        Assert.True(await launcher.OpenAsync(store, handle, restartRecovery: recovery));
+        Assert.Equal(1, ready);
+        Assert.Empty(failures);
+        Assert.Null(recovery.Read());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public async Task PreparationFailureRetriesWithinOriginalLeaseWithoutFinalization()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var failures = new List<SetupNativeLaunchFailure>();
+        var fail = true;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => fail ? Task.FromException<SetupVerifiedNativeRoute>(new IOException("Model unavailable")) :
+                Task.FromResult(new SetupVerifiedNativeRoute(Proof, Proof.SessionKey!)),
+            (_, _) => throw new Exception("No destination"),
+            failures.Add, clock, showPreparing: (_, _) => Task.CompletedTask,
+            showReady: (_, _) => Task.CompletedTask);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        clock.Advance(TimeSpan.FromMinutes(6));
+        fail = false;
+        Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true));
+        Assert.Equal([SetupNativeLaunchFailure.Unavailable], failures);
+    }
+
+    [Fact]
+    public void CrashedPreparationRemainsNonReplayableAndUnknownKindFailsClosed()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        store.Acquire(handle).Lease!.Dispose();
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+        handle = store.IssuePreparation(new(Proof, Proof.SessionKey!));
+        var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("preparation-v2", "preparation-v99", StringComparison.Ordinal));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancelledCallbackReturningSuccess_RetainsReceiptAndRecoveryForExplicitRetry(bool duringVerify)
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(ChatChoice);
         var recovery = new NativeRestartRecoveryStore(temp.Path);
         recovery.Save(handle);
         using var cancellation = new CancellationTokenSource();
@@ -46,6 +509,33 @@ public sealed class SetupNativeHandoffTests
             (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
             (_, _) => Task.CompletedTask, failures.Add);
         Assert.True(await retry.OpenAsync(store, handle, explicitRetry: true, restartRecovery: recovery));
+        Assert.Null(recovery.Read());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public async Task LegacyDashboardDispatchAfterCancellationConsumesReceiptAndRecovery()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(Choice);
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        using var cancellation = new CancellationTokenSource();
+        var failures = new List<SetupNativeLaunchFailure>();
+        var opens = 0;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
+            (_, _) =>
+            {
+                opens++;
+                cancellation.Cancel();
+                return Task.CompletedTask;
+            }, failures.Add);
+
+        Assert.True(await launcher.OpenAsync(store, handle, ct: cancellation.Token, restartRecovery: recovery));
+        Assert.Equal(1, opens);
+        Assert.Empty(failures);
         Assert.Null(recovery.Read());
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
@@ -177,27 +667,36 @@ public sealed class SetupNativeHandoffTests
         Gateway.Id, GatewayDashboardBinding.Capture(Gateway), "provider/model", "primary", 4,
         IdentityBinding: new string('B', 64), SessionKey: "agent:primary:main");
     private static SetupNativeCompletion Choice => new(Proof, new(SetupNativeDestination.Telegram, "agent:primary:main"));
+    private static SetupNativeCompletion ChatChoice => Choice with { Target = Choice.Target with { Destination = SetupNativeDestination.Chat } };
 
     [Theory]
     [InlineData(SetupNativeDestination.Chat, 0, "chat")]
     [InlineData(SetupNativeDestination.WhatsApp, 1, "channels")]
     [InlineData(SetupNativeDestination.Telegram, 2, "channels")]
     [InlineData(SetupNativeDestination.Channels, 3, "channels")]
-    [InlineData(SetupNativeDestination.Skills, 4, "skills")]
     public void NativeRecordIsVersionedAndCannotBecomeALegacyBrowserReceipt(SetupNativeDestination destination, int persistedValue, string page)
     {
         using var temp = new TempDirectory();
         var store = new SetupDashboardHandoffStore(temp.Path);
         var choice = Choice with { Target = Choice.Target with { Destination = destination } };
         Assert.Equal(persistedValue, (int)destination);
-        Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        var dashboardPath = HubPageRegistry.GetNativeSetupDashboardPath(destination);
+        if (dashboardPath is not null)
+        {
+            Assert.Equal(page, dashboardPath);
+            Assert.Throws<ArgumentOutOfRangeException>(() => HubPageRegistry.GetNativeSetupPage(destination));
+        }
+        else
+        {
+            Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        }
         var request = new SetupNativeNavigationRequest(choice);
         if (destination == SetupNativeDestination.Chat)
         {
             Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, choice.Target.SessionKey), request.WorkspaceDestination);
             request.RequireWorkspaceDestination(request.WorkspaceDestination!);
         }
-        else
+        else if (dashboardPath is null)
         {
             Assert.Null(request.WorkspaceDestination);
             Assert.Throws<SetupNativeOwnershipException>(() =>
@@ -212,6 +711,24 @@ public sealed class SetupNativeHandoffTests
         lease.Consume();
         Assert.Equal(SetupHandoffAcquisitionStatus.Busy, store.Acquire(handle).Status);
         lease.Dispose();
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public void RetiredSkillsDestination_CannotBeIssuedOrAcquiredFromAnOldReceipt()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var retired = Choice with { Target = Choice.Target with { Destination = (SetupNativeDestination)4 } };
+        Assert.False(retired.Target.Matches(retired.Verification));
+        Assert.Throws<SetupNativeOwnershipException>(() => store.Issue(retired));
+
+        var handle = store.Issue(Choice);
+        var path = Path.Combine(temp.Path, "setup-dashboard-handoff", "pending.json");
+        var pending = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        pending["NativeTarget"]!["Destination"] = 4;
+        File.WriteAllText(path, pending.ToJsonString());
+
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
 
@@ -238,10 +755,10 @@ public sealed class SetupNativeHandoffTests
     [InlineData("agent")]
     [InlineData("endpoint")]
     [InlineData("disconnected")]
-    public void SkillsBindingRejectsDrift(string changed)
+    public void ChannelsBindingRejectsDrift(string changed)
     {
         var request = new SetupNativeNavigationRequest(Choice with
-            { Target = new(SetupNativeDestination.Skills, "agent:primary:main") });
+            { Target = new(SetupNativeDestination.Channels, "agent:primary:main") });
         var gateway = Gateway with
         {
             Id = changed == "gateway" ? "other" : Gateway.Id,
@@ -271,7 +788,7 @@ public sealed class SetupNativeHandoffTests
         Assert.False(await launcher.OpenAsync(store, handle));
         Assert.Equal(1, attempts);
         Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true));
-        Assert.Equal(["verify", "open", "failure", "failure", "verify", "open"], calls);
+        Assert.Equal(["verify", "open", "failure", "verify", "open"], calls);
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
@@ -424,7 +941,7 @@ public sealed class SetupNativeHandoffTests
         Assert.Equal(handle, recovery.Read());
         Assert.False(await launcher.OpenAsync(store, handle, restartRecovery: recovery));
         Assert.Equal(1, attempts);
-        Assert.Equal([SetupNativeLaunchFailure.Unavailable, SetupNativeLaunchFailure.Unavailable], failures);
+        Assert.Equal([SetupNativeLaunchFailure.Unavailable], failures);
         Assert.Equal(handle, recovery.Read());
         Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true, restartRecovery: recovery));
         Assert.Equal(2, attempts);
@@ -476,33 +993,198 @@ public sealed class SetupNativeHandoffTests
         var launcher = new SetupNativeHandoffLauncher(() => gateway,
             (_, _) =>
             {
-                if (expiry) clock.Now += TimeSpan.FromMinutes(6);
+                if (expiry) clock.Now += SetupNativeCompletionTiming.Execution;
                 else gateway = gateway with { Url = "wss://other.example/" };
                 return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
             },
             (_, _) => throw new InvalidOperationException("Must not open"),
-            failure => Assert.Equal(SetupNativeLaunchFailure.Changed, failure));
+            failure => Assert.Equal(expiry ? SetupNativeLaunchFailure.Invalid : SetupNativeLaunchFailure.Changed, failure));
         Assert.False(await launcher.OpenAsync(store, handle));
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
-    }
-
-    [Fact]
-    public void FocusPolicyDoesNotTreatFallbackOrConfiguredOtherChannelsAsAuthoritativeAbsence()
-    {
-        Assert.Equal(SetupChannelAvailability.Unconfirmed,
-            SetupChannelFocusPolicy.GetAvailability(new(), "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.Unconfirmed,
-            SetupChannelFocusPolicy.GetAvailability(new() { Channels = new Dictionary<string, System.Text.Json.JsonElement>
-                { ["telegram"] = default } }, "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.NotOffered,
-            SetupChannelFocusPolicy.GetAvailability(new() { ChannelOrder = ["telegram"] }, "whatsapp"));
-        Assert.Equal(SetupChannelAvailability.Offered,
-            SetupChannelFocusPolicy.GetAvailability(new() { ChannelOrder = ["whatsapp"] }, "whatsapp"));
     }
 
     private sealed class Clock : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now;
+        public TimeSpan? Deadline { get; private set; }
+        public Action? Expire { get; private set; }
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Deadline = dueTime;
+            Expire = () => callback(state);
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
+    [Fact]
+    public async Task ColdStartupAndRealInferenceHaveTimeToFinishBeforeOpening()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var opened = false;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, ct) =>
+            {
+                Assert.Equal(SetupNativeCompletionTiming.Execution, clock.Deadline);
+                clock.Now += TimeSpan.FromSeconds(60 + 120);
+                Assert.False(ct.IsCancellationRequested);
+                return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
+            },
+            (_, _) => { opened = true; return Task.CompletedTask; },
+            _ => Assert.Fail("Cold startup should not produce a premature dialog."), clock);
+        Assert.True(await launcher.OpenAsync(store, handle));
+        Assert.True(opened);
+    }
+
+    [Fact]
+    public async Task DeadlineStopsVerificationAndAutomaticActivationDoesNotRepeatTheDialog()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var failures = new List<SetupNativeLaunchFailure>();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            async (_, ct) =>
+            {
+                entered.SetResult();
+                await Task.Delay(Timeout.Infinite, ct);
+                throw new InvalidOperationException("Verification must be cancelled.");
+            },
+            (_, _) => throw new InvalidOperationException("Must not open before verification."),
+            failures.Add, clock);
+        var attempt = launcher.OpenAsync(store, handle);
+        await entered.Task;
+        clock.Expire!();
+        Assert.False(await attempt);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Single(failures);
+        using var retry = store.Acquire(handle, explicitRetry: true).Lease;
+        Assert.NotNull(retry);
+        retry.Consume();
+    }
+
+    [Fact]
+    public async Task UnacquiredReceiptStillExpiresAfterFiveMinutes()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        clock.Now += TimeSpan.FromMinutes(5);
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => throw new InvalidOperationException("An expired receipt must not verify."),
+            (_, _) => throw new InvalidOperationException("Must not open."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Invalid, failure), clock);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SlowPublishedPhasesOpenExactlyOnceWithinTheExecutionLease(bool recoverModel)
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var opens = 0;
+        var verifications = 0;
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            async (_, ct) =>
+            {
+                verifications++;
+                var phases = recoverModel ? new[] { 200, 200, 200, 145 } : new[] { 175, 100 };
+                foreach (var seconds in phases)
+                {
+                    clock.Advance(TimeSpan.FromSeconds(seconds));
+                    await Task.Yield();
+                    ct.ThrowIfCancellationRequested();
+                }
+                return new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey);
+            },
+            (_, ct) =>
+            {
+                clock.Advance(TimeSpan.FromSeconds(25));
+                ct.ThrowIfCancellationRequested();
+                opens++;
+                return Task.CompletedTask;
+            }, failures.Add, clock);
+        Assert.True(await launcher.OpenAsync(store, handle));
+        Assert.Empty(failures);
+        Assert.False(await launcher.OpenAsync(store, handle, explicitRetry: true));
+        Assert.Equal(1, verifications);
+        Assert.Equal(1, opens);
+    }
+
+    [Fact]
+    public async Task ExpiredExecutionCannotNavigateAfterAnUncooperativeVerificationReturns()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var result = new TaskCompletionSource<SetupVerifiedNativeRoute>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken verificationToken = default;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, ct) => { verificationToken = ct; return result.Task; },
+            (_, _) => throw new InvalidOperationException("Late verification cannot navigate."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Invalid, failure), clock);
+        var opening = launcher.OpenAsync(store, handle);
+        clock.Advance(SetupNativeCompletionTiming.Execution);
+        Assert.True(verificationToken.IsCancellationRequested);
+        result.SetResult(new(Proof, Choice.Target.SessionKey));
+        Assert.False(await opening);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Fact]
+    public async Task NavigationDeadlineCancelsLatePresentationWithoutConsumingOrRenewingReceipt()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(ChatChoice);
+        var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken navigationToken = default;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
+            (_, ct) => { navigationToken = ct; return opened.Task; },
+            failure => Assert.Equal(SetupNativeLaunchFailure.Unavailable, failure), clock);
+        var opening = launcher.OpenAsync(store, handle);
+        clock.Advance(SetupNativeCompletionTiming.Navigation);
+        Assert.True(navigationToken.IsCancellationRequested);
+        opened.SetResult();
+        Assert.False(await opening);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        using var retry = store.Acquire(handle, explicitRetry: true).Lease!;
+        Assert.Equal(SetupNativeCompletionTiming.Execution - SetupNativeCompletionTiming.Navigation, retry.RemainingLifetime);
+        retry.Consume();
+    }
+
+    [Fact]
+    public async Task BackwardClockDuringVerificationInvalidatesReceiptWithoutOfferingRetry()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) =>
+            {
+                clock.Now -= TimeSpan.FromSeconds(1);
+                return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
+            },
+            (_, _) => throw new InvalidOperationException("Invalid lease must not navigate."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Invalid, failure), clock);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 }

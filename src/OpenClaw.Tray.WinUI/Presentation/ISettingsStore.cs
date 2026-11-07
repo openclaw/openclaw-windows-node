@@ -62,6 +62,7 @@ public sealed class SettingsChangedEventArgs : EventArgs
 /// </summary>
 public interface ISettingsEditor
 {
+    void ApplySystemRunPreset(OpenClaw.Shared.SystemRunAccessPreset preset);
     bool AutoStart { set; }
     bool GlobalHotkeyEnabled { set; }
     bool UseLegacyWebChat { set; }
@@ -99,6 +100,12 @@ public interface ISettingsEditor
     bool LocationConsentGiven { set; }
     bool VoiceTtsEnabled { set; }
     bool ShowChatToolCalls { set; }
+
+    /// <summary>
+    /// Pins or unpins one page for a saved-Gateway scope, applied to the live persisted list inside the
+    /// store update so disjoint edits are never lost. UI-only: never requires a runtime capability reload.
+    /// </summary>
+    void SetPagePinned(string scopeKey, string tag, bool pinned);
 }
 
 /// <summary>
@@ -107,6 +114,8 @@ public interface ISettingsEditor
 /// </summary>
 public sealed record SettingsSnapshot
 {
+    public OpenClaw.Shared.SystemRunFilesystemScope? SystemRunFilesystemScope { get; init; }
+    public string SystemRunPolicyFingerprint { get; init; } = "";
     public long Version { get; init; }
     public bool AutoStart { get; init; }
     public bool GlobalHotkeyEnabled { get; init; }
@@ -150,4 +159,11 @@ public sealed record SettingsSnapshot
     public bool LocationConsentGiven { get; init; }
 
     public bool ShowChatToolCalls { get; init; }
+
+    /// <summary>Immutable copy of the local sidebar page pins keyed by Gateway scope.</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<string>> PinnedPagesByGateway { get; init; } =
+        System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<string>>.Empty;
+
+    public System.Collections.Immutable.ImmutableArray<string> PinnedPagesFor(string? gatewayId) =>
+        PinnedPagesByGateway.TryGetValue(PinnedPages.ScopeKey(gatewayId), out var pins) ? pins : [];
 }

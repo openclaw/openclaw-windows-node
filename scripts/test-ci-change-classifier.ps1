@@ -55,10 +55,14 @@ function Assert-Impact {
     if ($actual.classification -ne $Classification) {
         throw "$Scenario classified as '$($actual.classification)' instead of '$Classification'."
     }
+    $expectedProperties = @("classification") + $laneNames
+    if (@(Compare-Object $expectedProperties @($actual.PSObject.Properties.Name)).Count -ne 0) {
+        throw "$Scenario returned an unexpected classifier output shape."
+    }
 
     foreach ($lane in $laneNames) {
         $expected = $Required -contains $lane
-        if ([bool]$actual.$lane -ne $expected) {
+        if ($actual.$lane -isnot [bool] -or $actual.$lane -ne $expected) {
             throw "$Scenario expected $lane=$expected but received $($actual.$lane)."
         }
     }
@@ -89,6 +93,11 @@ $cases = @(
     @{
         Scenario = "Skill-only documentation"
         Paths = @(".agents/skills/example/SKILL.md")
+        Classification = "docs_only"
+    },
+    @{
+        Scenario = "Scoped WinUI instructions"
+        Paths = @("src/OpenClaw.Tray.WinUI/AGENTS.md")
         Classification = "docs_only"
     },
     @{
@@ -248,12 +257,117 @@ foreach ($case in $cases) {
     Assert-Impact @arguments
 }
 
+$fastOnlyPaths = @(
+    ".github/scripts/repository-triage.cjs",
+    ".github/scripts/repository-triage.test.cjs"
+)
+foreach ($path in $fastOnlyPaths) {
+    Assert-Impact -Scenario "Exact tooling path $path" -Paths @($path) -Classification fast_only
+    Assert-Impact -Scenario "Windows tooling path $path" -Paths @($path.Replace("/", "\")) -Classification fast_only
+    Assert-Impact -Scenario "Tooling with docs $path" -Paths @($path, "docs/TEST_COVERAGE.md") -Classification fast_only
+
+    # Adding tooling must never reduce any existing selection, in either order.
+    foreach ($case in $cases) {
+        $required = if ($case.ContainsKey("Required")) { $case.Required } else { @() }
+        $eventName = if ($case.ContainsKey("EventName")) { $case.EventName } else { "pull_request" }
+        $classification = if ($case.Classification -eq "docs_only" -and $eventName -eq "pull_request") {
+            "fast_only"
+        } else { $case.Classification }
+        foreach ($toolingFirst in @($true, $false)) {
+            $paths = if ($toolingFirst) { @($path) + $case.Paths } else { $case.Paths + @($path) }
+            Assert-Impact -Scenario "Tooling union: $($case.Scenario), toolingFirst=$toolingFirst" `
+                -Paths $paths -Classification $classification -Required $required -EventName $eventName
+        }
+    }
+}
+Assert-Impact -Scenario "Both tooling paths" -Paths $fastOnlyPaths -Classification fast_only
+foreach ($eventName in @("push", "workflow_dispatch", "schedule", "pull_request_target", "")) {
+    Assert-Impact -Scenario "Tooling on non-PR event '$eventName'" -Paths $fastOnlyPaths `
+        -EventName $eventName -Classification full -Required $allLanes
+}
+foreach ($path in @(
+        ".github/scripts/other.cjs",
+        ".github/scripts/repository-triage.cjs.bak",
+        ".github/scripts/repository-triage.test.mjs",
+        ".github/scripts/nested/repository-triage.cjs",
+        ".github/scripts/Repository-Triage.cjs",
+        ".github/scripts/package.json",
+        ".github/scripts/package-lock.json",
+        ".github/actions/triage/action.yml",
+        ".github/extensions/openclaw-triage-dashboard/triage-state.test.mjs",
+        "scripts/repository-triage.cjs",
+        "src/OpenClaw.Shared/OpenClaw.Shared.csproj",
+        "src/Directory.Build.props",
+        "NuGet.Config",
+        "/.github/scripts/repository-triage.cjs",
+        "../.github/scripts/repository-triage.cjs",
+        ".github//scripts/repository-triage.cjs",
+        ".github/scripts/../scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.cjs$([char]0)",
+        " ")) {
+    Assert-Impact -Scenario "Tooling does not exempt '$path'" -Paths (@($path) + $fastOnlyPaths) `
+        -Classification full -Required $fullPrLanes
+}
+
 $emptyImpact = Get-Impact -Paths @()
 if ($emptyImpact.classification -ne "full" -or -not $emptyImpact.full) {
     throw "An empty explicit path list must select full validation."
 }
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+$expectedPlanProperties = @('schemaVersion', 'impact', 'reason', 'selectedPaths', 'hostedLanes', 'mandatoryLocal', 'customProofCandidates', 'boundary')
+foreach ($scenario in @(
+    @{ path = 'README.md'; reason = 'maintained-documentation-checks'; classification = 'docs_only' },
+    @{ path = '.agents/skills/winnode/SKILL.md'; reason = 'shipped-winnode-command-contract'; classification = 'targeted' },
+    @{ path = 'src/OpenClaw.Cli/Program.cs'; reason = 'recognized-project-boundary'; classification = 'targeted' },
+    @{ path = 'scripts/run-proof-tests.ps1'; reason = 'build-or-validation-infrastructure'; classification = 'full' },
+    @{ path = 'unknown/deleted.cs'; reason = 'unknown-path'; classification = 'full' },
+    @{ path = '../escape'; reason = 'invalid-path'; classification = 'full' }
+)) {
+    $plan = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths $scenario.path -Explain) | ConvertFrom-Json
+    if (@(Compare-Object $expectedPlanProperties @($plan.PSObject.Properties.Name)).Count -ne 0 -or $plan.schemaVersion -ne 1) {
+        throw 'Explanatory plan schema changed unexpectedly.'
+    }
+    if ($plan.impact.classification -ne $scenario.classification -or $plan.selectedPaths[0].reason -ne $scenario.reason) {
+        throw "Missing classification reason for $($scenario.path)."
+    }
+    foreach ($job in @('change-classification', 'fast-validation', 'proof-pool-contracts', 'ci-gate')) {
+        if ($job -notin $plan.hostedLanes) { throw "Plan omitted always-on CI Gate job: $job" }
+    }
+    foreach ($job in @('metadata', 'build-msix', 'build-msix-bundle')) {
+        if (($job -in $plan.hostedLanes) -ne ($plan.impact.x64_release -or $plan.impact.arm64_release)) {
+            throw "Plan misreported release-dependent CI job: $job"
+        }
+    }
+    if ($scenario.classification -eq 'docs_only') {
+        if ($plan.mandatoryLocal.required -or $plan.mandatoryLocal.commands.Count -or $plan.customProofCandidates.Count) {
+            throw 'Documentation-only plan selected runtime validation.'
+        }
+    } else {
+        if (-not $plan.mandatoryLocal.required -or $plan.mandatoryLocal.commands.Count -ne 3 -or $plan.mandatoryLocal.commands[0] -ne '.\build.ps1') {
+            throw 'Code-change plan lost mandatory local closeout.'
+        }
+        $inventory = Get-Content (Join-Path $repoRootPath '.github\proof-pools.json') -Raw | ConvertFrom-Json
+        if ($plan.customProofCandidates.Count -ne $inventory.pools.Count) { throw 'Plan must expose the inventory for applicability review.' }
+        foreach ($pool in $inventory.pools) {
+            $candidate = @($plan.customProofCandidates | Where-Object { $_.id -eq $pool.id })[0]
+            if ($candidate.authorization -ne 'explicit-approval-required' -or $candidate.applicability -ne 'review-required' -or $candidate.status -ne 'not-run') {
+                throw 'Candidate accidentally became an authorized run.'
+            }
+            foreach ($pair in @(@('commands', 'authoritativeCommands'), @('prerequisites', 'requiredCapabilities'))) {
+                if (($candidate.($pair[0]) | ConvertTo-Json -Depth 10 -Compress) -cne ($pool.($pair[1]) | ConvertTo-Json -Depth 10 -Compress)) {
+                    throw 'Plan drifted from proof inventory.'
+                }
+            }
+            if (($candidate.doesNotProve -join '|') -cne ($pool.selection.doesNotProve -join '|')) { throw 'Proof boundary lost.' }
+        }
+    }
+}
+$invalidPlan = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -BaseSha bad -HeadSha bad -Explain) | ConvertFrom-Json
+if ($invalidPlan.reason -ne 'invalid-or-missing-revisions' -or -not $invalidPlan.impact.full) { throw 'Invalid revision explanation narrowed validation.' }
+$human = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths 'src/OpenClaw.Cli/Program.cs' -Human) -join "`n"
+if ($human -notmatch 'Mandatory local|Does not prove|explicit approval' -or $human -notmatch 'Read-only') { throw 'Human plan is missing boundaries.' }
+
+$tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-change-classifier-" + [guid]::NewGuid().ToString("N"))
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
@@ -284,6 +398,39 @@ try {
         throw "A real skill-only git diff classified as '$($gitImpact.classification)'."
     }
 
+    $toolingPath = Join-Path $tempRoot ".github\scripts\repository-triage.cjs"
+    New-Item -ItemType Directory -Path (Split-Path -Parent $toolingPath) -Force | Out-Null
+    foreach ($operation in @("add", "modify", "delete-allowlisted", "readd", "rename", "delete-unknown")) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        switch ($operation) {
+            "add" { Set-Content -LiteralPath $toolingPath -Value "tooling baseline" }
+            "modify" { Add-Content -LiteralPath $toolingPath -Value "tooling changed" }
+            "delete-allowlisted" { Remove-Item -LiteralPath $toolingPath }
+            "readd" { Set-Content -LiteralPath $toolingPath -Value "tooling baseline" }
+            "rename" {
+                $renamedPath = Join-Path $tempRoot ".github\scripts\unreviewed-tool.cjs"
+                Move-Item -LiteralPath $toolingPath -Destination $renamedPath
+            }
+            "delete-unknown" { Remove-Item -LiteralPath $renamedPath }
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling $operation"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling $operation fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $gitImpact = (& $classifierPath -EventName pull_request -BaseSha $baseSha `
+            -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $expected = if ($operation -in @("rename", "delete-unknown")) { "full" } else { "fast_only" }
+        if ($gitImpact.classification -ne $expected) {
+            throw "Real tooling $operation diff expected '$expected', got '$($gitImpact.classification)'."
+        }
+        foreach ($lane in $laneNames) {
+            $expectedLane = $expected -eq "full" -and $fullPrLanes -contains $lane
+            if ($gitImpact.$lane -ne $expectedLane) {
+                throw "Real tooling $operation diff expected $lane=$expectedLane."
+            }
+        }
+    }
+
     $emptyGitImpact = (& $classifierPath `
         -EventName pull_request `
         -BaseSha $headSha `
@@ -294,13 +441,17 @@ try {
     }
 
     foreach ($invalidBase in @("", "missing-base", ("f" * 40))) {
-        $invalidImpact = (& $classifierPath `
-            -EventName pull_request `
-            -BaseSha $invalidBase `
-            -HeadSha $headSha `
-            -RepoRoot $tempRoot) | ConvertFrom-Json
-        if ($invalidImpact.classification -ne "full" -or -not $invalidImpact.full) {
-            throw "Invalid revision '$invalidBase' did not select full validation."
+        foreach ($invalidSide in @("base", "head")) {
+            $base = if ($invalidSide -eq "base") { $invalidBase } else { $headSha }
+            $head = if ($invalidSide -eq "head") { $invalidBase } else { $headSha }
+            $invalidImpact = (& $classifierPath `
+                -EventName pull_request `
+                -BaseSha $base `
+                -HeadSha $head `
+                -RepoRoot $tempRoot) | ConvertFrom-Json
+            if ($invalidImpact.classification -ne "full" -or -not $invalidImpact.full) {
+                throw "Invalid revision '$invalidBase' did not select full validation."
+            }
         }
     }
 } finally {
@@ -309,4 +460,4 @@ try {
     }
 }
 
-Write-Host "CI impact classifier regressions passed: targeted project lanes and fail-closed full validation cases." -ForegroundColor Green
+Write-Host "CI impact classifier regressions passed: exact fast-only tooling, monotonic mixed lanes, real git diffs, and fail-closed full validation." -ForegroundColor Green

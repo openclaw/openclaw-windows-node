@@ -33,21 +33,32 @@ public sealed partial class SetupWindow : Window
     private readonly TaskCompletionSource<bool> _cleanupCompleted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _isClosed;
-    private XamlRoot? _minimumSizeRoot;
+    private readonly SetupWindowSizingController _windowSizing;
     private bool _persistStartupPreferenceOnComplete = true;
     private bool _showStartupPreferenceOnComplete = true;
     private readonly bool _startupRegistrationAllowed;
     private bool _autoStartAfterSetup = true;
     private readonly string _dataDir;
     private readonly string _localDataDir;
+    private SetupLogger? _nativeSetupLog;
     private readonly LocalAiHardwareProbeCache _localAiHardwareProbe = new(() => new CudaHostHardwareProbe().Probe());
     private readonly ISetupNativeConnectionHost? _nativeConnectionHost;
     private readonly ISetupLocalAiHost? _localAiHost;
     private readonly GatewayConnectionManager? _connectionManager;
     private LocalAiOnboardingSnapshot? _localAiReviewSelection;
+    private LocalAiInstallAndUseIntent? _localAiInstallAndUse;
     private Task _aiPageCleanupTask = Task.CompletedTask;
-    private SetupNativeCompletionCoordinator? _readyChoice;
+    private SetupCompletionPreparation? _completionPreparation;
+    private Task _preparationTask = Task.CompletedTask;
+    private readonly SetupLoadingProgress _loadingProgress = new();
+    private SetupLoadingProgress.Scope? _finishingLoading;
+    internal SetupLoadingProgress LoadingProgress => _loadingProgress;
+    internal SetupLoadingProgress.Scope BeginLoading(SetupLoadingGroup group, SetupLoadingStep step) =>
+        _loadingProgress.Begin(group, step);
+    internal void SetLoadingCancellation(SetupLoadingProgress.Scope scope, Action cancel) =>
+        LoadingOverlay.SetCancellation(scope, cancel);
     private readonly Func<SetupNativeCompletion, CancellationToken, Task>? _publishNativeCompletion;
+    private readonly Func<SetupNativePreparation, CancellationToken, Task>? _publishNativePreparation;
     private readonly Func<bool, CancellationToken, Task>? _applyNativeStartup;
     private readonly Action<TraySettingsConfig, bool?, bool>? _persistChoices;
     private bool _nativeContextFinalized;
@@ -78,22 +89,36 @@ public sealed partial class SetupWindow : Window
         set => _autoStartAfterSetup = value;
     }
     internal string DataDir => _dataDir;
+
+    // Window-scoped because the staged NativeGatewaySetupSession outlives
+    // NativeGatewaySetupPage and keeps logging until ReleaseNativeSetupAsync.
+    internal SetupLogger NativeSetupLog => _nativeSetupLog ??= CreateNativeSetupLog();
+
+    private SetupLogger CreateNativeSetupLog()
+    {
+        var path = Path.Combine(_dataDir, "Logs", "Setup", $"native-setup-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
+        try { return new SetupLogger(path, OpenClaw.SetupEngine.LogLevel.Debug); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"Native setup log file unavailable ({ex.GetType().Name}).");
+            return new SetupLogger(filePath: null, OpenClaw.SetupEngine.LogLevel.Debug);
+        }
+    }
     internal string LocalDataDir => _localDataDir;
     public bool CanNavigateToWizard =>
         !_isClosed &&
+        _completionPreparation is null &&
         _setupLock is not null &&
         RootFrame.Content is not NativeGatewaySetupPage { IsBusy: true } &&
         RootFrame.Content is not WizardPage and not AiSetupPage and not AiReadyPage &&
         RootFrame.Content is not ProgressPage { IsPipelineRunning: true };
     public bool CanNavigateToGatewayInstalledMilestone =>
         !_isClosed &&
+        _completionPreparation is null &&
         _setupLock is not null &&
         RootFrame.Content is not ProgressPage { IsPipelineRunning: true } &&
         RootFrame.Content is not NativeGatewaySetupPage { IsBusy: true } &&
         RootFrame.Content is not WizardPage and not AiSetupPage and not AiReadyPage;
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
-
     private void ApplyWindowIcon()
     {
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "openclaw.ico");
@@ -133,7 +158,8 @@ public sealed partial class SetupWindow : Window
         Func<bool, CancellationToken, Task>? applyNativeStartup = null,
         bool startupRegistrationAllowed = true,
         Action<TraySettingsConfig, bool?, bool>? persistChoices = null,
-        GatewayConnectionManager? connectionManager = null)
+        GatewayConnectionManager? connectionManager = null,
+        Func<SetupNativePreparation, CancellationToken, Task>? publishNativePreparation = null)
     {
         _startupRegistrationAllowed = startupRegistrationAllowed;
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
@@ -142,10 +168,13 @@ public sealed partial class SetupWindow : Window
         _localAiHost = localAiHost;
         _connectionManager = connectionManager;
         _publishNativeCompletion = publishNativeCompletion;
+        _publishNativePreparation = publishNativePreparation;
         _applyNativeStartup = applyNativeStartup;
         _persistChoices = persistChoices;
         _startAtLocalAiRecoveryReview = startAtLocalAiRecoveryReview;
         InitializeComponent();
+        _windowSizing = new(this, RootFrame);
+        LoadingOverlay.Bind(_loadingProgress);
         ApplyWindowIcon();
         Active = this;
         RootFrame.Navigated += (_, _) => RefreshFlowProgress();
@@ -163,15 +192,13 @@ public sealed partial class SetupWindow : Window
         Closed += async (_, _) =>
         {
             _isClosed = true;
-            RootFrame.Loaded -= AttachMinimumSizeRoot;
-            AppWindow.Changed -= MinimumSizeWindowChanged;
-            if (_minimumSizeRoot is { } sizingRoot)
-                sizingRoot.Changed -= MinimumSizeRootChanged;
-            _minimumSizeRoot = null;
+            LoadingOverlay.Dispose();
+            _loadingProgress.Dispose();
             _initialContentReady.TrySetResult(true);
             try
             {
                 _lifetimeCts.Cancel();
+                _completionPreparation?.Dispose();
                 var nativeCleanup = RootFrame.Content switch
                 {
                     NativeGatewaySetupPage nativePage => nativePage.CancelAndWaitAsync(),
@@ -203,15 +230,16 @@ public sealed partial class SetupWindow : Window
                     {
                         try
                         {
-                            await _nativePageCleanupTask;
-                            await _aiPageCleanupTask;
-                            if (_localAiTransitionTask is { } transition)
-                                await transition;
+                            await Task.WhenAll(
+                                _nativePageCleanupTask, _aiPageCleanupTask, _preparationTask,
+                                _completionPreparation?.CleanupCompleted ?? Task.CompletedTask,
+                                _localAiTransitionTask ?? Task.CompletedTask);
                         }
                         finally
                         {
                             AccessDraft?.ClearNativeConnectionSecrets();
-                            await ReleaseNativeSetupAsync();
+                            try { await ReleaseNativeSetupAsync(); }
+                            finally { _nativeSetupLog?.Dispose(); _nativeSetupLog = null; }
                         }
                     }
                 }
@@ -233,15 +261,6 @@ public sealed partial class SetupWindow : Window
                 _cleanupCompleted.TrySetResult(true);
             }
         };
-
-        RootFrame.Loaded += AttachMinimumSizeRoot;
-        AppWindow.Changed += MinimumSizeWindowChanged;
-        ApplyMinimumWindowSize();
-
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dpi = GetDpiForWindow(hwnd);
-        var initialSize = SetupWindowSizing.InitialPixels(dpi);
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(initialSize.Width, initialSize.Height));
 
         // Extend into title bar for modern look
         ExtendsContentIntoTitleBar = true;
@@ -329,6 +348,7 @@ public sealed partial class SetupWindow : Window
             if (!string.IsNullOrWhiteSpace(localAiRecoveryModelId))
             {
                 _config.LocalAi.SelectedModelId = localAiRecoveryModelId;
+                _config.LocalAi.InstalledReceiptModelId = localAiRecoveryModelId;
                 _pinLocalAiRecoveryModel = true;
             }
             if (localAiRecoveryRequestedPort is { } requestedPort &&
@@ -369,40 +389,6 @@ public sealed partial class SetupWindow : Window
 
     public void NavigateToSecurityNotice(bool back = false) => NavigateTo(typeof(SecurityNoticePage), _config, back);
 
-    private void AttachMinimumSizeRoot(object sender, RoutedEventArgs args)
-    {
-        if (_isClosed) return;
-        var root = RootFrame.XamlRoot;
-        if (!ReferenceEquals(root, _minimumSizeRoot))
-        {
-            if (_minimumSizeRoot is { } previous)
-                previous.Changed -= MinimumSizeRootChanged;
-            _minimumSizeRoot = root;
-            if (root is not null)
-                root.Changed += MinimumSizeRootChanged;
-        }
-        ApplyMinimumWindowSize();
-    }
-
-    private void MinimumSizeRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ApplyMinimumWindowSize();
-
-    private void MinimumSizeWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
-    {
-        if (args.DidPositionChange || args.DidPresenterChange)
-            ApplyMinimumWindowSize();
-    }
-
-    private void ApplyMinimumWindowSize()
-    {
-        if (_isClosed || AppWindow.Presenter is not OverlappedPresenter presenter) return;
-        var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        var minimum = SetupWindowSizing.MinimumPixels(dpi);
-        if (presenter.PreferredMinimumWidth != minimum.Width)
-            presenter.PreferredMinimumWidth = minimum.Width;
-        if (presenter.PreferredMinimumHeight != minimum.Height)
-            presenter.PreferredMinimumHeight = minimum.Height;
-    }
-
     public void NavigateToWelcome(bool back = false)
     {
         ResetLocalAiRecoveryMode();
@@ -416,10 +402,11 @@ public sealed partial class SetupWindow : Window
     internal void NavigateToNativeGatewaySetup() => NavigateTo(typeof(NativeGatewaySetupPage), _config);
     internal void NavigateToNativeCapabilities() =>
         NavigateToCapabilities(back: true);
-    internal void NavigateToNativeAiSetup(NativeGatewaySetupSession session)
+    internal ISetupLocalAiHost? LocalAiHost => _localAiHost;
+    internal void NavigateToNativeAiSetup(NativeGatewaySetupSession session, NativeAiPreparation preparation)
     {
         NativeSetupSession = session;
-        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs());
+        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs() with { NativePreparation = preparation });
     }
 
     internal async Task CancelNativeAiSetupAsync()
@@ -436,9 +423,22 @@ public sealed partial class SetupWindow : Window
         var session = NativeSetupSession;
         if (session is null)
             return;
-        await session.DisposeAsync();
-        if (ReferenceEquals(NativeSetupSession, session))
-            NativeSetupSession = null;
+        try
+        {
+            if (!session.IsPublished && _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi)
+            {
+                await using var connection = await NativeGatewaySetupConnection.ConnectAsync(session, CancellationToken.None);
+                localAi.ConfigureNative(session.Record, connection, session.AuthorizeAsync);
+                try { await localAi.WithdrawNativeAsync(CancellationToken.None); }
+                finally { localAi.ReleaseNative(connection); }
+            }
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            if (ReferenceEquals(NativeSetupSession, session))
+                NativeSetupSession = null;
+        }
     }
 
     internal void NavigateToNativeComplete(string gatewayUrl)
@@ -517,7 +517,7 @@ public sealed partial class SetupWindow : Window
                 if (!accepted)
                 {
                     NavigateToComplete(false, TimeSpan.Zero, _config.LogPath,
-                        result.Error ?? SetupLocalization.GetString("Onboarding_Native_Failed"));
+                        result.Error ?? SetupLocalization.GetString("Onboarding_NativeConnection_Failed"));
                     return;
                 }
                 SelectGatewayRoute(route, gatewayAvailable: true);
@@ -582,10 +582,13 @@ public sealed partial class SetupWindow : Window
         _startAtLocalAiRecoveryReview = true;
         _pinLocalAiRecoveryModel = target.ModelCatalogId is not null;
         _config.LocalAiRecoveryGatewayId = target.GatewayId;
-        _config.DistroName = target.DistroName;
+        _config.NativeLocalAiAcquisition = target.IsNative;
+        if (!target.IsNative)
+            _config.DistroName = target.DistroName;
         _config.GatewayPort = target.GatewayPort;
         _config.GatewayUrl = null;
         _config.LocalAi.SelectedModelId = target.ModelCatalogId;
+        _config.LocalAi.InstalledReceiptModelId = target.ModelCatalogId;
         if (target.RequestedLocalAiPort is { } port)
             _config.LocalAi.Port = port;
         _config.LocalAi.Enabled = true;
@@ -603,10 +606,34 @@ public sealed partial class SetupWindow : Window
         if (_isClosed || _localAiHost is null || _localAiReviewSelection is not { } selection ||
             !AccessDraft.CanInstall(localAiRecovery: true))
             return;
+        var modelId = _config.LocalAi.SelectedModelId;
+        var requestedPort = _config.LocalAi.Port;
         await _aiPageCleanupTask;
-        await _localAiHost.RevalidateReviewAsync(selection, _lifetimeCts.Token);
+        var target = await _localAiHost.RevalidateReviewAsync(selection, _lifetimeCts.Token);
+        if (_config.LocalAi.SelectedModelId != modelId || _config.LocalAi.Port != requestedPort)
+            throw new LocalAiSelectionRejectedException("The reviewed Local AI model changed. Review it again before installing.");
         if (!_isClosed && AccessDraft.CanInstall(localAiRecovery: true))
+        {
+            _localAiInstallAndUse = target.IsNative
+                ? new(target, modelId ??
+                    throw new LocalAiSelectionRejectedException("Select a Local AI model before installing."),
+                    requestedPort)
+                : null;
             NavigateToProgress();
+        }
+    }
+
+    internal void ContinueInstalledNativeLocalAi()
+    {
+        if (_isClosed || !_config.NativeLocalAiAcquisition || _localAiInstallAndUse is not { } intent)
+            throw new InvalidOperationException("The reviewed native Local AI installation is no longer available.");
+        _localAiInstallAndUse = null;
+        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs() with
+        {
+            ExpectedGatewayId = intent.Target.GatewayId,
+            ExpectedEndpointBinding = intent.Target.EndpointBinding,
+            InstallAndUse = intent
+        });
     }
 
     internal void CancelLocalAiReview()
@@ -615,7 +642,9 @@ public sealed partial class SetupWindow : Window
             return;
         _localAiRecoveryBaseline.Restore(_config);
         _config.LocalAiRecoveryGatewayId = null;
+        _config.NativeLocalAiAcquisition = false;
         _localAiReviewSelection = null;
+        _localAiInstallAndUse = null;
         _startAtLocalAiRecoveryReview = false;
         _pinLocalAiRecoveryModel = false;
         AccessDraft.LocalAiReady = false;
@@ -668,13 +697,25 @@ public sealed partial class SetupWindow : Window
 
         _startAtLocalAiRecoveryReview = false;
         _localAiReviewSelection = null;
+        _localAiInstallAndUse = null;
         _pinLocalAiRecoveryModel = false;
         _config.LocalAiRecoveryGatewayId = null;
         _localAiRecoveryBaseline.Restore(_config);
+        _config.NativeLocalAiAcquisition = false;
         AccessDraft.LocalAiReady = false;
         AccessDraft.TailscaleReady = false;
         _persistStartupPreferenceOnComplete = true;
         _showStartupPreferenceOnComplete = true;
+    }
+
+    public bool TryNavigateToExistingNativeLocalAi(OpenClaw.Connection.GatewayRecord record)
+    {
+        if (!CanNavigateToWizard)
+            return false;
+        AccessDraft.SelectExistingNativeGateway(record);
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        return TryNavigateToWizard();
     }
 
     public bool TryNavigateToWizard(bool back = false)
@@ -689,13 +730,15 @@ public sealed partial class SetupWindow : Window
     private AiSetupPageArgs CreateAiSetupArgs() =>
         new AiSetupPageArgs(_config, _dataDir, _localDataDir,
                 TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
-                LocalAiHost: NativeSetupSession is null ? _localAiHost : null, ReviewLocalAi: ReviewLocalAiAsync,
+                LocalAiHost: _localAiHost, ReviewLocalAi: ReviewLocalAiAsync,
                 ExpectedGatewayId: NativeSetupSession?.Record.Id ??
                     (_expectedConfiguredModelRef is null ? AccessDraft.NativeGatewayId : _expectedConfiguredGatewayId),
                 ConfiguredCompletionIntent: _configuredCompletionIntent,
                 CompleteVerifiedSetup: CompleteVerifiedAiSetupAsync, NativeSession: NativeSetupSession,
                 CancelNativeSetup: NativeSetupSession is null ? null : CancelNativeAiSetupAsync,
                 ConnectionManager: _connectionManager,
+                CloseSetupWindow: Close,
+                Loading: _loadingProgress,
                 ExpectedEndpointBinding: _expectedConfiguredModelRef is null ? AccessDraft.NativeEndpointBinding : null);
 
     public bool TryNavigateToLegacyWizard()
@@ -713,38 +756,92 @@ public sealed partial class SetupWindow : Window
             !OnboardingFlowPolicy.RequiresAiSetup(AccessDraft.Route, _config))
             throw new InvalidOperationException("Native completion requires this setup's verified primary AI.");
         RequireVerifiedGateway(completion);
-        _readyChoice?.Dispose();
-        _readyChoice = new(completion,
-            ct => _aiPageCleanupTask.WaitAsync(ct),
+        if (_completionPreparation is not null)
+            throw new InvalidOperationException("Setup completion has already been admitted.");
+        _finishingLoading = BeginLoading(SetupLoadingGroup.Finishing, SetupLoadingStep.Drain);
+        _completionPreparation = new(completion,
+            _ => _aiPageCleanupTask,
             (proof, ct) => NativeSetupSession is { } native
-                ? native.VerifyAsync(proof, ct)
-                : SetupNativeCompletionVerifier.VerifyAsync(_dataDir, proof, ct, _connectionManager),
+                ? native.VerifyAsync(proof, ct, _finishingLoading)
+                : SetupNativeCompletionVerifier.VerifyAsync(_dataDir, proof, ct, _connectionManager, progress: _finishingLoading),
             FinalizeNativeChoiceAsync,
-            async (choice, ct) =>
+            async (preparation, ct) =>
             {
-                RequireVerifiedGateway(choice.Verification);
-                await _publishNativeCompletion!(choice, ct);
+                RequireVerifiedGateway(preparation.Verification);
+                await (_publishNativePreparation?.Invoke(preparation, ct) ??
+                    Task.FromException(new InvalidOperationException("The setup preparation host is unavailable.")));
                 _completionDispatched = true;
-            });
-        // Navigate starts the previous page's drain but never awaits its own completion callback.
-        NavigateTo(typeof(AiReadyPage), new AiReadyPageArgs(_readyChoice, this));
+            }, canResumeCommittedFinalization: () => _nativeContextFinalized);
+        NavigateTo(typeof(AiCompletionPage), null);
+        _completionPreparation.StateChanged += PreparationStateChanged;
+        // The tracked continuation yields before draining the originating active request.
+        _preparationTask = ObservePreparationAsync(_completionPreparation);
         return Task.CompletedTask;
     }
 
-    internal bool OwnsReadyChoice(SetupNativeCompletionCoordinator owner) =>
-        !_isClosed && ReferenceEquals(_readyChoice, owner);
-
-    internal void ReturnFromReadyChoice(SetupNativeCompletionCoordinator owner)
+    private void PreparationStateChanged()
     {
-        if (!OwnsReadyChoice(owner) || owner.IsBusy || owner.IsCompleted) return;
-        _expectedConfiguredGatewayId = owner.Proof.GatewayId;
-        _configuredCompletionIntent = owner.Proof.Intent;
-        owner.Dispose();
-        _readyChoice = null;
-        _nativeContextFinalized = _nativeSettingsSaved = _nativeStartupApplied = false;
-        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs() with { ExpectedGatewayId = _expectedConfiguredGatewayId }, back: true);
+        if (_completionPreparation is { } current && current.Stage != SetupNativeCompletionStage.Finalizing)
+            _finishingLoading?.Report(current.Stage switch
+            {
+                SetupNativeCompletionStage.Draining => SetupLoadingStep.Drain,
+                SetupNativeCompletionStage.Opening => SetupLoadingStep.RestartCompanion,
+                _ => SetupLoadingStep.ConnectGateway
+            });
+        if (!_isClosed && RootFrame.Content is AiCompletionPage page && _completionPreparation is { } owner)
+            page.ShowStage(owner.Stage);
     }
 
+    private async Task ObservePreparationAsync(SetupCompletionPreparation owner, bool retry = false)
+    {
+        if (retry) _finishingLoading = BeginLoading(SetupLoadingGroup.Finishing, SetupLoadingStep.Drain);
+        try { await (retry ? owner.RetryAsync() : owner.StartAsync()); }
+        catch (Exception error)
+        {
+            _finishingLoading?.Dispose();
+            System.Diagnostics.Trace.TraceWarning("Setup completion failed ({0}; phase: {1}).",
+                error.GetType().Name, (error as SetupNativeCompletionTimeoutException)?.Phase.ToString() ?? "none");
+            if (!_isClosed && RootFrame.Content is AiCompletionPage page)
+                page.ShowFailure(
+                    owner.CanRetry ? () => _preparationTask = ObservePreparationAsync(owner, retry: true) : null,
+                    CanReturnFromFinishing ? ReturnFromFinishing : null, error, Close);
+        }
+    }
+
+    private bool CanReturnFromFinishing => _completionPreparation?.HasPendingWork != true &&
+        !_nativeContextFinalized && NativeSetupSession?.IsPublished != true;
+
+    private void ReturnFromFinishing()
+    {
+        if (_isClosed || !CanReturnFromFinishing || _completionPreparation is not { ActiveTask.IsCompleted: true } owner)
+            return;
+        if (RootFrame.Content is AiCompletionPage page) page.ShowStage(SetupNativeCompletionStage.Draining);
+        _preparationTask = ReturnFromFinishingAsync(owner);
+    }
+
+    private async Task ReturnFromFinishingAsync(SetupCompletionPreparation owner)
+    {
+        owner.StateChanged -= PreparationStateChanged;
+        owner.Dispose();
+        try
+        {
+            await owner.CleanupCompleted;
+            try { await _aiPageCleanupTask; }
+            catch (Exception error)
+            {
+                System.Diagnostics.Trace.TraceWarning("Prior AI page cleanup settled with failure ({0}).", error.GetType().Name);
+            }
+            await ReleaseNativeSetupAsync();
+            if (_isClosed) return;
+            _completionPreparation = null;
+            NavigateToCapabilities(back: true);
+        }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceWarning("Returning from setup completion failed ({0}).", error.GetType().Name);
+            if (!_isClosed && RootFrame.Content is AiCompletionPage page) page.ShowFailure(error: error, close: Close);
+        }
+    }
     private void RequireVerifiedGateway(GatewayAiSetupCompletion completion)
     {
         if (_isClosed) throw new OperationCanceledException(_lifetimeCts.Token);
@@ -756,17 +853,33 @@ public sealed partial class SetupWindow : Window
 
     private async Task FinalizeNativeChoiceAsync(GatewayAiSetupCompletion proof, CancellationToken ct)
     {
-        if (_publishNativeCompletion is null || _applyNativeStartup is null)
+        if (_publishNativePreparation is null || _applyNativeStartup is null)
             throw new InvalidOperationException("The native completion host is unavailable.");
         RequireVerifiedGateway(proof);
         if (!_nativeContextFinalized)
         {
             if (NativeSetupSession is { } native)
-                await native.CompleteVerifiedAsync(proof, _config.Capabilities, ct);
+            {
+                await native.CompleteVerifiedAsync(proof, _config.Capabilities, ct,
+                    afterVerification: proof.RequiresManagedLocalAi &&
+                        _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi
+                        ? (transport, token) => localAi.ReconcileNativeAsync(transport, proof.ModelRef, token)
+                        : null, progress: _finishingLoading);
+            }
             else
             {
+                _finishingLoading?.Report(SetupLoadingStep.CheckConfiguration);
                 var result = await ApplyWindowsNodeContextAsync();
                 if (!result.IsSuccess) throw new InvalidOperationException(result.Message);
+                if (proof.RequiresManagedLocalAi &&
+                    _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi &&
+                    _connectionManager is { } manager)
+                {
+                    _finishingLoading?.Report(SetupLoadingStep.ReconcileLocalAi);
+                    var transport = await GatewayAiSetupTransport.BorrowNativeAsync(
+                        _dataDir, manager, proof.GatewayId, ct, proof.EndpointBinding);
+                    await localAi.ReconcileNativeAsync(transport, proof.ModelRef, ct);
+                }
             }
             ct.ThrowIfCancellationRequested();
             _nativeContextFinalized = true;
@@ -775,13 +888,17 @@ public sealed partial class SetupWindow : Window
         var startup = _persistStartupPreferenceOnComplete && AutoStartAfterSetup;
         if (!_nativeSettingsSaved)
         {
+            _finishingLoading?.Report(SetupLoadingStep.SaveSettings);
             SaveSetupChoices(startup);
             _nativeSettingsSaved = true;
         }
         if (!_nativeStartupApplied)
         {
             if (_startupRegistrationAllowed && _persistStartupPreferenceOnComplete)
+            {
+                _finishingLoading?.Report(SetupLoadingStep.ApplyStartup);
                 await _applyNativeStartup(startup, ct);
+            }
             _nativeStartupApplied = true;
         }
         RequireVerifiedGateway(proof);
@@ -789,8 +906,8 @@ public sealed partial class SetupWindow : Window
 
     public async Task CompleteSetupAsync()
     {
-        if (_readyChoice is not null)
-            throw new InvalidOperationException("Choose a verified native destination before completing this setup.");
+        if (_completionPreparation is not null)
+            throw new InvalidOperationException("Setup completion is already in progress.");
         if (_completionDispatched || _isClosed)
             return;
         if (_completionTask is { } pending)
@@ -962,11 +1079,9 @@ public sealed partial class SetupWindow : Window
     // Directional page transition: forward steps slide in from the right, Back from the left.
     private void NavigateTo(Type page, object? parameter, bool back = false)
     {
-        if (RootFrame.Content is AiReadyPage && page != typeof(AiReadyPage))
-        {
-            _readyChoice?.Dispose();
-            _readyChoice = null;
-        }
+        if (page != typeof(AiSetupPage) && page != typeof(ProgressPage) &&
+            page != typeof(AiCompletionPage) && page != typeof(NativeGatewaySetupPage))
+            _loadingProgress.Clear();
         if (RootFrame.Content is SetupNativeConnectionPage nativePage)
         {
             // A replacement native page already advanced the generation before capturing its callbacks.
@@ -990,7 +1105,7 @@ public sealed partial class SetupWindow : Window
         page switch
         {
             "welcome" => typeof(WelcomePage),
-            "native" => typeof(NativeGatewaySetupPage),
+            "native" or "native-failed" => typeof(NativeGatewaySetupPage),
             "advanced" => typeof(AdvancedSetupPage),
             "capabilities" => typeof(CapabilitiesPage),
             "gateway-review" => typeof(GatewaySetupPage),
@@ -1035,9 +1150,9 @@ public sealed partial class SetupWindow : Window
     public bool RequestSetupCompleted(bool enableAutoStart, bool preserveStartupPreference = false)
     {
         enableAutoStart &= _startupRegistrationAllowed;
-        if (_readyChoice is not null)
+        if (_completionPreparation is not null)
         {
-            System.Diagnostics.Trace.TraceWarning("Legacy setup completion refused while a verified destination choice is pending.");
+            System.Diagnostics.Trace.TraceWarning("Legacy setup completion refused while verified setup is finishing.");
             return false;
         }
         var handler = SetupCompleted;
@@ -1063,6 +1178,8 @@ public sealed partial class SetupWindow : Window
 
     private void SaveSetupChoices(bool enableAutoStart)
     {
+        if (AccessDraft.IsExistingNativeLocalAi)
+            return;
         enableAutoStart &= _startupRegistrationAllowed;
         if (_persistChoices is not null)
         {

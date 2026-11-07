@@ -264,6 +264,33 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal(modelBytes, await File.ReadAllBytesAsync(blobPath));
     }
 
+    [Fact]
+    public async Task ModelInstall_NestedGgufPathCopiesIntoMatchingLegacySubfolder()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "nested-verified-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes, "sub/dir/model.gguf");
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        using var client = new HttpClient(new DelegateHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(modelBytes),
+        }));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(temp.Path, component, model, progress: null, CancellationToken.None);
+
+        Assert.Equal(modelPath, result.ModelPath);
+        Assert.EndsWith(
+            Path.Combine("sub", "dir", "model.gguf"),
+            result.LegacyModelPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(modelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.LegacyModelPath!));
+        Assert.False(File.Exists(partialPath));
+    }
+
+
     [SetupCrossVolumeFact]
     public async Task ModelInstall_MaterializesLegacyCompatibilityCopyAcrossConfiguredVolume()
     {
@@ -996,6 +1023,71 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task Reconciler_StagesVcRuntimeForExistingInstall_WithoutMutatingReceipt()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var temp = new TempDirectory();
+        using var app = new TempDirectory();
+        using var environment = new EnvironmentScope("HF_HUB_CACHE", CacheRoot(temp.Path));
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        var paths = new LocalAiPaths(temp.Path);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        LocalAiResolvedInstall install = new LocalAiManifestStore(paths).ResolveAndValidate(manifest);
+        Directory.CreateDirectory(Path.GetDirectoryName(install.ExecutablePath)!);
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            await File.WriteAllTextAsync(Path.Combine(app.Path, fileName), fileName);
+        byte[] original = await File.ReadAllBytesAsync(paths.ManifestPath);
+
+        var reconciler = new LocalAiInstallReconciler(
+            new VcRuntimeAssertingInspector(),
+            new AcceptingModelVerifier(),
+            vcRuntimeStager: new LocalAiVcRuntimeStager(app.Path));
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            plan,
+            gpuId,
+            CancellationToken.None);
+
+        Assert.True(result.Reused);
+        Assert.Equal(original, await File.ReadAllBytesAsync(paths.ManifestPath));
+        Assert.All(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => Assert.Equal(
+                fileName,
+                File.ReadAllText(Path.Combine(Path.GetDirectoryName(install.ExecutablePath)!, fileName))));
+    }
+
+    [Fact]
+    public async Task ReadOnlyInspection_DoesNotStageVcRuntime()
+    {
+        using var temp = new TempDirectory();
+        using var app = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, "GPU-0");
+        var paths = new LocalAiPaths(temp.Path);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        LocalAiResolvedInstall install = new LocalAiManifestStore(paths).ResolveAndValidate(manifest);
+        string runtimeDirectory = Path.GetDirectoryName(install.ExecutablePath)!;
+        Directory.CreateDirectory(runtimeDirectory);
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            await File.WriteAllTextAsync(Path.Combine(app.Path, fileName), fileName);
+        var reconciler = new LocalAiInstallReconciler(
+            new VcRuntimeAbsentInspector(),
+            new AcceptingModelVerifier(),
+            vcRuntimeStager: new LocalAiVcRuntimeStager(app.Path));
+
+        Assert.False(await reconciler.InspectAsync(install, CancellationToken.None));
+        Assert.DoesNotContain(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => File.Exists(Path.Combine(runtimeDirectory, fileName)));
+    }
+
+    [Fact]
     public async Task Reconciler_ExplicitlyMigratesAndAdoptsVerifiedSchemaFourReceipt()
     {
         using var temp = new TempDirectory();
@@ -1152,7 +1244,7 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task Reconciler_RecoveryWithValidModelStillPopulatesAdditionalAssetInstalls()
+    public async Task Reconciler_IncompleteRuntimeReacquiresWithoutRecoveryModeOrModelDownload()
     {
         // Regression: recovery for a broken runtime (model + additional assets
         // still verified valid) must give the caller everything it needs to
@@ -1235,8 +1327,7 @@ public sealed class LocalAiInstallRecoveryTests
                 temp.Path,
                 plan,
                 "GPU-0",
-                CancellationToken.None,
-                allowIncompleteInstallation: true);
+                CancellationToken.None);
 
         Assert.False(result.Reused);
         Assert.Null(result.RuntimeInstall);
@@ -1369,7 +1460,7 @@ public sealed class LocalAiInstallRecoveryTests
             new UpgradeCheckpointStep("after-persist", ctx =>
             {
                 LocalAiResolvedInstall upgraded = Assert.IsType<LocalAiResolvedInstall>(ctx.LocalAiResolvedInstall);
-                Assert.Equal("b11026", upgraded.Manifest.EngineVersion);
+                Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, upgraded.Manifest.EngineVersion);
                 Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, upgraded.Manifest.SchemaVersion);
                 Assert.Equal(cacheRoot, upgraded.Manifest.ModelCacheRoot);
                 Assert.Equal(cachedModel, upgraded.ModelPath);
@@ -1398,7 +1489,7 @@ public sealed class LocalAiInstallRecoveryTests
         if (failureStage is null)
         {
             Assert.Equal(newExecutable, persisted.ExecutablePath);
-            Assert.Equal("b11026", persisted.Manifest.EngineVersion);
+            Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, persisted.Manifest.EngineVersion);
         }
         else
         {
@@ -1604,17 +1695,409 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task RuntimeInstall_ReusesVerifiedCacheAfterLocalAiRootRemoval()
+    {
+        using var temp = new TempDirectory();
+        byte[] binaryZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("cudart64_13.dll", "cuda"u8.ToArray()));
+        LlamaRuntimeVariant runtime = CreateRuntime(binaryZip, dependencyZip);
+        int requests = 0;
+        using var firstClient = new HttpClient(new DelegateHandler(request =>
+        {
+            requests++;
+            byte[] bytes = request.RequestUri!.AbsolutePath.EndsWith("runtime.zip", StringComparison.Ordinal)
+                ? binaryZip
+                : dependencyZip;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+        }));
+        var firstInstaller = new LlamaRuntimeInstaller(
+            new LocalAiArtifactInstaller(firstClient, archiveCacheEnabled: true),
+            new ValidRuntimeInspector());
+
+        LlamaRuntimeInstallResult first = await firstInstaller.InstallAsync(
+            temp.Path,
+            runtime,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(2, requests);
+        Assert.Equal(0, first.ReusedCachedArchiveCount);
+        string cacheRoot = Path.Combine(temp.Path, "LocalAICache", "archives");
+        string cachedBinary = Path.Combine(cacheRoot, Sha256(binaryZip), "runtime.zip");
+        string cachedDependency = Path.Combine(cacheRoot, Sha256(dependencyZip), "dependency.zip");
+        Assert.Equal(binaryZip, await File.ReadAllBytesAsync(cachedBinary));
+        Assert.Equal(dependencyZip, await File.ReadAllBytesAsync(cachedDependency));
+
+        Assert.True(LocalAiPathPolicy.TryDeleteManagedTree(
+            temp.Path,
+            new LocalAiPaths(temp.Path).RootDirectory,
+            allowRoot: true,
+            out string deleteError), deleteError);
+        Assert.False(Directory.Exists(new LocalAiPaths(temp.Path).RootDirectory));
+
+        using var secondClient = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not run for cached runtime archives.")));
+        var secondInstaller = new LlamaRuntimeInstaller(
+            new LocalAiArtifactInstaller(secondClient, archiveCacheEnabled: true),
+            new ValidRuntimeInspector());
+
+        LlamaRuntimeInstallResult second = await secondInstaller.InstallAsync(
+            temp.Path,
+            runtime,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.True(second.CreatedThisRun);
+        Assert.Equal(2, second.ReusedCachedArchiveCount);
+        Assert.Equal(2, requests);
+        Assert.True(File.Exists(Path.Combine(second.InstallDirectory, "llama-server.exe")));
+    }
+
+    [Fact]
+    public async Task RuntimeInstall_ReplacesCorruptCachedArchive()
+    {
+        using var temp = new TempDirectory();
+        byte[] binaryZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("cudart64_13.dll", "cuda"u8.ToArray()));
+        LlamaRuntimeVariant runtime = CreateRuntime(binaryZip, dependencyZip);
+        string cacheRoot = Path.Combine(temp.Path, "LocalAICache", "archives");
+        string cachedBinary = Path.Combine(cacheRoot, Sha256(binaryZip), "runtime.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedBinary)!);
+        byte[] corrupt = new byte[binaryZip.Length];
+        new Random(1234).NextBytes(corrupt);
+        await File.WriteAllBytesAsync(cachedBinary, corrupt);
+        int requests = 0;
+        using var client = new HttpClient(new DelegateHandler(request =>
+        {
+            requests++;
+            byte[] bytes = request.RequestUri!.AbsolutePath.EndsWith("runtime.zip", StringComparison.Ordinal)
+                ? binaryZip
+                : dependencyZip;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+        }));
+        var installer = new LlamaRuntimeInstaller(
+            new LocalAiArtifactInstaller(client, archiveCacheEnabled: true),
+            new ValidRuntimeInspector());
+
+        LlamaRuntimeInstallResult result = await installer.InstallAsync(
+            temp.Path,
+            runtime,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(2, requests);
+        Assert.Equal(0, result.ReusedCachedArchiveCount);
+        Assert.Equal(binaryZip, await File.ReadAllBytesAsync(cachedBinary));
+    }
+
+    [Fact]
+    public async Task RuntimeInstall_DoesNotWriteThroughJunctionedCacheRoot()
+    {
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        byte[] binaryZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("cudart64_13.dll", "cuda"u8.ToArray()));
+        LlamaRuntimeVariant runtime = CreateRuntime(binaryZip, dependencyZip);
+        string cacheRoot = Path.Combine(temp.Path, "LocalAICache");
+        CreateJunction(cacheRoot, outside.Path);
+        int requests = 0;
+        try
+        {
+            using var client = new HttpClient(new DelegateHandler(request =>
+            {
+                requests++;
+                byte[] bytes = request.RequestUri!.AbsolutePath.EndsWith("runtime.zip", StringComparison.Ordinal)
+                    ? binaryZip
+                    : dependencyZip;
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+            }));
+            var installer = new LlamaRuntimeInstaller(
+                new LocalAiArtifactInstaller(client, archiveCacheEnabled: true),
+                new ValidRuntimeInspector());
+
+            LlamaRuntimeInstallResult result = await installer.InstallAsync(
+                temp.Path,
+                runtime,
+                progress: null,
+                CancellationToken.None);
+
+            Assert.True(result.CreatedThisRun);
+            Assert.Equal(0, result.ReusedCachedArchiveCount);
+            Assert.True(File.Exists(Path.Combine(result.InstallDirectory, "llama-server.exe")));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(outside.Path));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheRoot))
+                Directory.Delete(cacheRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(LocalAiArtifactInstaller.DefaultRetainedStaleArchiveSets)]
+    public async Task RuntimeInstall_PrunesCacheToNewestCompleteSets(int retainedSets)
+    {
+        using var temp = new TempDirectory();
+        string unrelated = Directory.CreateDirectory(Path.Combine(ArchivesRoot(temp.Path), "not-a-hash")).FullName;
+        CacheTestSet[] history = Enumerable.Range(1, 5).Select(index => CreateCacheTestSet($"old-{index}")).ToArray();
+        CacheTestSet current = CreateCacheTestSet("current");
+
+        foreach (CacheTestSet set in history.Append(current))
+            await InstallCacheTestSetAsync(temp.Path, set, retainedSets);
+
+        Assert.True(IsWhollyCached(temp.Path, current));
+        for (int index = 0; index < history.Length; index++)
+        {
+            bool kept = index >= history.Length - retainedSets;
+            Assert.Equal(kept, IsWhollyCached(temp.Path, history[index]));
+            Assert.Equal(kept, IsPartlyCached(temp.Path, history[index]));
+        }
+        Assert.True(Directory.Exists(unrelated));
+    }
+
+    [Fact]
+    public async Task RuntimeInstall_FailedAcquisitionDoesNotDisplaceCompleteSet()
+    {
+        using var temp = new TempDirectory();
+        CacheTestSet complete = CreateCacheTestSet("complete");
+        CacheTestSet failed = CreateCacheTestSet("failed");
+        CacheTestSet next = CreateCacheTestSet("next");
+        await InstallCacheTestSetAsync(temp.Path, complete, retainedSets: 1);
+
+        await Assert.ThrowsAsync<LocalAiArtifactInstallException>(() => InstallCacheTestSetAsync(
+            temp.Path,
+            failed,
+            retainedSets: 1,
+            failDependencyDownload: true));
+
+        Assert.True(IsCached(temp.Path, failed.Binary));
+        Assert.True(IsWhollyCached(temp.Path, complete));
+
+        await InstallCacheTestSetAsync(temp.Path, next, retainedSets: 1);
+
+        Assert.True(IsWhollyCached(temp.Path, next));
+        Assert.True(IsWhollyCached(temp.Path, complete));
+        Assert.False(IsPartlyCached(temp.Path, failed));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RuntimeInstall_RejectedOrCancelledInspectionLeavesCacheUnchanged(bool cancel)
+    {
+        using var temp = new TempDirectory();
+        CacheTestSet baseline = CreateCacheTestSet("baseline");
+        CacheTestSet rejected = CreateCacheTestSet("rejected");
+        await InstallCacheTestSetAsync(temp.Path, baseline, retainedSets: 0);
+        Dictionary<string, (byte[] Bytes, DateTime LastWriteUtc)> before = SnapshotCache(temp.Path);
+        using var cancellation = new CancellationTokenSource();
+        ILlamaRuntimeInspector inspector = cancel
+            ? new CancellingRuntimeInspector(cancellation)
+            : new InvalidRuntimeInspector();
+
+        Exception? error = await Record.ExceptionAsync(() => InstallCacheTestSetAsync(
+            temp.Path,
+            rejected,
+            retainedSets: 0,
+            inspector: inspector,
+            cancellationToken: cancellation.Token));
+
+        Assert.IsAssignableFrom(cancel ? typeof(OperationCanceledException) : typeof(LocalAiArtifactInstallException), error);
+        Dictionary<string, (byte[] Bytes, DateTime LastWriteUtc)> after = SnapshotCache(temp.Path);
+        Assert.All(before, entry =>
+        {
+            Assert.True(after.TryGetValue(entry.Key, out var observed), entry.Key);
+            Assert.Equal(entry.Value.Bytes, observed.Bytes);
+            Assert.Equal(entry.Value.LastWriteUtc, observed.LastWriteUtc);
+        });
+        Assert.True(IsWhollyCached(temp.Path, rejected));
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            temp.Path,
+            LlamaRuntimeInstaller.Component(rejected.Runtime),
+            out LocalAiSetupPaths paths,
+            out string pathError), pathError);
+        Assert.False(Directory.Exists(paths.InstallDirectory));
+    }
+
+    [Fact]
+    public async Task RuntimeInstall_KeepsArchiveSharedWithRetainedSet()
+    {
+        using var temp = new TempDirectory();
+        byte[] sharedDependency = CreateZip(("cudart64_13.dll", "shared"u8.ToArray()));
+        CacheTestSet oldest = CreateCacheTestSet("oldest", sharedDependency);
+        CacheTestSet retained = CreateCacheTestSet("retained", sharedDependency);
+        CacheTestSet current = CreateCacheTestSet("current");
+
+        foreach (CacheTestSet set in new[] { oldest, retained, current })
+            await InstallCacheTestSetAsync(temp.Path, set, retainedSets: 1);
+
+        Assert.False(IsCached(temp.Path, oldest.Binary));
+        Assert.True(IsWhollyCached(temp.Path, retained));
+        Assert.True(IsWhollyCached(temp.Path, current));
+    }
+
+    [Fact]
+    public async Task RuntimeInstall_UnusableSetRecordsNeitherCountNorFail()
+    {
+        using var temp = new TempDirectory();
+        CacheTestSet complete = CreateCacheTestSet("complete");
+        CacheTestSet current = CreateCacheTestSet("current");
+        await InstallCacheTestSetAsync(temp.Path, complete, retainedSets: 1);
+        string setsRoot = Path.Combine(temp.Path, "LocalAICache", "sets");
+        string malformed = Path.Combine(setsRoot, new string('d', 64) + ".json");
+        await File.WriteAllTextAsync(malformed, "{ not json");
+        LocalAiArchiveCacheRetention.SetMember[] missingMembers = [new(new string('e', 64), "gone.zip")];
+        string missing = Path.Combine(setsRoot, LocalAiArchiveCacheRetention.SetId(missingMembers) + ".json");
+        await File.WriteAllTextAsync(missing, System.Text.Json.JsonSerializer.Serialize(
+            new LocalAiArchiveCacheRetention.SetRecord(
+                LocalAiArchiveCacheRetention.SetRecordSchemaVersion,
+                missingMembers,
+                DateTimeOffset.UtcNow.AddYears(1))));
+
+        await InstallCacheTestSetAsync(temp.Path, current, retainedSets: 1);
+
+        Assert.True(IsWhollyCached(temp.Path, complete));
+        Assert.True(IsWhollyCached(temp.Path, current));
+        Assert.False(File.Exists(malformed));
+        Assert.False(File.Exists(missing));
+    }
+
+    private sealed record CacheTestSet(LlamaRuntimeVariant Runtime, byte[] Binary, byte[] Dependency);
+
+    /// <summary>Creates a two-archive runtime set whose pins are unique to <paramref name="tag"/>.</summary>
+    private static CacheTestSet CreateCacheTestSet(string tag, byte[]? dependency = null)
+    {
+        byte[] binary = CreateZip(("llama-server.exe", System.Text.Encoding.UTF8.GetBytes($"server-{tag}")));
+        dependency ??= CreateZip(("cudart64_13.dll", System.Text.Encoding.UTF8.GetBytes($"cuda-{tag}")));
+        return new(CreateRuntime(binary, dependency), binary, dependency);
+    }
+
+    private static async Task InstallCacheTestSetAsync(
+        string localDataDirectory,
+        CacheTestSet set,
+        int retainedSets,
+        bool failDependencyDownload = false,
+        ILlamaRuntimeInspector? inspector = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var client = new HttpClient(new DelegateHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("runtime.zip", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(set.Binary) }
+                : failDependencyDownload
+                    ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(set.Dependency) }));
+        var installer = new LlamaRuntimeInstaller(
+            new LocalAiArtifactInstaller(client, archiveCacheEnabled: true, retainedSets),
+            inspector ?? new ValidRuntimeInspector());
+
+        await installer.InstallAsync(localDataDirectory, set.Runtime, progress: null, cancellationToken);
+    }
+
+    private static string ArchivesRoot(string localDataDirectory) =>
+        Path.Combine(localDataDirectory, "LocalAICache", "archives");
+
+    private static bool IsCached(string localDataDirectory, byte[] archive) =>
+        Directory.Exists(Path.Combine(ArchivesRoot(localDataDirectory), Sha256(archive)));
+
+    private static bool IsWhollyCached(string localDataDirectory, CacheTestSet set) =>
+        IsCached(localDataDirectory, set.Binary) && IsCached(localDataDirectory, set.Dependency);
+
+    private static bool IsPartlyCached(string localDataDirectory, CacheTestSet set) =>
+        IsCached(localDataDirectory, set.Binary) || IsCached(localDataDirectory, set.Dependency);
+
+    private static Dictionary<string, (byte[] Bytes, DateTime LastWriteUtc)> SnapshotCache(string localDataDirectory) =>
+        Directory.EnumerateFiles(Path.Combine(localDataDirectory, "LocalAICache"), "*", SearchOption.AllDirectories)
+            .ToDictionary(path => path, path => (File.ReadAllBytes(path), File.GetLastWriteTimeUtc(path)));
+
+    [Fact]
+    public async Task RuntimeInstall_DisabledCacheNeitherReadsWritesNorPrunes()
+    {
+        using var temp = new TempDirectory();
+        byte[] binaryZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("cudart64_13.dll", "cuda"u8.ToArray()));
+        LlamaRuntimeVariant runtime = CreateRuntime(binaryZip, dependencyZip);
+        string archivesRoot = Path.Combine(temp.Path, "LocalAICache", "archives");
+        string cachedBinary = Path.Combine(archivesRoot, Sha256(binaryZip), "runtime.zip");
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedBinary)!);
+        await File.WriteAllBytesAsync(cachedBinary, binaryZip);
+        string[] stale = Enumerable.Range(1, 5)
+            .Select(index => Directory.CreateDirectory(
+                Path.Combine(archivesRoot, new string((char)('0' + index), 64))).FullName)
+            .ToArray();
+        int requests = 0;
+        using var client = new HttpClient(new DelegateHandler(request =>
+        {
+            requests++;
+            byte[] bytes = request.RequestUri!.AbsolutePath.EndsWith("runtime.zip", StringComparison.Ordinal)
+                ? binaryZip
+                : dependencyZip;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+        }));
+        var installer = new LlamaRuntimeInstaller(
+            new LocalAiArtifactInstaller(client, archiveCacheEnabled: false),
+            new ValidRuntimeInspector());
+
+        LlamaRuntimeInstallResult result = await installer.InstallAsync(
+            temp.Path,
+            runtime,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(2, requests);
+        Assert.Equal(0, result.ReusedCachedArchiveCount);
+        Assert.False(Directory.Exists(Path.Combine(archivesRoot, Sha256(dependencyZip))));
+        Assert.All(stale, entry => Assert.True(Directory.Exists(entry)));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData(" ", false)]
+    [InlineData("0", false)]
+    [InlineData("false", false)]
+    [InlineData("FALSE", false)]
+    [InlineData("1", true)]
+    [InlineData("true", true)]
+    [InlineData("yes", true)]
+    public void ArchiveCacheDisableVariable_ParsesSetValues(string? value, bool disabled)
+    {
+        Assert.Equal(disabled, LocalAiArtifactInstaller.IsArchiveCacheDisabled(value));
+    }
+
+    [Theory]
+    [InlineData(null, 3)]
+    [InlineData("", 3)]
+    [InlineData(" ", 3)]
+    [InlineData("0", 0)]
+    [InlineData("1", 1)]
+    [InlineData(" 5 ", 5)]
+    [InlineData("-1", 3)]
+    [InlineData("two", 3)]
+    [InlineData("1.5", 3)]
+    public void ArchiveCacheRetainedSetsVariable_ParsesSetValues(string? value, int expected)
+    {
+        Assert.Equal(expected, LocalAiArtifactInstaller.ParseRetainedArchiveSets(value));
+    }
+
+    [Fact]
     public async Task FreshProcessUninstall_RemovesCanonicalLocalAiRoot()
     {
         using var temp = new TempDirectory();
         string root = new LocalAiPaths(temp.Path).RootDirectory;
         string sharedCacheModel = Path.Combine(temp.Path, "hf-cache", "models--owner--repo", "snapshots", new string('a', 40), "model.gguf");
+        string cachedArchive = Path.Combine(temp.Path, "LocalAICache", "archives", new string('a', 64), "runtime.zip");
         Directory.CreateDirectory(Path.Combine(root, "engines", "runtime"));
         Directory.CreateDirectory(Path.GetDirectoryName(sharedCacheModel)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedArchive)!);
         await File.WriteAllTextAsync(Path.Combine(root, "state.json"), "corrupt but app-owned");
         await File.WriteAllTextAsync(Path.Combine(root, "engines", "runtime", "file.bin"), "data");
         await File.WriteAllTextAsync(sharedCacheModel, "shared");
+        await File.WriteAllTextAsync(cachedArchive, "cached");
         SetupContext context = CreateContext(temp.Path, confirmDestructive: true);
+        var messages = new List<string>();
+        context.Logger.LogEmitted += (_, entry) => messages.Add(entry.Message);
 
         PipelineResult result = await new SetupPipeline([new PersistLocalAiManifestStep()])
             .UninstallAsync(context);
@@ -1622,6 +2105,12 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal(PipelineOutcome.Success, result.Outcome);
         Assert.False(Directory.Exists(root));
         Assert.Equal("shared", await File.ReadAllTextAsync(sharedCacheModel));
+        Assert.Equal("cached", await File.ReadAllTextAsync(cachedArchive));
+        // The logger redacts 43-character identifiers as tokens, so the variable
+        // name must stay readable in the sanitized uninstall message.
+        string cacheMessage = Assert.Single(messages, message => message.StartsWith("Kept the verified", StringComparison.Ordinal));
+        Assert.Contains(LocalAiArtifactInstaller.RetainedArchiveSetsEnvironmentVariable, cacheMessage);
+        Assert.Contains("LocalAICache", cacheMessage);
     }
 
     [Fact]
@@ -1771,14 +2260,14 @@ public sealed class LocalAiInstallRecoveryTests
         };
     }
 
-    private static LocalModelInfo CreateModel(byte[] bytes)
+    private static LocalModelInfo CreateModel(byte[] bytes, string relativePath = "model.gguf")
     {
         var source = new HuggingFaceRevisionSource("owner/repo", new string('a', 40));
         var artifact = new PinnedArtifact(
             "test-model",
             ArtifactRole.ModelWeights,
             source,
-            "model.gguf",
+            relativePath,
             bytes.Length,
             new Sha256Digest(Sha256(bytes)));
         return new LocalModelInfo(
@@ -2054,16 +2543,59 @@ public sealed class LocalAiInstallRecoveryTests
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
+            Task.FromResult(new LlamaRuntimeInspection(true, null));
     }
 
     private sealed class InvalidRuntimeInspector : ILlamaRuntimeInspector
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new LlamaRuntimeInspection(false, "invalid", "simulated corrupted runtime"));
+            Task.FromResult(new LlamaRuntimeInspection(false, "simulated corrupted runtime"));
+    }
+
+    private sealed class VcRuntimeAssertingInspector : ILlamaRuntimeInspector
+    {
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            LlamaRuntimeVariant runtime,
+            CancellationToken cancellationToken)
+        {
+            Assert.All(
+                LocalAiVcRuntimeStager.RequiredFiles,
+                fileName => Assert.True(File.Exists(Path.Combine(installDirectory, fileName))));
+            return Task.FromResult(new LlamaRuntimeInspection(true, null));
+        }
+    }
+
+    private sealed class VcRuntimeAbsentInspector : ILlamaRuntimeInspector
+    {
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            LlamaRuntimeVariant runtime,
+            CancellationToken cancellationToken)
+        {
+            Assert.DoesNotContain(
+                LocalAiVcRuntimeStager.RequiredFiles,
+                fileName => File.Exists(Path.Combine(installDirectory, fileName)));
+            return Task.FromResult(new LlamaRuntimeInspection(false, "missing VC runtime"));
+        }
+    }
+
+    /// <summary>Accepts the runtime but cancels the install as inspection returns.</summary>
+    private sealed class CancellingRuntimeInspector(CancellationTokenSource cancellation) : ILlamaRuntimeInspector
+    {
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            LlamaRuntimeVariant runtime,
+            CancellationToken cancellationToken)
+        {
+            cancellation.Cancel();
+            return Task.FromResult(new LlamaRuntimeInspection(true, null));
+        }
     }
 
     private sealed class AcceptingModelVerifier : ILocalAiModelFileVerifier

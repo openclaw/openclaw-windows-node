@@ -147,10 +147,19 @@ public sealed partial class DebugPage : Page
     /// </summary>
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        Deactivate();
+        base.OnNavigatedFrom(e);
+    }
+
+    /// <summary>
+    /// Also called by the Settings view when it is hidden: clearing the frame content does not
+    /// raise <see cref="OnNavigatedFrom"/>.
+    /// </summary>
+    internal void Deactivate()
+    {
         _detailMode = DetailMode.None;
         _detailGeneration++;
         StopCopyFeedbackTimer();
-        base.OnNavigatedFrom(e);
     }
 
     // ── Top status InfoBar ───────────────────────────────────────────
@@ -855,8 +864,7 @@ public sealed partial class DebugPage : Page
         _suppressOverrideChange = true;
         try
         {
-            SelectByTag(HubChatOverrideCombo, DebugChatSurfaceOverrides.HubChat.ToString());
-            SelectByTag(TrayChatOverrideCombo, DebugChatSurfaceOverrides.TrayChat.ToString());
+            SelectByTag(ChatOverrideCombo, DebugChatSurfaceOverrides.WorkspaceChat.ToString());
         }
         finally
         {
@@ -886,16 +894,10 @@ public sealed partial class DebugPage : Page
         return ChatSurfaceOverride.NoOverride;
     }
 
-    private void OnHubChatOverrideChanged(object sender, SelectionChangedEventArgs e)
+    private void OnChatOverrideChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressOverrideChange) return;
-        DebugChatSurfaceOverrides.HubChat = ParseOverride(HubChatOverrideCombo);
-    }
-
-    private void OnTrayChatOverrideChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressOverrideChange) return;
-        DebugChatSurfaceOverrides.TrayChat = ParseOverride(TrayChatOverrideCombo);
+        DebugChatSurfaceOverrides.WorkspaceChat = ParseOverride(ChatOverrideCombo);
     }
 
 }

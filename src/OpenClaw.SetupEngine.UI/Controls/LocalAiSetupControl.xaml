@@ -4,6 +4,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:tk="using:CommunityToolkit.WinUI.Controls">
     <StackPanel Spacing="12">
+        <TextBlock x:Name="LocalAiProfileSelectionText" TextWrapping="Wrap" Visibility="Collapsed"
+                   AutomationProperties.AutomationId="LocalAiProfileSelectionText"
+                   AutomationProperties.LiveSetting="Polite" />
         <InfoBar x:Name="LocalAiUnavailablePanel"
                  AutomationProperties.AutomationId="LocalAiUnavailablePanel"
                  AutomationProperties.LiveSetting="Polite"

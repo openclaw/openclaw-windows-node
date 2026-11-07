@@ -5,7 +5,7 @@ namespace OpenClaw.Tray.Tests.Presentation;
 /// <summary>
 /// Source-contract guards for the WinUI-bound half of the presentation seam (the parts
 /// that cannot be compiled into this pure net10 test project): the App composition-root
-/// wiring/disposal, the HubWindow activation hook, and the WinUI-free boundary of the
+/// wiring/disposal, the SettingsShellView activation hook, and the WinUI-free boundary of the
 /// Presentation core.
 /// </summary>
 public sealed class PresentationSeamContractTests
@@ -51,14 +51,14 @@ public sealed class PresentationSeamContractTests
     }
 
     [Fact]
-    public void HubWindow_ContainsActivationHook_InTryCatch()
+    public void SettingsShellView_ContainsActivationHook_InTryCatch()
     {
-        var source = ReadHubWindowSource();
+        var source = ReadSettingsShellViewSource();
 
         // The activation hook must be wrapped so a future view model's activation cannot
         // escape the frame-navigated XAML handler.
         var hookIdx = source.IndexOf("PageActivator?.OnNavigatedTo", StringComparison.Ordinal);
-        Assert.True(hookIdx >= 0, "Activation hook call not found in HubWindow.");
+        Assert.True(hookIdx >= 0, "Activation hook call not found in SettingsShellView.");
 
         // Look at the surrounding block for a try/catch guarding the call.
         var windowStart = Math.Max(0, hookIdx - 400);
@@ -121,12 +121,13 @@ public sealed class PresentationSeamContractTests
     }
 
     [Fact]
-    public void HubWindow_InvokesPageActivator_OnNavigation()
+    public void SettingsShellView_InvokesPageActivator_OnNavigation()
     {
-        var source = ReadHubWindowSource();
+        var source = ReadSettingsShellViewSource();
 
         Assert.Contains("PageActivator", source);
         Assert.Contains("OnNavigatedTo", source);
+        Assert.Contains("PageActivator?.Reset()", source);
     }
 
     [Fact]
@@ -239,9 +240,9 @@ public sealed class PresentationSeamContractTests
                 .Select(File.ReadAllText));
     }
 
-    private static string ReadHubWindowSource()
+    private static string ReadSettingsShellViewSource()
     {
         return File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
     }
 }

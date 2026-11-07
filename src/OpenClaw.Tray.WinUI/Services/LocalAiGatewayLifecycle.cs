@@ -1,0 +1,907 @@
+// LocalAiGatewayLifecycle: single owner of the native Local AI <-> Gateway contract.
+//
+// This module owns the durable "ownership receipt" (LocalAiNativeBinding) that records
+// which Gateway (id + endpoint/identity binding) and which llamacpp model the Companion
+// installed into the Gateway configuration. It is the only component allowed to write
+// or withdraw the llamacpp provider block, and it does so transactionally: the binding
+// is marked Pending before the Gateway write dispatches, and only an acknowledged
+// configuration hash clears it. Every other flow (setup, recovery, withdrawal) reads
+// the receipt, validates the Gateway still matches it, and refuses to mutate on drift.
+//
+// The class multiplexes two endpoint modes behind ILocalAiEndpointLifecycle:
+//   - Native mode: a receipt exists; Gateway RPC configuration transport is borrowed
+//     from the owning Gateway connection for reads/writes/verification.
+//   - WSL mode: no receipt; a pinned WSL command transport (ILocalAiEndpointLifecycle wsl)
+//     handles start/stop, gated on the WSL Gateway distro owner.
+//
+// Main public methods (typical call order):
+//
+//   // 1. Detect who owns the current Gateway's Local AI configuration (read-only).
+//   var state = await lifecycle.ObserveOwnershipAsync(record, transport, install, ct);
+//   // NativeLocalAiOwnershipState: Unselected | MissingReceipt | DifferentOwner |
+//   //                              RecoveryRequired | SameOwner | InvalidReceipt | Unavailable
+//
+//   // 2. First use: stage the receipt, then start the runtime through its owning
+//   //    service; the runtime invokes CompleteStartAsync/PublishAsync itself as
+//   //    callbacks under its operation gate (see LlamaServerRuntimeService.EnsureStartedAsync
+//   //    and SetupLocalAiHost). Calling them directly never launches the process.
+//   await lifecycle.PrepareAsync(install, ct);   // requires a registered Gateway (Register)
+//   var started = await runtime.EnsureStartedAsync(ct, progress);
+//
+//   // 3. Stop/teardown: withdraw the provider, restore the previous primary model,
+//   //    and remove the Companion-added allowlist entry.
+//   var stopped = await lifecycle.QuiesceAsync(install, LocalAiQuiesceReason.Teardown, ct);
+//   await lifecycle.ConfirmWithdrawnWithoutInstallAsync(ct); // only when recovery is disabled
+//
+//   // 4. Gateway reconnection: automatic recovery resumes the owned runtime when the
+//   //    owning Gateway returns to Connected (see Attach + ResumeAsync), and startup
+//   //    handoff joins the in-flight recovery via WaitForRuntimeAsync.
+//   lifecycle.Attach(manager, runtime);
+//   await lifecycle.WaitForRuntimeAsync(expected, runtime, ct);
+//
+//   // 5. Shutdown or release: drain in-flight recovery, then drop ownership.
+//   await lifecycle.DrainRecoveryAsync();
+//   await lifecycle.ReleaseOwnershipAsync(ct); // deletes the receipt after confirmed withdrawal
+//
+// Invariants:
+//   - Only one receipt at a time; ownership never silently migrates to another Gateway.
+//   - A Pending receipt blocks all mutations except explicit endpoint recovery.
+//   - User-edited allowlist entries and provider keys are preserved, never overwritten;
+//     edited routes require live inference verification before withdrawal.
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
+using OpenClaw.SetupEngine;
+using OpenClaw.Shared;
+
+namespace OpenClawTray.Services;
+
+/// <summary>
+/// One endpoint, one durable Gateway owner. Native RPCs borrow an existing authorized
+/// connection; WSL keeps its pinned command transport.
+/// </summary>
+internal sealed class LocalAiGatewayLifecycle(
+    LocalAiPaths paths, string dataDirectory, Func<GatewayRegistry?> getRegistry,
+    Func<GatewayConnectionManager?> getManager, ILocalAiEndpointLifecycle wsl,
+    IOpenClawLogger logger) : ILocalAiEndpointLifecycle
+{
+    private const string UnconfirmedGatewayChangeDetail =
+        "Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.";
+    private readonly LocalAiNativeBindingStore _store = new(paths);
+    private readonly LocalAiManifestStore _manifest = new(paths);
+    private readonly LocalAiApiCredentialStore _credentials = new(paths);
+    private readonly LocalAiGatewayDistroResolver _wslOwner = new(getRegistry());
+    private NativeLocalAiGatewayTarget? _registeredTarget;
+    private IGatewayAiSetupTransport? _registeredTransport;
+    private int _resuming;
+    private Task? _resumeTask;
+    private sealed record WslStartup(string GatewayId, Task Task);
+    private WslStartup? _wslStartup;
+    private readonly object _recoveryGate = new();
+    private bool _shuttingDown;
+    private sealed record EndpointRecovery(string GatewayId, string ModelRef, Uri Endpoint, string ConfigHash);
+    private EndpointRecovery? _endpointRecovery;
+
+    public bool IsNativeMode => _store.Exists || _registeredTarget is not null ||
+        getRegistry()?.GetActive()?.NativePackageFamilyName is not null;
+    public bool CanStartWslAutomatically => !IsNativeMode && _wslOwner.Resolve().Success;
+    public bool RequiresNativeSelection => !_store.Exists && IsNativeMode;
+    public event EventHandler? SelectionChanged;
+    public bool HasNativeBinding => _store.Exists;
+    public bool HasReleasableOwnership => _store.Exists;
+    public bool AutomaticRecoveryEnabled => _store.Load()?.AutomaticRecoveryEnabled ?? true;
+    public bool OwnsGateway(string id) => _store.Load()?.GatewayId == id;
+    public string? GetApiKey() => _store.Exists ? _credentials.GetOrCreate() : null;
+    public int? GetRecoveryPort(LocalAiResolvedInstall install) =>
+        _endpointRecovery is { } recovery && recovery.Endpoint == install.Endpoint &&
+        recovery.ModelRef == LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)
+            ? recovery.Endpoint.Port : null;
+    public void EndEndpointRecovery() => _endpointRecovery = null;
+
+    /// <summary>Observes durable native ownership without changing Gateway or receipt state.</summary>
+    public async Task<NativeLocalAiOwnershipState> ObserveOwnershipAsync(
+        GatewayRecord record, IGatewayAiSetupTransport transport, LocalAiResolvedInstall? install, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        LocalAiNativeBinding? binding;
+        try { binding = _store.Load(); }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException or ArgumentException)
+        {
+            logger.Warn("Local AI ownership discovery found an invalid saved receipt.");
+            return NativeLocalAiOwnershipState.InvalidReceipt;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.Warn("Local AI ownership discovery could not read the saved receipt.");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
+        try
+        {
+            var target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+            if (binding is not null)
+            {
+                RequireBinding(binding, target);
+                // A journaled rebind belongs to the runtime's model-switch transaction. Only the
+                // runtime's manifest load settles it; discovery stays read-only.
+                if (binding.RebindFrom is not null)
+                {
+                    logger.Warn("Local AI ownership discovery found an unsettled model switch. Check again after it finishes.");
+                    return NativeLocalAiOwnershipState.Unavailable;
+                }
+                if (install is not null && binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+                    return NativeLocalAiOwnershipState.DifferentOwner;
+            }
+            var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct)
+                .ConfigureAwait(false);
+            // A concurrent receipt writer invalidates presentation evidence, not just mutation admission.
+            if (_store.Load() != binding) return NativeLocalAiOwnershipState.Unavailable;
+            var config = JsonNode.Parse(current.Config.GetRawText())!;
+            if (binding is null)
+            {
+                var primary = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
+                return config["models"]?["providers"]?["llamacpp"] is not null ||
+                    primary?.StartsWith("llamacpp/", StringComparison.OrdinalIgnoreCase) == true
+                    ? NativeLocalAiOwnershipState.MissingReceipt : NativeLocalAiOwnershipState.Unselected;
+            }
+            try { RequireOwnedAllowlist(binding, config); }
+            catch (InvalidOperationException)
+            {
+                logger.Warn("Local AI ownership discovery found an edited owned model allowlist entry.");
+                return NativeLocalAiOwnershipState.InvalidReceipt;
+            }
+            // Provider authentication and revision reconciliation remain explicit Use operations.
+            return binding.Pending || binding.ConfigHash != current.Hash
+                ? NativeLocalAiOwnershipState.RecoveryRequired : NativeLocalAiOwnershipState.SameOwner;
+        }
+        catch (LocalAiSelectionRejectedException)
+        {
+            return NativeLocalAiOwnershipState.DifferentOwner;
+        }
+        catch (GatewayConnectionLostException) when (!ct.IsCancellationRequested)
+        {
+            logger.Warn("Local AI ownership discovery lost its Gateway connection. Reconnect and check again.");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException)
+        {
+            logger.Warn("Local AI ownership discovery found invalid ownership evidence.");
+            return NativeLocalAiOwnershipState.InvalidReceipt;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or TimeoutException)
+        {
+            logger.Warn($"Local AI ownership discovery is unavailable ({ex.GetType().Name}).");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
+    }
+
+    public async Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        await using var lease = await _store.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        if (_store.Load() is { } binding)
+            _store.Save(binding with { AutomaticRecoveryEnabled = enabled });
+    }
+
+    /// <summary>Removes a receipt after confirming its Gateway route has been withdrawn.</summary>
+    public async Task ForgetWithdrawnAsync(string gatewayId, CancellationToken ct)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load();
+        if (binding?.GatewayId != gatewayId || binding.Pending || binding.AutomaticRecoveryEnabled)
+            throw new InvalidOperationException("The native Local AI ownership receipt is not safe to release.");
+        await CaptureWithdrawnAsync(binding, ct).ConfigureAwait(false);
+        _store.Delete();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public Task PrepareUnownedStopAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!_store.Exists)
+        {
+            var owner = _wslOwner.Resolve();
+            if (!owner.Success)
+                throw new LocalAiSelectionRejectedException(owner.Detail!);
+        }
+        return Task.CompletedTask;
+    }
+
+    public async Task ConfirmWithdrawnWithoutInstallAsync(CancellationToken ct)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load() ?? throw new InvalidOperationException("The Local AI ownership receipt is unavailable.");
+        if (binding.AutomaticRecoveryEnabled)
+            throw new InvalidOperationException("Stop Local AI before confirming its Gateway withdrawal.");
+        var (current, settled) = await CaptureWithdrawnAsync(binding, ct).ConfigureAwait(false);
+        _store.Save(settled with { Pending = false, ConfigHash = current.Hash });
+    }
+
+    private async Task<(LocalAiGatewayConfigurationSnapshot Current, LocalAiNativeBinding Binding)> CaptureWithdrawnAsync(
+        LocalAiNativeBinding binding, CancellationToken ct)
+    {
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+        var config = JsonNode.Parse(current.Config.GetRawText())!;
+        binding = SettleUnconfirmedPrimary(binding, config);
+        if (binding.AddedAllowlistEntry &&
+            config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
+            entry is not JsonObject { Count: 0 })
+            throw new InvalidOperationException(
+                "The Local AI allowlist entry contains user customizations. Do not delete this metadata or the ownership receipt. Restore the original installation receipt from your backup, then retry Stop to preserve the edited entry. Companion cannot restore a missing receipt automatically.");
+        if (config["models"]?["providers"]?["llamacpp"] is not null ||
+            config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary ||
+            binding.AddedAllowlistEntry && config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is not null)
+            throw new InvalidOperationException(
+                "The original Gateway has not confirmed withdrawal. Restore the installation receipt, or use the original Gateway's configuration tools to remove the Local AI provider, restore its saved primary model, and remove its Companion-added allowlist entry. Keep the ownership receipt.");
+        return (current, binding);
+    }
+
+    public async Task ReleaseOwnershipAsync(CancellationToken ct)
+    {
+        if (_registeredTransport is not null)
+            throw new InvalidOperationException("Close Local AI setup before releasing Gateway ownership.");
+        var binding = _store.Load() ?? throw new InvalidOperationException("There is no native Local AI ownership to release.");
+        await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Commits a model rebind while preserving recoverable ownership state.</summary>
+    public async Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
+        Func<Task> commitManifest, CancellationToken ct)
+    {
+        // The lease spans journal, manifest commit and settlement: no other lease holder can see
+        // the journal while the commit is in flight.
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { } binding)
+        {
+            await commitManifest().ConfigureAwait(false);
+            return;
+        }
+        if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous) ||
+            binding.Pending || binding.AutomaticRecoveryEnabled || binding.RebindFrom is not null)
+            throw new InvalidOperationException("The native Local AI ownership receipt is not safe to change.");
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+        var config = JsonNode.Parse(current.Config.GetRawText())!;
+        binding = SettleUnconfirmedPrimary(binding, config);
+        if (config["models"]?["providers"]?["llamacpp"] is not null ||
+            config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary)
+            throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(next);
+        var rebound = binding with
+        {
+            ModelRef = model,
+            ConfigHash = current.Hash,
+            AddedAllowlistEntry = config["agents"]?["defaults"]?["models"] is JsonObject entries && !entries.ContainsKey(model),
+        };
+        // Write-ahead: a crash inside commitManifest leaves this journal for SettleModelRebindAsync.
+        _store.Save(rebound with { RebindFrom = new(binding.ModelRef, binding.AddedAllowlistEntry) });
+        try
+        {
+            await commitManifest().ConfigureAwait(false);
+        }
+        catch
+        {
+            // The manifest save is an atomic replace, so a throw means the previous manifest stands.
+            SaveSettledBestEffort(binding with { ConfigHash = current.Hash });
+            throw;
+        }
+        SaveSettledBestEffort(rebound);
+    }
+
+    private void SaveSettledBestEffort(LocalAiNativeBinding settled)
+    {
+        try { _store.Save(settled); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The journal stays on disk; the runtime's next manifest load settles it.
+            logger.Warn($"Local AI Gateway binding settlement was deferred ({ex.GetType().Name}).");
+        }
+    }
+
+    public async Task SettleModelRebindAsync(Func<CancellationToken, Task<LocalAiResolvedInstall?>> loadCommitted,
+        CancellationToken ct)
+    {
+        // Every manifest load calls this; skip the cross-process lease when nothing is journaled.
+        if (_store.Load() is not { RebindFrom: not null }) return;
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { RebindFrom: { } from } binding) return;
+        // Read under the lease so the outcome follows the durable manifest, not a caller's snapshot.
+        if (await loadCommitted(ct).ConfigureAwait(false) is not { } committed) return;
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(committed);
+        if (model == binding.ModelRef)
+        {
+            _store.Save(binding with { RebindFrom = null });
+        }
+        else if (model == from.ModelRef)
+        {
+            _store.Save(binding with
+            {
+                ModelRef = from.ModelRef,
+                AddedAllowlistEntry = from.AddedAllowlistEntry,
+                RebindFrom = null,
+            });
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "The native Local AI ownership receipt names neither the installed model nor the previous one.");
+        }
+    }
+
+    /// <summary>Records the cloud fallback model for the owned native route.</summary>
+    public async Task SetFallbackModelAsync(string? model, CancellationToken ct)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { } binding || binding.PreviousPrimary == model) return;
+        if (binding.Pending)
+            throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
+        _store.Save(binding with { PreviousPrimary = model });
+    }
+
+    /// <summary>Writes a cloud primary after the owned route has accepted the transition.</summary>
+    public async Task SetPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken ct)
+    {
+        // The lease spans the check, the Gateway write and the receipt update, so no publication can
+        // mark the receipt pending in between. Unlike SetFallbackModelAsync, Pending is checked before
+        // any same-value shortcut: writing the current fallback still strands a published provider.
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load();
+        if (binding is null)
+        {
+            await writePrimary(ct).ConfigureAwait(false);
+            return;
+        }
+        if (binding.Pending)
+            throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
+        if (binding.UnconfirmedPrimary is { } earlier && earlier != model)
+        {
+            // An earlier write may have landed; settle it first so the journal names a single candidate.
+            var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+            var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+            binding = SettleUnconfirmedPrimary(binding, JsonNode.Parse(current.Config.GetRawText())!);
+        }
+        // Write-ahead: if the reply is lost, the process stops, or the save below fails, the next Gateway
+        // config read finds this journal and adopts whichever primary the Gateway shows.
+        _store.Save(binding with { UnconfirmedPrimary = model });
+        await writePrimary(ct).ConfigureAwait(false);
+        _store.Save(binding with { PreviousPrimary = model, UnconfirmedPrimary = null });
+    }
+
+    public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
+        LocalAiResolvedInstall install, CancellationToken ct, IProgress<LocalAiRuntimeStartStage>? progress = null)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load() ?? throw new InvalidOperationException("The Local AI ownership receipt is unavailable.");
+        var target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+        RequireBinding(binding, target);
+        var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
+        var before = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+        var config = JsonNode.Parse(before.Config.GetRawText())!;
+        RequireOwnedAllowlist(binding, config);
+        var provider = config["models"]?["providers"]?["llamacpp"];
+        if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) ||
+            config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.ModelRef ||
+            provider is null || !LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                provider.ToJsonString(), install, _credentials.GetOrCreate()))
+            throw new InvalidOperationException("The saved Local AI provider or primary model was changed. No ownership was adopted.");
+        // A redacted credential cannot establish ownership. Explicit verification
+        // must perform real inference through the exact primary, without fallback.
+        ct.ThrowIfCancellationRequested();
+        progress?.Report(LocalAiRuntimeStartStage.VerifyingEndpoint);
+        var verified = await new GatewayAiSetupClient(transport).VerifyConfiguredAsync(binding.ModelRef, ct)
+            .ConfigureAwait(false);
+        if (!verified.Ok)
+            throw new InvalidOperationException("The native Gateway could not authenticate and infer with the owned Local AI model.");
+        var after = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+        if (before.Hash != after.Hash)
+            throw new InvalidOperationException("The Gateway configuration changed during Local AI verification.");
+        _store.Save(binding with { ConfigHash = after.Hash, Pending = false });
+    }
+
+    public void Register(GatewayRecord record, IGatewayAiSetupTransport transport)
+    {
+        _registeredTarget = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+        _registeredTransport = transport;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Release(IGatewayAiSetupTransport transport)
+    {
+        if (!ReferenceEquals(_registeredTransport, transport)) return;
+        _endpointRecovery = null;
+        _registeredTransport = null;
+        _registeredTarget = null;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Attach(GatewayConnectionManager manager, ILocalAiRuntime runtime)
+    {
+        if (getRegistry() is { } registry)
+            registry.Changed += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
+        manager.StateChanged += (_, snapshot) =>
+        {
+            lock (_recoveryGate)
+            {
+                if (!_shuttingDown && snapshot.OperatorState == RoleConnectionState.Connected && _store.Exists &&
+                    Interlocked.CompareExchange(ref _resuming, 1, 0) == 0)
+                    Volatile.Write(ref _resumeTask, ResumeAsync(runtime));
+            }
+        };
+    }
+
+    // Only a startup admitted for this WSL Gateway may delay its handoff.
+    // A saved install receipt alone does not make an ordinary Gateway selection
+    // dependent on the companion's managed runtime.
+    public void TrackWslStartup(Task startup)
+    {
+        ArgumentNullException.ThrowIfNull(startup);
+        if (_wslOwner.Resolve() is { Success: true, GatewayId: { } gatewayId })
+            Volatile.Write(ref _wslStartup, new WslStartup(gatewayId, startup));
+    }
+
+    public async Task DrainRecoveryAsync()
+    {
+        Task? recovery;
+        lock (_recoveryGate)
+        {
+            _shuttingDown = true;
+            recovery = _resumeTask;
+        }
+        if (recovery is not null) await recovery.ConfigureAwait(false);
+    }
+
+    public async Task WaitForRuntimeAsync(GatewayAiSetupCompletion expected, ILocalAiRuntime runtime, CancellationToken ct)
+    {
+        LocalAiNativeBinding? binding;
+        try { binding = _store.Load(); }
+        catch (Exception ex) when (!expected.RequiresManagedLocalAi &&
+            ex is InvalidDataException or JsonException or ArgumentException or IOException or UnauthorizedAccessException)
+        { return; }
+        if (binding is null)
+        {
+            if (getRegistry()?.GetActive()?.Id != expected.GatewayId ||
+                _wslOwner.Resolve() is not { Success: true, GatewayId: { } ownerId } ||
+                ownerId != expected.GatewayId)
+                return;
+            var startup = Volatile.Read(ref _wslStartup);
+            Task? GetOwnedStartup() => startup?.GatewayId == expected.GatewayId ? startup.Task : null;
+            if (expected.RequiresManagedLocalAi)
+            {
+                await WaitForRecoveryAsync(expected.ModelRef, runtime, GetOwnedStartup, ct,
+                    failOnTerminalState: true);
+                return;
+            }
+            if (GetOwnedStartup() is null)
+                return;
+            if (!expected.ModelRef.StartsWith("llamacpp/", StringComparison.Ordinal))
+                return;
+            LocalAiResolvedInstall? install;
+            try { install = await _manifest.LoadAsync(ct); }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            { return; }
+            // WSL setup records ordinary model verification for its managed route.
+            // Join the startup already admitted by this app, then let the Gateway
+            // verify ordinary selections even when that startup failed.
+            if (install is not null && LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) == expected.ModelRef)
+                await WaitForRecoveryAsync(expected.ModelRef, runtime, GetOwnedStartup, ct,
+                    requiresManagedLocalAi: false, allowOrdinaryTerminalBypass: true);
+            return;
+        }
+        if (binding.GatewayId != expected.GatewayId || binding.ModelRef != expected.ModelRef ||
+            (!expected.RequiresManagedLocalAi && (binding.Pending || !binding.AutomaticRecoveryEnabled ||
+                binding.EndpointBinding != expected.EndpointBinding || binding.IdentityBinding != expected.IdentityBinding)))
+            return;
+        await WaitForRecoveryAsync(expected.ModelRef, runtime, () => Volatile.Read(ref _resumeTask), ct,
+            requiresManagedLocalAi: expected.RequiresManagedLocalAi);
+    }
+
+    internal static async Task WaitForRecoveryAsync(string expectedModelRef, ILocalAiRuntime runtime,
+        Func<Task?> getRecoveryTask, CancellationToken ct, bool requiresManagedLocalAi = true,
+        bool failOnTerminalState = false, bool allowOrdinaryTerminalBypass = false)
+    {
+        // Only join recovery already admitted by the connection owner. Handoff
+        // cannot replay a pending write or start a different Gateway's runtime.
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            LocalAiRuntimeState state = runtime.Snapshot.State;
+            // An ordinary Gateway route can be verified independently when the
+            // companion runtime is already healthy or has reached a terminal state.
+            if (allowOrdinaryTerminalBypass && !requiresManagedLocalAi && state is (LocalAiRuntimeState.Healthy or
+                LocalAiRuntimeState.Failed or LocalAiRuntimeState.Conflict or LocalAiRuntimeState.NotInstalled))
+                break;
+            if (getRecoveryTask() is { IsCompleted: false } recovery)
+            {
+                if (allowOrdinaryTerminalBypass && !requiresManagedLocalAi)
+                    await Task.Delay(100, ct).ConfigureAwait(false);
+                else
+                    await recovery.WaitAsync(ct).ConfigureAwait(false);
+                continue;
+            }
+            state = runtime.Snapshot.State;
+            if (state == LocalAiRuntimeState.Healthy ||
+                (!requiresManagedLocalAi && getRecoveryTask() is { IsCompleted: true })) break;
+            if (failOnTerminalState && state is (LocalAiRuntimeState.Failed or LocalAiRuntimeState.Conflict or
+                LocalAiRuntimeState.Stopped or LocalAiRuntimeState.NotInstalled))
+                throw new InvalidOperationException("The selected Local AI runtime failed before Gateway verification.");
+            await Task.Delay(100, ct).ConfigureAwait(false);
+        }
+        ct.ThrowIfCancellationRequested();
+        // Ordinary selection still verifies its model through the Gateway.
+        if (!requiresManagedLocalAi) return;
+        if (runtime.Snapshot is not { State: LocalAiRuntimeState.Healthy, Ownership: LocalAiOwnership.CompanionManaged } ready ||
+            "llamacpp/" + ready.ModelId != expectedModelRef)
+            throw new InvalidOperationException("The selected Local AI runtime is not ready after Gateway reconnection.");
+    }
+
+    internal async Task ResumeAsync(ILocalAiRuntime runtime)
+    {
+        try
+        {
+            var binding = _store.Load();
+            if (binding is { AutomaticRecoveryEnabled: false } &&
+                getRegistry()?.GetActive()?.Id == binding.GatewayId)
+            {
+                // Stopped intent permits withdrawal only, including after an offline Stop.
+                var stopped = await runtime.ReconcileStoppedAsync().ConfigureAwait(false);
+                if (stopped.State == LocalAiRuntimeState.Failed || stopped.GatewayRouteRequiresResolution)
+                    logger.Warn("The stopped Local AI route still needs withdrawal through its original Gateway.");
+                return;
+            }
+            if (binding is null || binding.Pending || getRegistry()?.GetActive()?.Id != binding.GatewayId)
+            {
+                logger.Warn("Local AI automatic recovery is waiting for its original Gateway and a confirmed configuration revision.");
+                return;
+            }
+            var snapshot = await runtime.ResumeAsync().ConfigureAwait(false);
+            if (snapshot.State != LocalAiRuntimeState.Healthy)
+                logger.Warn("The bound Local AI runtime needs attention after Gateway reconnection.");
+        }
+        catch (Exception ex) { logger.Warn($"Local AI recovery failed ({ex.GetType().Name})."); }
+        finally { Interlocked.Exchange(ref _resuming, 0); }
+    }
+
+    /// <summary>Prepares the active native Gateway to publish the supplied Local AI install.</summary>
+    public Task PrepareAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
+        PrepareCoreAsync(install, _registeredTarget ??
+            throw new LocalAiSelectionRejectedException("Reconnect the selected native Gateway before using Local AI."),
+            _registeredTransport!, ct);
+
+    /// <summary>Reconciles receipt and Gateway state before starting the native Local AI route.</summary>
+    public async Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_store.Load() is not { } binding)
+        {
+            // Admission precedes runtime mutation. No owner is not an uncertain write,
+            // and a staged native selection must never fall back to WSL.
+            if (IsNativeMode)
+                throw new LocalAiSelectionRejectedException("Choose Use Local AI for the selected native Gateway before starting it.");
+            var owner = _wslOwner.Resolve();
+            if (!owner.Success)
+                throw new LocalAiSelectionRejectedException(owner.Detail!);
+            return;
+        }
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        await PrepareCoreAsync(install, target, transport, ct).ConfigureAwait(false);
+    }
+
+    public Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
+        CompleteStartAsync(install, ct, null);
+
+    public Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken ct,
+        IProgress<LocalAiRuntimeStartStage>? progress) =>
+        _store.Exists ? RunNativeAsync(install, null, ct, progress) : Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+
+    private async Task PrepareCoreAsync(LocalAiResolvedInstall install, NativeLocalAiGatewayTarget target,
+        IGatewayAiSetupTransport transport, CancellationToken ct)
+    {
+        _endpointRecovery = null;
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
+        var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load();
+        if (binding is not null)
+        {
+            RequireBinding(binding, target);
+            var observed = JsonNode.Parse(current.Config.GetRawText())!;
+            binding = SettleUnconfirmedPrimary(binding, observed);
+            if (binding.Pending || binding.ConfigHash != current.Hash)
+            {
+                var pendingConfig = observed;
+                RequireOwnedAllowlist(binding, pendingConfig);
+                var provider = pendingConfig["models"]?["providers"]?["llamacpp"];
+                var primary = pendingConfig["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
+                if (current.Hash == binding.ConfigHash ||
+                    provider is null && (primary == binding.PreviousPrimary || primary == binding.ModelRef))
+                {
+                    // The write did not land, or the observed endpoint is already withdrawn.
+                    binding = binding with { Pending = false, ConfigHash = current.Hash };
+                    _store.Save(binding);
+                }
+                else if (provider is not null && primary == binding.ModelRef && install.Endpoint is { } endpoint &&
+                    binding.ModelRef == LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) &&
+                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                        provider.ToJsonString(), install, _credentials.GetOrCreate()))
+                {
+                    // Explicit Use may restore only the same authenticated listener.
+                    // No Gateway write is replayed; publication waits for real inference.
+                    _endpointRecovery = new(binding.GatewayId, binding.ModelRef, endpoint, current.Hash);
+                    return;
+                }
+            }
+            if (binding.Pending || binding.ConfigHash != current.Hash)
+                throw new LocalAiSelectionRejectedException(binding.Pending
+                    ? PendingRecoveryDetail(binding, install)
+                    : "The saved Local AI route needs reconciliation. Its Gateway configuration was changed.");
+            if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+                throw new LocalAiSelectionRejectedException("Withdraw the previous Local AI model before replacing its installation.");
+            return;
+        }
+        var config = JsonNode.Parse(current.Config.GetRawText())!;
+        if (config["models"]?["providers"]?["llamacpp"] is not null)
+            throw new LocalAiSelectionRejectedException("An existing llamacpp provider is not owned by this installation. It has not been changed.");
+        var previous = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
+        LocalAiGatewayProviderDefinition.ValidateFallbackModel(previous);
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        if (previous?.StartsWith("llamacpp/", StringComparison.OrdinalIgnoreCase) == true)
+            throw new LocalAiSelectionRejectedException("The existing Local AI primary model has no ownership receipt.");
+        var allowlist = config["agents"]?["defaults"]?["models"];
+        if (allowlist is not null && allowlist is not JsonObject)
+            throw new LocalAiSelectionRejectedException("The Gateway model allowlist is invalid.");
+        _store.Save(new(target.GatewayId, target.Route.EndpointBinding!,
+            target.Route.IdentityBinding!, model, previous, current.Hash,
+            allowlist is JsonObject entries && !entries.ContainsKey(model),
+            AutomaticRecoveryEnabled: false));
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Quiesces the native route or delegates the operation to WSL ownership.</summary>
+    public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown, CancellationToken cancellationToken = default) =>
+        _store.Exists ? RunNativeAsync(install, reason, cancellationToken) :
+            wsl.QuiesceAsync(install, reason, cancellationToken);
+
+    /// <summary>Publishes the native route or delegates publication to WSL ownership.</summary>
+    public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
+        CancellationToken cancellationToken = default) =>
+        PublishAsync(install, cancellationToken, null);
+
+    public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
+        CancellationToken cancellationToken, IProgress<LocalAiRuntimeStartStage>? progress) =>
+        _store.Exists ? RunNativeAsync(install, null, cancellationToken, progress) :
+            ((ILocalAiEndpointLifecycle)wsl).PublishAsync(install, cancellationToken, progress);
+
+    private async Task<LocalAiEndpointLifecycleResult> RunNativeAsync(
+        LocalAiResolvedInstall install, LocalAiQuiesceReason? reason, CancellationToken ct,
+        IProgress<LocalAiRuntimeStartStage>? progress = null)
+    {
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(LocalAiRuntimeStartStage.CheckingConfiguration);
+            await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+            var binding = _store.Load();
+            if (binding is null)
+                return reason is not null ? LocalAiEndpointLifecycleResult.Ok() :
+                    LocalAiEndpointLifecycleResult.Failed("Choose Use Local AI for the selected native Gateway before publishing its endpoint.");
+            var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+            if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+                throw new InvalidOperationException("The Local AI installation differs from its saved Gateway owner.");
+            var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
+            var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+            var config = JsonNode.Parse(current.Config.GetRawText())!;
+            binding = SettleUnconfirmedPrimary(binding, config);
+            if (reason == LocalAiQuiesceReason.Teardown && binding.AddedAllowlistEntry &&
+                config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
+                entry is not JsonObject { Count: 0 })
+            {
+                // User metadata is no longer ours to remove; withdraw routing without deleting it.
+                binding = binding with { AddedAllowlistEntry = false };
+            }
+            if (binding.Pending || current.Hash != binding.ConfigHash)
+            {
+                RequireOwnedAllowlist(binding, config);
+                var provider = config["models"]?["providers"]?["llamacpp"];
+                var primary = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
+                if (current.Hash == binding.ConfigHash ||
+                    provider is null && (primary == binding.PreviousPrimary || primary == binding.ModelRef))
+                {
+                    binding = binding with { Pending = false, ConfigHash = current.Hash };
+                    _store.Save(binding);
+                }
+                else if (reason == LocalAiQuiesceReason.Teardown && !binding.Pending &&
+                    provider is not null && primary == binding.ModelRef &&
+                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                        provider.ToJsonString(), install, _credentials.GetOrCreate()))
+                {
+                    // Redacted keys alone cannot authorize deletion after an external edit.
+                    // A live listener can prove the credential; a stopped one requires explicit recovery.
+                    var key = provider["apiKey"]?.GetValue<string>();
+                    if (key != _credentials.GetOrCreate())
+                    {
+                        var verified = await new GatewayAiSetupClient(transport)
+                            .VerifyConfiguredAsync(binding.ModelRef, ct).ConfigureAwait(false);
+                        if (!verified.Ok)
+                            throw new InvalidOperationException("Recover the original authenticated listener before withdrawing its edited Gateway route.");
+                    }
+                    var after = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+                    if (after.Hash != current.Hash)
+                        throw new InvalidOperationException("The Gateway configuration changed during withdrawal verification.");
+                    binding = binding with { ConfigHash = current.Hash };
+                    _store.Save(binding);
+                }
+                else if (_endpointRecovery is { } recovery && recovery.GatewayId == binding.GatewayId &&
+                    recovery.Endpoint == install.Endpoint && recovery.ModelRef == binding.ModelRef &&
+                    recovery.ConfigHash == current.Hash && reason == LocalAiQuiesceReason.EndpointCycle)
+                    return LocalAiEndpointLifecycleResult.Ok();
+                else if (_endpointRecovery is { } publication && publication.GatewayId == binding.GatewayId &&
+                    publication.Endpoint == install.Endpoint && publication.ModelRef == binding.ModelRef &&
+                    publication.ConfigHash == current.Hash && reason is null)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    progress?.Report(LocalAiRuntimeStartStage.VerifyingEndpoint);
+                    var verification = await new GatewayAiSetupClient(transport)
+                        .VerifyConfiguredAsync(binding.ModelRef, ct).ConfigureAwait(false);
+                    var after = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+                    if (!verification.Ok || after.Hash != current.Hash)
+                        throw new InvalidOperationException("The recovered endpoint could not be verified through the original Gateway.");
+                    _store.Save(binding with { Pending = false, ConfigHash = after.Hash });
+                    _endpointRecovery = null;
+                    return LocalAiEndpointLifecycleResult.Ok();
+                }
+                else
+                {
+                    logger.Warn("An unconfirmed native Local AI write requires explicit endpoint recovery or original Gateway configuration inspection.");
+                    return LocalAiEndpointLifecycleResult.Failed(PendingRecoveryDetail(binding, install));
+                }
+            }
+            _store.Save(binding);
+            var guarded = new JournaledTransport(new(target, transport), _store, binding,
+                reason == LocalAiQuiesceReason.Teardown);
+            var coordinator = new LocalAiGatewayProviderCoordinator(guarded, _credentials.GetOrCreate, logger);
+            var ownedInstall = install with { Manifest = install.Manifest with { GatewayFallbackModel = binding.PreviousPrimary } };
+            ct.ThrowIfCancellationRequested();
+            if (reason is null) progress?.Report(LocalAiRuntimeStartStage.PublishingProvider);
+            var result = reason is { } withdrawal
+                ? await coordinator.QuiesceAsync(ownedInstall, withdrawal, ct).ConfigureAwait(false)
+                : await coordinator.PublishAsync(ownedInstall, ct).ConfigureAwait(false);
+            if (result.Success && reason == LocalAiQuiesceReason.Teardown)
+                await guarded.CompleteTeardownAsync(ct).ConfigureAwait(false);
+            return result;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            logger.Warn($"Native Local AI route requires reconciliation ({ex.GetType().Name}).");
+            return LocalAiEndpointLifecycleResult.Failed(
+                "The original native Gateway route could not be safely updated. Its saved ownership or configuration changed, or it is offline. Reconnect it and review Local AI before retrying.");
+        }
+    }
+
+    private async Task<(NativeLocalAiGatewayTarget, IGatewayAiSetupTransport)> GetTransportAsync(
+        LocalAiNativeBinding binding, CancellationToken ct)
+    {
+        NativeLocalAiGatewayTarget target;
+        IGatewayAiSetupTransport transport;
+        if (_registeredTarget?.GatewayId == binding.GatewayId && _registeredTransport is { IsConnected: true } registered)
+        {
+            target = _registeredTarget;
+            transport = registered;
+        }
+        else
+        {
+            var record = getRegistry()?.GetActive();
+            if (record?.Id != binding.GatewayId || getManager() is not { } manager)
+                throw new InvalidOperationException("Reconnect the original Local AI Gateway to withdraw and release its ownership.");
+            transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDirectory, manager,
+                binding.GatewayId, ct, binding.EndpointBinding).ConfigureAwait(false);
+            target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+        }
+        RequireBinding(binding, target);
+        return (target, transport);
+    }
+
+    /// <summary>
+    /// Settles a cloud primary journaled by <see cref="SetPrimaryAndFallbackModelAsync"/> against the
+    /// observed Gateway config: if the write landed, its target becomes the fallback; otherwise the
+    /// journal is dropped. Callers hold the receipt lease.
+    /// </summary>
+    private LocalAiNativeBinding SettleUnconfirmedPrimary(LocalAiNativeBinding binding, JsonNode config)
+    {
+        if (binding.UnconfirmedPrimary is not { } intended) return binding;
+        var settled = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() == intended
+            ? binding with { PreviousPrimary = intended, UnconfirmedPrimary = null }
+            : binding with { UnconfirmedPrimary = null };
+        _store.Save(settled);
+        return settled;
+    }
+
+    private static void RequireOwnedAllowlist(LocalAiNativeBinding binding, JsonNode config)
+    {
+        if (binding.AddedAllowlistEntry &&
+            config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
+            entry is not JsonObject { Count: 0 })
+            throw new InvalidOperationException("The owned Local AI allowlist entry was edited. Preserve it before reconciling.");
+    }
+
+    private static string PendingRecoveryDetail(LocalAiNativeBinding binding, LocalAiResolvedInstall install) =>
+        $"Gateway '{binding.GatewayId}' has an unconfirmed Local AI write. Restore its authenticated listener at " +
+        $"'{install.Endpoint}' and retry Use Local AI. Otherwise, inspect the original Gateway configuration, " +
+        $"remove models.providers.llamacpp, and restore agents.defaults.model.primary to " +
+        $"{(binding.PreviousPrimary is null ? "unset" : $"'{binding.PreviousPrimary}'")} " +
+        $"(or retain '{binding.ModelRef}' for cleanup). Keep the local ownership receipt.";
+
+    private static void RequireBinding(LocalAiNativeBinding binding, NativeLocalAiGatewayTarget target)
+    {
+        if (binding.GatewayId != target.GatewayId || binding.EndpointBinding != target.Route.EndpointBinding ||
+            binding.IdentityBinding != target.Route.IdentityBinding)
+            throw new LocalAiSelectionRejectedException("The Local AI installation belongs to a different Gateway or device identity.");
+    }
+
+    private sealed class JournaledTransport(
+        LocalAiGatewayRpcConfigurationTransport rpc, LocalAiNativeBindingStore store,
+        LocalAiNativeBinding binding, bool teardown) : ILocalAiGatewayAtomicConfigurationTransport
+    {
+        private LocalAiNativeBinding _binding = binding;
+        private bool _applied;
+
+        public async Task CompleteTeardownAsync(CancellationToken ct)
+        {
+            if (_applied || !_binding.AddedAllowlistEntry) return;
+            var current = await CaptureAsync(ct).ConfigureAwait(false);
+            var config = JsonNode.Parse(current.Config.GetRawText())!;
+            if (config["agents"]?["defaults"]?["models"]?[_binding.ModelRef] is not null)
+            {
+                // Routing may already be withdrawn, so the coordinator emits no patch.
+                // Use the same journal and CAS path for the remaining owned empty entry.
+                await ApplyAsync(current, JsonSerializer.SerializeToElement(new JsonObject()), ct)
+                    .ConfigureAwait(false);
+                var after = await CaptureAsync(ct).ConfigureAwait(false);
+                if (JsonNode.Parse(after.Config.GetRawText())!["agents"]?["defaults"]?["models"]?[_binding.ModelRef] is not null)
+                    throw new InvalidOperationException("The Gateway did not confirm removal of the owned Local AI allowlist entry.");
+            }
+        }
+
+        public async Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct)
+        {
+            var snapshot = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+            RequireOwnedAllowlist(_binding, JsonNode.Parse(snapshot.Config.GetRawText())!);
+            if (snapshot.Hash != _binding.ConfigHash)
+                throw new InvalidOperationException("The bound Gateway configuration changed outside this Local AI operation.");
+            return snapshot;
+        }
+
+        public async Task ApplyAsync(LocalAiGatewayConfigurationSnapshot expected, JsonElement patch,
+            CancellationToken ct, IReadOnlyList<string>? replacePaths = null)
+        {
+            var outgoing = JsonNode.Parse(patch.GetRawText())!.AsObject();
+            if (teardown && _binding.AddedAllowlistEntry)
+            {
+                var agents = outgoing["agents"] as JsonObject ?? new JsonObject();
+                if (outgoing["agents"] is null) outgoing["agents"] = agents;
+                var defaults = agents["defaults"] as JsonObject ?? new JsonObject();
+                if (agents["defaults"] is null) agents["defaults"] = defaults;
+                defaults["models"] = new JsonObject { [_binding.ModelRef] = null };
+            }
+            ct.ThrowIfCancellationRequested();
+            rpc.BeforeMutationDispatch = () => store.Save(_binding with { Pending = true });
+            try
+            {
+                await rpc.ApplyAsync(expected, JsonSerializer.SerializeToElement(outgoing),
+                    ct, replacePaths).ConfigureAwait(false);
+                _applied = true;
+            }
+            finally
+            {
+                // Acknowledged persistence is retained even if the connection then restarts.
+                if (rpc.LastConfirmedHash is { } hash)
+                {
+                    _binding = _binding with { ConfigHash = hash, Pending = false };
+                    store.Save(_binding);
+                }
+            }
+        }
+    }
+}

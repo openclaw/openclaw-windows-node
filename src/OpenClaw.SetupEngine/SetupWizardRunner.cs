@@ -120,6 +120,10 @@ public sealed class SetupWizardRunner
 
     internal async Task<StepResult> SuspendReloadModeAsync()
     {
+        var invalidUser = RejectInvalidLinuxUser();
+        if (invalidUser is not null)
+            return invalidUser;
+
         try
         {
             // PATH prefix references $PATH. Pipe the script so wsl.exe cannot expand it on argv.
@@ -128,6 +132,7 @@ public sealed class SetupWizardRunner
                 $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode off",
                 TimeSpan.FromSeconds(15),
                 // This bounded handoff must finish so we know whether restoration is required.
+                // Stdin keeps the username and $PATH out of the wsl.exe argument vector.
                 ct: CancellationToken.None,
                 inputViaStdin: true);
             if (result.ExitCode != 0)
@@ -154,6 +159,10 @@ public sealed class SetupWizardRunner
 
     private async Task<StepResult> RunCoreAsync(CancellationToken ct)
     {
+        var invalidUser = RejectInvalidLinuxUser();
+        if (invalidUser is not null)
+            return invalidUser;
+
         var registry = new GatewayRegistry(_ctx.DataDir, logger: new SetupOpenClawLogger(_ctx.Logger));
         registry.Load();
 
@@ -645,6 +654,10 @@ public sealed class SetupWizardRunner
 
     internal async Task<StepResult> RestoreReloadModeAsync()
     {
+        var invalidUser = RejectInvalidLinuxUser();
+        if (invalidUser is not null)
+            return invalidUser;
+
         var reloadMode = ConfigureGatewayStep.GetEffectiveReloadMode(_ctx.Config.Gateway);
         try
         {
@@ -821,6 +834,16 @@ public sealed class SetupWizardRunner
                 $"Gateway startup migrations still own the state directory while restoring reload mode; retrying in {delay.TotalMilliseconds:0} ms (attempt {attempt + 1})");
             await _restorationDelayAsync(delay, CancellationToken.None);
         }
+    }
+
+    private StepResult? RejectInvalidLinuxUser()
+    {
+        var user = _ctx.Config.Wsl.User;
+        if (WslConfig.IsValidLinuxUserName(user))
+            return null;
+
+        return StepResult.Terminal(
+            $"Invalid WSL user '{user}'. Use a Linux username matching [a-z_][a-z0-9_-]{{0,31}}.");
     }
 
     internal static bool IsStartupMigrationLeaseContention(CommandResult result) =>

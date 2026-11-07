@@ -167,7 +167,7 @@ public class SshTunnelCommandLineTests
     {
         var args = SshTunnelCommandLine.BuildArguments("scott", "mac-mini.local", 18789, 28789);
 
-        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 scott@mac-mini.local", args);
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o GatewayPorts=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 127.0.0.1:28789:127.0.0.1:18789 scott@mac-mini.local", args);
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class SshTunnelCommandLineTests
             28789,
             includeBrowserProxyForward: true);
 
-        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 -L 28791:127.0.0.1:18791 scott@mac-mini.local", args);
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o GatewayPorts=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 127.0.0.1:28789:127.0.0.1:18789 -L 127.0.0.1:28791:127.0.0.1:18791 scott@mac-mini.local", args);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class SshTunnelCommandLineTests
             includeBrowserProxyForward: false,
             sshPort: 2222);
 
-        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 28789:127.0.0.1:18789 -p 2222 scott@mac-mini.local", args);
+        Assert.Equal("-o BatchMode=yes -o ExitOnForwardFailure=yes -o GatewayPorts=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes -N -L 127.0.0.1:28789:127.0.0.1:18789 -p 2222 scott@mac-mini.local", args);
     }
 
     [Fact]
@@ -237,8 +237,8 @@ public class SshTunnelCommandLineTests
             sshPort: 22,
             browserProxyLocalPort: 19002);
 
-        Assert.Contains("-L 65534:127.0.0.1:18789", args);
-        Assert.Contains("-L 19002:127.0.0.1:18791", args);
+        Assert.Contains("-L 127.0.0.1:65534:127.0.0.1:18789", args);
+        Assert.Contains("-L 127.0.0.1:19002:127.0.0.1:18791", args);
     }
 
     [Fact]
@@ -252,8 +252,8 @@ public class SshTunnelCommandLineTests
             includeBrowserProxyForward: true,
             sshPort: 22);
 
-        Assert.Contains("-L 65533:127.0.0.1:18789", args);
-        Assert.Contains("-L 65535:127.0.0.1:18791", args);
+        Assert.Contains("-L 127.0.0.1:65533:127.0.0.1:18789", args);
+        Assert.Contains("-L 127.0.0.1:65535:127.0.0.1:18791", args);
     }
 
     [Fact]
@@ -369,128 +369,6 @@ public class GatewaySelfInfoTests
 
 public class ChannelHealthTests
 {
-    [Theory]
-    [InlineData("ok", "[ON]")]
-    [InlineData("connected", "[ON]")]
-    [InlineData("running", "[ON]")]
-    [InlineData("OK", "[ON]")]
-    public void DisplayText_ShowsOn_ForOkStatuses(string status, string expected)
-    {
-        var health = new ChannelHealth { Name = "slack", Status = status };
-        Assert.StartsWith(expected, health.DisplayText);
-    }
-
-    [Theory]
-    [InlineData("linked", "[LINKED]")]
-    [InlineData("Linked", "[LINKED]")]
-    public void DisplayText_ShowsLinked_ForLinkedStatus(string status, string expected)
-    {
-        var health = new ChannelHealth { Name = "telegram", Status = status };
-        Assert.StartsWith(expected, health.DisplayText);
-    }
-
-    [Theory]
-    [InlineData("ready", "[READY]")]
-    [InlineData("Ready", "[READY]")]
-    public void DisplayText_ShowsReady_ForReadyStatus(string status, string expected)
-    {
-        var health = new ChannelHealth { Name = "telegram", Status = status };
-        Assert.StartsWith(expected, health.DisplayText);
-    }
-
-    [Theory]
-    [InlineData("connecting", "[...]")]
-    [InlineData("reconnecting", "[...]")]
-    public void DisplayText_ShowsLoading_ForConnectingStatuses(string status, string expected)
-    {
-        var health = new ChannelHealth { Name = "slack", Status = status };
-        Assert.StartsWith(expected, health.DisplayText);
-    }
-
-    [Theory]
-    [InlineData("error", "[ERR]")]
-    [InlineData("disconnected", "[ERR]")]
-    public void DisplayText_ShowsError_ForErrorStatuses(string status, string expected)
-    {
-        var health = new ChannelHealth { Name = "slack", Status = status };
-        Assert.StartsWith(expected, health.DisplayText);
-    }
-
-    [Theory]
-    [InlineData("configured", "[OFF]")]
-    [InlineData("stopped", "[OFF]")]
-    public void DisplayText_ShowsOff_ForStoppedStatuses(string status, string expected)
-    {
-        var health = new ChannelHealth { Name = "telegram", Status = status };
-        Assert.StartsWith(expected, health.DisplayText);
-    }
-
-    [Fact]
-    public void DisplayText_ShowsNotAvailable_ForNotConfigured()
-    {
-        var health = new ChannelHealth { Name = "email", Status = "not configured" };
-        Assert.StartsWith("[N/A]", health.DisplayText);
-    }
-
-    [Fact]
-    public void DisplayText_ShowsOff_ForUnknownStatus()
-    {
-        var health = new ChannelHealth { Name = "unknown", Status = "weird" };
-        Assert.StartsWith("[OFF]", health.DisplayText);
-    }
-
-    [Fact]
-    public void DisplayText_CapitalizesChannelName()
-    {
-        var health = new ChannelHealth { Name = "slack", Status = "ok" };
-        Assert.Contains("Slack", health.DisplayText);
-    }
-
-    [Fact]
-    public void DisplayText_IncludesAuthAge_WhenLinked()
-    {
-        var health = new ChannelHealth 
-        { 
-            Name = "telegram", 
-            Status = "ready",
-            IsLinked = true,
-            AuthAge = "2d ago"
-        };
-        Assert.Contains("linked · 2d ago", health.DisplayText);
-    }
-
-    [Fact]
-    public void DisplayText_IncludesError_WhenPresent()
-    {
-        var health = new ChannelHealth 
-        { 
-            Name = "slack", 
-            Status = "error",
-            Error = "Connection timeout"
-        };
-        Assert.Contains("(Connection timeout)", health.DisplayText);
-    }
-
-    [Fact]
-    public void DisplayText_HandlesEmptyName()
-    {
-        var health = new ChannelHealth { Name = "", Status = "ok" };
-        Assert.Contains(": ok", health.DisplayText);
-    }
-
-    [Theory]
-    [InlineData("RUNNING", "[ON]")]
-    [InlineData("Connected", "[ON]")]
-    [InlineData("READY", "[READY]")]
-    [InlineData("NOT CONFIGURED", "[N/A]")]
-    [InlineData("Connecting", "[...]")]
-    [InlineData("STOPPED", "[OFF]")]
-    public void DisplayText_CaseInsensitiveLabelLookup(string status, string expectedLabel)
-    {
-        var health = new ChannelHealth { Name = "ch", Status = status };
-        Assert.StartsWith(expectedLabel, health.DisplayText);
-    }
-
     [Theory]
     [InlineData("ok", true)]
     [InlineData("connected", true)]

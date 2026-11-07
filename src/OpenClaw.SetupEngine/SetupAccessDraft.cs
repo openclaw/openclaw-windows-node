@@ -71,6 +71,7 @@ public sealed class SetupAccessDraft
     public SetupNativeConnectionRequest NativeConnectionRequest { get; set; } = new();
     public string? NativeGatewayId { get; private set; }
     public string? NativeEndpointBinding { get; private set; }
+    public bool IsExistingNativeLocalAi { get; private set; }
     public bool CapabilityControlsEnabled => Config.Settings.EnableNodeMode || Config.Settings.EnableMcpServer == true;
     public bool BrowserAvailable => Config.Settings.EnableNodeMode && GatewayAvailable;
     public SetupCapabilityProfile Profile => IsCustomizingCapabilities
@@ -97,15 +98,22 @@ public sealed class SetupAccessDraft
         config.Settings.EnableMcpServer ??= false;
         config.Settings.NodeOllamaInferenceEnabled ??= false;
         config.Capabilities.Device = true;
-        if (config.UsesBundledDefaultConfig && Profile == SetupCapabilityProfile.Full)
+        if (config.UsesBundledDefaultConfig && Profile == SetupCapabilityProfile.Full &&
+            config.Settings.SystemRunPreset is null)
+        {
             ApplyProfile(SetupCapabilityProfile.Standard);
+            config.Settings.SystemRunPresetIsExplicit = false;
+        }
         else
             config.Settings.ApplyCapabilities(config.Capabilities);
+        if (config.Settings.SystemRunPreset is null && Profile != SetupCapabilityProfile.Custom)
+            config.Settings.SystemRunPreset = PermissionPreset(Profile);
         IsCustomizingCapabilities = Profile == SetupCapabilityProfile.Custom;
     }
 
     public void SelectRoute(SetupGatewayRoute route, bool gatewayAvailable = false)
     {
+        IsExistingNativeLocalAi = false;
         if (route == SetupGatewayRoute.ManagedWsl && Route != SetupGatewayRoute.ManagedWsl)
             Config.GatewayUrl = _managedGatewayUrl;
         if (route != Route)
@@ -132,6 +140,18 @@ public sealed class SetupAccessDraft
         return true;
     }
 
+    public void SelectExistingNativeGateway(OpenClaw.Connection.GatewayRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        if (record.NativePackageFamilyName is null ||
+            record.NativeRuntimeContract != OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract ||
+            !TryAcceptNativeConnection(SetupGatewayRoute.Existing,
+                new(true, true, record.Id, record.Url,
+                    EndpointBinding: OpenClaw.Connection.GatewayDashboardBinding.Capture(record))))
+            throw new InvalidOperationException("Local AI setup requires an existing isolated native Gateway.");
+        IsExistingNativeLocalAi = true;
+    }
+
     public void ClearNativeConnectionSecrets() =>
         NativeConnectionRequest = NativeConnectionRequest with { SetupCode = null, SharedToken = null };
 
@@ -145,6 +165,14 @@ public sealed class SetupAccessDraft
         Config.Settings.ApplyCapabilities(Config.Capabilities);
     }
 
+    private static OpenClaw.Shared.SystemRunAccessPreset PermissionPreset(SetupCapabilityProfile profile) => profile switch
+    {
+        SetupCapabilityProfile.ReadOnly => OpenClaw.Shared.SystemRunAccessPreset.Strict,
+        SetupCapabilityProfile.Standard => OpenClaw.Shared.SystemRunAccessPreset.Balanced,
+        SetupCapabilityProfile.Full => OpenClaw.Shared.SystemRunAccessPreset.Open,
+        _ => throw new ArgumentOutOfRangeException(nameof(profile)),
+    };
+
     public void ApplyProfile(SetupCapabilityProfile profile)
     {
         if (!Enum.IsDefined(profile))
@@ -156,6 +184,8 @@ public sealed class SetupAccessDraft
             SetupCapabilityProfiles.Set(Config.Capabilities, capability, SetupCapabilityProfiles.Contains(profile, capability));
         Config.Capabilities.Device = true;
         Config.Settings.ApplyCapabilities(Config.Capabilities);
+        Config.Settings.SystemRunPreset = PermissionPreset(profile);
+        Config.Settings.SystemRunPresetIsExplicit = true;
     }
 
     public void SetNodeMode(bool enabled) => Config.Settings.EnableNodeMode = enabled;

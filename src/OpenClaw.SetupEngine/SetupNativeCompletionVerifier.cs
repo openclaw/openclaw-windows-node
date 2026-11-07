@@ -4,9 +4,23 @@ namespace OpenClaw.SetupEngine;
 
 public static class SetupNativeCompletionVerifier
 {
+    public static async Task ConfirmReadinessAuthorityAsync(string dataDir, GatewayAiSetupCompletion expected,
+        GatewayConnectionManager? manager, CancellationToken ct)
+    {
+        SetupGatewaySession.RequireCompletionGateway(dataDir, expected);
+        if (manager is null) throw new InvalidOperationException("The Gateway connection owner is unavailable.");
+        var transport = await GatewayAiSetupTransport.BorrowAsync(dataDir, manager, expected.GatewayId, ct,
+            expected.EndpointBinding, SetupNativeCompletionTiming.Connection, readOnlyRequests: true);
+        await SetupNativeReadyBinding.RequireStableAuthorityAsync(transport, expected, ct);
+        SetupGatewaySession.RequireCompletionGateway(dataDir, expected);
+    }
+
     public static async Task<SetupVerifiedNativeRoute> VerifyAsync(
         string dataDir, GatewayAiSetupCompletion expected, CancellationToken ct,
-        GatewayConnectionManager? connectionManager = null)
+        GatewayConnectionManager? connectionManager = null,
+        Func<GatewayAiSetupCompletion, CancellationToken, Task>? waitForModel = null,
+        TimeProvider? timeProvider = null, bool captureReadiness = false,
+        IProgress<SetupLoadingStep>? progress = null)
     {
         void RequireOwner()
         {
@@ -16,20 +30,65 @@ public static class SetupNativeCompletionVerifier
         RequireOwner();
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
-        if (registry.GetActive() is { NativePackageFamilyName: not null } native)
+        if (registry.GetActive() is { } native && (native.NativePackageFamilyName is not null || captureReadiness))
         {
             if (connectionManager is null)
                 throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
-            var transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, ct,
-                expected.EndpointBinding);
+            Task<IGatewayAiSetupTransport> BorrowAsync() => SetupNativeCompletionTiming.RunAsync(
+                token => GatewayAiSetupTransport.BorrowAsync(dataDir, connectionManager, native.Id, token,
+                    expected.EndpointBinding, SetupNativeCompletionTiming.Connection, readOnlyRequests: captureReadiness),
+                SetupNativeCompletionTiming.Connection, SetupNativeCompletionPhase.Connection, ct, timeProvider);
+            async Task WaitForModelAsync()
+            {
+                if (waitForModel is null) return;
+                if (expected.RequiresManagedLocalAi) progress?.Report(SetupLoadingStep.RecoverLocalAi);
+                await SetupNativeCompletionTiming.RunAsync(async token =>
+                    {
+                        await waitForModel(expected, token);
+                        return true;
+                    }, SetupNativeCompletionTiming.ModelRecovery, SetupNativeCompletionPhase.ModelRecovery, ct, timeProvider);
+                RequireOwner();
+            }
+            // WSL recovery may withdraw the provider and restart the Gateway.
+            // Its first authenticated borrow must follow recovery.
+            var waitBeforeBorrow = captureReadiness && native.NativePackageFamilyName is null;
+            if (waitBeforeBorrow) await WaitForModelAsync();
+            progress?.Report(SetupLoadingStep.ConnectGateway);
+            var transport = await BorrowAsync();
             SetupNativeVerification.RequireRoute(expected, transport.Route);
-            var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent);
+            if (!waitBeforeBorrow && waitForModel is not null)
+            {
+                await WaitForModelAsync();
+                // Model recovery can publish a new port and restart the Gateway.
+                // Never verify on the pre-recovery handshake.
+                progress?.Report(SetupLoadingStep.ReconnectGateway);
+                transport = await BorrowAsync();
+                SetupNativeVerification.RequireRoute(expected, transport.Route);
+            }
+            if (captureReadiness)
+            {
+                var ready = await SetupNativeReadyBinding.VerifyAsync(transport, expected, ct, timeProvider, progress);
+                RequireOwner();
+                return new(ready.Proof, ready.Proof.SessionKey!, ready);
+            }
+            var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent, expected.RequiresManagedLocalAi);
+            progress?.Report(SetupLoadingStep.VerifyModel);
             var current = new SetupVerifiedNativeRoute(
-                await VerifyModelAsync(nativeClient, expected.ModelRef, ct), transport.Route.SessionKey ?? "");
+                await VerifyModelAsync(nativeClient, expected.ModelRef, ct, timeProvider), transport.Route.SessionKey ?? "");
             SetupNativeVerification.RequireSame(expected, current);
             RequireOwner();
             return current;
         }
+        if (waitForModel is not null)
+        {
+            await SetupNativeCompletionTiming.RunAsync(async token =>
+            {
+                await waitForModel(expected, token);
+                return true;
+            }, SetupNativeCompletionTiming.ModelRecovery, SetupNativeCompletionPhase.ModelRecovery, ct, timeProvider);
+            RequireOwner();
+        }
+        progress?.Report(SetupLoadingStep.ConnectGateway);
         await using var session = await SetupGatewaySession.ConnectAsync(dataDir, ct: ct,
             expectedGatewayId: expected.GatewayId, expectedCompletion: expected);
         var route = session.GetRoute();
@@ -38,34 +97,16 @@ public static class SetupNativeCompletionVerifier
             route.IdentityBinding != expected.IdentityBinding || route.SessionKey != expected.SessionKey)
             throw new SetupNativeOwnershipException();
         var client = new GatewayAiSetupClient(new GatewayAiSetupTransport(session.Client, session.GetRoute),
-            expected.ModelRef, expected.Intent);
-        var verified = new SetupVerifiedNativeRoute(await VerifyModelAsync(client, expected.ModelRef, ct),
+            expected.ModelRef, expected.Intent, expected.RequiresManagedLocalAi);
+        progress?.Report(SetupLoadingStep.VerifyModel);
+        var verified = new SetupVerifiedNativeRoute(await VerifyModelAsync(client, expected.ModelRef, ct, timeProvider),
             session.Client.MainSessionKey ?? "");
         SetupNativeVerification.RequireSame(expected, verified);
         RequireOwner();
         return verified;
     }
 
-    internal static void RequireAvailable(GatewayAiSetupVerification result)
-    {
-        ArgumentNullException.ThrowIfNull(result);
-        if (!result.Ok)
-            throw new InvalidOperationException("The primary model is currently unavailable for verification.");
-    }
-
-    internal static async Task<GatewayAiSetupCompletion> VerifyModelAsync(
-        GatewayAiSetupClient client, string modelRef, CancellationToken ct)
-    {
-        try
-        {
-            var result = await client.VerifyConfiguredAsync(modelRef, ct);
-            ct.ThrowIfCancellationRequested();
-            RequireAvailable(result);
-            return client.GetVerifiedCompletion();
-        }
-        catch (Exception error) when (error is NotSupportedException or InvalidDataException or System.Text.Json.JsonException)
-        {
-            throw new InvalidOperationException("The Gateway verification contract or response is currently unavailable.", error);
-        }
-    }
+    internal static Task<GatewayAiSetupCompletion> VerifyModelAsync(
+        GatewayAiSetupClient client, string modelRef, CancellationToken ct, TimeProvider? timeProvider = null)
+        => SetupModelVerification.VerifyAsync(client, modelRef, ct, timeProvider);
 }

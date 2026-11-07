@@ -18,7 +18,6 @@ public sealed class ChatComposerFactoryDiFailFastTests
 {
     [Theory]
     [InlineData("Pages", "ChatPage.xaml.cs")]
-    [InlineData("Windows", "ChatWindow.xaml.cs")]
     public void HostComposition_RequiresComposerFactory_ViaGetRequiredService(string folder, string fileName)
     {
         var source = ReadSource(folder, fileName);
@@ -38,7 +37,6 @@ public sealed class ChatComposerFactoryDiFailFastTests
 
     [Theory]
     [InlineData("Pages", "ChatPage.xaml.cs")]
-    [InlineData("Windows", "ChatWindow.xaml.cs")]
     public void HostComposition_StillTreatsUninitializedContainerAsNoProviderPlaceholder(
         string folder,
         string fileName)

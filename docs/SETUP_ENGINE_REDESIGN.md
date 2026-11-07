@@ -75,9 +75,20 @@ reachability from the final ownership stage exceeding its deadline, even if
 the ownership probe returned success before the final deadline check.
 The result remains terminal and does not authorize another restart.
 
-HTTP 200/401/403 still means only endpoint reachability. Neither this HTTP
-probe nor listener provenance establishes an authenticated ready Gateway.
-Authentication and pairing retain their existing owners and gates.
+The HTTP gate polls `GET /startupz` inside WSL. HTTP 200 JSON means the
+Gateway finished startup (dispatch ready and startup sidecars settled), which
+is the same condition the Gateway uses to admit operator WebSocket connects.
+HTTP 503 JSON means it is still starting or draining; its `pendingReason` is
+logged and reported on timeout. Gateways before 2026.8.1 do not serve
+`/startupz`, so a non-probe reply falls back to the root-path check, where
+HTTP 200/401/403 means only endpoint reachability. Before operator and node
+pairing, `WindowsGatewayReachability` repeats `GET /startupz` from Windows on
+the URL Companion pairs through, waiting up to `HealthTimeoutSeconds` while it
+returns 503 JSON. Transport failures fail immediately, and a non-probe answer
+(an older Gateway or remote ingress) counts as reachable. Neither probe nor
+listener provenance establishes an authenticated Gateway session; the
+ownership check still runs before any credential handoff. Authentication and
+pairing retain their existing owners and gates.
 
 **Why the order is unchanged:** at upstream commit
 [`eb377ac59e6c9fd6c7705028034812becf00271b`](https://github.com/openclaw/openclaw/tree/eb377ac59e6c9fd6c7705028034812becf00271b),
@@ -109,7 +120,7 @@ package-contract and profile preparation. `NativeGatewaySetupSession` owns
 staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
 authenticated health/config gates, and final registry publication.
 Both installations use the shared focused `AiSetupPage` and verified
-three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
+Chat-only `AiReadyPage`. `WizardPage` remains an explicit compatibility
 fallback when focused setup methods are unavailable. Its native requests retain
 the owned `NativeGatewaySetupConnection` authorization and upstream
 `installDaemon: false` contract.
@@ -117,7 +128,7 @@ the owned `NativeGatewaySetupConnection` authorization and upstream
 checks Windows package registration and package-qualified aliases.
 `NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
 App Installer alias and `CommandRunner`:
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`.
 The shared capabilities page shows the native installation and agreement
 disclosure before its **Set up gateway** action; other routes retain **Next**.
 This preserves consent without adding a separate native review step.
@@ -129,11 +140,16 @@ diagnostics and retry guidance instead of opening a manual Store page.
 the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
-`NativeGatewayPackageAcquisition` invokes installation once only for missing
-registration. Installation and verified package readiness share a five-minute
-deadline. Cancellation stops the WinGet request, but Windows deployment may
+`NativeGatewayPackageAcquisition` invokes acquisition once for a missing or existing Store
+package; an existing development package is reused without Store migration. Installation and verified package readiness share a 30-minute deadline
+(`NativeGatewayPackageAcquisition.DefaultTimeout`), overridable by
+`OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
+When WinGet succeeds but the package is still not registered for the current user,
+`NativeGatewayStagedPackageRegistrar` registers the already staged Store family once
+(`Add-AppxPackage -RegisterByFamilyName` equivalent, no elevation); a "not staged" result keeps the
+bounded wait, and any other registration error fails immediately with recovery guidance.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but
 skips WSL/Local AI/Tailscale installation review and probes. The native
 progress page uses `SetupPhaseStatus` rows and automatically enters **Connect
@@ -168,9 +184,19 @@ substitute.
 The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
 `wxc-exec --probe` session capability before recommending the existing native
 Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
-Unavailable capability offers Windows Update with the pinned SDK's Insider
-baseline (26340.9212); failed probes offer retry/repair instead. WSL is always
-visible as the second option after native, with existing-gateway connection third.
+Unavailable capability guidance names the isolation-session check, explains that
+a newer Windows version alone does not guarantee availability, and offers the
+existing WSL and existing-Gateway routes. For users who need to update Windows,
+it describes joining the Windows Insider Program, selecting the Beta or Experimental
+channel, and choosing Windows 11, version 26H1 under **Advanced options** during
+enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
+a clean reinstall. After enrolling, users return to
+**Settings > Windows Update** and check for updates. The copy notes that feature
+availability can vary by device and tells users to reopen the page to check
+support again, including when Windows is already up to date. It does not promise
+a rollout or that updating fixes the capability. The live probe remains
+authoritative; failed probes offer retry/repair instead. WSL is always visible
+as the second option after native, with existing-gateway connection third.
 Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no
 manual recheck button; reopening the page checks again. The separate isolation warning/checkbox is removed by the
 2026-09-18 product decision; general security consent remains. This is not
@@ -185,8 +211,10 @@ selection, activation and recovery; the native AI page renders that state.
 `AiSetupPresentationModel` owns presentation-only grouping. A single
 page-owned `ProviderSetupDialog` owns prompt controls and secret clearing,
 without another client, persistence store or top-level setup page.
-`SetupWindow` remains the completion host. Verified AI opens the native chooser;
-an explicit choice restarts into Chat, Channels or Skills with a bound receipt.
+`SetupWindow` remains the completion host. Verified AI opens a native
+Chat-only completion page. Already-issued WhatsApp, Telegram, and Channels
+receipts continue to open the Gateway web dashboard's `channels` path with a
+bound receipt; retired Skills receipts are rejected.
 The experimental browser-completion path is removed. See the completion handoff
 in `ONBOARDING_WIZARD.md`.
 Headless setup keeps `SetupStepFactory.BuildDefaultSteps()` and the
@@ -285,6 +313,14 @@ absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
 
+Automatic rollback of the WSL-create step has cleanup authority only after that
+execution starts creating the distro. If creation refuses pre-existing state,
+rollback preserves the distro, install directory, ownership marker, and empty
+parent directory. A reused step starts with no authority from an earlier attempt.
+Once creation starts, the existing live-registration ownership and
+unregister-failure preservation gates still apply. Explicit uninstall remains a
+separate, destructive-consent path.
+
 ```json
 {
   "DistroName": "OpenClawGateway",
@@ -365,7 +401,31 @@ rerun setup with a supported new name.
 
 1. CLI flags (`--headless`, `--log-path`, `--rollback-on-failure`, `--no-rollback-on-failure`)
 2. Config file (explicit `--config` or bundled `default-config.json`)
-3. Environment variables (`OPENCLAW_SETUP_DISTRO_NAME`, etc.)
+3. Environment variables (`OPENCLAW_SETUP_DISTRO`, etc.)
+
+Environment-only knobs without a config-file equivalent:
+
+- `OPENCLAW_SETUP_REACHABILITY_TIMEOUT`: bound, in seconds, for each
+  pre-pairing `/startupz` probe (`WindowsGatewayReachability`, run by
+  `PairOperatorStep` and `PairNodeStep` before opening their pairing sockets).
+  The overall wait while the Gateway reports startup stays bounded by
+  `Gateway.HealthTimeoutSeconds`.
+  Default 30; a positive integer between 1 and 2147483 overrides it, and any
+  other value is ignored with a warning and keeps the default.
+
+- `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`: bound, in seconds, for one native
+  Gateway Store install plus registration verification
+  (`NativeGatewayPackageAcquisition.EnsureAsync`, also the WinGet and WinGet-repair
+  command timeout). Default 1800 (30 minutes); a positive integer between 1 and 2147483
+  overrides it, and any other value is ignored with a warning and keeps the default.
+  An explicit `timeout` argument wins over this variable.
+
+- `OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT`: bound, in seconds, for each packaged
+  `openclaw` CLI call during native Gateway setup (`config validate`, `config set`
+  for node capabilities, `gateway health`, `devices list`, `devices approve`;
+  `NativeGatewayCliTimeout`). Each call includes packaged Node/CLI startup.
+  Default 240 (4 minutes); a positive integer between 1 and 2147483 overrides it,
+  and any other value is ignored with a warning and keeps the default.
 
 ---
 
@@ -395,7 +455,7 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 13 | `AuthorizeTailscaleStep` | Authorize the configured Tailscale identity and trust mode |
 | 14 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
 | 15 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
-| 16 | `StartGatewayStep` | Start service, poll health endpoint (90s timeout) |
+| 16 | `StartGatewayStep` | Start service, poll `/startupz` until started (90s timeout) |
 | 17 | `FinalizeTailscaleServeStep` | Apply the final Tailscale Serve endpoint after gateway startup |
 | 18 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
 | 19 | `PairOperatorStep` | WebSocket operator connection + device approval |
@@ -404,6 +464,13 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 22 | `RunGatewayWizardStep` | Run/configure the gateway wizard unless skipped |
 | 23 | `WindowsNodeBootstrapContextStep` | Inject Windows-node context into the WSL workspace `AGENTS.md` |
 | 24 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
+
+Managed WSL setup passes the Node version pinned by `GatewayInstallPolicy` to
+the official installer, then verifies the installed runtime against that same
+version. The pin is Node 24.22.1, matching the installer's Node 24 minimum for
+the `node:sqlite` embedded-NUL round-trip fix. Preinstalling a newer Node does
+not override the installer's explicit `--node-version` argument. This runtime
+prerequisite does not change the wizard's 15-second reload-restoration deadline.
 
 The Windows port preflight requires a free port before installation. Installing
 the gateway service can start it immediately, so the subsequent WSL port check
@@ -427,6 +494,25 @@ closed. If the first baseline capture fails, retries take a new snapshot that
 excludes any requests already pending, including requests from earlier setup
 attempts. Later cleanup excludes requests that predate the retained successful
 baseline. A socket-provided request ID still uses the exact device-approval path.
+
+### Native Local AI integration
+
+`BuildNativeLocalAiAcquisitionSteps` is an artifact-only pipeline: Windows OS/GPU
+preflight, verified receipt reconciliation, pinned runtime/model acquisition and
+receipt persistence. Unlike WSL recovery, it never installs WSL, changes mirrored
+networking, starts a listener, forces inference, publishes a provider, or restarts
+a Gateway. Its caller must retain exact native-session admission and return to an
+explicit **Use Local AI** action after acquisition.
+
+Native onboarding and Settings select this pipeline only after exact native
+target admission. It does not participate in WSL registry settlement. Acquisition
+returns to AI setup without claiming that a model is configured. Explicit Use
+creates the durable native binding and starts the single app-owned authenticated
+runtime. Existing setup verification proves the exact Gateway primary before
+completion; the native session reconciles its Local AI revision after capability
+configuration and before registry publication. Cancellation drains mutations and
+withdraws the selected Local AI route before releasing the native session.
+A damaged or foreign ownership receipt is never adopted implicitly.
 
 ### Local AI GPU admission
 
@@ -452,6 +538,30 @@ materialization copies from that same verified open handle. A configured cache
 root equal to or below the app-owned `LocalAI` directory is rejected before
 mutation because uninstall removes that managed tree recursively.
 
+### Local AI runtime archive cache
+
+Verified llama.cpp runtime zips are kept in
+`<LocalDataDir>\LocalAICache\archives\<sha256>\<file>`, next to the
+uninstall-owned `LocalAI` tree, so reinstalls hash-verify and extract without
+downloading. A cached zip is used only after a full SHA-256 check against the
+compiled-in pin over the same open handle that extraction reads. A set is every
+archive a runtime install pinned together (the llama.cpp binary zip and its CUDA
+dependency zip). Only after the installed runtime passes inspection, and the
+install was not cancelled, setup records the current pins as a completed set in
+`<LocalDataDir>\LocalAICache\sets\<set-id>.json` and prunes: it keeps the current
+pins plus every archive of the 3 most recently used older completed sets, and
+deletes other entries. A rejected or cancelled install never deletes cache
+entries. Archives left by a failed acquisition stay available for a retry of the
+same pins, never count as a set, and are deleted by the next successful install
+of different pins. An archive shared by several sets stays while any kept set
+uses it. Set records are bookkeeping only: reuse is still gated by the SHA-256
+pin check. Set `OPENCLAW_SETUP_LOCAL_AI_CACHE_RETAIN_SETS` to a non-negative
+integer to change the number of older sets kept (`0` keeps only the current
+pins); other values are ignored with a warning. Uninstall keeps the cache, which is bounded
+by this retention and logged with its path so users can delete it to reclaim
+space. Set `OPENCLAW_SETUP_DISABLE_LOCAL_AI_CACHE` to any value other than `0`
+or `false` to skip all cache reads, writes, and pruning.
+
 Manifest schema 3 remains the compatibility format for existing app-owned
 model paths. Passive manifest loads, status refresh, recovery inspection, and
 uninstall reads do not migrate it. Setup reconciliation is the explicit
@@ -471,6 +581,12 @@ rollback baseline. A successful repair always writes schema 4 with the verified
 hub-cache snapshot as the active model path, while preserving the legacy
 compatibility path and the prior gateway fallback, install time, and rollback
 metadata.
+
+Before restoring the original endpoint receipt, recovery resolves its model
+through the same existing-file handle resolver used for native runtime launch.
+The health probe compares physical model paths; receipts and cleanup ownership
+remain logical. If resolution fails, rollback warns and keeps the replacement
+receipt rather than probing with the unresolved alias.
 
 Runtime upgrades validate the installed executable against its recorded runtime
 release, not the current catalog release. A verified schema-3 model is migrated
@@ -553,7 +669,24 @@ Shared state bag passed to all steps. Contains:
 
 A single concrete runner executes Windows processes and WSL scripts (`wsl.exe -d <distro> -- bash -lc ...`) with timeouts, bounded output collection, and environment injection.
 
-Every command is logged with exe, sanitized args, timeout, exit code, sanitized stdout/stderr, and elapsed time.
+Commands start with `cmd.start` (exe, sanitized args and timeout). Non-timeout
+direct-child exit is observed separately as `cmd.exit`, before waiting for
+stdout/stderr EOF. Normal and runner-timeout results retain `cmd.done` (exit
+code, sanitized stdout/stderr and elapsed time).
+
+Caller cancellation instead emits `cmd.cancelled` and rethrows the original
+cancellation exception. Its state-only fields identify the interrupted phase
+(`execution` or `output-drain`), whether direct-child exit and each output EOF
+have been observed at that instant, elapsed time, and whether the runner's own
+timeout had already occurred. Cancellation during execution retains the
+existing best-effort kill; cancellation during post-exit drain does not add
+cleanup or waiting. These observations are not an atomic snapshot, do not
+confirm process-tree cleanup or guest process exit, and do not identify why a
+validator stalled. The new records contain no executable paths, arguments,
+configuration, identities, or raw/partial output. A caller-linked deadline is
+caller cancellation here, not a runner timeout.
+The `timed_out` field retains the existing catch-time classification; simultaneous
+caller cancellation and runner timeout cannot establish which happened first.
 
 ### TransactionJournal
 
@@ -572,6 +705,25 @@ Structured JSONL logger. Records sanitized entries for:
 - Errors with stack traces
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
+
+The setup window owns the native Gateway `native-setup-*.jsonl` file sink and
+keeps it available while the staged session is active. When the window requests
+disposal, an active setup operation retains the sink through cancellation
+cleanup. The sink closes after the final operation lease ends. A missing or
+failed file sink still leaves entries in memory only.
+
+### Uninstall onboarding reset
+
+The Inno uninstaller invokes `scripts\Uninstall-LocalGateway.ps1` directly,
+not the C# uninstall engine. Both onboarding reset paths remove `GatewayUrl`
+and legacy `Token` / `BootstrapToken` properties from `settings.json`, even
+when node mode and autostart settings are preserved for remaining gateways.
+Other preferences and external gateway records are preserved. The focused
+`UninstallOnboardingSettingsTests` execute only the production PowerShell
+reset and its JSON/logging helpers under Windows PowerShell 5.1 with temporary
+files; they do not prove the full signed-installer uninstall path.
+On a later launch, a URL-less legacy root identity is not migrated or used
+against the default loopback URL. The profile must be reconnected explicitly.
 
 ---
 

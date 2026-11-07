@@ -442,6 +442,8 @@ public class SetupPipelineTests
 
         public LocalAiRuntimeSnapshot Snapshot => throw new NotSupportedException();
 
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

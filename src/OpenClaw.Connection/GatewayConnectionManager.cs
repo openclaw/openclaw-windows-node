@@ -71,6 +71,7 @@ public sealed class GatewayConnectionManager :
         _endpointProvenanceProbe;
     private readonly Func<ISshTunnelManager> _validationTunnelFactory;
     private readonly TimeSpan _credentialHandoffTimeout;
+    private readonly TimeProvider _credentialHandoffTimeProvider;
     private readonly TimeSpan _manualSshRestartTimeout;
     private readonly TimeSpan _manualSshRestartCleanupTimeout;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
@@ -134,7 +135,8 @@ public sealed class GatewayConnectionManager :
         TimeSpan? credentialHandoffTimeout = null,
         TimeSpan? manualSshRestartTimeout = null,
         TimeSpan? manualSshRestartCleanupTimeout = null,
-        INativeGatewayRuntime? nativeGatewayRuntime = null)
+        INativeGatewayRuntime? nativeGatewayRuntime = null,
+        TimeProvider? credentialHandoffTimeProvider = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -151,6 +153,7 @@ public sealed class GatewayConnectionManager :
         _endpointProvenanceProbe = endpointProvenanceProbe;
         _validationTunnelFactory = validationTunnelFactory ?? (() => new SshTunnelService(_logger));
         _credentialHandoffTimeout = credentialHandoffTimeout ?? TimeSpan.FromSeconds(5);
+        _credentialHandoffTimeProvider = credentialHandoffTimeProvider ?? TimeProvider.System;
         _manualSshRestartTimeout = manualSshRestartTimeout ?? TimeSpan.FromSeconds(35);
         _manualSshRestartCleanupTimeout =
             manualSshRestartCleanupTimeout ?? TimeSpan.FromSeconds(5);
@@ -216,7 +219,7 @@ public sealed class GatewayConnectionManager :
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
     internal async Task<OpenClawGatewayClient> RequireNativeSetupClientAsync(
-        GatewayRecord expected, CancellationToken ct)
+        GatewayRecord expected, CancellationToken ct, bool allowRuntimeStart = true)
     {
         var client = ConcreteOperatorClient;
         void RequireCurrent()
@@ -231,7 +234,8 @@ public sealed class GatewayConnectionManager :
                 throw new InvalidOperationException("The native Gateway connection is not ready for setup verification.");
         }
         RequireCurrent();
-        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_nativeGatewayRuntime, expected, ct);
+        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_nativeGatewayRuntime, expected, ct,
+            allowStart: allowRuntimeStart);
         RequireCurrent();
         if (!authorization.Allowed)
             throw new InvalidOperationException(authorization.Detail);
@@ -840,11 +844,11 @@ public sealed class GatewayConnectionManager :
         if (!Directory.Exists(perGatewayIdentityDir))
             Directory.CreateDirectory(perGatewayIdentityDir);
 
-        // Same-gateway node reapproval reconnects keep the operator alive so it can
-        // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
+        // Same-gateway node reapproval reconnects keep a live or still-handshaking operator alive
+        // so it can request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
         var preservesOperatorConnection =
             _activeLifecycle != null &&
-            _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+            _stateMachine.Current.OperatorState is RoleConnectionState.Connected or RoleConnectionState.Connecting &&
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);
@@ -2528,7 +2532,9 @@ public sealed class GatewayConnectionManager :
         CancellationToken handshakeCancellationToken,
         string role)
     {
-        using var timeoutCts = new CancellationTokenSource(_credentialHandoffTimeout);
+        var budget = expectedRecord.NativePackageFamilyName is not null
+            ? NativeGatewayEndpointSecurity.CredentialHandoffTimeout : _credentialHandoffTimeout;
+        using var timeoutCts = new CancellationTokenSource(budget, _credentialHandoffTimeProvider);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             operationCancellationToken,
             handshakeCancellationToken,
@@ -2608,7 +2614,9 @@ public sealed class GatewayConnectionManager :
             return new ReconnectAuthorizationResult(
                 false,
                 GatewayErrorKind.Network,
-                $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
+                expectedRecord.NativePackageFamilyName is not null
+                    ? $"Timed out starting or re-verifying the owned native Gateway before the {role} credential handoff."
+                    : $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
         }
     }
 

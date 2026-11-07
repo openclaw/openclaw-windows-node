@@ -32,6 +32,8 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     private Task _pipelineTask = Task.CompletedTask;
     private bool _closed;
     private SetupWindow? _window;
+    private SetupLoadingProgress.Scope? _loading;
+    private bool _resumeLoadingAfterAuthorization;
     private const int MaxLogLines = 200;
 
     internal bool IsPipelineRunning => _runCts != null && !_pipelineFinished;
@@ -39,7 +41,11 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     public ProgressPage()
     {
         InitializeComponent();
-        Unloaded += (_, _) => CancelPipeline();
+        Unloaded += (_, _) =>
+        {
+            CancelPipeline();
+            _loading?.Dispose();
+        };
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -55,8 +61,9 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         _activeStepIds = steps
             .Select(step => step.Id)
             .ToHashSet(StringComparer.Ordinal);
-        TitleText.Text = SetupLocalization.GetString(_localAiRecoveryOnly
-            ? "Onboarding_V4_RecoveryTitle" : "Onboarding_V4_InstallationTitle");
+        TitleText.Text = SetupLocalization.GetString(_config.NativeLocalAiAcquisition
+            ? "Onboarding_AiSetup_LocalInstalling"
+            : _localAiRecoveryOnly ? "Onboarding_V4_RecoveryTitle" : "Onboarding_V4_InstallationTitle");
         SubtitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstallationSubtitle");
         if (_localAiRecoveryOnly)
             InstallPhase.Header = SetupLocalization.GetString("Onboarding_V4_RecoveryInstall");
@@ -116,6 +123,8 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         var config = _config!;
         if (_runCts != null)
             return;
+        if (SetupLoadingProgress.PipelineGroup(config.NativeLocalAiAcquisition, _localAiRecoveryOnly) is { } group)
+            _loading = _window?.BeginLoading(group, SetupLoadingStep.CheckArtifacts);
 
         config.LogPath ??= Path.Combine(
             _dataDir, "Logs", "Setup", $"setup-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
@@ -147,7 +156,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
 
             var steps = BuildSteps(config, _localAiRecoveryOnly);
             var setupOwner = _window;
-            ctx.ExpectedGatewayRegistry = setupOwner?.BeginGatewaySetup();
+            ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup();
             ctx.PersistTraySettings = _window is { } settingsOwner ? settingsOwner.PersistPipelineSettings : null;
             _pipeline = new SetupPipeline(steps);
             _pipeline.StepProgress += OnStepProgress;
@@ -155,7 +164,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             var pipeline = _pipeline;
             var result = await SetupPipeline.RunWithSettlementAsync(
                 () => Task.Run(() => pipeline.RunAsync(ctx), cts.Token),
-                outcome => setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
+                outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask : setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
                     outcome?.Outcome == PipelineOutcome.Success ? config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId : null)
                     ?? Task.CompletedTask);
             sw.Stop();
@@ -168,14 +177,20 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             if (success)
             {
                 var gatewayId = config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId;
-                if (config.LocalAi.Enabled)
+                if (config.LocalAi.Enabled && !config.NativeLocalAiAcquisition)
                 {
                     var modelRef = ctx.ResolvedLocalAiModelRef ??
                         throw new InvalidOperationException("The completed Local AI install did not provide its configured model.");
                     _window?.SetExpectedConfiguredModelRef(modelRef,
                         gatewayId ?? throw new InvalidOperationException("The completed Local AI install did not provide its Gateway."));
                 }
-                if (OnboardingFlowPolicy.RequiresAiSetup(config))
+                if (config.NativeLocalAiAcquisition)
+                {
+                    if (_window is not { } owner)
+                        throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_CompletionUnavailable"));
+                    owner.ContinueInstalledNativeLocalAi();
+                }
+                else if (OnboardingFlowPolicy.RequiresAiSetup(config))
                 {
                     if (_window?.TryNavigateToWizard() != true)
                         throw new InvalidOperationException(SetupLocalization.GetString("Onboarding_Flow_AiNavigationFailed"));
@@ -269,9 +284,19 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
 
     private void OnStepProgress(object? sender, StepProgressEvent e)
     {
+        if (e.Outcome is null)
+        {
+            _loading?.ReportActivity(e.DisplayName, e.StepId);
+        }
         DispatcherQueue.TryEnqueue(() =>
         {
             if (_closed) return;
+            if (_resumeLoadingAfterAuthorization && !_pipelineFinished && e.Outcome is null && _window is { IsClosed: false })
+            {
+                _resumeLoadingAfterAuthorization = false;
+                _loading = _window.BeginLoading(SetupLoadingGroup.LocalAi, SetupLoadingStep.AcquireArtifacts);
+                _loading.ReportActivity(e.DisplayName, e.StepId);
+            }
             _installationProgress?.Apply(e);
             RenderInstallationOverview();
             DownloadActivity.Visibility = DownloadProgress.Visibility = Visibility.Collapsed;
@@ -285,21 +310,24 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         if (_installationProgress is not { } progress) return;
         foreach (var phase in progress.Phases)
         {
-            var text = phase.Phase switch
+            var (status, activity) = phase.Phase switch
             {
-                SetupInstallationPhase.Prepare => PrepareStatus,
-                SetupInstallationPhase.Install => InstallStatus,
-                _ => ConnectStatus,
+                SetupInstallationPhase.Prepare => (PrepareStatus, PrepareActivity),
+                SetupInstallationPhase.Install => (InstallStatus, InstallActivity),
+                _ => (ConnectStatus, ConnectActivity),
             };
-            text.Apply(phase.Status);
+            status.Apply(phase.Status);
+            activity.Text = phase.CurrentActivity ?? "";
+            activity.Visibility = string.IsNullOrWhiteSpace(phase.CurrentActivity)
+                ? Visibility.Collapsed : Visibility.Visible;
         }
-        StepCount.Text = SetupLocalization.Format("Onboarding_V4_StepCount", progress.CompletedSteps, progress.TotalSteps);
-        CurrentActivity.Text = progress.CurrentActivity ?? SetupLocalization.GetString(
-            progress.CompletedSteps == progress.TotalSteps ? "Onboarding_V4_StatusComplete" : "Onboarding_V4_StatusPending");
     }
 
     private void OnDetailProgress(SetupDetailProgressEvent progress)
     {
+        if (_activeStepIds.Contains(progress.StepId))
+            _loading?.ReportDetail(new(progress.Detail, progress.Completed, progress.Total,
+                progress.Unit == SetupDetailProgressUnit.Bytes), progress.StepId);
         DispatcherQueue.TryEnqueue(() =>
         {
             if (_closed) return;
@@ -365,6 +393,8 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
 
     private void ShowTailscaleAuthorization(ExternalAuthorizationRequest request)
     {
+        _resumeLoadingAfterAuthorization = _loading?.IsCurrent == true;
+        _loading?.Dispose();
         _tailscaleAuthorizationUri = request.AuthorizationUri;
         TailscaleAuthorizationText.Text = request.Message;
         TailscaleAuthorizationPanel.Visibility = Visibility.Visible;
@@ -382,6 +412,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     // connects when the user chooses to continue.
     private void ShowGatewayInstalledMilestone()
     {
+        _loading?.Dispose();
         InstallHeader.Visibility = Visibility.Collapsed;
         InstallContent.Visibility = Visibility.Collapsed;
         MilestonePanel.Visibility = Visibility.Visible;
@@ -397,7 +428,9 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config, bool localAiRecoveryOnly = false)
-        => OnboardingFlowPolicy.BuildInstallationSteps(localAiRecoveryOnly);
+        => config.NativeLocalAiAcquisition
+            ? SetupStepFactory.BuildNativeLocalAiAcquisitionSteps()
+            : OnboardingFlowPolicy.BuildInstallationSteps(localAiRecoveryOnly);
 }
 
 internal sealed class ProgressAuthorizationPresenter(

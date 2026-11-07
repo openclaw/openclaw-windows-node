@@ -28,17 +28,20 @@ namespace OpenClaw.Tray.UITests;
 /// guards use complex-list fixtures.
 ///
 /// These assertions live at the FunctionalUI <see cref="Element"/> record level
-/// (no WinUI runtime needed) because that's where the regression would surface:
+/// without materializing controls because that's where the regression would surface:
 /// any change of the row container back to a horizontal stack would fail these
 /// tests immediately.
+/// They still load WinRT-backed types, so the shared UI collection keeps that
+/// initialization from racing the fixture's Windows App SDK bootstrap.
 /// </summary>
+[Collection(UICollection.Name)]
 public sealed class MarkdownRendererListTests
 {
     // A "complex" list forces the Grid island path: item two carries a block
     // quote, so the list is not simple and does not coalesce into a
     // RichTextBlock. A block quote renders without eager WinRT activation
     // (unlike a fenced code block, whose FontFamily throws headless), so these
-    // record-level tests stay runtime-free. Item one's long bullet still
+    // record-level tests do not materialize controls. Item one's long bullet still
     // exercises the wrap guard.
     private const string ComplexUnorderedList =
         "- This is an unusually long bullet that must wrap across multiple " +

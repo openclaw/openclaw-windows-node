@@ -5,7 +5,7 @@ namespace OpenClaw.SetupEngine;
 
 /// <summary>
 /// Shares one CUDA hardware probe per setup window. Faulted, canceled, or fact-incomplete
-/// results are not reused: a partial CUDA read is transient, and caching it would keep
+/// results and disk shortages are not reused: these facts can change, and caching them would keep
 /// Local AI "not verifiable" for the whole session.
 /// </summary>
 internal sealed class LocalAiHardwareProbeCache
@@ -25,7 +25,7 @@ internal sealed class LocalAiHardwareProbeCache
                 _probeTask is null ||
                 _probeTask.IsFaulted ||
                 _probeTask.IsCanceled ||
-                HasIncompleteFacts(_probeTask))
+                NeedsRefresh(_probeTask))
             {
                 _probeTask = Task.Run(_probe);
             }
@@ -34,8 +34,9 @@ internal sealed class LocalAiHardwareProbeCache
         }
     }
 
-    private static bool HasIncompleteFacts(Task<HostHardwareInfo> probeTask) =>
+    private static bool NeedsRefresh(Task<HostHardwareInfo> probeTask) =>
         probeTask.IsCompletedSuccessfully &&
-        LocalInferenceEligibility.Evaluate(probeTask.Result).FailureCode ==
-            LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete;
+        LocalInferenceEligibility.Evaluate(probeTask.Result).FailureCode is
+            LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete or
+            LocalInferenceEligibilityFailureCode.InsufficientDiskSpace;
 }

@@ -125,10 +125,10 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw plugins registry --refresh
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
-            openclaw config set gateway.bind {gw.Bind}
-            openclaw config set gateway.auth.mode {gw.AuthMode}
+            openclaw config set gateway.bind {WslShellQuoting.QuotePosixSingleQuote(gw.Bind)}
+            openclaw config set gateway.auth.mode {WslShellQuoting.QuotePosixSingleQuote(gw.AuthMode)}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
-            openclaw config set gateway.reload.mode {gw.ReloadMode}
+            openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(gw.ReloadMode)}
             openclaw config set {nodeCommandsAllowKey} {escapedAllowedCommands}
             """;
 

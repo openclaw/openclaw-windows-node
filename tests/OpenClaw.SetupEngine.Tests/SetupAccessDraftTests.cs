@@ -3,6 +3,51 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class SetupAccessDraftTests
 {
     [Theory]
+    [InlineData(SetupCapabilityProfile.ReadOnly, OpenClaw.Shared.SystemRunAccessPreset.Strict)]
+    [InlineData(SetupCapabilityProfile.Standard, OpenClaw.Shared.SystemRunAccessPreset.Balanced)]
+    [InlineData(SetupCapabilityProfile.Full, OpenClaw.Shared.SystemRunAccessPreset.Open)]
+    public void ExplicitPersona_SelectsFileIntentWithoutChangingCapabilityMembership(
+        SetupCapabilityProfile profile, OpenClaw.Shared.SystemRunAccessPreset preset)
+    {
+        var draft = new SetupAccessDraft(new SetupConfig());
+        draft.ApplyProfile(profile);
+        Assert.Equal(preset, draft.Config.Settings.SystemRunPreset);
+        Assert.True(draft.Config.Settings.SystemRunPresetIsExplicit);
+        if (profile == SetupCapabilityProfile.ReadOnly) Assert.False(draft.GetCapability(SetupCapability.System));
+        draft.SetCapability(SetupCapability.Canvas, false);
+        Assert.Equal(SetupCapabilityProfile.Custom, draft.Profile);
+        Assert.Equal(preset, draft.Config.Settings.SystemRunPreset);
+    }
+
+    [Fact]
+    public void ExistingNativeLocalAi_BindsExactGatewayWithoutWslFinalizationOrSettingsReplacement()
+    {
+        var config = new SetupConfig();
+        var draft = new SetupAccessDraft(config);
+        draft.ApplyProfile(SetupCapabilityProfile.ReadOnly);
+        draft.SetNodeMode(false);
+        draft.SetMcpServer(true);
+        var settings = System.Text.Json.JsonSerializer.Serialize(config.Settings);
+        var record = new OpenClaw.Connection.GatewayRecord
+        {
+            Id = "native-owner", Url = "ws://127.0.0.1:55123",
+            NativePackageFamilyName = "native-package",
+            NativeRuntimeContract = OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract
+        };
+        draft.SelectExistingNativeGateway(record);
+        Assert.Equal(SetupGatewayRoute.Existing, draft.Route);
+        Assert.True(draft.IsExistingNativeLocalAi);
+        Assert.True(draft.GatewayAvailable);
+        Assert.False(OnboardingFlowPolicy.UsesWslWorkspaceFinalization(draft.Route));
+        Assert.Equal(record.Id, draft.NativeGatewayId);
+        Assert.Equal(record.Url, config.GatewayUrl);
+        Assert.Equal(OpenClaw.Connection.GatewayDashboardBinding.Capture(record), draft.NativeEndpointBinding);
+        Assert.Equal(settings, System.Text.Json.JsonSerializer.Serialize(config.Settings));
+        draft.SelectRoute(SetupGatewayRoute.ManagedWsl);
+        Assert.False(draft.IsExistingNativeLocalAi);
+    }
+
+    [Theory]
     [InlineData(SetupGatewayRoute.Existing)]
     [InlineData(SetupGatewayRoute.Remote)]
     public void NativeCommit_UpdatesTheSameConfigAndRetainsTheEditor(SetupGatewayRoute route)
@@ -117,10 +162,14 @@ public sealed class SetupAccessDraftTests
         var draft = new SetupAccessDraft(config);
         Assert.Same(config, draft.Config);
         Assert.Equal(SetupCapabilityProfile.Standard, draft.Profile);
+        Assert.Equal(OpenClaw.Shared.SystemRunAccessPreset.Balanced, config.Settings.SystemRunPreset);
+        Assert.False(config.Settings.SystemRunPresetIsExplicit);
         draft.ApplyProfile(SetupCapabilityProfile.Full);
         draft.SelectRoute(SetupGatewayRoute.Remote);
         draft.SelectRoute(SetupGatewayRoute.ManagedWsl);
         Assert.Equal(SetupCapabilityProfile.Full, draft.Profile);
+        Assert.Equal(OpenClaw.Shared.SystemRunAccessPreset.Open, config.Settings.SystemRunPreset);
+        Assert.Equal(SetupCapabilityProfile.Full, new SetupAccessDraft(config).Profile);
         Assert.Equal(SetupCapabilityProfile.Full, new SetupAccessDraft(new SetupConfig()).Profile);
     }
 

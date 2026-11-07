@@ -84,25 +84,15 @@ public partial class App
             }));
         }
 
-        var connectionManager = _connectionManager;
-        if (connectionManager is not null)
-        {
-            steps.Add(new AppShutdownStep("gateway client", async () =>
+        // Native withdrawal borrows the authorized manager connection. Drain recovery
+        // and withdraw before that owner is disconnected, even when the Gateway stays running.
+        var localAiLifecycle = _localAiGatewayLifecycle;
+        if (localAiLifecycle is not null)
+            steps.Add(new AppShutdownStep("local AI recovery", async () =>
             {
-                try
-                {
-                    await connectionManager.DisposeAsync();
-                }
-                finally
-                {
-                    if (ReferenceEquals(_connectionManager, connectionManager))
-                        _connectionManager = null;
-                }
+                _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.Drain);
+                await localAiLifecycle.DrainRecoveryAsync();
             }));
-        }
-
-        // The gateway and chat are consumers of local inference, so stop them first.
-        // App owns this pre-built runtime instance; the DI provider must not dispose it.
         var localAiRuntime = _localAiRuntime;
         if (localAiRuntime is not null)
         {
@@ -110,12 +100,31 @@ public partial class App
             {
                 try
                 {
+                    _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.StopLocalAi);
                     await localAiRuntime.DisposeAsync();
                 }
                 finally
                 {
                     if (ReferenceEquals(_localAiRuntime, localAiRuntime))
                         _localAiRuntime = null;
+                }
+            }));
+        }
+
+        var connectionManager = _connectionManager;
+        if (connectionManager is not null)
+        {
+            steps.Add(new AppShutdownStep("gateway client", async () =>
+            {
+                try
+                {
+                    _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.StopGateway);
+                    await connectionManager.DisposeAsync();
+                }
+                finally
+                {
+                    if (ReferenceEquals(_connectionManager, connectionManager))
+                        _connectionManager = null;
                 }
             }));
         }
@@ -160,6 +169,12 @@ public partial class App
                 }
             }));
         }
+
+        steps.Add(new AppShutdownStep("voice playback mute", () =>
+        {
+            _voicePlaybackMute.Dispose();
+            return ValueTask.CompletedTask;
+        }));
 
         steps.Add(new AppShutdownStep("ssh tunnel service", () =>
         {

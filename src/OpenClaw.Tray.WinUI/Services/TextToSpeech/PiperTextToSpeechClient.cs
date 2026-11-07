@@ -22,7 +22,7 @@ namespace OpenClawTray.Services;
 /// (typically 22 050 Hz for Piper-low, 16 000 Hz for some others). The
 /// caller is responsible for playback.
 /// </summary>
-public sealed class PiperTextToSpeechClient : IDisposable
+public sealed class PiperTextToSpeechClient : IDisposable, IAsyncDisposable
 {
     private const string SherpaNativeLibrary = "sherpa-onnx-c-api";
     private static readonly object s_nativeLibraryLock = new();
@@ -31,8 +31,7 @@ public sealed class PiperTextToSpeechClient : IDisposable
     private readonly IOpenClawLogger _logger;
     private readonly string _voiceId;
     private readonly OfflineTts _tts;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private bool _disposed;
+    private readonly PiperGenerationLease _lease;
 
     public string VoiceId => _voiceId;
     public int SampleRate => _tts.SampleRate;
@@ -60,6 +59,7 @@ public sealed class PiperTextToSpeechClient : IDisposable
 
         EnsureNativeLibraryLoaded();
         _tts = new OfflineTts(config);
+        _lease = new PiperGenerationLease(ReleaseNativeSynthesizer);
         _logger.Info($"Piper voice '{_voiceId}' loaded (sample rate {_tts.SampleRate} Hz, {config.Model.NumThreads} threads)");
     }
 
@@ -69,67 +69,17 @@ public sealed class PiperTextToSpeechClient : IDisposable
     /// </summary>
     public async Task<byte[]> GenerateWavAsync(string text, float speed = 1.0f, CancellationToken cancellationToken = default)
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(PiperTextToSpeechClient));
         if (string.IsNullOrWhiteSpace(text)) throw new ArgumentException("text must be non-empty", nameof(text));
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        // Inference is CPU-bound. The lease keeps it on a worker and holds its gate
+        // until this call returns, so native release cannot free the synthesizer underneath it.
+        return await _lease.RunAsync(_ =>
         {
-            // Inference is CPU-bound — push it off the caller thread so
-            // cancellation can race the synthesis.
-            return await Task.Run(() =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var audio = _tts.Generate(text, speed: speed, speakerId: 0);
-                cancellationToken.ThrowIfCancellationRequested();
-                return ConvertFloatPcmToWav(audio.Samples, audio.SampleRate);
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    /// <summary>
-    /// Convert Sherpa's 32-bit float PCM samples (range -1..1) to a
-    /// standard 16-bit PCM mono WAV blob the WinUI MediaPlayer can play.
-    /// </summary>
-    private static byte[] ConvertFloatPcmToWav(float[] samples, int sampleRate)
-    {
-        const int bitsPerSample = 16;
-        const int channels = 1;
-        var byteRate = sampleRate * channels * bitsPerSample / 8;
-        var blockAlign = channels * bitsPerSample / 8;
-        var dataSize = samples.Length * sizeof(short);
-
-        using var ms = new MemoryStream(44 + dataSize);
-        using var w = new BinaryWriter(ms);
-        // RIFF header
-        w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
-        w.Write(36 + dataSize);
-        w.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
-        // fmt chunk
-        w.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
-        w.Write(16);
-        w.Write((short)1);  // PCM
-        w.Write((short)channels);
-        w.Write(sampleRate);
-        w.Write(byteRate);
-        w.Write((short)blockAlign);
-        w.Write((short)bitsPerSample);
-        // data chunk
-        w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
-        w.Write(dataSize);
-        // 16-bit PCM: clamp + scale.
-        for (int i = 0; i < samples.Length; i++)
-        {
-            var s = samples[i];
-            if (s > 1f) s = 1f; else if (s < -1f) s = -1f;
-            w.Write((short)(s * short.MaxValue));
-        }
-        w.Flush();
-        return ms.ToArray();
+            cancellationToken.ThrowIfCancellationRequested();
+            var audio = _tts.Generate(text, speed: speed, speakerId: 0);
+            cancellationToken.ThrowIfCancellationRequested();
+            return PcmWavEncoder.EncodeMono16(audio.Samples, audio.SampleRate);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private static void EnsureNativeLibraryLoaded()
@@ -150,16 +100,16 @@ public sealed class PiperTextToSpeechClient : IDisposable
         }
     }
 
-    public void Dispose()
+    public void Dispose() => _lease.Dispose();
+
+    public ValueTask DisposeAsync() => _lease.DisposeAsync();
+
+    private void ReleaseNativeSynthesizer()
     {
-        if (_disposed) return;
-        _disposed = true;
         // SherpaOnnx suppresses its finalizer only after native cleanup succeeds.
         // Suppress first so a cleanup failure cannot retry from the finalizer thread.
         GC.SuppressFinalize(_tts);
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { _tts.Dispose(); } catch { /* swallow */ }
-        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        try { _gate.Dispose(); } catch { /* swallow */ }
     }
 }

@@ -71,7 +71,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     }
 
     [Fact]
-    public async Task BootstrapAsync_DoesNotConsumeGate_WhenCompletionTimesOut()
+    public async Task BootstrapAsync_ConsumesGate_WhenSendIsAcknowledgedButCompletionTimesOut()
     {
         var settings = new SettingsManager(_settingsDir);
         var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-timeout" } };
@@ -80,7 +80,40 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
 
         Assert.False(result);
         Assert.Equal(1, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_TerminalSendFailure_LeavesTheGateForARetry()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-rejected", Status = "error", Error = "rejected" },
+        };
+
+        var first = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromMilliseconds(25));
+        var second = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromMilliseconds(25));
+
+        Assert.False(first);
+        Assert.False(second);
+        Assert.Equal(2, client.SendCount);
         Assert.False(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_AcknowledgedSend_DoesNotSendTheHelloAgain()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-timeout" } };
+
+        var first = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromMilliseconds(25));
+        var second = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromMilliseconds(25));
+
+        Assert.False(first);
+        Assert.True(second);
+        Assert.Equal(1, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
     }
 
     [Fact]
@@ -300,6 +333,78 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     }
 
     [Fact]
+    public async Task BootstrapAsync_SendsBootstrapPrompt_WhenGatewayReportsMarkerFilesMissing()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-missing-markers" },
+            AgentFilesListResponse = JsonDocument.Parse("""
+                {
+                  "agentId": "main",
+                  "files": [
+                    {"name": "AGENTS.md", "missing": true, "expectedAbsent": false},
+                    {"name": "SOUL.md", "missing": true, "expectedAbsent": true},
+                    {"name": "USER.md", "missing": true, "expectedAbsent": true},
+                    {"name": "BOOTSTRAP.md", "missing": true, "expectedAbsent": false},
+                    {"name": "MEMORY.md", "missing": true, "expectedAbsent": true}
+                  ]
+                }
+                """).RootElement.Clone()
+        };
+
+        var registryDir = Path.Combine(_settingsDir, "registry-missing-markers");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-missing",
+            Url = "ws://127.0.0.1:19031",
+            SharedGatewayToken = "proof-shared-token",
+            IsLocal = false
+        });
+
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
+        await Task.Delay(50);
+        client.RaiseFinalAssistant("run-missing-markers");
+        var result = await task;
+
+        Assert.True(result);
+        Assert.Equal(1, client.SendCount);
+        Assert.Equal(OnboardingChatBootstrapper.Message, client.LastMessage);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_SkipsPrompt_WhenGatewayReportsMarkerFileNotMissing()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = JsonDocument.Parse("""
+                {"agentId":"main","files":[{"name":"SOUL.md","missing":false}]}
+                """).RootElement.Clone()
+        };
+        var registryDir = Path.Combine(_settingsDir, "registry-present-marker");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-present",
+            Url = "ws://127.0.0.1:19031",
+            SharedGatewayToken = "proof-shared-token"
+        });
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
+
+        Assert.True(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
     public async Task BootstrapAsync_SendsBootstrapPrompt_WhenFreshSetupWorkspaceOnlyHasSeedSoulFile()
     {
         var settings = new SettingsManager(_settingsDir);
@@ -339,6 +444,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var client = new FakeOperatorGatewayClient
         {
             Result = new ChatSendResult { RunId = "run-main-empty" },
+            FinalRunIdRaisedDuringSend = "run-main-empty",
             AgentFilesListResponses =
             [
                 CreateAgentFilesListForAgent("sidecar", "SOUL.md"),
@@ -358,9 +464,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         });
 
         var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
-        client.RaiseFinalAssistant("run-main-empty");
         var result = await task;
 
         Assert.True(result);
@@ -451,7 +554,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public event EventHandler<JsonElement>? CronListUpdated;
         public event EventHandler<JsonElement>? CronStatusUpdated;
         public event EventHandler<JsonElement>? CronRunsUpdated;
-        public event EventHandler<JsonElement>? SkillsStatusUpdated;
         public event EventHandler<JsonElement>? ConfigUpdated;
         public event EventHandler<JsonElement>? ConfigSchemaUpdated;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -517,9 +619,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task<bool> AddCronJobAsync(object jobDefinition) => Task.FromResult(false);
         public Task<bool> UpdateCronJobAsync(string id, object patch) => Task.FromResult(false);
         public Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0) => Task.CompletedTask;
-        public Task RequestSkillsStatusAsync(string? agentId = null) => Task.CompletedTask;
-        public Task<bool> InstallSkillAsync(string skillId) => Task.FromResult(false);
-        public Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled) => Task.FromResult(false);
         public Task<bool> UpdateSkillAsync(string skillId) => Task.FromResult(false);
         public Task RequestConfigAsync() => Task.CompletedTask;
         public Task RequestConfigSchemaAsync() => Task.CompletedTask;
@@ -558,13 +657,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         public Task RequestDevicePairListAsync() => Task.CompletedTask;
         public Task<bool> DevicePairApproveAsync(string requestId) => Task.FromResult(false);
         public Task<bool> DevicePairRejectAsync(string requestId) => Task.FromResult(false);
-        public Task<bool> StartChannelAsync(string channelName) => Task.FromResult(false);
-        public Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000) => Task.FromResult<ChannelStartResult?>(null);
-        public Task<bool> StopChannelAsync(string channelName) => Task.FromResult(false);
-        public Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000) => Task.FromResult<ChannelsStatusSnapshot?>(null);
-        public Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000) => Task.FromResult(false);
-        public Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000) => Task.FromResult<WebLoginStartResult?>(null);
-        public Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000) => Task.FromResult<WebLoginWaitResult?>(null);
         public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) => Task.FromResult(default(JsonElement));
     }
 #pragma warning restore CS0067

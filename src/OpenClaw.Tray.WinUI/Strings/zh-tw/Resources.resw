@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>活躍會話</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>頻道</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>閘道拓撲</value>
   </data>
@@ -166,18 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>頻道設定、技能和排程自動化由閘道管理。連線的閘道公開相符儀表板頁面時，請使用這些連結。</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>頻道設定 / 結構描述</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>在可用時開啟頻道設定，用於結構描述導向的驗證、QR、登入和儀表板流程。</value>
-  </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>技能</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>當連線的閘道支援時，開啟閘道技能設定。</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 排程</value>
@@ -356,6 +341,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>無法檢查更新</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>檢查更新時發生錯誤。
 
@@ -456,9 +447,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>節點清單</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>頻道摘要</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>活動摘要</value>
@@ -755,9 +743,6 @@
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>允許按鈕稍後可用</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>請捲動至命令結尾後再允許</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>此命令混用了不同的字元集，可能與其外觀不符。請仔細核對。</value>
@@ -1093,17 +1078,11 @@
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>開啟功能表列面板</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
-    <value>連接訊息頻道</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
     <value>試用語音喚醒</value>
   </data>
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>使用畫布</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>啟用技能</value>
   </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>開機時啟動 OpenClaw</value>
@@ -1273,17 +1252,11 @@
   <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
     <value>從系統匣存取</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
-    <value>設定 → 頻道</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
     <value>用語音喚醒</value>
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>視覺工作區</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>設定 → 技能</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>來源不允許: 閘道拒絕此連線</value>
@@ -1431,50 +1404,11 @@
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>正在產生設定碼</value>
   </data>
-  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>代理程式事件</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>代理程式</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>所有代理程式</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>代理程式活動的即時串流……工具呼叫、回應、錯誤和生命週期事件。</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>所有代理程式</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>工具</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>助理</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>錯誤</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>生命週期</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>計畫</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>核准</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>思考中</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>修補程式</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>尚無代理程式事件</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>代理程式執行時，即時代理程式事件 (工具呼叫、回應、錯誤) 會顯示在這裡。</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>清除</value>
@@ -1482,21 +1416,19 @@
   <data name="ClearButton.Text" xml:space="preserve">
     <value>清除</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>繫結</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>訊息路由規則</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>重新整理</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ 這部電腦</value>
   </data>
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>透過閘道提供給代理程式的裝置功能。切換這部電腦可以執行的動作。</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>應用程式存取權</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>允許敏感擷取作業而不必每次都提示。OpenClaw 仍會在每次存取前通知你，並在錄製前顯示倒數計時。</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>本機 MCP 伺服器</value>
   </data>
@@ -1518,14 +1450,8 @@
   <data name="NodeStatusText.Text" xml:space="preserve">
     <value>節點模式已停用</value>
   </data>
-  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>📡 頻道</value>
-  </data>
   <data name="ConnectionWarning.Title" xml:space="preserve">
     <value>未連線</value>
-  </data>
-  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
-    <value>未設定頻道</value>
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>連線到閘道以開始聊天</value>
@@ -2082,18 +2008,6 @@
   <data name="CancelButton.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>所有代理程式</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>未安裝技能</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>瀏覽技能市集 →</value>
-  </data>
   <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
     <value>總成本</value>
   </data>
@@ -2217,12 +2131,6 @@
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>重新整理</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>聊天</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>連線到閘道以開始聊天</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2259,26 +2167,14 @@
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>對話</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>代理程式事件</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>技能</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>代理程式</value>
   </data>
   <data name="DefaultAgentNavItem.Content" xml:space="preserve">
     <value>main</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
-    <value>頻道</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>實例</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>繫結</value>
+    <value>系統</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>設定</value>
@@ -2287,7 +2183,7 @@
     <value>用量</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>排程工作</value>
+    <value>自動化</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>這部電腦</value>
@@ -2295,14 +2191,20 @@
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>功能</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>系統</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>關於</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>設定</value>
+    <value>一般</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>權限</value>
   </data>
   <data name="HubWindow_NavigationViewItem_145.Content" xml:space="preserve">
-    <value>偵錯</value>
+    <value>診斷</value>
   </data>
   <data name="Onboarding_UnknownPage" xml:space="preserve">
     <value>未知頁面</value>
@@ -2394,18 +2296,6 @@
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>請等待連線建立...</value>
   </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>路由優先順序</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>繫結會控制哪個代理程式處理各頻道的訊息。優先順序：對等 &gt; 帳戶 &gt; 頻道 &gt; 預設。</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>單一代理程式模式</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>所有訊息都會路由至預設代理程式。新增繫結以進行多代理程式路由。</value>
-  </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>使用結構描述引導的表單編輯閘道設定 (openclaw.json)。</value>
   </data>
@@ -2436,9 +2326,6 @@
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>工作區檔案</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>輸入命令...</value>
   </data>
@@ -2465,12 +2352,6 @@
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>使用量與成本</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>在瀏覽器中開啟</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>關閉</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>在瀏覽器中開啟</value>
@@ -2595,6 +2476,75 @@
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax（雲端，需要 API 金鑰）</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro（本機神經語音）</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>語音</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>下載語音套件</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>下載語音套件</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>已下載</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>正在下載…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>重試下載</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>語音套件從 GitHub 發行版下載（英文和中文約 380 MB，西班牙文約 310 MB）。它們完全在本機執行；無音訊離開您的裝置。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>語音套件已在此 PC 上就緒（{0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>語音套件尚未下載。按下載以取得它（約 {0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>正在連接到 GitHub 發行版…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>正在下載… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>下載已取消。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>下載失敗（參見 Debug 日誌）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>磁碟空間不足。請至少釋放 {0} MB 後再試一次。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>下載失敗。請檢查網路連線後再試一次。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>下載的語音套件未通過驗證，已被刪除。請稍後再試。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>語音套件已刪除。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>刪除失敗（參見 Debug 日誌）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>預覽失敗（參見 Debug 日誌）。</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>語音</value>
   </data>
@@ -2653,7 +2603,7 @@
     <value>中國</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper、Windows 和語音辨識在此裝置上執行。雲端 TTS 提供者會將回覆文字傳送到其服務進行合成；麥克風音訊不會傳送給這些服務。</value>
+    <value>Kokoro、Piper、Windows 和語音辨識在此裝置上執行。雲端 TTS 提供者會將回覆文字傳送到其服務進行合成；麥克風音訊不會傳送給這些服務。</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ 模型就緒</value>
@@ -2871,35 +2821,93 @@
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>按聊天容器覆寫全域的「使用標準閘道聊天介面」設定。應用程式重新啟動後將重設。</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>中心聊天分頁 UI：</value>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>最近的聊天</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>環境</value>
   </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>系統匣聊天彈出視窗 UI：</value>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>工作區</value>
   </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>不覆寫</value>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>你的裝置</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>強制使用閘道聊天 UI</value>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>專案</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>強制使用伴侶聊天 UI</value>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>閘道資料夾</value>
   </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>不覆寫</value>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>搜尋環境</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>強制使用閘道聊天 UI</value>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>搜尋專案或貼上 Git URL</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>強制使用伴侶聊天 UI</value>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>輸入資料夾路徑</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>預設工作區</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>瀏覽資料夾</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>上一層</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>使用此資料夾</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>返回專案</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>傳送時複製存放庫</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>正在載入位置...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>正在準備聊天位置...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>沒有相符的位置</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>離線</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>未啟用工作階段託管</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>未提供工作階段容量資訊</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>沒有可用的工作階段名額</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>所需命令尚未獲准</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>需要更新主機</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>此代理程式執行階段不支援裝置工作階段</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>閘道主機</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>遠端工作階段主機</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>歡迎使用 OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>今天我能幫你做什麼？</value>
+    <value>選擇此工作階段的執行位置，再說明要做什麼。</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>完成</value>
@@ -2988,17 +2996,26 @@
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>最大</value>
   </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>工作階段</value>
-  </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>目前工作階段</value>
   </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>模型</value>
   </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>正在載入模型…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>模型無法使用</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>每秒權杖數：本工作階段中最新模型回應、平均值 (μ) 以及近期模型呼叫的第 95 百分位數 (p95)。~ 表示串流期間的即時估計。</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>內容視窗使用量</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>傳訊息給助理（按 Enter 傳送）</value>
@@ -3050,6 +3067,9 @@
   </data>
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>失敗</value>
+  </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>待傳送</value>
   </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>取消已排入佇列的訊息</value>
@@ -3165,27 +3185,13 @@
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>閘道回報 {0} 為 {1}。</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>節點沙箱已關閉: 命令將不受限制地執行</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>在重新啟用節點沙箱之前，代理程式啟動的 Windows 命令將在沒有沙箱隔離的情況下執行。</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙箱無法使用: 回退到主機</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-在沙箱無法使用期間，命令將在主機上執行，且沒有沙箱保護。</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>沙箱無法使用: 命令已封鎖</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-由於已啟用嚴格回退封鎖，沙箱無法使用期間命令會被封鎖。</value>
+無法驗證 MXC。命令將被封鎖。請修復安裝或重試。僅已確認不支援隔離的 Windows 允許未隔離執行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此電腦上沒有可用的 MXC 沙箱基元。</value>
@@ -3330,6 +3336,9 @@
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>傳送失敗：{0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>閘道接受此訊息前連線已中斷。</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失敗</value>
@@ -3757,18 +3766,6 @@
   <data name="FilterAllButton.Text" xml:space="preserve">
     <value>全部</value>
   </data>
-  <data name="ChannelsPage_Title.Text" xml:space="preserve">
-    <value>頻道</value>
-  </data>
-  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
-    <value>重新整理</value>
-  </data>
-  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
-    <value>已設定</value>
-  </data>
-  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
-    <value>可用</value>
-  </data>
   <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
     <value>首頁</value>
   </data>
@@ -3807,27 +3804,6 @@
   </data>
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>沙盒</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
-    <value>Your gateway didn't list any channels</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
-  </data>
-  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
-    <value>Read the channels guide</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to manage channels.</value>
-  </data>
-  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No channels available</value>
-  </data>
-  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
-    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
   </data>
   <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
     <value>Diagnostics</value>
@@ -4019,13 +3995,10 @@
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4062,18 +4035,6 @@
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>閘道已中斷</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>請連接至閘道以載入繫結。</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>開啟連線</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>正在載入繫結…</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>等待您的核准</value>
@@ -4477,15 +4438,6 @@
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>強制使用伴侶聊天介面</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>無覆寫</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>強制使用閘道聊天介面</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>強制使用伴侶聊天介面</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>重新整理</value>
   </data>
@@ -4582,9 +4534,6 @@
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>安全等級</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>一鍵設定下方所有控制項。自訂資料夾會保留您的設定。</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 鎖定</value>
   </data>
@@ -4607,16 +4556,16 @@
     <value>自訂資料夾授權仍然有效</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 檔案</value>
+    <value>檔案存取</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>預設情況下,代理只有一個可讀寫的暫存工作資料夾。在下方授予使用者資料夾的存取權限。SSH 金鑰、瀏覽器設定檔以及 OpenClaw 本身的設定一律會被封鎖。</value>
+    <value>所選範圍決定檔案存取權限。這些選項新增資料夾授權；使用範圍保留資料夾既有的範圍權限。選擇「所選資料夾」可將存取限制為明確授權的資料夾。受保護的資料夾一律封鎖。</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>文件</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>已封鎖</value>
+    <value>使用範圍</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>唯讀</value>
@@ -4628,7 +4577,7 @@
     <value>下載</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>已封鎖</value>
+    <value>使用範圍</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>唯讀</value>
@@ -4640,7 +4589,7 @@
     <value>桌面</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>已封鎖</value>
+    <value>使用範圍</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>唯讀</value>
@@ -4649,16 +4598,16 @@
     <value>讀取與寫入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>PATH 上的工具目錄在沙箱內也以唯讀方式授予,因此 git、node、python 與 dotnet 等命令列工具可使用。一律不會授予磁碟機根目錄。</value>
+    <value>Windows 執行階段資料夾和私人工作空間仍可用。出現在 PATH 中不會授予存取權限。重新套用預設可重設資料夾選項。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>自訂資料夾</value>
+    <value>額外資料夾</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>自訂授權會疊加於上述規則之上。在「文件/下載/桌面」內新增具有更寬權限的資料夾,會覆寫該路徑的行層級設定。</value>
+    <value>這些權限補充上述檔案存取權限。唯讀或移除授權不會限制預設或其他資料夾已允許的存取。受保護的資料夾仍遭封鎖。</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>已封鎖</value>
+    <value>移除授權</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>唯讀</value>
@@ -4667,7 +4616,7 @@
     <value>讀取與寫入</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>尚未新增自訂資料夾。</value>
+    <value>未共用個人資料夾。新增資料夾即可開始。</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>新增資料夾</value>
@@ -4701,42 +4650,6 @@
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>尚未包含本機網路裝置與共用。</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 命令相容性</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>允許 Windows UI API</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>關閉：封鎖 Win32k 系統呼叫</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>開啟：PowerShell 和類似工具可以啟動</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>允許沙箱命令使用 Windows UI API</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell（所有版本）和某些主控台工具在啟動時會使用 Windows UI API。此設定不提供受支援的完整主機處理程序清單。</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Win32k 邊界已停用</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>檔案、網路、剪貼簿、逾時和命令核准控制仍然有效。允許使用 Win32k 系統呼叫；剪貼簿原則和輸入插入禁止仍然有效。</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>允許 Windows UI API？</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>這將允許沙箱命令使用 Windows UI 系統呼叫。目前 MXC 版本中的 PowerShell（所有版本）和某些主控台工具需要此權限才能啟動。此設定不會授與受支援的完整主機處理程序清單：CIM/WMI 主機列舉不受支援，且已觀察到失敗；tasklist 可能失敗或逾時；Get-Process 的輸出不應視為完整清單或處理程序中繼資料的保密邊界。&#xA;&#xA;檔案、網路、剪貼簿、逾時和命令核准控制仍然有效，但 Win32k 系統呼叫封鎖將會停用。剪貼簿原則和輸入插入禁止仍然有效。僅在需要更廣泛的命令相容性時啟用。</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>允許 UI API</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>取消</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ 限制</value>
@@ -4874,8 +4787,11 @@
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>還原</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>進階</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>設定</value>
+    <value>一般</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>一般</value>
@@ -4983,10 +4899,10 @@
     <value>開啟引導</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>偵測到 MSIX 安裝</value>
+    <value>閘道清理</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>透過 Windows 設定 → 應用程式移除 OpenClaw 不會清除本機閘道(WSL 散發版、磁碟映像)。請先使用下方的「移除本機閘道」,然後再解除安裝 OpenClaw。</value>
+    <value>在 Windows 設定中解除安裝 OpenClaw 會自動移除受管理的閘道。使用下方的「移除本機閘道」可移除閘道並保留應用程式。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>移除 WSL 散發版 (OpenClawGateway)、其磁碟映像、自動啟動項目,並清除閘道認證。您的 MCP 權杖會保留。導覽流程將重設。</value>
@@ -4996,27 +4912,6 @@
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已儲存</value>
-  </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 技能</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>已停用</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>正在載入技能…</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>未安裝技能</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>技能可擴充您代理的能力。透過 CLI 或 ClawHub 安裝技能。</value>
   </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>閘道已中斷</value>
@@ -5041,12 +4936,6 @@
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>正在載入工作區檔案…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>網頁聊天無法使用</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>重試</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>連線狀態</value>
@@ -5177,20 +5066,11 @@
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>已中斷連線</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>進階</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>記錄尾端會經過清理並截斷。敏感權杖、內容、錄製資料與原始設定檔會被排除。分享前請先檢查。</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>分享前請檢查</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>即時</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>清除</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>此閘道目前正在處理的對話，依頻道分組。</value>
@@ -5201,12 +5081,6 @@
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>開啟聊天</value>
   </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>已停用</value>
-  </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>預覽</value>
   </data>
@@ -5215,12 +5089,6 @@
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>代理直接在閘道上執行的命令不受此限制。如果閘道在此電腦上，它們仍可能存取您的 Windows 檔案、剪貼簿和網路……請檢查閘道的設定。</value>
-  </data>
-  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} / {1} 個事件</value>
   </data>
   <data name="CronPage_CreateJobLabel" xml:space="preserve">
     <value>建立任務</value>
@@ -5688,6 +5556,9 @@
   <data name="ConnectionPage_InvalidUrl" xml:space="preserve">
     <value>URL 無效</value>
   </data>
+  <data name="ConnectionPage_SavedDashboardInvalidAddress" xml:space="preserve">
+    <value>此已儲存的閘道位址無法開啟儀表板。請編輯已儲存的閘道，並使用 http、https、ws 或 wss 位址。</value>
+  </data>
   <data name="ConnectionPage_ConnectionFailed" xml:space="preserve">
     <value>連線失敗</value>
   </data>
@@ -5787,293 +5658,8 @@
   <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
     <value>等待閘道連線完成逾時。</value>
   </data>
-  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
-    <value>此頻道需要 macOS 主機，無法從 Windows 電腦進行設定。</value>
-  </data>
-  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
-    <value>替換憑證</value>
-  </data>
-  <data name="ChannelsPage_Configuration" xml:space="preserve">
-    <value>設定</value>
-  </data>
-  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>將此裝置與頻道取消連結。掌描新的 QR 碼以重新連線……您的帳戶仍會在手機上保持配對。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>暫時暫停頻道……憑證會被保留，以便您可以重新啟動。或完全中斷連線以清除憑證。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>啟動頻道……它將使用已儲存的憑證開始處理訊息。或完全中斷連線以清除憑證。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>暫停頻道……憑證會被保留，以便您可以重新啟動。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>啟動頻道……它將使用已儲存的憑證開始處理訊息。</value>
-  </data>
-  <data name="ChannelsPage_Start" xml:space="preserve">
-    <value>啟動</value>
-  </data>
-  <data name="ChannelsPage_Stop" xml:space="preserve">
-    <value>停止</value>
-  </data>
-  <data name="ChannelsPage_Logout" xml:space="preserve">
-    <value>登出</value>
-  </data>
-  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
-    <value>中斷連線並清除憑證</value>
-  </data>
-  <data name="ChannelsPage_Controls" xml:space="preserve">
-    <value>控制</value>
-  </data>
-  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
-    <value>WhatsApp 已連結裝置說明 →</value>
-  </data>
-  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
-    <value>Signal 已連結裝置說明 →</value>
-  </data>
-  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
-    <value>如何建立 Telegram 機器人 →</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>如何建立 Discord 機器人 →</value>
-  </data>
-  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
-    <value>如何新增 Google Chat webhook →</value>
-  </data>
-  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
-    <value>Slack 應用程式控制台 →</value>
-  </data>
-  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
-    <value>關於 Nostr →</value>
-  </data>
-  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
-    <value>關於 macOS「訊息」→</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
-    <value>連結您的 WhatsApp 手機</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>點擊下方「連結」區段中的 "Show QR"。</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
-    <value>在手機上：WhatsApp → 設定 → 已連結裝置 → 連結裝置。</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
-    <value>掌描此處顯示的 QR 碼。</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
-    <value>連結您的 Signal 手機</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>點擊下方「連結」區段中的 "Show QR"。</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
-    <value>在手機上：Signal → 設定 → 已連結裝置 → 連結新裝置。</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
-    <value>掌描此處顯示的 QR 碼。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
-    <value>透過機器人連接 Telegram</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
-    <value>開啟 Telegram 並向 @BotFather 傳送訊息。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
-    <value>傳送 /newbot 並按照提示操作。最後複製機器人權杖。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
-    <value>將權杖貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。頻道將自動啟動。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>透過機器人連接 Discord</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>開啟 Discord 開發者入口網站，然後建立或選取應用程式。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>開啟 Bot，視需要新增機器人，然後重設並複製其權杖。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>將機器人權杖貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>點擊 "Save and start"，然後使用 OAuth2 安裝連結將機器人新增到伺服器。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
-    <value>透過 webhook 連接 Google Chat</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
-    <value>在 Google Chat 中，開啟聊天室 → 管理 webhook → 新增 webhook。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
-    <value>複製 webhook URL。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
-    <value>將 URL 貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
-    <value>透過應用程式連接 Slack</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
-    <value>在 api.slack.com/apps 上建立 Slack 應用程式並將其安裝到您的工作區。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
-    <value>複製機器人權杖 (xoxb-…) 和簽署密鑰。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
-    <value>將兩者貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
-    <value>透過中繼連接 Nostr</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
-    <value>產生或貼上私鑰 (nsec)。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
-    <value>選擇一個或多個中繼 URL（例如 wss://relay.damus.io）。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
-    <value>將兩者貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
-    <value>iMessage 僅適用於 macOS</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
-    <value>iMessage 讀取本機 Messages.app 資料庫，該資料庫僅存在於 macOS 上。</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
-    <value>若要將 iMessage 與 OpenClaw 搭配使用，請在 Mac 上執行閘道，而非此 Windows 主機。</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
-    <value>此列表中的所有其他頻道都可以在 Windows 託管的閘道上正常使用。</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
-    <value>連接此頻道</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>"{0}" 是一個外掛頻道。請參閱其文件以了解所需欄位。</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>使用下方「設定」區段中的 "Open Config page" 在 channels.{0} 下新增設定。</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
-    <value>儲存設定；OpenClaw 將自動啟動頻道。</value>
-  </data>
-  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
-    <value>機器人權杖</value>
-  </data>
-  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
-    <value>Discord 機器人權杖</value>
-  </data>
-  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
-    <value>貼上 Discord 機器人權杖</value>
-  </data>
-  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
-    <value>Webhook 網址</value>
-  </data>
-  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
-    <value>簽署密鑰</value>
-  </data>
-  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
-    <value>私鑰 (nsec)</value>
-  </data>
-  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
-    <value>中繼 URL</value>
-  </data>
-  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
-    <value>從 @BotFather (/newbot) 取得。</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
-    <value>從 Discord 開發者入口網站 → Bot → Reset Token 複製。</value>
-  </data>
-  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
-    <value>開啟聊天室 → 管理 webhook → 新增 webhook。</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
-    <value>來自您 Slack 應用程式的 OAuth 權杖。</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
-    <value>Basic Information → App Credentials。</value>
-  </data>
-  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
-    <value>每行一個。</value>
-  </data>
-  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
-    <value>儲存變更</value>
-  </data>
-  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
-    <value>儲存並啟動</value>
-  </data>
-  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
-    <value>開啟設定頁面</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
-    <value>在閘道設定頁面中編輯此頻道的設定。</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
-    <value>按照上述步驟操作後，儲存設定以啟動頻道。</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
-    <value>未連線</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
-    <value>請先連線到閘道，然後再儲存頻道設定。</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
-    <value>缺少欄位</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
-    <value>{0} 為必填項。</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
-    <value>正在儲存 {0}…</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
-    <value>正在寫入 {0} 個欄位並啟用頻道。</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
-    <value>無法載入閘道設定</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>閘道未傳回其目前設定……沒有它無法安全儲存。請嘗試重新整理並再次儲存。</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
-    <value>閘道設定在儲存過程中被清除。請嘗試重新整理並再次儲存。</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
-    <value>{0} 的儲存被封鎖</value>
-  </data>
-  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+  <data name="ConfigPage_BannerGatewayNoResponse" xml:space="preserve">
     <value>閘道未回應。</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
-    <value>{0} 的儲存失敗</value>
-  </data>
-  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>您的閘道設定已在其他位置變更（例如，從設定頁面）。我們已重新整理快取……請再次嘗試儲存。詳細資訊：{0}</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
-    <value>{0} 如果這看起來像是線路格式不符，請開啟設定頁面進行直接 JSON 編輯。</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
-    <value>{0} 設定已儲存</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
-    <value>正在等待閘道確認頻道已執行…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL 閘道</value>
@@ -6134,27 +5720,6 @@
   </data>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>重新啟動 WSL 閘道</value>
-  </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>即時</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>離線</value>
-  </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
   </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
@@ -6217,16 +5782,22 @@
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>一般設定</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>前往通知偏好設定</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>設定通知偏好設定</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>前往關於</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>應用程式與 Gateway 資訊</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
-  </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
+    <value>前往一般</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6239,12 +5810,6 @@
   </data>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
-  </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
   </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
@@ -6553,7 +6118,7 @@
     <value>節點沙箱無法使用: 命令已封鎖</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>此電腦上無法使用隔離，且已啟用嚴格回退封鎖，因此代理程式啟動的命令會被封鎖。</value>
+    <value>無法驗證 MXC。請修復安裝或重試。SDK 或原則錯誤絕不會觸發未隔離執行。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>節點沙箱已關閉: 主機執行</value>
@@ -6583,15 +6148,10 @@
     <value>在沙箱無法使用期間，命令將在主機上執行，且沒有沙箱保護。</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>由於已啟用嚴格回退封鎖，沙箱無法使用期間命令會被封鎖。</value>
+    <value>節點沙箱已開啟。命令會被封鎖，直到隔離可用。</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>無法驗證沙箱可用性</value>
-  </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} 沙箱功能檢查未完成。這通常是暫時性的（檢查緩慢或遭封鎖）… 請重試；如果問題仍然存在，請檢查安全性軟體是否封鎖了 wxc-exec。</value>
   </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重試</value>
@@ -6609,11 +6169,6 @@
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>缺少沙箱元件</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-找不到 wxc-exec 二進位檔。{1} 如果這是開發人員組建，請建置托盤應用程式，讓 wxc-exec.exe 複製到輸出資料夾。否則請重新安裝伴侶應用程式以還原沙箱。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>顯示安裝指示</value>
@@ -6656,15 +6211,6 @@
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· 下次喚醒：{0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>無法載入聊天。閘道 URL 或權杖無法使用。</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>無法載入聊天。請重試。({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 失敗：{0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>無法初始化 WebView2：{0}</value>
@@ -6713,21 +6259,6 @@
   </data>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
-  </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>已停用</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>已啟用</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} 已啟用)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>已停用 ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>已啟用 ({0})</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -6903,9 +6434,6 @@
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -6949,7 +6477,7 @@
     <value>Permissions incomplete</value>
   </data>
   <data name="SettingsPage_About.Text" xml:space="preserve">
-    <value>About</value>
+    <value>關於</value>
   </data>
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
     <value>Gateway info</value>
@@ -6970,13 +6498,13 @@
     <value>沙箱動作</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>鎖定預設：無網際網路、無剪貼簿、無標準使用者資料夾</value>
+    <value>嚴格預設：無個人檔案或網際網路存取</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>建議預設：啟用網際網路，文件、下載和桌面為唯讀</value>
+    <value>平衡預設：使用者資料夾唯讀，網際網路開啟</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>未受保護預設：啟用網際網路，可讀寫文件、下載和桌面</value>
+    <value>開放預設：使用者資料夾可讀寫，網際網路開啟</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>文件存取層級</value>
@@ -7047,6 +6575,8 @@
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒體附件</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>開啟圖片 {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>下載</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>無法開始下載</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在這部電腦上私密執行經過驗證的原生 llama-server。模型只會在收到要求時載入。</value></data>
@@ -7061,13 +6591,12 @@
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>端點</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>處理程序</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>啟動路由器</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>啟動或重新啟動 Local AI 前，請在所選原生閘道的設定流程中選擇「使用本機 AI」，或在「連線」中選取擁有此安裝的 WSL 閘道。</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>停止</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>重新啟動</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>開啟記錄</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>重試設定或下載</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>開啟設定以選擇其他模型。取代現有本機閘道仍需確認。</value></data>
-  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>變更模型</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>閘道連線</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>修復連線</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>開啟聊天</value></data>
@@ -7091,6 +6620,89 @@
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} 內容範圍 · {1} KV · 第一次要求時載入</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>前往本機 AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>檢視 llama-server、模型和閘道狀態</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>代理程式與工具</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>模型</value></data>
+  <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>前往預設模型</value></data>
+  <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>選擇閘道使用的模型</value></data>
+  <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>模型</value></data>
+  <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>自訂 Hugging Face 模型（選用）</value></data>
+  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 連結</value></data>
+  <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>僅支援公開的單一檔案 GGUF 模型。填寫後會取代上方的選擇。</value></data>
+  <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>此模型可能無法容納</value></data>
+  <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>它需要約 {0:F1} GB GPU 記憶體，而 {1} 只有 {2:F1} GB。它可能無法啟動或執行緩慢。</value></data>
+  <data name="LocalAiPage_ForceApplyButton.Content" xml:space="preserve"><value>仍要切換</value></data>
+  <data name="LocalAiPage_ApplyModelButton.Content" xml:space="preserve"><value>切換模型</value></data>
+  <data name="LocalAiPage_CancelModelSwitchButton.Content" xml:space="preserve"><value>取消</value></data>
+  <data name="LocalAiPage_ModelOptionFormat" xml:space="preserve"><value>{0}（{1}，{2} 內容，{3} KV）</value></data>
+  <data name="LocalAiPage_ModelOptionCurrent" xml:space="preserve"><value>{0}（目前）</value></data>
+  <data name="LocalAiPage_ModelOptionRecommended" xml:space="preserve"><value>{0}（建議）</value></data>
+  <data name="LocalAiPage_SwitchPhase_Resolving" xml:space="preserve"><value>正在檢查模型...</value></data>
+  <data name="LocalAiPage_SwitchPhase_Downloading" xml:space="preserve"><value>正在下載模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_Verifying" xml:space="preserve"><value>正在驗證下載</value></data>
+  <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>正在安裝 llama-server</value></data>
+  <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>正在停止目前的模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>正在啟動新模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>正在載入並測試新模型</value></data>
+  <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>正在還原先前的模型</value></data>
+  <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB / {1:F1} GB</value></data>
+  <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>已取消變更模型。</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>模型變更仍在進行中。完成後即可再次變更模型。</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>模型</value></data>
+  <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>閘道會在新對話中使用此模型。每個聊天仍可選擇自己的模型。</value></data>
+  <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>連線到閘道以選擇其模型</value></data>
+  <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>開啟連線</value></data>
+  <data name="DefaultModelPage_ReadOnly.Title" xml:space="preserve"><value>此閘道連線無法變更設定</value></data>
+  <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>預設模型</value></data>
+  <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>使用此模型</value></data>
+  <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>重新整理</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>管理本機 AI</value></data>
+  <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本機 AI：{0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（請先登入提供者）</value></data>
+  <data name="DefaultModelPage_Applied" xml:space="preserve"><value>預設模型已更新。</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>新增模型提供者</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>連線閘道的其中一個提供者，或新增你自己的 OpenAI 或 Anthropic 相容端點。新模型會顯示在上方清單中。</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>閘道提供者</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>自訂端點</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>提供者</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API 金鑰</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>儲存 API 金鑰</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>登入方式</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>登入</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>提供者 ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>基礎 URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API 類型</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI 相容（Chat Completions）</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API 金鑰（OpenAI 相容端點可選）</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>模型 ID</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>新增提供者</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0}（已連線）</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>正在載入提供者...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>此閘道沒有可連線的提供者。</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>無法載入提供者：{0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>此閘道版本無法在這裡連線提供者。請使用自訂端點，或更新閘道。</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>已為 {0} 儲存 API 金鑰。其模型會顯示在上方清單中。</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>已新增 {0}。其模型會顯示在上方清單中。</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>已登入 {0}。</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>已登入 {0}。請重新啟動閘道以使用其模型。</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>已取消登入。</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>登入未完成。</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>閘道連線已變更，登入已停止。請重新開始登入。</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>閘道無法完成此操作：{0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>正在等待提供者...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>登入耗時過久。請重新檢查或取消。</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>閘道傳送了此應用程式無法顯示的登入步驟。請取消，然後從閘道儀表板重試。</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>閘道尚未確認取消。請再試一次。</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>提供者 ID 只能使用小寫字母、數字和連字號。</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>此 ID 屬於內建提供者。請選擇其他 ID。</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>已有提供者使用此 ID。</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>請輸入 http 或 https 基礎 URL。</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>此 API 類型需要 API 金鑰。</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>請至少輸入一個模型 ID。</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>模型 ID 不能包含空格。</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>正在檢查本機 AI 要求</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查 NVIDIA GPU、驅動程式、CUDA、記憶體和 WSL 要求。</value></data>
@@ -7128,6 +6740,7 @@
   <data name="Chat_Model_Other" xml:space="preserve"><value>其他模型</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>沒有符合的模型</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜尋模型</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>新增模型提供者...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在載入訊息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 則佇列訊息</value></data>
@@ -7148,7 +6761,7 @@
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>頻道、整合與閘道設定</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是協助您在電腦上完成工作的 AI 助理。</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>連接你的 AI</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>設定你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>探索現有提供者對話（選用）</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>正在啟動提供者設定…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>正在等候提供者…</value></data>
@@ -7186,7 +6799,15 @@
   <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>使用傳統設定</value></data>
   <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>繼續</value></data>
   <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>正在連接你的 Gateway...</value></data>
-  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>選擇模型或連線 AI 提供者。</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>正在檢查 NVIDIA GPU 記憶體和 CUDA 支援...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>正在驗證 llama.cpp 和已下載的模型檔案。大型模型可能需要一分鐘或更長時間；完整的檔案無需重新下載。</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>正在檢查所選 Gateway 及其本機 AI 設定...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>正在啟動 llama-server 並檢查模型。將模型載入 GPU 記憶體可能需要一些時間...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>正在確認 Gateway 中的本機 AI 提供者和主要模型...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>正在透過 Gateway 測試所選模型的實際回應...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>正在探索已設定的模型和 AI 提供者...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>正在開啟隔離 Gateway 的診斷主控台...</value></data>
+  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>連接 AI 供應商或模型。</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>依照提供者的步驟完成設定。</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>模型已儲存。正在驗證目前的 Gateway 連線。</value></data>
   <data name="Onboarding_AiSetup_Verified" xml:space="preserve"><value>AI 已就緒。正在開啟 Chat...</value></data>
@@ -7207,24 +6828,26 @@
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供者未接受此答案。請檢查目前步驟並重試。</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>連線至 Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>檢查連線而不儲存。下一步會再次檢查並儲存此 Gateway，然後檢視此電腦的存取權限。</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 位址</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>設定代碼</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH 通道</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>選用。使用現有的 OpenSSH 金鑰和設定。保留已儲存連線或設定代碼中的 Gateway 位址。遠端 Gateway 連接埠將從 SSH 主機轉送。</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>使用 SSH 通道</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH 主機</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH 使用者</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway 位址</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>設定代碼</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH 通道</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>選用。使用現有的 OpenSSH 金鑰和設定。保留已儲存連線或設定代碼中的 Gateway 位址。遠端 Gateway 連接埠將從 SSH 主機轉送。</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>使用 SSH 通道</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH 主機</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH 使用者</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>檢查連線</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>檢查連線</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>下一步</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在檢查已安裝的 Gateway 套件及其執行別名...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>正在檢查 Gateway 連線...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>連線嘗試已取消。</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>選擇其他設定路徑</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>現有 Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已儲存或現有連線。不安裝 WSL。</value></data>
@@ -7376,20 +6999,30 @@
   <data name="Onboarding_V3_ProfileCustomTitle.Text" xml:space="preserve"><value>自訂</value></data>
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>保留目前選擇，並在下方進行調整。</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>在此電腦上</value></data>
-  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>此電腦上的本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>在這台電腦上設定模型，或連接 LM Studio 或 Ollama。</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>在這台電腦上執行，無需支付供應商按用量計費的費用。我們會協助你設定適合硬體的模型。</value></data>
+  <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>使用線上服務提供的 AI。</value></data>
+  <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>連接你已在 LM Studio 中使用的模型。</value></data>
+  <data name="Onboarding_AiSetup_OllamaDetail" xml:space="preserve"><value>連接這台電腦或其他主機上的 Ollama，使用本機或雲端模型。</value></data>
   <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>受管理的 Windows llama-server 使用此電腦的 GPU。這與 NVIDIA 的雲端 API 不同。</value></data>
   <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Gateway 上可用的模型</value></data>
-  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>連線至 AI 提供者</value></data>
+  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>雲端 AI</value></data>
   <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>設定本機模型</value></data>
   <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>透過 Gateway 設定並使用模型。繼續前請檢閱下載或權限要求。</value></data>
   <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Gateway 也提供設定或輔助工作模型。此頁面僅連線主助理，因此不顯示僅供輔助工作使用的選項。</value></data>
-  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>設定本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>設定</value></data>
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>啟動並使用</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>使用此模型</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>修復本機 AI</value></data>
-  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>安裝並使用</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>復原並使用本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>需要復原所擁有的閘道路由。</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>釋放閘道所有權</value></data>
+  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>安裝並使用本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>正在設定本機 AI</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>Gateway 或本機 AI 的就緒狀態已變更。請返回連線 AI 頁面並重新檢查，然後再安裝。</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>本機 AI 無法啟動。清理已完成。請修復本機 AI 或選擇其他提供者。</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>開啟本機 AI 記錄</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>正在檢查此電腦。你仍可選擇 AI 提供者。</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>電腦相容。安裝前請檢閱設定。</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>已安裝，未執行</value></data>
@@ -7424,32 +7057,57 @@
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>已取消</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0}，共 {1}</value></data>
   <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>您的 AI 已就緒</value></data>
-  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>您想先做什麼？</value></data>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>與我的代理程式聊天</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>開啟 Chat，與代理程式聊天。</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>與我的代理程式聊天，建議</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>探索技能</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>瀏覽代理程式的技能。不會自動安裝任何內容。</value></data>
-  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>連接頻道</value></data>
-  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您選擇何時登入。</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>返回 AI 設定</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>與我的代理程式聊天</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新檢查就緒狀態</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在準備 AI 選項</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在準備閘道</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>正在啟動閘道並檢查接聽程式...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>正在將 Companion 與閘道配對...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>正在取得本機 AI 檔案...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>正在套用已檢閱的 Windows 功能...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>正在檢查已儲存的閘道設定...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>正在重新啟動已設定的閘道...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>正在透過驗證檢查閘道健康狀態...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>正在協調所選本機 AI 的設定...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>正在儲存已驗證的閘道設定檔...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>正在儲存設定選項...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>正在套用登入時啟動的偏好設定...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>正在啟動 Companion 服務，然後進行最終 AI 檢查...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>正在等待所選本機 AI 執行階段復原...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>正在安全停止舊的本機 AI 執行階段...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>正在釋放舊的閘道連線和執行階段...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>正在檢查 AI</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>AI 需要處理</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>設定尚未完成時閘道連線發生了變化。請關閉此設定視窗，檢查「連線」，然後重新開啟 AI 設定以驗證已儲存的結果。在結果不確定時，請勿重複提供者操作。關閉時會等待已准許的操作完成。</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>正在安全結束上一項設定操作...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>正在重新啟動 OpenClaw，然後進行最終就緒檢查...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>設定尚未就緒。請使用可用的復原操作，或關閉此視窗。不會自動重複任何提供者操作。</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>選取 AI 或繼續其設定，即授權 OpenClaw 完成您已檢閱的設定選項，並在顯示就緒狀態前重新啟動。</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>正在完成設定</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>正在套用您的選項、重新啟動 OpenClaw 並檢查 AI。這可能需要幾分鐘。</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>設定需要處理。不會自動重複任何 AI 操作。請關閉此視窗，在「連線」中檢查已儲存的閘道，然後明確重新開啟 AI 設定進行驗證。</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已驗證的模型：{0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新驗證相同的 Gateway、代理程式和模型...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成您的 Windows 設定選項...</value></data>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>正在開啟您選擇的應用程式頁面...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>無法驗證 Gateway、代理程式或主要模型。請返回 AI 設定並重新驗證。</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>驗證逾時或已取消。請再次選擇以重試，或返回 AI 設定。</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>關閉上一個 AI 設定頁面逾時。請重試，或返回 AI 設定。</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>連線至原生閘道逾時。請檢查閘道是否就緒，然後重試。</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>等待本機 AI 復原逾時。請檢查本機 AI 狀態，然後重試。</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>驗證所選 AI 模型逾時。請檢查模型是否能夠回應，然後重試。</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>啟動原生閘道或確認其監聽連接埠逾時。請檢查閘道狀態，然後重試。</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>暫時無法驗證 AI。請檢查 Gateway 連線及模型是否就緒，然後重試或返回 AI 設定。</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 設定未能完成。所選目標尚未開啟。請重試或返回 AI 設定。</value></data>
-  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>應用程式無法開啟所選目標。請再次選擇以重試。未啟動任何頻道登入。</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>應用程式無法開啟所選目標。請再次選擇以重試。</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>無法開啟所選設定目標</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此設定交接已過期、已使用或無法使用。請重新開啟設定並驗證 AI。</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此設定交接已中斷、不相容、已過期或已使用，無法重播。請在「連線」中檢查已儲存的閘道，然後明確重新開啟 AI 設定進行驗證。不會自動重複先前的設定操作。</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>已驗證的 Gateway 或代理程式已變更。請返回原 Gateway 並重新開啟 AI 設定。未開啟其他帳戶。</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>已驗證的 Gateway 或應用程式頁面尚未就緒。請檢查 Connection，然後手動重試。</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>關閉</value></data>
-  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>此 Gateway 未提供所選頻道。請查看可用頻道，或更新 Gateway 後重新整理。</value></data>
-  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>無法確認頻道是否可用。請重新整理以重試。未啟動任何頻道登入或設定。</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>深入瞭解風險與安全</value></data>
   <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>設定 OpenClaw</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Gateway 將您的 AI 助理連接到應用程式與工具。請選擇執行位置，您可以稍後變更。</value></data>
@@ -7615,6 +7273,18 @@
 
 您的設定、閘道、檔案和模型將保留在原處。</value>
   </data>
+  <data name="Migration2_AwaitingRemovalWithApps" xml:space="preserve">
+    <value>您的設定已通過驗證，移轉完成狀態已記錄。
+
+1. 開啟「已安裝的應用程式」。
+解除安裝：{0}（桌面安裝版）
+保留：{1}，版本 {2}（Microsoft Store）
+保留所有其他應用程式。
+
+2. 返回此處並選擇「重試」以驗證移除狀態並完成移轉。
+
+您的設定、閘道、檔案和模型將保留在原處。</value>
+  </data>
   <data name="Migration2_RemovalTitle" xml:space="preserve">
     <value>解除安裝舊版應用程式</value>
   </data>
@@ -7677,6 +7347,17 @@
   <data name="Migration2_InnoGranted" xml:space="preserve">
     <value>已儲存移轉授權。請安裝並開啟 Store 版本以繼續。在確認移轉完成之前，請保留此應用程式。</value>
   </data>
+  <data name="Migration2_InnoRepairRequired" xml:space="preserve">
+    <value>所需的安裝檔案遺失或無效。請下載完整的 OpenClaw 安裝程式。結束 OpenClaw，以同一 Windows 使用者執行安裝程式覆蓋此安裝，然後重新開啟應用程式並重試移轉。請勿先解除安裝 OpenClaw。
+
+安裝程式會修復安裝檔案。移轉仍須通過 Store 應用程式的相容性檢查。</value>
+  </data>
+  <data name="Migration2_InnoSetupLinkFailed" xml:space="preserve">
+    <value>Windows 無法開啟安裝程式下載連結。請將此位址複製到瀏覽器中：{0}。請勿先解除安裝 OpenClaw。</value>
+  </data>
+  <data name="Migration2_InnoDownloadSetup.Content" xml:space="preserve">
+    <value>下載安裝程式以修復</value>
+  </data>
   <data name="Migration2_InnoFailed" xml:space="preserve">
     <value>OpenClaw 無法儲存移轉授權或開啟 Store 中的應用程式頁面。請查看應用程式記錄並重試。請勿解除安裝此應用程式。</value>
   </data>
@@ -7691,7 +7372,17 @@
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安裝本機 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在檢查原生 Gateway 支援情況...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此裝置支援原生 Gateway。</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>目前不支援原生 Gateway。請透過 Windows Update 安裝 Windows Insider 組建 {0} 或更新的受支援組建，然後重新開啟此頁面。功能可用性可能因裝置而異。</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Windows 回報原生 Gateway 所需的隔離工作階段功能無法使用。較新的 Windows 版本本身並不保證此功能可用。您可以改為安裝本機 WSL Gateway 或連線至現有 Gateway。
+
+如果需要更新 Windows，您可以加入 Windows 測試人員計畫，選取 Beta 或 Experimental 通道，並在加入時透過「進階選項」選取 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必須全新安裝系統。
+
+加入後，請返回「設定 &gt; Windows Update」並檢查更新。更新可能需要幾分鐘才會顯示。功能可用性可能因裝置而異。您可以重新開啟此頁面以再次檢查支援情況。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Windows 回報原生 Gateway 所需的隔離工作階段功能無法使用。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableAlternatives" xml:space="preserve"><value>您可以改為安裝本機 WSL Gateway 或連線至現有 Gateway。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows 測試人員計畫</value></data>
+  <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta 或 Experimental</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 版本 26H1</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsUpdate" xml:space="preserve"><value>設定 &gt; Windows Update</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>無法驗證原生 Gateway 支援情況。請重新開啟此頁面以重試。如果檢查持續失敗，請更新或修復 Companion。</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>原生 Gateway 設定需要受支援的 Windows 用戶端系統。不支援 Windows Server。</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>開啟 Windows Update</value></data>
@@ -7701,6 +7392,7 @@
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中繼續使用與 WSL 相同的 Gateway 設定精靈。連線前將驗證設定和健康狀態。現有 WSL Gateway 和預設 OpenClaw 設定不會被取代。</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安裝 Gateway，設定程式將使用 WinGet 從 Microsoft Store 安裝，並在驗證套件後自動繼續。</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在使用 WinGet 從 Microsoft Store 安裝 Gateway...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>仍在從 Microsoft Store 安裝 Gateway。這可能需要幾分鐘（已用時 {0} 分鐘）。</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在驗證 Gateway 註冊和執行別名，然後繼續...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 將準備您的 Gateway，然後協助您連接 AI。</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 復原</value></data>
@@ -7712,8 +7404,19 @@
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>準備您的 Gateway 設定檔</value></data>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
+  <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>收集 Gateway 診斷資訊</value></data>
+  <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>收集 Gateway 診斷資訊以取得可檢視或分享的已遮蔽 ZIP，或在隔離的 Gateway 中開啟終端機。然後選擇「重試設定」。</value></data>
+  <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>Gateway 未在 {0} 秒內就緒。首次啟動可能較慢。請收集 Gateway 診斷資訊查看原因，然後選擇「重試設定」。若要允許更長的啟動時間，請將環境變數 {1} 設為秒數並重新啟動 Companion。</value></data>
+  <data name="Onboarding_Native_RegistrationGuidance" xml:space="preserve"><value>Windows 無法為您的 Windows 使用者註冊 Gateway 套件。請從 Microsoft Store 安裝 OpenClaw Gateway，或在 PowerShell 中執行 {0}。然後選擇「重試設定」。</value></data>
+  <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>正在收集已遮蔽的 Gateway 診斷資訊...</value></data>
+  <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Gateway 診斷資訊已儲存至 {0}。</value></data>
+  <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>Gateway 套件已收集診斷資訊，但未回報儲存位置。</value></data>
+  <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>無法收集 Gateway 診斷資訊：{0}</value></data>
+  <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>無法開啟 Gateway 終端機：{0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>選取「設定 Gateway」即表示您授權 WinGet 從 Microsoft Store 安裝缺少的 Gateway 套件，並接受套件合約和商店來源合約。Companion 隨後將驗證套件、準備專用設定檔並開啟 Gateway 設定。供應商登入仍需您互動操作。此方式不會安裝 WSL、本機 AI 或 Tailscale。</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>詳細活動</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>開啟記錄檔</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0}未完成</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>節點模式連線至 Gateway 並完成配對後，即可使用這些 Windows 功能。Windows 權限和命令核准仍然適用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已設定</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 設定中變更這些選項。</value></data>
@@ -7755,7 +7458,6 @@
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
@@ -7766,11 +7468,8 @@
   <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
-  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -7803,6 +7502,44 @@
   <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
   <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
   <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_SessionMenu_LastActiveFormat" xml:space="preserve"><value>Last active {0}</value></data>
+  <data name="WorkspaceShell_SessionMenu_Pin" xml:space="preserve"><value>Pin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unpin" xml:space="preserve"><value>Unpin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkUnread" xml:space="preserve"><value>Mark as unread</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="WorkspaceShell_SessionMenu_Archive" xml:space="preserve"><value>Archive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Fork" xml:space="preserve"><value>Fork conversation</value></data>
+  <data name="WorkspaceShell_SessionMenu_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyKey" xml:space="preserve"><value>Copy session key</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyId" xml:space="preserve"><value>Copy session ID</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyMarkdown" xml:space="preserve"><value>Copy as Markdown</value></data>
+  <data name="WorkspaceShell_SessionMenu_Reset" xml:space="preserve"><value>Reset session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Compact" xml:space="preserve"><value>Compact session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Export" xml:space="preserve"><value>Export transcript…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="WorkspaceShell_SessionRename_Title" xml:space="preserve"><value>Rename session</value></data>
+  <data name="WorkspaceShell_SessionRename_Body" xml:space="preserve"><value>Leave blank to use the default title.</value></data>
+  <data name="WorkspaceShell_SessionRename_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>已封存</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>沒有已封存的工作階段。</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>無法取得此閘道的已封存工作階段。</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>取消封存工作階段</value></data>
+  <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
+  <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
+  <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
+  <data name="WorkspaceShell_SelectConversation.Text" xml:space="preserve"><value>Select a conversation or create a new one to start chatting.</value></data>
+  <data name="WorkspaceShell_ForkFailed" xml:space="preserve"><value>The gateway could not fork this conversation.</value></data>
+  <data name="WorkspaceShell_ForkUnsupported" xml:space="preserve"><value>This gateway does not support forking conversations. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_CopyFailed" xml:space="preserve"><value>Windows could not copy to the clipboard.</value></data>
+  <data name="WorkspaceShell_CopyEmpty" xml:space="preserve"><value>This session has no messages to copy.</value></data>
+  <data name="WorkspaceShell_HistoryUnsupported" xml:space="preserve"><value>This gateway does not support reading transcripts. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_ExportEmpty" xml:space="preserve"><value>This session has no transcript yet.</value></data>
+  <data name="WorkspaceShell_ExportDone" xml:space="preserve"><value>Saved {0} messages to {1}.</value></data>
   <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
   <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
   <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
@@ -7819,7 +7556,6 @@
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -7838,7 +7574,7 @@
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
   <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
-  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>取得支援</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
@@ -7846,16 +7582,22 @@
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
-  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>擁有者</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>共用擁有者</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · 共用擁有者</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_PagesCustomize.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>自訂頁面</value></data>
   <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
   <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>通知</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>開啟儀表板</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>開啟儀表板 (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>前進</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>前進</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -7874,4 +7616,252 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已連線的閘道上建立代理程式及其工作區。此操作不會建立對話或變更目前的聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>請連線至具有 operator.admin 權限的閘道以建立代理程式。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>無法確認代理程式是否已建立。請關閉此對話方塊並重新整理代理程式清單，然後再試。</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>開啟 Local AI 設定，重新連線至原本的閘道，並成功停止 Local AI 後再修復檔案。如果路由仍需復原，請先完成復原。請保留擁有權記錄和已下載的模型。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion 管理無法使用。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>此設定檔沒有現有本機 AI 提供者的擁有權憑據。如果 Companion 在先前的設定嘗試中建立了它，請重新開啟原始 Companion 設定檔並選擇「復原並使用本機 AI」。未進行任何變更。使用偵測到的模型不會還原 Companion 管理。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已儲存的本機 AI 擁有權、模型或閘道設定不再相符。請在原始 Companion 設定檔中檢查原始閘道及其模型設定，包括已修改的模型允許清單項目。保留擁有權憑據，不要複製驗證認證或取代提供者。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>無法檢查原始閘道的擁有權或設定。請重新連線原始閘道並再次檢查。未進行任何變更。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本機 AI 安裝需要修復檔案。請先在本機 AI 設定中停止執行階段並解決原始閘道路由問題，再修復檔案。保留擁有權憑據。</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>設定期間驗證的 Gateway 未連線。請檢查「連線」，或在其可用時再次檢查。</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>無法確認設定期間驗證的 Gateway 和代理程式。請開啟「連線」進行檢查。</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>無法顯示聊天。請再次檢查。如果問題持續發生，請開啟「診斷」。</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>再次檢查</value>
+  </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>預設會取代檔案授權及網際網路存取。剪貼簿、限制及命令核准保持獨立。</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>自訂權限</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>套用預設</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>嚴格</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>平衡</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>包含的資料夾</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>可讀取您的使用者設定檔目錄和個人資料夾，包括重新導向的資料夾。下方的額外權限也可能允許變更。受保護的資料夾仍遭封鎖。</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>程式可讀取和變更您的使用者設定檔目錄和個人資料夾中的檔案，包括重新導向的資料夾。受保護的資料夾仍遭封鎖。</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>個人檔案存取僅來自下方的額外權限。Windows 執行階段資料夾和私人工作空間仍可用。受保護的資料夾仍遭封鎖。</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0}（已儲存權限）：{1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>資料夾位置無法使用</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>{0} 的存取權限</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>移除 {0} 的權限</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>資料夾</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>選擇代理程式在每個資料夾中可執行的操作。「禁止存取」會封鎖該資料夾，但明確列出的子資料夾保留各自的存取權限。受保護的資料夾仍遭封鎖。</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>禁止存取</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>使用者設定檔目錄</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>選擇存取權限</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>重設</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>移除</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>將 {0} 重設為預設存取權限</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>已儲存的封鎖權限需要檢查。它不會拒絕預設或父資料夾允許的存取。</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>Windows 執行階段存取固定為唯讀。</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>舊版封鎖（需檢查）</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>開放</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>嚴格限制代理程式的行動範圍。</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>協助處理日常工作，降低風險。</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>給予代理程式更多自由來完成工作。</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>不存取個人檔案或網際網路。僅允許執行階段存取及私有工作目錄。</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>讀取使用者設定目錄及已解析的重新導向個人資料夾。不寫入個人檔案。網際網路開啟。排除受保護資料夾。</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>讀寫使用者設定目錄及已解析的重新導向個人資料夾。網際網路開啟。排除受保護資料夾。</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>檔案存取範圍</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>選取的資料夾</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>使用者資料夾：唯讀</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>使用者資料夾：讀寫</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>正在檢查 MXC 可用性</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>正在驗證命令隔離支援。此檢查不會變更權限。</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>使用者資料夾解析不完整</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>找不到或無法存取所需的個人資料夾。使用這些資料夾的命令遭封鎖。請查看資料夾清單，還原資料夾的 Windows 位置，然後重試。受保護資料夾與命令核准始終適用。</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>命令逾時：{0} 秒</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>需要檢查舊資料夾授權</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>先前已篩除或衝突的授權保持封鎖狀態，避免無聲擴大存取。請檢查「封鎖」列，明確選擇受支援的存取或其他資料夾。受保護根目錄始終排除。</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Windows 解析的使用者資料夾根目錄（排除受保護後代）：</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>正在解析使用者資料夾位置...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>未解析到已設定且可用的 OneDrive 根目錄。不包括額外的 OneDrive 位置。</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows 隔離無法使用：命令將在未隔離環境中執行</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>此 Windows 版本無法提供所需的 MXC 隔離。已核准的命令將直接在此電腦上執行。沙箱檔案、網路、剪貼簿及 Windows 介面限制不會生效。已儲存的權限會保留，命令核准仍然有效。請更新 Windows 以啟用隔離。Companion 本身的最低 Windows 版本要求仍然適用。</value></data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首選的 {0} 設定不適合此硬體。設定可使用 {1}，上下文為 {2:N0} 個權杖。安裝前請在設定中查看此設定。</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此設定至少需要 {0} 系統記憶體。</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此設定要求模型快取和執行階段所在的磁碟區都至少有 {0} 可用空間。</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>未驗證</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>無法載入聊天位置。請在位置選擇器中重試。</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>無法載入 Gateway 資料夾。請重新瀏覽。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>無法準備聊天位置。請先在 Gateway 中檢查該位置，然後重試。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>位置準備仍在進行中。請稍候再傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>所選聊天位置尚未就緒。請先重新整理選項，然後傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>正在等候目前的聊天記錄，之後才能準備位置。請在載入完成後重新傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>位置準備已中斷，可能已變更此工作階段的位置。請先在 Gateway 中檢查，然後再傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>此工作階段已不再為空，因此已取消待定的位置選擇。請檢查工作階段並重新傳送，以在目前位置繼續。</value>
+  </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>重新整理問題</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>問題已回答</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>問題已取消</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>問題已過期</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>等待您的回答</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>請開啟網頁版聊天回答此問題。此問題需要資源選擇或機密儲存控制項。</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>您的回答</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>開啟問題連結</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>無法開啟問題連結。</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>無法傳送回答。請重新整理後再試。</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>請重新連線並重新整理問題後再回答。</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>正在提交...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>提交回答</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>取消問題</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>無法重新整理問題。請再試一次或開啟網頁版聊天。</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>此問題已過期或連線已中斷。請重新整理後再回答。</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>回答尚未確認。請重新整理以檢查狀態後再試。</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>無法讀取代理程式的問題。請重新整理或開啟網頁版聊天作答。</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>等待核准</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>等待您的回答</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>正在壓縮內容</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>壓縮內容後正在重試</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>正在重試模型要求</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>正在思考</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>正在回答</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>正在處理</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>正在執行 {0}</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>問題已無法使用</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} 個輸出權杖</value></data>
+  <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>在此輸入您自己的答案</value></data>
+  <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter 換行 / Ctrl+Enter 繼續</value></data>
+  <data name="Chat_Questions_Expand" xml:space="preserve"><value>展開問題</value></data>
+  <data name="Chat_Questions_Collapse" xml:space="preserve"><value>收合問題</value></data>
+  <data name="Chat_Questions_PreviousRequest" xml:space="preserve"><value>上一個要求</value></data>
+  <data name="Chat_Questions_NextRequest" xml:space="preserve"><value>下一個要求</value></data>
+  <data name="Chat_Questions_Back" xml:space="preserve"><value>返回</value></data>
+  <data name="Chat_Questions_Skip" xml:space="preserve"><value>略過</value></data>
+  <data name="Chat_Questions_SubmitShort" xml:space="preserve"><value>提交</value></data>
+  <data name="Chat_Questions_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="SettingsPage_AppInfoSupport.Content" xml:space="preserve"><value>取得支援</value></data>
+  <data name="Chat_Welcome_WhatCanYouDo" xml:space="preserve"><value>你能做什麼？</value></data>
+  <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
+  <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
+  <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>節點沙箱</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>沙盒設定</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
+    <value>可用</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
+    <value>相容模式</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Unavailable" xml:space="preserve">
+    <value>無法使用</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Disabled" xml:space="preserve">
+    <value>工具已關閉</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Checking" xml:space="preserve">
+    <value>正在檢查</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_AvailableDescription" xml:space="preserve">
+    <value>Windows 支援沙箱。每個命令都會在執行前接受檢查。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CompatibilityDescription" xml:space="preserve">
+    <value>此 Windows 版本不支援沙箱。已核准的命令將在沙箱外執行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_UnavailableDescription" xml:space="preserve">
+    <value>無法驗證沙箱。命令已遭封鎖。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_DisabledDescription" xml:space="preserve">
+    <value>系統工具已關閉。命令無法在此節點上執行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
+    <value>正在檢查 Windows 沙箱支援。</value>
+  </data>
+  <data name="Chat_Status_PrimaryRestored" xml:space="preserve"><value>已還原主要模型</value></data>
+  <data name="Chat_Status_FallbackSwitching" xml:space="preserve"><value>正在切換至備用模型</value></data>
+  <data name="Chat_Status_FallbackModel" xml:space="preserve"><value>正在使用備用模型：{0}</value></data>
+  <data name="Chat_Status_StreamIncomplete" xml:space="preserve"><value>即時回應不完整。請重新連線或重新載入對話記錄以還原。</value></data>
+  <data name="Chat_Run_ElapsedHours" xml:space="preserve"><value>{0}小時 {1}分 {2}秒</value></data>
+  <data name="Chat_Run_ElapsedMinutes" xml:space="preserve"><value>{1}分 {2}秒</value></data>
+  <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
+  <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
+  <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>搜尋結果</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>沒有相符的結果。</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>頻道</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>此結果沒有對應的控制面板頁面。</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>顯示更多</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>重試</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>聊天</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>訊息內容</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>設定</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>自動化</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>技能</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>代理程式</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>模型</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}：正在搜尋…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}：連線至閘道以進行搜尋。</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}：需要讀取權限。</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}：最多可使用 4096 個字元。</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}：此閘道不支援。</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}：結果可能不完整。請縮小搜尋範圍。</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}：搜尋失敗。其他結果仍然可用。</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>核准</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>祕密</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>模型提供者</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>喚醒與心跳</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>閘道 MCP 伺服器</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>記憶</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>閘道安全性</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>閘道記錄</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>系統</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>控制面板集合</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>外掛程式</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>應用程式</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>會議</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>閘道活動</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>入口網站</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作樹</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>移除項目</value>
+  </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>使用已連線 Gateway 的語音</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>聊天朗讀和自動回覆使用 Gateway 設定的語音。文字會傳送至 Gateway 及其語音供應商。金鑰保留在 Gateway 上。本機節點和 MCP 語音不受影響。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>不會自動改用本機。若無法使用，請關閉此選項以使用本機供應商。</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>停止</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>正在產生 Gateway 語音…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway 語音：{0}。</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>請在連線設定中連接 Gateway 以使用其語音。</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>此 Gateway 未宣告必要的語音 RPC。請更新 Gateway 或關閉 Gateway 語音。</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway 語音需要 operator.write 權限。請檢查 Gateway 對此裝置的核准。Companion 不會變更權限。</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>語音文字為空或超過 Companion 的 4096 字元限制。請選擇較短的訊息。</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>Gateway 傳回空白、無效或過大的音訊。請檢查其 TTS 設定。未播放任何音訊。</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>不支援此 Gateway 音訊格式。請在 Gateway 上設定 MP3 或 WAV 輸出。</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
 </root>

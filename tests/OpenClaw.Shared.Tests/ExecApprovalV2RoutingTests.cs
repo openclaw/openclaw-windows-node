@@ -282,6 +282,22 @@ public class ExecApprovalV2RoutingTests
     }
 
     [Fact]
+    public async Task CallerToken_ReachesAuthorizationRevalidationAndExecution()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var runner = new FakeRunner();
+        var handler = new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho()));
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        cap.SetV2Handler(handler);
+        var response = await cap.ExecuteAsync(RunRequest(), cancellation.Token);
+        Assert.True(response.Ok);
+        Assert.Equal(cancellation.Token, handler.AuthorizationToken);
+        Assert.Equal(cancellation.Token, handler.RevalidationToken);
+        Assert.Equal(cancellation.Token, runner.LastToken);
+    }
+
+    [Fact]
     public async Task V2Allow_ShellAndLegacyFieldsDoNotTravel()
     {
         var runner = new FakeRunner();
@@ -294,9 +310,7 @@ public class ExecApprovalV2RoutingTests
         // The approved argv must reach the runner verbatim: no shell wrapper,
         // no legacy command/args re-derivation from the raw request.
         Assert.NotNull(runner.LastRequest);
-        Assert.Empty(runner.LastRequest!.Command);
-        Assert.Null(runner.LastRequest.Args);
-        Assert.Null(runner.LastRequest.Shell);
+        Assert.Equal(ApprovedEcho().Argv, runner.LastRequest!.Argv);
     }
 
     [Fact]
@@ -355,148 +369,117 @@ public class ExecApprovalV2RoutingTests
         Assert.Null(runner.LastRequest);
     }
 
+    [Fact]
+    public async Task PermissionRevokedBeforeDispatch_DoesNotRequestApproval()
+    {
+        var enabled = true;
+        var handler = new TrackingHandler();
+        var runner = new FakeRunner();
+        var capability = new SystemCapability(NullLogger.Instance, () => enabled);
+        capability.SetV2Handler(handler);
+        capability.SetCommandRunner(runner);
+
+        enabled = false;
+        var response = await capability.ExecuteAsync(RunRequest());
+
+        Assert.False(response.Ok);
+        Assert.Contains("disabled", response.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(handler.WasCalled);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PermissionRevokedWhileAuthorizingOrRevalidating_DoesNotInvokeRunner(bool pauseRevalidation)
+    {
+        var enabled = true;
+        var handler = new PausingApprovalHandler(pauseRevalidation);
+        var runner = new FakeRunner();
+        var capability = new SystemCapability(NullLogger.Instance, () => enabled);
+        capability.SetV2Handler(handler);
+        capability.SetCommandRunner(runner);
+
+        var pending = capability.ExecuteAsync(RunRequest());
+        Assert.True(handler.Entered.Task.IsCompleted);
+        enabled = false;
+        handler.Continue.SetResult();
+        var response = await pending;
+
+        Assert.False(response.Ok);
+        Assert.Contains("system-run-disabled", response.Error);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Fact]
+    public async Task DeferredRunnerRevalidation_ObservesCurrentRunPermission()
+    {
+        var enabled = true;
+        var runner = new FakeRunner();
+        var capability = new SystemCapability(NullLogger.Instance, () => enabled);
+        capability.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+        capability.SetCommandRunner(runner);
+        Assert.True((await capability.ExecuteAsync(RunRequest())).Ok);
+        var revalidate = Assert.IsType<Func<CancellationToken, ValueTask<ExecApprovalRevalidationResult>>>(
+            runner.LastRequest!.RevalidateApproval);
+        Assert.True((await revalidate(CancellationToken.None)).IsCurrent);
+
+        enabled = false;
+        var result = await revalidate(CancellationToken.None);
+
+        Assert.False(result.IsCurrent);
+        Assert.Equal("system-run-disabled", result.Reason);
+    }
+
     // -------------------------------------------------------------------------
-    // Sandbox flag matrix: the V2 path against the real MXC runner, driven by
-    // SystemRunSandboxEnabled / availability / strict fallback blocking.
+    // Mandatory containment: unavailable SDK is a protocol error, never a host route.
     // -------------------------------------------------------------------------
 
     private static ExecApprovedExecution ApprovedEchoNoEnv()
         => new(new[] { "cmd", "/c", "echo hi" }, cwd: @"C:\work", timeoutMs: 5000, env: null);
 
-    private static MxcCommandRunner BuildMxcRunner(
-        SettingsData settings,
-        bool sandboxAvailable,
-        FakeRunner hostFallback,
-        FakeSandboxExecutor sandboxExecutor)
-        => new(
-            sandboxExecutor,
-            hostFallback,
-            () => settings,
-            () => System.IO.Path.GetTempPath(),
-            () => sandboxAvailable);
-
-    [Theory]
-    [InlineData(false, false, false, true)]  // sandbox off → host runner honors argv
-    [InlineData(false, true, false, true)]
-    [InlineData(true, true, false, true)]    // sandbox on + available → direct MXC argv transport
-    [InlineData(true, true, true, true)]
-    [InlineData(true, false, false, true)]   // on + unavailable + fallback → host honors argv
-    [InlineData(true, false, true, true)]    // on + unavailable + strict → runner denies on its own
-    public void MxcRunner_CanExecuteDirectArgv_FollowsSandboxFlags(
-        bool sandboxEnabled, bool sandboxAvailable, bool strictBlock, bool expected)
-    {
-        var settings = new SettingsData
-        {
-            SystemRunSandboxEnabled = sandboxEnabled,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = strictBlock,
-        };
-        var runner = BuildMxcRunner(settings, sandboxAvailable, new FakeRunner(), new FakeSandboxExecutor());
-
-        Assert.Equal(expected, runner.CanExecuteDirectArgv());
-    }
-
     [Fact]
-    public async Task V2Allow_SandboxEnabledAndAvailable_ExecutesApprovedArgvInSandbox()
+    public async Task V2Allow_SdkUnavailable_IsProtocolErrorNotSuccessShapedPayload()
     {
-        var settings = new SettingsData { SystemRunSandboxEnabled = true };
-        var host = new FakeRunner();
-        var sandbox = new FakeSandboxExecutor();
-        var approved = ApprovedEchoNoEnv();
-        var handler = new FixedResultHandler(ExecApprovalV2Result.Allow(approved));
         var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: true, host, sandbox));
-        cap.SetV2Handler(handler);
-
-        var res = await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(res.Ok);
-        Assert.Null(host.LastRequest);
-        Assert.Equal(1, sandbox.Calls);
-        Assert.NotNull(sandbox.LastRequest);
-        Assert.Equal(
-            approved.Argv,
-            sandbox.LastRequest!.Args.GetProperty("argv")
-                .EnumerateArray()
-                .Select(value => value.GetString()!)
-                .ToArray());
-    }
-
-    [Fact]
-    public async Task V2Allow_SandboxUnavailable_FallbackAllowed_ExecutesApprovedArgvOnHost()
-    {
-        var settings = new SettingsData
-        {
-            SystemRunSandboxEnabled = true,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = false,
-        };
-        var host = new FakeRunner();
-        var sandbox = new FakeSandboxExecutor();
-        var approved = ApprovedEchoNoEnv();
-        var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: false, host, sandbox));
-        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(approved)));
-
-        var res = await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(res.Ok);
-        Assert.Equal(0, sandbox.Calls);
-        Assert.NotNull(host.LastRequest);
-        Assert.Equal(approved.Argv, host.LastRequest!.Argv);
-        Assert.Equal(approved.Cwd, host.LastRequest.Cwd);
-        Assert.Equal(approved.TimeoutMs, host.LastRequest.TimeoutMs);
-    }
-
-    [Fact]
-    public async Task V2Allow_SandboxUnavailable_StrictBlocking_DeniesWithoutExecuting()
-    {
-        var settings = new SettingsData
-        {
-            SystemRunSandboxEnabled = true,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
-        };
-        var host = new FakeRunner();
-        var sandbox = new FakeSandboxExecutor();
-        var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: false, host, sandbox));
+        cap.SetCommandRunner(new MxcCommandRunner(() => new(), () => Environment.CurrentDirectory,
+            () => new(false, false, false, ["Repair MXC."])));
         cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEchoNoEnv())));
-
-        var res = await cap.ExecuteAsync(RunRequest());
-
-        // The strict sandbox settings deny execution with their own explicit
-        // result (exit -1) before the host runner can execute.
-        Assert.True(res.Ok);
-        Assert.Null(host.LastRequest);
-        Assert.Equal(0, sandbox.Calls);
-        var payload = JsonSerializer.Serialize(res.Payload);
-        Assert.Contains("\"exitCode\":-1", payload);
+        var response = await cap.ExecuteAsync(RunRequest());
+        Assert.False(response.Ok);
+        Assert.Null(response.Payload);
+        Assert.Contains("Repair MXC", response.Error);
+        Assert.Equal(OpenClaw.Shared.Telemetry.NodeToolErrorCategory.SandboxUnavailable, response.Diagnostic!.ErrorCategory);
     }
 
     [Fact]
-    public async Task V2Allow_SandboxDisabled_ExecutesApprovedArgvOnHost()
+    public async Task V2Allow_NodeBusy_IsProtocolErrorWithoutAppliedSandbox()
     {
-        var settings = new SettingsData { SystemRunSandboxEnabled = false };
-        var host = new FakeRunner();
-        var sandbox = new FakeSandboxExecutor();
-        var approved = ApprovedEcho();
         var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: true, host, sandbox));
-        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(approved)));
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+        cap.SetCommandRunner(new FakeRunner
+        {
+            Result = new()
+            {
+                ExitCode = -1,
+                Stderr = "Eight commands are active. Retry when capacity is available.",
+                ErrorCategory = OpenClaw.Shared.Telemetry.NodeToolErrorCategory.NodeBusy,
+            },
+        });
 
-        var res = await cap.ExecuteAsync(RunRequest());
+        var response = await cap.ExecuteAsync(RunRequest());
 
-        Assert.True(res.Ok);
-        Assert.Equal(0, sandbox.Calls);
-        Assert.NotNull(host.LastRequest);
-        Assert.Equal(approved.Argv, host.LastRequest!.Argv);
-        Assert.Null(host.LastRequest.Env);
+        Assert.False(response.Ok);
+        Assert.Null(response.Payload);
+        Assert.Equal(OpenClaw.Shared.Telemetry.NodeToolErrorCategory.NodeBusy, response.Diagnostic!.ErrorCategory);
+        Assert.Null(response.Diagnostic.ExecutionMode);
+        Assert.Null(response.Diagnostic.SandboxDenialReason);
     }
 
     [Fact]
     public async Task V2_RunnerWithoutArgvSupportContract_IsNeverGated()
     {
-        // A plain ICommandRunner that does not implement the argv-support
-        // contract (e.g. the host-only LocalCommandRunner) must never trip the
-        // gate: the handler runs and the approved argv executes.
+        // The existing ICommandRunner seam still dispatches every request through approvals.
         var runner = new FakeRunner();
         var handler = new TrackingHandler();
         var cap = new SystemCapability(NullLogger.Instance);
@@ -511,51 +494,32 @@ public class ExecApprovalV2RoutingTests
     [Fact]
     public async Task V2Deny_WithRealMxcRunner_NeverReachesAnyTransport()
     {
-        var settings = new SettingsData { SystemRunSandboxEnabled = true };
-        var host = new FakeRunner();
-        var sandbox = new FakeSandboxExecutor();
         var cap = new SystemCapability(NullLogger.Instance);
-        // Sandbox unavailable + fallback allowed: the gate lets the handler run,
-        // and the deny must still stop before any transport is touched.
-        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: false, host, sandbox));
+        cap.SetCommandRunner(new MxcCommandRunner(() => new(), () => Environment.CurrentDirectory,
+            () => throw new Exception("A denied command must not even probe.")));
         cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.SecurityDeny("blocked")));
 
         var res = await cap.ExecuteAsync(RunRequest());
 
         Assert.False(res.Ok);
-        Assert.Null(host.LastRequest);
-        Assert.Equal(0, sandbox.Calls);
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    private sealed class FakeSandboxExecutor : ISandboxExecutor
-    {
-        public int Calls { get; private set; }
-        public SandboxExecutionRequest? LastRequest { get; private set; }
-        public string Name => "fake-sandbox";
-        public bool IsContained => true;
-
-        public Task<SandboxExecutionResult> ExecuteAsync(
-            SandboxExecutionRequest request, System.Threading.CancellationToken ct = default)
-        {
-            Calls++;
-            LastRequest = request;
-            return Task.FromResult(new SandboxExecutionResult(0, "sandboxed", "", false, 1, "fake"));
-        }
-    }
-
     private sealed class FakeRunner : ICommandRunner
     {
         public string Name => "fake";
         public CommandRequest? LastRequest { get; private set; }
+        public CancellationToken LastToken { get; private set; }
+        public CommandResult Result { get; init; } = new() { Stdout = "ok", ExitCode = 0 };
 
         public Task<CommandResult> RunAsync(CommandRequest request, System.Threading.CancellationToken ct = default)
         {
             LastRequest = request;
-            return Task.FromResult(new CommandResult { Stdout = "ok", ExitCode = 0 });
+            LastToken = ct;
+            return Task.FromResult(Result);
         }
     }
 
@@ -571,7 +535,7 @@ public class ExecApprovalV2RoutingTests
     {
         public bool WasCalled { get; private set; }
 
-        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
+        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default)
         {
             WasCalled = true;
             return Task.FromResult(ExecApprovalV2Result.Unavailable());
@@ -582,6 +546,8 @@ public class ExecApprovalV2RoutingTests
     {
         private readonly ExecApprovalV2Result _result;
         private readonly ExecApprovalRevalidationResult _revalidation;
+        public CancellationToken AuthorizationToken { get; private set; }
+        public CancellationToken RevalidationToken { get; private set; }
 
         public FixedResultHandler(
             ExecApprovalV2Result result,
@@ -591,19 +557,53 @@ public class ExecApprovalV2RoutingTests
             _revalidation = revalidation ?? ExecApprovalRevalidationResult.Current;
         }
 
-        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
-            => Task.FromResult(_result);
+        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default)
+        {
+            AuthorizationToken = cancellationToken;
+            return Task.FromResult(_result);
+        }
 
         public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
             ExecApprovedExecution execution,
             string correlationId,
             CancellationToken cancellationToken = default)
-            => ValueTask.FromResult(_revalidation);
+        {
+            RevalidationToken = cancellationToken;
+            return ValueTask.FromResult(_revalidation);
+        }
+    }
+
+    private sealed class PausingApprovalHandler(bool pauseRevalidation) : IExecApprovalV2Handler
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<ExecApprovalV2Result> HandleAsync(
+            NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default)
+        {
+            if (!pauseRevalidation)
+                await PauseAsync(cancellationToken);
+            return ExecApprovalV2Result.Allow(ApprovedEcho());
+        }
+
+        public async ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
+            ExecApprovedExecution execution, string correlationId, CancellationToken cancellationToken = default)
+        {
+            if (pauseRevalidation)
+                await PauseAsync(cancellationToken);
+            return ExecApprovalRevalidationResult.Current;
+        }
+
+        private Task PauseAsync(CancellationToken cancellationToken)
+        {
+            Entered.SetResult();
+            return Continue.Task.WaitAsync(cancellationToken);
+        }
     }
 
     private sealed class ThrowingHandler : IExecApprovalV2Handler
     {
-        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
+        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("handler exploded");
     }
 
@@ -612,7 +612,7 @@ public class ExecApprovalV2RoutingTests
         private readonly Action<string> _capture;
         public CapturingCorrelationHandler(Action<string> capture) => _capture = capture;
 
-        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
+        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default)
         {
             _capture(correlationId);
             return Task.FromResult(ExecApprovalV2Result.Unavailable());

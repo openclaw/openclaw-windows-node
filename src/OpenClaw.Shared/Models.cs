@@ -148,26 +148,6 @@ public class ChannelHealth
             { "stopped", "idle", "paused", "configured", "pending", "connecting", "reconnecting" }
             .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    // Maps each status string (case-insensitive) to its tray label; never mutated after startup.
-    private static readonly FrozenDictionary<string, string> s_statusLabels =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ok"]            = "[ON]",
-            ["connected"]     = "[ON]",
-            ["running"]       = "[ON]",
-            ["active"]        = "[ON]",
-            ["linked"]        = "[LINKED]",
-            ["ready"]         = "[READY]",
-            ["connecting"]    = "[...]",
-            ["reconnecting"]  = "[...]",
-            ["error"]         = "[ERR]",
-            ["disconnected"]  = "[ERR]",
-            ["stale"]         = "[STALE]",
-            ["configured"]    = "[OFF]",
-            ["stopped"]       = "[OFF]",
-            ["not configured"] = "[N/A]",
-        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>
     /// Returns true if the given status string represents a healthy/running channel.
     /// Use this instead of inline status checks to keep the healthy-status set consistent.
@@ -180,21 +160,6 @@ public class ChannelHealth
     /// </summary>
     public static bool IsIntermediateStatus(string? status) =>
         status is not null && s_intermediateStatuses.Contains(status);
-
-    public string DisplayText
-    {
-        get
-        {
-            // FrozenDictionary lookup avoids allocating a lowercased copy of Status.
-            var label = s_statusLabels.GetValueOrDefault(Status, "[OFF]");
-            var detail = IsLinked && AuthAge != null ? $"linked · {AuthAge}" : Status;
-            if (Error != null) detail += $" ({Error})";
-            return $"{label} {Capitalize(Name)}: {detail}";
-        }
-    }
-
-    private static string Capitalize(string s) =>
-        string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];
 }
 
 public static class ChannelHealthParser
@@ -309,6 +274,14 @@ public class SessionInfo
     /// older Gateway did not provide the field, so callers may use legacy status.
     /// </summary>
     public bool? HasActiveRun { get; set; }
+    public bool Pinned { get; set; }
+    public long? PinnedAt { get; set; }
+    public bool Unread { get; set; }
+    public long? MarkedUnreadAt { get; set; }
+    /// <summary>Gateway session creation time (Unix ms). Write-once upstream; compact/sparse
+    /// rows may omit it, so a missing value means "not projected", not "cleared".</summary>
+    public long? CreatedAt { get; set; }
+    public bool Archived { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public long TotalTokens { get; set; }
@@ -1800,6 +1773,19 @@ public class ChatMessageInfo
     /// <summary>Session this message belongs to (e.g. "main").</summary>
     public string SessionKey { get; set; } = "";
 
+    /// <summary>Optional run identity from the live chat event payload, not the message ID.</summary>
+    public string? RunId { get; set; }
+
+    /// <summary>Set by synchronous chat consumers when this frame must not produce a notification.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsNotificationSuppressed { get; private set; }
+
+    /// <summary>
+    /// Suppresses the parser's subsequent notification without changing other
+    /// consumers' delivery. Suppression is monotonic for this received frame.
+    /// </summary>
+    public void SuppressNotification() => IsNotificationSuppressed = true;
+
     /// <summary>"user", "assistant", "system", etc.</summary>
     public string Role { get; set; } = "";
 
@@ -1955,6 +1941,25 @@ public sealed class ChatMediaContentInfo
     public ChatMediaPlaybackMode? Playback { get; set; }
 
     internal string? GatewaySource { get; set; }
+
+    /// <summary>Compares media identity and content without exposing private legacy transport references.</summary>
+    public bool HasSameContent(ChatMediaContentInfo other) =>
+        Kind == other.Kind &&
+        Source == other.Source &&
+        Type == other.Type &&
+        MimeType == other.MimeType &&
+        FileName == other.FileName &&
+        ArtifactId == other.ArtifactId &&
+        AgentId == other.AgentId &&
+        Url == other.Url &&
+        OpenUrl == other.OpenUrl &&
+        Alt == other.Alt &&
+        Width == other.Width &&
+        Height == other.Height &&
+        SizeBytes == other.SizeBytes &&
+        DurationSeconds == other.DurationSeconds &&
+        Playback == other.Playback &&
+        GatewaySource == other.GatewaySource;
 }
 
 /// <summary>
@@ -2252,6 +2257,12 @@ public class ModelInfo
     /// it can be used (e.g. an API key has not been configured yet).
     /// </summary>
     public bool RequiresAuth { get; set; }
+
+    /// <summary>
+    /// Whether the gateway permits users to select this model manually. Null
+    /// preserves the behavior of gateways that do not publish selection policy.
+    /// </summary>
+    public bool? ManualSelectionAllowed { get; set; }
 
     public string DisplayName => Name ?? Id;
 }

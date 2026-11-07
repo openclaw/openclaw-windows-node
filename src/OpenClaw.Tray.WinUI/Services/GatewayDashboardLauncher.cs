@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClawTray.Helpers;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -15,7 +16,7 @@ internal sealed class GatewayDashboardLauncher(
     Func<int?>? ownedLocalForwardPort = null)
 {
     internal const string FailureNotificationId = "setup-dashboard-launch";
-    public async Task<bool> OpenAsync(string? path = null)
+    public async Task<bool> OpenAsync(string? path = null, Action? authorizeDispatch = null)
     {
         try
         {
@@ -28,8 +29,13 @@ internal sealed class GatewayDashboardLauncher(
                 : credential.GatewayUrl;
             var url = GatewayDashboardUrlBuilder.Build(gatewayUrl, path, credential.Token,
                 !credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken);
+            authorizeDispatch?.Invoke();
             if (!await launchBrowser(url))
                 throw new InvalidOperationException("Windows did not open the Dashboard.");
+        }
+        catch (SetupNativeOwnershipException)
+        {
+            throw;
         }
         catch (Exception ex) when (IsExpectedLaunchFailure(ex))
         {

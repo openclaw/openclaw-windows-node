@@ -4,7 +4,7 @@ namespace OpenClaw.Shared;
 
 /// <summary>
 /// Shell-aware argument quoting for cmd.exe and PowerShell.
-/// Used by LocalCommandRunner (actual execution) and SystemCapability
+/// Used by SystemCapability
 /// (system.run.prepare display formatting).
 /// </summary>
 internal static class ShellQuoting

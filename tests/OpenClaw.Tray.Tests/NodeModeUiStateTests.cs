@@ -12,6 +12,16 @@ namespace OpenClaw.Tray.Tests;
 public sealed class NodeModeUiStateTests
 {
     [Fact]
+    public void CapabilitiesPage_DoesNotShowCommandFilePermissionsInfoBar()
+    {
+        var page = ReadSource("src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml");
+
+        Assert.DoesNotContain("Onboarding_MxcFileScope", page);
+        Assert.DoesNotContain("Command file permissions", page);
+        Assert.Contains("x:Name=\"CapabilityControls\"", page);
+    }
+
+    [Fact]
     public void NodeCardState_DeclaresMcpOnlyAndConnecting()
     {
         var plan = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPagePlan.cs");
@@ -176,14 +186,13 @@ public sealed class NodeModeUiStateTests
     }
 
     [Fact]
-    public void NodeService_MxcSettingsSnapshotIncludesWindowsUiAccess()
+    public void NodeService_UsesAuthoritativeMxcSettingsSnapshot()
     {
         var service = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
-        var snapshot = ExtractMethodBody(service, "SnapshotSettings");
-
-        Assert.Contains(
-            "SystemRunAllowWindowsUi = _settings.SystemRunAllowWindowsUi",
-            snapshot);
+        var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "SettingsManager.cs");
+        Assert.Contains("_settings?.SnapshotSystemRunSettings()", service);
+        Assert.Contains("MxcRequestBuilder.Snapshot(_data)", settings);
+        Assert.DoesNotContain("SystemRunAllowWindowsUi", service);
     }
 
     [Fact]

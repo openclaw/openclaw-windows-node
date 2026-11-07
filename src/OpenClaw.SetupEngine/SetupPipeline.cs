@@ -82,6 +82,21 @@ public static class SetupStepFactory
         new WindowsNodeBootstrapContextStep(),
     ];
 
+    /// <summary>
+    /// Artifact-only native acquisition. The caller retains exact Gateway admission
+    /// and continues through a separately authorized Use action afterward. This never starts a listener,
+    /// loads a model, publishes a provider, or creates/restarts a Gateway.
+    /// </summary>
+    public static List<SetupStep> BuildNativeLocalAiAcquisitionSteps() =>
+    [
+        new PreflightOsStep(),
+        new PreflightLocalAiHardwareStep(),
+        new ReconcileLocalAiInstallationStep(),
+        new AcquireLocalAiRuntimeStep(),
+        new AcquireLocalAiModelStep(),
+        new PersistLocalAiManifestStep(),
+    ];
+
     public static List<SetupStep> BuildLocalAiRecoverySteps() =>
     [
         new PreflightOsStep(),

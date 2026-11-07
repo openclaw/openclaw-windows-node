@@ -38,21 +38,18 @@ public sealed class AccessibilityScanTests
 
     public static IEnumerable<object[]> PageTestData()
     {
-        yield return ["AgentEventsPage", "agentevents", "AgentEventsPageMarker"];
-        yield return ["BindingsPage", "bindings", "BindingsPageMarker"];
-        yield return ["ChannelsPage", "channels", "ChannelsPageMarker"];
         yield return ["ChatPage", "chat", "ChatComposerInput"];
         yield return ["ConfigPage", "config", "ConfigPageMarker"];
         yield return ["ConnectionPage", "connection", "ConnectionPageMarker"];
         yield return ["CronPage", "cron", "CronPageMarker"];
         yield return ["DebugPage", "debug", "DebugPageMarker"];
+        yield return ["AboutPage", "about", "AboutPageMarker"];
         yield return ["InstancesPage", "instances", "InstancesPageMarker"];
         yield return ["NotificationsPage", "notifications", "NotificationsPageMarker"];
         yield return ["PermissionsPage", "permissions", "PermissionsPageMarker"];
         yield return ["SandboxPage", "sandbox", "SandboxPageMarker"];
         yield return ["SessionsPage", "sessions", "SessionsPageMarker"];
         yield return ["SettingsPage", "settings", "SettingsPageMarker"];
-        yield return ["SkillsPage", "skills", "SkillsPageMarker"];
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
         yield return ["ChatPage", "workspace", "ChatComposerInput"];
@@ -76,6 +73,47 @@ public sealed class AccessibilityScanTests
             _app.HubWindowHandle,
             exclusions,
             context: pageName);
+    }
+
+    [Fact]
+    [Trait("Category", "Accessibility")]
+    public async Task SandboxExpanders_ExposeNamesWhenExpandedAndCollapsed()
+    {
+        await _app.NavigateAsync("sandbox", "SandboxPage", "SandboxPageMarker");
+        var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
+        foreach (var automationId in new[]
+        {
+            "SandboxFoldersExpander",
+            "SandboxClipboardExpander",
+            "SandboxNetworkExpander",
+            "SandboxLimitsExpander",
+        })
+        {
+            var expander = hub.FindFirst(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+            Assert.NotNull(expander);
+
+            var label = Assert.IsAssignableFrom<AutomationElement>(
+                expander.GetCurrentPropertyValue(AutomationElement.LabeledByProperty));
+            var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(
+                ExpandCollapsePattern.Pattern);
+            var originalState = pattern.Current.ExpandCollapseState;
+            try
+            {
+                pattern.Collapse();
+                Assert.Equal(label.Current.Name, expander.Current.Name);
+                pattern.Expand();
+                Assert.Equal(label.Current.Name, expander.Current.Name);
+            }
+            finally
+            {
+                if (originalState == ExpandCollapseState.Collapsed)
+                    pattern.Collapse();
+                else
+                    pattern.Expand();
+            }
+        }
     }
 
     [Fact]

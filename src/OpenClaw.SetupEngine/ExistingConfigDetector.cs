@@ -33,12 +33,7 @@ public sealed class ExistingConfigDetector
         registry.Load();
         var all = registry.GetAll();
 
-        var localRecord = string.IsNullOrWhiteSpace(expectedLocalGatewayId)
-            ? all.FirstOrDefault(r => r.IsLocal && r.SshTunnel == null)
-            : all.FirstOrDefault(r =>
-                string.Equals(r.Id, expectedLocalGatewayId, StringComparison.Ordinal) &&
-                GatewayRecordEditing.IsSetupManagedLocalRecord(r));
-        var preserved = all.Where(r => !r.IsLocal || r.SshTunnel != null).ToList();
+        var (localRecord, preserved) = ClassifyWslRecords(all, targetDistroName, expectedLocalGatewayId);
 
         var logger = new SetupLogger(filePath: null, LogLevel.Warn);
         var result = new CommandRunner(logger)
@@ -87,6 +82,27 @@ public sealed class ExistingConfigDetector
             HasIdentityFiles: hasIdentity,
             PreservedGatewayCount: preserved.Count,
             PreservedGatewayNames: preserved.Select(r => r.FriendlyName ?? r.Url).ToList());
+    }
+
+    /// <summary>
+    /// Selects a setup-managed WSL record for the target distro and identifies records
+    /// that can safely be reported as unaffected by replacement.
+    /// </summary>
+    internal static (GatewayRecord? LocalRecord, IReadOnlyList<GatewayRecord> PreservedRecords) ClassifyWslRecords(
+        IReadOnlyList<GatewayRecord> records, string targetDistroName, string? expectedLocalGatewayId)
+    {
+        var replacements = records.Where(record =>
+            GatewayRecordEditing.IsSetupManagedLocalRecord(record) &&
+            string.Equals(
+                GatewayRecordEditing.ResolveManagedDistroName(record),
+                targetDistroName,
+                StringComparison.OrdinalIgnoreCase)).ToList();
+        var localRecord = replacements.FirstOrDefault(record =>
+            string.IsNullOrWhiteSpace(expectedLocalGatewayId) ||
+            string.Equals(record.Id, expectedLocalGatewayId, StringComparison.Ordinal));
+
+        // Recovery can pin one ID, but replacing its distro can affect multiple saved records.
+        return (localRecord, records.Except(replacements).ToList());
     }
 
     internal static bool InterpretDistroList(CommandResult result, string targetDistroName)

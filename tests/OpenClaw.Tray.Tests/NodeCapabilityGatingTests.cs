@@ -1,5 +1,8 @@
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mcp;
 using OpenClawTray.Services;
+using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -118,6 +121,118 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.False(NodeCapabilityGating.ShouldRegisterSystemRun(s));
         s.NodeSystemRunEnabled = true;
         Assert.True(NodeCapabilityGating.ShouldRegisterSystemRun(s));
+    }
+
+    [Fact]
+    public async Task SystemRun_RevocationRemovesMcpToolsWithoutRebuildingCapability()
+    {
+        var settings = NewSettings();
+        var capability = new SystemCapability(
+            NullLogger.Instance,
+            includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(settings));
+        var bridge = new McpToolBridge(() => new INodeCapability[] { capability });
+        Assert.Contains("system.run", capability.Commands);
+
+        settings.NodeSystemRunEnabled = false;
+        settings.Save();
+
+        var response = await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/list"}""");
+        using var document = JsonDocument.Parse(response!);
+        var names = document.RootElement.GetProperty("result").GetProperty("tools")
+            .EnumerateArray().Select(tool => tool.GetProperty("name").GetString()).ToArray();
+        Assert.DoesNotContain("system.run", names);
+        Assert.DoesNotContain("system.run.prepare", names);
+        Assert.Contains("system.which", names);
+
+        settings.NodeSystemRunEnabled = true;
+        settings.Save();
+        Assert.Contains("system.run", capability.Commands);
+        Assert.Contains("system.run.prepare", capability.Commands);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SystemRun_EnableIsNotGrantedUntilPersistenceSucceeds(bool conflictingWriter)
+    {
+        var settings = NewSettings();
+        settings.UpdateAndSave(() => settings.NodeSystemRunEnabled = false);
+        var capability = new SystemCapability(
+            NullLogger.Instance,
+            includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(settings));
+        if (conflictingWriter)
+        {
+            var other = new SettingsManager(settings.SettingsDirectory);
+            other.NotificationSound = "another writer";
+            other.SaveOrThrow();
+        }
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saving = Task.Run(() => Record.Exception(() => settings.UpdateAndSave(() =>
+        {
+            settings.NodeSystemRunEnabled = true;
+            entered.SetResult();
+            release.Task.GetAwaiter().GetResult();
+        })));
+        await Task.WhenAny(entered.Task, saving);
+        try
+        {
+            Assert.True(entered.Task.IsCompleted);
+            Assert.DoesNotContain("system.run", capability.Commands);
+            var response = await capability.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "pending-enable",
+                Command = "system.run.prepare",
+                Args = JsonSerializer.SerializeToElement(new { command = new[] { "cmd.exe", "/c", "echo canary" } })
+            });
+            Assert.False(response.Ok);
+        }
+        finally
+        {
+            release.SetResult();
+            await saving;
+        }
+
+        if (conflictingWriter)
+        {
+            Assert.IsType<SettingsPersistenceConflictException>(await saving);
+            Assert.DoesNotContain("system.run", capability.Commands);
+        }
+        else
+        {
+            Assert.Null(await saving);
+            Assert.Contains("system.run", capability.Commands);
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_RevocationRejectsCachedCapabilityWithoutRebuilding()
+    {
+        var settings = NewSettings();
+        var capability = new SystemCapability(
+            NullLogger.Instance,
+            includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(settings));
+        var request = new NodeInvokeRequest
+        {
+            Id = "revocation-prepare",
+            Command = "system.run.prepare",
+            Args = JsonSerializer.SerializeToElement(new { command = new[] { "cmd.exe", "/c", "echo canary" } })
+        };
+        Assert.True((await capability.ExecuteAsync(request)).Ok);
+
+        settings.NodeSystemRunEnabled = false;
+        settings.Save();
+
+        var response = await capability.ExecuteAsync(request);
+        Assert.False(response.Ok);
+        Assert.Contains("disabled", response.Error, StringComparison.OrdinalIgnoreCase);
+
+        var bridge = new McpToolBridge(() => new INodeCapability[] { capability });
+        var mcpResponse = await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"system.run.prepare","arguments":{"command":["cmd.exe","/c","echo canary"]}}}""");
+        using var document = JsonDocument.Parse(mcpResponse!);
+        Assert.True(document.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
     }
 
     [Fact]

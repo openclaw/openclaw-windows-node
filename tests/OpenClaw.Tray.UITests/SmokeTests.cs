@@ -10,6 +10,18 @@ public sealed class SmokeTests
     private readonly UIThreadFixture _ui;
     public SmokeTests(UIThreadFixture ui) => _ui = ui;
 
+    [Theory]
+    [InlineData(typeof(MarkdownRendererListTests))]
+    [InlineData(typeof(MarkdownRendererCoalesceTests))]
+    public void MarkdownRendererTests_ShareUiBootstrapCollection(Type testClass)
+    {
+        var collection = Assert.Single(testClass.CustomAttributes,
+            attribute => attribute.AttributeType == typeof(CollectionAttribute));
+
+        Assert.Equal(UICollection.Name, Assert.IsType<string>(
+            Assert.Single(collection.ConstructorArguments).Value));
+    }
+
     [Fact]
     public async Task Fixture_BootsApplicationAndWindow()
     {

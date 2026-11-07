@@ -15,6 +15,8 @@ public interface INativeGatewaySetupHost
 {
     void ReportProgress(NativeGatewaySetupStage stage) { }
 
+    void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation) { }
+
     Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken);
 
@@ -71,8 +73,11 @@ public sealed class NativeGatewaySetupService(
     GatewayRegistry registry,
     INativeGatewayPackageResolver packageResolver,
     INativeGatewaySetupHost host,
-    Func<INativeGatewayRuntime> runtimeFactory)
+    Func<INativeGatewayRuntime> runtimeFactory,
+    TimeProvider? timeProvider = null)
 {
+    public static TimeSpan ConfigurationValidationTimeout => NativeGatewayCliTimeout.ResolveTimeout();
+
     public async Task<NativeGatewaySetupDraft> CreateDraftAsync(CancellationToken cancellationToken)
     {
         var package = await packageResolver.ResolveAsync(cancellationToken);
@@ -180,8 +185,17 @@ public sealed class NativeGatewaySetupService(
         return completed;
     }
 
-    private static int SelectAvailablePort()
+    private static int SelectAvailablePort() => SelectAvailablePort(PreferredPort);
+
+    // The conventional Gateway port keeps the native endpoint predictable; any
+    // listener already holding it (WSL, CLI, or a source-built Gateway) wins.
+    internal const int PreferredPort = 18789;
+
+    internal static int SelectAvailablePort(int preferredPort)
     {
+        if (IsPortAvailable(preferredPort))
+            return preferredPort;
+
         for (var attempt = 0; attempt < 10; attempt++)
         {
             using var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
@@ -211,7 +225,9 @@ public sealed class NativeGatewaySetupService(
     }
 
     internal static string GetDraftPath(GatewayRegistry registry) =>
-        Path.Combine(Path.GetDirectoryName(registry.GetIdentityDirectory("native-setup"))!, "native-setup-draft.json");
+        Path.Combine(
+            Path.GetDirectoryName(registry.GetIdentityDirectory("native-setup"))!,
+            OpenClawAppIdentity.NativeGatewaySetupDraftFileName);
 
     public async Task<NativeGatewaySetupSession> PrepareAsync(
         NativeGatewaySetupDraft draft,
@@ -253,7 +269,7 @@ public sealed class NativeGatewaySetupService(
             };
             var isolatedSession = new NativeGatewaySetupSession(
                 registry, selected, isolatedRecord, package,
-                new Dictionary<string, string>(), host, runtimeFactory());
+                new Dictionary<string, string>(), host, runtimeFactory(), timeProvider);
             try
             {
                 await isolatedSession.PrepareAsync(cancellationToken);
@@ -291,7 +307,7 @@ public sealed class NativeGatewaySetupService(
         cancellationToken.ThrowIfCancellationRequested();
         var record = ReadConfiguredRecord(draft, await File.ReadAllTextAsync(configPath, cancellationToken));
         var session = new NativeGatewaySetupSession(
-            registry, draft, record, package, environment, host, runtimeFactory());
+            registry, draft, record, package, environment, host, runtimeFactory(), timeProvider);
         try
         {
             await session.PrepareAsync(cancellationToken);

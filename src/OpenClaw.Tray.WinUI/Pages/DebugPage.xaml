@@ -368,32 +368,21 @@
 
                     <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_ChatOverrides"
                                              Header="Chat surface overrides"
-                                             Description="Per-surface override of the chat UI. Resets when OpenClaw restarts.">
+                                             Description="Override the Workspace chat UI. Resets when OpenClaw restarts.">
                         <toolkit:SettingsExpander.HeaderIcon>
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Chat, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                         </toolkit:SettingsExpander.HeaderIcon>
                         <toolkit:SettingsExpander.Items>
-                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_HubChat"
-                                                  Header="Hub chat tab">
-                                <ComboBox x:Name="HubChatOverrideCombo"
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_WorkspaceChat"
+                                                  Header="Workspace chat">
+                                <ComboBox x:Name="ChatOverrideCombo"
                                           MinWidth="220"
-                                          AutomationProperties.AutomationId="DebugPageHubChatOverride"
-                                          SelectionChanged="OnHubChatOverrideChanged">
+                                          AutomationProperties.AutomationId="DebugPageChatOverride"
+                                          SelectionChanged="OnChatOverrideChanged">
                                     <ComboBoxItem x:Uid="DebugPage_NoOverride" Content="No override" Tag="NoOverride"/>
                                     <ComboBoxItem x:Uid="DebugPage_ForceGatewayChatUI" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
                                     <ComboBoxItem x:Uid="DebugPage_ForceCompanionChatUI" Content="Force Companion Chat UI" Tag="ForceNative"/>
-                                </ComboBox>
-                            </toolkit:SettingsCard>
-                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_TrayChat"
-                                                  Header="Tray chat popup">
-                                <ComboBox x:Name="TrayChatOverrideCombo"
-                                          MinWidth="220"
-                                          AutomationProperties.AutomationId="DebugPageTrayChatOverride"
-                                          SelectionChanged="OnTrayChatOverrideChanged">
-                                    <ComboBoxItem x:Uid="DebugPage_NoOverride2" Content="No override" Tag="NoOverride"/>
-                                    <ComboBoxItem x:Uid="DebugPage_ForceGatewayChatUI2" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
-                                    <ComboBoxItem x:Uid="DebugPage_ForceCompanionChatUI2" Content="Force Companion Chat UI" Tag="ForceNative"/>
                                 </ComboBox>
                             </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>

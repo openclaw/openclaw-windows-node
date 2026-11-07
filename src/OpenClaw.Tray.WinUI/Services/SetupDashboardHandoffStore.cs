@@ -5,7 +5,7 @@ using OpenClaw.SetupEngine;
 
 namespace OpenClawTray.Services;
 
-internal enum SetupHandoffAcquisitionStatus { Acquired, Busy, Invalid, Unavailable }
+internal enum SetupHandoffAcquisitionStatus { Acquired, Busy, Invalid, Unavailable, RetryRequired }
 
 internal sealed record SetupHandoffAcquisition(
     SetupHandoffAcquisitionStatus Status, SetupDashboardHandoffStore.Lease? Lease = null);
@@ -16,7 +16,13 @@ internal sealed record SetupHandoffAcquisition(
 /// </summary>
 internal sealed class SetupDashboardHandoffStore
 {
+    private const string LegacyPreparationKind = "preparation-v1";
+    private const string PreparationKind = "preparation-v2";
+    private const string RestartingState = "restarting";
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
+    // Records issued before the longer WSL recovery budget retain their
+    // original, nonrenewable execution deadline across an app update.
+    private static readonly TimeSpan PreviousExecution = TimeSpan.FromSeconds(810);
     private readonly string _directory;
     private readonly TimeProvider _time;
     private string PendingPath => Path.Combine(_directory, "pending.json");
@@ -35,14 +41,34 @@ internal sealed class SetupDashboardHandoffStore
             throw new SetupNativeOwnershipException();
         if (!IsValidCompletion(completion.Verification))
             throw new InvalidOperationException("AI completion has no verified Gateway binding.");
+        return IssueCore(completion.Verification, completion.Target, null);
+    }
+
+    public string IssuePreparation(SetupNativePreparation preparation)
+    {
+        if (!preparation.IsValid || !IsValidCompletion(preparation.Verification))
+            throw new SetupNativeOwnershipException();
+        return IssueCore(preparation.Verification, null, preparation.SessionKey);
+    }
+
+    private string IssueCore(GatewayAiSetupCompletion proof, SetupNativeTarget? target, string? preparationSession)
+    {
         Directory.CreateDirectory(_directory);
         RequireOwnedDirectory();
         using var gate = OpenGate();
         var handle = SetupDashboardHandoff.NativePrefix +
             Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var now = _time.GetUtcNow();
-        Write(new PendingRecord(Guid.NewGuid().ToString("N"), Hash(handle), completion.Verification,
-            now, now + Lifetime, "ready", completion.Target));
+        var preparation = preparationSession is not null;
+        // Both kinds explicitly supersede the one pending record under the same gate.
+        // Preparation execution includes old-process teardown, which may itself
+        // take longer than unused destination admission. Acquisition cannot renew it.
+        Write(new PendingRecord(Guid.NewGuid().ToString("N"), Hash(handle), proof,
+            now, now + Lifetime, preparation ? RestartingState : "ready", target,
+            ExecutionStartedUtc: preparation ? now : null,
+            ExecutionExpiresUtc: preparation ? now + SetupNativeCompletionTiming.Execution : null,
+            Kind: preparation ? PreparationKind : "destination-v1",
+            PreparationSession: preparationSession));
         return handle;
     }
 
@@ -82,23 +108,47 @@ internal sealed class SetupDashboardHandoffStore
             catch (JsonException) { return new(SetupHandoffAcquisitionStatus.Invalid); }
             input.Dispose();
             if (pending is null || !IsValidCompletion(pending.Completion) ||
-                pending.NativeTarget is not { } target || !target.Matches(pending.Completion) ||
+                !HasValidTarget(pending) ||
                 pending.HandleHash != Hash(handle!) || !Guid.TryParseExact(pending.RunId, "N", out _) ||
                 pending.ExpiresUtc - pending.IssuedUtc != Lifetime)
                 return new(SetupHandoffAcquisitionStatus.Invalid);
             var now = _time.GetUtcNow();
-            if (now < pending.IssuedUtc || now >= pending.ExpiresUtc)
+            var executionStarted = pending.ExecutionStartedUtc;
+            var executionExpires = pending.ExecutionExpiresUtc;
+            var startsAtIssue = pending.Kind == PreparationKind;
+            if ((startsAtIssue &&
+                 (executionStarted != pending.IssuedUtc ||
+                  executionExpires is not { } preparationExpiry ||
+                  !IsAdmissibleExecutionWindow(preparationExpiry - pending.IssuedUtc, preparation: true) ||
+                  pending.State == "ready")) ||
+                (pending.State == RestartingState && !startsAtIssue) ||
+                (executionStarted is null) != (executionExpires is null) ||
+                (executionStarted is { } started &&
+                (started < pending.IssuedUtc || started >= pending.ExpiresUtc || now < started ||
+                 !IsAdmissibleExecutionWindow(executionExpires!.Value - started))) ||
+                (pending.State == "ready" && executionStarted is not null) ||
+                (pending.State is "retry" or "inflight" && executionStarted is null))
+                return new(SetupHandoffAcquisitionStatus.Invalid);
+            var expires = executionExpires ?? pending.ExpiresUtc;
+            if (now < pending.IssuedUtc || now >= expires)
             {
                 File.Delete(PendingPath);
                 return new(SetupHandoffAcquisitionStatus.Invalid);
             }
             if (pending.State == "retry" && !explicitRetry)
-                return new(SetupHandoffAcquisitionStatus.Unavailable);
-            // A pre-acquisition I/O failure leaves ready unchanged. Explicit retry may
-            // admit either unstarted ready or settled retry, never abandoned inflight.
-            if (pending.State != "ready" && !(explicitRetry && pending.State == "retry"))
+                return new(SetupHandoffAcquisitionStatus.RetryRequired);
+            // Pre-acquisition I/O failures leave the unacquired state unchanged.
+            // Explicit retry never admits an abandoned inflight record.
+            if (pending.State is not ("ready" or RestartingState) && !(explicitRetry && pending.State == "retry"))
                 return new(SetupHandoffAcquisitionStatus.Invalid);
-            var inFlight = pending with { State = "inflight" };
+            // Destinations and legacy preparations start execution at first acquisition.
+            // New preparations retain their issuance deadline through shutdown and retry.
+            var inFlight = pending with
+            {
+                State = "inflight",
+                ExecutionStartedUtc = executionStarted ?? now,
+                ExecutionExpiresUtc = executionExpires ?? now + SetupNativeCompletionTiming.Execution
+            };
             Write(inFlight);
             var lease = new Lease(this, gate, inFlight);
             gate = null!;
@@ -140,6 +190,22 @@ internal sealed class SetupDashboardHandoffStore
     private static string Hash(string handle) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(handle)));
 
+    private static bool HasValidTarget(PendingRecord pending) => pending.Kind switch
+    {
+        // Existing receipts predate the explicit kind.
+        null or "destination-v1" => pending.PreparationSession is null &&
+            pending.NativeTarget is { } target && target.Matches(pending.Completion),
+        LegacyPreparationKind or PreparationKind => pending.NativeTarget is null &&
+            SetupNativePreparation.Matches(pending.Completion, pending.PreparationSession),
+        _ => false,
+    };
+
+    // Each process persists its own Execution window, which follows its OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT.
+    // Accept any window a supported override can produce so a restart keeps, never renews, the stored deadline.
+    private static bool IsAdmissibleExecutionWindow(TimeSpan window, bool preparation = false) =>
+        window >= (preparation ? SetupNativeCompletionTiming.MinimumExecution : PreviousExecution) &&
+        window <= SetupNativeCompletionTiming.MaximumExecution;
+
     private static bool IsValidCompletion(GatewayAiSetupCompletion? value) =>
         value is { VerifiedGeneration: > 0, ModelTarget: null } &&
         SetupCompletionAuthority.IsValid(value.IdentityBinding, value.SessionKey, value.AgentId) &&
@@ -149,7 +215,9 @@ internal sealed class SetupDashboardHandoffStore
 
     internal sealed record PendingRecord(
         string RunId, string HandleHash, GatewayAiSetupCompletion Completion,
-        DateTimeOffset IssuedUtc, DateTimeOffset ExpiresUtc, string State, SetupNativeTarget? NativeTarget = null);
+        DateTimeOffset IssuedUtc, DateTimeOffset ExpiresUtc, string State, SetupNativeTarget? NativeTarget = null,
+        DateTimeOffset? ExecutionStartedUtc = null, DateTimeOffset? ExecutionExpiresUtc = null,
+        string? Kind = null, string? PreparationSession = null);
 
     internal sealed class Lease : IDisposable
     {
@@ -160,8 +228,12 @@ internal sealed class SetupDashboardHandoffStore
         private bool _disposed;
         public GatewayAiSetupCompletion Completion => _pending.Completion;
         public SetupNativeTarget? NativeTarget => _pending.NativeTarget;
-        public bool IsExpired => _owner._time.GetUtcNow() >= _pending.ExpiresUtc ||
-            _owner._time.GetUtcNow() < _pending.IssuedUtc;
+        public bool IsPreparation => _pending.Kind is LegacyPreparationKind or PreparationKind;
+        public string SessionKey => IsPreparation ? _pending.PreparationSession! : _pending.NativeTarget!.SessionKey;
+        private DateTimeOffset ExecutionExpiresUtc => _pending.ExecutionExpiresUtc!.Value;
+        public bool IsExpired => _owner._time.GetUtcNow() >= ExecutionExpiresUtc ||
+            _owner._time.GetUtcNow() < _pending.ExecutionStartedUtc!.Value;
+        public TimeSpan RemainingLifetime => ExecutionExpiresUtc - _owner._time.GetUtcNow();
 
         internal Lease(SetupDashboardHandoffStore owner, FileStream gate, PendingRecord pending)
         {

@@ -55,6 +55,41 @@ public class SessionTranscriptFormatterTests
     }
 
     [Fact]
+    public void FormatMarkdown_MapsRolesSkipsBlankAndStartsWithTitle()
+    {
+        var history = new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new List<ChatMessageInfo>
+            {
+                new() { Role = "user", Text = "hello", Ts = 1735732800000 },
+                new() { Role = "assistant", Text = "   " },
+                new() { Role = "tool", Text = "ran command" },
+            },
+        };
+
+        var md = SessionTranscriptFormatter.FormatMarkdown(history, "My title");
+
+        Assert.NotNull(md);
+        Assert.StartsWith("# My title\n\n## User", md);
+        Assert.DoesNotContain("## Assistant", md);
+        Assert.Contains("## Tool", md);
+        Assert.Contains("ran command", md);
+        Assert.Contains("(2025-01-01T12:00:00.0000000Z)", md);
+    }
+
+    [Fact]
+    public void FormatMarkdown_AllBlankHistoryReturnsNull()
+    {
+        var history = new ChatHistoryInfo
+        {
+            Messages = new List<ChatMessageInfo> { new() { Role = "user", Text = "  " } },
+        };
+
+        Assert.Null(SessionTranscriptFormatter.FormatMarkdown(history, "t"));
+    }
+
+    [Fact]
     public void SuggestFileName_IsFilesystemSafe()
     {
         var name = SessionTranscriptFormatter.SuggestFileName("agent:main:wa/bob");

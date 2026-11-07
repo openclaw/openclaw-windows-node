@@ -23,11 +23,31 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public static class TestSupport
 {
+    public static Task WaitForSettingsCardReadyAsync(Page page, SettingsCard card) =>
+        WaitForRenderedConditionAsync(
+            () => card.IsLoaded && card.IsEnabled && card.IsClickEnabled &&
+                page.XamlRoot is not null && ReferenceEquals(page.XamlRoot, card.XamlRoot),
+            $"{page.GetType().Name}.{card.Name} ready for invocation",
+            () => $"IsLoaded={card.IsLoaded}, IsEnabled={card.IsEnabled}, " +
+                $"IsClickEnabled={card.IsClickEnabled}, PageHasXamlRoot={page.XamlRoot is not null}, " +
+                $"SameXamlRoot={ReferenceEquals(page.XamlRoot, card.XamlRoot)}");
+
     /// <summary>Exercise the XAML-wired action boundary, not the toolkit's native input provider.</summary>
     public static void InvokeSettingsCardAction(Page page, SettingsCard card, string handler)
     {
-        Assert.True(card.IsLoaded && card.IsEnabled && card.IsClickEnabled);
+        Assert.True(card.IsLoaded && card.IsEnabled && card.IsClickEnabled,
+            $"{page.GetType().Name}.{card.Name}: IsLoaded={card.IsLoaded}, " +
+            $"IsEnabled={card.IsEnabled}, IsClickEnabled={card.IsClickEnabled}.");
+        Assert.NotNull(page.XamlRoot);
         Assert.Same(page.XamlRoot, card.XamlRoot);
+        if (card is OpenClaw.SetupEngine.UI.Controls.SetupActionCard)
+        {
+            var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(card)
+                ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(card);
+            Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider>(
+                peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            return;
+        }
         // The toolkit advertises Invoke but its managed and native providers reject it.
         // Keep actual keyboard/pointer coverage in NativeOnboardingProof, never synthesize OS input here.
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
@@ -63,25 +83,44 @@ public static class TestSupport
         action.Invoke(page, [card, new RoutedEventArgs()]);
     }
 
-    public static async Task WaitForRenderedConditionAsync(Func<bool> predicate, string operation)
+    private const string RenderedConditionTimeoutVariable = "OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS";
+    private static readonly TimeSpan RenderedConditionTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(RenderedConditionTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+    // Re-check even when no frame renders (off-screen windows, dynamically inserted children).
+    private static readonly TimeSpan RenderedConditionPollInterval = TimeSpan.FromMilliseconds(50);
+
+    public static async Task WaitForRenderedConditionAsync(
+        Func<bool> predicate, string operation, Func<string>? diagnostics = null)
     {
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Check(object? sender, object args)
+        void Evaluate()
         {
-            if (predicate()) settled.TrySetResult();
+            try { if (predicate()) settled.TrySetResult(); }
+            catch (Exception ex) { settled.TrySetException(ex); }
         }
+        void Check(object? sender, object args) => Evaluate();
+        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
+            ?? throw new InvalidOperationException("WaitForRenderedConditionAsync must run on the UI thread.");
+        var timer = dispatcher.CreateTimer();
+        timer.Interval = RenderedConditionPollInterval;
+        timer.IsRepeating = true;
+        timer.Tick += (_, _) => Evaluate();
         CompositionTarget.Rendering += Check;
+        timer.Start();
         try
         {
-            Check(null, EventArgs.Empty);
-            await settled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Evaluate();
+            await settled.Task.WaitAsync(RenderedConditionTimeout);
         }
         catch (TimeoutException)
         {
-            Assert.Fail($"Timed out waiting for {operation}.");
+            Assert.Fail($"Timed out waiting for {operation}." +
+                (diagnostics is null ? "" : $" {diagnostics()}"));
         }
         finally
         {
+            timer.Stop();
             CompositionTarget.Rendering -= Check;
         }
     }

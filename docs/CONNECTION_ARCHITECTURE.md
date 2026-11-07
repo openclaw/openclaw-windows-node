@@ -1,5 +1,208 @@
 # Connection Architecture
 
+## Native Local AI ownership and configuration
+
+Native Local AI configuration uses authenticated Gateway RPC, not CLI batch
+writes. The inspected OpenClaw 2026.9.4 CLI supports batches and expected-current
+guards separately; batch validation followed by a write is not compare-and-swap.
+`LocalAiGatewayRpcConfigurationTransport` captures provider, primary and model
+allowlist from one valid `config.get` response and applies only the changed fields
+with `config.patch { raw, baseHash }`. Conflict, disconnect, session replacement
+or uncertain response requires reconciliation with the original Gateway. There
+is no offline config-file write, blind retry or unguarded rollback.
+
+Gateway `config.patch` merges object arrays by stable ID and requires explicit
+`replacePaths` for destructive array changes. Withdrawing the owned provider
+therefore names only `models.providers.llamacpp.models`, alongside the same fresh
+`baseHash`; it never grants replacement of another provider's models or the model
+allowlist. An `UNAVAILABLE` response can follow successful persistence when
+restart/apply fails, so it remains indeterminate rather than proof of no write.
+
+`NativeLocalAiGatewayTarget` accepts authenticated isolated native records without
+requiring early registry publication. Published connections must still be borrowed
+from `GatewayConnectionManager`; staged connections belong to
+`NativeGatewaySetupConnection`. Remote, WSL and legacy same-user native records
+cannot enter this RPC path. Cancellation before dispatch prevents mutation;
+cancellation after dispatch drains the bounded request.
+
+The optional runtime authentication substrate keeps a stable current-user DPAPI
+credential outside the artifact manifest. The child receives it through
+`LLAMA_API_KEY`, never arguments or the router preset. HTTP clients send Bearer
+headers only after loopback validation; RPC publication carries the provider key
+inside the authenticated request. WSL callers retain their existing behavior.
+Credential publication stages and flushes a protected sibling file before a
+non-overwriting rename. Readers share read and delete access, but not write
+access: Windows can expose the published name before the rename handle closes.
+The ciphertext length (1-4096 bytes) and bounded read use the same open handle;
+invalid ciphertext or a decrypted key other than 32 bytes fails closed without
+rotating the credential.
+`LocalAiGatewayLifecycle` composes this path with the existing WSL lifecycle.
+`LocalAI/gateway-binding.json` records the exact Gateway endpoint and device
+identity, selected model, previous primary, owned allowlist entry and acknowledged
+configuration revision. A write-ahead pending flag is flushed before dispatch.
+An unacknowledged mutation remains pending across app restarts, with no blind
+replay or offline cleanup. A different Gateway cannot adopt the receipt.
+
+Explicit Stop persists `AutomaticRecoveryEnabled=false` in that same receipt
+without relinquishing ownership. Connection notifications use guarded runtime
+Resume rather than explicit Start; the runtime operation gate also prevents a
+resume already queued behind Stop from restarting the listener. Explicit Start
+or Restart re-enables recovery only after successful startup/publication.
+New first-Use bindings start disabled, so a clean failure cannot publish on
+reconnect. Older receipts default to enabled, preserving
+their prior startup behavior.
+
+When stopped intent survives an offline Stop, reconnect performs withdraw-only
+reconciliation under the runtime operation gate. It never starts the listener,
+and rechecks durable intent so a queued withdrawal cannot undo a newer Start.
+Shutdown drains connection-triggered Local AI recovery and disposes the inference
+runtime before disposing the authorized Gateway connection manager.
+
+After a successful Stop, **Release Gateway ownership** in Local AI settings
+explicitly releases the binding. The runtime must be stopped, and a fresh read
+through the original authenticated identity must confirm
+absent provider, restored fallback and absent Companion-added allowlist entry.
+Uncertain writes, offline owners and changed owned fields keep the receipt. Unrelated
+post-withdrawal edits do not prevent release. Close setup before releasing. Release
+before switching or removing the original Gateway, then explicitly choose Use on
+the next Gateway. If already switched, reconnect the original owner first.
+WSL Use and artifact Repair (including Settings Retry setup) refuse admission
+while a native binding exists; they cannot reuse a native-authenticated listener
+with the WSL provider key or replace its shared installation artifacts.
+
+Recovery can confirm an unchanged pre-dispatch revision or an already-withdrawn
+provider whose primary is the saved fallback or the retained endpoint-cycle model.
+If a publication landed before a crash, or an unrelated configuration edit
+changed the whole-config revision while the listener was stopped, explicit
+Start/Use can recreate only the same
+authenticated loopback endpoint from the verified installation receipt. This does
+not replay the Gateway write or change the automatic-port preference. Ownership
+is confirmed only after exact Gateway inference and an unchanged configuration
+revision. Port conflicts, changed providers, failed inference and changed identities
+remain visible failures rather than triggering replacement or credential rotation.
+If the previous endpoint cannot be recovered, its receipt is retained. Restore
+the original port and artifacts, or inspect and withdraw the Local AI route using
+the original Gateway's configuration tools. Matching redacted provider metadata
+alone is insufficient authority to delete a potentially externally edited route.
+
+Native automatic startup waits for the manager-owned connection and an existing
+confirmed selection. Observation and artifact acquisition never switch models.
+Legacy Windows artifact receipts alone do not authorize background WSL startup.
+`LocalAiGatewayLifecycle` admits automatic WSL startup only with one pinned,
+explicit setup-managed WSL owner and no native binding, active native Gateway or
+staged native selection. Explicit startup revalidates ownership before runtime
+mutation. Without a native binding, an active native Gateway or staged native
+selection also blocks explicit Start and Restart, even when a pinned WSL owner
+exists. Local AI settings disable these actions and direct the user to choose
+Use Local AI for the native Gateway or select the owning WSL Gateway in Connection.
+Stop remains available for a running or unresolved route.
+An unbound runtime with no attempted route write does not report pending
+route reconciliation; a durable native binding or an actual uncertain write still
+does. Native setup can review damaged legacy artifacts without a WSL Gateway.
+Repair blocked by owned runtime or pending routing directs users to reconnect the
+original Gateway and stop/recover Local AI, never delete its receipt or models.
+An unresolved stopped native runtime keeps Stop available even before artifact
+observation completes. Read-only observation can load its initial installation
+status without clearing the ownership flag. Stop without an authorized owner is
+rejected before marking any routing uncertain.
+
+If the installation receipt is missing or invalid, Stop cannot infer a provider
+definition from model files or a listening process. It can settle the retained
+binding only after a fresh read through the original authenticated identity proves
+that the provider is absent, the saved fallback is restored, and any Companion-added
+allowlist entry is absent. This performs no Gateway write and retains the binding
+until explicit release. If those checks fail, restore the installation receipt or
+withdraw the route using the original Gateway's configuration tools, then retry
+Stop. Offline, mismatched and still-published routes remain blocked; artifact Repair
+is not a way to bypass their ownership.
+Successful receiptless Stop preserves its stopped intent across page refresh until
+explicit Start or Release, or observation loads a repaired installation receipt.
+Loading that receipt resumes read-only status checks, not automatic startup.
+Canceled or rejected Release retains the ownership and stopped intent; successful
+Release lets observation report the missing installation.
+Setup cancellation releases its selected ownership through the same guarded
+withdrawal checks. Once that binding is gone, read-only refresh also resumes
+normal installation observation without restarting the router.
+This receiptless confirmation also blocks if an originally Companion-added allowlist
+entry now contains user customizations. Restore the original installation receipt
+from an external backup and use the normal Stop path, which can preserve the edited
+entry; do not delete user metadata to force receiptless settlement. Companion does
+not keep a restorable backup or reconstruct this receipt. Without one, this case
+remains blocked rather than adopting or deleting the customized entry.
+Explicit Use publishes the authenticated endpoint, and the existing setup verifier
+performs real inference with the exact primary, without fallback. A changed
+revision is not silently adopted: explicit reconciliation requires the same
+provider/model, successful native inference and an unchanged revision across that
+probe. Native finalization uses this gate after its capability changes, before
+publishing the staged Gateway. Cancellation withdraws its route before releasing
+the native session. Unavailable Gateways and unresolved writes retain their
+receipt and report cleanup as pending.
+
+A reopened, verified installation with an owned failed listener or unresolved
+route offers **Recover and use Local AI**, not artifact Repair. It follows the
+same guarded endpoint-recovery and inference path. Edited provider, primary or
+Companion-added allowlist fields are not adopted or overwritten.
+
+Setup also observes the current profile's durable native binding through
+`LocalAiGatewayLifecycle`, so a pending receipt or changed revision can expose
+recovery even before the in-memory runtime has rediscovered a failure. This
+read-only assessment checks the authenticated route and versioned configuration;
+it never starts a listener, settles a receipt, reads or creates an API credential,
+or performs inference. Explicit Use still revalidates and executes the existing
+guarded recovery. The assessment is not publication authority.
+
+A portable artifact receipt, matching endpoint or successful previous inference
+does not prove this profile owns an existing provider. Missing, invalid or
+mismatched native ownership keeps management blocked and directs the user to the
+original Companion profile and Gateway. No receipt or credential import occurs.
+Independently detected models remain usable through the ordinary Gateway choice;
+that choice does not restore Companion management. Native duplicate suppression
+requires a usable same-owner managed choice, not just a matching artifact model.
+Pending ownership and changed revisions keep the independently detected model
+visible alongside recovery: neither proves compatibility with current provider
+or primary-model fields. Only a confirmed same-owner revision can suppress that
+duplicate. Connection loss during inspection retains the native target and
+unavailable guidance so **Check again** can refresh it after reconnection;
+caller cancellation still propagates without publishing stale observation.
+Verified completion carries an explicit `RequiresManagedLocalAi` flag from
+`LocalAiOnboardingUse.Expected`, not provider/model equality or destination intent.
+Only that managed choice joins runtime recovery and reconciles the native Local AI
+receipt during finalization. Ordinary detected choices still reverify the exact
+Gateway, identity, session and model through inference, but do not acquire managed
+runtime dependencies from a coincidentally matching or pending binding. Fresh
+verification and restart receipts preserve this flag. Refresh after an uncertain
+managed Use rebuilds the verification client from the retained expectation without
+replaying Use, including the consumed install-and-use continuation.
+An unavailable configuration read blocks managed setup until a fresh check
+succeeds, even on a first installation; unknown provider ownership is not treated
+as an empty Gateway. Ordinary detected-model choices remain independent.
+File-repair guidance blocks review only while the runtime is owned or its route
+is unresolved. Once those conditions clear, the existing guarded Repair flow
+remains available; retaining the durable binding alone does not prohibit repair.
+
+Withdrawal can preserve unrelated configuration edits using a fresh CAS revision.
+An exact unredacted credential or successful inference through the same provider
+must confirm a still-published route. A redacted credential alone never authorizes
+deletion: if that listener is unavailable, explicit recovery remains necessary.
+User-edited allowlist metadata is preserved and its deletion ownership relinquished
+when routing is safely withdrawn. Native startup completes reconciliation and
+publication under the runtime gate, including an already-healthy listener; setup
+never publishes again after that gate has been released. Every admitted non-success
+Start or Restart, including core startup failure and interrupted completion, keeps
+recovery disabled and suppresses status-refresh publication and crash restart until
+explicit Start or Reconcile succeeds. A rejected admission preserves prior intent.
+Clean failures without a listener or unresolved route still allow read-only refresh
+to discover a repaired installation, without automatically starting or publishing it.
+Interrupted Start completion reports a retained listener as failed with unresolved
+routing, rather than Healthy with disabled recovery. A timestamp-only healthy refresh does not invalidate
+successful Use; process, endpoint, model evidence and route readiness still must match.
+
+When routing was already withdrawn externally, teardown still removes an unchanged
+empty allowlist entry owned by Companion through the same write-ahead journal and
+hash-conditional RPC path. Lost replies retain pending ownership; a fresh read must
+confirm cleanup before release. User-edited entries remain untouched. Release still
+requires the documented restored fallback; external primary changes do not relax it.
+
 This document describes the gateway connection system - how the tray app discovers, authenticates with, and maintains connections to OpenClaw gateways.
 
 ## Project structure
@@ -30,6 +233,9 @@ chrome. Sessions retains its independent subtle Add button.
 NavigationView has zero compact width. Home's icon is inline native content
 so it is not clipped by WinUI's zero-width icon column. The mode stays `Left`. Home,
 sessions, and the entire footer disappear, and content fills the vacated width.
+While the pane is hidden, the same footer control shows only Dashboard and the
+bell in the native `TitleBar` right header; it collapses again when the pane
+reopens or Settings is shown, so the actions never appear twice.
 The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
 controls without a second layout step. Native motion preferences still apply.
 Both toggle states share a stable overlay position outside the animated pane,
@@ -38,18 +244,24 @@ A floating-style subtle reopen button reserves a dedicated 56 DIP row at
 the content's top-left below the titlebar, never covering hosted hit targets.
 The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
 moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+Both Workspace toggle states and the Settings toggle use the native
+`SubtleButtonStyle` with zero padding for icon-only content. The style's default
+text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
-Connection status occupies the footer bar above Diagnostics and Settings;
-compact mode retains its icon-only target. Settings has no notification button.
-Workspace's bell opens `NotificationFlyoutContent` using the existing
+Chat and Settings end with one shared `WorkspacePaneFooter`: account, Dashboard,
+and the notifications bell, always visible. Settings' compact rail stacks the
+same three as 40 DIP icons, with connection status as a dot on the avatar.
+Diagnostics and App settings live at the end of "This Computer". Dashboard and
+Ctrl+Shift+D open the Gateway Dashboard home through `GatewayDashboardLauncher`.
+Each bell opens `NotificationFlyoutContent` using the existing
 `AppNotificationService`, without replacing chat or changing history. Its
 explicit Open notifications link and existing deep links retain the full page.
-Owner's connection entry shows the same `ConnectionStatusPresenter` label/accent
-as Settings, refreshed both on menu opening and every manager snapshot through
+The account menu's connection entry shows the `ConnectionStatusPresenter`
+label/accent, refreshed both on menu opening and every manager snapshot through
 `WindowManager`, including richer changes that keep the same legacy status.
-It opens `GatewayStatusContent`, shared with Settings,
+It opens `GatewayStatusContent` at the invoking account button
 using the current manager snapshot and existing reconnect/Connection actions.
 The flyout contents own named-control application; windows own popup lifetime
 and route side effects. Notification subscriptions detach when the flyout closes.
@@ -73,9 +285,16 @@ buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
 `PersonPicture` avatar rather than a font glyph.
 
 `WindowManager` owns Workspace and `HubWindow` independently. The latter is the
-Settings companion and reuses the existing native Settings pages, excluding
-Chat. Owner's Settings, Usage, Pair device, and About links open or focus that
-companion at `settings`, `usage`, `channels`, and `about` respectively. Closing
+Settings companion and reuses the existing native Settings pages. Its Chat rail
+item opens or focuses Workspace without selecting a Settings page or replacing
+the retained composer. Its activation is queued after NavigationView completes its
+own focus handling. WindowManager restores a minimized Workspace and explicitly
+requests foreground activation, including when Workspace is already open.
+The Gateway dashboard action and its channels/integrations
+description live in their own Connection settings card, not above chat.
+Owner's Settings, Usage, and About links open or focus that
+companion at `settings`, `usage`, and `about` respectively. Pair device opens
+the Gateway web dashboard's `channels` path. Closing
 the companion does not close Workspace or discard an unsent chat draft.
 Generic Workspace refocus preserves the current page; explicit page/session
 links still navigate. `agent:<id>:workspace` retains its original agent-files
@@ -84,9 +303,17 @@ meaning and is not the main Workspace route.
 Verified native setup completion follows the same window boundary. Chat binds
 the receipt's exact session to Workspace's retained ChatPage and waits for the
 native composer before activating the window and consuming the receipt.
-Channels and Skills keep typed companion navigation. Both paths retain fresh
-gateway, endpoint, identity, agent, and session checks; selecting a different
-Workspace destination invalidates an in-flight chat handoff.
+The native completion page offers Chat only. Already-issued WhatsApp, Telegram,
+and Channels receipts open the Gateway web dashboard's `channels` path after
+verification; retired Skills receipts are rejected. The handoff carries the
+verified completion through credential resolution. The launcher rechecks the
+exact Gateway, connected signing identity, session and available live model facts
+immediately before browser dispatch. A changed Gateway or revoked identity is
+rejected before dispatch; a failed browser launch retains the receipt for explicit
+retry. A dispatched browser launch cannot be withdrawn, so it consumes the
+receipt even if cancellation arrives afterward. Both paths retain fresh gateway, endpoint, identity, agent, and session
+checks; selecting a different Workspace destination invalidates an in-flight
+chat handoff.
 Admitted assistant changes and new-conversation creation invalidate that binding
 before any asynchronous session creation, even while the old conversation remains
 visible. Same-session rebinding must use the new request identity. Cancellation
@@ -104,8 +331,12 @@ Both native window entry points use `WorkspaceNavigation.Dispatch` to reject
 unknown prefixed routes before creating a companion or forwarding navigation.
 `app.navigate` reports this rejection as an MCP tool error, not a successful
 no-op.
-Unprefixed companion routes, including `cron`, `sessions`, `skills`, `usage`,
-and `agent:<id>:workspace`, are unchanged.
+Unprefixed companion routes, including `cron`, `sessions`, `usage`,
+and `agent:<id>:workspace`, are unchanged. Skills management is available in the
+Gateway web dashboard, not a native companion page.
+Retired unprefixed `channels` and `activity` navigation tags remain compatible
+by opening the Gateway dashboard's `channels` path instead of an empty Settings
+page.
 
 The removed `WorkspaceContentPage` and `WorkspacePageRenderer` no longer host
 placeholder management pages. Native Cron keeps its existing companion
@@ -144,10 +375,10 @@ initial launch and secondary-instance forwarding. Unlike a real interactive
 argument-free launch, StartupTask does not implicitly open Workspace. Existing
 first-run setup and restart guards remain in effect.
 
-Chat response notifications are suppressed only while native Workspace is
-visible, not minimized, and showing Home/chat, or the legacy compact chat is
-visible. An existing Settings companion, a hidden/minimized Workspace, or the
-Notifications destination is not evidence that chat is visible. The chat and
+Chat response notifications are suppressed only while Workspace is
+visible, not minimized, and showing Home/chat. An existing Settings companion,
+a hidden/minimized Workspace, or the Notifications destination is not evidence
+that chat is visible. The chat and
 per-type notification settings still apply.
 
 New Workspace resource keys exist in every supported locale. Non-English copy
@@ -193,6 +424,75 @@ orchestration. Three narrower owners sit behind it:
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
 and is independently testable.
+
+Operator connect responses are transient application-startup state only when a
+correlated current-socket rejection has `error.code=UNAVAILABLE`,
+`retryable=true`, and `details.reason=startup-sidecars`, without a competing
+structured detail code. `OpenClawGatewayClient.StartupUnavailable` and
+`StartupUnavailableReceived` retain that typed state without raising auth,
+pairing, or terminal error events. The reconnect loop honors `retryAfterMs`
+after the Gateway closes the socket, flooring finite numbers and clamping them
+to 100 through 2000 milliseconds (500 when absent or invalid). Other
+`UNAVAILABLE` responses and close code 1013 alone retain ordinary behavior.
+The startup projection excludes the old rejection as soon as a fresh transport
+attempt owns a new generation, including while its HTTP upgrade is pending.
+Successful handshakes and failed transport attempts clear stored startup state
+rather than relabeling a network error as startup.
+Reconnect and pre-credential handshake authorization still run on every fresh
+socket. Native setup retains its existing 20-second handshake wait and linked
+cancellation lifetime. If that deadline expires while a typed startup rejection
+is current, it throws `GatewayStartupUnavailableException`, not an auth or
+pairing failure, without extending the deadline or changing credentials.
+
+`OpenClawGatewayClient.HandshakeObserved` exposes a separate, typed local
+observation stream. Each socket attempt has its transport generation, including
+attempts rejected before authentication. Observations report transport opening,
+challenge receipt, pre-credential authorization, connect dispatch admission
+(`ConnectSending`), accepted/rejected connect results, and transport loss/failure.
+Reconnect authorization is timed against the preceding transport generation,
+before a new socket exists, so provenance work between retries remains visible.
+`ConnectSending` means the authorized connect is about to enter the existing
+generation-fenced send path, not that the server received it. Startup results
+reuse `GatewayStartupUnavailable` and its bounded retry hint. Error categories
+use `GatewayErrorKind`; an authorization callback exception reports a denial
+with `Unknown`, not a guessed provenance or transport cause.
+
+Elapsed and previous-phase durations use a monotonic clock and restart for each
+transport generation. Stale generations, canceled client lifetimes and disposed
+clients cannot publish observations. Native setup forwards this stream through
+its session and host to the existing `SetupLogger` as `native.gateway.handshake`.
+The log's run ID, a process-local monotonic `connection_attempt` counter and
+`transport_generation` distinguish new clients (pairing, credential recovery or
+replacement sessions after Retry) from socket retries. Attempt ordinals need not
+start at one within a log run. The connection owns one subscription across
+reconnects and removes it on failure or disposal. Only phase/category enums, counters, durations
+and bounded retry hints enter this stream. Transport failure categories inspect
+exception types and messages, never stack-frame text; existing connection failure
+policy is unchanged. It carries no endpoint, identity, nonce, credential, response
+body, exception message or operation name, and does
+not forward the general Shared client logger. These observations do not prove
+application readiness before `hello-ok`, change deadlines or alter admission.
+The sink retains the existing synchronous setup-log behavior, so elapsed values
+can include time spent writing earlier observations. The logger projects this
+private typed payload directly to allowlisted primitive fields, preserving enum
+names such as `AuthorizationStarted` and `TokenDrift`; arbitrary log data still
+uses the existing free-text redactor.
+
+The setup window owns the file sink across page navigation and disposes it after
+native session cleanup. The native page only subscribes to the existing log
+while loaded; the handshake subscription remains owned by its connection.
+
+`ChatNavigationReadiness` settles operator readiness, its real deadline, and
+caller cancellation through one atomic completion source. A connected event
+that completes first cannot become a timeout just because notification or UI
+resumption is delayed, and retains precedence over later cancellation. A timeout
+result rechecks caller cancellation when its continuation resumes, so canceled
+navigation propagates cancellation instead of consuming a stale timeout.
+Downstream continuations remain asynchronous because
+connection state events may be emitted while the manager holds its transition
+semaphore. The ready/null fast path and post-subscription snapshot check retain
+their existing precedence; every pending wait disposes its deadline and both
+cancellation registrations and detaches its state handler.
 
 Native Check/Next keeps device-token precedence. Only a typed
 `AUTH_DEVICE_TOKEN_MISMATCH` may trigger one recovery in the disposable
@@ -340,6 +640,52 @@ The operator client is received through the `OperatorClientChanged` event. The a
 ### Chat timeline event routing
 
 Inbound chat and agent timeline events must include the gateway's canonical `sessionKey`. The tray client must not synthesize a literal `main` key for keyless inbound events, because that can merge unrelated events into the wrong timeline. When a keyless chat or agent event arrives, the tray drops it and raises a one-shot diagnostic so the protocol issue is visible without exposing the dropped message contents.
+
+Live `chat` and `session.message` events also retain the payload's optional
+`runId`, separately from message identity. `ChatConversationState` asks
+`ChatLifecycleState.IsCancelledRun` before admitting assistant or tool chat
+output, so a run cancelled by Stop or by a session reset cannot replace output
+or end a newer turn. A cancelled run stays fenced after its terminal arrives:
+`ChatLifecycleState` retires it into a bounded set (64 run IDs, evicted by
+arrival order) so late chat finals and agent output still cannot reach the
+timeline, and a replayed lifecycle start for an aborted run cannot replace the
+current run. A rolled-back (failed) abort is not retired, and if the run's
+terminal arrived before the abort failed, the rollback releases that abort
+retirement without clearing an independent reset fence. Deferred abort failure
+also releases the run's cancellation state when its active identity has already
+been removed or replaced, but never clears or ends a newer active turn. This
+cleanup is fenced by the original connection/reset generation and disposal.
+A final from a different run is rendered independently while a newer turn is
+active. It cannot reconcile into that turn's streaming entry, contribute a
+cumulative-text prefix, end the turn or emit its completion notification.
+Media metadata belongs only to that background entry, not to the newer streaming
+assistant. Identityless background finals are deduplicated by session, run,
+text and media content, including media-only retransmissions. Different message
+IDs, sequence numbers, runs or media references remain distinct. This live-only
+correlation follows the timeline metadata lifetime rather than a separate cache.
+Once a run's terminal has been observed, its replayed start and non-final output
+also cannot resume over a newer active turn. A normally completed run may still
+repair a tool result or error during that newer turn, but only with both the
+original run/tool identity and a retained terminal-tool correlation. Cancelled
+and reset-retired runs remain blocked, and tool starts or unmatched outcomes
+cannot create or mutate a newer turn's tool state.
+A retired run may
+still close the permission request it left pending (matched by approval ID);
+it cannot add new requests or output. Reset admission also checks
+the supplied run against ignored reset runs before using timestamp admission.
+Runs that completed normally are not fenced. Frames without a run ID retain
+legacy thread-level handling; they cannot be reliably correlated to an older
+run.
+
+Chat admission also controls notification delivery. The synchronous provider
+marks rejected `ChatMessageInfo` frames with `SuppressNotification()` before
+the gateway parser emits its separate notification event. That per-frame veto
+is monotonic and does not suppress delivery to other chat subscribers. It
+prevents rejected finals from reaching notification history, toasts or TTS
+without adding another run cache or moving notification ownership into `App`.
+Consumers that do not apply a veto retain the existing notification behavior,
+including consumers that throw before vetoing. Duplicate-frame dedupe is not
+run admission, so identified duplicate finals keep their notification.
 
 ## Startup wiring (App.xaml.cs)
 
@@ -543,7 +889,11 @@ combined current-node-attempt check. A per-gateway, per-role attempt guard
 (reset on handshake success / node pairing) prevents
 clear→reconnect→mismatch loops.
 
-**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to trusted endpoints: an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or a setup-managed WSL loopback gateway proven by `ManagedLocalGatewayPortProvenanceService`. The managed-local proof accepts either the existing verified Windows WSL relay identity or a relayless mirrored-networking endpoint with a complete empty Windows listener snapshot, positive expected-distro systemd MainPID ownership, and an immediate second complete empty snapshot. Strong credentials repeat that relayless proof immediately before use. Loopback is not treated as identity by itself: incomplete capture or any unknown, conflicting, or changed Windows listener blocks fallback, so a wrong local process cannot return a device-token mismatch to induce disclosure of the shared credential. A plain `ws://` remote endpoint is never eligible.
+**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or a setup-managed WSL loopback gateway checked by `ManagedLocalGatewayPortProvenanceService`. The managed-local check accepts either a `wslrelay` listener whose expected distro reports systemd MainPID ownership of the guest port, or a relayless mirrored-networking endpoint with a complete empty Windows listener snapshot, positive expected-distro systemd MainPID ownership, and an immediate second complete empty snapshot.
+
+The relay binary is not signature-checked because some genuine WSL builds ship it unsigned. A relay outside the standard WSL install locations (Program Files\WSL, System32, or the root of Microsoft's WSL Store package) is accepted when the distro check succeeds, with a logged warning and provenance detail naming the path and expected locations. The guest check does **not** prove the Windows listener forwards to that distro. A local program named `wslrelay.exe` at a nonstandard path could pass while the expected gateway listens in WSL and could receive shared or bootstrap credentials. Accepting it with a warning is an explicit compatibility and security tradeoff.
+
+Strong credential handoffs repeat the classification before use. Interactive HTTP and dashboard handoff also requires all relevant Windows relay listeners to share a complete PID, start time, and executable path; relayless proof retains its empty-snapshot exception. Incomplete capture, an unknown or conflicting listener, or a listener change during the check blocks fallback. A plain `ws://` remote endpoint is never eligible.
 
 ### Automatic managed-local WSL gateway repair (tray)
 
@@ -580,6 +930,15 @@ The bootstrap token is cleared only after operator and node role tokens are both
 
 In-chat exec approval cards sanitize the gateway's command and message before rendering. If either cannot be reviewed in full because it is truncated, suppressed, or conceals command syntax, the card offers only Deny; the chat provider also rejects Allow RPCs that are not permitted by the matching pending card.
 
+The tray composition root opts its `GatewayClientFactory` into `SupportsExecApprovals`
+because it attaches the chat approval handler to each managed operator client.
+The shared client defaults to no approval capability, so standalone CLI, validation,
+pairing and setup-only connections do not keep otherwise unroutable approvals pending.
+Only an opted-in operator-role handshake advertises `exec-approvals`; node-role
+bootstrap handshakes do not. This changes routing, not credentials or granted scopes:
+when a genuine tray approval handler is available, the Gateway can wait for its
+user decision instead of immediately expiring the request as having no approval route.
+
 ## Inbound pairing approval (operator)
 
 The approval popup retains its original compact lock header, spacing, scrollable
@@ -593,6 +952,13 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 `PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (OpenClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests - when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope - it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `OpenClaw.Connection.Tests`.
 
 ## SSH tunnel integration
+
+The Connection page and Connection Status validate remote and local forward
+ports with `SshForwardPorts` before entering the direct-connect transaction.
+Both fields require an integer from 1 through 65535. Blank or invalid input
+shows the existing field-specific error without substituting default ports or
+changing the active connection. SSH command-line range validation remains a
+separate downstream guard.
 
 `SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 
@@ -621,7 +987,7 @@ Tray actions should never silently no-op on common pairing/configuration issues:
 
 - Chat resolves credentials from the active registry record and per-gateway identity. If no usable credential exists, it opens Connection settings instead.
 - Canvas opens only when the Windows node is initialized, paired, and the Canvas capability is enabled in settings; otherwise it opens Connection settings.
-- Quick Send uses the live operator client and surfaces scope/pairing errors from gateway calls.
+- Workspace chat uses the live operator connection and surfaces scope/pairing errors from gateway calls. There is no separate Quick Send route.
 - `system.run` and `system.run.prepare` are gated by `NodeSystemRunEnabled` (default `true` for backward compatibility). When disabled, those commands are dropped from advertised capabilities and invocations are rejected.
 
 ## Legacy migration
@@ -631,6 +997,12 @@ On first startup with a `GatewayRegistry`, if no active gateway record exists, t
 - `LegacyToken` → `GatewayRecord.SharedGatewayToken`
 - `LegacyBootstrapToken` → `GatewayRecord.BootstrapToken`
 - Old identity file copied into per-gateway identity directory
+
+Legacy credential and identity migration requires a non-empty `GatewayUrl`
+persisted in `settings.json`. The in-memory default loopback URL is not a saved
+gateway target and never receives a URL-less legacy token or root identity.
+Profiles left in that state by an older uninstaller fail closed and must be
+reconnected explicitly from the Connection page.
 
 Migration is idempotent and deduplicates by URL.
 

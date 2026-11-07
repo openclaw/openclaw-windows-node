@@ -10,8 +10,126 @@ automated tests. Its five sessions include an empty conversation, distinct
 session identities and titles, and 240 mixed-height messages with an explicit
 final-message marker. Supporting model, agent, health, usage and configuration
 responses populate the application rather than just its disconnected shell.
+Read-only `agent.identity.get` resolves each roster agent (and the agent the
+`agent-creation` scenario creates) to its roster name with no avatar, so the app
+renders generated faces; an unknown ID receives `INVALID_REQUEST`, as on a real
+Gateway.
+Read-only placement discovery returns an empty project catalog and one synthetic
+local environment through `projects.list` and `environments.list`. It creates no
+project or host resources; `projects.add` is rejected as a write.
+
+The fixture also advertises read-only `sessions.search` over its synthetic
+message text and accepts the scoped metadata search fields on `sessions.list`.
+The main-search UI regressions exercise icon/shortcut opening and immediate
+reopening, shared Settings search, draft-preserving dismissal, read-only setting
+navigation and native conversation navigation from a message hit. Keyboard
+regressions also exercise Enter on Show more/Retry, immediate cross-shell
+reopening, absent Config sections and Dashboard-only skill results.
+Cross-surface search waits for the previous flyout's existing close owner to
+settle before opening the visible surface. A delayed destination reveal cannot
+take focus from a newer search generation; an ordinary Settings search still
+reveals its target while its original flyout closes. The immediate Enter/Ctrl+K
+journey has no added delay or retry. Focused
+cases cover a failed Config reveal followed by manual navigation to a section
+with the same field name, and session title/recency changes while result or
+input focus is active, including user-controlled result scroll. The
+disappearing-result case renames the focused conversation out of the query,
+checks input focus and the remaining selection, then repeats with no matches.
+Config detail cancellation is also exercised directly on the real page before
+its pending continuation, so a search reveal cannot retain the loading overlay.
+The search-navigation scenario adds optional schema fields without corresponding
+saved values and a read-only skill catalog. Read-response overrides model
+failures and long descriptions. Skills are explicitly labeled Dashboard
+destinations rather than retired native pages. The separately verified `/skills`
+route on released Gateway `2026.11.1` does not enable its other unverified
+Dashboard routes; unknown versions retain root fallback. No provider is contacted,
+no skill mutation is accepted, and config writes remain rejected. Keyboard
+journeys use the shared native SendInput helper, with the fixture opt-in,
+foreground ownership and released-modifier guards intact. Open-popup Axe scans
+cover empty results, matching results and source-status states, including a
+horizontal-clipping assertion. This proves the application boundary, not a real
+Gateway's indexing or Dashboard route compatibility.
+
+The search popup has no footer or visible source-status/compatibility messages.
+More/Retry stay beside the search input; UI Automation ItemStatus on that input
+retains accessible source and empty-result feedback without a message block.
+The long-description journey verifies that the complete last description can
+be scrolled into view without a footer consuming space or covering it.
+Keyboard expansion must focus and reveal the first newly added result without
+test-driven scrolling or a jump back to an old selected row. Expansion appends
+to the existing observable groups rather than replacing the native grouped view.
+Native page-name proof searches About, General, notification preferences and
+Config, checks plain destination names, captures the actual symbol icons and
+navigates to the corresponding native pages without sending chat or config
+writes. Notification preferences resolves to General. Settings split proof
+discovers local MCP tools, rejects removed Event Stream routes without changing
+the visible page, and toggles the three app-access consents through native
+controls. It verifies their saved values after page reactivation without
+enabling node capabilities. This is disposable-profile persistence proof, not
+an installed-profile upgrade or Store migration.
 
 ## Build and explore
+
+### Assistant continuity capture
+
+The opt-in UI case
+`SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
+selects an assistant and conversation through normal UI Automation. It closes
+only fixture-owned connections, holds the next connection's `agents.list`
+responses, and then releases the unchanged roster. It then sends one message
+through the ordinary composer and requires the fixture Gateway to record a
+successful `chat.send` for the restored conversation. A second reconnect returns
+an authoritative roster without that assistant and requires a fresh selection.
+`FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
+control only this synthetic producer; authentication and the production client
+are unchanged. With `-Screenshots`, the case saves five owned-HWND PrintWindow
+PNGs and adjacent UIA assertion metadata in the fixture artifact directory.
+Without requested screenshots, the same UIA selection and protocol assertions
+still run, but no pixel proof is claimed. Requested capture remains strict:
+blank or unavailable native pixels fail instead of producing a fallback image.
+
+Use the opt-in UI runner described below with this exact method-name filter.
+These captures show actual Workspace controls with synthetic Gateway data, not
+installed-app or live-provider behavior.
+
+`UnsupportedAgentListing_PreservesLegacySessionsAndDefaultCreation` exercises
+a different compatibility path. After a fixture-owned reconnect, the actual
+client receives `unknown method: agents.list` while `sessions.list` still works.
+Workspace must show the legacy sessions and enable new-conversation creation
+with the Gateway's default target. The assistant selector remains unavailable,
+because no authoritative agent roster was delivered. A pending or failed listing
+is not treated as an explicitly unsupported method.
+
+The disconnected assistant menu still exposes its existing connection guidance.
+This does not authorize session creation or treat a pending connected roster as
+available.
+
+`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+production handoff receipt and a synthetic model-verification response. It
+holds the fixture's session-creation response and checks that the prior bound
+setup warning is already cleared, then releases creation and observes the
+ordinary selected conversation. Existing warning recovery coverage checks the
+navigation path; the shutdown guard has a mounted WindowManager case. These
+are behavioral handoff checks, not source-text ordering assertions.
+
+Channels management lives in the Gateway Dashboard, and the native Channels
+page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
+entry points honest through the real app: a legacy receipt whose destination is
+Channels, `app.navigate channels` and the owner menu's **Pair device** item.
+The shared-search case also checks the Dashboard badge and opens Channels from
+both Workspace and Settings, using Enter and Alt+Enter respectively. It checks
+that local MCP discovery and `app.search` return the same Dashboard destination.
+A valid receipt performs one `openclaw.setup.verify` and then one Dashboard
+launch for `/channels` on the fixture Gateway's port. A receipt whose persisted
+device identity is rotated while verification is held is rejected with the
+"Gateway or agent changed" dialog (no Retry), consumes the receipt and never
+launches. A simulated browser failure shows the matching Retry dialog, keeps a
+receipt for explicit retry, and Retry launches and consumes it. The launch
+evidence is the redacted line described in the isolation contract, because
+fixture mode does not start a browser or serve the Dashboard page.
+Replacement of the active Gateway and the final dispatch authorizer are covered
+at launcher level by `SetupDashboardDispatchRequiresTheOriginalGatewayAndIdentity`,
+not by a full-app case.
 
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
@@ -29,7 +147,7 @@ Press Ctrl+C to stop only this run and remove its synthetic profile.
 For an unattended, bounded exploration/capture run, add `-DurationSeconds 30`.
 The timer starts after readiness and uses the same cleanup path as Ctrl+C.
 
-The Gateway is read-only. Chat sends, session mutations and configuration
+The default browse Gateway is read-only. Chat sends, session mutations and configuration
 writes receive protocol errors, not simulated success. Local preferences such
 as chat tool visibility can be saved inside the disposable profile. This is
 not a fixture for the legacy WebView Gateway dashboard, installation,
@@ -46,10 +164,34 @@ fields, returns a server-assigned ID, and exposes it through subsequent
 remain rejected. The test verifies the refreshed selector while retaining the
 existing session and unsent draft. Normal interactive browse runs remain read-only.
 
+Chat cancellation tests explicitly opt into the `chat-send` scenario. It issues
+synthetic run IDs and accepts `chat.abort` only for a run belonging to the supplied
+fixture session. The server can hold send acknowledgements and abort replies,
+then release an abort successfully or with a protocol error. Run-correlated
+lifecycle, assistant-delta, tool-outcome and structured-content chat events exercise the real client and provider
+without contacting an AI provider. These controls do not enable writes in the
+normal browse scenario.
+
+The opt-in `session-mutations` scenario accepts in-memory `sessions.patch`,
+`sessions.delete`, and parallel `sessions.create` requests. Creation uses a known
+parent, returns a distinct server-assigned key/session ID, and exposes the empty
+conversation through session-list and history reads without replacing its parent.
+The response gate can hold creation while the UI navigates elsewhere. Composer
+`/new` tests use this path to check initial Home -> new conversation -> Back/Forward
+and delayed completion on Notifications. A newer page navigation fences the
+pending selection: returning Home retains the original conversation, while the
+created session remains available for explicit sidebar selection. No provider, transcript file, or real
+Gateway is involved; other mutations and unsupported creation parameters still fail.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
 orders work; this is deliberately not sequential packet playback.
+
+MCP startup retries transient sharing and lock violations when reading the
+published token file, within the existing startup deadline. Missing-file,
+permission and other I/O failures are not hidden.
+The token value is never included in readiness diagnostics.
 
 ## Run the application smoke
 
@@ -57,7 +199,7 @@ orders work; this is deliberately not sequential packet playback.
 .\scripts\test-gateway-fixture.ps1 -AppPath $app
 ```
 
-For screenshots, use the already installed Windows App CLI:
+For screenshots, use owned-window native capture (no Windows App CLI installation is needed):
 
 ```powershell
 .\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
@@ -68,6 +210,115 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
+separate foreground keyboard fixture lane as well. It enables native input only
+in that child test process and rejects failed, skipped, and zero-test runs. The
+default fixture lane excludes those keyboard-dependent cases; it does not claim
+their proof.
+
+### Saved Gateway ownership and released profiles
+
+`GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
+native-plus-WSL, and WSL-only saved profiles with no `setup-state.json`. These
+cases use credential-free, MCP-only profiles: their package/distro markers are
+synthetic and never authorize a connection, native package, or WSL process.
+The real Settings page must show WSL removal only for the WSL cases. Onboarding
+remains visible only when WSL is active, not when the selected Gateway is native.
+The capture keeps the Local Gateway heading and final applicable action visible:
+setup when no managed WSL record exists, or removal when one does.
+With `-Screenshots`, the cases retain complete Settings captures and the actual
+Shell tooltip. The tooltip capture first resolves icon ID 1 against this app's
+owned native window, then hovers that icon; an app-name match alone is not proof
+of ownership. Unavailable or blank native capture fails rather than substituting
+a screenshot or computed tooltip.
+
+For profile compatibility on an authorized disposable desktop, supply a stable
+portable app explicitly. Both builds must advertise fixture isolation version 1;
+an older unsupported binary is rejected before launch. This command selects only
+the released-profile case, not the ordinary UI smoke:
+
+```powershell
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -StableAppPath '<extracted-stable-app>\OpenClaw.Tray.WinUI.exe'
+```
+
+`ReleasedProfile_PreservesGatewayRecordsIdentitiesAndSettings` starts that released
+app against the synthetic Gateway with native and WSL records saved but inactive.
+The test requires the released app to persist its successful connection, generate
+its operator identity, and save changed notification preferences. It copies
+that released-format identity into the inactive synthetic records, then stops only
+the fixture-owned process and opens the same profile with the candidate. Existing
+record fields, active selection, identity hashes, and preferences must survive.
+The normal connection timestamp may advance. This proves profile compatibility,
+not installer/update execution, Store migration, real native/WSL lifecycle, or
+production credentials.
+
+The hosted UI lane separately downloads the latest stable x64 portable archive
+and verifies its published SHA256 before this case runs. `stable-release.json`
+records the archive and candidate checkout identity; `stable-run.json`,
+`run.json`, `profile-compatibility.json`, and `fixture-released-profile.trx`
+retain the two executable identities and actual result in `test-results-ui`.
+No private keys or raw profile files are published. A missing baseline, digest
+mismatch, failed case, or zero/skipped selection is not compatibility proof.
+
+The ordinary `windows-latest` CI UI job runs this script against its explicitly
+built Debug x64 app after installing the Windows App Runtime selected by
+`Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
+the child test processes and selects `Category=GatewayFixture` without keyboard-only
+cases, including the
+context-usage and chat-run correlation scenarios. The general UI test step
+excludes that category so each scenario runs once. TRX, synthetic request logs,
+run receipts and owned-window screenshots are uploaded in `test-results-ui`
+under `GatewayFixture`, including on failure. Other keyboard/compositor proof
+opt-ins, production-shaped Release proof, real Gateway, WSL and MXC validation
+remain separate; this hosted smoke does not replace them.
+
+The disposable hosted runner configures a 1920x1080 desktop before UI tests and
+verifies a work area large enough for the 1300x950 wide-window proof. Its actual
+screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results-ui`.
+The original two-width and visible-content assertions remain unchanged. The local
+fixture runner does not change your desktop resolution.
+
+Fixture scenarios still execute if an earlier test suite fails, provided the UI
+build, runtime installation and desktop preflight succeeded and the job was not
+cancelled. The earlier failure remains a job failure; it cannot hide the fixture
+result or prevent its screenshots from being collected.
+
+For failed fixture tests, browse screenshots without downloading a ZIP: open the workflow run's
+**Summary** and find **Mock Gateway screenshots** in the UI job summary.
+The index contains only failed tests and interrupted runs with a failure capture,
+grouped by test with failure captures first. Click a capture filename to open its PNG
+in the browser. GitHub sign-in is required. Each PNG also appears individually
+under **Artifacts**, with a test/capture name and unique fixture run ID.
+These previews use unarchived GitHub artifacts, retain the repository's normal
+artifact retention, and are published only when the fixture step fails.
+Successful tests do not create screenshot summary entries or individual PNG
+artifacts; their captures stay inside `test-results-ui\GatewayFixture`.
+The `test-results-ui` ZIP remains the complete diagnostic download, including
+TRX, request logs, run receipts and original screenshot paths. If no capture was
+produced, the summary says so; inspect the fixture step for a build/startup failure.
+
+The browse fixture also supplies placement discovery reads: empty projects and
+recents, each agent's synthetic workspace, and one available local Gateway
+environment. Composer-created empty conversations can load their location
+choices without an unsupported-RPC error. These are synthetic catalog reads,
+not host filesystem discovery, remote worker capacity or placement mutation
+proof. Unsupported methods and parameters still fail explicitly.
+
+Ordinary browse/setup/context scenarios answer `question.list` with an empty
+question collection, so the real client's question recovery can complete without
+an unsupported-RPC error. This does not enable question creation or mutation:
+interactive question lifecycles remain owned by the explicit interactive scenario.
+
+`GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
+without launching the app. Cancellation and readiness failures must reap the
+owned child, remove its readiness file, and release both listener ports.
+They share the nonparallel `Gateway fixture environment` collection so another
+test cannot allocate a just-released ephemeral port before the cleanup rebind
+assertion. Occupancy, child-exit, readiness-file and rebind checks remain required.
+The Shared browser-proxy regression runs the production client and a default-handler
+control in separate test-host processes with explicit proxy settings. It does not
+change the test runner's environment or cached default proxy.
+
 The tests use local MCP for discovery, startup state and page navigation, and
 UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:
@@ -76,12 +327,31 @@ controls. They verify:
 - Independent profiles, endpoints, tokens and preferences in two concurrent
   application instances. Stopping one must leave the other usable.
 - Repeated A/B session selection and session-specific visible histories.
+- Session-scoped configured model reads retain a current model outside the manual
+  selection policy. Its label and catalog-only reasoning remain available while
+  its picker row stays disabled. The fixture's omitted view uses `default`, like
+  the Gateway, so omitting `view: "configured"` cannot accidentally pass this case.
 - Natural initial-tail visibility of message 240 before any explicit scroll
   command, plus final-message visibility after scrolling at two window sizes.
 - Sessions/Settings/Configuration/Chat navigation, profile-only preference
   persistence, and the Sessions-page Open in chat action.
 - A deliberately held history response arriving after a different session is
   selected, without replacing the visible transcript.
+- Cancelling A through the native Stop action, then streaming and completing B
+  despite A's late terminal and final events.
+- A deferred abort failing after its run has ended, restoring the legitimate
+  trailing final both during and after a newer streaming turn without ending
+  or corrupting that turn. Replayed starts and deltas from the old run remain
+  unable to resume over the new turn.
+- A terminal run's late tool completion repairs only its retained tool while
+  a newer run reuses the tool ID. Repeated background finals render once, with
+  media kept separate from the newer streaming entry. Synthetic audio cards
+  exercise metadata/rendering without playback, resolution or downloads.
+
+The cancellation cases use process-scoped UI Automation, not global keyboard or
+pointer input. They assert visible text and the native Stop/Send action as well
+as supporting MCP state. Notifications and audio remain disabled in the fixture;
+these cases do not prove toast presentation or TTS playback.
 
 `app.chat.snapshot` is supporting evidence, not a rendering assertion. It
 returns only the last 30 entries and does not prove the mounted UI selection.
@@ -97,6 +367,119 @@ call cannot prevent failure reporting and owned-process cleanup.
 
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
+
+`HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder` uses
+the opt-in `GatewayScenario.CreateFractionalVoiceHistory()` scenario. It adds
+30 synthetic historical messages, including 18 fractional-millisecond Talk
+rows with realtime voice provenance, block-array user text and no usage fields.
+The real Gateway client protocol test checks every message's content, ID,
+sequence and truncated timestamp. The native UI test checks all 30 projected
+texts, visible final voice content, no loading placeholder, and switching to an
+integer-timestamp typed control and back. Screenshots and the synthetic MCP
+snapshot are retained with the run artifacts. This proves stored-history
+compatibility, not microphone capture, live voice streaming or real Gateway
+pairing, and does not use the reporter's private sessions.
+
+## Cron editor proof
+
+`GatewayScenario.CreateCronEditing()` explicitly opts into in-memory `cron.add`
+and `cron.update`, with listed, absent, unlisted, and interval schedules.
+`cron.list` returns the updated jobs; nothing is scheduled or executed.
+The normal browse scenario still rejects cron writes.
+
+The focused proof uses the existing isolated profile, real Gateway client and
+cron form. Its native title click verifies the owning process, foreground window,
+physical point and UIA target before sending input. Run it only with exclusive
+desktop access:
+
+```powershell
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = "$env:TEMP\openclaw-cron-proof"
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.CronEditor_' --logger 'console;verbosity=normal'
+```
+
+On x64 use `-r win-x64 -p:Platform=x64`. Keep the selected executable on the
+tested commit. The two tests must execute, not skip. They check timezone
+preservation and explicit replacement, switching jobs and schedule kinds,
+and resetting for a new job. Artifacts include owned-window editor captures
+and the exact synthetic schedules read back after accepted saves. This proves
+the app/fixture wire path, not production Gateway persistence or scheduling.
+
+## Targeted context-usage proof
+
+`ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into
+`context-usage-snapshots`. It uses the existing isolated app/server ownership,
+native composer, real client/provider/history loader, and mounted transcript.
+Only two exact synthetic `chat.send` prompts are accepted in order; arbitrary
+prompts, additional sends, attachments and other mutations remain rejected.
+The normal browse scenario remains read-only.
+
+The test holds the selected session's initial history while sending a
+1,000-token request followed by a 1,500-token request. The second final is followed by an identical identityless,
+undated replay, then the held matching history at T-1 reports 1,000 tokens and
+20%. The history includes the complete transcript prefix, and the test checks
+that the final reply remains the last assistant entry. Its visible footer must
+remain `1.5K/5.0K (30%)`. It then exercises:
+
+| Listing timestamp | Wire usage | Required mounted footer |
+| --- | --- | --- |
+| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K/5.0K (30%)` |
+| T+5 | valid total 800 | `800/5.0K (16%)` |
+| T+12 | valid total 600 | `600/5.0K (12%)` |
+| T+11, response held until after T+12 renders | valid total 1,200 | `600/5.0K (12%)` |
+
+A following `sessions.changed` request, with its reply held, acts as a wire
+barrier: all client subscribers for the preceding listing have finished before
+the native assertion, and another reply cannot repair a rewind before capture.
+No extra production debug command, provider replacement or timing sleep is used.
+Each asserted state always retains an owned-HWND PNG and adjacent JSON with
+footer UIA bounds, text and image SHA256, even without the screenshots flag.
+`context-usage-proof.json` records the scenario and supporting final snapshot.
+
+Run from the worktree on an interactive Windows desktop (use `win-x64` on x64):
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path '.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-arm64\OpenClaw.Tray.WinUI.exe').Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:OPENCLAW_REPO_ROOT 'TestResults\context-usage-artifacts'
+# Keep this invocation's disposable profiles inside the worktree.
+$env:TEMP = $env:TMP = Join-Path $env:OPENCLAW_REPO_ROOT 'TestResults\fixture-runtime'
+New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'FullyQualifiedName~ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage' -ResultName 'context-usage-native' -RuntimeIdentifier win-arm64
+```
+
+For a separate bounded computer-use capture, start an interactive host console:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $env:OPENCLAW_GATEWAY_FIXTURE_APP -Scenario context-usage-snapshots -ArtifactsDirectory $env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS -DurationSeconds 120
+```
+
+Select **Fixture Main**, then **Fixture: context usage Initial**. Send
+`Fixture usage: first request`, then `Fixture usage: repeat request` using the
+native composer. Enter `missing-total`, `lower800`, `lower600`, and
+`delayed1200` in the **host console**, capturing the footer after each changed
+sidebar label appears. These controls only select synthetic listing replies
+and notify the real client. Unknown console controls do nothing. `stop`, Ctrl+C
+or the duration limit cleans up only this app/profile/server. The host prints
+its exact PID and artifact path. The interactive host does not hold initial
+history or transport-delay a listing; use the automated case for those ordered
+proof assertions, and inspect its seven images before claiming complete proof.
+
+The separate accessibility pool remains required, for example:
+
+```powershell
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'context-usage-accessibility' -RuntimeIdentifier win-arm64
+```
+
+That existing gate launches its own isolated app and Axe.Windows scans. It needs
+an unlocked desktop, Windows App SDK prerequisites, and the current app executable,
+PRI and compiled page resources beside the native UI test assembly. It does not
+use this Gateway scenario or prove usage reconciliation. Run it serially with
+the fixture UI test and computer-use, not concurrently on the same desktop.
 
 ## Known runtime regression
 
@@ -125,7 +508,7 @@ $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
-does not prove installer/MSIX behavior, real Gateway pairing, streaming,
+does not prove installer/MSIX behavior, real Gateway pairing, live provider streaming,
 provider behavior, or MXC. Keep the existing full E2E proof for those changes.
 
 ## Isolation contract
@@ -142,10 +525,36 @@ The important controls are:
 | --- | --- |
 | `OPENCLAW_GATEWAY_FIXTURE=1` | Explicit host-side-effect suppression; normal isolated runs retain normal behavior. |
 | `OPENCLAW_TRAY_DATA_DIR` | Synthetic settings, registry, identities, MCP token, logs, caches and instance mutex. |
-| `OPENCLAW_TRAY_LOCAL_DATA_DIR` | Separate synthetic setup/Local AI state. |
+| `OPENCLAW_TRAY_LOCALAPPDATA_DIR` | Isolated local root; setup appends `OpenClawTray`. |
+| `OPENCLAW_TRAY_LOCAL_DATA_DIR` | Legacy direct setup path, matching the local root with `OpenClawTray` appended. |
 | `OPENCLAW_TRAY_APPDATA_DIR` | Isolated roaming fallback root. |
 | `OPENCLAW_MCP_PORT` | Dedicated, non-default MCP port. |
 | Runtimeconfig `OpenClaw.GatewayFixtureIsolationVersion=1` | Preflight rejects old binaries before they can execute unguarded startup paths. |
+
+The fixture guard validates the effective local path using SetupEngine's root
+precedence. A supplied modern local root must be absolute and resolve to the same
+directory as the validated legacy direct path; mismatches fail before startup.
+Legacy launchers without a modern root still require an absolute direct path.
+These checks do not change path resolution or side effects outside explicit fixture
+mode. The launcher retains ownership and reparse-point cleanup checks.
+
+The opt-in native setup warning regression uses a synthetic `native-setup`
+scenario and an actual disposable signing identity and handoff receipt.
+`--post-setup-launch` exercises the product authority check and model-verification
+protocol, then connection loss, recovery with the same unsent composer draft,
+changed identity, and ordinary navigation.
+Model replies are synthetic; this is not real Gateway or inference proof.
+Captured frames use `PrintWindow(PW_RENDERFULLCONTENT)` on the owned App HWND,
+reject blank content and cropped asserted controls, and record SHA256 plus UIA
+evidence beside each PNG.
+
+Composer/controller tests separately cover `/new` releasing the setup binding
+before async session creation, reporting the selected session back to the page,
+and keeping the subsequent send on that session. Mounted UI tests cover
+binding invalidation and voice activation waiting for visible, verified readiness.
+Temporary unavailability retains draft/attachments but cancels capture; actual
+authority failure still disposes the host. The synthetic full-app scenario does
+not claim a real Gateway session-creation or microphone proof.
 
 WSL keepalive/startup cleanup and Windows autostart writes are explicitly
 guarded. A loopback URL alone is not enough to prevent the regular keepalive
@@ -153,13 +562,33 @@ policy from considering the installed default WSL distro. Sensitive node
 capabilities, automatic repair, hotkeys, notifications and voice are disabled
 in the synthetic settings. Telemetry export remains unconfigured.
 
+Opening the Gateway Dashboard is also a host side effect. A launch that goes
+through App's `GatewayDashboardLauncher` (the Dashboard buttons and menu items,
+setup receipts and `app.navigate`) ends in `DashboardBrowser`. Outside fixture
+mode it hands the exact URL to Windows. In fixture mode it never reaches the
+user's default browser: it logs `Gateway fixture mode: suppressed Dashboard
+browser launch:` plus the redacted target (`http://<host>:PORT/channels`, never
+the credential fragment) and reports success. Creating
+`dashboard-browser-failure.once` in the run's profile directory arms one
+simulated browser failure: the next launch deletes the file, logs `simulated
+Dashboard browser failure` and returns the failure Windows would. An invalid
+fixture context fails closed instead of reaching the browser. Other places that
+call Windows directly, such as the Connection page's saved-gateway row action,
+are outside this guard and must not be invoked from a fixture test.
+
 The fake binds a numeric IPv4 loopback listener to an OS-assigned port. The
 launcher never takes over a standard Gateway/MCP port or terminates a process
 by name. MCP bind collisions have a bounded retry limited to the owned child.
 Cleanup refuses reparse points and only removes the run's owned data.
+After the owned app exits, profile removal waits up to 10 seconds for Windows
+sharing or lock violations to clear. Set
+`OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS` to a positive finite number
+to override that cleanup deadline. A persistent lock remains an explicit
+timeout with the original I/O error; other cleanup errors propagate immediately.
+This does not retry the test or relax its assertions.
 
 This remains a desktop application, not a general OS sandbox. Only the
-documented browse/preferences workflow is supported on a developer machine.
+documented browse/preferences and inert interactive-chat workflows are supported on a developer machine.
 Use a disposable Windows environment for setup, external integration or other
 host-changing workflows.
 
@@ -178,16 +607,166 @@ when an individual probe times out. Malformed or disconnected HTTP-upgrade peers
 are recorded as unexpected `<upgrade>` requests without retaining headers.
 They do not prevent other clients from connecting or make server cleanup throw;
 the unexpected-request assertions still surface them as smoke failures.
+Non-interactive scenario responder exceptions still propagate through server
+cleanup, preserving negative-test guards. Only interactive runtime faults are
+translated into `INTERNAL` responses and recorded as unexpected requests.
+
+The server also answers one plain HTTP request: the authenticated scenario
+profile's photo at `GET /api/users/<profile id>/avatar`, which the Workspace
+footer sends after `users.self` returns a profile. The browse scenario serves
+`fixture-owner`; owner-identity UI cases can select another synthetic profile
+with `CreateBrowseWithOwnerProfile`, and the HTTP route serves that scenario's
+authenticated profile ID. A request with the shared
+Gateway token (or the issued device token once the server accepts one) for the
+scenario profile receives a small solid-colour PNG. A missing or wrong
+credential receives 401 and an unknown profile receives 404. Each request is recorded as
+`http:users.avatar` with only its outcome, never the credential, the profile id
+or the query string. The 401 and 404 outcomes are unexpected requests, so a
+broken photo path fails the smoke instead of quietly falling back to initials.
+Any other request that is not a WebSocket upgrade is still rejected as an unexpected `<upgrade>`.
+`OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus` waits for the served
+photo. With `-Screenshots` it also counts footer pixels in that photo's colour in
+the captured Workspace window, so the capture shows the image was decoded and
+painted, not only requested.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat
-renderer. Keep synthetic wire examples aligned with the existing Gateway
-protocol snapshot, and exercise them through the real client.
+renderer. Keep synthetic wire examples aligned with upstream Gateway wire
+contracts, and exercise them through the real client. The separate nightly
+upstream monitor detects changes; fixture examples do not pin the Gateway version.
 
 Backend and independent app instances can run concurrently. UI tests are
 serialized on a shared desktop; focus-dependent GUI workers need separate
-Windows sessions or VMs. Future multi-Gateway switching and canned streaming
-can reuse the existing per-instance server/profile ownership.
+Windows sessions or VMs. Interactive streaming uses the same per-instance
+server/profile ownership described below.
+
+## Interactive chat without a real Gateway
+
+The opt-in `chat-interactive` scenario runs a memory-only chat runtime behind
+the same real WebSocket client and disposable app profile:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario chat-interactive
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario chat-interactive -Interaction approval
+```
+
+Send normal text from Chat or create a new conversation. No provider account,
+real Gateway pairing, node execution, or model download is needed. Every response
+is synthetic; tool names, commands and patch summaries are display data only.
+The read-only browse scenario and its existing assertions remain unchanged.
+
+### Repeatable interactions
+
+Type an interaction name in the host console, then send a message in the app.
+It applies to the next admitted send across that fixture's sessions and then
+returns to `streaming`. A `send-error` attempt consumes its selection but not
+the message or idempotency key.
+
+| Interaction | Behavior |
+| --- | --- |
+| `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
+| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
+| `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
+| `agent-activity` | Job activity, command item/output and patch item/summary events. All operations are inert |
+| `question-choice`, `question-text`, `question-multi` | A pending question blocks that run until a valid answer, cancellation, expiry or Stop |
+| `approval`, `approval-deny-only` | Top-level exec approval events, validated one-shot decisions, then continuation without command execution |
+| `slow` | Repeated startup status frames before the answer |
+| `send-error`, `stream-error` | Retryable send rejection or a terminal mid-stream error with partial history |
+| `disconnect` | Disconnects authenticated sockets mid-run; server-owned work continues and history is available after reconnect |
+
+`pause`, `step`, and `resume` control scripted steps without blocking request
+processing. A step is one scripted action, which can produce multiple related
+frames. With concurrent runs, the next ready run consumes a step. Stop,
+question answers, expiry, and approval decisions remain responsive while paused.
+`disconnect` as a console command immediately drops the current connections;
+select the `disconnect` interaction with `-Interaction` to script it on a send.
+Restart the launcher for a completely fresh scenario/profile.
+
+`questions` lists synthetic question records. `resolve` submits JSON using the
+same fixture-side validation as the Gateway `question.resolve` RPC:
+
+```text
+resolve {"id":"fixture-question-1","answers":{"answers":{"fixture_choice":["Inspect"]}}}
+resolve {"id":"fixture-question-1","cancel":true}
+```
+
+Use the current ID printed by `questions`; IDs are not fixed across runs.
+Console controls require an interactive terminal. Redirected/bounded runs still
+support startup `-Interaction` and automated WebSocket clients.
+
+### Protocol coverage and boundaries
+
+`InteractiveGatewayRuntime` owns state, not `App`, the connection manager or
+the renderer. It advertises the methods/events and synthetic operator scopes
+needed for this scenario. Accepted sends are keyed by session and idempotency
+key; reuse with different input or after session reset/replacement is rejected. Events
+carry run/session correlation and increasing per-run sequence numbers.
+Different sessions can run concurrently; a second direct send to a busy session
+is rejected, allowing the production client's existing queue to own queuing.
+
+| Surface | Implemented fixture behavior |
+| --- | --- |
+| `chat.send`, `chat.abort` | Text-only sends, acknowledgement before playback, named or session-wide stop, terminal state and partial transcript |
+| `chat.history`, `chat.inject` | Updated bounded histories and inert assistant-message insertion when idle |
+| `sessions.create` | New canonical keys and IDs, optional in-memory transcript fork from `parentSessionKey`; `forkFrom: "last-completed"` excludes an unfinished turn, including its tool-call/result entries |
+| `sessions.list`, `sessions.preview` | Current catalog and transcript data, filtering, limits and previews |
+| `sessions.patch`, `sessions.reset`, `sessions.delete` | Label/pin/unread/archive/model/thinking changes, guarded read acknowledgement, reset/delete when idle |
+| `question.request`, `question.list`, `question.get`, `question.waitAnswer`, `question.resolve` | One to three scalar questions, single/multi choice, custom text, defaults, cancellation, expiry, resolution-ID retry, recovery and multi-client broadcasts |
+| `exec.approval.resolve` | Only fixture-issued pending approvals; deny-only requests cannot be allowed |
+| Existing browse reads | Models, agents, health, usage, configuration and discovery remain available |
+
+Forks without `forkFrom` copy the full parent history. The `last-completed`
+selector copies through the last persisted assistant reply that is not a
+tool-use checkpoint; it produces an empty history if no such reply exists.
+The copied history is independent of later parent updates or resets.
+
+The implementation follows the upstream `packages/gateway-protocol/src/schema/`
+`logs-chat.ts`, `questions.ts`, session schemas and current Windows event consumers.
+Protocol research used upstream main during implementation, including
+`6eacab6c2940a7dcb36574cf45daff1141f945ce`; this is evidence provenance,
+not a supported-Gateway version pin.
+
+This is **not yet an emulator for the entire Gateway protocol**. Attachments,
+secret/resource questions, provider inference, server-side queue/steer policies,
+session succession/compaction, configuration writes, installation, cron and real
+node operations are not simulated. Unsupported parameters/methods fail explicitly.
+Question `url`, resource previews and credential storage are deliberately not
+accepted; no fixture should open external resources or save credentials implicitly.
+Extend the same server boundary with a scenario and protocol/consumer tests when
+adding an interaction, rather than accepting arbitrary requests as success.
+
+The native Reactor chat consumes `question.requested`/`question.resolved` and
+shows supported questions above the composer. Start with
+`-Scenario chat-interactive -Interaction question-choice`, then send a message
+in the app to show the choice panel. Select **Inspect** or **Summarize** and use
+**Submit answer**, or choose **Cancel question**. The run continues after the
+fixture acknowledges the separate `question.resolve` RPC. Use `question-text`
+or `question-multi` in the host console before the next send to try other inputs.
+Protocol/provider tests do not by themselves prove question-panel rendering;
+verify the visible native controls separately.
+
+Runs are bounded to 256 sends and 100 sessions, transcripts to 1,000 entries,
+text input to 32,768 characters, and external questions to a five-minute timeout.
+The default interactive decision timeout is 60 seconds. State is disposable;
+no live-network fallback exists. Artifacts record request outcomes and event
+names/delivery counts, not chat text, question answers or credential values.
+Scripted work is cancelled and drained on shutdown; playback faults fail the host.
+
+### Focused validation
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter FullyQualifiedName~GatewayFixtureProtocolTests
+dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter FullyQualifiedName~InteractiveGatewayChatTests
+```
+
+The first suite covers real-client chat plus raw WebSocket question/approval
+round trips, invalid inputs, idempotency, session isolation, expiry, recovery,
+stop and bounded shutdown. The second uses the production chat provider and
+bridge, with isolated persistence. The opt-in desktop fixture suite additionally
+contains `InteractiveChatShowsStreamedAnswerAndGatewayApproval`, which sends via
+local MCP, verifies the visible answer and approval buttons, clicks Allow, and
+captures the continuation when screenshots are enabled.
 
 The fixture suites supplement, not replace, the required build, Shared and
 Tray tests. Run those on every implementation change as documented in

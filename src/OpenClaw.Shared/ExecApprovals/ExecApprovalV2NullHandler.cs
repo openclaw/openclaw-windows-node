@@ -12,8 +12,12 @@ public sealed class ExecApprovalV2NullHandler : IExecApprovalV2Handler
 {
     public static readonly ExecApprovalV2NullHandler Instance = new();
 
-    public Task<ExecApprovalV2Result> HandleAsync(OpenClaw.Shared.NodeInvokeRequest request, string correlationId)
-        => Task.FromResult(ExecApprovalV2Result.Unavailable());
+    public Task<ExecApprovalV2Result> HandleAsync(OpenClaw.Shared.NodeInvokeRequest request, string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(ExecApprovalV2Result.Unavailable());
+    }
 
     public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
         ExecApprovedExecution execution,

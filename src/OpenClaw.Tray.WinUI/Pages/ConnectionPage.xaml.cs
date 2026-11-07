@@ -1069,7 +1069,7 @@ public sealed partial class ConnectionPage : Page
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
-        // Voice and Skills deep links were removed from the simplified node card.
+        // Voice deep link were removed from the simplified node card.
     }
 
     private void ApplyRecoveryBody(ConnectionPagePlan plan)
@@ -2588,11 +2588,19 @@ public sealed partial class ConnectionPage : Page
                 }
             }
 
-            var url = GatewayDashboardUrlBuilder.Build(
-                rec.Url,
-                path: null,
-                rec.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
+            if (!GatewayDashboardUrlBuilder.TryBuild(
+                    rec.Url,
+                    path: null,
+                    rec.SharedGatewayToken,
+                    appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken),
+                    out var url,
+                    out _))
+            {
+                CurrentApp.ShowTransientConnectionError(
+                    LocalizationHelper.GetString("ConnectionPage_SavedDashboardInvalidAddress"));
+                return;
+            }
+
             await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
         catch (Exception ex)
@@ -2919,14 +2927,16 @@ public sealed partial class ConnectionPage : Page
             error = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
             return false;
         }
-        if (!int.TryParse(AddSshRemotePortBox.Text, out var remotePort) || remotePort is < 1 or > 65535)
+        var forwardPorts = SshForwardPorts.TryParse(
+            AddSshRemotePortBox.Text,
+            AddSshLocalPortBox.Text,
+            out var remotePort,
+            out var localPort);
+        if (forwardPorts != SshForwardPortParseResult.Ok)
         {
-            error = LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid");
-            return false;
-        }
-        if (!int.TryParse(AddSshLocalPortBox.Text, out var localPort) || localPort is < 1 or > 65535)
-        {
-            error = LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
+            error = forwardPorts == SshForwardPortParseResult.RemoteInvalid
+                ? LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid")
+                : LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
             return false;
         }
 

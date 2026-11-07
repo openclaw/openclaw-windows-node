@@ -7,7 +7,6 @@ namespace OpenClawTray.Presentation;
 internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Completion)
 {
     public string PageTag => HubPageRegistry.GetNativeSetupPage(Completion.Target.Destination);
-    public string? ChannelId => Completion.Target.ChannelId;
     public WorkspaceDestination? WorkspaceDestination =>
         WorkspaceNavigation.TryResolveWorkspace(PageTag, out var destination)
             ? destination with { SessionKey = Completion.Target.SessionKey }
@@ -25,7 +24,7 @@ internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Comple
         var client = manager?.OperatorClient;
         var snapshot = manager?.CurrentSnapshot;
         if (manager is null || client is null || snapshot is null)
-            throw new InvalidOperationException("The verified Gateway is not connected.");
+            throw new SetupNativeConnectionUnavailableException();
         RequireCurrent(active, snapshot.GatewayId, client.MainSessionKey,
             client.IsConnectedToGateway && snapshot.OperatorState == RoleConnectionState.Connected);
         if (registry is null || string.IsNullOrWhiteSpace(client.AuthenticatedSigningDeviceId) ||
@@ -48,11 +47,14 @@ internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Comple
             GatewayDashboardBinding.Capture(active) != Completion.Verification.EndpointBinding ||
             !Completion.Target.Matches(Completion.Verification))
             throw new SetupNativeOwnershipException();
-        if (!connected) throw new InvalidOperationException("The verified Gateway is not connected.");
+        if (!connected) throw new SetupNativeConnectionUnavailableException();
         if (connectedGatewayId != Completion.Verification.GatewayId || sessionKey != Completion.Target.SessionKey)
             throw new SetupNativeOwnershipException();
     }
 }
+
+internal sealed class SetupNativeConnectionUnavailableException()
+    : InvalidOperationException("The verified Gateway is not connected.");
 
 internal sealed class SetupNativeChatBinding
 {
@@ -73,20 +75,5 @@ internal sealed class SetupNativeChatBinding
         ct.ThrowIfCancellationRequested();
         if (!ReferenceEquals(Request, request))
             throw new SetupNativeOwnershipException();
-    }
-}
-
-internal enum SetupChannelAvailability { Offered, NotOffered, Unconfirmed }
-
-internal static class SetupChannelFocusPolicy
-{
-    public static SetupChannelAvailability GetAvailability(ChannelsStatusSnapshot snapshot, string channelId)
-    {
-        bool Offered(string id) => string.Equals(id, channelId, StringComparison.OrdinalIgnoreCase);
-        if (snapshot.ChannelOrder.Any(Offered) || snapshot.Channels.Keys.Any(Offered) || snapshot.ChannelAccounts.Keys.Any(Offered) ||
-            snapshot.ChannelMeta?.Any(meta => Offered(meta.Id)) == true)
-            return SetupChannelAvailability.Offered;
-        return snapshot.ChannelOrder.Count > 0 || snapshot.ChannelMeta?.Count > 0
-            ? SetupChannelAvailability.NotOffered : SetupChannelAvailability.Unconfirmed;
     }
 }

@@ -146,29 +146,32 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     }
 
     public ExecApprovalsResolved ResolveReadOnly(string? agentId)
+        => ResolveReadOnlyWithFailure(agentId).Resolved;
+
+    internal (ExecApprovalsResolved Resolved, ExecApprovalsSnapshotFailure? Failure)
+        ResolveReadOnlyWithFailure(string? agentId)
     {
         ThrowIfDisposed();
 
-        if (_legacyFilePath is not null)
+        // Keep the policy and its load provenance tied to the same read.
+        var result = LoadFile();
+        if (_legacyFilePath is not null && result.Status == LoadFileStatus.Missing)
         {
-            var targetStatus = LoadFile().Status;
             var legacyStatus = LoadFile(_legacyFilePath).Status;
-            if (targetStatus == LoadFileStatus.Missing
-                && legacyStatus != LoadFileStatus.Missing)
+            if (legacyStatus != LoadFileStatus.Missing)
             {
-                return UnmigratedLegacyFallback(agentId);
+                return (UnmigratedLegacyFallback(agentId), CreateLegacyMigrationFailure(_legacyFilePath));
             }
         }
 
-        var result = LoadFile();
         return result.Status switch
         {
             LoadFileStatus.Loaded when result.File is not null =>
-                ResolveFromFile(result.File, agentId),
+                (ResolveFromFile(result.File, agentId), null),
             LoadFileStatus.Missing =>
-                DefaultResolved(NormalizeAgentId(agentId)),
+                (DefaultResolved(NormalizeAgentId(agentId)), null),
             _ =>
-                FailClosedResolved(NormalizeAgentId(agentId)),
+                (FailClosedResolved(NormalizeAgentId(agentId)), CreateFailure(result)),
         };
     }
 
@@ -186,7 +189,8 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     // every reader ignores a generated rule that has no argument binding, so writing
     // one without a pattern would silently produce a rule that never matches.
     public Task<bool> AddAllowlistEntryAsync(
-        string? agentId, string pattern, string? argPattern, string? commandText)
+        string? agentId, string pattern, string? argPattern, string? commandText,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(argPattern))
         {
@@ -194,13 +198,14 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
             return Task.FromResult(false);
         }
         return AddAllowlistEntryCoreAsync(
-            agentId, pattern, argPattern, commandText, ExecAllowlistMatcher.AllowAlwaysSource);
+            agentId, pattern, argPattern, commandText, ExecAllowlistMatcher.AllowAlwaysSource, cancellationToken);
     }
 
     // Dedup is keyed on (pattern, argPattern) so a bound rule and an unbound rule for
     // the same executable stay distinct records.
     private async Task<bool> AddAllowlistEntryCoreAsync(
-        string? agentId, string pattern, string? argPattern, string? commandText, string? source)
+        string? agentId, string pattern, string? argPattern, string? commandText, string? source,
+        CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
@@ -242,7 +247,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
                 // RecordAllowlistUseAsync stamps it on first successful use.
             });
             return true;
-        }).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
 
         return wrote || alreadyPresent;
     }
@@ -895,7 +900,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     private static ExecApprovalsResolved UnmigratedLegacyFallback(string? agentId) =>
         ResolveFromFile(UnmigratedLegacyFallbackFile(), agentId);
 
-    private async Task<string> SaveFileAsync(ExecApprovalsFile file)
+    private async Task<string> SaveFileAsync(ExecApprovalsFile file, CancellationToken cancellationToken = default)
     {
         var dir = Path.GetDirectoryName(_filePath)!;
         if (!Directory.Exists(dir))
@@ -919,7 +924,8 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
         try
         {
             var json = JsonSerializer.Serialize(file, JsonOptions);
-            await File.WriteAllTextAsync(tmp, json).ConfigureAwait(false);
+            await File.WriteAllTextAsync(tmp, json, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             File.Move(tmp, _filePath, overwrite: true);
             return ComputeRawHash(json);
         }
@@ -994,12 +1000,13 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
             };
     }
 
-    private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate)
+    private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate,
+        CancellationToken cancellationToken = default)
     {
         ExecApprovalsChangedEventArgs? change = null;
         var wrote = false;
 
-        await _lock.WaitAsync().ConfigureAwait(false);
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
@@ -1025,10 +1032,12 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
                 return false;
             }
 
-            var savedHash = await SaveFileAsync(file).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var savedHash = await SaveFileAsync(file, cancellationToken).ConfigureAwait(false);
             change = RecordManagedSnapshot(CreateSnapshot(file, exists: true, savedHash), origin: null);
             wrote = true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json write failed ({ex.Message}); side effect skipped");
@@ -1263,11 +1272,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
             if (result.Status == LoadFileStatus.Missing
                 && legacyStatus != LoadFileStatus.Missing)
             {
-                var failure = new ExecApprovalsSnapshotFailure(
-                    ExecApprovalsSnapshotFailureKind.LegacyMigrationRequired,
-                    ComputeFailureSignature("legacy-migration-required", Path.GetFullPath(_legacyFilePath)),
-                    Version: null,
-                    "Legacy exec approvals must be migrated before a read-only snapshot is available.");
+                var failure = CreateLegacyMigrationFailure(_legacyFilePath);
                 return new ReadOnlySnapshotLoadResult(null, failure, failure.Hash);
             }
         }
@@ -1291,6 +1296,13 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
         var typedFailure = CreateFailure(result);
         return new ReadOnlySnapshotLoadResult(null, typedFailure, typedFailure.Hash);
     }
+
+    private static ExecApprovalsSnapshotFailure CreateLegacyMigrationFailure(string legacyFilePath) =>
+        new(
+            ExecApprovalsSnapshotFailureKind.LegacyMigrationRequired,
+            ComputeFailureSignature("legacy-migration-required", Path.GetFullPath(legacyFilePath)),
+            Version: null,
+            "Legacy exec approvals must be migrated before a read-only snapshot is available.");
 
     private static ExecApprovalsSnapshotFailure CreateFailure(LoadFileResult result)
     {

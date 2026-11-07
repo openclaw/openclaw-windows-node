@@ -227,8 +227,16 @@ internal sealed class ChatResetState
         string rawText,
         long timestampMs,
         bool hasPendingLocalEcho,
-        string? activeRunId = null)
+        string? activeRunId = null,
+        string? runId = null)
     {
+        if (!string.IsNullOrWhiteSpace(runId) &&
+            _ignoredRunIds.TryGetValue(threadId, out var ignoredRuns) &&
+            ignoredRuns.Contains(runId))
+        {
+            return new(true, null, false, null);
+        }
+
         var isNormalUserText = role == "user" &&
             !ChatContentFormatting.LooksLikeApprovalSlashCommand(rawText) &&
             !NativeToolProjector.LooksLikeSystemControlNote(rawText);
@@ -290,7 +298,7 @@ internal sealed class ChatResetState
                 ? !IsPreResetTimestamp(threadId, timestampMs)
                 : IsTimestampAcceptedForRun(
                     threadId,
-                    activeRunId,
+                    string.IsNullOrWhiteSpace(runId) ? activeRunId : runId,
                     timestampMs);
             return new(
                 !timestampAccepted,

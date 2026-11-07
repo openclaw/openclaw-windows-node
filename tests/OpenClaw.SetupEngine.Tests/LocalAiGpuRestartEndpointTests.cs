@@ -37,6 +37,9 @@ public sealed class LocalAiGpuRestartEndpointTests
         string cudaPath = Path.Combine(
             Path.GetDirectoryName(originalInstall.ExecutablePath)!,
             "ggml-cuda.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(originalInstall.ExecutablePath)!);
+        File.WriteAllText(originalInstall.ExecutablePath, "fixture");
+        File.WriteAllText(cudaPath, "fixture");
         var step = new VerifyLocalAiGpuLoadStep(
             new FakeGpuProbe(new LocalAiGpuLoadEvidence(
                 ProcessId: 4242,
@@ -177,6 +180,8 @@ public sealed class LocalAiGpuRestartEndpointTests
         public int RestartCalls { get; private set; }
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
 
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Snapshot);
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Snapshot);
 

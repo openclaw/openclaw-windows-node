@@ -18,22 +18,36 @@
 .PARAMETER NoTrustRepository
     Do not add this checkout to git safe.directory.
 
+.PARAMETER AgentReadiness
+    Report developer observations, unverified desktop proof, and optional shared
+    review prerequisites as JSON. Does not install, authenticate, or run validation.
+
+.PARAMETER SharedReviewPath
+    Explicit autoreview skill directory to inspect with -AgentReadiness.
+
+.PARAMETER ReadinessFixturePath
+    Trusted boolean test observations for -AgentReadiness. Output is labeled
+    fixture data, not evidence about the current host.
+
 .EXAMPLE
     .\scripts\setup-dev.ps1
     .\scripts\setup-dev.ps1 -CheckOnly
     .\scripts\setup-dev.ps1 -RunValidation
+    .\scripts\setup-dev.ps1 -AgentReadiness
 #>
 
 param(
     [switch]$CheckOnly,
     [switch]$RunValidation,
-    [switch]$NoTrustRepository
+    [switch]$NoTrustRepository,
+    [switch]$AgentReadiness,
+    [string]$SharedReviewPath,
+    [string]$ReadinessFixturePath
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-Set-Location $repoRoot
 
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Success($text) { Write-Host "[OK] $text" -ForegroundColor Green }
@@ -210,6 +224,93 @@ function Require-Prerequisite($name, $isAvailable, $packageId) {
     Install-WingetPackage $packageId $name
 }
 
+if ($AgentReadiness) {
+    if ($RunValidation) { throw 'AgentReadiness is read-only and cannot run validation.' }
+    if ($ReadinessFixturePath) {
+        # Trusted test observations, not executable probes or a host attestation.
+        $facts = Get-Content -LiteralPath $ReadinessFixturePath -Raw | ConvertFrom-Json
+        foreach ($name in @('windows', 'git', 'dotnet', 'node', 'windowsSdk', 'webView2', 'desktopSession', 'wslCommand', 'reviewSkill', 'reviewHelper', 'python')) {
+            if ($null -eq $facts.PSObject.Properties[$name] -or $facts.$name -isnot [bool]) {
+                throw "Readiness fixture requires boolean observation: $name"
+            }
+        }
+        $reviewLocation = 'trusted-fixture'
+        $installationMode = 'fixture'
+        $revision = 'unverified'
+    } else {
+        if (-not $SharedReviewPath) { $SharedReviewPath = Join-Path $HOME '.agents\skills\autoreview' }
+        $reviewLocation = [IO.Path]::GetFullPath($SharedReviewPath)
+        $installationMode = 'missing'
+        $revision = 'unverified'
+        $reviewItem = Get-Item -LiteralPath $reviewLocation -ErrorAction SilentlyContinue
+        if ($reviewItem) {
+            $installationMode = if ($reviewItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { 'linked' } else { 'directory-copy-or-checkout-unverified' }
+            # Git metadata only, no remote, auth, config dump, or helper execution.
+            if (Test-CommandAvailable 'git') {
+                try {
+                    $reviewHead = & git -C $reviewLocation rev-parse HEAD 2>$null
+                    if ($LASTEXITCODE -eq 0 -and $reviewHead -match '^[a-f0-9]{40}$') { $revision = [string]$reviewHead }
+                } catch { $revision = 'unverified' }
+            }
+        }
+        $windows = Test-WindowsHost
+        $sdk = if ($windows) { Get-WindowsSdkVersion } else { $null }
+        $desktopSession = $false
+        if ($windows) { $desktopSession = [Environment]::UserInteractive -and [Diagnostics.Process]::GetCurrentProcess().SessionId -gt 0 }
+        $facts = [pscustomobject]@{
+            windows = $windows
+            git = Test-CommandAvailable 'git'
+            dotnet = Test-DotNet10Sdk
+            node = Test-NodeAndNpm
+            windowsSdk = [bool]($sdk -and [version]$sdk -ge [version]'10.0.26100.0')
+            webView2 = [bool]($windows -and (Get-WebView2RuntimeVersion))
+            desktopSession = $desktopSession
+            wslCommand = Test-CommandAvailable 'wsl.exe'
+            reviewSkill = Test-Path -LiteralPath (Join-Path $reviewLocation 'SKILL.md') -PathType Leaf
+            reviewHelper = Test-Path -LiteralPath (Join-Path $reviewLocation 'scripts\autoreview') -PathType Leaf
+            python = (Test-CommandAvailable 'python') -or (Test-CommandAvailable 'python3')
+        }
+    }
+    $missing = @(
+        foreach ($name in @('windows', 'git', 'dotnet', 'node', 'windowsSdk', 'webView2')) {
+            if (-not $facts.$name) { $name }
+        }
+    )
+    [ordered]@{
+        schemaVersion = 1
+        observationSource = if ($ReadinessFixturePath) { 'trusted-test-fixture-not-host-proof' } else { 'local-read-only-probes' }
+        developer = [ordered]@{
+            status = if ($missing.Count) { 'missing-prerequisites' } else { 'prerequisites-detected-build-unverified' }
+            missing = $missing
+        }
+        desktopProof = [ordered]@{
+            status = 'unverified'
+            desktopSessionObserved = $facts.desktopSession
+            wslCommandAvailable = $facts.wslCommand
+            requires = @('authorized isolated runtime', 'unlocked interactive desktop', 'capture consent and computer-use', 'pool-specific host capabilities')
+            boundary = 'A desktop session and wsl.exe do not establish UI, WSL2, MXC, or Gateway proof readiness.'
+        }
+        optionalSharedReview = [ordered]@{
+            requiredForBuild = $false
+            source = 'https://github.com/openclaw/agent-skills'
+            location = $reviewLocation
+            installationMode = $installationMode
+            checkoutRevision = $revision
+            skillPresent = $facts.reviewSkill
+            helperPresent = $facts.reviewHelper
+            interpreterCommandAvailable = $facts.python
+            status = if ($facts.reviewSkill -and $facts.reviewHelper -and $facts.python) { 'files-detected-execution-unverified' } else { 'missing-optional-prerequisites' }
+            authentication = 'not-checked'
+            boundary = 'Revision describes the containing checkout when available, not copy synchronization. Interpreter, helper execution, provider access, and review quality are unverified.'
+        }
+        boundary = 'No installs, global configuration, authenticated calls, runtime launches, leases, or CI dispatch. Ubuntu Copilot setup does not provision native Windows or shared-review readiness.'
+    } | ConvertTo-Json -Depth 6
+    $global:LASTEXITCODE = 0
+    return
+}
+if ($ReadinessFixturePath -or $SharedReviewPath) { throw 'Readiness parameters require -AgentReadiness.' }
+
+Set-Location $repoRoot
 if (-not (Test-WindowsHost)) {
     throw "OpenClaw Windows development requires Windows."
 }

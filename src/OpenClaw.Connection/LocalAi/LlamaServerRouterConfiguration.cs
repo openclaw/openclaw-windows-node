@@ -17,7 +17,7 @@ using System.Text;
 
 namespace OpenClaw.Connection.LocalAi;
 
-/// <summary>A deterministic lazy-load router configuration for a qualified local inference install.</summary>
+/// <summary>Represents the deterministic argv, environment, preset, and model alias for one router launch.</summary>
 public sealed record LlamaServerRouterLaunchPlan(
     ImmutableArray<string> Arguments,
     ImmutableDictionary<string, string> Environment,
@@ -25,34 +25,52 @@ public sealed record LlamaServerRouterLaunchPlan(
     string PresetContent,
     string ModelAlias);
 
+/// <summary>Builds deterministic llama-server launch plans from validated Local AI installation receipts.</summary>
 public static class LlamaServerRouterConfiguration
 {
+    /// <summary>Resolves and validates the exact qualified runtime, model, and profile recorded by an install receipt.</summary>
+    public static LocalInferencePlan ResolveInstalledPlan(LocalAiResolvedInstall install)
+    {
+        ArgumentNullException.ThrowIfNull(install);
+        LocalAiInstallManifest manifest = install.Manifest;
+        LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.FindInstalled(manifest.RuntimeId)
+            ?? throw new InvalidDataException("The managed llama-server runtime is no longer qualified.");
+        LocalModelInfo model = LocalAiInstalledModel.Resolve(manifest)
+            ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
+        return new LocalInferencePlan(runtime, model, ResolveQualifiedReceipt(manifest, runtime, model),
+            LocalInferenceModelSelectionOrigin.Explicit, manifest.SelectedGpuId);
+    }
+
+    /// <summary>Builds the inspection launch plan using receipt paths for a validated Local AI install.</summary>
     public static LlamaServerRouterLaunchPlan Build(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         int? listenPort = null) =>
-        BuildCore(paths, install, install.ModelPath, verifiedDraftModelPath: null, listenPort);
+        BuildCore(paths, install, install.ModelPath, verifiedDraftModelPath: null, listenPort, verifiedVisionProjectorPath: null);
 
     /// <param name="verifiedDraftModelPath">
     /// The draft checkpoint's handle-resolved physical path, from the same verification
     /// that opened it. Passing the persisted snapshot path instead would let a
     /// snapshot-link replacement change the file llama-server finally opens, which is
     /// exactly what resolving the primary model through its own handle prevents.
+    /// <paramref name="verifiedVisionProjectorPath"/> follows the same rule for the projector.
     /// </param>
     internal static LlamaServerRouterLaunchPlan BuildForVerifiedRuntime(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         string verifiedModelPath,
         string? verifiedDraftModelPath,
-        int? listenPort = null) =>
-        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort);
+        int? listenPort = null,
+        string? verifiedVisionProjectorPath = null) =>
+        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort, verifiedVisionProjectorPath);
 
     private static LlamaServerRouterLaunchPlan BuildCore(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         string modelPath,
         string? verifiedDraftModelPath,
-        int? listenPort)
+        int? listenPort,
+        string? verifiedVisionProjectorPath)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(install);
@@ -64,13 +82,14 @@ public static class LlamaServerRouterConfiguration
         // FindInstalled, not Variants: an installation recorded before the last
         // runtime bump must keep launching until setup upgrades it, instead of being
         // stranded the moment the catalog moves to a newer pinned release.
-        LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.FindInstalled(manifest.RuntimeId)
-            ?? throw new InvalidDataException("The managed llama-server runtime is no longer qualified.");
-        LocalModelInfo model = LocalModelCatalog.FindInstalled(manifest.ModelCatalogId)
-            ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
-
-        LocalInferenceRunProfile profile = ResolveQualifiedReceipt(manifest, runtime, model);
+        LocalInferencePlan installedPlan = ResolveInstalledPlan(install);
+        LocalModelInfo model = installedPlan.Model;
+        LocalInferenceRunProfile profile = installedPlan.Profile;
         string? draftModelPath = ResolveDraftModelPath(manifest, model, verifiedDraftModelPath);
+        // The projector is the last additional asset, after the draft checkpoint.
+        string? visionProjectorPath = model.Recipe.VisionProjector is null
+            ? null
+            : verifiedVisionProjectorPath ?? manifest.AdditionalModelPathsOrEmpty[^1];
 
         string presetPath = paths.ResolveContainedPath(
             Path.GetRelativePath(paths.RootDirectory, paths.RouterPresetPath),
@@ -95,7 +114,7 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            BuildPreset(model, profile, modelPath, draftModelPath),
+            BuildPreset(model, profile, modelPath, draftModelPath, visionProjectorPath),
             model.Id);
     }
 
@@ -131,6 +150,8 @@ public static class LlamaServerRouterConfiguration
         {
             throw new InvalidDataException("The managed local AI architecture and runtime receipt do not match.");
         }
+        if (!string.Equals(runtime.Family, model.RuntimeFamily, StringComparison.Ordinal))
+            throw new InvalidDataException("The managed model requires a different llama-server runtime family.");
         if (!string.Equals(manifest.EngineVersion, runtime.ReleaseTag, StringComparison.Ordinal) ||
             !string.Equals(manifest.ModelAlias, model.Id, StringComparison.Ordinal))
         {
@@ -197,20 +218,23 @@ public static class LlamaServerRouterConfiguration
         if (model.Recipe.DraftWeights is null)
             return null;
         return string.IsNullOrWhiteSpace(verifiedDraftModelPath)
-            ? manifest.AdditionalModelPathsOrEmpty[^1]
+            ? manifest.AdditionalModelPathsOrEmpty[0]
             : verifiedDraftModelPath;
     }
 
-    private static string BuildPreset(
+    internal static string BuildPreset(
         LocalModelInfo model,
         LocalInferenceRunProfile profile,
         string modelPath,
-        string? draftModelPath)
+        string? draftModelPath,
+        string? visionProjectorPath = null)
     {
         if (modelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed model path cannot be represented safely in a llama-server preset.");
         if (draftModelPath is not null && draftModelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed draft model path cannot be represented safely in a llama-server preset.");
+        if (visionProjectorPath is not null && visionProjectorPath.IndexOfAny(['\r', '\n']) >= 0)
+            throw new InvalidDataException("The managed vision projector path cannot be represented safely in a llama-server preset.");
 
         LocalModelRunRecipe recipe = model.Recipe;
         if (recipe.SpeculativeDecoding == SpeculativeDecodingMode.DraftDFlash && draftModelPath is null)
@@ -221,9 +245,11 @@ public static class LlamaServerRouterConfiguration
         preset.AppendLine();
         preset.Append('[').Append(model.Id).AppendLine("]");
         preset.Append("model = ").AppendLine(modelPath);
+        if (visionProjectorPath is not null)
+            preset.Append("mmproj = ").AppendLine(visionProjectorPath);
         preset.AppendLine("load-on-startup = false");
         preset.Append("ctx-size = ").AppendLine(Invariant(profile.ContextTokens));
-        preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.MaximumOutputTokens));
+        preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.GetMaximumOutputTokens(profile.ContextTokens)));
         preset.Append("parallel = ").AppendLine(Invariant(recipe.ParallelRequests));
         preset.Append("cache-type-k = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.KeyCachePrecision));
         preset.Append("cache-type-v = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.ValueCachePrecision));
@@ -237,6 +263,10 @@ public static class LlamaServerRouterConfiguration
         preset.AppendLine("main-gpu = 0");
         preset.AppendLine("fit = off");
         preset.AppendLine("load-mode = dio");
+        if (recipe.PromptCacheMiB is { } cacheMiB)
+            preset.Append("cache-ram = ").AppendLine(Invariant(cacheMiB));
+        if (recipe.MaximumContextCheckpoints is { } checkpoints)
+            preset.Append("ctx-checkpoints = ").AppendLine(Invariant(checkpoints));
         switch (recipe.SpeculativeDecoding)
         {
             case SpeculativeDecodingMode.DraftMtp:
@@ -247,6 +277,8 @@ public static class LlamaServerRouterConfiguration
             case SpeculativeDecodingMode.DraftDFlash:
                 preset.AppendLine("spec-type = draft-dflash");
                 preset.Append("spec-draft-model = ").AppendLine(draftModelPath);
+                if (recipe.DraftGpuLayers is { } draftGpuLayers)
+                    preset.Append("spec-draft-ngl = ").AppendLine(Invariant(draftGpuLayers));
                 preset.Append("spec-draft-n-max = ").AppendLine(Invariant(recipe.SpeculativeDraftMaxTokens));
                 preset.AppendLine("spec-draft-backend-sampling = true");
                 break;

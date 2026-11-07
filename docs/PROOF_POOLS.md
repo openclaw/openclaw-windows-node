@@ -89,3 +89,65 @@ available; Windows PowerShell 5.1 remains the required fallback:
 normal build and pull request validation path. CI runs the full
 malformed-contract matrix separately so local builds keep the documentation
 gate fast.
+
+## Validate local execution evidence
+
+The inventory describes what should run; it does not validate completed proof.
+Exact inventory-owned `run-proof-tests.ps1` recipes emit
+`evidence-summary.json` beside their invocation-specific TRX:
+
+```text
+TestResults/ProofPools/<result-name>/<invocation-id>/
+```
+
+An unbound ad hoc filter still receives strict test-result validation, but it
+does not receive an inventory-bound evidence summary. Follow the inventory's
+exact project, filter, result name, runtime identifier, and environment gates.
+The Gateway recipe requires and records both `OPENCLAW_RUN_E2E=1` and
+`OPENCLAW_RUN_OLLAMA_E2E=1` before execution. The latter enables the selected
+Ollama permission case, which uses a fake loopback server rather than a
+downloaded model or a real Ollama service. Validation checks those recorded
+observations, not the validating shell's current environment. No arbitrary
+environment values are collected.
+
+For inventory-bound runs, custom `-ResultsDirectory` locations must be under
+the repository's `TestResults` or `artifacts` directory, for example
+`-ResultsDirectory .\TestResults\proof-output`. Other locations are rejected
+before test execution so generated reports cannot invalidate source identity.
+Existing summaries outside these roots must be regenerated in a supported
+location. Ad hoc runs without an inventory binding retain custom destinations
+but do not produce pool evidence summaries.
+
+Validate an existing authorized accessibility run locally:
+
+```powershell
+.\scripts\validate-proof-evidence.ps1 `
+  -SummaryPath '.\TestResults\ProofPools\winui-accessibility\<invocation-id>\evidence-summary.json' `
+  -RequiredPoolId windows-winui-interactive `
+  -RequiredCommandId 'windows-winui-interactive/run-accessibility-scan'
+```
+
+The validator checks inventory correspondence, source HEAD/relevant dirty-tree
+digest, invocation/report identity, actual result counts, and artifact hashes.
+Missing required pool/command execution, stale source, altered artifacts,
+blocked runs, or inconsistent reports fail. Generating evidence or checking it
+does not authorize the underlying runtime, host, or publication.
+
+Inventory-bound runs may reference existing repository-contained artifacts
+with `-CaptureArtifact`, `-BinaryArtifact`, `-NativeReceipt`, and
+`-FixtureReceipt`. Only supported PNG, executable/library, named native receipt,
+and fixture `run.json` references are accepted; do not attach arbitrary JSON or
+logs. Reparse-point paths are rejected. Keep the pool's evidence/redaction
+policy even when a file extension is accepted.
+
+**Assurance limit:** a valid summary establishes selected-test execution
+correspondence, not complete pool proof, a signed attestation, image quality,
+host capability, or source-to-binary provenance. `completePoolProof` remains
+false. Native proof's reviewed freeze/source manifest/loaded-binary checks and
+fixture receipt verification remain authoritative. Receipt attachments here
+are digest references only. Missing UI, real Gateway, or MXC assertions stay
+blocked rather than being filled by neighboring unit-test evidence.
+
+Run `.\scripts\test-proof-evidence.ps1` for the synthetic report, controlled
+runner, source-drift, and artifact-correspondence regression cases. It does not
+exercise the actual desktop or Gateway.

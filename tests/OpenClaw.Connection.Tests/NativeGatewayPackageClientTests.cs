@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection.NativeGateway;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -8,6 +11,108 @@ public sealed class NativeGatewayPackageClientTests
     private static readonly NativeGatewayPackage s_package =
         new("OpenClaw.Gateway_123456789abcd", "2026.9.5.5",
             @"C:\package\openclaw.exe", @"C:\package\clawctl.exe");
+
+    [Theory]
+    [InlineData("starting", 0)]
+    [InlineData("unknown", 1)]
+    [InlineData("stopped", 0)]
+    [InlineData("unhealthy", 1)]
+    public async Task StatusPreservesReceiptBeforeListenerReadinessAndOnFailedInspection(string state, int exitCode)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(
+            new NativeGatewayCommandResult(exitCode, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1, command = "gateway-service status", ok = exitCode == 0,
+                integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } },
+                gateway = new { state, launch = new { version = 1, attemptId = "11111111111111111111111111111111" } }
+            }))));
+        var status = await client.StatusAsync(s_package, default);
+        Assert.True(status.SupportsLaunchReceipts);
+        Assert.Equal("11111111111111111111111111111111", status.Launch!.AttemptId);
+        Assert.Empty(status.Listeners);
+        Assert.Null(status.Port);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"version\":2}")]
+    [InlineData("{\"version\":\"1\"}")]
+    public async Task MalformedAdvertisedExtensionCannotDowngradeToLegacy(string advertisement)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(
+            new NativeGatewayCommandResult(0,
+                """{"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1,"gatewayLaunch":ADVERTISEMENT},"gateway":{"state":"stopped"}}"""
+                    .Replace("ADVERTISEMENT", advertisement, StringComparison.Ordinal))));
+        await Assert.ThrowsAsync<NativeGatewayContractException>(() => client.StatusAsync(s_package, default));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"version\":2,\"attemptId\":\"11111111111111111111111111111111\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"00000000000000000000000000000000\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"22222222222222222222222222222222\",\"disposition\":\"created\"}")]
+    [InlineData("{\"version\":1,\"attemptId\":\"11111111111111111111111111111111\",\"disposition\":\"unknown\"}")]
+    public async Task ReceiptStartRejectsMissingMalformedAndMismatchedCreatedReceipt(string receipt)
+    {
+        var root = JsonNode.Parse(
+            """{"schemaVersion":1,"command":"gateway-service start","ok":true,"integration":{"kind":"isolated-session","version":1,"gatewayLaunch":{"version":1}},"gateway":{}}""")!;
+        if (receipt != "missing") root["gateway"]!["launch"] = JsonNode.Parse(receipt);
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(0, root.ToJsonString())));
+        await Assert.ThrowsAsync<NativeGatewayContractException>(() =>
+            client.StartAsync(s_package, "11111111111111111111111111111111", default));
+    }
+
+    [Fact]
+    public async Task CapabilityAbsentStatusRemainsShippingV1WithoutReceipt()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(0,
+            """{"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1},"gateway":{"state":"stopped"}}""")));
+        var status = await client.StatusAsync(s_package, default);
+        Assert.False(status.SupportsLaunchReceipts);
+        Assert.Null(status.Launch);
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("start")]
+    [InlineData("stop")]
+    public async Task FailedLifecycleLogsSanitizedStderrButKeepsItOutOfExceptionMessages(string operation)
+    {
+        var log = new RecordingLogger();
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(3, "not json",
+                "fatal: gateway listener unavailable\nAuthorization: Bearer abcdefghijklmnop0123456789")),
+            log);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => operation switch
+        {
+            "start" => client.StartAsync(s_package, "11111111111111111111111111111111", CancellationToken.None),
+            "stop" => client.StopAsync(s_package, "11111111111111111111111111111111", CancellationToken.None),
+            _ => client.StatusAsync(s_package, CancellationToken.None)
+        });
+
+        Assert.Contains("exit code 3", error.Message);
+        Assert.DoesNotContain("fatal", error.Message);
+        Assert.Contains(log.Warnings,
+            warning => warning.Contains($"clawctl gateway-service {operation}") &&
+                warning.Contains("stderr: fatal: gateway listener unavailable"));
+        Assert.DoesNotContain(log.Warnings, warning => warning.Contains("abcdefghijklmnop0123456789"));
+    }
+
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        public List<string> Warnings { get; } = [];
+        public List<string> Debugs { get; } = [];
+        public void Info(string message) { }
+        public void Debug(string message) => Debugs.Add(message);
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
+    }
 
     [Fact]
     public async Task DetectAcceptsOnlyVersionedIsolatedContract()
@@ -60,6 +165,95 @@ public sealed class NativeGatewayPackageClientTests
 
         Assert.Equal(20123, config.Port);
         Assert.Equal("fixture-token", config.Token);
+    }
+
+    [Fact]
+    public async Task RestorePassesTheSavedTokenOnlyThroughStandardInput()
+    {
+        var client = new NativeGatewayPackageClient((_, args, input, _) =>
+        {
+            Assert.Equal(
+                ["companion", "prepare", "--port", "19001", "--restore-token-stdin", "--json"],
+                args);
+            Assert.Equal("saved-companion-token", input);
+            return Task.FromResult(new NativeGatewayCommandResult(0,
+                """
+                {"ok":true,"schemaVersion":1,"command":"companion prepare",
+                 "integration":{"kind":"isolated-session","version":1},
+                 "companion":{"port":19001,"token":"saved-companion-token"}}
+                """));
+        });
+
+        IsolatedGatewayConfiguration config = await client.RestoreAsync(
+            s_package, 19001, "saved-companion-token", CancellationToken.None);
+
+        Assert.Equal(19001, config.Port);
+        Assert.Equal("saved-companion-token", config.Token);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task CancellationDuringStandardInputTerminatesThePackageProcess()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var start = new ProcessStartInfo(
+            Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add("/d");
+        start.ArgumentList.Add("/s");
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("ping -t 127.0.0.1 >nul");
+        using Process process = Process.Start(start)
+            ?? throw new InvalidOperationException("Cancellation fixture failed to start.");
+        using var cancellation = new CancellationTokenSource();
+
+        Task<NativeGatewayCommandResult> pending =
+            NativeGatewayPackageClient.CompleteInvocationAsync(
+                process,
+                new string('x', 1_000_000),
+                cancellation.Token);
+        Assert.False(pending.IsCompleted);
+
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        Assert.True(process.HasExited);
+    }
+
+    [Theory]
+    [InlineData(1, "stale", "absent", "config-file-missing")]
+    [InlineData(0, "running", "startup-eligible", "gateway-mode-local")]
+    public async Task StatusReturnsTypedRecoveryFactsEvenWhenThePackageNeedsAttention(
+        int exitCode, string sessionState, string readinessState, string readinessReason)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(exitCode, JsonSerializer.Serialize(new
+            {
+                ok = exitCode == 0,
+                schemaVersion = 1,
+                command = "gateway-service status",
+                integration = new { kind = "isolated-session", version = 1 },
+                session = new { state = sessionState },
+                gateway = new
+                {
+                    state = "not-started",
+                    readiness = new { state = readinessState, reason = readinessReason }
+                },
+                error = new { message = "fixture attention" }
+            }))));
+
+        IsolatedGatewayStatus status = await client.StatusAsync(s_package, CancellationToken.None);
+
+        Assert.Equal(sessionState, status.SessionState);
+        Assert.Equal(readinessState, status.ReadinessState);
+        Assert.Equal(readinessReason, status.ReadinessReason);
     }
 
     [Fact]
@@ -145,5 +339,42 @@ public sealed class NativeGatewayPackageClientTests
         Exception? error = await Record.ExceptionAsync(
             () => client.StatusAsync(s_package, CancellationToken.None));
         Assert.Equal(expectedException, error?.GetType());
+    }
+
+    [Fact]
+    public async Task CollectLogsReturnsPackageReportedBundle()
+    {
+        var client = new NativeGatewayPackageClient((_, args, _) =>
+        {
+            Assert.Equal(["collect-logs", "--json"], args);
+            return Task.FromResult(new NativeGatewayCommandResult(0,
+                """
+                {"ok":true,"schemaVersion":1,"command":"collect-logs",
+                 "integration":{"kind":"isolated-session","version":1},
+                 "bundle":{"path":"C:\\pkg\\state\\openclaw-diagnostics-x.zip","included":"host-only",
+                           "notes":["agent/x: not collected"]}}
+                """));
+        });
+
+        NativeGatewayDiagnosticsBundle bundle = await client.CollectLogsAsync(s_package, CancellationToken.None);
+
+        Assert.Equal(@"C:\pkg\state\openclaw-diagnostics-x.zip", bundle.Path);
+        Assert.Equal("host-only", bundle.Included);
+        Assert.Equal(["agent/x: not collected"], bundle.Notes);
+    }
+
+    [Theory]
+    [InlineData(1, """{"ok":false,"schemaVersion":1,"command":"collect-logs","integration":{"kind":"isolated-session","version":1},"error":{"type":"cli_error","message":"fixture failure"}}""", typeof(InvalidOperationException))]
+    [InlineData(0, """{"ok":true,"schemaVersion":1,"command":"status","integration":{"kind":"isolated-session","version":1},"bundle":{"path":"C:\\x.zip","included":"host-only","notes":[]}}""", typeof(NativeGatewayContractException))]
+    public async Task CollectLogsRejectsFailureAndForeignCommand(int exitCode, string response, Type expectedException)
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(exitCode, response)));
+
+        Exception? error = await Record.ExceptionAsync(
+            () => client.CollectLogsAsync(s_package, CancellationToken.None));
+        Assert.Equal(expectedException, error?.GetType());
+        if (exitCode != 0)
+            Assert.Contains("fixture failure", error!.Message, StringComparison.Ordinal);
     }
 }

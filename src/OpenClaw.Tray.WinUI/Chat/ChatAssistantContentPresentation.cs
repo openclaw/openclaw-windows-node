@@ -24,6 +24,22 @@ internal static class ChatAssistantContentProjector
 {
     internal const int MaximumInlineImages = 4;
 
+    public static bool HasSameMedia(
+        ChatAssistantContentPresentation? left,
+        ChatAssistantContentPresentation? right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+        return left is not null && right is not null &&
+            left.Media.Count == right.Media.Count &&
+            left.Media.Zip(right.Media).All(pair =>
+                pair.First.Kind == pair.Second.Kind &&
+                pair.First.DisplayName == pair.Second.DisplayName &&
+                pair.First.MimeType == pair.Second.MimeType &&
+                pair.First.Alt == pair.Second.Alt &&
+                pair.First.Reference.HasSameContent(pair.Second.Reference));
+    }
+
     public static ChatAssistantContentPresentation? Project(
         IEnumerable<ChatMessageContentPartInfo>? contentParts)
     {

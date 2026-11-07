@@ -234,10 +234,10 @@ function Resolve-UsablePathValue {
 }
 
 function Expand-ExecApprovalsHomePath {
-    param([string]$Path, [string]$Home)
-    if ($Path -eq '~') { return $Home }
+    param([string]$Path, [string]$HomePath)
+    if ($Path -eq '~') { return $HomePath }
     if ($Path.StartsWith('~\') -or $Path.StartsWith('~/')) {
-        return Join-Path $Home $Path.Substring(2)
+        return Join-Path $HomePath $Path.Substring(2)
     }
     return $Path
 }
@@ -857,23 +857,22 @@ function Invoke-UninstallSteps {
     try {
         if ($IsDryRun) {
             Add-Step -Name 'reset-onboarding-settings' -Status 'DryRun' `
-                -Message "Would reset Token='', BootstrapToken='', GatewayUrl='ws://localhost:18789'. EnableMcpServer preserved. Tokens: ***REDACTED***"
+                -Message 'Would remove Token, BootstrapToken, and GatewayUrl. EnableMcpServer preserved. Tokens: ***REDACTED***'
         } elseif (-not (Test-Path -LiteralPath $settingsPath)) {
             Add-Step -Name 'reset-onboarding-settings' -Status 'Skipped' `
                 -Message 'settings.json not found.'
         } else {
             $sRaw = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8
             $sObj = $sRaw | ConvertFrom-Json
-            foreach ($field in @('Token', 'BootstrapToken')) {
-                if ($sObj.PSObject.Properties[$field]) { $sObj.$field = '' }
-            }
-            if ($sObj.PSObject.Properties['GatewayUrl']) {
-                $sObj.GatewayUrl = 'ws://localhost:18789'
+            foreach ($field in @('Token', 'BootstrapToken', 'GatewayUrl')) {
+                if ($sObj.PSObject.Properties[$field]) {
+                    $sObj.PSObject.Properties.Remove($field)
+                }
             }
             # EnableMcpServer: NOT touched.
             $sObj | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
             Add-Step -Name 'reset-onboarding-settings' -Status 'Executed' `
-                -Message 'Token=***REDACTED***, BootstrapToken=***REDACTED***, GatewayUrl reset. EnableMcpServer preserved.'
+                -Message 'Token, BootstrapToken, and GatewayUrl removed. EnableMcpServer preserved.'
         }
     } catch {
         $stepErrors.Add("reset-onboarding-settings: $($_.Exception.Message)")

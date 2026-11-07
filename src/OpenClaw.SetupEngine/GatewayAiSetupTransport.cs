@@ -12,25 +12,34 @@ public sealed class GatewayAiSetupTransport(
 {
     public static async Task<IGatewayAiSetupTransport> BorrowNativeAsync(
         string dataDir, GatewayConnectionManager manager, string gatewayId, CancellationToken ct,
-        string? expectedEndpointBinding = null)
+        string? expectedEndpointBinding = null, TimeSpan? readyTimeout = null)
+        => await BorrowAsync(dataDir, manager, gatewayId, ct, expectedEndpointBinding, readyTimeout, requireNative: true);
+
+    public static async Task<IGatewayAiSetupTransport> BorrowAsync(
+        string dataDir, GatewayConnectionManager manager, string gatewayId, CancellationToken ct,
+        string? expectedEndpointBinding = null, TimeSpan? readyTimeout = null, bool requireNative = false,
+        bool readOnlyRequests = false)
     {
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive();
         SetupGatewaySessionBinding.RequireExpected(record, gatewayId, expectedEndpointBinding);
-        if (record?.Id != gatewayId || record.NativePackageFamilyName is null)
+        if (record?.Id != gatewayId || requireNative && record.NativePackageFamilyName is null)
             throw new SetupNativeOwnershipException();
         var binding = new SetupGatewaySessionBinding(record);
         void RequireOwner()
         {
             registry.Load();
+            SetupGatewaySessionBinding.RequireExpected(registry.GetActive(), gatewayId, binding.EndpointBinding);
             binding.RequireCurrent(registry.GetActive());
             if (manager.CurrentSnapshot.GatewayId is { } current && current != gatewayId)
                 throw new SetupNativeOwnershipException();
         }
         using var ready = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        ready.CancelAfter(TimeSpan.FromSeconds(20));
-        while (manager.OperatorClient is not { IsConnectedToGateway: true, HasHandshakeSnapshot: true })
+        ready.CancelAfter(readyTimeout ?? TimeSpan.FromSeconds(20));
+        // hello-ok is visible before the connection owner finishes authenticating it.
+        while (manager.CurrentSnapshot.OperatorState != RoleConnectionState.Connected ||
+               manager.OperatorClient is not { IsConnectedToGateway: true, HasHandshakeSnapshot: true })
         {
             RequireOwner();
             if (manager.CurrentSnapshot.OperatorState is RoleConnectionState.Error or RoleConnectionState.PairingRequired)
@@ -38,11 +47,19 @@ public sealed class GatewayAiSetupTransport(
             await Task.Delay(100, ready.Token);
         }
         RequireOwner();
-        var borrowed = await manager.RequireNativeSetupClientAsync(record, ct);
+        var borrowed = record.NativePackageFamilyName is not null
+            ? await manager.RequireNativeSetupClientAsync(record, ct, allowRuntimeStart: !readOnlyRequests)
+            : manager.ConcreteOperatorClient ?? throw new InvalidOperationException("The Gateway connection owner is unavailable.");
         var identity = registry.GetIdentityDirectory(gatewayId);
+        GatewayAiSetupRoute? admitted = null;
         GatewayAiSetupRoute CaptureRoute()
         {
             RequireOwner();
+            if (admitted is not null)
+                SetupCompletionAuthority.RequirePersistedIdentity(identity, admitted.IdentityBinding);
+            if (readOnlyRequests && (!ReferenceEquals(borrowed, manager.ConcreteOperatorClient) ||
+                !borrowed.IsConnectedToGateway || !borrowed.HasHandshakeSnapshot))
+                throw new SetupNativeReadinessExpiredException();
             if (!ReferenceEquals(borrowed, manager.ConcreteOperatorClient))
                 throw new SetupNativeOwnershipException();
             var route = binding.GetRoute(registry.GetActive(), identity,
@@ -50,7 +67,7 @@ public sealed class GatewayAiSetupTransport(
             SetupCompletionAuthority.RequirePersistedIdentity(identity, route.IdentityBinding);
             return route;
         }
-        var admitted = CaptureRoute();
+        admitted = CaptureRoute();
         GatewayAiSetupRoute Route()
         {
             var current = CaptureRoute();
@@ -58,7 +75,12 @@ public sealed class GatewayAiSetupTransport(
             return current;
         }
         return new GatewayAiSetupTransport(borrowed, Route,
-            async token => { await manager.RequireNativeSetupClientAsync(record, token); },
+            async token =>
+            {
+                RequireOwner();
+                if (record.NativePackageFamilyName is not null)
+                    await manager.RequireNativeSetupClientAsync(record, token, allowRuntimeStart: !readOnlyRequests);
+            },
             expected =>
             {
                 RequireOwner();
@@ -69,6 +91,7 @@ public sealed class GatewayAiSetupTransport(
     }
 
     public GatewayAiSetupRoute Route => routeProvider();
+    public OpenClawGatewayClient ConnectionClient => client;
     public long Generation => client.ServerHandshakeGeneration;
     public bool IsConnected => client.IsConnectedToGateway && client.HasHandshakeSnapshot;
     public IReadOnlyCollection<string> Methods => client.AdvertisedServerMethods;
@@ -82,7 +105,16 @@ public sealed class GatewayAiSetupTransport(
             throw new SetupNativeOwnershipException();
     }
 
-    public async Task<JsonElement> RequestAsync(string method, object? parameters, int timeoutMs, CancellationToken cancellationToken)
+    public Task<JsonElement> RequestAsync(string method, object? parameters, int timeoutMs, CancellationToken cancellationToken) =>
+        RequestCoreAsync(method, parameters, timeoutMs, cancellationToken, drainMutation: false);
+
+    public Task<JsonElement> RequestMutationAsync(string method, object parameters, int timeoutMs,
+        CancellationToken cancellationToken, Action? beforeDispatch = null) =>
+        RequestCoreAsync(method, parameters, timeoutMs, cancellationToken, drainMutation: true, beforeDispatch);
+
+    private async Task<JsonElement> RequestCoreAsync(
+        string method, object? parameters, int timeoutMs, CancellationToken cancellationToken, bool drainMutation,
+        Action? beforeDispatch = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var route = routeProvider();
@@ -90,9 +122,12 @@ public sealed class GatewayAiSetupTransport(
             await authorize(cancellationToken);
         if (routeProvider() != route)
             throw new SetupNativeOwnershipException();
+        cancellationToken.ThrowIfCancellationRequested();
         // Cancelling the local wait never implies rollback of an admitted gateway
         // operation. The focused client retains its session for cancel/reconciliation.
-        var result = await client.SendWizardRequestAsync(method, parameters, timeoutMs).WaitAsync(cancellationToken);
+        beforeDispatch?.Invoke();
+        var request = client.SendWizardRequestAsync(method, parameters, timeoutMs);
+        var result = drainMutation ? await request : await request.WaitAsync(cancellationToken);
         if (routeProvider() != route)
             throw new InvalidOperationException("The setup Gateway authority changed during the request.");
         return result;

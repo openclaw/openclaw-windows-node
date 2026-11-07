@@ -33,7 +33,7 @@ function Assert-Contains {
         [Parameter(Mandatory)][string]$Message
     )
 
-    if (-not $Text.Contains($Expected, [StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Expected, [StringComparison]::Ordinal) -lt 0) {
         throw $Message
     }
 }
@@ -45,7 +45,7 @@ function Assert-NotContains {
         [Parameter(Mandatory)][string]$Message
     )
 
-    if ($Text.Contains($Unexpected, [StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Unexpected, [StringComparison]::Ordinal) -ge 0) {
         throw $Message
     }
 }
@@ -210,6 +210,8 @@ $codeQlPullRequestBranches = @(Get-InlineYamlList -Text $codeQlPullRequest -Name
 $codeQlPullRequestPaths = @(Get-YamlBlockList -Text $codeQlPullRequest -Name "paths")
 
 $expectedCodeQlPaths = @(
+    ".gitattributes",
+    "**/.gitattributes",
     ".github/codeql/**",
     ".github/workflows/**",
     "src/**",
@@ -223,8 +225,8 @@ $expectedCodeQlPaths = @(
     "package.json",
     "package-lock.json"
 )
-if (($codeQlPushBranches -join ",") -ne "main,master") {
-    throw "CodeQL branch pushes must be limited to main and master."
+if (($codeQlPushBranches -join ",") -ne "master") {
+    throw "CodeQL branch pushes must be limited to master; main uses scheduled scans."
 }
 if (($codeQlPushTags -join ",") -ne "**") {
     throw "CodeQL must preserve scanning for all tag pushes."
@@ -240,10 +242,14 @@ if (($codeQlPullRequestPaths -join "`n") -cne ($expectedCodeQlPaths -join "`n"))
 }
 $codeQlTriggerCases = @(
     @{ Name = "feature branch code push"; Event = "push"; Ref = "feature/example"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
-    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
     @{ Name = "master code push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
     @{ Name = "release tag push"; Event = "push"; Ref = "refs/tags/v2026.9.3"; Path = "docs/release.md"; Expected = $true },
     @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "root attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".gitattributes"; Expected = $true },
+    @{ Name = "nested attributes pull request"; Event = "pull_request"; Ref = "main"; Path = "src/.gitattributes"; Expected = $true },
+    @{ Name = "hidden attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/.gitattributes"; Expected = $true },
+    @{ Name = "master attributes push"; Event = "push"; Ref = "master"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
     @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
     @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
@@ -261,16 +267,16 @@ foreach ($case in $codeQlTriggerCases) {
 foreach ($requiredToken in @(
         "workflow_dispatch:",
         "schedule:",
-        'cron: "29 6 * * 1"',
+        'cron: "29 */6 * * *"',
         "profile:",
         "default: all",
         "type: choice",
         'group: codeql-${{ github.workflow }}-',
+        "github.event_name == 'schedule' && 'schedule'",
         "cancel-in-progress: `${{ github.event_name == 'pull_request' }}",
         "actions: read",
         "contents: read",
         "security-events: write",
-        'if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ]; then',
         "inputs.profile == 'csharp'",
         "languages: csharp",
         "build-mode: manual",
@@ -286,26 +292,22 @@ foreach ($requiredToken in @(
         -Expected $requiredToken `
         -Message "CodeQL workflow is missing required contract '$requiredToken'."
 }
-Assert-NotContains `
-    -Text $codeQlWorkflow `
-    -Unexpected "inputs.advanced_setup" `
-    -Message "CodeQL advanced setup must not bypass the repository-variable gate."
+# Fork pull requests do not receive the repository variable used by the retired
+# setup-migration gate. Eligibility must depend only on draft/profile context.
+foreach ($retiredGate in @("advanced-setup", "OPENCLAW_CODEQL_ADVANCED_SETUP", "inputs.advanced_setup")) {
+    Assert-NotContains `
+        -Text $codeQlWorkflow `
+        -Unexpected $retiredGate `
+        -Message "CodeQL must not depend on the retired migration gate '$retiredGate'."
+}
 foreach ($jobName in @("csharp", "actions")) {
     $codeQlJob = Get-JobBlock -Name $jobName -Text $codeQlWorkflow
+    $expectedEligibility = "if: `${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == '$jobName') }}"
     Assert-Contains `
         -Text $codeQlJob `
-        -Expected "needs: advanced-setup" `
-        -Message "CodeQL job '$jobName' must depend on the advanced-setup gate."
-    Assert-Contains `
-        -Text $codeQlJob `
-        -Expected "needs.advanced-setup.outputs.enabled == 'true'" `
-        -Message "CodeQL job '$jobName' must remain disabled until the repository variable enables advanced setup."
+        -Expected $expectedEligibility `
+        -Message "CodeQL job '$jobName' must admit non-draft fork PRs without repository variables and preserve manual profiles."
 }
-$codeQlGateJob = Get-JobBlock -Name "advanced-setup" -Text $codeQlWorkflow
-Assert-Contains `
-    -Text $codeQlGateJob `
-    -Expected 'echo "enabled=false" >> "$GITHUB_OUTPUT"' `
-    -Message "CodeQL gate must explicitly disable advanced analysis when the repository variable is not true."
 
 Assert-Contains `
     -Text $workflow `
@@ -317,6 +319,22 @@ Assert-Contains `
     -Message "CI cancellation must apply only to pull_request runs."
 
 $classificationJob = Get-JobBlock "change-classification"
+$classificationGuard = [regex]::Match(
+    $classificationJob,
+    '(?ms)^        if \(\$impact\.classification -notin @\([^\r\n]+\)\) \{\r?\n.*?^        \}')
+if (-not $classificationGuard.Success) {
+    throw "Classification output must retain its fail-closed admission guard."
+}
+$guard = [scriptblock]::Create($classificationGuard.Value)
+foreach ($classification in @("docs_only", "fast_only", "targeted", "full", "", "unknown")) {
+    $impact = [pscustomobject]@{ classification = $classification }
+    $accepted = $true
+    try { & $guard } catch { $accepted = $false }
+    $expected = $classification -in @("docs_only", "fast_only", "targeted", "full")
+    if ($accepted -ne $expected) {
+        throw "Workflow classification guard expected '$classification' accepted=$expected."
+    }
+}
 foreach ($token in @(
         "fetch-depth: 0",
         "./scripts/Get-CiChangeClassification.ps1",
@@ -338,12 +356,22 @@ foreach ($token in @(
 }
 
 $fastValidationJob = Get-JobBlock "fast-validation"
+$triageStep = Get-StepBlock -Text $fastValidationJob -Name "Test repository triage automation and dashboard"
+Assert-Contains -Text $triageStep `
+    -Expected "run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs" `
+    -Message "The exact fast-only tooling suite must run in fast-validation."
+foreach ($token in @("if:", "continue-on-error:")) {
+    Assert-NotContains -Text $triageStep -Unexpected $token `
+        -Message "Fast-only tooling tests must not be conditional or tolerate failures."
+}
 foreach ($token in @(
         "Ensure .squad stays untracked",
         "node --test .github/scripts/repository-triage.test.cjs",
         "./scripts/validate-docs.ps1",
         "./scripts/validate-agent-skills.ps1",
         "./scripts/test-agent-skills-validator.ps1",
+        "./scripts/test-proof-evidence.ps1",
+        "./scripts/test-agent-readiness.ps1",
         "./scripts/test-ci-change-classifier.ps1",
         "./scripts/test-ci-gate-results.ps1",
         "./scripts/test-ci-workflow-contract.ps1",
@@ -358,6 +386,12 @@ foreach ($token in @(
 }
 
 $proofJob = Get-JobBlock "proof-pool-contracts"
+foreach ($job in @($fastValidationJob, $proofJob)) {
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    if ($jobHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
+        throw "Fast validation and proof-pool contracts must remain unconditional required jobs."
+    }
+}
 foreach ($token in @(
         "./scripts/Get-CiProofPoolRegressionDecision.ps1",
         "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
@@ -428,6 +462,11 @@ foreach ($lane in $testLanes.GetEnumerator()) {
 }
 
 $coreJob = Get-JobBlock "core-tests"
+$sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
+Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
+    -Message "Shared tests must have a bounded CI step."
+Assert-Contains -Text $sharedTestStep -Expected "-HangTimeoutSeconds 300" `
+    -Message "Shared tests must collect the interrupted test sequence on a five-minute hang."
 $coreCacheStep = Get-StepBlock -Text $coreJob -Name "Cache NuGet packages"
 foreach ($token in @(
         "Configure core NuGet cache",
@@ -506,6 +545,19 @@ foreach ($token in @(
     Assert-Contains -Text $trayJob -Expected $token -Message "Tray lane is missing '$token'."
 }
 
+$devSettingsStep = Get-StepBlock -Text $trayJob -Name "Run Dev containment settings tests"
+foreach ($token in @(
+        "dotnet test tests/OpenClaw.Tray.Tests",
+        "-p:DevBuild=true",
+        "FullyQualifiedName~SettingsManagerIsolationTests",
+        "FullyQualifiedName~AppRefactorContractTests.SandboxPage_",
+        "OpenClaw.Tray.DevSettings.Tests.trx"
+    )) {
+    Assert-Contains -Text $devSettingsStep -Expected $token -Message "Dev settings coverage is missing '$token'."
+}
+Assert-NotContains -Text $devSettingsStep -Unexpected "--no-build" `
+    -Message "Dev settings tests must recompile the linked AppIdentity source with DEV_BUILD."
+
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
         "Install WindowsAppRuntime",
@@ -516,12 +568,173 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof"' `
-    -Message "Tray UI tests must exclude accessibility and native-onboarding proof cases."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"' `
+    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding and strict Gateway fixture lanes."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+$trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
+Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
+    -Message "Tray UI crash metadata must be bounded by an explicit start time."
+Assert-NotContains -Text $uiJob -Unexpected 'path: .ci-pipeline' `
+    -Message 'Nested pipeline checkout must not enter the product source manifest.'
+$trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
+foreach ($token in @(
+        "if: always()",
+        "steps.tray-ui-crash-window.outcome == 'success'",
+        'git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"',
+        '$LASTEXITCODE -ne 0',
+        'Join-Path $env:RUNNER_TEMP',
+        '& $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
+        "TRAY_UI_TEST_STARTED_UTC"
+    )) {
+    Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
+        -Message "Tray UI crash metadata capture is missing '$token'."
+}
+if ($uiJob.IndexOf('name: Mark Tray UI crash metadata window', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run Tray UI Tests', [StringComparison]::Ordinal) -or
+    $uiJob.IndexOf('name: Run Tray UI Tests', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Capture non-memory Tray UI crash metadata', [StringComparison]::Ordinal)) {
+    throw 'Tray UI crash metadata must bracket only the Tray UI test run.'
+}
+$crashMetadataScript = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Capture-CiTestHostCrashMetadata.ps1') -Raw
+foreach ($token in @(
+        'LogName = "Application"',
+        'Id = 1000',
+        'ExceptionCode',
+        'FaultingOffset',
+        'ModuleName',
+        'Get-WinEvent'
+    )) {
+    Assert-Contains -Text $crashMetadataScript -Expected $token `
+        -Message "Non-memory Tray UI crash metadata must include '$token'."
+}
+foreach ($token in @('LocalDumps', 'MiniDumpWriteDump', 'Get-WinEvent -LogName "Security"')) {
+    Assert-NotContains -Text $crashMetadataScript -Unexpected $token `
+        -Message "Tray UI crash metadata must not collect memory dumps or unrelated event logs: '$token'."
+}
+. (Join-Path $repoRootPath 'scripts\Capture-CiTestHostCrashMetadata.ps1')
+$syntheticCrashEvent = @'
+<Event><EventData>
+  <Data Name="AppName">testhost.exe</Data>
+  <Data Name="AppPath">C:\runner\temp\testhost.exe</Data>
+  <Data Name="ModuleName">C:\Windows\System32\KERNELBASE.dll</Data>
+  <Data Name="ExceptionCode">0xc0000005</Data>
+  <Data Name="FaultingOffset">0x0000000000001234</Data>
+  <Data Name="Message">must-not-be-emitted</Data>
+</EventData></Event>
+'@
+$syntheticMetadata = ConvertTo-CiTestHostCrashMetadata `
+    -EventXml $syntheticCrashEvent `
+    -EventId 1000 `
+    -TimeCreated ([DateTimeOffset]::UtcNow)
+if ($syntheticMetadata.application -ne 'testhost.exe' -or
+    $syntheticMetadata.faultingModule -ne 'KERNELBASE.dll' -or
+    $syntheticMetadata.exceptionCode -ne '0xc0000005' -or
+    $syntheticMetadata.faultingOffset -ne '0x0000000000001234' -or
+    $syntheticMetadata.PSObject.Properties.Name -contains 'Message' -or
+    $syntheticMetadata.PSObject.Properties.Name -contains 'path') {
+    throw 'Tray UI crash metadata must retain only the whitelisted process-failure fields.'
+}
+$syntheticNonTestEvent = @'
+<Event><EventData>
+  <Data Name="AppName">notepad.exe</Data>
+  <Data Name="ModuleName">C:\Windows\System32\KERNELBASE.dll</Data>
+  <Data Name="ExceptionCode">0xc0000005</Data>
+</EventData></Event>
+'@
+if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
+            -EventXml $syntheticNonTestEvent `
+            -EventId 1000 `
+            -TimeCreated ([DateTimeOffset]::UtcNow))) {
+    throw 'Tray UI crash metadata must exclude unrelated application failures.'
+}
+
+$fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
+foreach ($token in @(
+        'timeout-minutes: 30',
+        './scripts/test-gateway-fixture.ps1',
+        '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
+        '-ArtifactsDirectory .\TestResults\GatewayFixture',
+        '-Screenshots'
+    )) {
+    Assert-Contains -Text $fixtureStep -Expected $token -Message "Mock Gateway CI step is missing '$token'."
+}
+$accessibilityStep = Get-StepBlock -Text $uiJob -Name "Run Accessibility Tests (Axe.Windows)"
+Assert-Contains -Text $accessibilityStep `
+    -Expected "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}" `
+    -Message "Accessibility scans must run after fixture failures when their build, runtime, and desktop prerequisites succeeded."
+foreach ($token in @('continue-on-error:', 'OPENCLAW_RUN_MXC_E2E', 'OPENCLAW_RUN_E2E')) {
+    Assert-NotContains -Text $fixtureStep -Unexpected $token -Message "Mock Gateway CI must run by default without real Gateway opt-ins: '$token'."
+}
+Assert-Contains -Text $uiJob -Expected 'runs-on: windows-latest' `
+    -Message "Mock Gateway application scenarios must use the ordinary Windows hosted runner."
+if ($uiJob.IndexOf('name: Install WindowsAppRuntime', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -or
+    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Verify DevBuild identity marker', [StringComparison]::Ordinal)) {
+    throw 'Mock Gateway scenarios must run after matching WindowsAppRuntime installation and before DevBuild changes the app identity.'
+}
+$runtimeStep = Get-StepBlock -Text $uiJob -Name 'Install WindowsAppRuntime'
+foreach ($token in @('Directory.Build.props', 'MicrosoftWindowsAppSDKVersion', '$channel/$version/windowsappruntimeinstall-x64.exe', '$LASTEXITCODE -ne 0')) {
+    Assert-Contains -Text $runtimeStep -Expected $token -Message "UI runtime installation must match the candidate SDK and fail closed: '$token'."
+}
+$desktopStep = Get-StepBlock -Text $uiJob -Name 'Configure UI desktop'
+Assert-Contains -Text $desktopStep -Expected './scripts/Set-CiDesktopResolution.ps1' `
+    -Message 'Hosted UI proof must configure and verify the desktop before launching tests.'
+Assert-NotContains -Text $desktopStep -Unexpected 'continue-on-error:' `
+    -Message 'Unsupported hosted desktop geometry must fail explicitly.'
+if ($uiJob.IndexOf('name: Configure UI desktop', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run Functional UI Tests', [StringComparison]::Ordinal)) {
+    throw 'Hosted desktop geometry must be configured before any UI tests run.'
+}
+Assert-Contains -Text $fixtureStep `
+    -Expected "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}" `
+    -Message 'Fixture evidence must run after unrelated test failures, but require every launch prerequisite.'
+foreach ($entry in @(
+    @{ name = 'Build UI test projects'; id = 'ui-build' },
+    @{ name = 'Install WindowsAppRuntime'; id = 'ui-runtime' },
+    @{ name = 'Configure UI desktop'; id = 'ui-desktop' }
+)) {
+    Assert-Contains -Text (Get-StepBlock -Text $uiJob -Name $entry.name) -Expected "id: $($entry.id)" `
+        -Message "Fixture launch prerequisite must expose its real step outcome: '$($entry.id)'."
+}
+$screenshotPreparation = Get-StepBlock -Text $uiJob -Name 'Prepare mock Gateway screenshot publisher'
+foreach ($token in @('always()', "steps.gateway-fixture.outcome == 'failure'", 'npm ci', '--ignore-scripts')) {
+    Assert-Contains -Text $screenshotPreparation -Expected $token -Message "Screenshot uploader preparation must run after failed fixtures and use locked dependencies: '$token'."
+}
+Assert-NotContains -Text $screenshotPreparation -Unexpected "steps.gateway-fixture.outcome == 'success'" `
+    -Message 'Successful fixture runs must keep screenshots only in the complete diagnostic archive.'
+$screenshotPublication = Get-StepBlock -Text $uiJob -Name 'Publish browsable mock Gateway screenshots'
+foreach ($token in @('always()', "steps.screenshot-publisher.outcome == 'success'", 'actions/github-script@v9', 'await report.run({ core, context })')) {
+    Assert-Contains -Text $screenshotPublication -Expected $token -Message "Screenshot previews must publish after test failures through the Actions artifact runtime: '$token'."
+}
+Assert-NotContains -Text $screenshotPublication -Unexpected 'continue-on-error:' `
+    -Message 'Screenshot publication failures must remain visible failures.'
+$uiUpload = Get-StepBlock -Text $uiJob -Name 'Upload Test Results'
+foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
+    Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
+}
+$fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
+$releasedProfileStep = Get-StepBlock -Text $uiJob -Name 'Run latest stable profile compatibility'
+foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
+        'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
+    Assert-Contains -Text $releasedProfileStep -Expected $token `
+        -Message "Released-profile proof must use a verified portable baseline and retain provenance: '$token'."
+}
+Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'" `
+    -Message 'Released-profile proof must select and admit the actual compatibility scenario.'
+foreach ($token in @(
+        "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
+        "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
+        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof",
+        "`$start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if (`$EnableKeyboardProof) { '1' } else { '0' }",
+        '[int]$counters.total -le 0 -or [int]$counters.passed -ne [int]$counters.total'
+    )) {
+    Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture runner lost its explicit-app, category or all-pass contract: '$token'."
+}
 foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-dump-type"', '"none"')) {
     Assert-Contains -Text $runner -Expected $token `
         -Message "CI test runner is missing hang diagnostic argument '$token'."
@@ -541,7 +754,10 @@ foreach ($requiredRunnerToken in @(
         '"trx;LogFileName=$TrxFileName"',
         'dotnet-coverage collect',
         '--output-format cobertura',
-        '& dotnet @testArguments'
+        '& dotnet @testArguments',
+        'New-TestInvocation',
+        'Read-TestResultContract',
+        '-AllowSkipped'
     )) {
     Assert-Contains `
         -Text $runner `
@@ -553,16 +769,19 @@ $e2eLanes = [ordered]@{
     "setup-e2e" = @{
         Output = "setup_e2e"
         Name = "setup-connect"
+        Step = "Run setup and connect E2E tests"
         Filter = "OpenClaw.E2ETests.Setup.SetupAndConnectTests"
     }
     "revocation-e2e" = @{
         Output = "revocation_e2e"
         Name = "revocation-recovery"
+        Step = "Run revocation recovery E2E tests"
         Filter = "OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests"
     }
     "network-e2e" = @{
         Output = "network_e2e"
         Name = "network-recovery"
+        Step = "Run network recovery E2E tests"
         Filter = "OpenClaw.E2ETests.Setup.NetworkRecoveryTests"
     }
 }
@@ -572,6 +791,10 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($lane.Value.Output) == 'true'",
             "OPENCLAW_RUN_E2E: 1",
+            'OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}',
+            'GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}',
+            "name: e2e-test-results-$($lane.Value.Name)",
+            'TestResults/E2E/gateway-release.json',
             "./scripts/Invoke-CiE2e.ps1",
             "-Name $($lane.Value.Name)",
             $lane.Value.Filter,
@@ -582,6 +805,53 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             -Expected $token `
             -Message "E2E lane '$($lane.Key)' is missing '$token'."
     }
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-Contains -Text $jobHeader -Expected 'timeout-minutes: 25' `
+        -Message "E2E lane '$($lane.Key)' must leave a stalled job bounded to 25 minutes."
+    $testStep = Get-StepBlock -Text $job -Name $lane.Value.Step
+    Assert-Contains -Text $testStep -Expected 'timeout-minutes: 20' `
+        -Message "E2E lane '$($lane.Key)' must stop stalled tests before the job deadline."
+    $uploadStep = Get-StepBlock -Text $job -Name 'Upload E2E Test Results & Logs'
+    Assert-Contains -Text $uploadStep -Expected 'if: always()' `
+        -Message "E2E lane '$($lane.Key)' must upload diagnostics after a test timeout."
+    Assert-NotContains -Text $jobHeader -Unexpected 'continue-on-error:' `
+        -Message "WSL Latest must be required in '$($lane.Key)'."
+    Assert-NotContains -Text $jobHeader -Unexpected 'strategy:' `
+        -Message "WSL lane '$($lane.Key)' must run once, without a packaged Gateway matrix."
+    Assert-NotContains -Text $job -Unexpected 'Resolve-CiGateway.ps1' `
+        -Message 'E2E shards must consume the workflow snapshot, never re-resolve moving selectors.'
+}
+$classification = Get-JobBlock 'change-classification'
+foreach ($output in @('gateway_version: ${{ steps.gateway.outputs.version }}', 'gateway_release: ${{ steps.gateway.outputs.release }}')) {
+    Assert-Contains -Text $classification -Expected $output `
+        -Message 'CI must forward the exact WSL Latest version and provenance to every E2E job.'
+}
+$snapshot = Get-StepBlock -Text $classification -Name 'Snapshot latest WSL Gateway baseline'
+Assert-Contains -Text $snapshot -Expected './scripts/Resolve-CiGateway.ps1' `
+    -Message 'CI must resolve the WSL Latest baseline once.'
+Assert-NotContains -Text $snapshot -Unexpected 'continue-on-error:' `
+    -Message 'An unresolved baseline must fail CI rather than fall back.'
+Assert-NotContains -Text $workflow -Unexpected 'packaging_release' `
+    -Message 'WSL CI must not select a native packaging release.'
+Assert-NotContains -Text $workflow -Unexpected 'gateway_matrix' `
+    -Message 'WSL CI must not restore the native Packaged/Latest matrix.'
+$gatewayResolver = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Resolve-CiGateway.ps1') -Raw
+foreach ($token in @(
+        'Resolve-GatewayNpmRelease -Selector latest',
+        '"version=$($release.version)"',
+        '"release=$($release | ConvertTo-Json -Compress)"',
+        "'gateway-release.json'"
+    )) {
+    Assert-Contains -Text $gatewayResolver -Expected $token `
+        -Message "WSL baseline resolution is missing '$token'."
+}
+foreach ($token in @('GatewayPackagedRelease', 'PackagingRelease', 'Save-PackagedGatewayArchive', 'gateway-matrix.json')) {
+    Assert-NotContains -Text $gatewayResolver -Unexpected $token `
+        -Message 'WSL Latest resolution must not depend on native MSIX releases or downloads.'
+}
+foreach ($lane in @('setup_e2e', 'revocation_e2e', 'network_e2e')) {
+    Assert-Contains -Text $snapshot -Expected "steps.classify.outputs.$lane == 'true'" `
+        -Message 'Baseline resolution must run only when an E2E lane needs it.'
 }
 foreach ($proofName in @(
         "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
@@ -642,10 +912,21 @@ $releaseBuilds = [ordered]@{
         Native = "Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime -SkipNativeLoadProbe"
     }
 }
+function Assert-JobDependencies {
+    param([string]$Name, [string[]]$Expected)
+    $job = Get-JobBlock $Name
+    $match = [regex]::Match($job, '(?m)^    needs:\s*\[([^\]]+)\]')
+    if (!$match.Success) { throw "Missing dependency list for $Name." }
+    $actual = @($match.Groups[1].Value.Split(',') | ForEach-Object { $_.Trim() })
+    if (Compare-Object $Expected $actual) {
+        throw "Unexpected dependencies for ${Name}: $($actual -join ', ')."
+    }
+}
+
 foreach ($build in $releaseBuilds.GetEnumerator()) {
     $job = Get-JobBlock $build.Key
+    Assert-JobDependencies -Name $build.Key -Expected @('change-classification', 'metadata', 'sign-cleanup-host')
     foreach ($token in @(
-            "needs: [change-classification, metadata]",
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($build.Value.Output) == 'true'",
             "runs-on: $($build.Value.Runner)",
@@ -662,9 +943,29 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Message "Release builds must start in parallel with tests and E2E."
 }
 
+foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
+    $job = Get-JobBlock $jobName
+    $jobEnvironment = [regex]::Match($job, '(?ms)^    env:\r?\n.*?(?=^    \S|\z)')
+    if (-not $jobEnvironment.Success) {
+        throw "Release build '$jobName' is missing its job environment."
+    }
+    Assert-NotContains -Text $jobEnvironment.Value -Unexpected 'runner.' `
+        -Message "Release build '$jobName' must not use the unavailable runner context in job-level env."
+    $download = Get-StepBlock -Text $job -Name 'Download signed cleanup host'
+    Assert-Contains -Text $download `
+        -Expected 'path: ${{ runner.temp }}\signed-cleanup-host' `
+        -Message "Release build '$jobName' must download the signed helper outside the checkout to preserve clean-source provenance."
+    $binding = Get-StepBlock -Text $job -Name 'Bind signed cleanup host path'
+    Assert-Contains -Text $binding -Expected "if: needs.sign-cleanup-host.result == 'success'" `
+        -Message "Release build '$jobName' must bind its helper only after successful signing."
+    Assert-Contains -Text $binding `
+        -Expected '"OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV' `
+        -Message "Release build '$jobName' must export the runner-temporary helper path for subsequent build steps."
+}
+
 $buildMsixJob = Get-JobBlock "build-msix"
+Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version]",
         "needs.metadata.result == 'success'",
         "(needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped')",
         "needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
@@ -692,7 +993,7 @@ foreach ($token in @(
         '-MsixBaseVersion $info.packageBaseVersion',
         '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"',
         'Assert-MsixVersionInfo',
-        '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+        '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
         'refusing to build with a fallback version',
         '-CertificateThumbprint $thumbprint',
         'name: openclaw-msix-store-unsigned-${{ matrix.architecture }}',
@@ -724,7 +1025,7 @@ foreach ($token in @(
     'name: openclaw-msix-store-unsigned-bundle',
     'path: artifacts/msix/bundle/OpenClaw.msixbundle',
     'Assert-MsixVersionInfo',
-    '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+    '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
     'refusing to bundle with a fallback version'
 )) {
     Assert-Contains -Text $buildMsixBundleJob -Expected $token -Message "MSIX bundle lane is missing '$token'."
@@ -743,7 +1044,7 @@ foreach ($token in @(
     'contents: write', 'persist-credentials: false',
     'versionInfo: ${{ steps.reserve.outputs.versionInfo }}',
     'sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}',
-    '-SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
+    '-SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
 )) {
     Assert-Contains -Text $reserveMsixJob -Expected $token -Message "Official MSIX allocation is missing '$token'."
 }
@@ -772,11 +1073,16 @@ function Convert-MsixGuard {
         Replace('needs.metadata.result', '$metadataResult').
         Replace('github.repository', '$repository').
         Replace('github.event_name', '$eventName').
-        Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
-    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled)' + "`n($condition)")
+        Replace('inputs.promotion_alpha', '$promotionAlpha').
+        Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
+    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled,$promotionAlpha = '''')' + "`n($condition)")
 }
 $reserveGuard = Convert-MsixGuard $reserveMsixJob
 $previewGuard = Convert-MsixGuard $previewStep
+if (-not (& $reserveGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93') -or
+    (& $previewGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93')) {
+    throw 'Validated main-based promotion must reserve an official version, not use a preview.'
+}
 foreach ($repository in @('openclaw/openclaw-windows-node', 'contributor/openclaw-windows-node')) {
     foreach ($ref in @('refs/tags/v2026.9.4', 'refs/tags/v2026.9.4-1', 'refs/tags/v2026.9.4-alpha.1', 'refs/heads/main', 'refs/pull/1/merge', 'refs/tags/msix-package/2026.9.4/401')) {
         foreach ($eventName in @('push', 'workflow_dispatch', 'pull_request', 'pull_request_target')) {
@@ -800,6 +1106,14 @@ foreach ($token in @(
         "if: `${{ always() }}",
         "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
+        "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
+        "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
+        "FAST_VALIDATION_RESULT: `${{ needs.fast-validation.result }}",
+        "PROOF_POOL_CONTRACTS_RESULT: `${{ needs.proof-pool-contracts.result }}",
+        "-ClassificationResult `$env:CLASSIFICATION_RESULT",
+        "-Classification `$env:CLASSIFICATION",
+        "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+        "-ProofPoolContractsResult `$env:PROOF_POOL_CONTRACTS_RESULT",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
@@ -818,10 +1132,28 @@ foreach ($token in @(
     Assert-Contains -Text $ciGateJob -Expected $token -Message "Stable CI Gate is missing '$token'."
 }
 
+$releasePreparationJob = Get-JobBlock "prepare-release-assets"
+foreach ($token in @(
+        "needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs.reserve-msix-version.result == 'success'",
+        "needs.proof-pool-contracts.result == 'success'",
+        "needs.core-tests.result == 'success'",
+        "needs.tray-tests.result == 'success'",
+        "group: openclaw-windows-node-release-preparation",
+        "name: Upload prepared release assets",
+        "name: openclaw-release-assets",
+        "compression-level: 0",
+        "if-no-files-found: error"
+    )) {
+    Assert-Contains -Text $releasePreparationJob -Expected $token -Message "Release preparation is missing '$token'."
+}
+Assert-NotContains -Text $releasePreparationJob -Unexpected "ci-gate" -Message "Release preparation must overlap the long CI tail."
+
 $releaseJob = Get-JobBlock "release"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]",
+        "needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]",
         "needs.reserve-msix-version.result == 'success'",
+        "needs.prepare-release-assets.result == 'success'",
         "needs.build-msix-bundle.result == 'success'",
         "needs.ci-gate.result == 'success'",
         "needs.metadata.outputs.semVer",
@@ -830,24 +1162,40 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $releaseJob -Expected $token -Message "Tag release is missing '$token'."
 }
-$msixDownload = Get-StepBlock -Text $releaseJob -Name 'Download Store MSIX release artifacts'
-$msixStage = Get-StepBlock -Text $releaseJob -Name 'Stage Store MSIX release assets'
-foreach ($step in @($msixDownload, $msixStage)) {
-    Assert-NotContains -Text $step -Unexpected 'if:' -Message "Every tag release must publish Store MSIX assets."
+$preparedAssetsDownload = Get-StepBlock -Text $releaseJob -Name 'Download prepared release assets'
+Assert-Contains -Text $preparedAssetsDownload -Expected 'name: openclaw-release-assets' -Message 'Publication must consume the prepared signed assets.'
+Assert-Contains -Text $preparedAssetsDownload -Expected 'path: .' -Message 'Prepared assets must retain the release action paths.'
+$msixX64Download = Get-StepBlock -Text $releaseJob -Name 'Download x64 signed Dev MSIX release artifact'
+$msixArm64Download = Get-StepBlock -Text $releaseJob -Name 'Download ARM64 signed Dev MSIX release artifact'
+$msixTrust = Get-StepBlock -Text $releaseJob -Name 'Trust signed Dev MSIX certificates for validation'
+$msixStage = Get-StepBlock -Text $releaseJob -Name 'Stage signed Dev MSIX release assets'
+$msixUntrust = Get-StepBlock -Text $releaseJob -Name 'Remove trusted Dev MSIX certificates'
+foreach ($step in @($msixX64Download, $msixArm64Download, $msixTrust, $msixStage)) {
+    Assert-NotContains -Text $step -Unexpected 'if:' -Message "Every tag release must publish signed Dev MSIX assets."
 }
-Assert-Contains -Text $msixDownload -Expected 'pattern: openclaw-msix-store-unsigned-*' -Message "Tag releases must use unsigned Store inputs."
-Assert-NotContains -Text $msixDownload -Unexpected 'openclaw-msix-dev-' -Message "Dev packages must stay workflow-only."
-Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:GITHUB_SHA' -Message "Release staging must bind artifacts to the tag's source."
+Assert-Contains -Text $msixX64Download -Expected 'name: openclaw-msix-dev-x64' -Message 'Tag releases must use the signed x64 Dev artifact.'
+Assert-Contains -Text $msixArm64Download -Expected 'name: openclaw-msix-dev-arm64' -Message 'Tag releases must use the signed ARM64 Dev artifact.'
+foreach ($step in @($msixX64Download, $msixArm64Download)) {
+    Assert-NotContains -Text $step -Unexpected 'openclaw-msix-store-unsigned-' -Message 'Unsigned Store packages must stay workflow-only.'
+}
+Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA' -Message "Release staging must bind artifacts to the tag's source."
 Assert-Contains -Text $msixStage -Expected '-Version $env:RELEASE_VERSION' -Message "Release staging must validate the release version."
+Assert-Contains -Text $msixStage -Expected '-ExpectedRevision $env:DEV_MSIX_REVISION' -Message 'Release staging must bind the Dev package revision.'
+Assert-Contains -Text $msixStage -Expected '-ExpectedWorkflowRunId $env:GITHUB_RUN_ID' -Message 'Release staging must bind artifacts to the publishing run.'
 Assert-Contains -Text $msixStage -Expected '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"' -Message 'Release staging must require its exact reserved MSIX version.'
 Assert-Contains -Text $msixStage -Expected 'MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}' -Message 'Release staging must not accept a preview.'
+Assert-Contains -Text $msixTrust -Expected 'Import-Certificate' -Message 'Release staging must trust the public Dev signer before Authenticode validation.'
+Assert-Contains -Text $msixTrust -Expected '$existing.Count -eq 0' -Message 'Release staging must preserve pre-existing certificate trust.'
+Assert-Contains -Text $msixTrust -Expected 'Add-Content -LiteralPath $thumbprintsPath' -Message 'Release staging must record each imported certificate before continuing.'
+Assert-Contains -Text $msixUntrust -Expected 'if: ${{ always() }}' -Message 'Release staging must clean up imported trust after failures.'
+Assert-Contains -Text $msixUntrust -Expected 'Remove-Item -Force' -Message 'Release staging must remove only its recorded temporary trust.'
 $createRelease = Get-StepBlock -Text $releaseJob -Name 'Create Release'
 Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.files }}' -Message "Every tag release must add validated MSIX release files."
-Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.notes }}' -Message "Every tag release must include MSIX submission notes."
+Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.notes }}' -Message "Every tag release must include signed Dev MSIX notes."
 Assert-Contains -Text $createRelease -Expected 'fail_on_unmatched_files: true' -Message "Missing release files must fail publication."
 Assert-Contains -Text $createRelease -Expected "make_latest: `${{ needs.metadata.outputs.isPrerelease == 'true' && 'false' || 'true' }}" -Message "Alpha releases must not become Latest."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-ci-artifacts.ps1" -Message "Fast validation must exercise the Dev artifact contracts."
-Assert-Contains -Text $workflow -Expected "./scripts/test-msix-alpha-release.ps1" -Message "Fast validation must exercise Store release staging."
+Assert-Contains -Text $workflow -Expected "./scripts/test-dev-msix-release.ps1" -Message "Fast validation must exercise signed Dev release staging."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-versioning.ps1" -Message 'Fast validation must exercise allocation races and boundaries.'
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-preview-source-version.ps1" -Message 'Fast validation must exercise latest-stable MSIX preview selection.'
 
@@ -866,10 +1214,19 @@ $triggerPaths = @(
     "scripts/test-ci-gate-results.ps1",
     "scripts/validate-agent-skills.ps1",
     "scripts/test-agent-skills-validator.ps1",
-    "scripts/test-ci-workflow-contract.ps1"
+    "scripts/test-ci-workflow-contract.ps1",
+    "scripts/run-proof-tests.ps1",
+    "scripts/Invoke-CiTest.ps1",
+    "scripts/TestResultContract.ps1",
+    "scripts/ProofEvidence.ps1",
+    "scripts/validate-proof-evidence.ps1",
+    "scripts/test-proof-evidence.ps1",
+    "scripts/MarkdownValidation.ps1",
+    "scripts/setup-dev.ps1",
+    "scripts/test-agent-readiness.ps1"
 )
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+$tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-ci-contract-" + [guid]::NewGuid().ToString("N"))
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
@@ -888,11 +1245,36 @@ try {
     $unrelatedPath = Join-Path $tempRoot "docs\unrelated.md"
     New-Item -ItemType Directory -Path (Split-Path -Parent $unrelatedPath) -Force | Out-Null
     Set-Content -LiteralPath $unrelatedPath -Value "baseline"
+    $toolingPaths = @(
+        ".github/scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.test.cjs"
+    )
+    foreach ($toolingPath in $toolingPaths) {
+        $fullPath = Join-Path $tempRoot $toolingPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        Set-Content -LiteralPath $fullPath -Value "tooling baseline"
+    }
 
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "baseline"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not commit temporary baseline."
+    }
+
+    foreach ($toolingPath in $toolingPaths) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "tooling change"
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling-only change"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling-only fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $impact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $decision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        if ($impact.classification -ne "fast_only" -or $decision -ne "false") {
+            throw "Tooling-only diff must be fast_only without changing proof-boundary selection."
+        }
     }
 
     foreach ($triggerPath in $triggerPaths) {
@@ -910,6 +1292,21 @@ try {
             -RepoRoot $tempRoot
         if ($decision -ne "true") {
             throw "Proof-pool trigger '$triggerPath' produced decision '$decision'."
+        }
+        # Keep the same base so the next diff includes the boundary and tooling.
+        foreach ($toolingPath in $toolingPaths) {
+            Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "mixed tooling change"
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "mix tooling with $triggerPath"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit mixed boundary fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $mixedDecision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        $mixedImpact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        if ($mixedDecision -ne "true" -or $mixedImpact.classification -ne "full") {
+            throw "Tooling mixed with proof boundary '$triggerPath' must run full validation and proof regressions."
         }
     }
 
@@ -941,6 +1338,126 @@ try {
         -RepoRoot $tempRoot
     if ($pushDecision -ne "true") {
         throw "Push and tag workflow runs must run the proof-pool regression."
+    }
+
+    $e2eHarness = Join-Path $tempRoot 'e2e-runner-harness.ps1'
+    Set-Content -LiteralPath $e2eHarness -Value @'
+param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override)
+$ErrorActionPreference = 'Stop'
+Set-Location $Root
+function Invoke-FakeCiProcess {
+    param($FilePath, $ArgumentList, $IdleTimeoutSeconds, $OutputPath)
+    Set-Content -LiteralPath 'dotnet-called.txt' -Value 'called'
+    $values = @($ArgumentList)
+    if ($FilePath -cne 'dotnet' -or $IdleTimeoutSeconds -ne $Timeout -or
+        $OutputPath -notlike '*.console.log') {
+        throw 'E2E invocation lost its idle deadline or retained console evidence.'
+    }
+    if ('--blame' -notin $values -or '--blame-hang' -in $values -or '--blame-crash' -in $values) {
+        throw 'E2E diagnostics must preserve sequence evidence without a fixture wall timer or memory dumps.'
+    }
+    $index = [Array]::IndexOf($values, '--filter')
+    if ($index -lt 0 -or $values[$index + 1] -cne 'Sentinel.Filter') {
+        throw 'Unexpected E2E filter.'
+    }
+    if ($TestExit -eq 0) {
+        $directory = $values[[Array]::IndexOf($values, '--results-directory') + 1]
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        $logger = @($values | Where-Object { $_ -like 'trx;LogFileName=*' })[0]
+        $report = Join-Path $directory $logger.Substring('trx;LogFileName='.Length)
+        Set-Content -LiteralPath $report -Value '<TestRun><ResultSummary><Counters executed="1" /></ResultSummary><Results><UnitTestResult testName="Sentinel" outcome="Passed" /></Results></TestRun>'
+    }
+    $global:LASTEXITCODE = $TestExit
+}
+Copy-Item -LiteralPath $Runner -Destination (Join-Path $Root 'Invoke-CiE2e.ps1')
+[IO.File]::WriteAllText((Join-Path $Root 'Invoke-CiProcess.ps1'), ${function:Invoke-FakeCiProcess}.ToString())
+$parameters = @{ Name = $Name; Filter = 'Sentinel.Filter' }
+if ($Override) { $parameters.HangTimeoutSeconds = $Timeout }
+& (Join-Path $Root 'Invoke-CiE2e.ps1') @parameters
+exit $LASTEXITCODE
+'@
+    $shell = (Get-Process -Id $PID).Path
+    $e2eRunnerCases = @(
+        @{ Id = 'default'; Timeout = 600; TestExit = 0; ExpectedExit = 0 },
+        @{ Id = 'override'; Timeout = 2; TestExit = 0; ExpectedExit = 0; Override = $true },
+        @{ Id = 'invalid'; Timeout = 0; TestExit = 0; ExpectedExit = 1; Override = $true },
+        @{ Id = 'failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9 },
+        @{ Id = 'missing-proof'; Timeout = 600; TestExit = 0; ExpectedExit = 1; Name = 'setup-connect' }
+    )
+    foreach ($case in $e2eRunnerCases) {
+        $caseRoot = Join-Path $tempRoot "e2e-runner/$($case.Id)"
+        New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+        $caseArguments = @('-Runner', $e2eRunnerPath, '-Root', $caseRoot, '-Timeout', $case.Timeout,
+            '-TestExit', $case.TestExit, '-Name', $(if ($case.ContainsKey('Name')) { $case.Name } else { 'network-recovery' }))
+        if ($case.ContainsKey('Override')) { $caseArguments += '-Override' }
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = & $shell -NoProfile -File $e2eHarness @caseArguments 2>&1
+            $exit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $previousPreference }
+        if ($exit -ne $case.ExpectedExit) {
+            throw "E2E runner case '$($case.Id)' expected exit $($case.ExpectedExit), got ${exit}: $output"
+        }
+        if ($case.Id -eq 'invalid' -and (Test-Path (Join-Path $caseRoot 'dotnet-called.txt'))) {
+            throw 'An invalid hang timeout must be rejected before starting tests.'
+        }
+        if ($case.Id -eq 'missing-proof' -and ($output -join "`n") -notmatch 'did not report the MXC proof') {
+            throw "E2E hang protection must preserve required proof assertions: $output"
+        }
+    }
+    Write-Host "E2E runner hang-guard contracts passed: $($e2eRunnerCases.Count) cases."
+    & (Join-Path $PSScriptRoot 'Test-CiProcess.Tests.ps1')
+    # Expected child failures must not become the GitHub Actions step exit code.
+    $global:LASTEXITCODE = 0
+
+    $baselineCases = @(
+        @{ Name = 'valid'; Version = '2026.9.9'; Json = '{"version":"2026.9.9"}'; Succeeds = $true },
+        @{ Name = 'missing-version'; Version = ''; Json = '{"version":"2026.9.9"}'; Succeeds = $false },
+        @{ Name = 'missing-metadata'; Version = '2026.9.9'; Json = ''; Succeeds = $false },
+        @{ Name = 'malformed-metadata'; Version = '2026.9.9'; Json = '{invalid'; Succeeds = $false },
+        @{ Name = 'mismatched-version'; Version = '2026.9.9'; Json = '{"version":"2026.9.8"}'; Succeeds = $false }
+    )
+    $previousGatewayVersion = $env:OPENCLAW_E2E_GATEWAY_VERSION
+    $previousGatewayRelease = $env:GATEWAY_RELEASE_JSON
+    try {
+        foreach ($lane in $e2eLanes.Keys) {
+            $step = Get-StepBlock -Text (Get-JobBlock $lane) -Name 'Record exact Gateway baseline'
+            $body = ($step -split '(?m)^      run: \|\r?$', 2)[1] -replace '(?m)^        ', ''
+            $recordBaseline = [scriptblock]::Create($body)
+            foreach ($case in $baselineCases) {
+                $caseRoot = Join-Path $tempRoot "baselines\$lane\$($case.Name)"
+                New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+                $env:OPENCLAW_E2E_GATEWAY_VERSION = $case.Version
+                $env:GATEWAY_RELEASE_JSON = $case.Json
+                $succeeded = $false
+                Push-Location $caseRoot
+                try {
+                    & $recordBaseline
+                    $succeeded = $true
+                }
+                catch {
+                    if ($case.Succeeds) { throw }
+                }
+                finally {
+                    Pop-Location
+                }
+                $artifact = Join-Path $caseRoot 'TestResults\E2E\gateway-release.json'
+                if ($succeeded -ne $case.Succeeds -or (Test-Path -LiteralPath $artifact) -ne $case.Succeeds) {
+                    throw "WSL baseline case '$($case.Name)' in '$lane' must fail closed before publishing invalid metadata."
+                }
+                if ($case.Succeeds) {
+                    $recorded = Get-Content -LiteralPath $artifact -Raw | ConvertFrom-Json
+                    if ($recorded.version -cne $case.Version) {
+                        throw "WSL baseline artifact in '$lane' did not retain the exact version."
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        $env:OPENCLAW_E2E_GATEWAY_VERSION = $previousGatewayVersion
+        $env:GATEWAY_RELEASE_JSON = $previousGatewayRelease
     }
 } finally {
     if (Test-Path -LiteralPath $tempRoot) {

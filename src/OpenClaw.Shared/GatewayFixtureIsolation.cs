@@ -37,12 +37,20 @@ public static class GatewayFixtureIsolation
         var localDataDirectory = ValidateAbsoluteDirectory(
             getEnvironmentVariable(LocalDataDirectoryEnvironmentVariable), LocalDataDirectoryEnvironmentVariable);
 
-        // SetupEngine gives this legacy override precedence over LOCAL_DATA_DIR.
-        // Never accept a context whose validated root would not actually be used.
-        if (!string.IsNullOrEmpty(getEnvironmentVariable(LocalAppDataDirectoryEnvironmentVariable)))
+        // SetupContext.ResolveLocalDataDir gives the modern root precedence and
+        // appends OpenClawTray. The legacy alias must describe that same effective
+        // directory, not a second validated-but-unused setup directory.
+        if (getEnvironmentVariable(LocalAppDataDirectoryEnvironmentVariable) is { Length: > 0 } root)
         {
-            throw new InvalidOperationException(
-                $"Gateway fixture mode requires {LocalAppDataDirectoryEnvironmentVariable} to be cleared.");
+            var localRoot = ValidateAbsoluteDirectory(root, LocalAppDataDirectoryEnvironmentVariable);
+            var effectiveLocalDataDirectory = Path.Combine(localRoot, "OpenClawTray");
+            if (!string.Equals(Path.TrimEndingDirectorySeparator(localDataDirectory),
+                    Path.TrimEndingDirectorySeparator(effectiveLocalDataDirectory),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Gateway fixture mode requires {LocalDataDirectoryEnvironmentVariable} to match " +
+                    $"{LocalAppDataDirectoryEnvironmentVariable} with OpenClawTray appended.");
+            localDataDirectory = effectiveLocalDataDirectory;
         }
 
         return new GatewayFixtureIsolationContext(true, dataDirectory, localDataDirectory);

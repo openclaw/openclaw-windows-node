@@ -1,3 +1,11 @@
+// <summary>
+// Selects deterministic local inference plans from hardware facts and the pinned model catalog.
+// Selection does not probe hardware or install artifacts, and GPU-specific recipes retain their adapter binding.
+// Usage:
+//   LocalInferenceSelectionResult selection = LocalInferenceSelector.Select(hardware, requestedModelId);
+//   if (selection.Plan is { } plan) Launch(plan);
+// </summary>
+
 using System.Runtime.InteropServices;
 
 namespace OpenClaw.Shared.Inference.Catalog;
@@ -68,22 +76,55 @@ public sealed record LocalInferenceSelectionResult
 }
 
 /// <summary>
-/// Pure selection from a hardware snapshot and optional model ID. The CPU
-/// architecture chooses only the native runtime. GPU names and CPU/GPU SKU
-/// pairings are not part of qualification for discrete GPUs -- the one
-/// deliberate exception is RTX Spark's default pick, routed through
-/// <see cref="RtxSparkInferenceSelector"/> because its unified-memory SKU
-/// cannot be identified by capacity fit-testing alone (see NVIDIA's fixed
-/// SKU-to-recipe table). An explicitly requested model ID uses the same
-/// capacity fit-test on every GPU, except when the request is the Spark SKU's
-/// own recommendation round-tripped through setup, which keeps that SKU's
-/// pinned profile and adapter binding.
+/// Selects a deterministic local inference plan from hardware facts and pinned catalog recipes.
 /// </summary>
 public static class LocalInferenceSelector
 {
+    /// <summary>Selects the requested catalog model or the hardware's recommended default plan.</summary>
     public static LocalInferenceSelectionResult Select(
         HostHardwareInfo hardware,
-        string? requestedModelId = null)
+        string? requestedModelId = null) =>
+        Select(hardware, requestedModelId, includeRetiredInstalledModel: false);
+
+    /// <summary>
+    /// Resolves an explicit model from an existing installation receipt. Retired models
+    /// remain valid here, but are never admitted by the fresh-selection overload.
+    /// </summary>
+    internal static LocalInferenceSelectionResult SelectInstalled(
+        HostHardwareInfo hardware,
+        string installedModelId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(installedModelId);
+        return Select(hardware, installedModelId, includeRetiredInstalledModel: true);
+    }
+
+    /// <summary>
+    /// Selects the best-fitting profile for a user-supplied Hugging Face model. Custom
+    /// models always use the generic runtime and are never bound to one adapter.
+    /// </summary>
+    public static LocalInferenceSelectionResult SelectCustom(HostHardwareInfo hardware, LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        ArgumentNullException.ThrowIfNull(model);
+        if (model.CustomRecipe is null)
+            throw new ArgumentException("Only custom models can be selected by recipe.", nameof(model));
+
+        LlamaRuntimeVariant? runtime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily);
+        if (runtime is null)
+            return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.RuntimeUnavailable);
+        if (!hardware.HasNvidiaGpu)
+            return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.NoNvidiaGpu);
+
+        LocalInferenceRunProfile profile = SelectBestFittingProfile(hardware, runtime, model) ??
+            LocalModelCatalog.GetProfiles(model)[^1];
+        return LocalInferenceSelectionResult.Selected(
+            new LocalInferencePlan(runtime, model, profile, LocalInferenceModelSelectionOrigin.Explicit));
+    }
+
+    private static LocalInferenceSelectionResult Select(
+        HostHardwareInfo hardware,
+        string? requestedModelId,
+        bool includeRetiredInstalledModel)
     {
         ArgumentNullException.ThrowIfNull(hardware);
 
@@ -131,16 +172,21 @@ public static class LocalInferenceSelector
                         LocalInferenceSelectionFailureCode.NotRecommendedForSku);
                 }
 
-                (model, profile) = SelectDefaultModelAndProfile(genericHardware, runtime);
+                (runtime, model, profile) = SelectDefaultModelAndProfile(genericHardware, runtime);
             }
 
             modelSelectionOrigin = LocalInferenceModelSelectionOrigin.Default;
         }
         else
         {
-            model = LocalModelCatalog.Find(requestedModelId);
+            model = includeRetiredInstalledModel
+                ? LocalModelCatalog.FindInstalled(requestedModelId)
+                : LocalModelCatalog.Find(requestedModelId);
             if (model is null)
                 return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.UnknownModel);
+            runtime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily);
+            if (runtime is null)
+                return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.RuntimeUnavailable);
             if (sparkPick is { } recommended &&
                 string.Equals(recommended.Model.Id, model.Id, StringComparison.OrdinalIgnoreCase))
             {
@@ -156,7 +202,7 @@ public static class LocalInferenceSelector
             }
             else
             {
-                profile = SelectBestFittingProfile(hardware, runtime, model) ??
+                profile = SelectBestFittingProfile(hardware, runtime, model, includeRetiredInstalledModel) ??
                     LocalModelCatalog.GetProfiles(model)[^1];
             }
 
@@ -167,7 +213,7 @@ public static class LocalInferenceSelector
             new LocalInferencePlan(runtime, model, profile, modelSelectionOrigin, boundGpuStableId));
     }
 
-    private static (LocalModelInfo Model, LocalInferenceRunProfile Profile) SelectDefaultModelAndProfile(
+    private static (LlamaRuntimeVariant Runtime, LocalModelInfo Model, LocalInferenceRunProfile Profile) SelectDefaultModelAndProfile(
         HostHardwareInfo hardware,
         LlamaRuntimeVariant runtime)
     {
@@ -185,30 +231,52 @@ public static class LocalInferenceSelector
                      .OrderByDescending(model => model.RecommendationPriority)
                      .ThenByDescending(LocalModelCatalog.TotalDownloadSizeBytes))
         {
-            LocalInferenceRunProfile? profile = SelectBestFittingProfile(hardware, runtime, candidate);
+            LlamaRuntimeVariant? candidateRuntime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, candidate.RuntimeFamily);
+            if (candidateRuntime is null)
+                continue;
+            LocalInferenceRunProfile? profile = SelectBestFittingProfile(hardware, candidateRuntime, candidate);
             if (profile is not null)
-                return (candidate, profile);
+                return (candidateRuntime, candidate, profile);
         }
 
         LocalModelInfo fallback = genericDefaultCandidates
+            .Where(model => LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily) is not null)
             .OrderBy(LocalModelCatalog.TotalDownloadSizeBytes)
             .First();
-        return (fallback, LocalModelCatalog.GetProfiles(fallback)[^1]);
+        return (LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, fallback.RuntimeFamily)!,
+            fallback, LocalModelCatalog.GetProfiles(fallback)[^1]);
     }
 
     private static LocalInferenceRunProfile? SelectBestFittingProfile(
         HostHardwareInfo hardware,
         LlamaRuntimeVariant runtime,
-        LocalModelInfo model) =>
+        LocalModelInfo model,
+        bool installed = false) =>
         LocalModelCatalog.GetProfiles(model).FirstOrDefault(profile =>
-            hardware.NvidiaGpus.Any(gpu =>
-                LocalInferenceQualificationPolicy.HasRuntimePrerequisites(gpu, runtime) &&
-                LocalInferenceQualificationPolicy.GetEffectiveTotalMemoryBytes(gpu) >=
-                    LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model, profile)));
+            new LocalManagedInferenceProfile(runtime, model, profile).Fits(hardware, installed));
 }
 
 internal static class LocalInferenceQualificationPolicy
 {
+    public static bool IsNemotronBolt(LocalModelInfo model) =>
+        string.Equals(model.Id, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsQualifiedBoltGpu(GpuInfo gpu) =>
+        gpu.Name.Contains("RTX Spark N1X", StringComparison.OrdinalIgnoreCase);
+
+    public static long? GetCurrentFreeMemoryBytes(HostHardwareInfo hardware, GpuInfo gpu, LocalModelInfo model)
+    {
+        long? cudaFree = GetEffectiveFreeMemoryBytes(gpu);
+        if (!IsNemotronBolt(model))
+            return cudaFree;
+
+        // CUDA's per-context free budget stays flat under model allocations on
+        // Windows N1X. Commit availability is a second bound, never extra RAM.
+        return cudaFree is { } free && hardware.AvailableCommitMemoryBytes is >= 0
+            ? Math.Min(free, hardware.AvailableCommitMemoryBytes.Value)
+            : null;
+    }
+
     public static bool HasCompleteFacts(GpuInfo gpu) =>
         IsStableGpuId(gpu.StableId) &&
         gpu.GpuVisibleMemoryBytes is > 0 &&
@@ -228,9 +296,7 @@ internal static class LocalInferenceQualificationPolicy
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(profile);
-        long weightsBytes = SaturatingAdd(
-            model.Weights.SizeBytes,
-            model.Recipe.DraftWeights?.SizeBytes ?? 0);
+        long weightsBytes = LocalModelCatalog.TotalDownloadSizeBytes(model);
         return SaturatingAdd(
             SaturatingAdd(
                 SaturatingAdd(weightsBytes, GetKvCacheMemoryBytes(model.Recipe, profile)),
@@ -267,15 +333,17 @@ internal static class LocalInferenceQualificationPolicy
         if (recipe.SpeculativeDecoding == SpeculativeDecodingMode.None)
             return 0;
 
-        // The pinned Qwen MTP and DFlash draft artifacts contain one draft
-        // attention layer with the same KV head count and head dimension as
-        // the target model.
+        // Draft artifacts use the target's KV head geometry, but can have
+        // multiple attention layers independent of the target layer count.
+        long vectorsPerTypePerToken = SaturatingMultiply(
+            recipe.DraftAttentionLayerCount,
+            recipe.KeyValueHeadCount);
         long bytesPerToken = SaturatingAdd(
             SaturatingMultiply(
-                recipe.KeyValueHeadCount,
+                vectorsPerTypePerToken,
                 EncodedBytes(recipe.KeyValueHeadDimension, profile.DraftKeyCachePrecision)),
             SaturatingMultiply(
-                recipe.KeyValueHeadCount,
+                vectorsPerTypePerToken,
                 EncodedBytes(recipe.KeyValueHeadDimension, profile.DraftValueCachePrecision)));
         return SaturatingMultiply(bytesPerToken, profile.ContextTokens);
     }

@@ -172,15 +172,153 @@ public sealed class LocalAiOnboardingTests
         var second = new TaskCompletionSource<LocalAiOnboardingSnapshot>();
         var host = new ObservationHost(first.Task, second.Task);
         await using var observation = new LocalAiOnboardingObservation(host);
-        var firstRequest = observation.RefreshAsync();
-        var secondRequest = observation.RefreshAsync();
+        var stages = new List<LocalAiSetupStage>();
+        var progress = new SynchronousProgress<LocalAiSetupStage>(stages.Add);
+        var firstRequest = observation.RefreshAsync(progress);
+        host.Progress[0]!.Report(LocalAiSetupStage.CheckingHardware);
+        var secondRequest = observation.RefreshAsync(progress);
         Assert.True(host.Tokens[0].IsCancellationRequested);
+        host.Progress[0]!.Report(LocalAiSetupStage.CheckingFiles);
+        host.Progress[1]!.Report(LocalAiSetupStage.CheckingHardware);
         second.SetResult(new(LocalAiOnboardingState.SetUp, Target));
         await secondRequest;
+        host.Progress[1]!.Report(LocalAiSetupStage.CheckingFiles);
         first.SetResult(new(LocalAiOnboardingState.Repair, Target));
         await firstRequest;
         Assert.Equal(LocalAiOnboardingState.SetUp, observation.Snapshot.State);
         Assert.Equal(0, host.Mutations);
+        Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingHardware], stages);
+    }
+
+    [Fact]
+    public async Task InitialObservationCancellationFencesLateSnapshotAndExplicitRefreshHasItsOwnLifetime()
+    {
+        var first = new TaskCompletionSource<LocalAiOnboardingSnapshot>();
+        var host = new ObservationHost(first.Task, Task.FromResult(new LocalAiOnboardingSnapshot(
+            LocalAiOnboardingState.SetUp, Target)));
+        await using var observation = new LocalAiOnboardingObservation(host);
+        using var initial = new CancellationTokenSource();
+        var notifications = 0;
+        observation.Changed += () => notifications++;
+        var pending = observation.RefreshAsync(null, initial.Token);
+        initial.Cancel();
+        Assert.True(host.Tokens[0].IsCancellationRequested);
+        first.SetResult(new(LocalAiOnboardingState.Use, Target));
+        await pending;
+        Assert.Equal(LocalAiOnboardingState.Checking, observation.Snapshot.State);
+        Assert.Equal(1, notifications);
+        await observation.RefreshAsync();
+        Assert.False(host.Tokens[1].IsCancellationRequested);
+        Assert.Equal(LocalAiOnboardingState.SetUp, observation.Snapshot.State);
+        Assert.Equal(3, notifications);
+        Assert.Equal(0, host.Mutations);
+    }
+
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOnboardingState.StartAndUse)]
+    [InlineData(LocalAiRuntimeState.Healthy, LocalAiOnboardingState.Use)]
+    [InlineData(LocalAiRuntimeState.Failed, LocalAiOnboardingState.Repair)]
+    public async Task Observation_RetainedSparkReceiptPreservesOnboardingActions(
+        LocalAiRuntimeState runtimeState,
+        LocalAiOnboardingState expected)
+    {
+        using var directory = new TempDirectory();
+        var registry = Registry(directory.Path);
+        var install = Install(LocalModelCatalog.Qwen35B_IQ4XSModelId);
+        var runtime = new FakeRuntime(RuntimeSnapshot(install, runtimeState));
+        var hardware = new HostHardwareInfo(Architecture.Arm64, 128L << 30, 80L << 30,
+            [new(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 45L << 30, 45L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false);
+        var host = new SetupLocalAiHost(
+            () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
+                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+            () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
+            (_, _) => Task.FromResult(true), _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
+
+        LocalAiOnboardingSnapshot snapshot = await host.ObserveAsync(CancellationToken.None);
+
+        Assert.Equal(expected, snapshot.State);
+        Assert.True(snapshot.CanUse || snapshot.CanReview);
+        Assert.Equal(LocalModelCatalog.Qwen35B_IQ4XSModelId, snapshot.Eligibility!.Plan!.Model.Id);
+    }
+
+    [Theory]
+    [InlineData(196608, false, LocalAiOnboardingState.ManagementBlocked)]
+    [InlineData(131072, true, LocalAiOnboardingState.ManagementBlocked)]
+    [InlineData(131072, false, LocalAiOnboardingState.Repair)]
+    public async Task Observation_BoltReceiptQualificationGatesRepairWithoutUseOrMutation(
+        int contextTokens, bool mismatchedWeights, LocalAiOnboardingState expected)
+    {
+        using var directory = new TempDirectory();
+        var registry = Registry(directory.Path);
+        var model = LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId)!;
+        var recipe = LlamaRuntimeCatalog.Find(Architecture.Arm64, model.RuntimeFamily)!;
+        var profile = LocalModelCatalog.GetProfiles(model).Single(p => p.ContextTokens == 131072);
+        var source = (HuggingFaceRevisionSource)model.Weights.Source;
+        string cache = Path.Combine(directory.Path, "hf");
+        string Snapshot(PinnedArtifact artifact)
+        {
+            var origin = (HuggingFaceRevisionSource)artifact.Source;
+            Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(cache, origin.RepositoryId, origin.RevisionSha,
+                artifact.RelativePath, out var path, out _, out var error), error);
+            return path;
+        }
+        static LocalAiAssetReceipt Receipt(PinnedArtifact artifact) => new()
+        {
+            FileName = Path.GetFileName(artifact.RelativePath), SourceUrl = artifact.DownloadUri.AbsoluteUri,
+            SizeBytes = artifact.SizeBytes, Sha256 = artifact.Sha256.Value,
+        };
+        var paths = new LocalAiPaths(directory.Path);
+        var manifest = new LocalAiInstallManifest
+        {
+            SchemaVersion = LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
+            Architecture = "arm64", EngineVersion = recipe.ReleaseTag, RuntimeId = recipe.Id,
+            ModelCatalogId = model.Id, ModelAlias = model.Id, SelectedGpuId = "GPU-spark",
+            ExecutablePath = Path.Combine("engines", "bolt", LlamaRuntimeCatalog.ServerExecutableName),
+            RuntimeAssets = recipe.Artifacts.Select(Receipt).ToImmutableArray(),
+            ModelPath = Path.Combine("models", model.Weights.RelativePath),
+            ModelId = source.RepositoryId + "@" + source.RevisionSha,
+            ModelAsset = mismatchedWeights ? Receipt(model.Weights) with { Sha256 = new string('a', 64) } : Receipt(model.Weights),
+            ModelCacheRoot = cache, CachedModelPath = Snapshot(model.Weights),
+            AdditionalModelAssets = LocalModelCatalog.AdditionalArtifacts(model).Select(Receipt).ToImmutableArray(),
+            AdditionalModelPaths = LocalModelCatalog.AdditionalArtifacts(model).Select(Snapshot).ToImmutableArray(),
+            ContextLength = contextTokens, KeyCachePrecision = profile.KeyCachePrecision,
+            ValueCachePrecision = profile.ValueCachePrecision, DraftKeyCachePrecision = profile.DraftKeyCachePrecision,
+            DraftValueCachePrecision = profile.DraftValueCachePrecision,
+            Endpoint = "http://127.0.0.1:18803/v1",
+        };
+        var install = new LocalAiManifestStore(paths).ResolveAndValidate(manifest);
+        if (expected == LocalAiOnboardingState.ManagementBlocked)
+            Assert.Throws<InvalidDataException>(() => LlamaServerRouterConfiguration.ResolveInstalledPlan(install));
+        var runtime = new FakeRuntime(RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
+        var hardware = new HostHardwareInfo(Architecture.Arm64, 48L << 30, 32L << 30,
+            [new(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 48L << 30, 48L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false)
+            { AvailableCommitMemoryBytes = 48L << 30 };
+        var inspections = 0;
+        var host = new SetupLocalAiHost(
+            () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
+                new("gateway", "Managed", 18789, model.Id, manifest.RequestedPort))),
+            () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
+            (_, _) => { inspections++; return Task.FromResult(false); }, _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
+
+        var snapshot = await host.ObserveAsync(CancellationToken.None);
+
+        Assert.Equal(expected, snapshot.State);
+        Assert.Equal(expected == LocalAiOnboardingState.Repair, snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+        Assert.True(snapshot.HasInstallationEvidence);
+        if (expected == LocalAiOnboardingState.ManagementBlocked)
+            Assert.Equal("LocalOwnershipInvalid", snapshot.ReasonKey);
+        else
+            Assert.Equal(contextTokens, snapshot.Eligibility!.Plan!.Profile.ContextTokens);
+        Assert.Equal(expected == LocalAiOnboardingState.Repair ? 1 : 0, inspections);
+        Assert.Equal(0, runtime.Calls);
+        await using var observation = new LocalAiOnboardingObservation(host);
+        await observation.RefreshAsync();
+        Assert.Equal(expected, observation.Snapshot.State);
     }
 
     [Fact]
@@ -231,6 +369,103 @@ public sealed class LocalAiOnboardingTests
             gatewayId: "gateway", localGatewayId: localGateway, localModelRef: model);
         Assert.Equal(count, view.Candidates.Count);
         Assert.Equal(2, detection.Candidates.Length);
+    }
+
+    [Theory]
+    [InlineData(NativeLocalAiOwnershipState.Unselected, LocalAiOnboardingState.StartAndUse, false)]
+    [InlineData(NativeLocalAiOwnershipState.SameOwner, LocalAiOnboardingState.StartAndUse, true)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, LocalAiOnboardingState.Reconcile, false)]
+    [InlineData(NativeLocalAiOwnershipState.MissingReceipt, LocalAiOnboardingState.ManagementBlocked, false)]
+    [InlineData(NativeLocalAiOwnershipState.InvalidReceipt, LocalAiOnboardingState.ManagementBlocked, false)]
+    [InlineData(NativeLocalAiOwnershipState.DifferentOwner, LocalAiOnboardingState.ManagementBlocked, false)]
+    [InlineData(NativeLocalAiOwnershipState.Unavailable, LocalAiOnboardingState.ManagementBlocked, false)]
+    public void NativeManagementRequiresOwnershipBeforeReplacingDetectedChoice(
+        NativeLocalAiOwnershipState ownership, LocalAiOnboardingState expected, bool replaces)
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, true, false, RuntimeSnapshot(install, LocalAiRuntimeState.Stopped) with
+                { GatewayRouteRequiresResolution = false }, nativeOwnership: ownership);
+        Assert.Equal(expected, snapshot.State);
+        Assert.Equal(replaces, snapshot.ReplacesDetectedChoice);
+        var detection = new GatewayAiSetupDetection
+        {
+            Candidates = [new("existing-model", "Existing model", "", LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), true)],
+            ManualProviders = [], Workspace = "workspace", SetupComplete = true
+        };
+        var view = AiSetupPresentationModel.Create(detection, Enum.GetValues<GatewayAiSetupChoiceKind>().ToHashSet(),
+            gatewayId: Target.GatewayId,
+            localGatewayId: snapshot.ReplacesDetectedChoice ? snapshot.Target?.GatewayId : null,
+            localModelRef: snapshot.ReplacesDetectedChoice ? snapshot.ModelRef : null);
+        Assert.Equal(replaces ? 0 : 1, view.Candidates.Count);
+        if (expected == LocalAiOnboardingState.ManagementBlocked)
+        {
+            Assert.False(snapshot.CanUse);
+            Assert.False(snapshot.CanReview);
+            Assert.True(snapshot.CanRefresh);
+            Assert.NotNull(snapshot.ReasonKey);
+        }
+    }
+
+    [Theory]
+    [InlineData(NativeLocalAiOwnershipState.SameOwner, false)]
+    [InlineData(NativeLocalAiOwnershipState.SameOwner, true)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, false)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, true)]
+    public void NativeOwnedFilesNeedResolutionBeforeArtifactRepair(NativeLocalAiOwnershipState ownership, bool unresolved)
+    {
+        var install = Install();
+        var runtime = RuntimeSnapshot(install, LocalAiRuntimeState.Stopped) with
+            { GatewayRouteRequiresResolution = unresolved };
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, false, false, runtime, nativeOwnership: ownership);
+        Assert.Equal(unresolved ? LocalAiOnboardingState.ManagementBlocked : LocalAiOnboardingState.Repair, snapshot.State);
+        Assert.Equal(unresolved ? "LocalOwnershipFiles" : null, snapshot.ReasonKey);
+        Assert.Equal(!unresolved, snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+    }
+
+    [Fact]
+    public void ReopenedOwnedFilesStillOfferGuardedRepairWithoutRuntimeEvidence()
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, false, false, null, nativeOwnership: NativeLocalAiOwnershipState.RecoveryRequired);
+        Assert.Equal(LocalAiOnboardingState.Repair, snapshot.State);
+        Assert.True(snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+    }
+
+    [Fact]
+    public void NativeHealthySameOwnerRemainsUseWithoutRepair()
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, true, false, RuntimeSnapshot(install, LocalAiRuntimeState.Healthy),
+            nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
+        Assert.Equal(LocalAiOnboardingState.Use, snapshot.State);
+        Assert.True(snapshot.ReplacesDetectedChoice);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HealthyOwnedRuntimeBlocksFileRepairUntilStopped(bool missingInstall)
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            missingInstall ? null : install, false, false, RuntimeSnapshot(install, LocalAiRuntimeState.Healthy),
+            nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
+        Assert.Equal(LocalAiOnboardingState.ManagementBlocked, snapshot.State);
+        Assert.Equal("LocalOwnershipFiles", snapshot.ReasonKey);
+        Assert.False(snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+        Assert.False(snapshot.ReplacesDetectedChoice);
     }
 
     [Fact]
@@ -565,18 +800,27 @@ public sealed class LocalAiOnboardingTests
             () => new(commands, new LocalAiGatewayDistroResolver(registry), NullLogger.Instance));
         var selected = await host.ObserveAsync(CancellationToken.None);
         Assert.Equal(0, commands.Reads);
+        var stages = new List<LocalAiSetupStage>();
+        var progress = new SynchronousProgress<LocalAiSetupStage>(stages.Add);
         if (drifted)
         {
-            await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, CancellationToken.None));
+            await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, CancellationToken.None, progress));
             Assert.Equal(0, runtime.Calls);
+            Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
+                LocalAiSetupStage.PreparingGateway], stages);
         }
         else
         {
-            var result = await host.UseAsync(selected, CancellationToken.None);
+            var use = new LocalAiOnboardingUse(host);
+            await use.UseAsync(selected, CancellationToken.None, progress);
+            var result = use.Expected!;
             Assert.Equal("gateway", result.GatewayId);
             Assert.Equal(selected.ModelRef, result.ModelRef);
             Assert.Equal(1, runtime.Calls);
             Assert.Equal(4, commands.Reads);
+            Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
+                LocalAiSetupStage.PreparingGateway, LocalAiSetupStage.StartingRuntime,
+                LocalAiSetupStage.PublishingProvider], stages);
         }
     }
 
@@ -586,6 +830,53 @@ public sealed class LocalAiOnboardingTests
                 new("gateway", "Managed", 18789, install()?.Manifest.ModelCatalogId, install()?.Manifest.RequestedPort))),
             () => registry, () => runtime, _ => Task.FromResult(install()), (_, _) => Task.FromResult(true),
             _ => Task.FromResult(Hardware), provider ?? (() => throw new InvalidOperationException("No route mutation expected.")));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ReopenedOwnedFailureOffersRecoveryNotArtifactRepair(bool verified)
+    {
+        var install = Install();
+        var runtime = RuntimeSnapshot(install, LocalAiRuntimeState.Failed) with
+        { Ownership = LocalAiOwnership.CompanionManaged, GatewayRouteRequiresResolution = true };
+        var result = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, verified, false, runtime);
+        Assert.Equal(verified ? LocalAiOnboardingState.Reconcile : LocalAiOnboardingState.Repair, result.State);
+        Assert.Equal(verified, result.CanUse);
+        Assert.Equal(!verified, result.CanReview);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WslUseAndRepairRejectNativeOwnershipBeforeAdmission(bool repair)
+    {
+        using var temp = new TempDirectory();
+        var registry = Registry(temp.Path);
+        var install = Install();
+        var runtime = new FakeRuntime(RuntimeSnapshot(install,
+            repair ? LocalAiRuntimeState.Failed : LocalAiRuntimeState.Healthy));
+        var paths = new LocalAiPaths(temp.Path);
+        new LocalAiNativeBindingStore(paths).Save(new("native", "endpoint", "identity",
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), null, "hash", false));
+        var lifecycle = new LocalAiGatewayLifecycle(paths, temp.Path, () => registry, () => null,
+            new LocalAiGatewayProviderCoordinator(new ReadOnlyGateway(install, false),
+                new LocalAiGatewayDistroResolver(registry), NullLogger.Instance), NullLogger.Instance);
+        var host = new SetupLocalAiHost(
+            () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
+                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+            () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
+            (_, _) => Task.FromResult(true), _ => Task.FromResult(Hardware),
+            () => throw new InvalidOperationException("WSL admission must not run."),
+            nativeLifecycle: lifecycle);
+        var selected = await host.ObserveAsync(default);
+        var error = repair
+            ? await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.RevalidateReviewAsync(selected, default))
+            : await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, default));
+        Assert.Contains("release", error.Message);
+        Assert.Equal(0, runtime.Calls);
+    }
 
     private sealed class ReadOnlyGateway(LocalAiResolvedInstall install, bool drifted) : IWslCommandRunner
     {
@@ -625,9 +916,9 @@ public sealed class LocalAiOnboardingTests
         return registry;
     }
 
-    internal static LocalAiResolvedInstall Install()
+    internal static LocalAiResolvedInstall Install(string modelId = LocalModelCatalog.Qwen35BModelId)
     {
-        var model = LocalModelCatalog.FindInstalled(LocalModelCatalog.Qwen35BModelId)!;
+        var model = LocalModelCatalog.FindInstalled(modelId)!;
         var endpoint = new Uri("http://127.0.0.1:18803/v1");
         return new(new LocalAiInstallManifest
         {
@@ -641,21 +932,43 @@ public sealed class LocalAiOnboardingTests
         }, "llama-server.exe", "test.gguf", endpoint);
     }
 
-    private static LocalAiRuntimeSnapshot RuntimeSnapshot(LocalAiResolvedInstall install, LocalAiRuntimeState state) =>
+    internal static LocalAiRuntimeSnapshot RuntimeSnapshot(LocalAiResolvedInstall install, LocalAiRuntimeState state) =>
         new(state, state == LocalAiRuntimeState.Healthy ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
             install.Endpoint!, "test", install.Manifest.ModelCatalogId,
             new(LocalAiModelAvailabilityState.Verified, DateTimeOffset.UtcNow, new string('a', 64), 1),
-            null, null, null, DateTimeOffset.UtcNow);
+            null, null, null, DateTimeOffset.UtcNow)
+        { GatewayRouteRequiresResolution = state != LocalAiRuntimeState.Healthy };
 
-    private sealed class FakeRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
+    internal sealed class FakeRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
     {
         public int Calls { get; private set; }
+        public int WithdrawOnlyCalls { get; private set; }
         public Action? OnStart { get; init; }
+        public Func<Task>? OnStartAsync { get; init; }
+        public Func<IProgress<LocalAiRuntimeStartStage>?, Task>? OnStartWithProgressAsync { get; init; }
+        public Action? AfterStart { get; set; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
-        public LocalAiRuntimeSnapshot Snapshot { get; private set; } = snapshot;
+        public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
-        public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
-        { Calls++; OnStart?.Invoke(); Snapshot = StartResult ?? Snapshot; return Task.FromResult(Snapshot); }
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken);
+        public Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
+        { WithdrawOnlyCalls++; return Task.FromResult(Snapshot); }
+        public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken, null);
+        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
+            IProgress<LocalAiRuntimeStartStage>? progress)
+        {
+            progress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
+            Calls++;
+            OnStart?.Invoke();
+            Snapshot = StartResult ?? Snapshot;
+            if (OnStartAsync is not null) await OnStartAsync();
+            if (OnStartWithProgressAsync is not null) await OnStartWithProgressAsync(progress);
+            var result = Snapshot;
+            AfterStart?.Invoke();
+            return result;
+        }
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Observation must not stop a runtime.");
         public Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default) =>
@@ -671,9 +984,12 @@ public sealed class LocalAiOnboardingTests
         public Task ReconcileGatewaySetupAsync(GatewayRegistrySnapshot expectedOutput, string? completedGatewayId) => throw new InvalidOperationException();
         private readonly Queue<Task<LocalAiOnboardingSnapshot>> _results = new(results);
         public List<CancellationToken> Tokens { get; } = [];
+        public List<IProgress<LocalAiSetupStage>?> Progress { get; } = [];
         public int Mutations { get; private set; }
         public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct)
         { Tokens.Add(ct); return _results.Dequeue(); }
+        public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct, IProgress<LocalAiSetupStage>? progress)
+        { Progress.Add(progress); return ObserveAsync(ct); }
         public Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
         { Mutations++; throw new InvalidOperationException(); }
         public Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)

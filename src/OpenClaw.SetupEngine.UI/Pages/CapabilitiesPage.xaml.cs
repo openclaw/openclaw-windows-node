@@ -25,7 +25,6 @@ public sealed partial class CapabilitiesPage : Page
         _draft = e.Parameter as SetupAccessDraft ?? SetupWindow.Active?.AccessDraft;
         if (_draft is null) return;
         var nativeInstall = _draft.Route == SetupGatewayRoute.Native;
-        NativeInstallConsent.Visibility = nativeInstall ? Visibility.Visible : Visibility.Collapsed;
         ContinueButton.Content = SetupLocalization.GetString(nativeInstall
             ? "Onboarding_Native_Start.Content" : "Onboarding_V2_Next.Content");
         _applying = true;

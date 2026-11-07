@@ -6,10 +6,16 @@ namespace OpenClaw.Connection;
 /// <summary>Native records never use the WSL or remote endpoint credential exemptions.</summary>
 internal static class NativeGatewayEndpointSecurity
 {
+    internal static readonly TimeSpan CredentialHandoffTimeout = CredentialHandoffTimeoutFor(IsolatedGatewayRuntime.StartupTimeout);
+
+    internal static TimeSpan CredentialHandoffTimeoutFor(TimeSpan startupTimeout) =>
+        startupTimeout + IsolatedGatewayRuntime.StartupConfirmationTimeout + TimeSpan.FromSeconds(20);
+
     internal static async Task<EndpointCredentialAuthorization> AuthorizeAsync(
         INativeGatewayRuntime? runtime,
         GatewayRecord record,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowStart = true)
     {
         if (runtime is null)
         {
@@ -19,7 +25,8 @@ internal static class NativeGatewayEndpointSecurity
 
         try
         {
-            await runtime.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
+            if (allowStart)
+                await runtime.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
             var provenance = await runtime.InspectAsync(record, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway)
@@ -51,6 +58,15 @@ internal static class NativeGatewayEndpointSecurity
         catch (NativeGatewayContractException ex)
         {
             return new(false, GatewayErrorKind.Network, ex.Message);
+        }
+        catch (NativeGatewayStartupTimeoutException ex)
+        {
+            return new(false, GatewayErrorKind.Network, ex.Message);
+        }
+        catch (TimeoutException)
+        {
+            return new(false, GatewayErrorKind.Network,
+                "The native Gateway readiness check timed out. Check Gateway status before retrying. Credentials were not sent.");
         }
         catch (Exception)
         {

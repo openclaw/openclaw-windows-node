@@ -22,9 +22,12 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
     {
         _registry = new GatewayRegistry(_directory.Path);
         Prepare(_record);
-        _runtime = new NativeGatewayRuntime(_registry, _resolver, NullLogger.Instance, _host,
-            () => _snapshot?.Invoke() ?? Snapshot(), TimeSpan.FromMilliseconds(300));
+        _runtime = CreateRuntime(TimeSpan.FromMilliseconds(300));
     }
+
+    private NativeGatewayRuntime CreateRuntime(TimeSpan startupTimeout) =>
+        new(_registry, _resolver, NullLogger.Instance, _host,
+            () => _snapshot?.Invoke() ?? Snapshot(), startupTimeout);
 
     private void Prepare(GatewayRecord record)
     {
@@ -344,11 +347,12 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
     [Fact]
     public async Task StopDuringStartup_CancelsPendingEnsure()
     {
+        await using var runtime = CreateRuntime(TimeSpan.FromSeconds(10));
         var spawned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _host.AfterStart = process => { process.Listening = false; spawned.SetResult(); };
-        var ensure = _runtime.EnsureRunningAsync(_record, default);
+        var ensure = runtime.EnsureRunningAsync(_record, default);
         await spawned.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await _runtime.StopAsync(default);
+        await runtime.StopAsync(default);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ensure);
         Assert.True(Assert.Single(_host.Processes).Disposed);
     }
@@ -356,14 +360,15 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
     [Fact]
     public async Task DisposeDuringStartup_CancelsAndPreventsRestart()
     {
+        await using var runtime = CreateRuntime(TimeSpan.FromSeconds(10));
         var spawned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _host.AfterStart = process => { process.Listening = false; spawned.SetResult(); };
-        var ensure = _runtime.EnsureRunningAsync(_record, default);
+        var ensure = runtime.EnsureRunningAsync(_record, default);
         await spawned.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await _runtime.DisposeAsync();
+        await runtime.DisposeAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ensure);
         Assert.True(Assert.Single(_host.Processes).Disposed);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _runtime.EnsureRunningAsync(_record, default));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runtime.EnsureRunningAsync(_record, default));
     }
 
     [Fact]

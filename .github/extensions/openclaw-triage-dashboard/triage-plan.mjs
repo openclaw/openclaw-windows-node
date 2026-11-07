@@ -6,6 +6,7 @@ export function buildPlanLanes(plan, legacyDayPlan = [], legacyQueue = []) {
             kind: "independent",
             levels: [[{
                 dependsOn: [],
+                gates: [],
                 id: `legacy-${index}`,
                 itemNumbers: [],
                 legacy: true,
@@ -89,6 +90,14 @@ export function buildPlanLanes(plan, legacyDayPlan = [], legacyQueue = []) {
                     ? "Parallel workstream"
                     : "Independent task",
         };
+    });
+}
+
+export function claimUnrenderedItemNumbers(itemNumbers, renderedItemNumbers) {
+    return itemNumbers.filter((number) => {
+        if (renderedItemNumbers.has(number)) return false;
+        renderedItemNumbers.add(number);
+        return true;
     });
 }
 

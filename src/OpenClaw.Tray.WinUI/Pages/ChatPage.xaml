@@ -12,20 +12,9 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="16,8">
-            <TextBlock x:Uid="ChatDashboardHint"
-                       Text="Channels, integrations and gateway settings"
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" VerticalAlignment="Center" />
-            <Button x:Name="DashboardButton" x:Uid="ChatDashboardButton" Grid.Column="1"
-                    Content="Dashboard" Click="OnOpenDashboard"
-                    AutomationProperties.AutomationId="ChatDashboardButton" />
-        </Grid>
-
         <!-- Toolbar — Home/Refresh/DevTools only meaningful when WebView2 mode is active.
              Collapsed by default in native mode so the chat surface starts at the very top. -->
-        <Border x:Name="ToolbarBorder" Grid.Row="1"
+        <Border x:Name="ToolbarBorder" Grid.Row="0"
                 Visibility="Collapsed"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -70,8 +59,22 @@
             </StackPanel>
         </Border>
 
+        <InfoBar x:Name="SpeechStatusBar" Grid.Row="1" IsOpen="False" IsClosable="True"
+                 AutomationProperties.AutomationId="ChatGatewaySpeechStatus" Severity="Informational">
+            <InfoBar.ActionButton>
+                <Button x:Uid="VoiceSettingsPage_GatewayVoiceStop" Content="Stop" Click="OnStopGatewaySpeech"/>
+            </InfoBar.ActionButton>
+        </InfoBar>
+
         <!-- Native chat host: the Reactor tree mounts into this Border (default UI). -->
         <Border x:Name="ChatHost" Grid.Row="2"/>
+        <TextBlock x:Name="RemovedSessionPlaceholder" x:Uid="WorkspaceShell_SelectConversation"
+                   AutomationProperties.AutomationId="WorkspaceSelectConversation"
+                   Grid.Row="2" Visibility="Collapsed"
+                   Text="Select a conversation or create a new one to start chatting."
+                   TextWrapping="Wrap" MaxWidth="360"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Style="{StaticResource BodyTextBlockStyle}"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->
         <WebView2 x:Name="WebView" Grid.Row="2" Visibility="Collapsed"/>
@@ -108,9 +111,16 @@
                     Click="OnWorkspaceOpenConnection" HorizontalAlignment="Center"/>
         </StackPanel>
 
-        <!-- WebView2 navigation error panel. -->
         <InfoBar x:Name="NativeSetupError" Grid.Row="2" IsOpen="False" Visibility="Collapsed"
-                 IsClosable="False" Severity="Error" VerticalAlignment="Top" />
+                 AutomationProperties.AutomationId="ChatNativeSetupError"
+                 IsClosable="False" Severity="Error" VerticalAlignment="Top">
+            <InfoBar.ActionButton>
+                <Button x:Name="NativeSetupCheckAgain" x:Uid="ChatPage_SetupCheckAgain"
+                        AutomationProperties.AutomationId="ChatNativeSetupCheckAgain"
+                        Content="Check again" IsEnabled="False" Click="OnNativeSetupCheckAgain"/>
+            </InfoBar.ActionButton>
+        </InfoBar>
+        <!-- WebView2 navigation error panel. -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="2" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"

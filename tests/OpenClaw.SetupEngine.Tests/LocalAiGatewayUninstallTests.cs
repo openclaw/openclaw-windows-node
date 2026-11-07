@@ -10,6 +10,110 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class LocalAiGatewayUninstallTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Recovery_ProbesPhysicalModelPathWithoutChangingReceipt(bool endpointHealthy)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        string physicalModelPath = temp.Combine("physical", "model.gguf");
+        using var client = new RecordingRecoveryClient { IsHealthy = endpointHealthy };
+        using var cancellation = new CancellationTokenSource();
+
+        bool healthy = await PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+            original, cancellation.Token, client, path =>
+            {
+                Assert.Equal(original.ModelPath, path);
+                return physicalModelPath;
+            });
+
+        Assert.Equal(endpointHealthy, healthy);
+        Assert.Equal(physicalModelPath, client.ExpectedModelPath);
+        Assert.Equal(original.Endpoint, client.Endpoint);
+        Assert.Equal(original.Manifest.ModelAlias, client.ModelAlias);
+        Assert.Equal(cancellation.Token, client.CancellationToken);
+        LocalAiResolvedInstall saved = (await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).LoadAsync())!;
+        Assert.Equal(original.ModelPath, saved.ModelPath);
+        Assert.Equal(JsonSerializer.Serialize(original.Manifest), JsonSerializer.Serialize(saved.Manifest));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_ResolutionFailureDoesNotProbeLogicalPath(bool accessDenied)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        using var client = new RecordingRecoveryClient();
+
+        bool healthy = await PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+            original, CancellationToken.None, client, _ => accessDenied
+                ? throw new UnauthorizedAccessException("Cannot open model path.")
+                : throw new IOException("Cannot resolve model path."));
+
+        Assert.False(healthy);
+        Assert.Null(client.Endpoint);
+    }
+
+    [Fact]
+    public async Task Recovery_NoOriginalEndpointDoesNotResolveOrProbe()
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = (await SaveManifestAsync(temp.Path)) with { Endpoint = null };
+        using var client = new RecordingRecoveryClient();
+
+        bool healthy = await PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+            original, CancellationToken.None, client,
+            _ => throw new InvalidOperationException("No model path should be resolved."));
+
+        Assert.True(healthy);
+        Assert.Null(client.Endpoint);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_CancellationDoesNotResolveOrProbe(bool hasEndpoint)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        if (!hasEndpoint)
+            original = original with { Endpoint = null };
+        using var client = new RecordingRecoveryClient();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+                original, cancellation.Token, client,
+                _ => throw new InvalidOperationException("No model path should be resolved.")));
+
+        Assert.Null(client.Endpoint);
+    }
+
+    private sealed class RecordingRecoveryClient : ILlamaServerClient
+    {
+        public bool IsHealthy { get; init; } = true;
+        public string? ExpectedModelPath { get; private set; }
+        public Uri? Endpoint { get; private set; }
+        public string? ModelAlias { get; private set; }
+        public CancellationToken CancellationToken { get; private set; }
+
+        public Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
+            Uri endpoint, string modelAlias, string expectedModelPath, CancellationToken cancellationToken = default)
+        {
+            Endpoint = endpoint;
+            ModelAlias = modelAlias;
+            ExpectedModelPath = expectedModelPath;
+            CancellationToken = cancellationToken;
+            return Task.FromResult(new LlamaServerRouterProbeResult(
+                IsHealthy, LocalAiModelAvailabilityState.Verified, expectedModelPath, null));
+        }
+
+        public void Dispose() { }
+    }
+
     [Fact]
     public async Task Repair_RollbackRestoresFallbackAfterRetainedEndpointCycle()
     {
