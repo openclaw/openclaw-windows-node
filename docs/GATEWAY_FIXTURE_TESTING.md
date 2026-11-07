@@ -111,7 +111,8 @@ are behavioral handoff checks, not source-text ordering assertions.
 Channels management lives in the Gateway Dashboard, and the native Channels
 page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
 entry points honest through the real app: a legacy receipt whose destination is
-Channels, `app.navigate channels` and the owner menu's **Pair device** item.
+Channels, `app.navigate channels` and the owner menu's **Pair a device** item,
+which opens the Dashboard Devices page through `/nodes`.
 The shared-search case also checks the Dashboard badge and opens Channels from
 both Workspace and Settings, using Enter and Alt+Enter respectively. It checks
 that local MCP discovery and `app.search` return the same Dashboard destination.

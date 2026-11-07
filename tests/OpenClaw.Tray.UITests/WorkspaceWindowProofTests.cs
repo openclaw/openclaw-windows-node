@@ -170,9 +170,18 @@ public sealed class WorkspaceWindowProofTests
         Invoke(Find(root, "WorkspaceOwner"));
         Assert.Equal("Owner", Find(root, "WorkspaceOwner").Current.Name);
         Assert.Equal("Disconnected", Find(root, "WorkspaceOwner").Current.HelpText);
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
+        // Shorter account menu: profile, Gateway submenu, Settings, Pair a device, Help & about.
+        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerGateway") is not null);
+        foreach (var id in new[] { "WorkspaceOwnerProfile", "WorkspaceOwnerSettings", "WorkspaceOwnerPairDevice", "WorkspaceOwnerHelp" })
+            Assert.NotNull(FindPopup(root, id));
+        Assert.Equal("Disconnected", FindPopup(root, "WorkspaceOwnerGateway")!.Current.HelpText);
+        Assert.False(FindPopup(root, "WorkspaceOwnerProfile")!.Current.IsEnabled);
+        Assert.Null(FindPopup(root, "WorkspaceOwnerConnectionStatus"));
+        CaptureFlyout(root, theme, "owner-account-menu");
+        await ExpandOwnerGatewayMenuAsync(root);
         Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
         CaptureFlyout(root, theme, "owner-live-status");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
     }
 
@@ -342,9 +351,9 @@ public sealed class WorkspaceWindowProofTests
             Assert.InRange(Math.Abs((owner.Top + owner.Bottom) / 2 - (bell.Top + bell.Bottom) / 2), 0, 2);
         }
 
-        // The status pill's card is reached from the account menu's connection status row.
+        // The status pill's card is reached from the account menu's Gateway submenu status row.
         Invoke(Find(root, "SettingsOwner"));
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
+        await ExpandOwnerGatewayMenuAsync(root);
         Invoke(FindPopup(root, "WorkspaceOwnerConnectionStatus")!);
         await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is not null);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
@@ -595,7 +604,7 @@ public sealed class WorkspaceWindowProofTests
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is null);
         Invoke(Find(root, "WorkspaceOwner"));
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
+        await ExpandOwnerGatewayMenuAsync(root);
         Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
         Invoke(FindPopup(root, "WorkspaceOwnerConnectionStatus")!);
         await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is not null);
@@ -699,14 +708,20 @@ public sealed class WorkspaceWindowProofTests
         })
         {
             await app.NavigateAsync("workspace:home", "ChatPage", "WorkspaceNavHome");
-            Invoke(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
-            Assert.True(WaitForMenuItem(pid, "Get apps").Current.IsEnabled);
-            Invoke(WaitForMenuItem(pid, label));
-            var destination = await WaitForMarkerAsync(pid, marker, IntPtr.Zero);
-            Assert.Equal(workspace, new IntPtr(destination.Current.NativeWindowHandle));
-            Assert.Single(ProcessWindows(pid).Cast<AutomationElement>(),
-                window => window.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsBack")) is not null);
+            // Usage left the account menu; Settings is top level and About lives under Help & about.
+            if (route != "usage")
+            {
+                var root = AutomationElement.FromHandle(workspace);
+                Invoke(Find(root, "WorkspaceOwner"));
+                if (route == "about")
+                    await ExpandOwnerHelpMenuAsync(root);
+                Invoke(WaitForMenuItem(pid, label));
+                var destination = await WaitForMarkerAsync(pid, marker, IntPtr.Zero);
+                Assert.Equal(workspace, new IntPtr(destination.Current.NativeWindowHandle));
+                Assert.Single(ProcessWindows(pid).Cast<AutomationElement>(),
+                    window => window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsBack")) is not null);
+            }
             await app.NavigateAsync(route, page, marker);
             Assert.Equal(workspace, app.HubWindowHandle);
             Capture(app, theme, route);
@@ -724,6 +739,8 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(workspace, app.HubWindowHandle);
 
         Invoke(Find(workspaceElement, "WorkspaceOwner"));
+        await ExpandOwnerHelpMenuAsync(workspaceElement);
+        Assert.True(WaitForMenuItem(pid, "Get apps").Current.IsEnabled);
         Invoke(WaitForMenuItem(pid, "Connection event timeline"));
         var timeline = await WaitForMarkerAsync(pid, "ConnectionTimelineHeading", workspace);
         var timelineHandle = new IntPtr(timeline.Current.NativeWindowHandle);
@@ -735,6 +752,7 @@ public sealed class WorkspaceWindowProofTests
             $"Right-aligned timeline must fit the display: {timelineBounds}, work area {workArea}.");
         await app.RefocusWorkspaceAsync();
         Invoke(Find(workspaceElement, "WorkspaceOwner"));
+        await ExpandOwnerHelpMenuAsync(workspaceElement);
         Invoke(WaitForMenuItem(pid, "Connection event timeline"));
         Assert.Equal(timelineHandle, new IntPtr((await WaitForMarkerAsync(pid, "ConnectionTimelineHeading", workspace)).Current.NativeWindowHandle));
         ((WindowPattern)timeline.GetCurrentPattern(WindowPattern.Pattern)).Close();
@@ -840,7 +858,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Top,
             Find(workspaceElement, "WorkspaceForward").Current.BoundingRectangle.Top);
         Invoke(Find(workspaceElement, "WorkspaceOwner"));
-        var help = WaitForMenuItem(pid, "Help");
+        var help = WaitForMenuItem(pid, "Help & about");
         ((ExpandCollapsePattern)help.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
         Assert.True(WaitForMenuItem(pid, "GitHub").Current.IsEnabled);
         ((ExpandCollapsePattern)help.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
@@ -1012,6 +1030,24 @@ public sealed class WorkspaceWindowProofTests
             .Select(window => window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, id)))
             .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
+
+    /// <summary>Expands the account menu's Gateway submenu, where the connection status row lives.</summary>
+    private static async Task ExpandOwnerGatewayMenuAsync(AutomationElement root)
+    {
+        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerGateway") is not null);
+        ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerGateway")!
+            .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
+    }
+
+    /// <summary>Expands the account menu's Help &amp; about submenu (docs, apps, timeline, About).</summary>
+    private static async Task ExpandOwnerHelpMenuAsync(AutomationElement root)
+    {
+        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerHelp") is not null);
+        ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerHelp")!
+            .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerAbout") is not null);
+    }
 
     private static void CaptureFlyout(AutomationElement root, string theme, string name)
     {

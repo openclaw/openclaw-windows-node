@@ -32,6 +32,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     private Action? _viewAllNotifications;
     private string _ownerName = "";
     private string _connectionLabel = "";
+    private string? _updateText;
 
     /// <summary>Raised when the Dashboard button is invoked.</summary>
     internal event EventHandler? DashboardRequested;
@@ -94,9 +95,25 @@ public sealed partial class WorkspacePaneFooter : UserControl
         var style = BadgeStyle(accent);
         OwnerStatusDot.Style = style;
         OwnerAvatarStatusDot.Style = style;
-        AutomationProperties.SetHelpText(OwnerButton, label);
+        ApplyOwnerHelpText();
         ApplyOwnerToolTip();
     }
+
+    /// <summary>Shows the avatar update dot; <paramref name="updateText"/> is appended to the account help text.</summary>
+    internal void ApplyUpdateAvailable(string? updateText)
+    {
+        _updateText = updateText;
+        OwnerUpdateDot.Visibility = string.IsNullOrEmpty(updateText) ? Visibility.Collapsed : Visibility.Visible;
+        ApplyOwnerHelpText();
+        ApplyOwnerToolTip();
+    }
+
+    private void ApplyOwnerHelpText() =>
+        AutomationProperties.SetHelpText(OwnerButton, OwnerStatusText);
+
+    private string OwnerStatusText =>
+        string.IsNullOrEmpty(_updateText) ? _connectionLabel
+        : string.IsNullOrEmpty(_connectionLabel) ? _updateText : $"{_connectionLabel}. {_updateText}";
 
     internal void ApplyNotificationCount(int count, string helpText)
     {
@@ -152,7 +169,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     private void ApplyOwnerToolTip() =>
         ToolTipService.SetToolTip(OwnerButton, _layout == WorkspacePaneFooterLayout.Rail
-            ? string.IsNullOrEmpty(_connectionLabel) ? _ownerName : $"{_ownerName}\n{_connectionLabel}"
+            ? string.IsNullOrEmpty(OwnerStatusText) ? _ownerName : $"{_ownerName}\n{OwnerStatusText}"
             : null);
 
     private void ApplyLayout()

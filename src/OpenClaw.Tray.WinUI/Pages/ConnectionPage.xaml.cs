@@ -1919,6 +1919,16 @@ public sealed partial class ConnectionPage : Page
 
     // ─── User intent transitions ──────────────────────────────────────
 
+    /// <summary>
+    /// Opens the Add gateway form, as the page's own Add button does (account menu entry point).
+    /// An Add or Edit form already in progress is kept, so menu use never discards typed values.
+    /// </summary>
+    internal void BeginAddGateway()
+    {
+        if (_userIntent == UserIntent.AddingGateway) return;
+        OnEnterAddGateway(this, new RoutedEventArgs());
+    }
+
     private void OnEnterAddGateway(object sender, RoutedEventArgs e)
     {
         _editingGatewayId = null;
