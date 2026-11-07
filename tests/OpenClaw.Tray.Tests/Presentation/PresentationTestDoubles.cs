@@ -73,6 +73,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
 
     public void OpenDashboard(string? path = null) { }
     public void Navigate(string pageTag) => Navigations.Add(pageTag);
+    public bool TryNavigate(string pageTag, string? chatSessionKey = null) => false;
     public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
@@ -142,6 +143,7 @@ internal sealed class SelfWritingAppCommands : IAppCommands
 
     public void OpenDashboard(string? path = null) { }
     public void Navigate(string pageTag) { }
+    public bool TryNavigate(string pageTag, string? chatSessionKey = null) => false;
     public void Reconnect() { }
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }

@@ -198,6 +198,9 @@ internal sealed class WindowManager : IWindowManager
     public void ShowHub(string? navigateTo = null, bool activate = true)
         => ShowHubCore(navigateTo, activate);
 
+    public bool TryShowHub(string navigateTo, string? chatSessionKey = null) =>
+        ShowHubCore(navigateTo, activate: true, chatSessionKey, usePendingChatSession: false);
+
     /// <summary>Shows the native setup completion experience until it is closed or committed.</summary>
     public async Task ShowNativeSetupAsync(SetupNativeCompletion completion, CancellationToken ct)
     {
@@ -449,13 +452,15 @@ internal sealed class WindowManager : IWindowManager
             retry?.Invoke();
     }
 
-    private void ShowHubCore(string? navigateTo, bool activate)
+    private bool ShowHubCore(
+        string? navigateTo, bool activate, string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_isShuttingDown)
         {
-            return;
+            return false;
         }
 
+        var admitted = false;
         WorkspaceNavigation.Dispatch(navigateTo, destination =>
         {
             if (_callbacks.RequiresSetup())
@@ -467,13 +472,17 @@ internal sealed class WindowManager : IWindowManager
                 return;
             }
 
-            ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
-        }, tag => ShowWorkspace(WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag));
+            admitted = ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub",
+                chatSessionKey: chatSessionKey, usePendingChatSession: usePendingChatSession);
+        }, tag => admitted = ShowWorkspace(
+            WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag));
+        return admitted;
     }
 
-    private void ShowWorkspace(
+    private bool ShowWorkspace(
         WorkspaceDestination destination, bool activate, bool preserveCurrent,
-        SetupNativeNavigationRequest? nativeRequest = null, string? settingsTag = null)
+        SetupNativeNavigationRequest? nativeRequest = null, string? settingsTag = null,
+        string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_workspaceWindow is null || _workspaceWindow.IsClosed)
         {
@@ -481,7 +490,7 @@ internal sealed class WindowManager : IWindowManager
                 _callbacks.GetAppNotificationService() is not { } notifications)
             {
                 Logger.Warn("[WindowManager] Workspace cannot open before application services are ready.");
-                return;
+                return false;
             }
 
             _workspaceWindow = new WorkspaceWindow(state, notifications, ShowConnectionStatus);
@@ -491,6 +500,7 @@ internal sealed class WindowManager : IWindowManager
             _workspaceWindow.Activated += OnMainWindowActivated;
         }
 
+        var admitted = false;
         if (nativeRequest is not null)
         {
             if (settingsTag is null) nativeRequest.RequireWorkspaceDestination(destination);
@@ -498,15 +508,17 @@ internal sealed class WindowManager : IWindowManager
         }
         else if (settingsTag is not null)
         {
-            _workspaceWindow.OpenSettings(settingsTag);
+            admitted = _workspaceWindow.TryOpenSettings(settingsTag);
         }
         else if (!preserveCurrent)
         {
-            if (destination.Page == WorkspacePageId.Home &&
-                _callbacks.GetPendingChatSessionKey() is { Length: > 0 } sessionKey)
-                _workspaceWindow.SelectSession(sessionKey);
-            else
-                _workspaceWindow.Navigate(destination);
+            if (destination.Page == WorkspacePageId.Home)
+            {
+                var sessionKey = chatSessionKey ?? (usePendingChatSession ? _callbacks.GetPendingChatSessionKey() : null);
+                if (sessionKey is { Length: > 0 })
+                    destination = destination with { SessionKey = sessionKey };
+            }
+            admitted = _workspaceWindow.TryNavigate(destination);
         }
         if (_workspaceWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
@@ -520,6 +532,7 @@ internal sealed class WindowManager : IWindowManager
         }
         else
             _workspaceWindow.AppWindow.Show(activateWindow: false);
+        return admitted;
     }
 
     private void OnWorkspaceSettingsSaved(object? sender, EventArgs e) => _callbacks.SettingsSaved(sender, e);

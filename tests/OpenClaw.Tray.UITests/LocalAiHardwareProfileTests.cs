@@ -308,6 +308,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
 
     private sealed class InertCommands : IAppCommands
     {
+        public bool TryNavigate(string pageTag, string? chatSessionKey = null) => false;
         public void OpenDashboard(string? path = null) => throw new NotSupportedException();
         public void Navigate(string pageTag) => throw new NotSupportedException();
         public void Reconnect() => throw new NotSupportedException();

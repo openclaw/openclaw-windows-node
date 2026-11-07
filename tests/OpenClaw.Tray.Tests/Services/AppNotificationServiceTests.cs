@@ -1,10 +1,109 @@
 using OpenClawTray.Services;
+using OpenClawTray.Presentation;
 using Xunit;
 
 namespace OpenClaw.Tray.Tests.Services;
 
 public sealed class AppNotificationServiceTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NavigateAction_DismissesOnlyTheAdmittedReminder(bool admitted)
+    {
+        var service = new AppNotificationService();
+        service.Show(Notification("First", "Open connection") with { Id = "first", ActionRoute = "connection" });
+        service.Show(Notification("Second", "Open permissions") with { Id = "second", ActionRoute = "permissions" });
+        (string Route, string? Key, int Count)? observed = null;
+
+        var result = service.NavigateAction("second", (route, key) =>
+        {
+            observed = (route, key, service.Snapshot.ActiveNotifications.Count);
+            return admitted;
+        });
+
+        Assert.Equal(("permissions", (string?)null, 2), observed);
+        Assert.Equal(admitted, result);
+        Assert.Equal(admitted ? ["first"] : ["first", "second"],
+            service.Snapshot.ActiveNotifications.Select(item => item.Id).ToArray());
+    }
+
+    [Fact]
+    public void NavigateAction_ThrowingNavigationRetainsReminder()
+    {
+        var service = new AppNotificationService();
+        service.Show(Notification("Reminder", "Open connection") with { Id = "reminder", ActionRoute = "connection" });
+
+        Assert.False(service.NavigateAction("reminder", (_, _) =>
+            throw new InvalidOperationException("Navigation failed")));
+
+        Assert.Equal("reminder", Assert.Single(service.Snapshot.ActiveNotifications).Id);
+    }
+
+    [Fact]
+    public void NavigateAction_ChatKeyIsPassedExactlyAndRefusalDoesNotConsumeReminder()
+    {
+        const string key = "agent:Mixed Case:thread/a?x=1&literal=%2F";
+        var service = new AppNotificationService();
+        service.Show(Notification("Chat reminder", "Open chat") with
+        {
+            Id = "chat-reminder",
+            ActionRoute = "chat:agent%3AMixed%20Case%3Athread%2Fa%3Fx%3D1%26literal%3D%252F"
+        });
+        (string Route, string? Key)? observed = null;
+
+        Assert.False(service.NavigateAction("chat-reminder", (route, session) =>
+        {
+            observed = (route, session);
+            return false;
+        }));
+        Assert.Equal(("chat", key), observed);
+        Assert.Equal("chat-reminder", Assert.Single(service.Snapshot.ActiveNotifications).Id);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NavigateAction_DeferredIntentNeverDismissesReminder(bool replaceIntent)
+    {
+        var service = new AppNotificationService();
+        var deferred = new DeferredNavigation();
+        var opened = new List<string>();
+        service.Show(Notification("Reminder", "Open connection") with { Id = "reminder", ActionRoute = "connection" });
+
+        Assert.False(service.NavigateAction("reminder", (route, _) =>
+        {
+            deferred.Defer(() => opened.Add(route));
+            return false;
+        }));
+        if (replaceIntent)
+            deferred.Defer(() => opened.Add("permissions"));
+
+        Assert.False(deferred.Run(() => true, () => { }));
+        Assert.Empty(opened);
+        Assert.Single(service.Snapshot.ActiveNotifications);
+        Assert.True(deferred.Run(() => false, () => { }));
+        Assert.Equal(replaceIntent ? ["permissions"] : ["connection"], opened);
+        Assert.Single(service.Snapshot.ActiveNotifications);
+    }
+
+    [Fact]
+    public void NavigateAction_UsesCurrentReminderRatherThanStalePresentation()
+    {
+        var service = new AppNotificationService();
+        service.Show(Notification("Reminder", "Open connection") with { Id = "reminder", ActionRoute = "connection" });
+        service.Dismiss("reminder");
+        var navigationCount = 0;
+
+        Assert.False(service.NavigateAction("reminder", (_, _) =>
+        {
+            navigationCount++;
+            return true;
+        }));
+        Assert.Equal(0, navigationCount);
+        Assert.Empty(service.Snapshot.ActiveNotifications);
+    }
+
     [Fact]
     public void Show_FirstNotification_BecomesCurrent()
     {

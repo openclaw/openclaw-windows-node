@@ -79,7 +79,7 @@ public sealed class WorkspaceRoutingBoundaryTests
         var manager = File.ReadAllText(Path.Combine(root, "Services", "WindowManager.cs"));
         var workspace = File.ReadAllText(Path.Combine(root, "Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo, destination =>", manager);
-        Assert.Contains("tag => ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate, preserveCurrent: false, settingsTag: tag)", manager);
+        Assert.Matches(@"tag => admitted = ShowWorkspace\(\s*WorkspaceDestination.Settings\(""settings""\), activate, preserveCurrent: false, settingsTag: tag\)", manager);
         Assert.DoesNotContain("ShowCompanion", manager);
         Assert.Contains("WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion)",
             File.ReadAllText(Path.Combine(root, "Controls", "SettingsShellView.xaml.cs")));

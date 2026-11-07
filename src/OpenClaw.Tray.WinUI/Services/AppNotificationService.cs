@@ -189,6 +189,37 @@ internal sealed class AppNotificationService
         RaiseChanged(snapshot);
     }
 
+    /// <summary>
+    /// Opens the current action for an active reminder, dismissing it only when navigation is
+    /// admitted synchronously. Deferred intents retain the reminder, even if they later run.
+    /// This does not approve, abort, or otherwise resolve the underlying Gateway action.
+    /// </summary>
+    public bool NavigateAction(string notificationId, Func<string, string?, bool> tryNavigate)
+    {
+        var notification = Snapshot.ActiveNotifications.FirstOrDefault(item => item.Id == notificationId);
+        if (notification?.ActionRoute is not { Length: > 0 } route)
+            return false;
+
+        try
+        {
+            var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
+            if (!tryNavigate(isChat ? "chat" : route, sessionKey))
+            {
+                Logger.Info("[Notifications] Navigation was not admitted synchronously; reminder retained.");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Routes and exception messages can contain opaque session keys or credentials.
+            Logger.Warn($"[Notifications] Navigation failed ({ex.GetType().Name}); reminder retained.");
+            return false;
+        }
+
+        Dismiss(notificationId);
+        return true;
+    }
+
     public void Dismiss(string notificationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(notificationId);

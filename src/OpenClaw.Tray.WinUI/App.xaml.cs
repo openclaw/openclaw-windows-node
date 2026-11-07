@@ -4090,6 +4090,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     void IAppCommands.OpenDashboard(string? path) => OpenDashboard(path);
     void IAppCommands.Navigate(string pageTag) => ShowHub(pageTag);
+    bool IAppCommands.TryNavigate(string pageTag, string? chatSessionKey) =>
+        _windowManager?.TryShowHub(pageTag, chatSessionKey) == true;
     void IAppCommands.Reconnect() => ReconnectWithSyncedBrowserProxyForward();
     void IAppCommands.Disconnect()
     {

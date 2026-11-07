@@ -34,6 +34,8 @@ internal interface IWindowManager
     void ShowCanvas(CanvasWindowRequest request);
     /// <summary>Shows the workspace window and optionally navigates it before activation.</summary>
     void ShowHub(string? navigateTo = null, bool activate = true);
+    /// <summary>Reports synchronous destination admission without consuming ambient pending chat intent.</summary>
+    bool TryShowHub(string navigateTo, string? chatSessionKey = null);
     void ShowConnectionStatus();
     /// <summary>Shows the onboarding flow.</summary>
     Task ShowOnboardingAsync();
