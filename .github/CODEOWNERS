@@ -1,0 +1,18 @@
+# Enforce required code-owner approval on main with no publisher-code bypass.
+# CODEOWNERS alone does not configure a GitHub ruleset or protect old OIDC trust.
+/.github/CODEOWNERS @openclaw/release-managers-openclaw
+/.github/workflows/ @openclaw/release-managers-openclaw
+/.github/scripts/ @openclaw/release-managers-openclaw
+/.github/msix-version-baseline.json @openclaw/release-managers-openclaw
+/build.ps1 @openclaw/release-managers-openclaw
+/Directory.Build.props @openclaw/release-managers-openclaw
+/Directory.Build.targets @openclaw/release-managers-openclaw
+/Migration.Build.props @openclaw/release-managers-openclaw
+/scripts/StorePublicationRequest.ps1 @openclaw/release-managers-openclaw
+/scripts/test-store-publication-request.ps1 @openclaw/release-managers-openclaw
+/scripts/AlphaPromotion.ps1 @openclaw/release-managers-openclaw
+/scripts/Build-StoreMsix*.ps1 @openclaw/release-managers-openclaw
+/scripts/MsixVersioning.ps1 @openclaw/release-managers-openclaw
+/scripts/Resolve-MsixPackageVersion.ps1 @openclaw/release-managers-openclaw
+/src/OpenClaw.Tray.WinUI/Package.appxmanifest @openclaw/release-managers-openclaw
+/src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj @openclaw/release-managers-openclaw

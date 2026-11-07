@@ -730,11 +730,13 @@ extract the matching architecture archive and follow its instructions,
 including explicitly trusting the included public certificate.
 
 Unsigned Store submission packages, the multi-architecture bundle, and their
-metadata remain Actions artifacts only. Use [Store submission](MICROSOFT_STORE.md)
-to upload the validated unsigned bundle from a successful release run. No
-production signing step is applied to those Store inputs.
+metadata remain Actions artifacts only. Use [Store publication requests](MICROSOFT_STORE.md)
+to request release-manager-approved central publication of the validated unsigned
+bundle from a successful release run. No production signing step is applied to
+those Store inputs.
 
-Automatic Partner Center submission is staged behind `MSSTORE_ENABLED`.
+Automatic central publication requests are staged behind `MSSTORE_ENABLED`.
+The variable never bypasses central release-manager approval.
 Store-signed retrieval and publication, and official lifecycle acceptance
 remain release gates tracked in #1375. Submission automation and release
 artifacts do not clear those rollout gates.
@@ -1086,6 +1088,12 @@ only receive a stable tag through the controlled promotion workflow above.
 - CI computes GitVersion outputs for artifact naming, while product builds use
   GitVersion-backed assembly metadata.
 
-## Automated Store submission
+## Central Store publication
 
-See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup, manual submission from an existing release run, automatic activation, and recovery. Automatic submission remains off until the repository variable `MSSTORE_ENABLED` is `true`; the existing release and artifact handoffs are unchanged.
+See [Store publication requests](MICROSOFT_STORE.md) for the central publishing
+boundary, required administrator cutover, manual requests from existing release
+runs, automatic request activation, and recovery. This repository only sends
+requests to `openclaw/releases`; it does not hold Store publishing authority.
+Automatic requests remain off until the repository variable `MSSTORE_ENABLED`
+is `true`. The stable-promotion approval, MSIX version reservations, unsigned
+x64/ARM64 artifacts, and release witness remain unchanged.
