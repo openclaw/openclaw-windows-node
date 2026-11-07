@@ -420,6 +420,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
+        view.ExitRequested = ExitSettings;
         view.PruneRequested = PruneSettingsHistory;
         view.SearchController = _search;
         view.SearchNavigation = ExecuteSearch;
@@ -504,6 +505,70 @@ public sealed partial class WorkspaceWindow : WindowEx
             else
                 Navigate(destination);
         }, OpenSettings, OpenDashboard);
+    }
+
+    /// <summary>
+    /// Back to app: leaves full Settings for the app destination it was opened from, as one ordinary
+    /// history entry. The retained chat host and draft are reused, a modal dialog defers the change,
+    /// and focus returns to the control that opened Settings.
+    /// </summary>
+    private void ExitSettings()
+    {
+        if (!IsSettingsVisible || Destination.Embedded) return;
+        // Resolve the target and its focus only when the exit actually runs, after any dialog closes.
+        if (DeferWhileModalOpen(ExitSettings)) return;
+        _sidebarInvoked = false;
+        // Like Back/Forward, never return to a pinned Gateway page that is no longer available.
+        PruneUnavailableGatewayHistory();
+        var destination = _navigation.AppDestination;
+        Navigate(destination);
+        // LeaveSettings restores chat focus. A rebuilt Notifications page or a pinned page beside the
+        // sidebar has no saved control, so focus moves to the destination instead of a hidden button.
+        if (destination.Page != WorkspacePageId.Home)
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => FocusAppDestination(destination));
+    }
+
+    private void FocusAppDestination(WorkspaceDestination destination)
+    {
+        if (IsClosed || Destination != destination) return;
+        // The pin row is unfocusable while the main sidebar is hidden; the page itself is the fallback.
+        if (destination.Embedded && TryFocus(NavView.SelectedItem as DependencyObject)) return;
+        var page = destination.Embedded ? (DependencyObject)SettingsSection : ContentHost;
+        TryFocus(Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(page));
+    }
+
+    private static bool TryFocus(DependencyObject? target) => target switch
+    {
+        Control control => control.Focus(FocusState.Programmatic),
+        Microsoft.UI.Xaml.Documents.Hyperlink link => link.Focus(FocusState.Programmatic),
+        _ => false,
+    };
+
+    // Bubbling KeyDown, so the focused control handles Escape first (PreviewKeyDown would steal it).
+    private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
+        if (!SettingsEscapePolicy.ExitsSettings(Destination, e.Handled, e.KeyStatus.WasKeyDown,
+                overlayOpen: HasOpenOverlay(), focusInEditor: IsInEscapeOwningEditor(e.OriginalSource as DependencyObject)))
+            return;
+        e.Handled = true;
+        ExitSettings();
+    }
+
+    private bool HasOpenOverlay() =>
+        Root.XamlRoot is { } xamlRoot && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot)
+            .Any(popup => popup.Child is not ToolTip);
+
+    private bool IsInEscapeOwningEditor(DependencyObject? source)
+    {
+        for (var element = source; element is not null; element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or ComboBox or NumberBox)
+                return true;
+            if (ReferenceEquals(element, Root))
+                return false;
+        }
+        return false;
     }
 
     /// <summary>
