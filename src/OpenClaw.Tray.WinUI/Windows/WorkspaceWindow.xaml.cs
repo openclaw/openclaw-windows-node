@@ -623,7 +623,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void RefreshSidebar(bool rosterUpdated = false)
     {
         _updating = true;
-        var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions);
+        var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions, _state.AgentIdentities);
         _agentSelection.Refresh(CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayId,
             _state.AgentsList, rosterAgents, rosterUpdated, _state.AgentsListUnsupported);
         IReadOnlyList<WorkspaceAgent> agents = _agentSelection.HasCurrentRoster ? rosterAgents : [];
@@ -640,10 +640,7 @@ public sealed partial class WorkspaceWindow : WindowEx
                 // Compensate the native item's leading template margin, not the popup's scroll extent.
                 Margin = new Thickness(-5, 0, 0, 0)
             };
-            item.Content = agent;
-            item.Tag = agent;
-            AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
-            AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+            UpdateAssistantItem(AssistantSelector, item, agent);
             desiredItems.Add(item);
         }
         desiredItems.Add(NewAgentOption);
@@ -669,6 +666,22 @@ public sealed partial class WorkspaceWindow : WindowEx
         // Before layout, NavigationView is still minimal and selecting an item closes its pane.
         if (Root.IsLoaded)
             UpdateNavigationSelection();
+    }
+
+    internal static void UpdateAssistantItem(ComboBox selector, ComboBoxItem item, WorkspaceAgent agent)
+    {
+        if (Equals(item.Content, agent))
+            return;
+
+        // ComboBox caches its closed selection separately from the item's content.
+        // Re-select under RefreshSidebar's _updating guard so identity hydration cannot navigate.
+        var selected = ReferenceEquals(selector.SelectedItem, item);
+        if (selected) selector.SelectedItem = null;
+        item.Content = agent;
+        item.Tag = agent;
+        AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
+        AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+        if (selected) selector.SelectedItem = item;
     }
 
     /// <summary>
@@ -938,7 +951,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (e.PropertyName is nameof(AppState.Status) or nameof(AppState.Presence) or nameof(AppState.SelfProfileRevision))
             RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
         if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.AgentsListUnsupported)
-            or nameof(AppState.Sessions) or nameof(AppState.Status))
+            or nameof(AppState.AgentIdentities) or nameof(AppState.Sessions) or nameof(AppState.Status))
             RefreshSidebar(rosterUpdated: e.PropertyName == nameof(AppState.AgentsList) ||
                 e.PropertyName == nameof(AppState.AgentsListUnsupported) && _state.AgentsListUnsupported);
         if (e.PropertyName == nameof(AppState.Status))
