@@ -507,32 +507,24 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
-Ordinary same-repository publication uses `GITHUB_TOKEN` with **Contents: write**.
-An extra publication credential is needed only when the candidate adds or
-modifies files under `.github/workflows/` relative to current main. Older product
-code or workflow deletions alone do not require it. The publication owner checks
-complete Git trees before creating any public tag and fails closed if that
-permission check cannot complete. GitHub's
-[release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
-requires **Workflows: write** for that historical-workflow exception, which
-`GITHUB_TOKEN` cannot receive. The approval-gated publication job uses the
-existing `CLAWSWEEPER_APP_PRIVATE_KEY` secret to mint a short-lived ClawSweeper
-App token (App ID `3306130`), restricted to this repository with **Contents:
-write** and **Workflows: write**. The installation must grant both permissions
-and access to this repository. Token creation failures stop the job; the action
-revokes the token at job completion.
+Promotion publication uses only `GITHUB_TOKEN` with **Contents: write**. No PAT,
+GitHub App key, or separate release-token secret is required by the workflow.
+The approved alpha SHA and pipeline SHA are pinned in `promotion.json`; moving
+main forward does not impose a workflow-file equality requirement. The existing
+ancestry check still requires the pinned pipeline to remain on main's history.
 
-An optional `STABLE_RELEASE_TOKEN` environment secret in `stable-release`
-overrides App token creation, including when that override is invalid or expired.
-Use a GitHub App installation token or fine-grained token restricted to this
-repository with the same two write permissions. If neither secret is available,
-ordinary publication can still use `GITHUB_TOKEN`, but historical-workflow
-candidates fail before tag creation. The selected token is used only for draft
-creation and final release publication, never for Git refs,
-candidate builds, or eligibility checks. Tag creation and asset uploads continue
-to use `GITHUB_TOKEN`, so historical tag workflows are not triggered. Missing or
-malformed exception credentials, or substituted workflow tokens, block before
-tag creation. Protected publication approval is required in both cases.
+Publication creates and verifies the annotated stable tag at the exact alpha
+SHA before creating the release. The release request specifies that existing
+tag and omits `target_commitish`, which GitHub documents as unused for existing
+tags. Release notes still explicitly compare the previous stable with the alpha
+SHA. Tag creation, asset uploads, and publication all use `GITHUB_TOKEN`, so
+creating the stable tag does not trigger historical tag workflows.
+
+The local checks prove the request shape and race handling, not GitHub's live
+permission decision. If GitHub rejects tag creation or release publication,
+stop and inspect that API failure; do not move the alpha or stable tag, switch
+the source to main, or mint broader credentials automatically. The token-only
+path with differing historical workflow files needs live Actions verification.
 
 Approval publishes the exact prepared artifact ID, not a rebuild. Under the
 shared release-publication lock, CI rechecks source tags, Latest ordering,
