@@ -79,6 +79,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private string? _mainSessionKey;
     private bool _mainSessionKeyIsCanonical;
     private bool _hasHandshakeSnapshot;
+    private string? _authenticatedServerVersion;
     private long _handshakeConnectionGeneration;
 
     /// <summary>
@@ -103,6 +104,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// as <see cref="OpenClaw.Chat.ChatComposeTarget.IsReady"/>.
     /// </summary>
     public bool HasHandshakeSnapshot => Volatile.Read(ref _hasHandshakeSnapshot);
+    public string? AuthenticatedServerVersion => Volatile.Read(ref _authenticatedServerVersion);
     public bool IsAgentsListUnsupported => Volatile.Read(ref _agentsListUnsupported);
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
@@ -338,6 +340,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _authenticatedSigningIdentity, null);
         Volatile.Write(ref _handshakeConnectionGeneration, 0);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
+        Volatile.Write(ref _authenticatedServerVersion, null);
         _pendingRequests.OpenConnection();
         ResetUnsupportedMethodFlags();
         RaiseTransportConnected();
@@ -392,6 +395,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _mainSessionKeyIsCanonical, false);
         Volatile.Write(ref _handshakeConnectionGeneration, 0);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
+        Volatile.Write(ref _authenticatedServerVersion, null);
         Volatile.Write(ref _advertisedServerMethods, Array.Empty<string>());
         Volatile.Write(ref _advertisedServerCapabilities, Array.Empty<string>());
         Interlocked.Increment(ref _serverHandshakeGeneration);
@@ -2614,9 +2618,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ref _mainSessionKey,
                 hasCanonicalMainSessionKey ? canonicalMainSessionKey : TryGetHandshakeMainSessionKey(payload));
             Volatile.Write(ref _handshakeConnectionGeneration, sourceConnectionGeneration);
+            var gatewaySelf = GatewaySelfInfo.FromHelloOk(payload);
+            Volatile.Write(ref _authenticatedServerVersion, gatewaySelf.ServerVersion);
             Volatile.Write(ref _hasHandshakeSnapshot, true);
             _logger.Info($"[HANDSHAKE] deviceId={_operatorDeviceId}, scopes=[{string.Join(", ", _grantedOperatorScopes)}], mainSession={_mainSessionKey ?? "(unset)"}");
-            PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
+            PublishGatewaySelf(gatewaySelf);
 
             var persistedRoleTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var roleToken in EnumerateHandshakeDeviceTokens(payload))

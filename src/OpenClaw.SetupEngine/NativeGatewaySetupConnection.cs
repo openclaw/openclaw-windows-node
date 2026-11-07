@@ -18,6 +18,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     public OpenClawGatewayClient Client { get; }
     public long Generation => Client.ServerHandshakeGeneration;
     public bool IsConnected => Client.IsConnectedToGateway && Client.HasHandshakeSnapshot;
+    public string? ServerVersion => Client.AuthenticatedServerVersion;
     public IReadOnlyCollection<string> Methods => Client.AdvertisedServerMethods;
     public IReadOnlyCollection<string> OperatorScopes => Client.GrantedOperatorScopes;
 

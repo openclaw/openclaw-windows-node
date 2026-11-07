@@ -35,6 +35,219 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Empty(Assert.Single(transport.ReplacementPaths));
     }
 
+    [Fact]
+    public async Task RpcValidation_RejectsOldGatewayBeforeModelStartup()
+    {
+        var transport = new AtomicTransport("{}") { ServerVersion = "2026.6.5" };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
+    public async Task RpcValidation_UsesLocalizedUpgradeGuidance()
+    {
+        var transport = new AtomicTransport("{}") { ServerVersion = "2026.9.7" };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret",
+            NullLogger.Instance, key => key == "LocalAi_GatewayUpgrade" ? "Localized upgrade guidance" : key);
+
+        var result = await coordinator.ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Equal("Localized upgrade guidance", result.Detail);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
+    public async Task RpcPublish_RejectsOldGatewayBeforePatch()
+    {
+        var transport = new AtomicTransport("{}") { ServerVersion = "2026.9.7" };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
+    public async Task WslValidation_RejectsOldGatewayBeforeModelStartup()
+    {
+        var commands = new FakeWslCommandRunner(null) { GatewayVersion = "2026.6.5" };
+
+        var result = await CreateCoordinator(commands).ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("set") || call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslValidation_RejectsOldRunningGatewayEvenWithNewCli()
+    {
+        var commands = new FakeWslCommandRunner(null)
+        {
+            GatewayVersion = "2026.9.8", RunningGatewayVersion = "2026.6.5",
+        };
+
+        var result = await CreateCoordinator(commands).ValidatePublicationAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("set") || call.Contains("restart"));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("{\"rpc\":null}")]
+    [InlineData("{\"rpc\":{\"ok\":true,\"server\":null}}")]
+    public void RunningGatewayStatus_RejectsInvalidShapes(string status) =>
+        Assert.False(LocalAiReasoningGatewayCompatibility.TryReadRunningVersion(status, out _));
+
+    [Fact]
+    public async Task RpcPublish_MigratesOnlyLegacyModelArrayAndPreservesCredential()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("{}");
+        transport.SetManaged(install);
+        var model = (JsonObject)transport.Config["models"]!["providers"]!["llamacpp"]!["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var oldProvider = transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString();
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(oldProvider, install, "actual-local-secret"));
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(oldProvider, install, "actual-local-secret"));
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Equal([LocalAiGatewayProviderDefinition.ProviderModelsPath], Assert.Single(transport.ReplacementPaths));
+        Assert.False(transport.Patches[0].GetProperty("models").GetProperty("providers")
+            .GetProperty("llamacpp").TryGetProperty("apiKey", out _));
+        Assert.Equal("actual-local-secret", (string?)transport.Config["models"]?["providers"]?["llamacpp"]?["apiKey"]);
+        Assert.Equal("cloud/prior", install.Manifest.GatewayFallbackModel);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString(), install, "actual-local-secret"));
+    }
+
+    [Fact]
+    public async Task WslPublish_MigratesLegacyModelArrayWithoutOverwritingCredential()
+    {
+        var install = Install(28_765);
+        var legacy = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install, "llama-local"))!.AsObject();
+        var model = (JsonObject)legacy["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var commands = new FakeWslCommandRunner(legacy.ToJsonString(),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var coordinator = CreateCoordinator(commands);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal("llama-local", JsonNode.Parse(commands.ProviderJson!)!["apiKey"]!.GetValue<string>());
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install, "llama-local"));
+        Assert.Contains(commands.Calls, call => call.Contains("--expect-current-json"));
+        Assert.Contains(commands.Calls, call => call.Contains("gateway") && call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslPublish_RetriesRestartAfterMigratedConfigWasSaved()
+    {
+        var install = Install(28_765);
+        var legacy = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install))!.AsObject();
+        var model = (JsonObject)legacy["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var commands = new FakeWslCommandRunner(legacy.ToJsonString(),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            IndeterminateRestartCalls = [1],
+            GatewayUnavailableAfterFailedRestart = true,
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        var first = await coordinator.PublishAsync(install);
+        Assert.False(first.Success);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install));
+        Assert.True((await coordinator.ValidatePublicationAsync(install)).Success);
+
+        var retry = await coordinator.PublishAsync(install);
+        Assert.True(retry.Success, retry.Detail);
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+        Assert.Single(commands.Calls, call => call.Contains("--expect-current-json") && !call.Contains("--dry-run"));
+    }
+
+    [Fact]
+    public async Task WslPublish_FinishesRestartAfterConfirmedWriteWhenCallerCancels()
+    {
+        var install = Install(28_765);
+        var legacy = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install))!.AsObject();
+        var model = (JsonObject)legacy["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        using var cancellation = new CancellationTokenSource();
+        FakeWslCommandRunner? observed = null;
+        var commands = new FakeWslCommandRunner(legacy.ToJsonString(),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            CommandObserved = _ =>
+            {
+                if (observed!.Calls[^1].Contains("--expect-current-json"))
+                    cancellation.Cancel();
+            },
+        };
+        observed = commands;
+
+        var result = await CreateCoordinator(commands).PublishAsync(install, cancellation.Token);
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(commands.Calls, call => call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslPublish_OldGatewayRefusesLegacyMigrationBeforeWrite()
+    {
+        var install = Install(28_765);
+        var legacy = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install))!.AsObject();
+        var model = (JsonObject)legacy["models"]![0]!;
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+        var original = legacy.ToJsonString();
+        var commands = new FakeWslCommandRunner(original,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)) { GatewayVersion = "2026.6.5" };
+
+        var result = await CreateCoordinator(commands).PublishAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Contains("2026.9.8", result.Detail);
+        Assert.Equal(original, commands.ProviderJson);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("--expect-current-json"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -127,6 +340,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     private sealed class AtomicTransport(string config) : ILocalAiGatewayAtomicConfigurationTransport
     {
         public JsonObject Config { get; } = JsonNode.Parse(config)!.AsObject();
+        public string? ServerVersion { get; init; } = "2026.9.8";
         public List<JsonElement> Patches { get; } = [];
         public List<string[]> ReplacementPaths { get; } = [];
         public bool DriftOnApply { get; init; }
@@ -488,12 +702,13 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         var commands = new FakeWslCommandRunner(provider, LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
         var coordinator = CreateCoordinator(commands);
         Assert.True((await coordinator.PublishAsync(install)).Success);
+        int restartsBeforeQuiesce = commands.Calls.Count(call => call.Contains("restart"));
         await commands.RunInDistroAsync("fixture", ["config", "unset", LocalAiGatewayProviderDefinition.ProviderPath]);
         Assert.Equal(provider, commands.ActiveProviderJson);
 
         Assert.True((await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle)).Success);
         Assert.Null(commands.ActiveProviderJson);
-        Assert.Single(commands.Calls, call => call.Contains("restart"));
+        Assert.Equal(restartsBeforeQuiesce + 1, commands.Calls.Count(call => call.Contains("restart")));
     }
 
     [Fact]
@@ -1046,6 +1261,10 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public string? ActiveProviderJson { get; private set; } = providerJson;
         public string? PrimaryModel { get; private set; } = primaryModel;
         public string? ProviderAfterApply { get; init; }
+        public string GatewayVersion { get; init; } = "2026.9.8";
+        public string? RunningGatewayVersion { get; init; }
+        public string? GatewayStatusJson { get; init; }
+        public bool GatewayUnavailableAfterFailedRestart { get; init; }
         public string? PrimaryAfterApply { get; init; }
         public bool FailReads { get; init; }
         public HashSet<int> FailedReadCalls { get; init; } = [];
@@ -1056,6 +1275,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public List<string> Distros { get; } = [];
         private int _readCalls;
         private int _restartCalls;
+        private bool _gatewayStopped;
 
         public Task<WslCommandResult> RunInDistroAsync(
             string name,
@@ -1069,10 +1289,40 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             Calls.Add(command.ToArray());
             StandardInputs.Add(standardInput);
             CommandObserved?.Invoke(Calls.Count);
+            if (command.Contains("--version"))
+                return Result(0, $"OpenClaw {GatewayVersion}");
+            if (command.Contains("gateway") && command.Contains("status") && command.Contains("--json"))
+                return Result(0, GatewayStatusJson ?? JsonSerializer.Serialize(new
+                {
+                    rpc = new
+                    {
+                        ok = !_gatewayStopped,
+                        server = new { version = RunningGatewayVersion ?? GatewayVersion },
+                    },
+                }));
             bool providerRead = command.Contains("get") &&
                 command.Contains(LocalAiGatewayProviderDefinition.ProviderPath);
             if (providerRead && (FailReads || FailedReadCalls.Contains(++_readCalls)))
                 return Result(1, string.Empty, "wsl.exe failed");
+            if (command.Contains("set") && command.Contains(LocalAiGatewayProviderDefinition.ProviderModelsPath))
+            {
+                int guard = command.ToList().IndexOf("--expect-current-json");
+                bool dryRun = command.Contains("--dry-run");
+                if (ProviderJson is null || dryRun && guard >= 0 || !dryRun && guard < 0)
+                    return Result(1, string.Empty);
+                var provider = JsonNode.Parse(ProviderJson)!.AsObject();
+                if (!dryRun)
+                {
+                    using var current = JsonDocument.Parse(provider["models"]!.ToJsonString());
+                    using var expected = JsonDocument.Parse(command[guard + 1]);
+                    if (!JsonElement.DeepEquals(current.RootElement, expected.RootElement))
+                        return Result(1, string.Empty);
+                    int path = command.ToList().IndexOf(LocalAiGatewayProviderDefinition.ProviderModelsPath);
+                    provider["models"] = JsonNode.Parse(command[path + 1]);
+                    ProviderJson = provider.ToJsonString();
+                }
+                return Result(0, string.Empty);
+            }
             if (command.Contains("/bin/sh"))
             {
                 if (ProviderAfterApply is not null)
@@ -1083,8 +1333,12 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             if (command.Contains("gateway") && command.Contains("restart"))
             {
                 if (IndeterminateRestartCalls.Contains(++_restartCalls))
+                {
+                    _gatewayStopped = GatewayUnavailableAfterFailedRestart;
                     return Task.FromResult(new WslCommandResult(-1, string.Empty, string.Empty,
                         TimedOut: true, OutcomeIndeterminate: true));
+                }
+                _gatewayStopped = false;
                 ActiveProviderJson = ProviderJson;
                 return Result(0, string.Empty);
             }

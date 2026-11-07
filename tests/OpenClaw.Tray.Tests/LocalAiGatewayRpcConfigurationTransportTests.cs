@@ -61,6 +61,16 @@ public sealed class LocalAiGatewayRpcConfigurationTransportTests
         Assert.False(payload.TryGetProperty("replacePaths", out _));
     }
 
+    [Theory]
+    [InlineData("2026.9.8", true)]
+    [InlineData("2026.9.8-1", true)] // numeric correction release
+    [InlineData("2026.9.8-beta.1", false)]
+    [InlineData("2026.10.5-beta.1", true)]
+    [InlineData("2026.9.7", false)]
+    [InlineData("2026.6.5", false)]
+    public void GatewayFloor_UsesObservedWorkingRelease(string version, bool expected) =>
+        Assert.Equal(expected, LocalAiReasoningGatewayCompatibility.IsSupported(version));
+
     [Fact]
     public async Task ProviderWithdrawalNamesOnlyOwnedModelArrayAndRetainsSnapshotGuard()
     {
@@ -214,6 +224,7 @@ public sealed class LocalAiGatewayRpcConfigurationTransportTests
             GatewayDashboardBinding.Capture(NativeRecord), new string('A', 64), "agent:main:main");
         public long Generation { get; set; } = 1;
         public bool IsConnected { get; set; } = true;
+        public string? ServerVersion { get; set; } = "2026.9.8";
         public IReadOnlyCollection<string> Methods { get; init; } = ["config.get", "config.patch"];
         public IReadOnlyCollection<string> OperatorScopes { get; init; } = ["operator.admin"];
         public JsonElement Response { get; init; } = JsonSerializer.SerializeToElement(

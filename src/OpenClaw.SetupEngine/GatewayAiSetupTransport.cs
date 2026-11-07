@@ -94,6 +94,7 @@ public sealed class GatewayAiSetupTransport(
     public OpenClawGatewayClient ConnectionClient => client;
     public long Generation => client.ServerHandshakeGeneration;
     public bool IsConnected => client.IsConnectedToGateway && client.HasHandshakeSnapshot;
+    public string? ServerVersion => client.AuthenticatedServerVersion;
     public IReadOnlyCollection<string> Methods => client.AdvertisedServerMethods;
     public IReadOnlyCollection<string> OperatorScopes => client.GrantedOperatorScopes;
 

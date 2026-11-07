@@ -7864,4 +7864,11 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
+  <data name="LocalAi_GatewayUpgrade" xml:space="preserve"><value>本地 AI 推理控制需要 OpenClaw Gateway 2026.9.8 或更高版本。发布此模型前请升级 Gateway。</value></data>
+  <data name="LocalAi_GatewayRunningVersionUnavailable" xml:space="preserve"><value>无法验证正在运行的 WSL Gateway 版本。发布本地 AI 前请重新连接 Gateway。</value></data>
+  <data name="LocalAi_GatewaySavedRouteRestart" xml:space="preserve"><value>WSL Gateway 无法采用已保存的本地 AI 路由。重试前请确认 Gateway 已重启。</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>无法验证旧版本地 AI 模型设置以进行迁移。Gateway 配置未更改。</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>旧版本地 AI 模型设置在迁移确认前发生了变化。请重新连接原 Gateway 以协调配置。</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>本地 AI 模型设置已保存，但无法确认 WSL Gateway 已重启。重试前请协调原 Gateway 的配置。</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>无法验证已保存的本地 AI 路由。请保留端点并协调原 Gateway 的配置。</value></data>
 </root>

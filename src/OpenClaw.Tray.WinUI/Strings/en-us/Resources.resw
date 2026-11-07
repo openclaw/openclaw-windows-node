@@ -7932,4 +7932,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="LocalAi_GatewayUpgrade" xml:space="preserve"><value>Local AI reasoning controls require OpenClaw Gateway 2026.9.8 or newer. Upgrade the Gateway before publishing this model.</value></data>
+  <data name="LocalAi_GatewayRunningVersionUnavailable" xml:space="preserve"><value>The running WSL Gateway version could not be verified. Reconnect the Gateway before publishing Local AI.</value></data>
+  <data name="LocalAi_GatewaySavedRouteRestart" xml:space="preserve"><value>The saved Local AI route could not be adopted by the WSL Gateway. Confirm its restart before retrying.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>The saved Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.</value></data>
 </root>

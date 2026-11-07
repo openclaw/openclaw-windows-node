@@ -710,8 +710,9 @@ internal sealed class WindowManager : IWindowManager
         ct => new LocalAiManifestStore(new(AppIdentity.ResolveSetupLocalDataDirectory())).LoadAsync(ct),
         LocalAiInstallationObservation.InspectAsync,
         ct => Task.Run(() => new OpenClaw.Shared.Inference.CudaHostHardwareProbe().Probe(), ct).WaitAsync(ct),
-        () => new LocalAiGatewayProviderCoordinator(new WslExeCommandRunner(new AppLogger()),
-            new LocalAiGatewayDistroResolver(_callbacks.GetGatewayRegistry()), new AppLogger()),
+        () => new LocalAiGatewayProviderCoordinator(new WslExeCommandRunner(new AppLogger(), TimeSpan.FromSeconds(420)),
+            new LocalAiGatewayDistroResolver(_callbacks.GetGatewayRegistry()), new AppLogger(),
+            LocalizationHelper.GetString),
           ReconcileSetupConnectionAsync, NotifySetupRegistryRecovery,
           _callbacks.GetLocalAiGatewayLifecycle?.Invoke());
 

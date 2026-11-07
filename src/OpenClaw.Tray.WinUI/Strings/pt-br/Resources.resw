@@ -7917,4 +7917,11 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
+  <data name="LocalAi_GatewayUpgrade" xml:space="preserve"><value>Os controles de raciocínio da IA local exigem o OpenClaw Gateway 2026.9.8 ou mais recente. Atualize o Gateway antes de publicar este modelo.</value></data>
+  <data name="LocalAi_GatewayRunningVersionUnavailable" xml:space="preserve"><value>Não foi possível verificar a versão do Gateway WSL em execução. Reconecte o Gateway antes de publicar a IA local.</value></data>
+  <data name="LocalAi_GatewaySavedRouteRestart" xml:space="preserve"><value>O Gateway WSL não conseguiu adotar a rota de IA local salva. Confirme que ele reiniciou antes de tentar novamente.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>Não foi possível validar as configurações antigas do modelo de IA local para migração. A configuração do Gateway não foi alterada.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>As configurações antigas do modelo de IA local mudaram antes da confirmação da migração. Reconecte o Gateway original para reconciliá-las.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>As configurações do modelo de IA local foram salvas, mas a reinicialização do Gateway WSL não foi confirmada. Reconcilie o Gateway original antes de tentar novamente.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>Não foi possível verificar a rota de IA local salva. Preserve o endpoint e reconcilie o Gateway original.</value></data>
 </root>
