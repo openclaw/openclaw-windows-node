@@ -7844,6 +7844,16 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Gatewayactiviteit</value></data>
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portalen</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Werkbomen</value></data>
+  <data name="RelatedSettings_Header.Text" xml:space="preserve"><value>Gerelateerde instellingen</value></data>
+  <data name="RelatedSettings_OpensInDashboardFormat" xml:space="preserve"><value>{0}, wordt geopend in Dashboard</value></data>
+  <data name="RelatedSettings_Systems_Description" xml:space="preserve"><value>Apparaten en desktops die met deze gateway zijn verbonden.</value></data>
+  <data name="RelatedSettings_Approvals_Description" xml:space="preserve"><value>Recente goedkeuringen voor uitvoering, plug-ins en systeemagents.</value></data>
+  <data name="RelatedSettings_Logs_Description" xml:space="preserve"><value>Live gatewaylogboeken.</value></data>
+  <data name="RelatedSettings_Automation_Description" xml:space="preserve"><value>Heartbeat, hooks, koppelingen en andere automatiseringsinstellingen.</value></data>
+  <data name="RelatedSettings_Activity_Description" xml:space="preserve"><value>Recente sessies van iedereen die deze gateway gebruikt.</value></data>
+  <data name="RelatedSettings_Models_Description" xml:space="preserve"><value>Algemene standaardmodellen en providertoegang voor je agents.</value></data>
+  <data name="RelatedSettings_Security_Description" xml:space="preserve"><value>Opdrachtmachtigingen, toolprofielen en toegang.</value></data>
+  <data name="RelatedSettings_Secrets_Description" xml:space="preserve"><value>Referenties die agents in opdrachten kunnen gebruiken.</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>

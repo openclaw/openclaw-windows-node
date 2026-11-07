@@ -2,7 +2,8 @@
 <Page
     x:Class="OpenClawTray.Pages.UsagePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenClawTray.Controls">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid HorizontalAlignment="Stretch">
@@ -175,6 +176,8 @@
                     </ListView>
                 </StackPanel>
             </Border>
+
+            <local:RelatedSettingsSection PageTag="usage"/>
 
         </StackPanel>
     </Grid>

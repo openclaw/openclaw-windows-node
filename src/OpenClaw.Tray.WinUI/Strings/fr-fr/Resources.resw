@@ -7843,6 +7843,16 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Activité de la passerelle</value></data>
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portails</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Arbres de travail</value></data>
+  <data name="RelatedSettings_Header.Text" xml:space="preserve"><value>Paramètres associés</value></data>
+  <data name="RelatedSettings_OpensInDashboardFormat" xml:space="preserve"><value>{0}, s'ouvre dans le Tableau de bord</value></data>
+  <data name="RelatedSettings_Systems_Description" xml:space="preserve"><value>Appareils et ordinateurs connectés à cette passerelle.</value></data>
+  <data name="RelatedSettings_Approvals_Description" xml:space="preserve"><value>Approbations récentes d'exécution, de plug-ins et d'agents système.</value></data>
+  <data name="RelatedSettings_Logs_Description" xml:space="preserve"><value>Journaux en direct de la passerelle.</value></data>
+  <data name="RelatedSettings_Automation_Description" xml:space="preserve"><value>Signal périodique, hooks, liaisons et autres paramètres d'automatisation.</value></data>
+  <data name="RelatedSettings_Activity_Description" xml:space="preserve"><value>Sessions récentes de toutes les personnes qui utilisent cette passerelle.</value></data>
+  <data name="RelatedSettings_Models_Description" xml:space="preserve"><value>Modèles par défaut et accès aux fournisseurs pour vos agents.</value></data>
+  <data name="RelatedSettings_Security_Description" xml:space="preserve"><value>Autorisations de commandes, profils d'outils et accès.</value></data>
+  <data name="RelatedSettings_Secrets_Description" xml:space="preserve"><value>Identifiants que les agents peuvent utiliser dans les commandes.</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>

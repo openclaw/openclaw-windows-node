@@ -7843,6 +7843,16 @@
   <data name="Search_Dashboard_Activity" xml:space="preserve"><value>閘道活動</value></data>
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>入口網站</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作樹</value></data>
+  <data name="RelatedSettings_Header.Text" xml:space="preserve"><value>相關設定</value></data>
+  <data name="RelatedSettings_OpensInDashboardFormat" xml:space="preserve"><value>{0}，在控制面板中開啟</value></data>
+  <data name="RelatedSettings_Systems_Description" xml:space="preserve"><value>連線到此閘道的裝置和桌面。</value></data>
+  <data name="RelatedSettings_Approvals_Description" xml:space="preserve"><value>最近的執行、外掛程式和系統代理程式核准。</value></data>
+  <data name="RelatedSettings_Logs_Description" xml:space="preserve"><value>即時閘道記錄。</value></data>
+  <data name="RelatedSettings_Automation_Description" xml:space="preserve"><value>心跳、掛鉤、繫結和其他自動化設定。</value></data>
+  <data name="RelatedSettings_Activity_Description" xml:space="preserve"><value>使用此閘道的所有人的最近工作階段。</value></data>
+  <data name="RelatedSettings_Models_Description" xml:space="preserve"><value>代理程式的全域預設模型和提供者存取權。</value></data>
+  <data name="RelatedSettings_Security_Description" xml:space="preserve"><value>命令權限、工具設定檔和存取權。</value></data>
+  <data name="RelatedSettings_Secrets_Description" xml:space="preserve"><value>代理程式可在命令中使用的認證。</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>

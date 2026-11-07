@@ -293,6 +293,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearch.cs" Link="Presentation\HubSearch.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchCatalog.cs" Link="Presentation\HubSearchCatalog.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\RelatedDashboardLinks.cs" Link="Presentation\RelatedDashboardLinks.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchController.cs" Link="Presentation\HubSearchController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />

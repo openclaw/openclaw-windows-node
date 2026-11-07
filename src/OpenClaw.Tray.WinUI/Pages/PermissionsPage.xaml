@@ -2,7 +2,8 @@
 <Page x:Class="OpenClawTray.Pages.PermissionsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:local="using:OpenClawTray.Controls">
 
     <Page.Resources>
         <Thickness x:Key="PermSectionHeaderMargin">4,18,4,4</Thickness>
@@ -466,6 +467,8 @@
                     <Button Grid.Column="1" x:Uid="PermissionsPage_Button_123" Content="Open Windows privacy settings" Click="OnOpenPrivacySettings"/>
                 </Grid>
             </Border>
+
+            <local:RelatedSettingsSection PageTag="permissions"/>
 
         </StackPanel>
     </ScrollViewer>

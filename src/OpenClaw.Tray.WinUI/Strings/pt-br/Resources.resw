@@ -7896,6 +7896,16 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Atividade do Gateway</value></data>
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portais</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Árvores de trabalho</value></data>
+  <data name="RelatedSettings_Header.Text" xml:space="preserve"><value>Configurações relacionadas</value></data>
+  <data name="RelatedSettings_OpensInDashboardFormat" xml:space="preserve"><value>{0}, abre no Painel</value></data>
+  <data name="RelatedSettings_Systems_Description" xml:space="preserve"><value>Dispositivos e computadores conectados a este Gateway.</value></data>
+  <data name="RelatedSettings_Approvals_Description" xml:space="preserve"><value>Aprovações recentes de execução, plug-ins e agentes do sistema.</value></data>
+  <data name="RelatedSettings_Logs_Description" xml:space="preserve"><value>Logs do Gateway em tempo real.</value></data>
+  <data name="RelatedSettings_Automation_Description" xml:space="preserve"><value>Heartbeat, hooks, vínculos e outras configurações de automação.</value></data>
+  <data name="RelatedSettings_Activity_Description" xml:space="preserve"><value>Sessões recentes de todos que usam este Gateway.</value></data>
+  <data name="RelatedSettings_Models_Description" xml:space="preserve"><value>Padrões globais de modelos e acesso a provedores para seus agentes.</value></data>
+  <data name="RelatedSettings_Security_Description" xml:space="preserve"><value>Permissões de comandos, perfis de ferramentas e acesso.</value></data>
+  <data name="RelatedSettings_Secrets_Description" xml:space="preserve"><value>Credenciais que os agentes podem usar em comandos.</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>

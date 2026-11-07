@@ -2,7 +2,8 @@
 <Page x:Class="OpenClawTray.Pages.SandboxPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:helpers="using:OpenClawTray.Helpers">
+    xmlns:helpers="using:OpenClawTray.Helpers"
+    xmlns:local="using:OpenClawTray.Controls">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
@@ -394,6 +395,8 @@
 
             </StackPanel>
             </ContentControl>
+
+            <local:RelatedSettingsSection PageTag="sandbox"/>
 
         </StackPanel>
     </ScrollViewer>

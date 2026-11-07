@@ -7843,6 +7843,16 @@
   <data name="Search_Dashboard_Activity" xml:space="preserve"><value>网关活动</value></data>
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>门户</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作树</value></data>
+  <data name="RelatedSettings_Header.Text" xml:space="preserve"><value>相关设置</value></data>
+  <data name="RelatedSettings_OpensInDashboardFormat" xml:space="preserve"><value>{0}，在控制面板中打开</value></data>
+  <data name="RelatedSettings_Systems_Description" xml:space="preserve"><value>连接到此网关的设备和桌面。</value></data>
+  <data name="RelatedSettings_Approvals_Description" xml:space="preserve"><value>最近的执行、插件和系统智能体审批。</value></data>
+  <data name="RelatedSettings_Logs_Description" xml:space="preserve"><value>实时网关日志。</value></data>
+  <data name="RelatedSettings_Automation_Description" xml:space="preserve"><value>心跳、钩子、绑定和其他自动化设置。</value></data>
+  <data name="RelatedSettings_Activity_Description" xml:space="preserve"><value>使用此网关的所有人的最近会话。</value></data>
+  <data name="RelatedSettings_Models_Description" xml:space="preserve"><value>智能体的全局默认模型和提供商访问权限。</value></data>
+  <data name="RelatedSettings_Security_Description" xml:space="preserve"><value>命令权限、工具配置文件和访问权限。</value></data>
+  <data name="RelatedSettings_Secrets_Description" xml:space="preserve"><value>智能体可在命令中使用的凭据。</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>

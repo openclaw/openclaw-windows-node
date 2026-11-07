@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page x:Class="OpenClawTray.Pages.LocalAiPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="using:OpenClawTray.Controls">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid HorizontalAlignment="Stretch">
             <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
@@ -228,6 +229,7 @@
                 </StackPanel>
                 </Border>
             </ContentControl>
+            <local:RelatedSettingsSection PageTag="local-ai"/>
             </StackPanel>
         </Grid>
     </ScrollViewer>
