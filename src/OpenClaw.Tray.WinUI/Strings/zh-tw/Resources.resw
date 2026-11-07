@@ -7869,7 +7869,7 @@
   <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>需要核准</value></data>
   <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>{0} 後到期</value></data>
   <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>已到期</value></data>
-  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>此電腦</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>閘道</value></data>
   <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>裝置</value></data>
   <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>沙箱</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，直到撤銷（可撤銷）</value></data>

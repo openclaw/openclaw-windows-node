@@ -7870,7 +7870,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Goedkeuring nodig</value></data>
   <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Verloopt over {0}</value></data>
   <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Verlopen</value></data>
-  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>Deze computer</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gatewaydienst</value></data>
   <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Apparaat</value></data>
   <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox-omgeving</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, totdat dit wordt ingetrokken (herroepbaar)</value></data>

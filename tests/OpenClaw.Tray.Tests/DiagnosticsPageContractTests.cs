@@ -684,6 +684,27 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void InboxApprovalRows_LabelTheGatewayHostAndShowTheWholeCommand()
+    {
+        var row = Read("src", "OpenClaw.Tray.WinUI", "ViewModels", "InboxItemViewModel.cs");
+        // "gateway" execution is the Gateway's machine, which may be remote.
+        Assert.Contains("\"gateway\" => LocalizationHelper.GetString(\"Inbox_ApprovalHostGateway\")", row);
+        Assert.DoesNotContain("Inbox_ApprovalHostThisComputer", row);
+        Assert.Contains("InboxGatewayItems.DisplayCommand(approval.Command)", row);
+
+        var xaml = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml"));
+        var command = xaml.Descendants().Single(element =>
+            element.Name.LocalName == "TextBlock" && (string?)element.Attribute("Text") == "{Binding CommandText}");
+        Assert.Null(command.Attribute("MaxLines"));
+        Assert.Null(command.Attribute("TextTrimming"));
+        Assert.Equal("True", (string?)command.Attribute("IsTextSelectionEnabled"));
+        Assert.Equal("ScrollViewer", command.Parent!.Name.LocalName);
+
+        // The App owns the single Inbox feed; a window-created fallback would leak its subscription.
+        Assert.DoesNotContain("new InboxFeed(", Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+    }
+
+    [Fact]
     public void ShellFlyoutContent_HasFocusedOwners()
     {
         var hub = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");

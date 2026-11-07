@@ -165,9 +165,78 @@ public sealed class InboxGatewayItemsTests
         Assert.Null(InboxGatewayItems.FormatCountdown(NowMs, NowMs));
 
     [Fact]
+    public void Builders_IgnoreTimestampsBeyondTheRepresentableRange()
+    {
+        const long tooLate = 9007199254740991;
+        var cron = InboxGatewayItems.BuildCron(Json(new
+        {
+            jobs = new object[]
+            {
+                new { id = "late", enabled = true, state = new { nextRunAtMs = tooLate } },
+                new { id = "failed", enabled = true, updatedAtMs = tooLate, state = new { lastRunStatus = "error", lastRunAtMs = tooLate } },
+            },
+        }), schedulerEnabled: true, NowMs);
+        var auth = Json(new
+        {
+            ts = tooLate,
+            providers = new object[]
+            {
+                new { provider = "openai", status = "missing", expiry = new { at = tooLate }, profiles = Array.Empty<object>() },
+            },
+        });
+
+        var failed = Assert.Single(cron);
+        Assert.Equal("gateway:cronFailed:failed", failed.Id);
+        Assert.Equal(Now, failed.ArrivedAt);
+        Assert.Equal(Now, Assert.Single(InboxGatewayItems.BuildModelAuth(auth, NowMs)).ArrivedAt);
+        Assert.Null(InboxGatewayItems.NextModelAuthRefreshAt(auth, Now));
+    }
+
+    [Fact]
+    public void NextModelAuthRefreshAt_ClampsAFarExpiryInsteadOfThrowing()
+    {
+        var refreshAt = InboxGatewayItems.NextModelAuthRefreshAt(Json(new
+        {
+            ts = 1,
+            providers = new[] { new { provider = "a", status = "ok", expiry = new { at = GatewayUnixTime.MaxMs } } },
+        }), Now);
+
+        Assert.Equal(DateTimeOffset.MaxValue.ToUnixTimeMilliseconds(), refreshAt!.Value.ToUnixTimeMilliseconds());
+    }
+
+    [Theory]
+    [InlineData(-7_200_000L, 60_000L, 60_000L)]   // Gateway clock two hours behind
+    [InlineData(7_200_000L, 60_000L, 60_000L)]    // Gateway clock two hours ahead
+    [InlineData(0L, -5_000L, 0L)]                 // expiry before creation: already expired
+    [InlineData(0L, 0L, 0L)]
+    public void LocalDeadline_MeasuresTheGatewayLifetimeOnTheLocalClock(long gatewaySkewMs, long lifetimeMs, long expectedMs)
+    {
+        var created = NowMs + gatewaySkewMs;
+        var approval = Approval("a", created, created + lifetimeMs);
+
+        Assert.Equal(Now.AddMilliseconds(expectedMs), InboxGatewayItems.LocalDeadline(approval, Now));
+    }
+
+    [Fact]
+    public void LocalDeadline_ClampsAHugeLifetime() =>
+        Assert.Equal(GatewayUnixTime.MaxMs,
+            InboxGatewayItems.LocalDeadline(Approval("a", 1, GatewayUnixTime.MaxMs), Now).ToUnixTimeMilliseconds());
+
+    [Fact]
+    public void DisplayCommand_KeepsTheWholeCommandAndRevealsHiddenCharacters()
+    {
+        var command = "echo safe\u202E txt.exe\r\nrm -rf x\u200B\rhidden\tend" + new string('y', 500);
+
+        var display = InboxGatewayItems.DisplayCommand(command);
+
+        Assert.Equal("echo safe\\u{202E} txt.exe\nrm -rf x\\u{200B}\\u{000D}hidden\tend" + new string('y', 500), display);
+        Assert.DoesNotContain("…", display);
+    }
+
+    [Fact]
     public void Projection_PutsGatewayApprovalsFirstAndKeepsThemUndismissable()
     {
-        var approval = InboxGatewayItems.FromApproval(Approval("a1", NowMs - 600_000));
+        var approval = InboxGatewayItems.FromApproval(Approval("a1", NowMs - 600_000), Now.AddMinutes(50));
         var failed = new InboxGatewayItem("gateway:cronFailed:j", InboxGatewayItemKind.AutomationFailed, "Job", Now);
         var auth = new InboxGatewayItem("gateway:modelAuth:p", InboxGatewayItemKind.ModelAuth, "P", Now.AddMinutes(-1));
         var notification = new AppNotification
@@ -227,6 +296,38 @@ public sealed class InboxGatewaySourceTests
         source.Tick();
 
         Assert.Empty(source.Items);
+    }
+
+    [Fact]
+    public void ApprovalsFromASkewedGatewayClock_UseTheirLifetimeOnTheLocalClock()
+    {
+        var (source, gateway) = Attach();
+        var created = Ms(Start) - 7_200_000; // Gateway two hours behind this machine
+        gateway.Raise("PendingApprovalRequested", InboxGatewayItemsTests.Approval("a1", created, created + 60_000));
+
+        var item = Assert.Single(source.Items);
+        Assert.Equal(Start.AddMinutes(1), item.ExpiresAt);
+
+        _now = Start.AddSeconds(59);
+        source.Tick();
+        Assert.Single(source.Items);
+
+        _now = Start.AddSeconds(61);
+        source.Tick();
+        Assert.Empty(source.Items);
+    }
+
+    [Fact]
+    public void RepeatedApprovalRequests_KeepTheirOriginalDeadline()
+    {
+        var (source, gateway) = Attach();
+        var approval = InboxGatewayItemsTests.Approval("a1", Ms(Start), Ms(Start) + 60_000);
+        gateway.Raise("PendingApprovalRequested", approval);
+
+        _now = Start.AddSeconds(50);
+        gateway.Raise("PendingApprovalRequested", approval);
+
+        Assert.Equal(Start.AddMinutes(1), Assert.Single(source.Items).ExpiresAt);
     }
 
     [Fact]

@@ -7937,7 +7937,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approval needed</value></data>
   <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expires in {0}</value></data>
   <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expired</value></data>
-  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>This computer</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gateway</value></data>
   <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Device</value></data>
   <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Always allow runs this exact command for "{0}" without asking, until revoked (revocable)</value></data>

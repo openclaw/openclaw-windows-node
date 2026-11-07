@@ -82,6 +82,40 @@ public class GatewayPendingApprovalTests
         Assert.False(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, doc.RootElement, out _));
     }
 
+    [Theory]
+    [InlineData(9007199254740991L, 9007199254740991L)]
+    [InlineData(1780691492368L, 9007199254740991L)]
+    [InlineData(253402300800000L, 253402300800001L)]
+    public void TryParse_RejectsTimestampsBeyondTheRepresentableRange(long createdAtMs, long expiresAtMs)
+    {
+        using var doc = JsonDocument.Parse($$"""
+            { "id": "a", "request": { "command": "x" }, "createdAtMs": {{createdAtMs}}, "expiresAtMs": {{expiresAtMs}} }
+            """);
+
+        Assert.False(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, doc.RootElement, out _));
+    }
+
+    [Fact]
+    public void TryParse_RejectsHugeFractionalTimestampsWithoutThrowing()
+    {
+        using var doc = JsonDocument.Parse("""
+            { "id": "a", "request": { "command": "x" }, "createdAtMs": 1.5e300, "expiresAtMs": 2.5 }
+            """);
+
+        Assert.False(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, doc.RootElement, out _));
+    }
+
+    [Fact]
+    public void GatewayUnixTime_ClampsInsteadOfThrowing()
+    {
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(GatewayUnixTime.MaxMs), GatewayUnixTime.ToDateTimeOffset(long.MaxValue));
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(GatewayUnixTime.MinMs), GatewayUnixTime.ToDateTimeOffset(long.MinValue));
+        var now = new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
+        Assert.Equal(GatewayUnixTime.MaxMs, GatewayUnixTime.Add(now, long.MaxValue).ToUnixTimeMilliseconds());
+        Assert.Equal(GatewayUnixTime.MinMs, GatewayUnixTime.Add(now, long.MinValue).ToUnixTimeMilliseconds());
+        Assert.Equal(now.AddSeconds(5), GatewayUnixTime.Add(now, 5_000));
+    }
+
     [Fact]
     public void TryParse_PluginUsesTitleAsCommandAndSystemAgentRequiresProposal()
     {

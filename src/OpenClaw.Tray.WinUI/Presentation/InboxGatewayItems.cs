@@ -50,6 +50,11 @@ internal sealed record InboxGatewayItem(
     public string? Detail { get; init; }
     /// <summary>Planned run that an overdue automation missed.</summary>
     public DateTimeOffset? DueAt { get; init; }
+    /// <summary>
+    /// Local-clock deadline of a pending approval, fixed when it arrived so a Gateway with a
+    /// skewed clock cannot expire it early or keep it forever.
+    /// </summary>
+    public DateTimeOffset? ExpiresAt { get; init; }
 }
 
 internal static class InboxGatewayItems
@@ -66,7 +71,7 @@ internal static class InboxGatewayItems
     /// <summary>One-line command preview for a row's state line, capped like the web Control UI.</summary>
     public static string CompactCommand(string command)
     {
-        var singleLine = string.Join(' ', (command ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var singleLine = string.Join(' ', DisplayCommand(command).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (singleLine.Length <= 64)
             return singleLine;
         var length = 61;
@@ -74,6 +79,38 @@ internal static class InboxGatewayItems
             length--;
         return string.Concat(singleLine.AsSpan(0, length), "…");
     }
+
+    /// <summary>
+    /// The complete command as it should be displayed for review: nothing is removed or trimmed,
+    /// but control, bidirectional and invisible formatting characters that could hide or reorder
+    /// what runs are replaced with visible <c>\u{XXXX}</c> escapes. Newlines and tabs stay.
+    /// </summary>
+    public static string DisplayCommand(string? command)
+    {
+        if (string.IsNullOrEmpty(command))
+            return "";
+        var builder = new System.Text.StringBuilder(command.Length);
+        // A lone carriage return can overwrite what a terminal shows, so only CRLF counts as a line break.
+        foreach (var rune in command.Replace("\r\n", "\n", StringComparison.Ordinal).EnumerateRunes())
+        {
+            if (rune.Value is '\n' or '\t')
+                builder.Append((char)rune.Value);
+            else if (IsHiddenCharacter(rune))
+                builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\u{{{rune.Value:X4}}}");
+            else
+                builder.Append(rune.ToString());
+        }
+        return builder.ToString();
+    }
+
+    private static bool IsHiddenCharacter(System.Text.Rune rune) =>
+        System.Text.Rune.GetUnicodeCategory(rune) is
+            System.Globalization.UnicodeCategory.Control or
+            System.Globalization.UnicodeCategory.Format or
+            System.Globalization.UnicodeCategory.LineSeparator or
+            System.Globalization.UnicodeCategory.ParagraphSeparator or
+            System.Globalization.UnicodeCategory.Surrogate or
+            System.Globalization.UnicodeCategory.PrivateUse;
 
     /// <summary>Remaining approval time as minutes:seconds ("4:52"), or null once expired.</summary>
     public static string? FormatCountdown(long expiresAtMs, long nowMs)
@@ -84,14 +121,29 @@ internal static class InboxGatewayItems
         return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{totalSeconds / 60}:{totalSeconds % 60:00}");
     }
 
-    public static InboxGatewayItem FromApproval(GatewayPendingApproval approval)
+    public static InboxGatewayItem FromApproval(GatewayPendingApproval approval, DateTimeOffset expiresAt)
     {
         ArgumentNullException.ThrowIfNull(approval);
         return new($"{IdPrefix}approval:{approval.Id}", InboxGatewayItemKind.Approval,
             approval.Title ?? approval.Command, FromMs(approval.CreatedAtMs))
         {
             Approval = approval,
+            ExpiresAt = expiresAt,
         };
+    }
+
+    /// <summary>
+    /// Local deadline for an approval that arrived at <paramref name="arrivedAt"/>: the Gateway's
+    /// own lifetime (expiry minus creation) measured on this machine's clock. A non-positive
+    /// lifetime means the request is already expired.
+    /// </summary>
+    public static DateTimeOffset LocalDeadline(GatewayPendingApproval approval, DateTimeOffset arrivedAt)
+    {
+        ArgumentNullException.ThrowIfNull(approval);
+        var lifetimeMs = (decimal)approval.ExpiresAtMs - approval.CreatedAtMs;
+        return lifetimeMs <= 0
+            ? arrivedAt
+            : GatewayUnixTime.Add(arrivedAt, (long)Math.Min(lifetimeMs, long.MaxValue));
     }
 
     /// <summary>Failed and overdue automations from a <c>cron.list</c> reply, newest first per kind.</summary>
@@ -123,7 +175,10 @@ internal static class InboxGatewayItems
                 });
             }
             if (ReadInt64(state, "nextRunAtMs") is { } nextRunAtMs &&
-                schedulerEnabled != false && enabled && ReadInt64(state, "runningAtMs") is null &&
+                schedulerEnabled != false && enabled &&
+                // Any recorded run start means the job is running, whatever its value.
+                !(state.ValueKind == JsonValueKind.Object &&
+                    state.TryGetProperty("runningAtMs", out var running) && running.ValueKind == JsonValueKind.Number) &&
                 nowMs > nextRunAtMs + CronOverdueGraceMs)
             {
                 // A later overdue episode must resurface after its planned run changes.
@@ -224,7 +279,7 @@ internal static class InboxGatewayItems
                     next = at;
             }
         }
-        return next is { } expiresAt ? requestedAt.AddMilliseconds(expiresAt - snapshotMs) : null;
+        return next is { } expiresAt ? GatewayUnixTime.Add(requestedAt, expiresAt - snapshotMs) : null;
     }
 
     // Mirrors the web UI's provider-usage aliases (src/infra/provider-usage.shared.ts).
@@ -272,7 +327,7 @@ internal static class InboxGatewayItems
             .ToList();
     }
 
-    private static DateTimeOffset FromMs(long ms) => DateTimeOffset.FromUnixTimeMilliseconds(ms);
+    private static DateTimeOffset FromMs(long ms) => GatewayUnixTime.ToDateTimeOffset(ms);
 
     private static string? ReadString(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object &&
@@ -283,10 +338,20 @@ internal static class InboxGatewayItems
             ? text.Trim()
             : null;
 
-    private static long? ReadInt64(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object &&
-        element.TryGetProperty(property, out var value) &&
-        value.ValueKind == JsonValueKind.Number
-            ? value.TryGetInt64(out var whole) ? whole : (long)value.GetDouble()
-            : null;
+    // Every number read here is an epoch-ms time; one outside the representable range counts as missing.
+    private static long? ReadInt64(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out var value) ||
+            value.ValueKind != JsonValueKind.Number)
+            return null;
+        if (!value.TryGetInt64(out var ms))
+        {
+            var number = value.GetDouble();
+            if (number is < long.MinValue or >= long.MaxValue)
+                return null;
+            ms = (long)number;
+        }
+        return GatewayUnixTime.IsValid(ms) ? ms : null;
+    }
 }

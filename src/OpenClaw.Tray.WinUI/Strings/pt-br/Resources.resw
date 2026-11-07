@@ -7922,7 +7922,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Aprovação necessária</value></data>
   <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expira em {0}</value></data>
   <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expirada</value></data>
-  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>Este computador</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Servidor gateway</value></data>
   <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Dispositivo</value></data>
   <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Área restrita</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Sempre permitir executa este comando exato para "{0}" sem perguntar, até ser revogado (revogável)</value></data>
