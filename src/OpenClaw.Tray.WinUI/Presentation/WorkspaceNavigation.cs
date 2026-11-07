@@ -97,6 +97,22 @@ internal static class WorkspaceNavigation
         openCompanion(tag);
     }
 
+    /// <summary>
+    /// Reports destination admission using the same route policy. Native hosts may complete
+    /// synchronously; Dashboard hosts wait for Windows to accept the browser launch.
+    /// </summary>
+    public static Task<bool> DispatchAsync(
+        string? tag,
+        Func<WorkspaceDestination, Task<bool>> openWorkspace,
+        Func<string, Task<bool>> openCompanion,
+        Func<string, Task<bool>> openDashboard)
+    {
+        Task<bool>? admission = null;
+        Dispatch(tag, destination => admission = openWorkspace(destination),
+            section => admission = openCompanion(section), path => admission = openDashboard(path));
+        return admission ?? throw new InvalidOperationException("The navigation route was not dispatched.");
+    }
+
     /// <summary>Resolves a tag to a Workspace destination without dispatching it.</summary>
     public static bool TryResolveWorkspace(string? tag, out WorkspaceDestination destination)
     {

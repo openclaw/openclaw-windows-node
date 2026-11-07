@@ -149,12 +149,16 @@ public sealed partial class WorkspaceWindow : WindowEx
         _ = RefreshAsync();
     }
 
-    internal void Navigate(WorkspaceDestination destination, bool preserveConversation = true)
+    internal void Navigate(WorkspaceDestination destination, bool preserveConversation = true) =>
+        TryNavigate(destination, preserveConversation);
+
+    internal bool TryNavigate(WorkspaceDestination destination, bool preserveConversation = true)
     {
+        if (IsClosed) return false;
         if (preserveConversation && destination is { Page: WorkspacePageId.Home, SessionKey: null })
             destination = _navigation.ChatDestination;
         if (_deferred.ShouldDefer(destination != Destination) && DeferWhileModalOpen(() => Navigate(destination, preserveConversation)))
-            return;
+            return false;
         _chat.RetainNativeSetupForDestination(destination);
         if (!_navigation.Navigate(destination))
         {
@@ -165,11 +169,20 @@ public sealed partial class WorkspaceWindow : WindowEx
             }
             else if (ContentHost.Children.FirstOrDefault() is FrameworkElement current)
                 SignalContentReady(current);
-            return;
+            return IsDestinationShown(destination);
         }
         if (Root.XamlRoot is not null)
             RenderDestination();
+        return IsDestinationShown(destination);
     }
+
+    private bool IsDestinationShown(WorkspaceDestination destination) =>
+        !IsClosed && Root.XamlRoot is not null && Destination == destination &&
+        (destination.Page == WorkspacePageId.Settings
+            ? _settings?.IsSectionShown(destination.CompanionTag ?? "settings") == true
+            : destination.Page == WorkspacePageId.Home
+                ? ContentHost.Children.Contains(_chat)
+                : ContentHost.Children.FirstOrDefault() is NotificationsPage);
 
     internal void OpenCompanion(CompanionPageId page, string? agentId = null) =>
         OpenSettings(WorkspaceNavigation.CompanionTag(page, agentId ?? SelectedAgentId ?? "main"));
@@ -180,15 +193,17 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// </summary>
     internal void OpenSettings(string tag) => OpenSettings(tag, embedded: false);
 
-    internal void OpenSettings(string tag, bool embedded)
+    internal void OpenSettings(string tag, bool embedded) => TryOpenSettings(tag, embedded);
+
+    internal bool TryOpenSettings(string tag, bool embedded = false)
     {
-        if (IsClosed) return;
+        if (IsClosed) return false;
         if (tag == "command-center")
         {
             OpenCommandCenter();
-            return;
+            return false;
         }
-        Navigate(WorkspaceDestination.Settings(
+        return TryNavigate(WorkspaceDestination.Settings(
             WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? SelectedAgentId ?? "main"), embedded));
     }
 

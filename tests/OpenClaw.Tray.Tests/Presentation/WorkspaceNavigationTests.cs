@@ -418,8 +418,8 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("typeof(ChatPage)", view);
         Assert.DoesNotContain("new ChatPage", view);
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        var core = manager[manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)..];
-        core = core[..core.IndexOf("private void ShowWorkspace", StringComparison.Ordinal)];
+        var core = manager[manager.IndexOf("private Task<bool> ShowHubCoreAsync", StringComparison.Ordinal)..];
+        core = core[..core.IndexOf("private bool ShowWorkspace", StringComparison.Ordinal)];
         var settingsRoute = core[core.IndexOf("}, tag =>", StringComparison.Ordinal)..];
         Assert.DoesNotContain("RequiresSetup", settingsRoute);
         Assert.Contains("settingsTag: tag", settingsRoute);
@@ -759,8 +759,11 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("destination = _navigation.ChatDestination;", source);
         Assert.Contains("preserveConversation: false", source);
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        Assert.Contains("_workspaceWindow.SelectSession(sessionKey);\n            else\n                _workspaceWindow.Navigate(destination);",
-            manager.Replace("\r\n", "\n"));
+        var navigate = manager[manager.IndexOf("else if (!preserveCurrent)", StringComparison.Ordinal)..
+            manager.IndexOf("if (_workspaceWindow.AppWindow.Presenter", StringComparison.Ordinal)];
+        Assert.Contains("destination = destination with { SessionKey = sessionKey };", navigate);
+        Assert.Contains("admitted = _workspaceWindow.TryNavigate(destination);", navigate);
+        Assert.DoesNotContain("_workspaceWindow.Navigate(", navigate);
     }
 
     [Fact]
@@ -1187,7 +1190,7 @@ public sealed class WorkspaceNavigationTests
     public void WindowManager_OwnsOneWorkspaceWindowForChatAndSettings_AndResetsScopeOnClose()
     {
         var code = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo", code);
+        Assert.Contains("WorkspaceNavigation.DispatchAsync(navigateTo", code);
         Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", code);
         Assert.Contains("_callbacks.ApplyTheme(_workspaceWindow)", code);
         Assert.Contains("TryClose(\"Workspace window\"", code);
@@ -1238,8 +1241,9 @@ public sealed class WorkspaceNavigationTests
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
         Assert.Contains("preserveCurrent: navigateTo is null or \"hub\"", manager);
         Assert.Contains("if (!preserveCurrent)", manager);
-        Assert.Contains("_workspaceWindow.Navigate(destination)", manager);
-        Assert.Contains("_workspaceWindow.SelectSession(sessionKey)", manager);
+        Assert.Contains("_workspaceWindow.TryNavigate(destination)", manager);
+        Assert.Contains("destination = destination with { SessionKey = sessionKey };", manager);
+        Assert.Contains("usePendingChatSession ? _callbacks.GetPendingChatSessionKey() : null", manager);
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("if (!_navigation.Navigate(destination)", workspace);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
