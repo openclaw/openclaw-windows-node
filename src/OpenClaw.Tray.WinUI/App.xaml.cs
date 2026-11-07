@@ -2752,7 +2752,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 .AddArgument("action", "copy_pairing_command")
                 .AddArgument("command", command)),
             "node-pairing-pending",
-            deviceId);
+            deviceId,
+            OpenClawTray.Presentation.AlertKind.Approval);
     }
 
     private void ShowPairingRejectedAppNotification(string deviceId, string? detail)
@@ -3688,7 +3689,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     .SetContent(LocalizationHelper.GetString("Toast_PairingReview"))
                     .AddArgument("action", "review_pairing")),
                 "pairing-request",
-                approval.DecisionId);
+                approval.DecisionId,
+                // A pairing request waits on the user like an approval, so Do not disturb lets it through.
+                OpenClawTray.Presentation.AlertKind.Approval);
         });
     }
 

@@ -29,6 +29,16 @@ public sealed class DoNotDisturbTests
         Severity = AppNotificationSeverity.Warning,
     };
 
+    private static AppNotification PairingRequest(string category) => new()
+    {
+        Id = "pairing-request",
+        Title = "Node pairing pending",
+        Message = "A device wants to pair.",
+        Source = "node",
+        Category = category,
+        Severity = AppNotificationSeverity.Warning,
+    };
+
     [Theory]
     [InlineData(false, (int)AlertKind.Standard, true)]
     [InlineData(false, (int)AlertKind.Approval, true)]
@@ -44,6 +54,46 @@ public sealed class DoNotDisturbTests
         Assert.Equal(AlertKind.Approval, DoNotDisturbPolicy.KindOf(Warning() with { Source = InboxSources.ExecApproval }));
         Assert.Equal(AlertKind.Standard, DoNotDisturbPolicy.KindOf(Warning()));
         Assert.Equal(AlertKind.Standard, DoNotDisturbPolicy.KindOf(null));
+    }
+
+    [Theory]
+    [InlineData(InboxSources.Pairing)]
+    [InlineData(InboxSources.ScopeUpgrade)]
+    public void PairingAndScopeUpgradeRequests_ComeThroughWhileStandardAlertsStaySilent(string category)
+    {
+        var request = PairingRequest(category);
+
+        Assert.Equal(AlertKind.Approval, DoNotDisturbPolicy.KindOf(request));
+        Assert.True(DoNotDisturbPolicy.AllowsAlert(true, DoNotDisturbPolicy.KindOf(request)));
+        Assert.False(DoNotDisturbPolicy.AllowsAlert(true, DoNotDisturbPolicy.KindOf(Warning())));
+
+        var toasts = new RecordingToastPublisher();
+        AppNotificationPublisher.Publish(null, toasts, new AppNotificationPublishRequest(request, new ToastContentBuilder()));
+        Assert.Equal([AlertKind.Approval], toasts.Kinds);
+
+        var banner = new AppNotificationInfoBarPresenter()
+            .Present(Snapshot(Warning(), request), null, false, null, "Show more", doNotDisturb: true);
+        Assert.Equal("pairing-request", banner.Notification?.Id);
+    }
+
+    [Theory]
+    [InlineData(AppNotificationSeverity.Success)]
+    [InlineData(AppNotificationSeverity.Error)]
+    public void PairingResults_StayStandard(AppNotificationSeverity severity) =>
+        Assert.Equal(AlertKind.Standard, DoNotDisturbPolicy.KindOf(PairingRequest(InboxSources.Pairing) with { Severity = severity }));
+
+    // App.xaml.cs is not compiled by Tray.Tests, so its explicit pairing-request toasts are source guards.
+    [Theory]
+    [InlineData("\"node-pairing-pending\",")]
+    [InlineData("\"pairing-request\",")]
+    public void PairingRequestToasts_AreTaggedAsApprovals(string toastTag)
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var tag = source.IndexOf(toastTag, StringComparison.Ordinal);
+        Assert.True(tag >= 0, $"Missing toast tag {toastTag}");
+        var call = source[tag..source.IndexOf(");", tag, StringComparison.Ordinal)];
+        Assert.Contains("AlertKind.Approval", call);
     }
 
     [Fact]

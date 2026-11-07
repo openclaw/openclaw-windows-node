@@ -12,7 +12,10 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
 
-/// <summary>Whether an interruption announces an approval, which Do not disturb never silences.</summary>
+/// <summary>
+/// Whether an interruption asks the user to decide something (an approval, a device pairing
+/// or scope-upgrade request), which Do not disturb never silences.
+/// </summary>
 internal enum AlertKind
 {
     Standard,
@@ -25,9 +28,13 @@ internal static class DoNotDisturbPolicy
     public static bool AllowsAlert(bool doNotDisturb, AlertKind kind) =>
         !doNotDisturb || kind == AlertKind.Approval;
 
-    /// <summary>App notifications are approvals exactly when the Inbox files them under Approvals.</summary>
+    /// <summary>
+    /// App notifications come through Do not disturb when the Inbox files them as approvals or
+    /// as access requests (device pairing and scope upgrades), which users decide like approvals.
+    /// </summary>
     public static AlertKind KindOf(AppNotification? notification) =>
-        notification is not null && InboxProjection.Classify(notification)?.Kind == InboxEntryKind.Approval
+        notification is not null &&
+        InboxProjection.Classify(notification)?.Kind is InboxEntryKind.Approval or InboxEntryKind.AccessRequest
             ? AlertKind.Approval
             : AlertKind.Standard;
 
