@@ -1,16 +1,18 @@
 // The Inbox list shared by the footer bell flyout and the full Inbox page: tabs,
 // action-first rows that expand in place, "Dismiss shown", the empty state and the
-// notification settings shortcut. Data comes from AppNotificationService through
-// InboxProjection; navigation is supplied by the hosting window.
+// notification settings shortcut. Data comes from InboxFeed (app notifications plus
+// live Gateway facts); navigation and "Ask OpenClaw" are supplied by the hosting window.
 //
 // Usage:
-//   inboxView.Initialize(appNotifications, new InboxViewCommands(
+//   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
 //       OpenRoute: route => window.OpenNotificationRoute(route),
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
-//       OpenPage: () => window.ShowInboxPage()));
+//       OpenPage: () => window.ShowInboxPage(),
+//       AskOpenClaw: question => window.AskOpenClaw(question)));
 //   ...
 //   inboxView.Unbind();
 
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,14 +24,24 @@ using System.Collections.ObjectModel;
 
 namespace OpenClawTray.Controls;
 
-/// <summary>Navigation supplied by the Inbox host. <paramref name="OpenPage"/> is null on the page itself.</summary>
-internal sealed record InboxViewCommands(Action<string> OpenRoute, Action OpenSettings, Action? OpenPage = null);
+/// <summary>
+/// Navigation supplied by the Inbox host. <paramref name="OpenPage"/> is null on the page itself;
+/// <paramref name="AskOpenClaw"/> sends a failure's explain prompt to OpenClaw and shows the reply.
+/// </summary>
+internal sealed record InboxViewCommands(
+    Action<string> OpenRoute,
+    Action OpenSettings,
+    Action? OpenPage = null,
+    Action<string>? AskOpenClaw = null);
 
 public sealed partial class InboxView : UserControl
 {
     private const string PageMarkerAutomationId = "NotificationsPageMarker";
+    private static readonly TimeSpan CountdownInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AgeInterval = TimeSpan.FromSeconds(30);
     private readonly ObservableCollection<InboxItemViewModel> _items = new();
-    private AppNotificationService? _service;
+    private readonly DispatcherQueueTimer _clock;
+    private InboxFeed? _feed;
     private InboxViewCommands? _commands;
     private InboxSnapshot _snapshot = InboxSnapshot.Empty;
     private InboxTab _tab = InboxTab.All;
@@ -38,6 +50,9 @@ public sealed partial class InboxView : UserControl
     {
         InitializeComponent();
         ItemsList.ItemsSource = _items;
+        _clock = DispatcherQueue.CreateTimer();
+        _clock.IsRepeating = true;
+        _clock.Tick += (_, _) => RefreshClock();
         // Hosts own the binding lifetime (flyout Closed, page Unloaded). Unbinding here would let a
         // late Unloaded from a quick close and reopen disconnect the freshly opened Inbox.
     }
@@ -56,38 +71,61 @@ public sealed partial class InboxView : UserControl
         TabsBar.ClearValue(Control.PaddingProperty);
     }
 
-    internal void Initialize(AppNotificationService service, InboxViewCommands commands)
+    internal void Initialize(InboxFeed feed, InboxViewCommands commands)
     {
         Unbind();
-        _service = service;
+        _feed = feed;
         _commands = commands;
-        service.Changed += OnNotificationsChanged;
-        Render(service.Snapshot);
+        feed.Changed += OnFeedChanged;
+        Render(feed.Snapshot);
     }
 
     internal void Unbind()
     {
-        if (_service is not null)
-            _service.Changed -= OnNotificationsChanged;
-        _service = null;
+        _clock.Stop();
+        if (_feed is not null)
+            _feed.Changed -= OnFeedChanged;
+        _feed = null;
         _commands = null;
     }
 
-    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs args)
+    private void OnFeedChanged(object? sender, EventArgs args)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_service is { } service && ReferenceEquals(sender, service))
-                Render(service.Snapshot);
+            if (_feed is { } feed && ReferenceEquals(sender, feed))
+                Render(feed.Snapshot);
         });
     }
 
-    private void Render(AppNotificationSnapshot snapshot)
+    private void Render(InboxSnapshot snapshot)
     {
-        _snapshot = InboxProjection.Build(snapshot.ActiveNotifications);
+        _snapshot = snapshot;
         ApplyTabLabels();
         SyncInboxItems(_snapshot.For(_tab), DateTimeOffset.UtcNow);
         ApplyChrome();
+    }
+
+    private void RefreshClock()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var item in _items)
+            item.RefreshClock(now);
+    }
+
+    // Countdowns tick every second while an approval is shown; otherwise ages refresh slowly.
+    private void UpdateClock()
+    {
+        if (_feed is null || _items.Count == 0)
+        {
+            _clock.Stop();
+            return;
+        }
+        var interval = _items.Any(item => item.HasCountdown) ? CountdownInterval : AgeInterval;
+        if (_clock.Interval != interval)
+            _clock.Interval = interval;
+        if (!_clock.IsRunning)
+            _clock.Start();
     }
 
     private void ApplyTabLabels()
@@ -152,6 +190,7 @@ public sealed partial class InboxView : UserControl
             : Visibility.Collapsed;
         var total = _snapshot.Entries.Count;
         CountText.Text = total > 0 ? LocalizationHelper.Format("Inbox_CountFormat", total) : string.Empty;
+        UpdateClock();
     }
 
     private void OnTabSelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -165,17 +204,17 @@ public sealed partial class InboxView : UserControl
 
     private void OnDismissShownClick(object sender, RoutedEventArgs e)
     {
-        if (_service is not { } service)
+        if (_feed is not { } feed)
             return;
         foreach (var id in InboxProjection.DismissibleIds(_snapshot, _tab))
-            service.Dismiss(id);
+            feed.Dismiss(id);
     }
 
     private void OnDismissClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string id } &&
             _items.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal)) is { CanDismiss: true })
-            _service?.Dismiss(id);
+            _feed?.Dismiss(id);
     }
 
     private void OnActionClick(object sender, RoutedEventArgs e)
@@ -185,11 +224,23 @@ public sealed partial class InboxView : UserControl
             _commands is not { } commands)
             return;
 
-        var service = _service;
+        var feed = _feed;
         commands.OpenRoute(item.ActionRoute);
         // Opening the conversation is what a mention asks for; other entries stay until resolved.
         if (item.Kind == InboxEntryKind.Mention)
-            service?.Dismiss(item.Id);
+            feed?.Dismiss(item.Id);
+    }
+
+    private void OnSecondaryActionClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: InboxItemViewModel { SecondaryActionRoute: { Length: > 0 } route } })
+            _commands?.OpenRoute(route);
+    }
+
+    private void OnAskClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: InboxItemViewModel { AskQuestion: { Length: > 0 } question } })
+            _commands?.AskOpenClaw?.Invoke(question);
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => _commands?.OpenSettings();

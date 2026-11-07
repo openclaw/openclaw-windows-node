@@ -115,12 +115,29 @@
                                 </Grid>
                             </Expander.Header>
                             <StackPanel Spacing="8">
-                                <TextBlock Text="{Binding Details}" TextWrapping="WrapWholeWords"
-                                           IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="{Binding ExpiryText}" Visibility="{Binding ExpiryVisibility}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                                <TextBlock Text="{Binding ScopeText}" Visibility="{Binding ScopeVisibility}"
+                                           TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="{Binding WarningText}" Visibility="{Binding WarningVisibility}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                           TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="{Binding Details}" Visibility="{Binding DetailsVisibility}"
+                                           TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
+                                <Border Visibility="{Binding CommandVisibility}"
+                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="8,6">
+                                    <TextBlock Text="{Binding CommandText}" FontFamily="Consolas"
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                               MaxLines="8" TextTrimming="CharacterEllipsis"/>
+                                </Border>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBlock Text="{Binding Metadata}"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="WrapWholeWords"
                                                VerticalAlignment="Center"/>
                                     <Border Visibility="{Binding OccurrenceVisibility}"
                                             Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
@@ -129,11 +146,23 @@
                                                    Style="{StaticResource CaptionTextBlockStyle}"/>
                                     </Border>
                                 </StackPanel>
-                                <Button Content="{Binding ActionLabel}"
-                                        Tag="{Binding}"
-                                        Visibility="{Binding ActionVisibility}"
-                                        Style="{StaticResource AccentButtonStyle}"
-                                        Click="OnActionClick"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="{Binding ActionLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding ActionVisibility}"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="OnActionClick"/>
+                                    <Button x:Uid="Inbox_AskOpenClaw"
+                                            Content="Ask OpenClaw"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding AskVisibility}"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="OnAskClick"/>
+                                    <Button Content="{Binding SecondaryActionLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding SecondaryActionVisibility}"
+                                            Click="OnSecondaryActionClick"/>
+                                </StackPanel>
                             </StackPanel>
                         </Expander>
                         <Button Grid.Column="1"

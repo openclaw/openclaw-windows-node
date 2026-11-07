@@ -7856,4 +7856,32 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
   <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} h</value></data>
   <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} j</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Demander à OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Ouvrir le chat</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Ouvrir les automatisations</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Échec</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>En retard</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>Cette automatisation a échoué : {0}. Explique pourquoi elle a échoué et comment la corriger.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>Cette automatisation est en retard : {0}, prévue pour {1}. Explique pourquoi elle ne s'est pas exécutée et comment la corriger.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>Ces identifiants de fournisseur de modèles nécessitent une attention : {0}. Explique ce qui a expiré et comment se réauthentifier.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Approbation de commande requise</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Approbation de plug-in requise</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approbation requise</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expire dans {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expirée</value></data>
+  <data name="Inbox_ApprovalHostThisComputer" xml:space="preserve"><value>Cet ordinateur</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Appareil</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Bac à sable</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, jusqu'à révocation (révocable)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, pendant {1} jours (révocable)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Envoie à {0} destinataire(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Paie {0} {1} à {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Publie en externe sur {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Le compte nécessite une attention : {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Connexion requise</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>La clé API nécessite une attention</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Le compte nécessite une attention</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Se connecter</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Mettre à jour la clé API</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Vérifier le compte</value></data>
 </root>
