@@ -47,7 +47,7 @@ public sealed class ChatToolDetailsProfileTests
         Assert.True(profile.IsAvailable);
         var refresh = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         proxy.Response = () => refresh.Task;
-        var pending = profile.RefreshAsync();
+        var pending = profile.RefreshAsync(profileInvalidated: true);
         Assert.False(profile.IsAvailable);
         refresh.SetResult(Profile("same-person", "After"));
         await pending;
@@ -100,6 +100,71 @@ public sealed class ChatToolDetailsProfileTests
         await profile.RefreshAsync();
         Assert.True(profile.IsAvailable);
         Assert.Equal([1L, 1L, 2L], proxy.ReadEpochs);
+    }
+
+    [Fact]
+    public async Task ProfileInvalidationBeforeFirstReadCompletes_RetiresUntilReconnect()
+    {
+        var (client, proxy) = Gateway();
+        var delayed = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        proxy.Response = () => delayed.Task;
+        using var profile = new ChatToolDetailsProfile(client, () => { }, Assert.Fail);
+        var initial = profile.RefreshAsync();
+        proxy.Response = () => Task.FromResult(Profile("replacement"));
+        await profile.RefreshAsync(profileInvalidated: true);
+        await initial;
+        delayed.SetResult(Profile("original"));
+        Assert.False(profile.IsAvailable);
+        await profile.RefreshAsync();
+        Assert.False(profile.IsAvailable);
+        Assert.Equal([1L], proxy.ReadEpochs);
+
+        proxy.Epoch = 2;
+        await profile.RefreshAsync();
+        Assert.True(profile.IsAvailable);
+        Assert.Equal([1L, 2L], proxy.ReadEpochs);
+    }
+
+    [Fact]
+    public async Task ProfileInvalidationAfterInitialReadFails_RetiresUntilReconnect()
+    {
+        var (client, proxy) = Gateway();
+        var failures = new List<string>();
+        proxy.Response = () => throw new TimeoutException("private server detail");
+        using var profile = new ChatToolDetailsProfile(client, () => { }, failures.Add);
+        await profile.RefreshAsync();
+        Assert.False(profile.IsAvailable);
+        Assert.Equal(["Timeout"], failures);
+
+        proxy.Response = () => Task.FromResult(Profile("replacement"));
+        await profile.RefreshAsync(profileInvalidated: true);
+        Assert.False(profile.IsAvailable);
+        await profile.RefreshAsync();
+        Assert.False(profile.IsAvailable);
+        Assert.Equal([1L], proxy.ReadEpochs);
+
+        proxy.Epoch = 2;
+        await profile.RefreshAsync();
+        Assert.True(profile.IsAvailable);
+        Assert.Equal([1L, 2L], proxy.ReadEpochs);
+    }
+
+    [Fact]
+    public async Task OverlappingBootstrapRefreshes_CanEstablishInitialProfile()
+    {
+        var (client, proxy) = Gateway();
+        var delayed = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        proxy.Response = () => delayed.Task;
+        using var profile = new ChatToolDetailsProfile(client, () => { }, Assert.Fail);
+        var initial = profile.RefreshAsync();
+        proxy.Response = () => Task.FromResult(Profile("current"));
+        await profile.RefreshAsync();
+        await initial;
+        delayed.SetResult(Profile("superseded"));
+        Assert.True(profile.IsAvailable);
+        await profile.RefreshAsync(profileInvalidated: true);
+        Assert.True(profile.IsAvailable);
+        Assert.Equal([1L, 1L, 1L], proxy.ReadEpochs);
     }
 
     [Fact]

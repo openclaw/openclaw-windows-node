@@ -194,7 +194,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
             ModelsListUpdated?.Invoke(s, e);
         };
         _modelCatalogInvalidatedHandler = (s, e) => ModelCatalogInvalidated?.Invoke(s, e);
-        _toolDetailsInvalidatedHandler = (_, _) => RefreshToolDetailsProfile();
+        _toolDetailsInvalidatedHandler = (_, _) => RefreshToolDetailsProfile(profileInvalidated: true);
 
         // Subscribe StatusChanged BEFORE reading the seed so any
         // ``StatusChanged → X`` edge that fires during construction is
@@ -249,9 +249,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public ChatToolDetailsProfileState ToolDetailsProfileState => _toolDetailsProfile.Snapshot;
     public bool ToolDetailsAvailable => ToolDetailsProfileState.IsAvailable;
     public event EventHandler? ToolDetailsInvalidated;
-    private void RefreshToolDetailsProfile()
+    private void RefreshToolDetailsProfile(bool profileInvalidated = false)
     {
-        _ = _toolDetailsProfile.RefreshAsync().ContinueWith(task =>
+        _ = _toolDetailsProfile.RefreshAsync(profileInvalidated).ContinueWith(task =>
             Logger.Warn($"[ChatBridge] tool details profile refresh failed ({task.Exception!.GetBaseException().GetType().Name})."),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
     }
