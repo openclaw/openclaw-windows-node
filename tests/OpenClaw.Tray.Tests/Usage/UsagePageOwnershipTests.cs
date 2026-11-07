@@ -36,6 +36,21 @@ public sealed class UsagePageOwnershipTests
         Assert.DoesNotContain("x:Uid=", xaml, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ProductionPageUsesTheAppSourceAndShutdownDisposesItBeforeTheGateway()
+    {
+        var root = Path.Combine(RepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var page = File.ReadAllText(Path.Combine(root, "Pages", "UsagePage.xaml.cs"));
+        Assert.Contains("providers: CurrentApp.UsageProviderReads", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("new UsageProviderReadSource", page, StringComparison.Ordinal);
+        var shutdown = File.ReadAllText(Path.Combine(root, "App.AppShutdownCoordinator.cs"));
+        var providerStep = shutdown.IndexOf("new AppShutdownStep(\"Usage provider reads\"", StringComparison.Ordinal);
+        var gatewayStep = shutdown.IndexOf("new AppShutdownStep(\"gateway client\"", StringComparison.Ordinal);
+        Assert.True(providerStep >= 0 && gatewayStep > providerStep,
+            "The App-owned provider source must be disposed before the authenticated gateway.");
+        Assert.Contains("usageProviderReads.Dispose();", shutdown, StringComparison.Ordinal);
+    }
+
     private static string RepositoryRoot()
     {
         var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");

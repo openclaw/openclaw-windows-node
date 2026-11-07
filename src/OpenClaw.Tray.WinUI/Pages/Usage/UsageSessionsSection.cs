@@ -20,7 +20,7 @@ internal static class UsageSessionsSection
 
     public static string SortLabel(UsageSort sort) => S("Usage_Sort_" + sort);
 
-    internal static Element Details(UsagePageState state, UsageDetailState detail, UsagePageLayout layout)
+    internal static Element Details(UsagePageState state, UsageDetailState detail, UsagePageLayout layout, string suffix = "")
     {
         var source = state.Report?.Sessions.FirstOrDefault(row => row.Key == detail.Key);
         var row = UsageSessionDetailProjection.SummaryRow(source, detail.Row.Value);
@@ -41,27 +41,27 @@ internal static class UsageSessionsSection
         var valueWidth = layout.TwoColumns ? (inner - PageResponsiveLayout.GapStack) / 2 : inner;
         var values = new List<Element>
         {
-            DetailValue(S("Usage_Facet_model"), row?.EffectiveModel ?? Dash, "UsageDetailModel", valueWidth),
-            DetailValue(S("Usage_Detail_InputOutput"), totals is null ? Dash : $"{ReportedTokens(totals, "input", totals.Input)} · {ReportedTokens(totals, "output", totals.Output)}", "UsageDetailTokens", valueWidth),
-            DetailValue(S("Usage_Detail_CacheSplit"), totals is null ? Dash : $"{ReportedTokens(totals, "cacheRead", totals.CacheRead)} · {ReportedTokens(totals, "cacheWrite", totals.CacheWrite)}", "UsageDetailCache", valueWidth),
-            DetailValue(S("Usage_Overview_Messages"), counts is null || !counts.HasData ? Dash : Count(counts.Total), "UsageDetailMessages", valueWidth),
-            DetailValue(S("Usage_Details_Duration"), usage?.DurationMs is { } ms ? UsageFormat.Duration(ms) : Dash, "UsageDetailDuration", valueWidth),
+            DetailValue(S("Usage_Facet_model"), row?.EffectiveModel ?? Dash, "UsageDetailModel" + suffix, valueWidth),
+            DetailValue(S("Usage_Detail_InputOutput"), totals is null ? Dash : $"{ReportedTokens(totals, "input", totals.Input)} · {ReportedTokens(totals, "output", totals.Output)}", "UsageDetailTokens" + suffix, valueWidth),
+            DetailValue(S("Usage_Detail_CacheSplit"), totals is null ? Dash : $"{ReportedTokens(totals, "cacheRead", totals.CacheRead)} · {ReportedTokens(totals, "cacheWrite", totals.CacheWrite)}", "UsageDetailCache" + suffix, valueWidth),
+            DetailValue(S("Usage_Overview_Messages"), counts is null || !counts.HasData ? Dash : Count(counts.Total), "UsageDetailMessages" + suffix, valueWidth),
+            DetailValue(S("Usage_Details_Duration"), usage?.DurationMs is { } ms ? UsageFormat.Duration(ms) : Dash, "UsageDetailDuration" + suffix, valueWidth),
             DetailValue(S("Usage_Overview_ToolCalls"), usage?.ToolUsage is { HasData: true } tools
                 ? F("Usage_Detail_ToolsFormat", Count(tools.TotalCalls), Count(tools.UniqueTools))
-                : counts is null || !counts.HasData ? Dash : Count(counts.ToolCalls), "UsageDetailTools", valueWidth),
-            DetailValue(S("Usage_Overview_Errors"), counts is null || !counts.HasData ? Dash : Count(counts.Errors), "UsageDetailErrors", valueWidth),
+                : counts is null || !counts.HasData ? Dash : Count(counts.ToolCalls), "UsageDetailTools" + suffix, valueWidth),
+            DetailValue(S("Usage_Overview_Errors"), counts is null || !counts.HasData ? Dash : Count(counts.Errors), "UsageDetailErrors" + suffix, valueWidth),
         };
         var facts = Pair(layout.TwoColumns,
             VStack(8,
                 TextBlock(S("Usage_Summary_EstimatedCost")).FontWeight(FontWeights.SemiBold),
                 TextBlock(cost).FontSize(28).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
-                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(cost).AutomationId("UsageDetailCostValue"),
+                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(cost).AutomationId("UsageDetailCostValue" + suffix),
                 share is null ? null : Note(share),
                 UsageInsights.IsAutomation(detail.Key) ? Note(S("Usage_FromAutomation")) : null,
                 totals?.MissingCostEntries > 0 ? Note(FN("Usage_Details_MissingCostFormat", totals.MissingCostEntries)) : null),
             VStack(8,
                 TextBlock(S("Usage_Metric_Tokens")).FontWeight(FontWeights.SemiBold),
-                VStack(8, values.ToArray())), "UsageDetailLayout");
+                VStack(8, values.ToArray())), "UsageDetailLayout" + suffix);
         return Border(VStack(12,
                 detail.Row.Phase == UsageLoadPhase.Failed
                     ? Banner(S("Usage_Details_LoadFailedTitle"),
@@ -69,7 +69,7 @@ internal static class UsageSessionsSection
                         Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning, "UsageDetailRowError") : null,
                 detail.Row.IsLoading && row is null ? Note(S("Usage_Loading")) : facts))
             .Padding(leftPadding, CardPadding, CardPadding, CardPadding).Background(Track)
-            .AutomationName(F("Usage_Details_AccessibleFormat", title)).AutomationId("UsageSessionDetails");
+            .AutomationName(F("Usage_Details_AccessibleFormat", title)).AutomationId("UsageSessionDetails" + suffix);
     }
 
     private static Element DetailValue(string label, string value, string id, double width) =>
@@ -81,7 +81,7 @@ internal static class UsageSessionsSection
                 .AutomationId(id + "Value").Grid(row: width < UsagePageLayout.FactStackWidth ? 1 : 0,
                     column: width < UsagePageLayout.FactStackWidth ? 0 : 1));
 
-    internal static Element Row(UsageSessionRowView row, UsagePageProps props, UsagePageLayout layout)
+    internal static Element Row(UsageSessionRowView row, UsagePageProps props, UsagePageLayout layout, Action? toggle = null)
     {
         var raw = props.Controller.State.Report?.Sessions.FirstOrDefault(r => r.Key == row.Key);
         var unpriced = raw?.Usage?.Totals is { TotalCost: 0, MissingCostEntries: > 0 };
@@ -102,10 +102,12 @@ internal static class UsageSessionsSection
         var copy = VStack(4,
             Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 TextBlock(row.Title).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
-                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(row.Title).AutomationId("UsageRowTitle_" + row.Key).Grid(column: 0),
+                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(row.Title).VAlign(VerticalAlignment.Center)
+                    .AutomationId("UsageRowTitle_" + row.Key).Grid(column: 0),
                 layout.Tier == PageWidthTier.Wide && UsageInsights.IsAutomation(row.Key)
-                    ? Pill(S("Usage_Automation"), "UsageAutomation_" + row.Key).Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 1)
-                    : null),
+                    ? Pill(S("Usage_Automation"), "UsageAutomation_" + row.Key).VAlign(VerticalAlignment.Center)
+                        .Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 1)
+                    : null).MinHeight(28),
             TextBlock(subtitle).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.NoWrap)
                 .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle).AutomationId("UsageRowSubtitle_" + row.Key),
             layout.Narrow ? meta.HAlign(HorizontalAlignment.Left) : null).AutomationId("UsageRowCopy_" + row.Key);
@@ -117,18 +119,16 @@ internal static class UsageSessionsSection
                         .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).MaxWidth(160).ToolTip(cost),
                     TextBlock(raw?.Usage is null ? Dash : ReportedTokens(raw.Usage.Totals, "totalTokens", row.Tokens)).FontSize(12).Foreground(SecondaryText))
                     .VAlign(VerticalAlignment.Center).HAlign(HorizontalAlignment.Right).AutomationId("UsageRowMeta_" + row.Key).Grid(column: 2)),
-                () => props.Controller.SelectSession(row.Key, row.AgentId))
+                toggle ?? (() => props.Controller.SelectSession(row.Key, row.AgentId)))
             .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .Padding(12).Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
             .AutomationName($"{row.Title}: {cost}. {subtitle}")
             .ItemStatus(S(row.Selected ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
             .AutomationId("UsageSession_" + row.Key);
-        return Grid([GridSize.Star(), GridSize.Auto, GridSize.Auto], [GridSize.Auto],
+        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
             summary.Grid(column: 0),
-            ChatButton(row.Key, row.Title, props).VAlign(VerticalAlignment.Center).Grid(column: 1),
-            IconButton(row.Selected ? "\uE70E" : "\uE70D", S("Usage_Sessions_SelectHint"),
-                () => props.Controller.SelectSession(row.Key, row.AgentId), "UsageExpand_" + row.Key)
-                .VAlign(VerticalAlignment.Center).Grid(column: 2)).AutomationId("UsageRowLayout_" + row.Key);
+            ChatButton(row.Key, row.Title, props).VAlign(VerticalAlignment.Center).Grid(column: 1))
+            .AutomationId("UsageRowLayout_" + row.Key);
     }
 
     internal static Element ChatButton(string key, string title, UsagePageProps props) =>
@@ -176,13 +176,10 @@ internal sealed class UsageSessionsList : Component<UsageSessionsListProps>
         }
         foreach (var row in visible)
         {
-            body.Add(Border(VStack(0,
-                    UsageSessionsSection.Row(row, Props.Props, Props.Layout),
-                    state.Detail is { } detail && detail.Key == row.Key
-                        ? UsageSessionsSection.Details(state, detail, Props.Layout).WithKey("detail:" + row.Key) : null))
-                .WithBorder(CardStroke, 1).CornerRadius(CardRadius).Background(CardFill)
-                .AutomationId("UsageSessionCard_" + row.Key).WithKey("row:" + row.Key));
+            body.Add(Component<UsageSessionCard, UsageSessionCardProps>(new(row, state, Props.Props, Props.Layout))
+                .WithKey("row:" + row.Key));
         }
+
         if (rows.Count == 0) body.Add(EmptyText(S(state.Report?.SessionsKnown == true && sessions.Total == 0
             ? "Usage_Sessions_NoneInRange" : "Usage_Daily_NotLoaded"), "UsageSessionsEmpty").WithKey("empty"));
         if (state.BasicGateway && rows.Count > visible.Count)
@@ -200,7 +197,41 @@ internal sealed class UsageSessionsList : Component<UsageSessionsListProps>
         }
         return VStack(12,
             HStack(8, TextBlock(S("Usage_Sessions_Title")).FontSize(20).FontWeight(FontWeights.SemiBold),
-                Pill(sessions.CountKnown ? AtLeast(Count(sessions.Total), sessions.MayHaveMore) : Dash, "UsageSessionsCount")),
+                Pill(Count(rows.Count), "UsageSessionsCount").HelpText(S("Usage_LoadedSessions"))),
+            Note(F("Usage_Sessions_ShownLoadedFormat", Count(visible.Count), Count(rows.Count)))
+                .AutomationId("UsageSessionsShownLoaded"),
             VStack(PageResponsiveLayout.GapInner, body.ToArray())).AutomationId("UsageSessions");
+    }
+}
+
+internal sealed record UsageSessionCardProps(UsageSessionRowView Row, UsagePageState State, UsagePageProps Actions, UsagePageLayout Layout);
+
+/// <summary>Independent native expansion using loaded summaries, with only the active detail read in the controller.</summary>
+internal sealed class UsageSessionCard : Component<UsageSessionCardProps>
+{
+    public override Element Render()
+    {
+        var (open, setOpen) = UseState(false);
+        var row = Props.Row;
+        var selected = Props.State.Detail?.Key == row.Key;
+        UseEffect(() => { if (selected) setOpen(true); }, selected);
+        void Expand(bool value)
+        {
+            setOpen(value);
+            var activeKey = Props.Actions.Controller.State.Detail?.Key;
+            if (value && activeKey != row.Key) Props.Actions.Controller.SelectSession(row.Key, row.AgentId);
+            else if (!value && activeKey == row.Key) Props.Actions.Controller.CloseDetail();
+        }
+        var detail = selected ? Props.State.Detail!
+            : new UsageDetailState(row.Key, row.AgentId, UsageRead<SessionUsageRow>.Idle);
+        var expander = Expander(row.Title,
+                UsageSessionsSection.Details(Props.State, detail, Props.Layout, selected ? "" : "_" + row.Key),
+                open, Expand)
+            .HeaderTemplate(UsageSessionsSection.Row(row with { Selected = open }, Props.Actions, Props.Layout, () => Expand(!open)))
+            .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .CornerRadius(CardRadius).BorderThickness(0)
+            .AutomationName(row.Title).AutomationId("UsageSessionExpander_" + row.Key);
+        return Border(expander).WithBorder(CardStroke, 1).CornerRadius(CardRadius).Background(CardFill)
+            .AutomationId("UsageSessionCard_" + row.Key);
     }
 }

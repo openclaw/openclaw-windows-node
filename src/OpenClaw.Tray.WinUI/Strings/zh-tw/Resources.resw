@@ -8383,6 +8383,9 @@
   <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>本地時間（{0}）</value></data>
   <data name="Usage_OtherFormat" xml:space="preserve"><value>其他（{0}）</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>每日用量</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>沒有已回報的日期</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>已回報 {0} 天</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>顯示 {0} 個 · 已載入 {1} 個</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>自訂</value></data>
   <data name="Usage_ResetAtFormat" xml:space="preserve"><value>重設時間：{0}</value></data>
   <data name="Usage_SeeUsing" xml:space="preserve"><value>檢視用量來源</value></data>
@@ -8405,4 +8408,6 @@
   <data name="Usage_Export_Close" xml:space="preserve"><value>關閉</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>最近 7 天</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>展開導覽</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>摺疊導覽</value></data>
 </root>

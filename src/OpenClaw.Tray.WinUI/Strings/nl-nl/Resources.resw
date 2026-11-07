@@ -8384,6 +8384,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Lokale tijd ({0})</value></data>
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Overige ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Dagelijks gebruik</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>Geen gerapporteerde datums</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dagen gerapporteerd</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} getoond · {1} geladen</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Aangepast</value></data>
   <data name="Usage_ResetAtFormat" xml:space="preserve"><value>wordt hersteld op {0}</value></data>
   <data name="Usage_SeeUsing" xml:space="preserve"><value>Bekijken wat het gebruikt</value></data>
@@ -8406,4 +8409,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Export_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>Afgelopen 7 dagen</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Afgelopen 30 dagen</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Navigatie uitklappen</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Navigatie inklappen</value></data>
 </root>

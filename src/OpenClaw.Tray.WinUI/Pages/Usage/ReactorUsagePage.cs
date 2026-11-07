@@ -12,10 +12,11 @@ using static OpenClawTray.Pages.Usage.UsageUi;
 
 namespace OpenClawTray.Pages.Usage;
 
-/// <summary>Page width published by the XAML host so sections can choose responsive column counts.</summary>
+/// <summary>Retained page width and shell content inset, published independently without remounting the page.</summary>
 internal sealed class UsageViewport
 {
     public double Width { get; private set; } = PageResponsiveLayout.WideMin;
+    public double TopInset { get; private set; }
 
     public event Action? Changed;
 
@@ -24,6 +25,13 @@ internal sealed class UsageViewport
         var snapped = PageResponsiveLayout.Snap(width);
         if (snapped <= 0 || snapped == Width) return;
         Width = snapped;
+        Changed?.Invoke();
+    }
+
+    public void UpdateTopInset(double topInset)
+    {
+        if (topInset == TopInset) return;
+        TopInset = topInset;
         Changed?.Invoke();
     }
 }
@@ -54,6 +62,7 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
         var controller = props.Controller;
         var (state, setState) = UseState(controller.State);
         var (width, setWidth) = UseState(props.Viewport.Width);
+        var (topInset, setTopInset) = UseState(props.Viewport.TopInset);
         var announce = this.UseAnnounce();
         UseEffect((Func<Action>)(() =>
         {
@@ -78,7 +87,11 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
 
         UseEffect((Func<Action>)(() =>
         {
-            void Resized() => setWidth(props.Viewport.Width);
+            void Resized()
+            {
+                setWidth(props.Viewport.Width);
+                setTopInset(props.Viewport.TopInset);
+            }
             props.Viewport.Changed += Resized;
             // The host can publish a size between the first render and this subscription.
             Resized();
@@ -105,7 +118,7 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
             Border(null).Height(320).VAlign(VerticalAlignment.Top).Background(Theme.Ref("UsageMastGradientBrush"))
                 .Set(border => border.IsHitTestVisible = false)
                 .AccessibilityHidden().AutomationId("UsageMastBackdrop").WithKey("backdrop"),
-            scroll.WithKey("scroll"),
+            scroll.Margin(0, topInset, 0, 0).WithKey("scroll"),
             UsageExportFeedback.Toast(state, props)?.WithKey("export-toast"),
             UsageExportFeedback.Dialog(state, controller, props.Viewport)?.WithKey("export-dialog"),
             announce.Region.LiveRegion(state.ExportNotice?.Error is not null

@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Usage;
 using OpenClaw.TestSupport;
@@ -33,7 +34,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     private const double PageHeight = 900;
 
     [Fact]
-    public void Viewport_PreservesSubDipTierChangesWithoutDuplicatingSnappedWidths()
+    public void Viewport_PreservesSubDipTierChangesAndIndependentInsetsWithoutDuplicateNotifications()
     {
         var viewport = new UsageViewport();
         var changes = 0;
@@ -46,6 +47,82 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         viewport.Update(719.99);
         Assert.Equal(PageWidthTier.Narrow, PageResponsiveLayout.TierFor(viewport.Width));
         Assert.Equal(3, changes);
+        viewport.UpdateTopInset(56);
+        viewport.UpdateTopInset(56);
+        Assert.Equal(4, changes);
+        Assert.Equal(56, viewport.TopInset);
+        Assert.Equal(PageWidthTier.Narrow, PageResponsiveLayout.TierFor(viewport.Width));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(56)]
+    public async Task ContentInset_RetainsPreMountValueAndMovesOnlyScrollWithoutResettingTheReport(double initialInset)
+    {
+        var viewport = new UsageViewport();
+        viewport.UpdateTopInset(initialInset);
+        var changedInset = initialInset == 0 ? 56 : 0;
+        await WithUsagePageAsync(Report(false), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageDailyChart");
+            ScrollViewer scroll = null!;
+            Border backdrop = null!;
+            Grid chart = null!;
+            double contentTop = 0, backdropTop = 0;
+            SessionsUsageReport report = null!;
+            await ui.RunOnUIAsync(() =>
+            {
+                scroll = Get<ScrollViewer>(host, "UsagePageRoot");
+                backdrop = Get<Border>(host, "UsageMastBackdrop");
+                chart = Get<Grid>(host, "UsageDailyChart");
+                Assert.Equal(initialInset, scroll.Margin.Top);
+                contentTop = Get<FrameworkElement>(host, "UsageContentColumn").TransformToVisual(host).TransformPoint(new()).Y;
+                backdropTop = backdrop.TransformToVisual(host).TransformPoint(new()).Y;
+                report = Assert.IsType<SessionsUsageReport>(gateway.Controller.State.Report);
+                viewport.UpdateTopInset(changedInset);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => scroll.Margin.Top == changedInset &&
+                    Math.Abs(Get<FrameworkElement>(host, "UsageContentColumn").TransformToVisual(host).TransformPoint(new()).Y - contentTop - (changedInset - initialInset)) <= 1,
+                "only retained scrolling content moves below Settings chrome"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(scroll, Get<ScrollViewer>(host, "UsagePageRoot"));
+                Assert.Same(chart, Get<Grid>(host, "UsageDailyChart"));
+                Assert.Same(report, gateway.Controller.State.Report);
+                Assert.Equal(backdropTop, backdrop.TransformToVisual(host).TransformPoint(new()).Y);
+                Assert.Equal(1000, viewport.Width);
+                viewport.UpdateTopInset(initialInset);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => scroll.Margin.Top == initialInset &&
+                    Math.Abs(Get<FrameworkElement>(host, "UsageContentColumn").TransformToVisual(host).TransformPoint(new()).Y - contentTop) <= 1,
+                "expanded Settings restores the original content origin"));
+        }, pageWidth: 1000, viewport: viewport);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DailyTokenTable_DistinguishesMissingTotalsFromReportedZero(bool reported)
+    {
+        var date = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var day = new UsageTotals { TotalCost = 1, TotalTokens = 0, Report = UsageReportState.Available,
+            ReportedFields = reported ? new HashSet<string> { "totalCost", "totalTokens" } : new HashSet<string> { "totalCost" } };
+        var report = Report(false) with { Aggregates = new UsageAggregates { CostDaily = [new(date, day)] } };
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageDailyChart");
+            await ui.RunOnUIAsync(() =>
+            {
+                gateway.Controller.SetMetric(UsageMetric.Tokens);
+                var view = Get<SelectorBar>(host, "UsageChartView");
+                view.SelectedItem = view.Items[1];
+            });
+            await WaitForAsync(host, "UsageDailyTable");
+            await ui.RunOnUIAsync(() => Assert.Equal(reported ? "0" : UsageUi.Dash,
+                Get<TextBlock>(host, "UsageDailyRowValue_" + date).Text));
+        });
     }
 
     public class UsageGateway : DispatchProxy
@@ -76,6 +153,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method!.Name switch
         {
             "get_IsConnectedToGateway" => Connected,
+            "get_SessionMutationConnectionEpoch" => Connected ? (long?)1 : null,
             "GetSessionsUsageAsync" => Read((SessionsUsageQuery)args![0]!),
             "GetProviderUsageAsync" => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Ok(
                 new ProviderUsageSummary(DateTimeOffset.Now, Providers, false))),
@@ -185,6 +263,198 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     }
 
     [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task ThirtyDaySelection_NamesThe28ReportedDaysAndTheTableGrowsWithItsSelectedMetric(ElementTheme theme)
+    {
+        var start = new DateOnly(2026, 10, 3);
+        var end = new DateOnly(2026, 10, 30);
+        var days = Enumerable.Range(0, 28).Select(index => new UsageDailyTotals(
+            start.AddDays(index).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            new UsageTotals { TotalCost = index == 27 ? 3.56 : 2.5,
+                TotalTokens = index == 27 ? 2800 : 1000, Report = UsageReportState.Available })).ToArray();
+        var session = Row("agent:main:webchat:main", "30-day analysis", "main", "claude-sonnet-4.5",
+            29_800, 71.06, new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero));
+        var report = Report(false) with
+        {
+            StartDate = "2026-10-03", EndDate = "2026-10-30",
+            Sessions = [session], Totals = session.Usage!.Totals,
+            Aggregates = new UsageAggregates
+            {
+                SessionCount = 1, CostDaily = days,
+                ByAgent = [new("main", session.Usage.Totals)],
+                ByModel = [new("anthropic", session.Model, 10, session.Usage.Totals)],
+                ByProvider = [new("anthropic", null, 10, session.Usage.Totals)],
+            },
+        };
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
+        {
+            await ui.RunOnUIAsync(() => gateway.Controller.SetPreset(UsagePreset.Last30Days));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Find<TextBlock>(host, "UsageSubtitle")?.Text.Contains("28", StringComparison.Ordinal) == true,
+                "28 reported days instead of an invented 30"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Oct 3 to Oct 30", Get<TextBlock>(host, "UsageSummaryRange").Text);
+                Assert.Equal("$71.06", Get<TextBlock>(host, "UsageSummaryCostValue").Text);
+                Assert.Equal(71.06, gateway.Controller.State.Dashboard!.Chart.Days.Sum(day => day.Cost), 8);
+                Get<SelectorBar>(host, "UsageChartView").SelectedItem = Get<SelectorBar>(host, "UsageChartView").Items[1];
+            });
+            await WaitForAsync(host, "UsageDailyTable");
+            await ui.RunOnUIAsync(async () =>
+            {
+                var table = Get<StackPanel>(host, "UsageDailyTable");
+                var headers = FindDescendants<TextBlock>(Get<Grid>(host, "UsageDailyTableHeader"))
+                    .Select(text => text.Text).ToArray();
+                Assert.Equal(new[] { LocalizationHelper.GetString("Usage_Table_Date"),
+                    LocalizationHelper.GetString("Usage_Summary_EstimatedCost") }, headers);
+                var rows = FindDescendants<Grid>(table).Where(row =>
+                    AutomationProperties.GetAutomationId(row).StartsWith("UsageDailyRow_", StringComparison.Ordinal)).ToArray();
+                Assert.Equal(28, rows.Length);
+                Assert.Null(Find<FrameworkElement>(table, "UsageDailyRow_2026-10-01"));
+                Assert.Empty(FindDescendants<ScrollViewer>(table));
+                Assert.True(double.IsNaN(table.Height));
+                Assert.True(table.ActualHeight >= rows.Sum(row => row.ActualHeight));
+                Assert.Equal("$3.56", Get<TextBlock>(table, "UsageDailyRowValue_2026-10-30").Text);
+                await VisualTestCapture.CaptureAsync(ui.Container, $"Usage-designer-{theme}-1400-30day-table");
+                gateway.Controller.SetMetric(UsageMetric.Tokens);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Find<TextBlock>(host, "UsageDailyRowValue_2026-10-30")?.Text == "2.8K",
+                "Daily table follows the Tokens metric"));
+        }, theme: theme, pageWidth: 1400, today: end);
+    }
+
+    [NativeKeyboardTheory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task ChartArrowKeys_SelectAndFocusAdjacentDaysWithoutLeavingTheChart(ElementTheme theme)
+    {
+        await WithUsagePageAsync(Report(false), new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageDailyChart");
+            var window = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
+            await NativeKeyboardProof.ActivateAsync(window);
+            Button first = null!;
+            Button second = null!;
+            await ui.RunOnUIAsync(() =>
+            {
+                var bars = FindDescendants<Button>(Get<Grid>(host, "UsageDailyChart")).ToArray();
+                Assert.Equal(7, bars.Length);
+                first = bars[0];
+                second = bars[1];
+                Assert.All(bars, bar => Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(bar))));
+                Assert.True(first.Focus(FocusState.Keyboard));
+            });
+            NativeKeyboardProof.Press(window, Windows.System.VirtualKey.Right);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => ReferenceEquals(FocusManager.GetFocusedElement(host.XamlRoot), second)
+                    && AutomationProperties.GetItemStatus(second) == LocalizationHelper.GetString("Usage_Selected"),
+                "Right arrow selects and focuses the second day"));
+            NativeKeyboardProof.Press(window, Windows.System.VirtualKey.Left);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => ReferenceEquals(FocusManager.GetFocusedElement(host.XamlRoot), first)
+                    && AutomationProperties.GetItemStatus(first) == LocalizationHelper.GetString("Usage_Selected"),
+                "Left arrow returns selection and focus to the first day"));
+            NativeKeyboardProof.Press(window, Windows.System.VirtualKey.Left);
+            await ui.RunOnUIAsync(() => Assert.Same(first, FocusManager.GetFocusedElement(host.XamlRoot)));
+        }, theme: theme, pageWidth: 1400);
+    }
+
+    [Fact]
+    public async Task HeadlinePartialReasonAndSessionCountsAreExplicitBesideTheirValues()
+    {
+        var report = Report(false, sessionCount: 1500) with { Partial = new("time-budget", "Reading stopped early.") };
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageIncompleteReason");
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Reading stopped early.", Get<TextBlock>(host, "UsageIncompleteReason").Text);
+                Assert.Contains("1,500", Get<TextBlock>(host, "UsageSubtitle").Text);
+                Assert.Equal("3 shown · 3 loaded", Get<TextBlock>(host, "UsageSessionsShownLoaded").Text);
+                Assert.Contains(FindDescendants<TextBlock>(Get<Border>(host, "UsageSessionsCount")), text => text.Text == "3");
+            });
+        });
+    }
+
+    [Fact]
+    public async Task ContributorExpandersKeepIndependentStateAndDoNotScrollOnOrdinaryExpansion()
+    {
+        await WithUsagePageAsync(Report(false), new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageContributor_Agent_main");
+            await ui.RunOnUIAsync(() =>
+            {
+                var scroll = Get<ScrollViewer>(host, "UsagePageRoot");
+                var before = scroll.VerticalOffset;
+                var main = Get<Expander>(host, "UsageContributor_Agent_main");
+                var research = Get<Expander>(host, "UsageContributor_Agent_research");
+                main.IsExpanded = true;
+                research.IsExpanded = true;
+                Assert.True(main.IsExpanded);
+                Assert.True(research.IsExpanded);
+                Assert.Equal(before, scroll.VerticalOffset);
+            });
+            await ui.YieldToRenderAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(Get<Expander>(host, "UsageContributor_Agent_main").IsExpanded);
+                Assert.True(Get<Expander>(host, "UsageContributor_Agent_research").IsExpanded);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task SessionExpandersKeepLoadedSummariesOpenWhenAnotherDetailIsSelected()
+    {
+        await WithUsagePageAsync(Report(false), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageSession_agent:main:webchat:main");
+            await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:main:webchat:main")));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main").IsExpanded,
+                "First session expanded"));
+            await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:research:discord:42")));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => gateway.Controller.State.Detail?.Key == "agent:research:discord:42"
+                    && Get<Expander>(host, "UsageSessionExpander_agent:research:discord:42").IsExpanded,
+                "Second detail selected without closing first"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main").IsExpanded);
+                Assert.NotNull(Find<FrameworkElement>(host, "UsageSessionDetails_agent:main:webchat:main"));
+            });
+        });
+    }
+
+    [Theory]
+    [InlineData(480, 2)]
+    [InlineData(520, 2)]
+    [InlineData(576, 3)]
+    public async Task NarrowHost_SummaryFactsWrapWithoutExceedingTheActualCardWidth(double width, int columns)
+    {
+        await WithUsagePageAsync(Report(false), new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageDailyFacts");
+            await ui.RunOnUIAsync(() =>
+            {
+                var facts = Get<Grid>(host, "UsageDailyFacts");
+                Assert.Equal(columns, facts.ColumnDefinitions.Count);
+                Assert.Equal(3, facts.Children.Count);
+                foreach (FrameworkElement fact in facts.Children)
+                {
+                    var bounds = fact.TransformToVisual(facts).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, fact.ActualWidth, fact.ActualHeight));
+                    Assert.True(bounds.Left >= 0 && bounds.Right <= facts.ActualWidth + 1,
+                        $"Summary fact extends beyond {facts.ActualWidth} DIP: {bounds}");
+                }
+                AssertUnclippedText(facts);
+            });
+        }, pageWidth: width);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task MissingGatewayCounters_RenderUnavailableRatherThanInventedZeroOrEmptySuccess(bool reportedSessionCount)
@@ -201,7 +471,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     Assert.Equal(UsageUi.Dash, Get<TextBlock>(host, id).Text);
                 Assert.Equal(reportedSessionCount ? UsageUi.Count(3) : UsageUi.Dash, Get<TextBlock>(host, "UsageSummarySessionsValue").Text);
                 Assert.Null(Find<FrameworkElement>(host, "UsageEmptyState"));
-                Assert.Null(Find<FrameworkElement>(host, "UsageDailyAverageLegend"));
+                Assert.Null(Find<FrameworkElement>(host, "UsageDailyAverageCaption"));
                 Assert.Equal(LocalizationHelper.GetString("Usage_Daily_NotLoaded"), Get<TextBlock>(host, "UsageSessionsEmpty").Text);
             });
         });
@@ -228,8 +498,10 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Null(Find<FrameworkElement>(host, "UsageContributorShares"));
-                var contributor = Get<Button>(host, "UsageContributor_Agent_main");
-                Assert.Contains(FindDescendants<TextBlock>(contributor), text => text.Text == UsageUi.Dash);
+                var contributor = Get<Expander>(host, "UsageContributor_Agent_main");
+                var header = Assert.IsType<Grid>(contributor.Header);
+                var missingValue = Assert.Single(FindDescendants<TextBlock>(header), text => text.Text == UsageUi.Dash);
+                Assert.Equal(UsageUi.Dash, ToolTipService.GetToolTip(missingValue));
                 var day = Get<Button>(host, "UsageDailyChart_" + date);
                 Assert.Contains(UsageUi.Dash, AutomationProperties.GetName(day));
                 var row = Get<Grid>(host, "UsageRowLayout_agent:main:missing");
@@ -360,9 +632,8 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                         perDay.TransformToVisual(host).TransformPoint(new()).X), 0, 1);
                 }
                 var chart = Get<Grid>(host, "UsageDailyChart");
-                var legend = Get<Grid>(host, "UsageDailyAverageLegend");
-                Assert.Equal(AutomationProperties.GetName(legend), AutomationProperties.GetHelpText(chart));
-                Assert.Empty(FindDescendants<TextBlock>(Get<Grid>(host, "UsageDailyAverage")));
+                Assert.Null(Find<FrameworkElement>(host, "UsageDailyAverageLegend"));
+                Assert.Equal(AutomationProperties.GetHelpText(chart), Get<TextBlock>(host, "UsageDailyAverageLabel").Text);
                 var marks = FindDescendants<FrameworkElement>(chart).Where(element =>
                     AutomationProperties.GetAutomationId(element).Contains("_mark_", StringComparison.Ordinal))
                     .Select(element => element.TransformToVisual(chart).TransformBounds(
@@ -497,7 +768,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     {
         await WithUsagePageAsync(Report(serverOverview: false), new RecordingCommands(), async (host, _) =>
         {
-            await WaitForAsync(host, "UsageDailyAverageLegend");
+            await WaitForAsync(host, "UsageDailyAverageCaption");
             if (transition)
             {
                 await WaitForAsync(host, "UsageDailyMetricRow");
@@ -530,16 +801,14 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 var viewText = Assert.Single(FindDescendants<TextBlock>(view),
                     text => text.Text == LocalizationHelper.GetString("Usage_Chart"));
                 var title = Get<TextBlock>(host, "UsagePerDayTitle");
-                var legend = Assert.Single(FindDescendants<TextBlock>(Get<Grid>(host, "UsageDailyAverageLegend")));
                 double Centre(FrameworkElement element) =>
                     element.TransformToVisual(header).TransformPoint(new()).Y + element.ActualHeight / 2;
                 var diagnostics = $"Header={header.ActualHeight}; metric centre={Centre(metricText)}, height={metric.ActualHeight}; " +
-                    $"view centre={Centre(viewText)}, height={view.ActualHeight}; title={Centre(title)}; legend={Centre(legend)}; " +
+                    $"view centre={Centre(viewText)}, height={view.ActualHeight}; title={Centre(title)}; " +
                     $"groups={string.Join(';', header.Children.OfType<FrameworkElement>().Select(child => $"{child.GetType().Name} margin={child.Margin} align={child.VerticalAlignment}"))}";
                 output.WriteLine(diagnostics);
                 Assert.True(Math.Abs(Centre(metricText) - Centre(viewText)) <= 1, diagnostics);
                 Assert.True(Math.Abs(Centre(metricText) - Centre(title)) <= 2, diagnostics);
-                Assert.True(Math.Abs(Centre(legend) - Centre(title)) <= 1, diagnostics);
                 Assert.True(header.ActualHeight <= Math.Max(metric.ActualHeight, view.ActualHeight) + 1, diagnostics);
             });
         }, theme: ElementTheme.Light, pageWidth: transition ? 760 : width);
@@ -839,7 +1108,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 kinds.SelectedItem = kinds.Items[0];
             });
             await WaitForAsync(host, "UsageContributor_Agent_research");
-            await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageContributor_Agent_research")));
+            await ui.RunOnUIAsync(() => Get<Expander>(host, "UsageContributor_Agent_research").IsExpanded = true);
             await WaitForAsync(host, "UsageContributorFilter_research");
             await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageContributorFilter_research")));
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
@@ -1147,7 +1416,8 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     private async Task WithUsagePageAsync(
         SessionsUsageReport overview, RecordingCommands commands,
         Func<ReactorHostControl, UsageGateway, Task> body, bool unsupported = false, Action? openConnection = null,
-        ElementTheme theme = ElementTheme.Default, Action<UsageGateway>? configure = null, double pageWidth = PageWidth)
+        ElementTheme theme = ElementTheme.Default, Action<UsageGateway>? configure = null, double pageWidth = PageWidth, DateOnly? today = null,
+        UsageViewport? viewport = null)
     {
         await ui.ResetContainerAsync();
         ReactorHostControl? host = null;
@@ -1164,7 +1434,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             {
                 UsageThemeProofResources.Ensure();
                 var dispatcher = ui.Dispatcher;
-                controller = new UsagePageController(() => client, () => DateOnly.FromDateTime(DateTime.Now),
+                controller = new UsagePageController(() => client, () => today ?? DateOnly.FromDateTime(DateTime.Now),
                     action => dispatcher.TryEnqueue(() => action()));
                 gateway.Controller = controller;
                 gateway.ExportWorkflow = new UsageExportWorkflow(controller, (name, _) =>
@@ -1173,11 +1443,11 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     gateway.SavedNames.Add(name);
                     return Task.FromResult<UsageSavedExport?>(new(name, @"C:\synthetic-usage-export"));
                 }, () => active, gateway.SaveFailures.Add);
-                var viewport = new UsageViewport();
-                viewport.Update(pageWidth);
+                var activeViewport = viewport ?? new UsageViewport();
+                activeViewport.Update(pageWidth);
                 // The same handoff owner the XAML host wires, with recording app commands in place of App.
                 var (openWebUsage, openConversation) = UsageHandoffs.For(commands, commands.PendingChatKeys.Add);
-                var props = new UsagePageProps(controller, viewport, openConnection ?? (() => { }), openWebUsage, openConversation,
+                var props = new UsagePageProps(controller, activeViewport, openConnection ?? (() => { }), openWebUsage, openConversation,
                     gateway.ExportWorkflow.ExportAsync, () => commands.Navigate("chat"), folder =>
                     {
                         gateway.OpenedFolders.Add(folder);
@@ -1187,7 +1457,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 ui.TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32((int)((Math.Max(pageWidth, 1300) + 100) * scale), (int)(1000 * scale)));
                 ui.Container.RequestedTheme = theme;
                 host = new ReactorHostControl { Width = pageWidth, Height = PageHeight, RequestedTheme = theme };
-                host.SizeChanged += (_, args) => viewport.Update(args.NewSize.Width);
+                host.SizeChanged += (_, args) => activeViewport.Update(args.NewSize.Width);
                 // A render exception fails the wait with its message instead of crashing the shared test host.
                 host.Mount(_ => ErrorBoundary(Component<ReactorUsagePage, UsagePageProps>(props),
                     ex => TextBlock(ex.ToString()).AutomationId("UsageRenderError")));

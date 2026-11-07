@@ -741,7 +741,7 @@ x-colophon:
         usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
       usageChartBar:
         resource: UsageChartBarBrush
-        usage: Daily chart bars fade vertically from SystemAccentColorDark1 to Light1 in light theme, and Light2 to SystemAccentColor in dark theme. The mock's depth is expressed through native Windows accent shades, not fixed blue values. High contrast uses a solid SystemColorHighlightColor fill; the current-day opacity and dashed outline remain unchanged.
+        usage: Daily chart bars use solid SystemAccentColor in light and dark themes, and SystemColorHighlightColor in high contrast. Reported current-day bars use the same solid fill; their date and reported value carry the meaning. Day selection uses native keyboard focus and an accessible selected status.
       usageMastGradient:
         resource: UsageMastGradientBrush
         usage: Static accent-tinted mast backplate across the full page viewport, including the centered content's side margins. It stays anchored at the viewport top behind ordinary scrolling content, without intercepting input or making the header sticky. SystemAccentColor fades to transparent at 10% brush opacity over the top 320 logical pixels. High contrast uses a solid SystemColorWindowColor backplate. The rest of the page retains native Fluent card and window surfaces.

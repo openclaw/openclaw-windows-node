@@ -92,7 +92,7 @@ public sealed class UsageDashboardProjectionTests
     }
 
     [Fact]
-    public void DailyChart_PreservesReportedDaysAndMarksOmittedDaysUnavailableEvenWhenFresh()
+    public void DailyChart_ShowsOnlyReportedDaysEvenWhenFreshOrIncomplete()
     {
         var report = new SessionsUsageReport
         {
@@ -103,17 +103,18 @@ public sealed class UsageDashboardProjectionTests
         };
 
         var complete = UsageDashboardProjection.DailyChart(report, Week, UsageMetric.Tokens);
-        Assert.Equal(7, complete.Days.Count);
-        Assert.Equal(120, complete.Days[2].Value);
-        Assert.True(complete.Days[0].Pending);
-        Assert.False(complete.Days[2].Pending);
+        var day = Assert.Single(complete.Days);
+        Assert.Equal(new DateOnly(2026, 10, 22), day.Date);
+        Assert.Equal(120, day.Value);
+        Assert.False(day.Pending);
+        Assert.False(complete.CoversRange);
         Assert.Equal(200, complete.Ceiling);
 
         var incomplete = UsageDashboardProjection.DailyChart(
             report with { CacheStatus = new UsageCacheStatus("refreshing", 2, 0, null) }, Week, UsageMetric.Cost);
-        Assert.True(incomplete.Days[0].Pending);
-        Assert.False(incomplete.Days[2].Pending);
-        Assert.Equal(0.5, incomplete.Days[2].Value);
+        Assert.False(Assert.Single(incomplete.Days).Pending);
+        Assert.False(incomplete.CoversRange);
+        Assert.Equal(0.5, incomplete.Days[0].Value);
     }
 
     [Fact]
@@ -395,7 +396,7 @@ public sealed class UsageDashboardProjectionTests
         Assert.False(dashboard.Activity.Messages.HasData);
         Assert.False(dashboard.Activity.ToolCallsKnown);
         Assert.Null(dashboard.Activity.CacheHitRate);
-        Assert.All(dashboard.Chart.Days, day => Assert.True(day.Pending));
+        Assert.Empty(dashboard.Chart.Days);
         Assert.False(UsageExport.IsExportable(report));
     }
 
@@ -405,9 +406,8 @@ public sealed class UsageDashboardProjectionTests
         using var json = System.Text.Json.JsonDocument.Parse("""{"sessions":[],"totals":{"totalTokens":0,"totalCost":0},"aggregates":{"costDaily":[{"date":"2026-10-22","totalTokens":0,"totalCost":0}]}}""");
         var report = UsageJsonParser.ParseSessionsUsage(json.RootElement);
         var chart = UsageDashboardProjection.DailyChart(report, Week, UsageMetric.Cost);
-        Assert.False(chart.Days[2].Pending);
-        Assert.Equal(0, chart.Days[2].Value);
-        Assert.True(chart.Days[0].Pending);
+        Assert.False(Assert.Single(chart.Days).Pending);
+        Assert.Equal(0, chart.Days[0].Value);
         Assert.True(UsageDashboardProjection.Project(report, Week, UsageMetric.Cost).IsEmpty);
     }
 
@@ -432,7 +432,7 @@ public sealed class UsageDashboardProjectionTests
         using var json = System.Text.Json.JsonDocument.Parse(
             $$$"""{"aggregates":{"costDaily":[{"date":"2026-10-22","{{{field}}}":12}]}}""");
         var report = UsageJsonParser.ParseSessionsUsage(json.RootElement);
-        var day = UsageDashboardProjection.DailyChart(report, Week, tokensMetric ? UsageMetric.Tokens : UsageMetric.Cost).Days[2];
+        var day = Assert.Single(UsageDashboardProjection.DailyChart(report, Week, tokensMetric ? UsageMetric.Tokens : UsageMetric.Cost).Days);
 
         Assert.False(day.Pending);
         Assert.Equal(12, day.Value);

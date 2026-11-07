@@ -16,21 +16,6 @@ internal enum UsageAvailability
     Forbidden,
 }
 
-internal enum UsageLoadPhase
-{
-    Idle,
-    Loading,
-    Loaded,
-    Failed,
-}
-
-/// <summary>One section's read. <see cref="Failure"/> names the failed outcome when the Gateway sent no error text.</summary>
-internal sealed record UsageRead<T>(UsageLoadPhase Phase, T? Value, string? Error, UsageReadStatus? Failure = null) where T : class
-{
-    public static readonly UsageRead<T> Idle = new(UsageLoadPhase.Idle, null, null);
-    public bool IsLoading => Phase == UsageLoadPhase.Loading;
-}
-
 /// <summary>The selected session: its list row is shown at once, and a single-session read refines it.</summary>
 internal sealed record UsageDetailState(string Key, string? AgentId, UsageRead<SessionUsageRow> Row);
 
@@ -98,12 +83,13 @@ internal sealed class UsagePageController : IDisposable
     private readonly Action<Action> _post;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private CancellationTokenSource _overviewCts = new();
-    private CancellationTokenSource _providersCts = new();
+    private readonly IUsageProviderReadSource _providers;
+    private readonly UsageProviderReadSource? _ownedProviders;
+    private long _providerBindingRevision;
     private CancellationTokenSource _detailCts = new();
     private CancellationTokenSource _recheckCts = new();
     private readonly CancellationTokenSource _exportCts = new();
     private int _overviewGeneration;
-    private int _providersGeneration;
     private int _detailGeneration;
     private int _rechecks;
     private bool _disposed;
@@ -112,7 +98,8 @@ internal sealed class UsagePageController : IDisposable
 
     public UsagePageController(
         Func<IOperatorGatewayClient?> client, Func<DateOnly> today, Action<Action> post,
-        Func<TimeSpan, CancellationToken, Task>? delay = null, Func<DateOnly>? utcToday = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null, Func<DateOnly>? utcToday = null,
+        IUsageProviderReadSource? providers = null)
     {
         _client = client;
         _today = today;
@@ -120,6 +107,8 @@ internal sealed class UsagePageController : IDisposable
         _post = post;
         _delay = delay ?? Task.Delay;
         State = new UsagePageState { Filters = UsageFilters.Default(today()) };
+        _providers = providers ?? (_ownedProviders = new UsageProviderReadSource(post));
+        _providers.Changed += OnProvidersChanged;
     }
 
     public UsagePageState State { get; private set; }
@@ -139,6 +128,7 @@ internal sealed class UsagePageController : IDisposable
     {
         var client = _client();
         ForgetReplacedGateway(client);
+        _ownedProviders?.SetConnection(client, _providerBindingRevision);
         if (client is not { IsConnectedToGateway: true })
         {
             CancelAll();
@@ -153,7 +143,7 @@ internal sealed class UsagePageController : IDisposable
             Filters = Rebased(s.Filters),
         });
         Reload(client, resetRechecks: true);
-        LoadProviders(client);
+        _providers.Refresh(client);
         if (State.Detail is { } detail) LoadDetail(client, detail.Key, detail.AgentId);
     }
 
@@ -175,6 +165,7 @@ internal sealed class UsagePageController : IDisposable
         if (client is null || ReferenceEquals(client, _stateClient)) return false;
         var replaced = _stateClient is not null;
         _stateClient = client;
+        _providerBindingRevision++;
         if (!replaced) return false;
         CancelAll();
         _rechecks = 0;
@@ -218,6 +209,8 @@ internal sealed class UsagePageController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _providers.Changed -= OnProvidersChanged;
+        _ownedProviders?.Dispose();
         _noticeCts.Cancel();
         _noticeCts.Dispose();
         _exportAlternative?.TrySetResult(false);
@@ -557,38 +550,13 @@ internal sealed class UsagePageController : IDisposable
         });
     }
 
-    // usage.status can call provider billing APIs, so it is read on activation and refresh, not on every filter change.
-    private void LoadProviders(IOperatorGatewayClient client)
+    private void OnProvidersChanged()
     {
-        _providersCts.Cancel();
-        _providersCts = new CancellationTokenSource();
-        var token = _providersCts.Token;
-        var generation = ++_providersGeneration;
-        Update(s => s with { Providers = s.Providers with { Phase = UsageLoadPhase.Loading } });
-        _ = LoadProvidersAsync(client, generation, token);
-    }
-
-    private async Task LoadProvidersAsync(IOperatorGatewayClient client, int generation, CancellationToken token)
-    {
-        UsageReadResult<ProviderUsageSummary> result;
-        try
+        var providers = _providers.State;
+        Update(s => s with
         {
-            result = await client.GetProviderUsageAsync(cancellationToken: token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            return;
-        }
-        _post(() =>
-        {
-            if (_disposed || generation != _providersGeneration) return;
-            // A refreshing or failed provider read keeps the last complete snapshot.
-            Update(s => s with
-            {
-                Providers = result.IsOk
-                    ? new UsageRead<ProviderUsageSummary>(UsageLoadPhase.Loaded, result.Value, null)
-                    : new UsageRead<ProviderUsageSummary>(UsageLoadPhase.Failed, s.Providers.Value, result.Error, result.Status),
-            });
+            Providers = ReferenceEquals(providers.Client, _stateClient)
+                ? providers.Read : UsageRead<ProviderUsageSummary>.Idle,
         });
     }
 
@@ -663,10 +631,8 @@ internal sealed class UsagePageController : IDisposable
     private void CancelAll()
     {
         _overviewCts.Cancel();
-        _providersCts.Cancel();
         _recheckCts.Cancel();
         _overviewGeneration++;
-        _providersGeneration++;
         CancelDetail();
     }
 }

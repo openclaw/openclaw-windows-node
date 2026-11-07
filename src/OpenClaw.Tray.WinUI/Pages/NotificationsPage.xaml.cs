@@ -8,6 +8,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class NotificationsPage : Page
 {
+    private const double CompactLayoutWidth = 720;
     private static App CurrentApp => (App)Application.Current!;
     private readonly ObservableCollection<NotificationItemViewModel> _notificationItems = new();
     private AppNotificationService? _notificationService;
@@ -15,8 +16,31 @@ public sealed partial class NotificationsPage : Page
     public NotificationsPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         NotificationsList.ItemsSource = _notificationItems;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < CompactLayoutWidth;
+        Grid.SetColumnSpan(PageHeading, compact ? 2 : 1);
+        Grid.SetRow(ClearButton, compact ? 1 : 0);
+        Grid.SetColumn(ClearButton, compact ? 0 : 1);
+        ClearButton.HorizontalAlignment = HorizontalAlignment.Left;
+    }
+
+    private void OnNotificationLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var grid = (Grid)sender;
+        var content = (StackPanel)grid.FindName("NotificationContent");
+        var actions = (StackPanel)grid.FindName("NotificationActions");
+        var compact = e.NewSize.Width < CompactLayoutWidth;
+        Grid.SetColumnSpan(content, compact ? 2 : 1);
+        Grid.SetRow(actions, compact ? 1 : 0);
+        Grid.SetColumn(actions, compact ? 1 : 2);
+        Grid.SetColumnSpan(actions, compact ? 2 : 1);
+        actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
     }
 
     internal void Initialize(AppNotificationService? notificationService)

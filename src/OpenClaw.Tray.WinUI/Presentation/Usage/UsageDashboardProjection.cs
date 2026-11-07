@@ -25,7 +25,7 @@ internal sealed record UsageChartDay(
     DateOnly Date, string Iso, double Value, long Tokens, double Cost, bool Pending, bool LowerBound, bool MissingPrice = false,
     bool TokensKnown = true, bool CostKnown = true);
 
-internal sealed record UsageDailyChart(UsageMetric Metric, IReadOnlyList<UsageChartDay> Days, double Ceiling)
+internal sealed record UsageDailyChart(UsageMetric Metric, IReadOnlyList<UsageChartDay> Days, double Ceiling, bool CoversRange = true)
 {
     public bool IsEmpty => Days.Count == 0 || Days.All(d => d.Value <= 0);
 }
@@ -136,10 +136,8 @@ internal static class UsageDashboardProjection
             if (UsageFormat.TryParseIso(day.Date, out var date)) byDate[date] = day;
         }
 
-        // Ranges up to a year show every calendar day; longer custom ranges show the most recent days with data.
-        IEnumerable<DateOnly> dates = filters.RangeDays <= MaxChartDays
-            ? Enumerable.Range(0, filters.RangeDays).Select(i => filters.Start.AddDays(i))
-            : byDate.Keys.Where(d => d >= filters.Start && d <= filters.End).Order().TakeLast(MaxChartDays);
+        // Missing calendar days are not zero-usage days. Both views contain only the Gateway's reported rows.
+        var dates = byDate.Keys.Where(d => d >= filters.Start && d <= filters.End).Order().TakeLast(MaxChartDays);
 
         var days = dates.Select(date =>
         {
@@ -153,7 +151,7 @@ internal static class UsageDashboardProjection
         }).ToList();
 
         var max = days.Count == 0 ? 0 : days.Max(d => d.Value);
-        return new UsageDailyChart(metric, days, UsageFormat.NiceCeiling(max));
+        return new UsageDailyChart(metric, days, UsageFormat.NiceCeiling(max), days.Count == filters.RangeDays);
     }
 
     // ── activity ──

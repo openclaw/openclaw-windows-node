@@ -13,6 +13,7 @@ public sealed class UsagePageControllerTests
     public class UsageGateway : DispatchProxy
     {
         public bool Connected = true;
+        public long? SocketEpoch = 1;
         public readonly List<SessionsUsageQuery> Queries = [];
         public readonly List<string> Calls = [];
         public Func<SessionsUsageQuery, Task<UsageReadResult<SessionsUsageReport>>> Usage =
@@ -26,6 +27,7 @@ public sealed class UsagePageControllerTests
             return method.Name switch
             {
                 "get_IsConnectedToGateway" => Connected,
+                "get_SessionMutationConnectionEpoch" => Connected ? SocketEpoch : null,
                 "GetSessionsUsageAsync" => Query((SessionsUsageQuery)args![0]!),
                 "GetProviderUsageAsync" => Providers(),
                 _ => throw new NotSupportedException(method.Name),
@@ -127,7 +129,7 @@ public sealed class UsagePageControllerTests
         Assert.Null(controller.State.Report);
         Assert.Null(controller.State.Dashboard);
         Assert.False(controller.State.ShowLoadError);
-        Assert.Equal(["GetProviderUsageAsync", "GetSessionsUsageAsync", "get_IsConnectedToGateway"],
+        Assert.Equal(["GetProviderUsageAsync", "GetSessionsUsageAsync", "get_IsConnectedToGateway", "get_SessionMutationConnectionEpoch"],
             gateway.Calls.Distinct().Order(StringComparer.Ordinal));
     }
 
@@ -149,7 +151,7 @@ public sealed class UsagePageControllerTests
 
         Assert.Equal(UsageAvailability.Disconnected, controller.State.Availability);
         Assert.Equal(UsageLoadPhase.Loaded, controller.State.Phase);
-        Assert.Equal(UsageLoadPhase.Loaded, controller.State.Providers.Phase);
+        Assert.Equal(UsageLoadPhase.Idle, controller.State.Providers.Phase);
         pending.SetResult(UsageReadResult<SessionsUsageReport>.Ok(Report("agent:main:late")));
         dispatcher.Drain();
         Assert.Equal("agent:main:a", Assert.Single(controller.State.Report!.Sessions).Key);

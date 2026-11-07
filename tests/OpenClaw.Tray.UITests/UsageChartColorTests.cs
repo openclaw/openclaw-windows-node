@@ -18,10 +18,9 @@ namespace OpenClaw.Tray.UITests;
 public sealed class UsageChartColorTests(UIThreadFixture ui)
 {
     [Theory]
-    [InlineData(ElementTheme.Light, "SystemAccentColorDark1", "SystemAccentColorLight1")]
-    [InlineData(ElementTheme.Dark, "SystemAccentColorLight2", "SystemAccentColor")]
-    public async Task DailyBars_UseVerticalThemeAccentGradientsWithoutChangingCurrentDaySemantics(
-        ElementTheme theme, string topColor, string bottomColor)
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task DailyBars_UseSolidNativeAccentForReportedAndCurrentDays(ElementTheme theme)
     {
         await ui.ResetContainerAsync();
         ReactorHostControl? host = null;
@@ -54,24 +53,17 @@ public sealed class UsageChartColorTests(UIThreadFixture ui)
                     AutomationProperties.GetAutomationId(element) == "UsageGradientProof_mark_complete");
                 var today = Assert.Single(FindDescendants<Border>(host!), element =>
                     AutomationProperties.GetAutomationId(element) == "UsageGradientProof_mark_today");
-                var gradient = Assert.IsType<LinearGradientBrush>(complete.Background);
-                Assert.Equal(new Windows.Foundation.Point(0, 0), gradient.StartPoint);
-                Assert.Equal(new Windows.Foundation.Point(0, 1), gradient.EndPoint);
-                Assert.Equal(2, gradient.GradientStops.Count);
+                var fill = Assert.IsType<SolidColorBrush>(complete.Background);
                 Windows.UI.Color AccentColor(string key)
                 {
                     var reference = (Border)XamlReader.Load(
                         $$"""<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" RequestedTheme="{{theme}}"><Border.Background><SolidColorBrush Color="{ThemeResource {{key}}}"/></Border.Background></Border>""");
                     return Assert.IsType<SolidColorBrush>(reference.Background).Color;
                 }
-                Assert.Equal(AccentColor(topColor), gradient.GradientStops[0].Color);
-                Assert.Equal(AccentColor(bottomColor), gradient.GradientStops[1].Color);
-                Assert.NotEqual(gradient.GradientStops[0].Color, gradient.GradientStops[1].Color);
-                Assert.Equal(0, gradient.GradientStops[0].Offset);
-                Assert.Equal(1, gradient.GradientStops[1].Offset);
+                Assert.Equal(AccentColor("SystemAccentColor"), fill.Color);
                 Assert.Equal(1, complete.Opacity);
-                Assert.InRange(Math.Abs(today.Opacity - 0.4), 0, 0.000001);
-                Assert.IsType<LinearGradientBrush>(today.Background);
+                Assert.Equal(1, today.Opacity);
+                Assert.Equal(fill.Color, Assert.IsType<SolidColorBrush>(today.Background).Color);
                 Assert.InRange(Math.Abs(complete.ActualHeight - 90), 0, 1);
                 Assert.InRange(Math.Abs(today.ActualHeight - 45), 0, 1);
             });

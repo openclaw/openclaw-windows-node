@@ -80,8 +80,10 @@ internal static class UsageSections
             InlineStat(a.Messages.HasData ? Count(a.Messages.Total) : Dash, S("Usage_Overview_Messages").ToLower(Culture),
                 a.Messages.HasData ? F("Usage_Activity_MessageSplitFormat", Count(a.Messages.User), Count(a.Messages.Assistant)) : null, "UsageStatMessages"),
             InlineStat(a.ToolCallsKnown ? Count(a.ToolCalls) : Dash, S("Usage_Overview_ToolCalls").ToLower(Culture), null, "UsageStatToolCalls"),
-            InlineStat(a.Messages.HasData ? Count(a.Messages.Errors) : Dash, S("Usage_Overview_Errors").ToLower(Culture),
-                a.ErrorRate is { } rate ? UsageFormat.Percent(rate, Culture, 0) : null, "UsageStatErrors"),
+            InlineStat(a.Messages.HasData ? Count(a.Messages.Errors) : Dash,
+                a.Messages.HasData ? F(a.Messages.Errors == 1 ? "Usage_Overview_ErrorsCountFormatOne" : "Usage_Overview_ErrorsCountFormat", "").Trim()
+                    : S("Usage_Overview_Errors").ToLower(Culture),
+                a.ErrorRate is { } rate ? UsageFormat.Percent(rate, Culture, rate > 0 && rate < 0.01 ? 1 : 0) : null, "UsageStatErrors"),
             InlineStat(a.CacheHitRate is { } hit ? UsageFormat.Percent(hit, Culture, 0) : Dash,
                 S("Usage_Overview_CacheHitRate").ToLower(Culture), null, "UsageStatCacheHit"),
         ];
@@ -119,8 +121,7 @@ internal sealed class UsageDailySection : Component<UsageDailyProps>
         var totals = state.Report!.Totals;
         var summary = Props.Dashboard.Summary;
         var compact = PageResponsiveLayout.TierFor(Props.Width) == PageWidthTier.Narrow;
-        var legendBelow = Props.Width - CardPadding * 2 < PageResponsiveLayout.MinWidth;
-        double? average = chart.Days.Count > 0 && !summary.Partial && !chart.Days.Any(day => day.Pending || day.LowerBound || day.MissingPrice)
+        double? average = chart.Days.Count > 0 && chart.CoversRange && !summary.Partial && !chart.Days.Any(day => day.Pending || day.LowerBound || day.MissingPrice)
             ? chart.Days.Average(day => day.Value) : null;
         string AxisLabel(double value) => state.Metric == UsageMetric.Cost
             ? UsageFormat.Cost(value, Culture, value < 1 ? 2 : 0) : UsageFormat.Tokens((long)value, Culture);
@@ -139,8 +140,6 @@ internal sealed class UsageDailySection : Component<UsageDailyProps>
                     ? new Thickness(0, itemPadding.Top, itemPadding.Left + itemPadding.Right, itemPadding.Bottom)
                     : itemPadding;
         });
-        var legend = average is { } mean
-            ? UsageCharts.AverageLegend(F("Usage_DailyAverageFormat", AxisLabel(mean))).Margin(0).WithKey("average") : null;
         var view = SelectorBar([SelectorBarItem(S("Usage_Chart")), SelectorBarItem(S("Usage_Table"))], table ? 1 : 0,
                 index => setTable(index == 1))
             .AutomationName(S("Usage_ChartView")).AutomationId("UsageChartView")
@@ -150,13 +149,9 @@ internal sealed class UsageDailySection : Component<UsageDailyProps>
                 TextBlock(S("Usage_PerDay")).FontSize(16).FontWeight(FontWeights.SemiBold)
                     .VAlign(VerticalAlignment.Center).Margin(0).AutomationId("UsagePerDayTitle").Grid(column: 0).WithKey("title"),
                 !compact ? metric.Grid(column: 1) : null,
-                Grid(legendBelow ? [GridSize.Auto] : [GridSize.Auto, GridSize.Auto], [GridSize.Auto],
-                    !legendBelow ? legend?.Margin(0, 0, PageResponsiveLayout.GapGroup, 0).Grid(column: 0) : null,
-                    view.Grid(column: legendBelow ? 0 : 1))
-                    .VAlign(VerticalAlignment.Center).Margin(0).Grid(column: compact ? 1 : 2).WithKey("view-group"),
-                compact ? (Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                    metric.Grid(column: 0),
-                    legendBelow ? legend?.Grid(column: 1) : null) with { ColumnSpacing = PageResponsiveLayout.GapGroup })
+                view.Grid(column: compact ? 1 : 2).WithKey("view-group"),
+                compact ? Grid([GridSize.Auto], [GridSize.Auto],
+                    metric.Grid(column: 0))
                     .Margin(0, PageResponsiveLayout.GapInner, 0, 0).Grid(row: 1, columnSpan: 2)
                     .AutomationId("UsageDailyMetricRow").WithKey("metric-row") : null);
         var today = DateOnly.FromDateTime(state.Filters.TimeZone == UsageTimeZoneMode.Utc ? DateTime.UtcNow : DateTime.Now);
@@ -185,16 +180,23 @@ internal sealed class UsageDailySection : Component<UsageDailyProps>
 
     private static Element DailyTable(UsageDailyChart chart)
     {
+        string Value(UsageChartDay day) => day.Pending && !day.TokensKnown && !day.CostKnown
+            ? S("Usage_Daily_NotLoaded")
+            : chart.Metric == UsageMetric.Cost ? DayCost(day)
+            : day.TokensKnown ? Tokens(day.Tokens, day.LowerBound) : Dash;
         var rows = chart.Days.Reverse().Select(day =>
             Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 TextBlock(UsageFormat.DayLabel(day.Date, Culture)).FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 0),
-                TextBlock(day.Pending ? S("Usage_Daily_NotLoaded") : chart.Metric == UsageMetric.Cost
-                        ? DayCost(day) : Tokens(day.Tokens, day.LowerBound))
-                    .FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 1)).Padding(0, 5)
-                .AutomationName(UsageFormat.FullDate(day.Date, Culture) + ": " + (day.Pending ? S("Usage_Daily_NotLoaded")
-                    : chart.Metric == UsageMetric.Cost ? DayCost(day) : Tokens(day.Tokens, day.LowerBound)))
+                TextBlock(Value(day))
+                    .FontSize(12).TextWrapping(TextWrapping.NoWrap).AutomationId("UsageDailyRowValue_" + day.Iso)
+                    .Grid(column: 1)).Padding(0, 5)
+                .AutomationName(UsageFormat.FullDate(day.Date, Culture) + ": " + Value(day))
                 .AutomationId("UsageDailyRow_" + day.Iso).WithKey(day.Iso)).ToArray();
-        return VStack(2, rows).AutomationName(S("Usage_ChartView")).AutomationId("UsageDailyTable");
+        var header = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            TextBlock(S("Usage_Table_Date")).FontWeight(FontWeights.SemiBold).Grid(column: 0),
+            TextBlock(S(chart.Metric == UsageMetric.Cost ? "Usage_Summary_EstimatedCost" : "Usage_Metric_Tokens"))
+                .FontWeight(FontWeights.SemiBold).Grid(column: 1)).Padding(0, 5).AutomationId("UsageDailyTableHeader");
+        return VStack(2, new[] { header }.Concat(rows).ToArray()).AutomationName(S("Usage_ChartView")).AutomationId("UsageDailyTable");
     }
 
     private static string DayCost(UsageChartDay day) =>
@@ -296,14 +298,24 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
     public override Element Render()
     {
         var (kind, setKind) = UseState(UsageContributorKind.Agent);
-        var (expanded, setExpanded) = UseState<string?>(null);
+        var initialExpanded = UseMemo(() => new HashSet<string>(StringComparer.Ordinal), []);
+        var (expanded, setExpanded) = UseState(initialExpanded);
+        var expandedRef = UseRef(expanded);
+        expandedRef.Current = expanded;
+        void Expand(string id, bool value)
+        {
+            var next = new HashSet<string>(expandedRef.Current, StringComparer.Ordinal);
+            if (value) next.Add(id); else next.Remove(id);
+            expandedRef.Current = next;
+            setExpanded(next);
+        }
         var sectionRef = UseRef<FrameworkElement?>(null);
         UseEffect(() =>
         {
             if (Props.State.FocusProvider is { } provider)
             {
                 setKind(UsageContributorKind.Provider);
-                setExpanded(provider);
+                setExpanded(new HashSet<string>(expanded, StringComparer.Ordinal) { provider });
                 sectionRef.Current?.StartBringIntoView();
             }
         }, Props.State.FocusProviderRequest);
@@ -321,7 +333,7 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
         Element ContributorRow(UsageContributor item)
         {
             var id = item.Provider is { } provider && kind == UsageContributorKind.Model ? provider + "/" + item.Label : item.Label;
-            var open = expanded == id;
+            var open = expanded.Contains(id);
             var loaded = UsageInsights.LoadedSessions(Props.Dashboard.Sessions, kind, item);
             var entries = loaded.Take(3).Select(row =>
                 (Element)Button(Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
@@ -341,24 +353,22 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                 : item.Unpriced && metric == UsageMetric.Cost ? S("Usage_Overview_Unpriced")
                 : Metric(metric, item.Tokens, item.Cost, item.LowerBound)) + (knownShares ? " · " + UsageFormat.Percent(Share(item), Culture, 0) : "");
             var narrow = Props.Layout.Narrow;
-            return (Element)VStack(4,
-                Button(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
-                    narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
-                    Border(null).Size(10, 10).CornerRadius(2).Background(Palette(PaletteIndex(item.Label)))
-                        .Margin(0, 0, 10, 0).VAlign(VerticalAlignment.Center).Grid(column: 0),
-                    TextBlock(item.Label).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
-                        .ToolTip(item.Label).Grid(column: 1, columnSpan: narrow ? 2 : 1),
-                    TextBlock(value).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(value)
-                        .Margin(narrow ? 0 : PageResponsiveLayout.GapGroup, narrow ? 4 : 0, 0, 0)
-                        .Grid(row: narrow ? 1 : 0, column: narrow ? 1 : 2),
-                    TextBlock(open ? "\uE70E" : "\uE70D").FontSize(10).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .AccessibilityHidden().Margin(12, 0, 0, 0).VAlign(VerticalAlignment.Center)
-                        .Grid(column: 3, rowSpan: narrow ? 2 : 1)), () => setExpanded(open ? null : id))
-                    .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
-                    .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
-                    .AutomationName(item.Label).ItemStatus(S(open ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
-                    .AutomationId("UsageContributor_" + kind + "_" + item.Label),
-                open ? VStack(4, new[] { Note(S("Usage_LoadedSessions")) }.Concat(entries).ToArray()).Margin(20, 0, 0, 8) : null)
+            var header = Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                Border(null).Size(10, 10).CornerRadius(2).Background(Palette(PaletteIndex(item.Label)))
+                    .Margin(0, 0, 10, 0).VAlign(VerticalAlignment.Center).Grid(column: 0),
+                TextBlock(item.Label).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .ToolTip(item.Label).Grid(column: 1, columnSpan: narrow ? 2 : 1),
+                TextBlock(value).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(value)
+                    .Margin(narrow ? 0 : PageResponsiveLayout.GapGroup, narrow ? 4 : 0, 0, 0)
+                    .Grid(row: narrow ? 1 : 0, column: narrow ? 1 : 2));
+            return (Element)Expander(item.Label + " · " + value,
+                    VStack(4, new[] { Note(S("Usage_LoadedSessions")) }.Concat(entries).ToArray()).Padding(12),
+                    open, value => Expand(id, value))
+                .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
+                .HeaderTemplate(header)
+                .AutomationName(item.Label + ": " + value)
+                .AutomationId("UsageContributor_" + kind + "_" + item.Label)
                 .WithKey(id);
         }
         var rows = top.Select(ContributorRow).ToList();
@@ -367,14 +377,14 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
         if (tail.Count > 0)
             rows.Add(Expander(F("Usage_OtherFormat", Count(tail.Count)), VStack(4,
                     tail.Select(ContributorRow).ToArray()),
-                expanded == "$other" || tail.Any(item => expanded == (kind == UsageContributorKind.Model ? item.Provider + "/" + item.Label : item.Label)),
-                value => setExpanded(value ? "$other" : null))
+                expanded.Contains("$other") || tail.Any(item => expanded.Contains(kind == UsageContributorKind.Model ? item.Provider + "/" + item.Label : item.Label)),
+                value => Expand("$other", value))
                 .WithKey("other"));
         if (rows.Count == 0) rows.Add(Note(S("Usage_Overview_NoAgentData")).WithKey("empty"));
         var highlight = Highlights(Props.Dashboard, metric, Props.Actions);
         return Section(S("Usage_Contributors_Title"), null,
             SelectorBar(Kinds.Select(value => SelectorBarItem(S("Usage_Contributors_" + value))).ToArray(),
-                    Array.IndexOf(Kinds, kind), index => { if (index >= 0 && index < Kinds.Length) { setKind(Kinds[index]); setExpanded(null); } })
+                    Array.IndexOf(Kinds, kind), index => { if (index >= 0 && index < Kinds.Length) { setKind(Kinds[index]); setExpanded(new HashSet<string>(StringComparer.Ordinal)); } })
                 .AutomationName(S("Usage_Contributors_Label")).AutomationId("UsageContributorsKind"),
             VStack(16,
                 knownShares ? StackedBar(parts).AutomationId("UsageContributorShares") : null,
@@ -393,11 +403,11 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                 Note(S("Usage_CostliestLoaded")),
                 Button(TextBlock(costly.Title).TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
                         .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(costly.Title), () => actions.Controller.SelectSession(costly.Key, costly.AgentId))
-                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Left)
+                    .Padding(0).HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Left)
                     .AutomationName(costly.Title).Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources),
                 Note(AnalysisCost(costly.Cost, costly.LowerBound))).WithKey("costliest"));
         var peak = dashboard.Chart.Days.Where(day => !day.Pending).OrderByDescending(day => day.Value).FirstOrDefault();
-        if (peak is not null && peak.Value > 0 && !dashboard.Summary.Partial
+        if (peak is not null && peak.Value > 0 && dashboard.Chart.CoversRange && !dashboard.Summary.Partial
             && dashboard.Chart.Days.All(day => !day.Pending && !day.LowerBound && !day.MissingPrice))
             entries.Add(Note(F("Usage_BusiestDayFormat", UsageFormat.DayLabel(peak.Date, Culture),
                 Metric(metric, peak.Tokens, peak.Cost, peak.LowerBound))).WithKey("peak"));

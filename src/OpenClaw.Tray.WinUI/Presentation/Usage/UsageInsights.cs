@@ -13,10 +13,7 @@ internal static class UsageInsights
         state.Availability != UsageAvailability.Connected || state.Providers.Phase != UsageLoadPhase.Loaded
             || state.Providers.Value is not { Refreshing: false } providers
                 ? []
-                : providers.Providers.Where(provider => string.IsNullOrEmpty(provider.Error)
-                        && provider.Windows.Any(window => window.UsedPercent >= 75
-                            && (window.ResetAt is null || window.ResetAt > DateTimeOffset.Now)))
-                    .OrderByDescending(provider => provider.Windows.Max(window => window.UsedPercent)).ToList();
+                : UsageProviderAttention.Select(providers, DateTimeOffset.Now);
 
     public static IReadOnlyList<UsageSessionRowView> LoadedSessions(
         UsageSessionsView sessions, UsageContributorKind kind, UsageContributor contributor) =>

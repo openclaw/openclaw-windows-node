@@ -11,6 +11,19 @@ namespace OpenClaw.Shared.Tests.Usage;
 /// </summary>
 public sealed class UsageJsonParserTests
 {
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("{\"providers\":null}")]
+    [InlineData("{\"providers\":{}}")]
+    public void MissingProviderCollection_IsFailureRatherThanSuccessfulEmptyUsage(string json) =>
+        Assert.Throws<InvalidOperationException>(() => UsageJsonParser.ParseProviderUsage(Parse(json)));
+
+    [Fact]
+    public void ExplicitEmptyProviderCollection_IsKnownEmptyUsage() =>
+        Assert.Empty(UsageJsonParser.ParseProviderUsage(Parse("""{"providers":[]}""")).Providers);
+
     [Fact]
     public void MissingOrMalformedProviderNumbers_DoNotBecomeZeroAllowanceOrBillingFacts()
     {

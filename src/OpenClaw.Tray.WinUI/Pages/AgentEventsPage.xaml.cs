@@ -13,6 +13,7 @@ namespace OpenClawTray.Pages;
 public sealed partial class AgentEventsPage : Page
 {
     private const int MaxEvents = 400;
+    private const double CompactLayoutWidth = 720;
     private readonly List<AgentEventInfo> _allEvents = new();
     private string? _agentIdFilter;
     private bool _filterDirty;
@@ -67,6 +68,7 @@ public sealed partial class AgentEventsPage : Page
     public AgentEventsPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         _initialized = true;
         Unloaded += (_, _) =>
         {
@@ -76,6 +78,23 @@ public sealed partial class AgentEventsPage : Page
                 _appState.PropertyChanged -= OnAppStateChanged;
             }
         };
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < CompactLayoutWidth;
+        var heading = (Grid)EventTitle.Parent;
+        heading.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        Grid.SetColumnSpan(EventTitle, compact ? 3 : 1);
+        Grid.SetRow(LiveBadge, compact ? 1 : 0);
+        Grid.SetColumn(LiveBadge, compact ? 0 : 1);
+        LiveBadge.HorizontalAlignment = HorizontalAlignment.Left;
+        Grid.SetRow(CountText, compact ? 1 : 0);
+        Grid.SetColumn(CountText, compact ? 1 : 2);
+        Grid.SetColumnSpan(AgentFilterCombo, compact ? 3 : 1);
+        Grid.SetRow(ClearButton, compact ? 1 : 0);
+        Grid.SetColumn(ClearButton, compact ? 0 : 2);
+        ClearButton.HorizontalAlignment = HorizontalAlignment.Left;
     }
 
     public void Initialize(IEnumerable<string> agentIds)

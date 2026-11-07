@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Pages.Usage;
+using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
 using OpenClawTray.Services;
 using System;
@@ -20,7 +21,7 @@ namespace OpenClawTray.Pages;
 /// forwards connection changes to <see cref="UsagePageController"/>, performs the file-save side of export, and
 /// routes the native chat and web Usage handoffs through the app's existing navigation owners.
 /// </summary>
-public sealed partial class UsagePage : Page
+public sealed partial class UsagePage : Page, ISettingsPageContentInset
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private readonly UsageViewport _viewport = new();
@@ -35,6 +36,8 @@ public sealed partial class UsagePage : Page
         InitializeComponent();
         Unloaded += (_, _) => Teardown();
     }
+
+    void ISettingsPageContentInset.ApplyTopInset(double topInset) => _viewport.UpdateTopInset(topInset);
 
     public void Initialize()
     {
@@ -55,7 +58,8 @@ public sealed partial class UsagePage : Page
         _controller = new UsagePageController(
             () => CurrentApp.GatewayClient,
             () => DateOnly.FromDateTime(DateTime.Now),
-            action => dispatcher.TryEnqueue(() => action()));
+            action => dispatcher.TryEnqueue(() => action()),
+            providers: CurrentApp.UsageProviderReads);
         var (openWebUsage, openConversation) = UsageHandoffs.For(
             (IAppCommands)CurrentApp, sessionKey => CurrentApp.PendingChatSessionKey = sessionKey);
         var controller = _controller;

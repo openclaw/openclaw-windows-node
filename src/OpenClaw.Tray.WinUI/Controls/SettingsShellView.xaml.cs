@@ -53,9 +53,15 @@ internal sealed partial class SettingsShellView : UserControl
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
+    private bool _preferredPaneOpen = true;
+    private bool _narrowPaneExpanded;
+    private bool _applyingPaneLayout;
+    private double _hostContentTopInset;
+    private WorkspaceSettingsLayout _paneLayout;
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageContentChanged { get; set; }
 
     /// <summary>Raised when the rail's Chat item or a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
@@ -99,6 +105,10 @@ internal sealed partial class SettingsShellView : UserControl
 
     /// <summary>The shared account, Dashboard and bell footer; <c>WorkspaceWindow</c> applies its state.</summary>
     internal WorkspacePaneFooter Footer => PaneFooterControl;
+    internal bool HasNavigationFocus => XamlRoot is { } root &&
+        IsNavigationFocus(FocusManager.GetFocusedElement(root) as DependencyObject);
+
+    internal void FocusNavigation() => NavPaneToggleButton.Focus(FocusState.Programmatic);
 
     /// <summary>The element that opens the command search flyout for the current pane state.</summary>
     private FrameworkElement SearchAnchor => NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton;
@@ -149,6 +159,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageContentChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
         _gatewayNavHideTimer?.Stop();
@@ -326,8 +337,37 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (NavView != null)
         {
-            NavView.IsPaneOpen = settings.HubNavPaneOpen;
+            _preferredPaneOpen = settings.HubNavPaneOpen;
+            ApplyPaneLayout();
         }
+    }
+
+    internal void ApplyHostWidth(double width)
+    {
+        var layout = WorkspaceSettingsLayout.Project(width, embedded: false);
+        if (layout.Narrow == _paneLayout.Narrow) return;
+        _paneLayout = layout;
+        _narrowPaneExpanded = false;
+        PaneFooterControl.HideFlyouts();
+        CommandSearchFlyout.Hide();
+        var focused = XamlRoot is { } root ? FocusManager.GetFocusedElement(root) as DependencyObject : null;
+        var navigationFocus = IsNavigationFocus(focused);
+        ApplyPaneLayout();
+        if (navigationFocus)
+            NavPaneToggleButton.Focus(FocusState.Programmatic);
+    }
+
+    private void ApplyPaneLayout()
+    {
+        _applyingPaneLayout = true;
+        try
+        {
+            // Left keeps explicit expansion inline. LeftCompact would open
+            // the expanded pane over content instead of preserving its space.
+            NavView.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
+            NavView.IsPaneOpen = _paneLayout.PaneOpen(_preferredPaneOpen, _narrowPaneExpanded);
+        }
+        finally { _applyingPaneLayout = false; }
     }
 
     private void OnRootGridSizeChanged(object sender, SizeChangedEventArgs e)
@@ -348,15 +388,73 @@ internal sealed partial class SettingsShellView : UserControl
     private void OnNavPaneToggleButtonClick(object sender, RoutedEventArgs e)
     {
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
+        NavPaneToggleButton.Focus(FocusState.Programmatic);
+    }
+
+    private void OnNavigationKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Handled || e.Key != global::Windows.System.VirtualKey.Escape ||
+            ContentOnly || !NavView.IsPaneOpen)
+            return;
+
+        // Native menus and editors get Escape first. Only unhandled navigation
+        // focus closes the rail, never a page's content or a ContentDialog.
+        if (!IsNavigationFocus(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject))
+            return;
+        NavView.IsPaneOpen = false;
+        NavPaneToggleButton.Focus(FocusState.Programmatic);
+        e.Handled = true;
+    }
+
+    private bool IsNavigationFocus(DependencyObject? focused)
+    {
+        for (var element = focused;
+             element is not null;
+             element = VisualTreeHelper.GetParent(element))
+        {
+            if (element == ContentFrame)
+                return false;
+            if (element != NavView && element != SettingsNavigationToolbar)
+                continue;
+            return true;
+        }
+        return false;
     }
 
     private void UpdatePaneChrome()
     {
+        var paneLabel = LocalizationHelper.GetString(NavView.IsPaneOpen
+            ? "Navigation_Collapse" : "Navigation_Expand");
+        AutomationProperties.SetName(NavPaneToggleButton, paneLabel);
+        ToolTipService.SetToolTip(NavPaneToggleButton, paneLabel);
         SettingsNavigationActions.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        UpdatePageAllocation();
         // Footer popups are anchored to buttons that move when the rail opens or closes.
         if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
             PaneFooterControl.HideFlyouts();
         PaneFooterControl.Layout = NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail;
+    }
+
+    private void UpdatePageAllocation()
+    {
+        var inset = ContentOnly
+            ? _hostContentTopInset
+            : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen);
+        if (ContentFrame.Content is ISettingsPageContentInset page)
+        {
+            ContentFrame.Margin = new Thickness(0);
+            page.ApplyTopInset(inset);
+        }
+        else
+            ContentFrame.Margin = new Thickness(0, inset, 0, 0);
+    }
+
+    internal void SetHostContentTopInset(double inset)
+    {
+        if (!double.IsFinite(inset) || inset < 0)
+            throw new ArgumentOutOfRangeException(nameof(inset));
+        _hostContentTopInset = inset;
+        UpdatePageAllocation();
     }
 
     // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
@@ -372,6 +470,7 @@ internal sealed partial class SettingsShellView : UserControl
         {
             NavView.IsPaneVisible = !value;
             SettingsNavigationToolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            UpdatePageAllocation();
         }
     }
 
@@ -757,6 +856,8 @@ internal sealed partial class SettingsShellView : UserControl
         SyncNavSelection(tag);
 
         InitializeCurrentPage();
+        PageContentChanged?.Invoke();
+        UpdatePageAllocation();
         UpdateAppNotificationActionEnabledState();
         ArmContentReady(
             e.Content as FrameworkElement,
@@ -829,12 +930,19 @@ internal sealed partial class SettingsShellView : UserControl
     /// </summary>
     private void OnNavPaneStateChanged(NavigationView sender, object args)
     {
+        if (_applyingPaneLayout) return;
+        var newState = args is not NavigationViewPaneClosingEventArgs;
+        if (_paneLayout.Narrow)
+        {
+            _narrowPaneExpanded = newState;
+            return;
+        }
+        _preferredPaneOpen = newState;
         var settings = CurrentApp.Settings;
         if (settings == null) return;
         // PaneOpening fires BEFORE IsPaneOpen flips, PaneClosing fires
         // BEFORE it flips the other way. Use the event identity to know
         // the new state rather than reading IsPaneOpen.
-        var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
         if (settings.HubNavPaneOpen == newState) return;
         settings.HubNavPaneOpen = newState;
         // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.

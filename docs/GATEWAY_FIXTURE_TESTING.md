@@ -429,8 +429,12 @@ fixture generators in production:
 | `usage.status` | Independently scoped provider allowance windows, reset times, plans, errors and billing amounts |
 
 `UsageJsonParser` preserves missing numeric counters separately from explicit
-zero. Missing daily entries remain unavailable, even when the cache is fresh;
-they are not zero-cost days and do not enter the daily average. Provider windows
+zero. Charts and the metric-aware daily table contain only reported dates;
+missing calendar days are not synthesized as zero-cost rows. A reported row with
+a missing selected counter remains unavailable. The 30-day mast names the first
+and last reported dates and states how many days were reported. Both the daily
+series and headline totals come from the same `sessions.usage` snapshot, never
+from a separate `usage.cost` read. Provider windows
 or billing entries without valid numbers are omitted instead of inventing a
 zero allowance or balance. Missing aggregate counts render unavailable, and CSV
 cells stay blank for absent counters. Merged contributor counters are known
@@ -450,12 +454,25 @@ width, and stretch across the content column below Wide. Native Border padding
 owns their insets; bounded explanatory text stays left-aligned.
 Session and provider card rows have separate rounded borders with exactly
 `PageResponsiveLayout.GapInner` (DESIGN spacing2, 8 DIP) between adjacent cards,
-including expanded session details. Dense tables and legends keep their own spacing.
-The daily-average legend lives in the card header, never over the bars; the
-dashed plot line and chart accessibility description retain the value. The
+including expanded session details. Native session and contributor expanders
+retain independent open states without closing other panels or scrolling on
+ordinary expansion. Session panels reuse loaded summaries; only the active
+detail read is controller-owned. Native Expander animation follows Windows
+animation preferences without a separate entrance-transition host.
+Dense tables and legends keep their own spacing. The daily table grows to its
+content and uses the page's scroll viewer, not an internal scrolling region.
+Average and range-wide peak claims remain withheld when reported dates do not
+cover the requested calendar range. When available, the daily-average value is labelled directly on the dashed plot line as well
+as in the card header and chart accessibility description. Bars use the solid
+native accent. Left/Right moves native focus and day selection within the chart;
+each bar exposes its date and available counters. The
 secondary activity strip uses four columns or a two-by-two grid, with
 single-line trimmed labels and full-text tooltips. A metric pivot on its own
-row aligns its first label with the card heading.
+row aligns its first label with the card heading. The session-list badge counts
+the actual loaded rows; a separate line states shown and loaded counts. The
+range-wide population remains in the mast and range facts. Incomplete totals
+have a partial tag and reason immediately beside the headline, while missing
+prices retain their distinct explanation.
 
 CSV export re-reads the selected range before opening the system Save dialog.
 If a sessions file would omit rows or still-computing usage, a native

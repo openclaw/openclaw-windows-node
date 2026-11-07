@@ -3,9 +3,9 @@ using System.Text.Json;
 namespace OpenClaw.Shared.Usage;
 
 /// <summary>
-/// Total (never-throwing) projection of Gateway usage JSON into the usage records in this namespace.
+/// Projection of Gateway usage JSON into the usage records in this namespace.
 /// Missing, null or mistyped counters remain unavailable so a partial or newer payload still renders.
-/// Unknown fields are ignored.
+/// Unknown fields are ignored. Provider reads reject a missing or malformed provider collection.
 /// </summary>
 public static class UsageJsonParser
 {
@@ -31,8 +31,10 @@ public static class UsageJsonParser
 
     public static ProviderUsageSummary ParseProviderUsage(JsonElement payload)
     {
-        if (payload.ValueKind != JsonValueKind.Object)
-            return new ProviderUsageSummary(null, System.Array.Empty<ProviderUsageSnapshot>(), false);
+        if (payload.ValueKind != JsonValueKind.Object
+            || !payload.TryGetProperty("providers", out var providers)
+            || providers.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("Provider usage response has no valid provider collection.");
 
         return new ProviderUsageSummary(
             Timestamp(payload, "updatedAt"),

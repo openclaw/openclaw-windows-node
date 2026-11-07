@@ -34,18 +34,11 @@ internal static class UsageHeader
                     .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
                     .MaxWidth(layout.ContentWidth / 2).ToolTip(amount)
                     .AutomationId("UsageSummaryCostValue").Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
-                TextBlock(RangeWords(state.Filters)).FontSize(32).FontWeight(FontWeights.SemiBold)
+                TextBlock(HeadlineRange(state)).FontSize(32).FontWeight(FontWeights.SemiBold)
                     .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
-                    .ToolTip(RangeCaption(state.Filters)).HelpText(RangeCaption(state.Filters))
+                    .ToolTip(HeadlineCaption(state)).HelpText(HeadlineCaption(state))
                     .AutomationId("UsageSummaryRange").Grid(column: 1));
-        var badges = new Element?[]
-        {
-                summary?.Partial == true || summary?.LowerBound == true
-                    ? Pill(S("Usage_PartialShort"), "UsageIncompleteChip") : null,
-                summary?.MissingCostEntries > 0
-                    ? Pill(S("Usage_MissingCostShort"), "UsageMissingCostChip")
-                        .HelpText(FN("Usage_MissingCostNoteFormat", summary.MissingCostEntries)) : null,
-        };
+        var incompleteReason = IncompleteReason(state);
         var subtitle = unsupported ? S("Usage_Unsupported_Message")
             : forbidden ? S("Usage_Forbidden_Message") : SummaryText(state);
         var icon = highContrast
@@ -58,8 +51,14 @@ internal static class UsageHeader
                     .VAlign(VerticalAlignment.Center).HeadingLevel(AutomationHeadingLevel.Level1).AutomationId("UsagePageMarker"))
                 .VAlign(VerticalAlignment.Center),
             headline.AutomationId("UsageHeadline"),
+            incompleteReason is null ? null : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+                Pill(S("Usage_PartialShort"), "UsageIncompleteChip")
+                    .HelpText(incompleteReason).Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
+                Note(incompleteReason).AutomationId("UsageIncompleteReason").Grid(column: 1)),
             Note(subtitle).MaxLines(3).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle).AutomationId("UsageSubtitle"),
-            badges.Any(item => item is not null) ? HStack(PageResponsiveLayout.GapInner, badges) : null)
+            summary?.MissingCostEntries > 0
+                ? Note(FN("Usage_MissingCostNoteFormat", summary.MissingCostEntries))
+                    .AutomationId("UsageMissingCostChip") : null)
             .AutomationId("UsageMastText");
         var buttons = layout.Narrow
             ? HStack(PageResponsiveLayout.GapInner,
@@ -92,6 +91,30 @@ internal static class UsageHeader
         _ => UsageFormat.CompactRange(filters.Start, filters.End, Culture, S("Usage_RangeFormat")),
     };
 
+    private static string HeadlineRange(UsagePageState state)
+    {
+        if (state.Filters.Preset != UsagePreset.Last30Days) return RangeWords(state.Filters);
+        return state.Dashboard?.Chart.Days is { Count: > 0 } days
+            ? UsageFormat.CompactRange(days[0].Date, days[^1].Date, Culture, S("Usage_RangeFormat"))
+            : S("Usage_NoReportedDates");
+    }
+
+    private static string HeadlineCaption(UsagePageState state) =>
+        state.Filters.Preset == UsagePreset.Last30Days && state.Dashboard?.Chart.Days is { Count: > 0 } days
+            ? RangeCaption(state.Filters with { Start = days[0].Date, End = days[^1].Date })
+            : RangeCaption(state.Filters);
+
+    private static string? IncompleteReason(UsagePageState state)
+    {
+        if (state.Report?.Partial is { } partial)
+            return string.IsNullOrWhiteSpace(partial.Message) ? S("Usage_Partial_Message") : partial.Message;
+        if (state.Report?.CacheStatus?.Partial is { } cachePartial)
+            return string.IsNullOrWhiteSpace(cachePartial.Message) ? S("Usage_Partial_Message") : cachePartial.Message;
+        if (state.Report?.CacheStatus?.IsIncomplete == true || state.Report?.Sessions.Any(row => row.Computing) == true)
+            return S("Usage_PartialNote");
+        return state.Dashboard?.Summary.LowerBound == true ? S("Usage_Partial_Message") : null;
+    }
+
     private static string SummaryText(UsagePageState state)
     {
         var summary = state.Dashboard?.Summary;
@@ -99,6 +122,8 @@ internal static class UsageHeader
         var count = summary.SessionsKnown ? AtLeast(Count(summary.Sessions), summary.SessionsAtLeast) : Dash;
         var text = F(summary.Sessions == 1 && !summary.SessionsAtLeast
             ? "Usage_Filter_SessionsInRangeFormatOne" : "Usage_Filter_SessionsInRangeFormat", count);
+        if (state.Filters.Preset == UsagePreset.Last30Days && state.Dashboard?.Chart is { } chart)
+            text += " · " + F("Usage_ReportedDaysFormat", Count(chart.Days.Count));
         if (state.Availability == UsageAvailability.Disconnected && state.LoadedAt is { } loaded)
             text += " · " + F("Usage_LastKnownFormat", loaded.ToLocalTime().ToString("t", Culture));
         return text;

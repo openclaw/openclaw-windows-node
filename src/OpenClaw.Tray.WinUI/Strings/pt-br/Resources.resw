@@ -8435,6 +8435,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Hora local ({0})</value></data>
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Outros ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Uso diário</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>Nenhuma data informada</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dias informados</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} exibidas · {1} carregadas</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Personalizado</value></data>
   <data name="Usage_ResetAtFormat" xml:space="preserve"><value>redefine em {0}</value></data>
   <data name="Usage_SeeUsing" xml:space="preserve"><value>Ver o que está usando</value></data>
@@ -8457,4 +8460,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_Export_Close" xml:space="preserve"><value>Fechar</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>Últimos 7 dias</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Últimos 30 dias</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expandir navegação</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Recolher navegação</value></data>
 </root>

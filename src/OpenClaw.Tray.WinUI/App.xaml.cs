@@ -221,6 +221,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
+    private OpenClawTray.Presentation.Usage.UsageProviderReadSource? _usageProviderReads;
+    internal OpenClawTray.Presentation.Usage.IUsageProviderReadSource UsageProviderReads =>
+        _usageProviderReads ?? throw new InvalidOperationException("Usage provider reads are not initialized.");
+    private IOperatorGatewayClient? _usageProviderBindingClient;
+    private long? _usageProviderBindingEpoch;
+    private long _usageProviderBindingRevision;
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
@@ -755,6 +761,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             exit: Exit);
         _appState.UpdateInfo = UpdateCoordinator.BuildInitialInfo();
         _gatewayService = new GatewayService(_appState, _dispatcherQueue!);
+        _usageProviderReads = new OpenClawTray.Presentation.Usage.UsageProviderReadSource(action =>
+        {
+            if (!_dispatcherQueue!.TryEnqueue(() => action()))
+                Logger.Warn("Failed to dispatch Usage provider read update during shutdown.");
+        });
         _gatewayService.ConnectionStatusChanged += OnGatewayConnectionStatusChanged;
         _gatewayService.AuthenticationFailed += OnGatewayAuthenticationFailed;
         _gatewayService.SessionCommandCompleted += OnGatewaySessionCommandCompleted;
@@ -2324,6 +2335,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Delegate all 27 event subscriptions to GatewayService
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
+        SynchronizeUsageProviderConnection();
 
         // Configure new client
         if (e.NewClient is { } client)
@@ -2354,6 +2366,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         ChatProviderChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private void SynchronizeUsageProviderConnection()
+    {
+        if (_usageProviderReads is null) return;
+        // Read the live manager client, not a queued connection event's obsolete client or snapshot.
+        var client = GatewayClient;
+        var epoch = client is { IsConnectedToGateway: true } ? client.SessionMutationConnectionEpoch : null;
+        if (epoch is null) client = null;
+        if (!ReferenceEquals(client, _usageProviderBindingClient) || epoch != _usageProviderBindingEpoch)
+        {
+            _usageProviderBindingClient = client;
+            _usageProviderBindingEpoch = epoch;
+            _usageProviderBindingRevision++;
+        }
+        _usageProviderReads.SetConnection(client, _usageProviderBindingRevision);
+    }
+
     /// <summary>
     /// Handles the connection manager's StateChanged event.
     /// Maps the snapshot to the existing tray icon / UI status system.
@@ -2368,6 +2396,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             : null;
         OnUiThread(() =>
         {
+            SynchronizeUsageProviderConnection();
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);
             _trayController?.ApplyConnectionState(mapped, snap.OverallState);

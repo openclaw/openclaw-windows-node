@@ -8383,6 +8383,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Heure locale ({0})</value></data>
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Autres ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Utilisation quotidienne</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>Aucune date signalée</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} jours signalés</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} affichées · {1} chargées</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Personnalisé</value></data>
   <data name="Usage_ResetAtFormat" xml:space="preserve"><value>réinitialisation à {0}</value></data>
   <data name="Usage_SeeUsing" xml:space="preserve"><value>Voir ce qui l&apos;utilise</value></data>
@@ -8405,4 +8408,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Export_Close" xml:space="preserve"><value>Fermer</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>7 derniers jours</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>30 derniers jours</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Développer la navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Réduire la navigation</value></data>
 </root>

@@ -43,10 +43,7 @@
                     <!-- Usage page categorical palette (DESIGN.md usagePalette1-6): fills and 16% tints. -->
                     <SolidColorBrush x:Key="UsageCountPillBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.16" />
                     <SolidColorBrush x:Key="UsagePalette1Brush" Color="{ThemeResource SystemAccentColorLight2}" />
-                    <LinearGradientBrush x:Key="UsageChartBarBrush" StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="{ThemeResource SystemAccentColorLight2}" Offset="0" />
-                        <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="1" />
-                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="UsageChartBarBrush" Color="{ThemeResource SystemAccentColor}" />
                     <SolidColorBrush x:Key="UsagePalette1TintBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.16" />
                     <SolidColorBrush x:Key="UsagePalette2Brush" Color="#4FC3C7" />
                     <SolidColorBrush x:Key="UsagePalette2TintBrush" Color="#4FC3C7" Opacity="0.16" />
@@ -77,10 +74,7 @@
                     <!-- Usage page categorical palette (DESIGN.md usagePalette1-6): fills and 16% tints. -->
                     <SolidColorBrush x:Key="UsageCountPillBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.16" />
                     <SolidColorBrush x:Key="UsagePalette1Brush" Color="{ThemeResource SystemAccentColorDark1}" />
-                    <LinearGradientBrush x:Key="UsageChartBarBrush" StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="{ThemeResource SystemAccentColorDark1}" Offset="0" />
-                        <GradientStop Color="{ThemeResource SystemAccentColorLight1}" Offset="1" />
-                    </LinearGradientBrush>
+                    <SolidColorBrush x:Key="UsageChartBarBrush" Color="{ThemeResource SystemAccentColor}" />
                     <SolidColorBrush x:Key="UsagePalette1TintBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.16" />
                     <SolidColorBrush x:Key="UsagePalette2Brush" Color="#038387" />
                     <SolidColorBrush x:Key="UsagePalette2TintBrush" Color="#038387" Opacity="0.16" />
