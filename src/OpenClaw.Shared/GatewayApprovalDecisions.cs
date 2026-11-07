@@ -30,10 +30,27 @@ public static class GatewayApprovalDecisions
         "approval already resolved",
     ];
 
+    private static readonly HashSet<string> LoggableErrorCodes = new(StringComparer.Ordinal)
+    {
+        "INVALID_REQUEST", "INVALID_PARAMS", "UNAVAILABLE", "FORBIDDEN", "UNAUTHORIZED", "MISSING_SCOPE",
+        "NOT_LINKED", "NOT_PAIRED", ApprovalNotFound, ApprovalAlreadyResolved,
+    };
+
+    /// <summary>A Gateway error code safe to log, from a fixed allowlist; anything else is "UNKNOWN", absent is "none".</summary>
+    public static string SafeErrorCode(string? code) =>
+        code is null ? "none" : LoggableErrorCodes.Contains(code) ? code : "UNKNOWN";
+
     /// <summary>Every decision, in the Inbox's permit-first order.</summary>
     public static IReadOnlyList<string> All { get; } = [AllowOnce, AllowAlways, Deny];
 
     public static bool IsKnown(string? decision) => decision is AllowOnce or AllowAlways or Deny;
+
+    /// <summary>
+    /// True when the connection's granted scopes explicitly include <c>operator.approvals</c> or
+    /// <c>operator.admin</c>. Deciding fails closed: an empty or missing scope list is no grant.
+    /// </summary>
+    public static bool HasDecisionGrant(IEnumerable<string>? grantedScopes) =>
+        grantedScopes?.Any(scope => scope is "operator.approvals" or "operator.admin") == true;
 
     /// <summary>Gateway RPC that resolves an approval of <paramref name="kind"/>.</summary>
     public static string ResolveMethod(GatewayApprovalKind kind) => kind switch

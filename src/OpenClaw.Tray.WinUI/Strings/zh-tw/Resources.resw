@@ -7896,4 +7896,7 @@
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>此核准已不再等待決定。</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>此核准不提供該決定。</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>檢閱</value></data>
+  <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>你需要核准權限才能核准。</value></data>
+  <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>無法在此應用程式中處理此要求。</value></data>
+  <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>在此電腦上執行</value></data>
 </root>

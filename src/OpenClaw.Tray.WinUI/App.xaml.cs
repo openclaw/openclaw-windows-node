@@ -798,6 +798,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             LocalizationHelper.GetString,
             notificationsEnabled: () => _settings?.ShowNotifications == true,
             isAppForeground: AppForeground.IsActive,
+            isHostConfirmedLocal: IsApprovalHostThisComputer,
             show: _toastService.ShowWithdrawableToast,
             withdraw: _toastService.RemoveToast);
         _settingsPersistenceNotification = new SettingsPersistenceNotification(
@@ -2093,6 +2094,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _nodeService?.RefreshMcpOnlyCapabilities();
         _ = _connectionManager?.ReconnectAsync();
     }
+
+    // A Gateway-host command runs on this computer only when the active Gateway is a direct
+    // loopback endpoint; an SSH tunnel's loopback URL forwards to another machine.
+    private bool IsApprovalHostThisComputer(GatewayPendingApproval approval) =>
+        string.Equals(approval.Host, "gateway", StringComparison.Ordinal) &&
+        _gatewayRegistry?.GetActive() is { SshTunnel: null } active &&
+        _settings?.UseSshTunnel != true &&
+        GatewayRecordEditing.IsLoopbackEndpoint(active.Url);
 
     private void SyncActiveGatewayBrowserProxyForward()
     {

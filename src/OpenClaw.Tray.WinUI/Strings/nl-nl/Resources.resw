@@ -7897,4 +7897,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Deze goedkeuring wacht niet meer op een beslissing.</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Die beslissing is niet beschikbaar voor deze goedkeuring.</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>Bekijken</value></data>
+  <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>Je hebt goedkeuringstoegang nodig om goed te keuren.</value></data>
+  <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>Over dit verzoek kan niet vanuit deze app worden beslist.</value></data>
+  <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>Wordt uitgevoerd op deze computer</value></data>
 </root>

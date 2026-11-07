@@ -21,11 +21,12 @@
 // Usage:
 //   var decisions = new OperatorApprovalDecisions(inboxGatewaySource);
 //   var outcome = await decisions.DecideAsync(approvalId, GatewayApprovalDecisions.Deny);   // UI thread
-//   var token = decisions.IssueToastToken(approval);                                        // UI thread
+//   var token = decisions.IssueToastToken(approval, ApprovalToastPlan.Decisions(approval, local)); // UI thread
 //   await decisions.DecideFromToastAsync(approvalId, decision, token);
-//   await decisions.ResolveChatExecApprovalAsync(client, requestId, decision);              // throws to keep the banner
+//   await decisions.ResolveChatExecApprovalAsync(client, requestId, alternateId, decision); // throws to keep the banner
 
 using OpenClaw.Shared;
+using OpenClawTray.Presentation;
 using System.Security.Cryptography;
 
 namespace OpenClawTray.Services;
@@ -46,6 +47,13 @@ internal enum ApprovalDecisionOutcome
     Failed,
 }
 
+/// <summary>A chat banner decision the owner refused before sending; <see cref="Outcome"/> says why.</summary>
+internal sealed class ApprovalDecisionRefusedException(ApprovalDecisionOutcome outcome)
+    : InvalidOperationException($"Approval decision refused: {outcome}.")
+{
+    public ApprovalDecisionOutcome Outcome { get; } = outcome;
+}
+
 internal sealed class OperatorApprovalDecisions
 {
     private const int ToastTokenBytes = 16;
@@ -57,7 +65,8 @@ internal sealed class OperatorApprovalDecisions
     private readonly HashSet<string> _inFlight = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ToastGrant> _toastGrants = new(StringComparer.Ordinal);
 
-    private sealed record ToastGrant(string ApprovalId, IOperatorGatewayClient Client, long ConnectionEpoch, long ExpiresAtMs);
+    private sealed record ToastGrant(
+        string ApprovalId, IOperatorGatewayClient Client, long ConnectionEpoch, DateTimeOffset Deadline, IReadOnlyList<string> Decisions);
 
     public OperatorApprovalDecisions(InboxGatewaySource source, Func<DateTimeOffset>? clock = null)
     {
@@ -75,27 +84,30 @@ internal sealed class OperatorApprovalDecisions
             !state.Pending.TryGetValue(approvalId ?? "", out var pending) ||
             !IsLive(client, pending, out var epoch))
             return Task.FromResult(ApprovalDecisionOutcome.NotPending);
-        if (!state.CanDecide || !GatewayApprovalDecisions.Effective(pending.Approval).Contains(decision))
+        // Inbox rows (and toasts, which offer a subset) never send Allow for a command the row could not show in full.
+        if (!state.CanDecide || !InboxGatewayItems.InboxDecisions(pending.Approval).Contains(decision))
             return Task.FromResult(ApprovalDecisionOutcome.NotAllowed);
         return SendAsync(client, pending.Approval.Kind, pending.Approval.Id, decision, epoch);
     }
 
-    // Unexpired, and observed on the authenticated connection epoch that is still current.
+    // Before its local deadline (fixed at arrival), and observed on the authenticated connection epoch that is still current.
     private bool IsLive(IOperatorGatewayClient client, InboxGatewaySource.PendingApproval pending, out long epoch)
     {
         epoch = pending.ConnectionEpoch ?? 0;
-        return pending.Approval.ExpiresAtMs > _clock().ToUnixTimeMilliseconds() &&
+        return pending.Deadline > _clock() &&
             pending.ConnectionEpoch is { } observed &&
             client.SessionMutationConnectionEpoch == observed;
     }
 
     /// <summary>
-    /// Issues the one-shot token an actionable toast carries for <paramref name="approval"/>,
-    /// or null when the approval is no longer live on the current connection.
+    /// Issues the one-shot token an actionable toast carries for <paramref name="approval"/>, bound
+    /// to the decisions the toast shows (<paramref name="offeredDecisions"/>), or null when the
+    /// approval is no longer live on the current connection.
     /// </summary>
-    public string? IssueToastToken(GatewayPendingApproval approval)
+    public string? IssueToastToken(GatewayPendingApproval approval, IReadOnlyList<string> offeredDecisions)
     {
         ArgumentNullException.ThrowIfNull(approval);
+        ArgumentNullException.ThrowIfNull(offeredDecisions);
         var state = _source.Approvals;
         if (state.Client is not { } client ||
             !state.Pending.TryGetValue(approval.Id, out var pending) ||
@@ -106,14 +118,16 @@ internal sealed class OperatorApprovalDecisions
         lock (_gate)
         {
             PruneToastGrantsLocked();
-            _toastGrants[token] = new(approval.Id, client, epoch, pending.Approval.ExpiresAtMs);
+            _toastGrants[token] = new(approval.Id, client, epoch, pending.Deadline,
+                offeredDecisions.Where(decision => decision != GatewayApprovalDecisions.AllowAlways).ToArray());
         }
         return token;
     }
 
     /// <summary>
     /// Applies a toast button. The token is consumed on first use; it must have been issued for
-    /// <paramref name="approvalId"/> on the client and connection epoch that are still current.
+    /// <paramref name="approvalId"/> on the client and connection epoch that are still current,
+    /// and the decision must be one the toast showed.
     /// </summary>
     public Task<ApprovalDecisionOutcome> DecideFromToastAsync(string? approvalId, string? decision, string? token)
     {
@@ -134,7 +148,7 @@ internal sealed class OperatorApprovalDecisions
             return Task.FromResult(ApprovalDecisionOutcome.NotPending);
         }
         // A toast can only send what its buttons offered (never Always allow).
-        if (!Presentation.ApprovalToastPlan.Decisions(pending.Approval).Contains(decision ?? ""))
+        if (!grant.Decisions.Contains(decision ?? ""))
             return Task.FromResult(ApprovalDecisionOutcome.NotAllowed);
         return DecideAsync(grant.ApprovalId, decision!);
     }
@@ -150,38 +164,34 @@ internal sealed class OperatorApprovalDecisions
     }
 
     /// <summary>
-    /// Sends the chat banner's decision for an exec approval. The chat state already matched the
-    /// request id and offered action. When the Inbox tracks the same approval (every top-level
-    /// <c>exec.approval.requested</c>), the Inbox's full validation applies too: exec kind,
-    /// unexpired, observed on this connection epoch, explicit approval grant and offered decision.
-    /// Legacy agent-stream approvals the Inbox never sees (their banner id may be an approval slug
-    /// the Gateway resolves by prefix) keep the chat's own approval match, but still need the
-    /// current client and an explicit grant. Throws on every failure so
-    /// the banner stays up for retry, as the chat contract requires.
+    /// Sends the chat banner's decision for an exec approval. The banner's id, or the id correlated
+    /// with it (agent-stream banners show a slug; the canonical id arrives through the same Gateway's
+    /// top-level approval event), must name an approval this owner tracks. Then the same rules as
+    /// Inbox rows apply: current client, explicit grant, exec kind, unexpired, observed on this
+    /// connection epoch and offered decision. An untracked id is refused, because absence can mean
+    /// expired or already resolved. Throws on every refusal or failure so the banner stays up, as
+    /// the chat contract requires; the decision is sent with the canonical approval id.
     /// </summary>
-    public async Task ResolveChatExecApprovalAsync(IOperatorGatewayClient client, string approvalId, string decision)
+    public async Task ResolveChatExecApprovalAsync(IOperatorGatewayClient client, string requestId, string? alternateId, string decision)
     {
         ArgumentNullException.ThrowIfNull(client);
-        ArgumentException.ThrowIfNullOrEmpty(approvalId);
+        ArgumentException.ThrowIfNullOrEmpty(requestId);
         if (!GatewayApprovalDecisions.IsKnown(decision))
             throw new ArgumentException("Unknown approval decision.", nameof(decision));
-        var epoch = client.SessionMutationConnectionEpoch
-            ?? throw new InvalidOperationException("The Gateway connection is not ready.");
         var state = _source.Approvals;
-        // Even legacy agent-stream approvals the Inbox never observed must be decided on the
-        // current client and with an explicit approval grant.
         if (!ReferenceEquals(client, state.Client) || !state.CanDecide)
-            throw new InvalidOperationException("This connection cannot decide approvals.");
-        if (state.Pending.TryGetValue(approvalId, out var pending))
-        {
-            if (pending.Approval.Kind != GatewayApprovalKind.Exec || !IsLive(client, pending, out _))
-                throw new InvalidOperationException("This approval is no longer waiting for a decision.");
-            if (!GatewayApprovalDecisions.Effective(pending.Approval).Contains(decision))
-                throw new InvalidOperationException("This approval does not offer that decision.");
-        }
+            throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotAllowed);
+        if (!state.Pending.TryGetValue(requestId, out var pending) &&
+            (string.IsNullOrEmpty(alternateId) || !state.Pending.TryGetValue(alternateId, out pending)))
+            throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotPending);
+        if (pending.Approval.Kind != GatewayApprovalKind.Exec || !IsLive(client, pending, out var epoch))
+            throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotPending);
+        if (!GatewayApprovalDecisions.Effective(pending.Approval).Contains(decision))
+            throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotAllowed);
 
+        var approvalId = pending.Approval.Id;
         if (!TryBegin(approvalId))
-            throw new InvalidOperationException("A decision for this approval is already being sent.");
+            throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.InFlight);
         try
         {
             await client.ResolveApprovalAsync(GatewayApprovalKind.Exec, approvalId, decision, epoch).ConfigureAwait(false);
@@ -257,11 +267,11 @@ internal sealed class OperatorApprovalDecisions
 
     private void PruneToastGrantsLocked()
     {
-        var nowMs = _clock().ToUnixTimeMilliseconds();
-        foreach (var token in _toastGrants.Where(pair => pair.Value.ExpiresAtMs <= nowMs).Select(pair => pair.Key).ToList())
+        var now = _clock();
+        foreach (var token in _toastGrants.Where(pair => pair.Value.Deadline <= now).Select(pair => pair.Key).ToList())
             _toastGrants.Remove(token);
         // Bounded: the oldest grants go first when many approvals arrive at once.
         while (_toastGrants.Count >= MaxToastGrants)
-            _toastGrants.Remove(_toastGrants.MinBy(pair => pair.Value.ExpiresAtMs).Key);
+            _toastGrants.Remove(_toastGrants.MinBy(pair => pair.Value.Deadline).Key);
     }
 }

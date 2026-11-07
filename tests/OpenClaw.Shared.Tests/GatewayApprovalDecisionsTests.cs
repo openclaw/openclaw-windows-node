@@ -66,6 +66,14 @@ public class GatewayApprovalDecisionsTests
     }
 
     [Theory]
+    [InlineData(new[] { "operator.approvals" }, true)]
+    [InlineData(new[] { "operator.read", "operator.admin" }, true)]
+    [InlineData(new[] { "operator.read", "operator.write" }, false)]
+    [InlineData(new string[0], false)]
+    public void HasDecisionGrant_RequiresAnExplicitApprovalOrAdminScope(string[] scopes, bool expected) =>
+        Assert.Equal(expected, GatewayApprovalDecisions.HasDecisionGrant(scopes));
+
+    [Theory]
     [InlineData(GatewayApprovalKind.Exec, "exec.approval.resolve")]
     [InlineData(GatewayApprovalKind.Plugin, "plugin.approval.resolve")]
     [InlineData(GatewayApprovalKind.SystemAgent, "approval.resolve")]

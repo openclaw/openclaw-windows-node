@@ -144,7 +144,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
     /// Sends the chat banner's exec approval decisions through the app's single decision owner
     /// (<see cref="OperatorApprovalDecisions"/>). Set before an operator client is attached.
     /// </summary>
-    internal Func<IOperatorGatewayClient, string, string, Task>? ResolveExecApproval { get; set; }
+    internal Func<IOperatorGatewayClient, string, string?, string, Task>? ResolveExecApproval { get; set; }
 
     public void SetOperatorClient(OpenClawGatewayClient? client)
     {

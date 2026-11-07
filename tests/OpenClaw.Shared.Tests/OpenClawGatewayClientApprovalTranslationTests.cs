@@ -69,6 +69,9 @@ public class OpenClawGatewayClientApprovalTranslationTests
         Assert.Equal("gateway", observed.Data.GetProperty("host").GetString());
         Assert.Contains("system.run", observed.Data.GetProperty("command").GetString());
         Assert.Equal("main", observed.Data.GetProperty("agentId").GetString());
+        // ask=always offers Allow once and Deny; this client never completed a handshake, so it has no grant.
+        Assert.Equal(["allow-once", "deny"], observed.Data.GetProperty("allowedDecisions").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal("missing", observed.Data.GetProperty("decisionAccess").GetString());
     }
 
     [Fact]
@@ -395,6 +398,24 @@ public class OpenClawGatewayClientApprovalTranslationTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => responseTask);
         Assert.IsNotType<GatewayApprovalStaleException>(ex);
+    }
+
+    [Fact]
+    public async Task ResolveApproval_Rejection_LogsOnlyBoundedCodes()
+    {
+        var logger = new TestLogger();
+        var client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", logger);
+        var responseTask = RegisterPendingApprovalResolve(client, "req-logged");
+
+        InvokeHandleResponse(client, """
+            { "type": "res", "id": "req-logged", "ok": false, "error": { "code": "CUSTOM_LEAK_CODE", "message": "rm -rf SECRET-MARKER-42", "details": { "reason": "SECRET-MARKER-42" } } }
+            """);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => responseTask);
+        var line = Assert.Single(logger.Logs, log => log.Contains("rejected by gateway", StringComparison.Ordinal));
+        Assert.Contains("code=UNKNOWN", line);
+        Assert.DoesNotContain(logger.Logs, log => log.Contains("SECRET-MARKER", StringComparison.Ordinal) ||
+            log.Contains("CUSTOM_LEAK_CODE", StringComparison.Ordinal));
     }
 
     [Fact]

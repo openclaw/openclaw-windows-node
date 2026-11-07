@@ -7896,4 +7896,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Cette approbation n'attend plus de décision.</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Cette décision n'est pas disponible pour cette approbation.</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>Examiner</value></data>
+  <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>Vous devez disposer de l'accès aux approbations pour approuver.</value></data>
+  <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>Cette demande ne peut pas être traitée depuis cette application.</value></data>
+  <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>S'exécute sur cet ordinateur</value></data>
 </root>
