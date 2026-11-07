@@ -360,9 +360,10 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(Find(root, "SettingsDashboard").Current.IsEnabled);
     }
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SettingsChatLink_ReturnsToRetainedChatInSameWindow(bool useMouse)
+    [InlineData("mouse")]
+    [InlineData("enter")]
+    [InlineData("escape")]
+    public async Task SettingsBackToApp_ReturnsToAppDestinationInSameWindow(string activation)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, syntheticData: true, initialRoute: null);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
@@ -370,40 +371,68 @@ public sealed class WorkspaceWindowProofTests
         var workspaceHandle = app.HubWindowHandle;
         var composer = Find(workspace, "ChatComposerInput");
         var identity = composer.GetRuntimeId();
-        const string draft = "Keep this draft when opening Chat from Settings";
+        const string draft = "Keep this draft when going back to the app from Settings";
         ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
         Assert.Null(workspace.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatDashboardButton")));
-        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         var settings = AutomationElement.FromHandle(app.HubWindowHandle);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
         Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
+        Assert.NotNull(Find(settings, "SettingsTitle"));
         Capture(app, "System", "connection-dashboard-card");
-        ActivateChatLink();
+        // The compact rail keeps Back to app as an arrow; the title and key hint return with the pane.
+        await InvokeWhenEnabledAsync(settings, "SettingsTogglePane");
+        await WaitUntilAsync(() => !IsVisible(settings, "SettingsTitle"));
+        Assert.True(IsVisible(settings, "SettingsBackToApp"));
+        Capture(app, "System", $"settings-header-rail-{activation}");
+        await InvokeWhenEnabledAsync(settings, "SettingsTogglePane");
+        await WaitUntilAsync(() => IsVisible(settings, "SettingsTitle"));
+        // Leave the toggle so its keyboard tooltip cannot cover the header in the proof frame.
+        Find(settings, "SettingsBackToApp").SetFocus();
+        await Task.Delay(500);
+        Capture(app, "System", $"settings-header-{activation}");
+        ActivateBackToApp();
         await WaitUntilAsync(() => IsVisible(workspace, "ChatComposerInput"));
         await AssertChatForegroundAsync();
         var retained = Find(workspace, "ChatComposerInput");
         Assert.Equal(identity, retained.GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
-        Capture(app, "System", "settings-chat-link");
+        Capture(app, "System", $"settings-back-to-app-{activation}");
 
-        void ActivateChatLink()
+        // Back to app returns to the app page Settings was opened from, not always to chat.
+        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        settings = AutomationElement.FromHandle(app.HubWindowHandle);
+        ActivateBackToApp();
+        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        Assert.False(IsVisible(workspace, "ConnectionPageMarker"));
+        // Focus lands on the rebuilt destination, not on the hidden Settings button, sidebar or title bar.
+        await WaitUntilAsync(() => AutomationElement.FocusedElement is { } focused
+            && !focused.Current.IsOffscreen && !IsWithin(focused, "SettingsBackToApp", "WorkspaceNavigation", "WorkspaceTitleBar"));
+
+        void ActivateBackToApp()
         {
-            var link = Find(settings, "SettingsNavChat");
-            link.SetFocus();
+            var button = Find(settings, "SettingsBackToApp");
+            button.SetFocus();
             Assert.Equal(new IntPtr(settings.Current.NativeWindowHandle), GetForegroundWindow());
-            if (useMouse)
+            switch (activation)
             {
-                var bounds = link.Current.BoundingRectangle;
-                System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
-                    (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
-                MouseEvent(0x0002, 0, 0, 0, UIntPtr.Zero);
-                MouseEvent(0x0004, 0, 0, 0, UIntPtr.Zero);
+                case "mouse":
+                    var bounds = button.Current.BoundingRectangle;
+                    System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
+                        (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+                    MouseEvent(0x0002, 0, 0, 0, UIntPtr.Zero);
+                    MouseEvent(0x0004, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "enter":
+                    System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+                    break;
+                default:
+                    System.Windows.Forms.SendKeys.SendWait("{ESC}");
+                    break;
             }
-            else
-                System.Windows.Forms.SendKeys.SendWait("{ENTER}");
         }
 
         async Task AssertChatForegroundAsync()
@@ -876,6 +905,16 @@ public sealed class WorkspaceWindowProofTests
 
     private static bool IsVisible(AutomationElement root, string id) =>
         FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
+
+    private static bool IsWithin(AutomationElement element, params string[] ancestorIds)
+    {
+        for (var current = element; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
+        {
+            if (ancestorIds.Contains(current.Current.AutomationId))
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>Returns null while the item is missing or stale, e.g. while the sidebar rebuilds session items.</summary>
     private static bool? SelectionState(AutomationElement root, string id)
