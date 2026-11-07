@@ -798,27 +798,45 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <exception cref="InvalidOperationException">Thrown when the gateway is not connected at call time, or returns an <c>ok:false</c> response. The caller (e.g. the chat approval banner) relies on this to keep the Allow/Deny UI on screen for retry instead of silently dismissing it when the resolve was actually rejected.</exception>
     /// <exception cref="OperationCanceledException">Thrown when the gateway connection is lost while the resolve is in flight. Same banner-preserve contract.</exception>
     /// <exception cref="TimeoutException">Thrown when no response arrives within the resolve timeout window. Preserves the banner for retry.</exception>
-    public async Task ResolveExecApprovalAsync(string approvalId, string decision)
+    public Task ResolveExecApprovalAsync(string approvalId, string decision) =>
+        ResolveApprovalCoreAsync(GatewayApprovalKind.Exec, approvalId, decision, expectedConnectionEpoch: null);
+
+    /// <summary>
+    /// Resolves a pending exec, plugin or system-agent approval on the captured authenticated
+    /// connection (<c>exec.approval.resolve</c>, <c>plugin.approval.resolve</c> or
+    /// <c>approval.resolve</c> with kind <c>system-agent</c>). Required scope: <c>operator.approvals</c>.
+    /// Refuses before transmission when <paramref name="connectionEpoch"/> is no longer current, and
+    /// throws <see cref="GatewayApprovalStaleException"/> when the Gateway reports the approval was
+    /// already decided, expired or unknown. Other failures follow <see cref="ResolveExecApprovalAsync"/>.
+    /// </summary>
+    public Task ResolveApprovalAsync(GatewayApprovalKind kind, string approvalId, string decision, long connectionEpoch) =>
+        ResolveApprovalCoreAsync(kind, approvalId, decision, connectionEpoch);
+
+    private async Task ResolveApprovalCoreAsync(GatewayApprovalKind kind, string approvalId, string decision, long? expectedConnectionEpoch)
     {
         if (string.IsNullOrWhiteSpace(approvalId))
             throw new ArgumentException("approvalId is required", nameof(approvalId));
         if (string.IsNullOrWhiteSpace(decision))
             throw new ArgumentException("decision is required", nameof(decision));
-        if (!IsValidApprovalDecision(decision))
+        if (!GatewayApprovalDecisions.IsKnown(decision))
             throw new ArgumentException($"decision must be one of allow-once, allow-always, deny (got '{decision}')", nameof(decision));
 
+        var method = GatewayApprovalDecisions.ResolveMethod(kind);
         // Up-front disconnect guard: avoid registering a pending request that
         // can never complete. The post-await re-check below handles the
         // race window where the socket drops mid-send.
         if (!IsConnected)
-            throw new InvalidOperationException("Cannot resolve exec approval: gateway is not connected.");
+            throw new InvalidOperationException($"Cannot resolve approval: gateway is not connected ({method}).");
 
-        var connectionGeneration = GetReadyConnectionGeneration("exec.approval.resolve");
+        var connectionGeneration = GetReadyConnectionGeneration(method);
+        if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
+            throw new InvalidOperationException(ConnectionChangedBeforeSendError);
 
+        object parameters = kind == GatewayApprovalKind.SystemAgent
+            ? new { id = approvalId, kind = "system-agent", decision }
+            : new { id = approvalId, decision };
         var requestId = Guid.NewGuid().ToString();
-        var pending = _pendingRequests.RegisterApproval(
-            requestId,
-            "exec.approval.resolve");
+        var pending = _pendingRequests.RegisterApproval(requestId, method);
 
         // A lifecycle drain faults this task with OperationCanceledException.
         // Banner callers must keep catching System.Exception so disconnects
@@ -826,12 +844,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         try
         {
             var sent = await SendRawAsync(
-                    SerializeRequest(requestId, "exec.approval.resolve", new { id = approvalId, decision }),
+                    SerializeRequest(requestId, method, parameters),
                     connectionGeneration,
                     CancellationToken)
                 .ConfigureAwait(false);
             if (!sent)
-                throw new InvalidOperationException("Gateway connection changed before exec.approval.resolve could be sent.");
+                throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
         }
         catch
         {
@@ -852,7 +870,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // it set is observed by the caller.
         if (!IsConnected && _pendingRequests.TryRemove(pending.Handle))
         {
-            throw new InvalidOperationException("Gateway disconnected before exec.approval.resolve was sent.");
+            throw new InvalidOperationException($"Gateway disconnected before {method} was sent.");
         }
 
         // Bounded wait. Approval-resolve is interactive and the response may
@@ -864,7 +882,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 pending.Task,
                 TimeSpan.FromSeconds(15),
                 CancellationToken,
-                "Timed out waiting for exec.approval.resolve response from gateway");
+                $"Timed out waiting for {method} response from gateway");
         }
         finally
         {
@@ -911,11 +929,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         throw new TimeoutException(timeoutMessage);
     }
-
-    private static bool IsValidApprovalDecision(string decision)
-        => string.Equals(decision, "allow-once", StringComparison.Ordinal)
-        || string.Equals(decision, "allow-always", StringComparison.Ordinal)
-        || string.Equals(decision, "deny", StringComparison.Ordinal);
 
     private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
     {
@@ -2520,9 +2533,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 if (root.TryGetProperty("ok", out var okAppr) &&
                     okAppr.ValueKind == JsonValueKind.False)
                 {
-                    var message = TryGetErrorMessage(root) ?? "exec.approval.resolve rejected";
-                    _logger.Warn($"exec.approval.resolve rejected by gateway: {message}");
-                    approvalCompletion.TryFault(new InvalidOperationException(message));
+                    var message = TryGetErrorMessage(root) ?? $"{approvalCompletion.Method} rejected";
+                    var stale = GatewayApprovalDecisions.IsStaleRejection(
+                        TryGetErrorTopLevelCode(root),
+                        root.TryGetProperty("error", out var approvalError) && approvalError.ValueKind == JsonValueKind.Object
+                            ? TryGetErrorDetailString(approvalError, "reason")
+                            : null,
+                        message);
+                    _logger.Warn($"{approvalCompletion.Method} rejected by gateway: {message}");
+                    approvalCompletion.TryFault(stale
+                        ? new GatewayApprovalStaleException(message)
+                        : new InvalidOperationException(message));
                 }
                 else
                 {

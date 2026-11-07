@@ -57,7 +57,16 @@ public sealed record GatewayPendingApproval(
     public string? Host { get; init; }
     public string? SessionKey { get; init; }
     public string? AgentId { get; init; }
-    public IReadOnlyList<string> AllowedDecisions { get; init; } = [];
+    /// <summary>Exec ask mode ("always" limits the default decisions to Allow once and Deny).</summary>
+    public string? Ask { get; init; }
+    private readonly IReadOnlyList<string>? _allowedDecisions;
+    /// <summary>Known decisions stated by the request; see <see cref="GatewayApprovalDecisions.Effective"/>.</summary>
+    public IReadOnlyList<string> AllowedDecisions { get => _allowedDecisions ?? []; init => _allowedDecisions = value; }
+    /// <summary>
+    /// True when the request stated its decisions, even if none are known to this client; then
+    /// only those decisions are offered instead of the defaults.
+    /// </summary>
+    public bool AllowedDecisionsSpecified => _allowedDecisions is not null;
 }
 
 /// <summary>
@@ -86,7 +95,7 @@ public static class GatewayUnixTime
 
 public static class GatewayPendingApprovalParser
 {
-    private static readonly string[] KnownDecisions = ["allow-once", "allow-always", "deny"];
+    private static readonly IReadOnlyList<string> KnownDecisions = GatewayApprovalDecisions.All;
 
     /// <summary>Gateway RPC that lists pending approvals of <paramref name="kind"/>.</summary>
     public static string ListMethod(GatewayApprovalKind kind) => kind switch
@@ -150,11 +159,15 @@ public static class GatewayPendingApprovalParser
 
         var title = ReadString(request, "title");
         string? command;
-        IReadOnlyList<string> decisions = ReadDecisions(request);
+        IReadOnlyList<string>? decisions = ReadDecisions(request);
         switch (kind)
         {
             case GatewayApprovalKind.Exec:
-                command = ReadString(request, "command");
+                // Like the native chat banner, an exec request without a command stays
+                // visible so it can be denied; GatewayApprovalDecisions offers only Deny.
+                command = request.TryGetProperty("command", out var commandValue) && commandValue.ValueKind == JsonValueKind.String
+                    ? ReadString(request, "command") ?? ""
+                    : null;
                 title = null;
                 break;
             case GatewayApprovalKind.Plugin:
@@ -164,7 +177,7 @@ public static class GatewayPendingApprovalParser
                 command = ReadString(request, "command");
                 if (title is null || ReadString(request, "description") is null || ReadString(request, "proposalHash") is null)
                     return false;
-                decisions = ["allow-once", "deny"];
+                decisions = [GatewayApprovalDecisions.AllowOnce, GatewayApprovalDecisions.Deny];
                 break;
         }
         if (command is null)
@@ -180,8 +193,10 @@ public static class GatewayPendingApprovalParser
             Host = ReadString(request, "host"),
             SessionKey = ReadString(request, "sessionKey"),
             AgentId = ReadString(request, "agentId"),
-            AllowedDecisions = decisions,
+            Ask = kind == GatewayApprovalKind.Exec ? ReadString(request, "ask") : null,
         };
+        if (decisions is not null)
+            approval = approval with { AllowedDecisions = decisions };
         return true;
     }
 
@@ -243,9 +258,12 @@ public static class GatewayPendingApprovalParser
         }
     }
 
-    private static IReadOnlyList<string> ReadDecisions(JsonElement request)
+    // Null when the request omits allowedDecisions (or sends JSON null); a malformed value states no known decision.
+    private static IReadOnlyList<string>? ReadDecisions(JsonElement request)
     {
-        if (!request.TryGetProperty("allowedDecisions", out var decisions) || decisions.ValueKind != JsonValueKind.Array)
+        if (!request.TryGetProperty("allowedDecisions", out var decisions) || decisions.ValueKind == JsonValueKind.Null)
+            return null;
+        if (decisions.ValueKind != JsonValueKind.Array)
             return [];
         return decisions.EnumerateArray()
             .Where(decision => decision.ValueKind == JsonValueKind.String)

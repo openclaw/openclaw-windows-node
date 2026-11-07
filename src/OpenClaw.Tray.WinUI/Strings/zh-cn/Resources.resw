@@ -7884,4 +7884,16 @@
   <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>登录</value></data>
   <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>更新 API 密钥</value></data>
   <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>查看帐户</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>允许一次</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>始终允许</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>拒绝</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>批准决定</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>你需要批准权限才能批准。</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>未包含命令</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>此批准未包含命令，因此只能拒绝。</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>此命令无法完整显示，因此只能拒绝。</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>你的决定未发送。请重试。</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>此批准已不再等待决定。</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>此批准不提供该决定。</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>查看</value></data>
 </root>

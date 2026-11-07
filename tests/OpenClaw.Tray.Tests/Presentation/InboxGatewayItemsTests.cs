@@ -506,6 +506,9 @@ public sealed class InboxGatewaySourceTests
         private readonly Dictionary<string, Delegate?> _handlers = new(StringComparer.Ordinal);
 
         public IReadOnlyList<string> Scopes = [];
+        public long? Epoch = 7;
+        public List<(GatewayApprovalKind Kind, string Id, string Decision, long Epoch)> Resolves = [];
+        public Func<Task> ResolveResult = () => Task.CompletedTask;
         public Dictionary<string, JsonElement> Replies = new(StringComparer.Ordinal);
         public Dictionary<string, TaskCompletionSource<JsonElement>> Pending = new(StringComparer.Ordinal);
         public List<string> Requests = [];
@@ -539,6 +542,11 @@ public sealed class InboxGatewaySourceTests
                     return Array.Empty<string>();
                 case "get_GrantedOperatorScopes":
                     return Scopes;
+                case "get_SessionMutationConnectionEpoch":
+                    return Epoch;
+                case "ResolveApprovalAsync":
+                    lock (Resolves) Resolves.Add(((GatewayApprovalKind)args![0]!, (string)args[1]!, (string)args[2]!, (long)args[3]!));
+                    return ResolveResult();
                 case "RequestCronListAsync":
                 case "RequestCronStatusAsync":
                     lock (Requests) Requests.Add(name);

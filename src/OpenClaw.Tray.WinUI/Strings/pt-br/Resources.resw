@@ -7937,4 +7937,16 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Entrar</value></data>
   <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Atualizar chave de API</value></data>
   <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Revisar conta</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>Permitir uma vez</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>Sempre permitir</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>Negar</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>Decisões de aprovação</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>Você precisa de acesso de aprovação para aprovar.</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>Nenhum comando incluído</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>Nenhum comando foi incluído nesta aprovação, então apenas Negar está disponível.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Este comando não pode ser exibido por completo, então apenas Negar está disponível.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Sua decisão não foi enviada. Tente novamente.</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Esta aprovação não está mais aguardando uma decisão.</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Essa decisão não está disponível para esta aprovação.</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>Revisar</value></data>
 </root>
