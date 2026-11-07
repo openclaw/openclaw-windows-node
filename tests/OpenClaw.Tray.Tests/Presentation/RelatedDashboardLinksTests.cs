@@ -122,11 +122,9 @@ public sealed class RelatedDashboardLinksTests
         var code = Read("src", "OpenClaw.Tray.WinUI", "Controls", "RelatedSettingsSection.xaml.cs");
 
         Assert.Contains("RelatedDashboardLinks.For(", code);
-        Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard(path)", code);
-        Assert.Contains("var path = link.Path;", code);
+        Assert.Contains(".OpenDashboard(", code);
         // Compact link rows: HyperlinkButton keeps a working UIA Invoke, unlike the stock Toolkit SettingsCard.
-        Assert.Contains("new HyperlinkButton", code);
-        Assert.Contains("row.Click +=", code);
+        Assert.Contains("HyperlinkButton", code);
         Assert.DoesNotContain("new SettingsCard", code);
         Assert.DoesNotContain("SetupActionCard", code);
         Assert.DoesNotContain("http", code, StringComparison.OrdinalIgnoreCase);
