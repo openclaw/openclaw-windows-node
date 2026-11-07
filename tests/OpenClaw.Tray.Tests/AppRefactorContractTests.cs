@@ -575,8 +575,12 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
         var method = ExtractMethod(source, "OpenDashboard");
 
-        Assert.Contains("new GatewayDashboardLauncher(", method);
-        Assert.Contains("EnsureSshTunnelConfigured,", method);
+        Assert.Contains("CreateDashboardLauncher(", method);
+        var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
+        launcher = launcher[..launcher.IndexOf("// ── IAppCommands", StringComparison.Ordinal)];
+        Assert.Contains("EnsureSshTunnelConfigured,", launcher);
+        Assert.Contains("new DashboardBrowser(", launcher);
+        Assert.DoesNotContain("Process.Start", launcher);
         Assert.Contains("ShowDashboardLaunchFailureAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
@@ -1838,7 +1842,9 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", code);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(activeGateway)", code);
+        Assert.Contains("SetupExistingGatewayClassifier.HasWslInstallationForSettings(", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);

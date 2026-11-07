@@ -49,6 +49,8 @@ public sealed partial class ChatPage : Page
     // Invalidates queued refreshes and async credential work on surface, binding, or lifetime changes.
     private int _surfaceGeneration;
 
+    internal string? CurrentSessionKey => _reactorHost?.CurrentThreadId ?? _mountedThreadId;
+
     private void RequireNativeSetupOwner()
     {
         _nativeSetupBinding.Request?.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);

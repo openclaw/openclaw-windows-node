@@ -25,7 +25,17 @@ public sealed class ReleaseSigningWorkflowTests
             var next = System.Text.RegularExpressions.Regex.Match(workflow[(start + 1)..], @"(?m)^  [a-z][a-z0-9-]+:");
             var block = workflow[start..(start + 1 + next.Index)];
             Assert.Contains("RequireSignedFileWorker:", block);
-            Assert.Contains("OpenClawSignedFileWorkerPath:", block);
+            var rid = job switch
+            {
+                "build-x64" => "win-x64",
+                "build-arm64" => "win-arm64",
+                _ => "win-${{ matrix.architecture }}",
+            };
+            Assert.Contains("path: ${{ runner.temp }}\\signed-file-workers", block);
+            Assert.Contains($"\"OpenClawSignedFileWorkerPath=$env:RUNNER_TEMP\\signed-file-workers\\{rid}\" >> $env:GITHUB_ENV", block);
+            Assert.DoesNotContain("OpenClawSignedFileWorkerPath:", block);
+            Assert.True(block.IndexOf("name: Download signed fixed workers", StringComparison.Ordinal) <
+                block.IndexOf("name: Bind signed fixed worker path", StringComparison.Ordinal));
             Assert.Contains("name: openclaw-signed-file-workers", block);
         }
         Assert.Contains("Condition=\"'$(OpenClawSignedFileWorkerPath)' == ''\"", targets);

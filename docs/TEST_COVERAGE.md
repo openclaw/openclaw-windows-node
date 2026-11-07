@@ -155,6 +155,7 @@ Unset the opt-in after the run.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
   Markdown renderer record-shape tests also belong to `UICollection`: their WinRT-backed types must not initialize concurrently with the shared Windows App SDK bootstrap. A smoke-test contract guards both Markdown test classes' collection membership.
 - Onboarding AI card-action tests wait up to 10 seconds for the target card to be loaded, enabled, click-enabled, and attached to the page's non-null XamlRoot. Readiness timeouts report each condition; regression tests hold each readiness flag false before releasing it and verify that a permanently blocked card never invokes its action. A dispatcher yield alone is not a control-loaded guarantee.
+- Native current-model UIA coverage requires the standard disabled HRESULT (`UIA_E_ELEMENTNOTENABLED`, `0x80040200`) even when the client worker carries unrelated COM error info. It verifies that the same card remains available and mounted without activation, that non-clickable cards do not advertise Invoke, and that enabled native invocation activates the selected model.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
 - **OpenClawTray.FunctionalUI.Tests** covers newer UI surfaces outside the main tray test project.
