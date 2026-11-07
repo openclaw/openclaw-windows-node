@@ -368,4 +368,45 @@ public class OpenClawGatewayClientApprovalTranslationTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => responseTask);
         Assert.False(string.IsNullOrWhiteSpace(ex.Message));
     }
+
+    [Theory]
+    [InlineData("""{ "code": "INVALID_REQUEST", "message": "approval already resolved", "details": { "reason": "APPROVAL_ALREADY_RESOLVED" } }""")]
+    [InlineData("""{ "code": "APPROVAL_NOT_FOUND", "message": "gone" }""")]
+    [InlineData("""{ "code": "INVALID_REQUEST", "message": "unknown or expired approval id" }""")]
+    public async Task ResolveApproval_StaleRejection_SurfacesAsStaleException(string error)
+    {
+        var client = NewClient();
+        var responseTask = RegisterPendingApprovalResolve(client, "req-stale");
+
+        InvokeHandleResponse(client, $$"""{ "type": "res", "id": "req-stale", "ok": false, "error": {{error}} }""");
+
+        await Assert.ThrowsAsync<GatewayApprovalStaleException>(() => responseTask);
+    }
+
+    [Fact]
+    public async Task ResolveApproval_OtherRejection_StaysRetryable()
+    {
+        var client = NewClient();
+        var responseTask = RegisterPendingApprovalResolve(client, "req-deny-only");
+
+        InvokeHandleResponse(client, """
+            { "type": "res", "id": "req-deny-only", "ok": false, "error": { "code": "INVALID_REQUEST", "message": "This approval only permits Deny." } }
+            """);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => responseTask);
+        Assert.IsNotType<GatewayApprovalStaleException>(ex);
+    }
+
+    [Fact]
+    public async Task ResolveApprovalAsync_ThrowsWhenDisconnectedForEveryKind()
+    {
+        var client = NewClient();
+
+        foreach (var kind in new[] { GatewayApprovalKind.Exec, GatewayApprovalKind.Plugin, GatewayApprovalKind.SystemAgent })
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                client.ResolveApprovalAsync(kind, "appr-1", "deny", connectionEpoch: 1));
+            Assert.Contains(GatewayApprovalDecisions.ResolveMethod(kind), ex.Message);
+        }
+    }
 }

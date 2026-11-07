@@ -7885,4 +7885,16 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Aanmelden</value></data>
   <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>API-sleutel bijwerken</value></data>
   <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Account controleren</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>Eenmalig toestaan</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>Altijd toestaan</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>Weigeren</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>Goedkeuringsbeslissingen</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>Je hebt goedkeuringstoegang nodig om goed te keuren.</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>Geen opdracht meegestuurd</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>Er is geen opdracht bij deze goedkeuring meegestuurd, dus alleen Weigeren is beschikbaar.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Deze opdracht kan niet volledig worden weergegeven, dus alleen Weigeren is beschikbaar.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Je beslissing is niet verzonden. Probeer het opnieuw.</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Deze goedkeuring wacht niet meer op een beslissing.</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Die beslissing is niet beschikbaar voor deze goedkeuring.</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>Bekijken</value></data>
 </root>

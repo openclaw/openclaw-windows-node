@@ -151,6 +151,44 @@
                                                    Style="{StaticResource CaptionTextBlockStyle}"/>
                                     </Border>
                                 </StackPanel>
+                                <TextBlock Text="{Binding DecisionNoteText}" Visibility="{Binding DecisionNoteVisibility}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                                <TextBlock Text="{Binding PermissionText}" Visibility="{Binding PermissionVisibility}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8"
+                                            AutomationProperties.Name="{Binding DecisionGroupName}">
+                                    <Button Content="{Binding AllowOnceLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding AllowOnceVisibility}"
+                                            IsEnabled="{Binding DecisionsEnabled}"
+                                            AutomationProperties.Name="{Binding AllowOnceAutomationName}"
+                                            AutomationProperties.AutomationId="InboxApprovalAllowOnce"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="OnAllowOnceClick"/>
+                                    <Button Content="{Binding AllowAlwaysLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding AllowAlwaysVisibility}"
+                                            IsEnabled="{Binding DecisionsEnabled}"
+                                            AutomationProperties.Name="{Binding AllowAlwaysAutomationName}"
+                                            AutomationProperties.AutomationId="InboxApprovalAllowAlways"
+                                            Click="OnAllowAlwaysClick"/>
+                                    <Button Content="{Binding DenyLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding DenyVisibility}"
+                                            IsEnabled="{Binding DecisionsEnabled}"
+                                            AutomationProperties.Name="{Binding DenyAutomationName}"
+                                            AutomationProperties.AutomationId="InboxApprovalDeny"
+                                            Click="OnDenyClick"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding DecisionErrorText}" Visibility="{Binding DecisionErrorVisibility}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                           AutomationProperties.LiveSetting="Assertive"
+                                           TextWrapping="WrapWholeWords"/>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button Content="{Binding ActionLabel}"
                                             Tag="{Binding}"

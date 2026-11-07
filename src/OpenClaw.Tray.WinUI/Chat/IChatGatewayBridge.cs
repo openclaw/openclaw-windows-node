@@ -147,13 +147,20 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     private volatile ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
     private ModelsListInfo? _currentModels;
     private readonly Func<Uri, Task<bool>> _launchUri;
+    private readonly Func<IOperatorGatewayClient, string, string, Task>? _resolveExecApproval;
     private bool _disposed;
 
+    /// <param name="resolveExecApproval">
+    /// The app's approval decision owner; when null (tests, isolated hosts) the bridge calls the
+    /// client's own resolve RPC directly.
+    /// </param>
     public GatewayClientChatBridge(
         OpenClawGatewayClient client,
-        Func<Uri, Task<bool>>? launchUri = null)
+        Func<Uri, Task<bool>>? launchUri = null,
+        Func<IOperatorGatewayClient, string, string, Task>? resolveExecApproval = null)
     {
         _client = client;
+        _resolveExecApproval = resolveExecApproval;
         PlacementGateway = client.CreateChatPlacementGateway();
         _launchUri = launchUri ?? LaunchWithDefaultBrowserAsync;
         _statusChangedHandler = (s, e) =>
@@ -332,7 +339,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 
     public Task ResolveExecApprovalAsync(string approvalId, string decision) =>
-        _client.ResolveExecApprovalAsync(approvalId, decision);
+        _resolveExecApproval is { } resolve
+            ? resolve(_client, approvalId, decision)
+            : _client.ResolveExecApprovalAsync(approvalId, decision);
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;

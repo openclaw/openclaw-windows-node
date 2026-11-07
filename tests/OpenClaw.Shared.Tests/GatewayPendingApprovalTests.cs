@@ -73,7 +73,7 @@ public class GatewayPendingApprovalTests
 
     [Theory]
     [InlineData("""{ "id": "a", "request": { "command": "x" }, "createdAtMs": 1 }""")]
-    [InlineData("""{ "id": "a", "request": { "command": " " }, "createdAtMs": 1, "expiresAtMs": 2 }""")]
+    [InlineData("""{ "id": "a", "request": { "cwd": "C:\\work" }, "createdAtMs": 1, "expiresAtMs": 2 }""")]
     [InlineData("""{ "request": { "command": "x" }, "createdAtMs": 1, "expiresAtMs": 2 }""")]
     [InlineData("""{ "id": "a", "createdAtMs": 1, "expiresAtMs": 2 }""")]
     public void TryParse_RejectsIncompleteExecRecords(string json)
@@ -114,6 +114,20 @@ public class GatewayPendingApprovalTests
         Assert.Equal(GatewayUnixTime.MaxMs, GatewayUnixTime.Add(now, long.MaxValue).ToUnixTimeMilliseconds());
         Assert.Equal(GatewayUnixTime.MinMs, GatewayUnixTime.Add(now, long.MinValue).ToUnixTimeMilliseconds());
         Assert.Equal(now.AddSeconds(5), GatewayUnixTime.Add(now, 5_000));
+    }
+
+    [Fact]
+    public void TryParse_KeepsBlankExecCommandSoItCanOnlyBeDenied()
+    {
+        using var doc = JsonDocument.Parse("""
+            { "id": "a", "request": { "command": " ", "ask": "always" }, "createdAtMs": 1, "expiresAtMs": 2 }
+            """);
+
+        Assert.True(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, doc.RootElement, out var approval));
+
+        Assert.Equal("", approval.Command);
+        Assert.Equal("always", approval.Ask);
+        Assert.Equal([GatewayApprovalDecisions.Deny], GatewayApprovalDecisions.Effective(approval));
     }
 
     [Fact]

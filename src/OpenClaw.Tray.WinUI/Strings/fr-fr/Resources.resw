@@ -7884,4 +7884,16 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Se connecter</value></data>
   <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Mettre à jour la clé API</value></data>
   <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Vérifier le compte</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>Autoriser une fois</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>Toujours autoriser</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>Refuser</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>Décisions d'approbation</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>Vous devez disposer de l'accès aux approbations pour approuver.</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>Aucune commande incluse</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>Aucune commande n'a été incluse avec cette approbation, seul Refuser est donc disponible.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Cette commande ne peut pas être affichée en entier, seul Refuser est donc disponible.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Votre décision n'a pas été envoyée. Réessayez.</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Cette approbation n'attend plus de décision.</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Cette décision n'est pas disponible pour cette approbation.</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>Examiner</value></data>
 </root>

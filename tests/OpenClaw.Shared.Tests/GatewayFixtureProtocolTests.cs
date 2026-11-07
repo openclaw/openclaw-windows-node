@@ -915,6 +915,32 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task RealClient_ResolveApprovalOnConnection_RefusesAnotherEpochBeforeSending()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-approval-epoch",
+            command = "echo fixture",
+        });
+        var epoch = connected.Client.SessionMutationConnectionEpoch;
+        Assert.True(epoch.HasValue);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-approval-epoch", "deny", epoch!.Value + 1));
+        Assert.DoesNotContain(server.Requests, request => request.Method == "exec.approval.resolve");
+
+        await connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-approval-epoch", "deny", epoch!.Value);
+
+        var sent = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
+        Assert.Equal(("fixture-approval-epoch", "deny", "ok"), (sent.ApprovalId, sent.Decision, sent.Outcome));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task RealClient_ApprovalResolveInvalidDecisionDoesNotConsumeIssuedId()
     {
         var token = CreateToken();
