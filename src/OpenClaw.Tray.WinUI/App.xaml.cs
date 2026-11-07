@@ -270,6 +270,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private InboxGatewaySource? _inboxGatewaySource;
     private OperatorApprovalDecisions? _approvalDecisions;
     private ApprovalToastPresenter? _approvalToasts;
+    private ThisPcAlertSource? _thisPcAlerts;
     /// <summary>Inbox rows, tab counts and badge: app notifications plus live Gateway facts.</summary>
     internal InboxFeed? InboxFeed { get; private set; }
     private string? _lastConnectionIssueNotificationKey;
@@ -905,6 +906,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // can never delay or preempt tray initialization. It only needs the
         // dispatcher + settings (created above) and failures are non-fatal.
         InitializeServiceProvider();
+        // Do not disturb and "This PC" alerts read and save through the settings store built above.
+        if (SettingsStore is { } inboxSettings && _appNotificationService is not null)
+        {
+            InboxFeed?.AttachSettings(inboxSettings);
+            _thisPcAlerts = new ThisPcAlertSource(
+                _appNotificationService, inboxSettings, WindowsDeviceAccessReader.Create(), LocalizationHelper.GetString);
+            _thisPcAlerts.Refresh();
+        }
         if (_localAiGatewayLifecycle.CanStartWslAutomatically)
             StartLocalAiRouterInBackground();
 

@@ -1,8 +1,9 @@
 // The Inbox list shared by the footer bell flyout and the full Inbox page: tabs,
 // action-first rows that expand in place, approval decisions (Allow once / Always allow /
 // Deny, sent through InboxFeed to OperatorApprovalDecisions), "Dismiss shown", the empty
-// state and the notification settings shortcut. Data comes from InboxFeed (app notifications
-// plus live Gateway facts); navigation and "Ask OpenClaw" are supplied by the hosting window.
+// state, the Do not disturb toggle (saved through InboxFeed) and the notification settings
+// shortcut. Data comes from InboxFeed (app notifications plus live Gateway facts); navigation
+// and "Ask OpenClaw" are supplied by the hosting window.
 //
 // Usage:
 //   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
@@ -47,6 +48,7 @@ public sealed partial class InboxView : UserControl
     private InboxViewCommands? _commands;
     private InboxSnapshot _snapshot = InboxSnapshot.Empty;
     private InboxTab _tab = InboxTab.All;
+    private bool _applyingDoNotDisturb;
 
     public InboxView()
     {
@@ -103,6 +105,38 @@ public sealed partial class InboxView : UserControl
         ApplyTabLabels();
         SyncInboxItems(_snapshot.For(_tab), DateTimeOffset.UtcNow);
         ApplyChrome();
+        ApplyDoNotDisturb(snapshot.DoNotDisturb);
+    }
+
+    private void ApplyDoNotDisturb(bool doNotDisturb)
+    {
+        if (DoNotDisturbToggle.IsOn == doNotDisturb)
+            return;
+        _applyingDoNotDisturb = true;
+        try
+        {
+            DoNotDisturbToggle.IsOn = doNotDisturb;
+        }
+        finally
+        {
+            _applyingDoNotDisturb = false;
+        }
+    }
+
+    private void OnDoNotDisturbToggled(object sender, RoutedEventArgs e)
+    {
+        if (_applyingDoNotDisturb || _feed is not { } feed)
+            return;
+        try
+        {
+            feed.SetDoNotDisturb(DoNotDisturbToggle.IsOn);
+        }
+        catch (Exception ex)
+        {
+            new AppLogger().Warn($"[Inbox] Do not disturb could not be saved: {ex.GetType().Name}");
+        }
+        // The toggle always reflects what was saved, including when no settings owner is attached.
+        ApplyDoNotDisturb(feed.DoNotDisturb);
     }
 
     private void RefreshClock()

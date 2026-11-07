@@ -7850,6 +7850,21 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Les nouvelles demandes et alertes arrivent ici.</value></data>
   <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Ouvrir la boîte de réception</value></data>
   <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} en attente</value></data>
+  <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>Ne pas déranger</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ne pas déranger</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Les approbations passent toujours</value></data>
+  <data name="Inbox_DoNotDisturbApprovalsNote.Text" xml:space="preserve"><value>Les approbations passent toujours</value></data>
+  <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>Ne pas déranger est activé. {0}</value></data>
+  <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>Ce PC</value></data>
+  <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>Confidentialité</value></data>
+  <data name="ThisPc_CameraBlockedTitle" xml:space="preserve"><value>Ce PC : l'accès à la caméra est désactivé</value></data>
+  <data name="ThisPc_CameraBlockedMessage" xml:space="preserve"><value>Les agents peuvent utiliser la caméra, mais les paramètres de confidentialité de Windows bloquent l'accès à la caméra : les photos et les clips échouent.</value></data>
+  <data name="ThisPc_MicrophoneBlockedTitle" xml:space="preserve"><value>Ce PC : l'accès au microphone est désactivé</value></data>
+  <data name="ThisPc_MicrophoneBlockedMessage" xml:space="preserve"><value>Les agents peuvent enregistrer du son pour la reconnaissance vocale ou les clips de la caméra, mais les paramètres de confidentialité de Windows bloquent l'accès au microphone : ces demandes échouent.</value></data>
+  <data name="ThisPc_LocationBlockedTitle" xml:space="preserve"><value>Ce PC : l'accès à la localisation est désactivé</value></data>
+  <data name="ThisPc_LocationBlockedMessage" xml:space="preserve"><value>Les agents peuvent demander la position de ce PC, mais les paramètres de confidentialité de Windows bloquent l'accès à la localisation : les demandes de position échouent.</value></data>
+  <data name="ThisPc_ManagedBySystem" xml:space="preserve"><value>Ce paramètre est géré par Windows ou votre organisation.</value></data>
+  <data name="ThisPc_OpenPrivacySettings" xml:space="preserve"><value>Ouvrir les paramètres de confidentialité Windows</value></data>
   <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Ignorer {0}</value></data>
   <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
   <data name="Inbox_AgeNow" xml:space="preserve"><value>maintenant</value></data>

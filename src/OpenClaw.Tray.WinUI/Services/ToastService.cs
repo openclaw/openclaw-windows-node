@@ -24,8 +24,11 @@ internal sealed class ToastService : IToastNotificationPublisher
         _getSettings = getSettings;
     }
 
-    /// <summary>Shows a toast with optional dedup by tag + device ID.</summary>
-    public void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null)
+    /// <summary>
+    /// Shows a toast with optional dedup by tag + device ID. Do not disturb silences every
+    /// <see cref="AlertKind.Standard"/> toast; approvals still come through.
+    /// </summary>
+    public void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null, AlertKind alertKind = AlertKind.Standard)
     {
         // Showing a toast also lazily initializes the toolkit's OS registration.
         if (GatewayFixtureIsolation.IsEnabled)
@@ -34,6 +37,12 @@ internal sealed class ToastService : IToastNotificationPublisher
         if (AppIdentity.IsIsolated)
         {
             Logger.Info("Windows toast suppressed for an isolated app instance.");
+            return;
+        }
+
+        if (!DoNotDisturbPolicy.AllowsAlert(_getSettings()?.DoNotDisturb == true, alertKind))
+        {
+            Logger.Info("Windows toast suppressed by Do not disturb.");
             return;
         }
 

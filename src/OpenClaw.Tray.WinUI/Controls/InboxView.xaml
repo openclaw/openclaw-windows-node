@@ -8,6 +8,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0" ColumnSpacing="8" Margin="2,0,0,0">
@@ -243,7 +244,30 @@
             </StackPanel>
         </Border>
 
-        <Grid x:Name="FooterRow" Grid.Row="3" Margin="2,0" ColumnSpacing="8">
+        <!-- Windows-only: Do not disturb silences everything except approvals; shown in the flyout and on the page. -->
+        <Grid x:Name="DoNotDisturbRow" Grid.Row="3" Margin="2,0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <FontIcon Glyph="&#xE708;" FontSize="14" VerticalAlignment="Center"
+                      AutomationProperties.AccessibilityView="Raw"/>
+            <TextBlock x:Uid="Inbox_DoNotDisturbLabel" Grid.Column="1" Text="Do not disturb"
+                       VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
+            <ToggleSwitch x:Name="DoNotDisturbToggle" x:Uid="Inbox_DoNotDisturbToggle" Grid.Column="2"
+                          AutomationProperties.AutomationId="WorkspaceNotificationsDoNotDisturb"
+                          OnContent="" OffContent="" MinWidth="0" VerticalAlignment="Center"
+                          Toggled="OnDoNotDisturbToggled"/>
+            <TextBlock x:Uid="Inbox_DoNotDisturbApprovalsNote" Grid.Column="3" Text="Approvals always come through"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+        </Grid>
+
+        <Grid x:Name="FooterRow" Grid.Row="4" Margin="2,0" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
