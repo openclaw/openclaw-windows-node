@@ -256,6 +256,20 @@ public sealed class InboxGatewayItemsTests
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(NowMs - 600_000), inbox.Entries[0].CreatedAt);
     }
 
+    [Fact]
+    public void InboxDecisions_OfferAllowOnlyWhenTheRowShowsTheWholeCommand()
+    {
+        var longMultiline = string.Join("\n", Enumerable.Range(0, 40).Select(line => $"echo step-{line} --flag value"));
+        Assert.Equal(["allow-once", "allow-always", "deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = longMultiline }));
+        Assert.Equal(longMultiline, InboxGatewayItems.DisplayCommand(longMultiline));
+
+        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = new string('x', 300 * 1024) }));
+        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = "rm\u2007-rf /" }));
+        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = "" }));
+        Assert.Equal(["allow-once", "allow-always", "deny"],
+            InboxGatewayItems.InboxDecisions(Approval("a", NowMs, kind: GatewayApprovalKind.Plugin) with { Command = "" }));
+    }
+
     internal static GatewayPendingApproval Approval(string id, long createdAtMs, long? expiresAtMs = null, GatewayApprovalKind kind = GatewayApprovalKind.Exec) =>
         new(id, kind, "echo hi", createdAtMs, expiresAtMs ?? createdAtMs + 3_600_000) { SessionKey = "agent:main:main" };
 

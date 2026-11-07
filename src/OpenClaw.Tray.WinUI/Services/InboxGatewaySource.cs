@@ -219,6 +219,8 @@ internal sealed class InboxGatewaySource : IDisposable
         if (status == ConnectionStatus.Connected)
         {
             Load(client);
+            // The new handshake's scopes decide approval access now, not after the first reply.
+            Recompute();
         }
         else if (status is ConnectionStatus.Disconnected or ConnectionStatus.Error)
         {
@@ -390,7 +392,7 @@ internal sealed class InboxGatewaySource : IDisposable
         var nowMs = now.ToUnixTimeMilliseconds();
         foreach (var expired in _approvals.Where(pair => pair.Value.Deadline <= now).Select(pair => pair.Key).ToList())
             _approvals.Remove(expired);
-        var canDecide = _client is { } current && HasGrantedScope(current, ApprovalsScope);
+        var canDecide = _client is { } current && GatewayApprovalDecisions.HasDecisionGrant(current.GrantedOperatorScopes);
         _approvalState = new(_client, canDecide, new Dictionary<string, PendingApproval>(_approvals, StringComparer.Ordinal));
 
         var facts = _approvals.Values

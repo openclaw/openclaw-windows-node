@@ -2534,13 +2534,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     okAppr.ValueKind == JsonValueKind.False)
                 {
                     var message = TryGetErrorMessage(root) ?? $"{approvalCompletion.Method} rejected";
-                    var stale = GatewayApprovalDecisions.IsStaleRejection(
-                        TryGetErrorTopLevelCode(root),
-                        root.TryGetProperty("error", out var approvalError) && approvalError.ValueKind == JsonValueKind.Object
-                            ? TryGetErrorDetailString(approvalError, "reason")
-                            : null,
-                        message);
-                    _logger.Warn($"{approvalCompletion.Method} rejected by gateway: {message}");
+                    var code = TryGetErrorTopLevelCode(root);
+                    var reason = root.TryGetProperty("error", out var approvalError) && approvalError.ValueKind == JsonValueKind.Object
+                        ? TryGetErrorDetailString(approvalError, "reason")
+                        : null;
+                    var stale = GatewayApprovalDecisions.IsStaleRejection(code, reason, message);
+                    // The rejection message can echo approval or command text: log bounded codes only.
+                    _logger.Warn($"{approvalCompletion.Method} rejected by gateway: " +
+                        $"code={GatewayApprovalDecisions.SafeErrorCode(code)} reason={GatewayApprovalDecisions.SafeErrorCode(reason)} stale={stale}");
                     approvalCompletion.TryFault(stale
                         ? new GatewayApprovalStaleException(message)
                         : new InvalidOperationException(message));
@@ -3839,6 +3840,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         };
         if (!string.IsNullOrEmpty(decision))
             flat["decision"] = decision;
+        if (topLevelEventType == "exec.approval.requested")
+        {
+            // The banner offers exactly what the shared decision owner would send, and none
+            // without an explicit approval grant (OperatorApprovalDecisions applies the same rules).
+            // An incomplete request is not tracked by the decision owner, so it offers nothing.
+            var offered = GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, payload, out var parsed)
+                ? GatewayApprovalDecisions.Effective(parsed)
+                : [];
+            var array = new JsonArray();
+            foreach (var allowed in offered)
+                array.Add(allowed);
+            flat["allowedDecisions"] = array;
+            flat["decisionAccess"] = GatewayApprovalDecisions.HasDecisionGrant(_grantedOperatorScopes) ? "granted" : "missing";
+        }
 
         // Clone into a JsonElement that owns its backing memory.
         JsonElement data;

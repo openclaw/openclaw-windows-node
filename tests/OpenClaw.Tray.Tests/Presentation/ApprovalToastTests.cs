@@ -13,6 +13,7 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class ApprovalToastTests
 {
     private static readonly string[] SafeArgumentKeys = ["action", "approvalId", "decision", "token"];
+    private static readonly DateTimeOffset Deadline = new(2026, 11, 6, 12, 5, 0, TimeSpan.Zero);
     private DateTimeOffset _now = new(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -23,10 +24,10 @@ public sealed class ApprovalToastTests
             Scope = new GatewayApprovalScope(GatewayApprovalScopeKind.Payment) { Amount = "612", Currency = "USD", Target = "TAP" },
         };
 
-        var plan = ApprovalToastPlan.Build(approval, "TOKEN", Key)!;
+        var plan = ApprovalToastPlan.Build(approval, "TOKEN", Key, hostConfirmedLocal: true, Deadline)!;
 
         Assert.Equal(["Inbox_ApprovalAllowOnce", "Inbox_ApprovalDeny", "Toast_ApprovalReview"], plan.Buttons.Select(button => button.Label));
-        Assert.Equal(["echo hi", "Inbox_ApprovalScopePaymentFormat"], plan.Lines);
+        Assert.Equal(["echo hi", "Toast_ApprovalRunsOnThisComputer", "Inbox_ApprovalScopePaymentFormat"], plan.Lines);
         var arguments = plan.Buttons.SelectMany(button => button.Arguments).Concat(plan.LaunchArguments).ToList();
         Assert.All(arguments, pair => Assert.Contains(pair.Key, SafeArgumentKeys));
         Assert.DoesNotContain(arguments, pair => pair.Value.Contains("echo", StringComparison.Ordinal));
@@ -45,7 +46,7 @@ public sealed class ApprovalToastTests
     {
         var approval = OperatorApprovalDecisionsTests.Approval("a1") with { Command = command };
 
-        var plan = ApprovalToastPlan.Build(approval, "TOKEN", Key)!;
+        var plan = ApprovalToastPlan.Build(approval, "TOKEN", Key, hostConfirmedLocal: true, Deadline)!;
 
         Assert.Equal(["Inbox_ApprovalDeny", "Toast_ApprovalReview"], plan.Buttons.Select(button => button.Label));
     }
@@ -55,10 +56,40 @@ public sealed class ApprovalToastTests
     [InlineData(GatewayApprovalKind.SystemAgent)]
     public void Plan_NonExecApprovals_AreReviewedInTheInbox(GatewayApprovalKind kind)
     {
-        var plan = ApprovalToastPlan.Build(OperatorApprovalDecisionsTests.Approval("a1", kind), "TOKEN", Key)!;
+        var plan = ApprovalToastPlan.Build(OperatorApprovalDecisionsTests.Approval("a1", kind), "TOKEN", Key, hostConfirmedLocal: true, Deadline)!;
 
         Assert.Equal(["Inbox_ApprovalDeny", "Toast_ApprovalReview"], plan.Buttons.Select(button => button.Label));
         Assert.Equal(["Publish"], plan.Lines);
+    }
+
+    [Fact]
+    public void Plan_WarningOrUnconfirmedHost_OffersOnlyDenyAndReview()
+    {
+        var warned = OperatorApprovalDecisionsTests.Approval("a1") with { WarningText = "Moves money." };
+        var plain = OperatorApprovalDecisionsTests.Approval("a1");
+
+        var warnedPlan = ApprovalToastPlan.Build(warned, "TOKEN", Key, hostConfirmedLocal: true, Deadline)!;
+        var remotePlan = ApprovalToastPlan.Build(plain, "TOKEN", Key, hostConfirmedLocal: false, Deadline)!;
+
+        foreach (var plan in new[] { warnedPlan, remotePlan })
+        {
+            Assert.Equal(["Inbox_ApprovalDeny", "Toast_ApprovalReview"], plan.Buttons.Select(button => button.Label));
+            Assert.DoesNotContain("Toast_ApprovalRunsOnThisComputer", plan.Lines);
+        }
+        Assert.Equal(["deny"], ApprovalToastPlan.Decisions(warned, hostConfirmedLocal: true));
+        Assert.Equal(["deny"], ApprovalToastPlan.Decisions(plain, hostConfirmedLocal: false));
+    }
+
+    [Fact]
+    public async Task Presenter_RemoteHostToastTokenCannotAllow()
+    {
+        var harness = Create(hostLocal: false);
+        harness.Gateway.Raise("PendingApprovalRequested", OperatorApprovalDecisionsTests.Approval("a1"));
+        var deny = Assert.Single(harness.Shown).Plan.Buttons.Single(button => button.Label == "Inbox_ApprovalDeny").Arguments;
+
+        Assert.Equal(ApprovalDecisionOutcome.NotAllowed,
+            await harness.Decisions.DecideFromToastAsync("a1", "allow-once", deny["token"]));
+        Assert.Empty(harness.Gateway.Resolves);
     }
 
     [Fact]
@@ -66,7 +97,7 @@ public sealed class ApprovalToastTests
     {
         var approval = OperatorApprovalDecisionsTests.Approval("a1") with { Command = "echo  two  spaces", AllowedDecisions = ["allow-once"] };
 
-        Assert.Null(ApprovalToastPlan.Build(approval, "TOKEN", Key));
+        Assert.Null(ApprovalToastPlan.Build(approval, "TOKEN", Key, hostConfirmedLocal: true, Deadline));
     }
 
     [Fact]
@@ -131,7 +162,7 @@ public sealed class ApprovalToastTests
         Assert.Empty(harness.Shown);
     }
 
-    private Harness Create(bool foreground = false, bool enabled = true, IReadOnlyList<string>? scopes = null)
+    private Harness Create(bool foreground = false, bool enabled = true, IReadOnlyList<string>? scopes = null, bool hostLocal = true)
     {
         var source = new InboxGatewaySource(new RecordingUiDispatcher(), () => _now, useTimer: false);
         var gateway = FakeGateway.Create();
@@ -142,6 +173,7 @@ public sealed class ApprovalToastTests
         _ = new ApprovalToastPresenter(source, decisions, Key,
             notificationsEnabled: () => enabled,
             isAppForeground: () => foreground,
+            isHostConfirmedLocal: _ => hostLocal,
             show: (plan, tag, group) => { harness.Shown.Add((plan, tag, group)); return true; },
             withdraw: (tag, group) => harness.Withdrawn.Add((tag, group)));
         return harness;
