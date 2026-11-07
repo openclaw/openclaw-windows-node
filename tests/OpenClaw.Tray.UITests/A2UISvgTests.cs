@@ -329,6 +329,29 @@ public sealed class A2UISvgTests
     }
 
     [Fact]
+    public async Task ManySmallShapes_RejectedBeforeDecode()
+    {
+        // The attribute budget cannot see element count: tiny shapes carry no path data, so a
+        // document of thousands of nodes would otherwise reach the decoder unmeasured.
+        var svg =
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
+            string.Concat(Enumerable.Repeat("<rect width='1' height='1'/>", SvgGeometryBudget.MaxElements)) +
+            "</svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("element count exceeds", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"element-count rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
     public async Task DoctypeCommentContainingFakePath_StillRenders()
     {
         // Regression: the geometry guard used to scan before the DOCTYPE strip, so the '>' inside this

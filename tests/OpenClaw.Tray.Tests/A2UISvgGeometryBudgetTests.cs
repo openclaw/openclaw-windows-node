@@ -15,6 +15,11 @@ public sealed class A2UISvgGeometryBudgetTests
 
     private static bool Exceeds(string svg) => SvgGeometryBudget.Exceeds(Encoding.UTF8.GetBytes(svg));
 
+    private static SvgGeometryBudget.SvgBudgetLimit Limit(string svg) =>
+        SvgGeometryBudget.FindExceededLimit(Encoding.UTF8.GetBytes(svg));
+
+    private static string Repeat(string value, int count) => string.Concat(Enumerable.Repeat(value, count));
+
     private static string Svg(string body) => $"<svg xmlns='http://www.w3.org/2000/svg'>{body}</svg>";
 
     [Fact]
@@ -132,6 +137,34 @@ public sealed class A2UISvgGeometryBudgetTests
             "<!-- <!DOCTYPE x> --><!DOCTYPE svg [<!-- > <![CDATA[ -->]>" +
             Svg($"<path d='{new string('1', Budget + 1)}'/>"));
 
+        Assert.False(SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out _, out _));
+    }
+
+    [Fact]
+    public void ElementCount_RejectsOnlyAboveTheLimit()
+    {
+        Assert.Equal(SvgGeometryBudget.SvgBudgetLimit.None,
+            Limit(Svg(Repeat("<rect/>", SvgGeometryBudget.MaxElements - 1))));
+        Assert.Equal(SvgGeometryBudget.SvgBudgetLimit.ElementCount,
+            Limit(Svg(Repeat("<rect/>", SvgGeometryBudget.MaxElements))));
+    }
+
+    [Fact]
+    public void ElementCount_IgnoresEndTagsCommentsAndCdata()
+    {
+        var body = "<!--" + Repeat("<rect/>", SvgGeometryBudget.MaxElements * 2) + "-->"
+            + "<![CDATA[" + Repeat("<rect/>", SvgGeometryBudget.MaxElements * 2) + "]]>"
+            + Repeat("</g>", SvgGeometryBudget.MaxElements);
+        Assert.Equal(SvgGeometryBudget.SvgBudgetLimit.None, Limit(Svg(body)));
+    }
+
+    [Fact]
+    public void TryPrepareSvgForDecode_ManySmallShapes_IsRejectedForElementCount()
+    {
+        var bytes = Encoding.UTF8.GetBytes(
+            Svg(Repeat("<rect width='1' height='1'/>", SvgGeometryBudget.MaxElements)));
+
+        Assert.Equal(SvgGeometryBudget.SvgBudgetLimit.ElementCount, SvgGeometryBudget.FindExceededLimit(bytes));
         Assert.False(SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out _, out _));
     }
 

@@ -1,9 +1,10 @@
 // Pre-decode byte policy for A2UI SVG images.
 //
 // D2D's SvgImageSource parse can block the UI thread past MediaResolver.SvgRenderTimeout on
-// pathological geometry (the timeout abandons only the await, not the native parse), so
-// MediaResolver rejects unsupported encodings and oversized geometry before the decoder sees
-// the bytes. The policy also strips the DOCTYPE, which must happen before the geometry scan.
+// pathological input (the timeout abandons only the await, not the native parse), so
+// MediaResolver rejects unsupported encodings, oversized path data and excessive element counts
+// before the decoder sees the bytes. The policy also strips the DOCTYPE, which must happen before
+// the byte scan.
 //
 // Usage:
 //   if (!SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out var svgBytes, out var rejection))
@@ -13,8 +14,9 @@ namespace OpenClawTray.A2UI.Rendering;
 
 /// <summary>
 /// Pure byte-level policy for SVG bytes on their way to the decoder: unsupported-encoding
-/// rejection, DOCTYPE strip, and a budget on the total length of <c>d</c> and <c>points</c>
-/// attribute values. Kept free of WinUI types so it can be unit-tested without a XAML runtime.
+/// rejection, DOCTYPE strip, a budget on the total length of <c>d</c> and <c>points</c>
+/// attribute values, and a budget on the number of element start tags. Kept free of WinUI types
+/// so it can be unit-tested without a XAML runtime.
 /// </summary>
 internal static class SvgGeometryBudget
 {
@@ -22,24 +24,46 @@ internal static class SvgGeometryBudget
     internal const int MaxAttributeChars = 64 * 1024;
 
     /// <summary>
-    /// True when the summed length of all <c>d</c> and <c>points</c> attribute values exceeds
-    /// <see cref="MaxAttributeChars"/>. A single forward ASCII scan with no allocation that walks
-    /// XML structure: comments, CDATA, processing instructions and DOCTYPE are skipped, and
-    /// attributes are only read inside element start tags, so attribute-like text in comments or
-    /// other attributes' values (<c>data-d=</c>, <c>id='d='</c>) never counts.
+    /// Maximum number of element start tags. Path data is not the only expensive input: a document
+    /// of many cheap shapes (<c>&lt;rect/&gt;</c>, <c>&lt;use/&gt;</c>) decodes in linear time, so a
+    /// 2 MiB data URL of small elements can exceed the render cap without a single path attribute.
+    /// The limit is far above UI imagery (icons carry tens of elements, charts dozens to hundreds)
+    /// and rejects only documents whose node count alone is pathological.
+    /// </summary>
+    internal const int MaxElements = 8 * 1024;
+
+    /// <summary>Which budget, if any, the bytes exceed.</summary>
+    internal enum SvgBudgetLimit
+    {
+        None = 0,
+        AttributeChars,
+        ElementCount,
+    }
+
+    /// <summary>True when <see cref="FindExceededLimit"/> reports any exceeded budget.</summary>
+    internal static bool Exceeds(byte[] bytes) => FindExceededLimit(bytes) != SvgBudgetLimit.None;
+
+    /// <summary>
+    /// Reports the first exceeded budget: summed length of <c>d</c> and <c>points</c> attribute
+    /// values above <see cref="MaxAttributeChars"/>, or more than <see cref="MaxElements"/> element
+    /// start tags. A single forward ASCII scan with no allocation that walks XML structure:
+    /// comments, CDATA, processing instructions and DOCTYPE are skipped, attributes are only read
+    /// inside element start tags, so attribute-like text in comments or other attributes' values
+    /// (<c>data-d=</c>, <c>id='d='</c>) never counts, and end tags are not elements.
     /// Callers must pass bytes with the DOCTYPE already removed: this scan ends a declaration at
     /// its first <c>&gt;</c>, so a DTD internal subset would not match what the decoder parses.
     /// <see cref="TryPrepareSvgForDecode"/> guarantees that by rejecting any input where a
     /// declaration survives the strip.
     /// </summary>
-    internal static bool Exceeds(byte[] bytes)
+    internal static SvgBudgetLimit FindExceededLimit(byte[] bytes)
     {
         long total = 0;
+        int elements = 0;
         int i = 0;
         while (i < bytes.Length)
         {
             int lt = Array.IndexOf(bytes, (byte)'<', i);
-            if (lt < 0) return false;
+            if (lt < 0) return SvgBudgetLimit.None;
             i = lt + 1;
 
             if (StartsWith(bytes, i, "!--")) { i = SkipPast(bytes, i + 3, "-->"); continue; }
@@ -48,7 +72,10 @@ internal static class SvgGeometryBudget
             if (StartsWith(bytes, i, "!")) { i = SkipPast(bytes, i + 1, ">"); continue; }
 
             // Element start/end tag: skip the name, then walk name="value" pairs to '>'.
+            int tagNameStart = i;
             while (i < bytes.Length && !IsXmlSpace(bytes[i]) && bytes[i] != (byte)'>' && bytes[i] != (byte)'/') i++;
+            if (i > tagNameStart && ++elements > MaxElements)
+                return SvgBudgetLimit.ElementCount;
             while (i < bytes.Length)
             {
                 while (i < bytes.Length && (IsXmlSpace(bytes[i]) || bytes[i] == (byte)'/')) i++;
@@ -73,12 +100,12 @@ internal static class SvgGeometryBudget
                 {
                     total += end - start;
                     if (total > MaxAttributeChars)
-                        return true;
+                        return SvgBudgetLimit.AttributeChars;
                 }
                 i = end + 1;
             }
         }
-        return false;
+        return SvgBudgetLimit.None;
     }
 
     /// <summary>
@@ -98,13 +125,14 @@ internal static class SvgGeometryBudget
     /// <summary>
     /// Pre-decode policy over the exact bytes the decoder receives: reject encodings the ASCII
     /// scan cannot read, strip the DOCTYPE, reject the input if any declaration survives that
-    /// strip, then enforce the geometry budget. The strip must run before the budget:
-    /// <see cref="Exceeds"/> ends a <c>&lt;!</c> declaration at its first <c>&gt;</c>, while
-    /// <see cref="StripDoctype"/> honors a DTD internal subset, so scanning unstripped bytes
-    /// would count text the decoder never sees (and could miss text it does). The leftover check
-    /// fails closed: <see cref="StripDoctype"/> removes the first textual declaration, which a
-    /// comment or processing instruction before the real one can displace. An SVG that keeps a
-    /// literal <c>&lt;!DOCTYPE</c> in its own comment is therefore rejected with the same reason.
+    /// strip, then enforce the attribute and element budgets. The strip must run before the
+    /// budget: <see cref="FindExceededLimit"/> ends a <c>&lt;!</c> declaration at its first
+    /// <c>&gt;</c>, while <see cref="StripDoctype"/> honors a DTD internal subset, so scanning
+    /// unstripped bytes would count text the decoder never sees (and could miss text it does).
+    /// The leftover check fails closed: <see cref="StripDoctype"/> removes the first textual
+    /// declaration, which a comment or processing instruction before the real one can displace.
+    /// An SVG that keeps a literal <c>&lt;!DOCTYPE</c> in its own comment is therefore rejected
+    /// with the same reason.
     /// </summary>
     /// <param name="bytes">Raw SVG bytes.</param>
     /// <param name="sanitized">Bytes to decode; equal to <paramref name="bytes"/> when nothing was stripped.</param>
@@ -125,10 +153,14 @@ internal static class SvgGeometryBudget
             return false;
         }
 
-        if (Exceeds(sanitized))
+        switch (FindExceededLimit(sanitized))
         {
-            rejection = $"geometry attributes exceed {MaxAttributeChars} characters";
-            return false;
+            case SvgBudgetLimit.AttributeChars:
+                rejection = $"geometry attributes exceed {MaxAttributeChars} characters";
+                return false;
+            case SvgBudgetLimit.ElementCount:
+                rejection = $"element count exceeds {MaxElements}";
+                return false;
         }
 
         rejection = string.Empty;
