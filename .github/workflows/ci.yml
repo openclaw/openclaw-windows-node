@@ -759,12 +759,23 @@ jobs:
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
 
+    - name: Check out promotion crash diagnostics from the pipeline
+      if: always() && steps.tray-ui-crash-window.outcome == 'success' && inputs.promotion_alpha != ''
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ github.sha }}
+        path: .ci-pipeline
+        sparse-checkout: scripts/Capture-CiTestHostCrashMetadata.ps1
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+
     - name: Capture non-memory Tray UI crash metadata
       if: always() && steps.tray-ui-crash-window.outcome == 'success'
       shell: pwsh
       env:
         TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
-      run: ./scripts/Capture-CiTestHostCrashMetadata.ps1 -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+        CRASH_METADATA_SCRIPT: ${{ inputs.promotion_alpha != '' && '.ci-pipeline\scripts\Capture-CiTestHostCrashMetadata.ps1' || '.\scripts\Capture-CiTestHostCrashMetadata.ps1' }}
+      run: '& $env:CRASH_METADATA_SCRIPT -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC'
 
     - name: Run mock Gateway application scenarios
       id: gateway-fixture

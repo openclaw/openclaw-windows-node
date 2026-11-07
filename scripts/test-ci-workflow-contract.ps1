@@ -578,10 +578,24 @@ $trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metada
 Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
     -Message "Tray UI crash metadata must be bounded by an explicit start time."
 $trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
+$crashDiagnosticsCheckout = Get-StepBlock -Text $uiJob -Name "Check out promotion crash diagnostics from the pipeline"
+foreach ($token in @(
+        "if: always() && steps.tray-ui-crash-window.outcome == 'success' && inputs.promotion_alpha != ''",
+        'uses: actions/checkout@v7',
+        'ref: ${{ github.sha }}',
+        'path: .ci-pipeline',
+        'sparse-checkout: scripts/Capture-CiTestHostCrashMetadata.ps1',
+        'sparse-checkout-cone-mode: false',
+        'persist-credentials: false'
+    )) {
+    Assert-Contains -Text $crashDiagnosticsCheckout -Expected $token `
+        -Message "Promotion crash diagnostics must use a separate pinned pipeline checkout: '$token'."
+}
 foreach ($token in @(
         "if: always()",
         "steps.tray-ui-crash-window.outcome == 'success'",
-        "./scripts/Capture-CiTestHostCrashMetadata.ps1",
+        'CRASH_METADATA_SCRIPT: ${{ inputs.promotion_alpha != '''' && ''.ci-pipeline\scripts\Capture-CiTestHostCrashMetadata.ps1'' || ''.\scripts\Capture-CiTestHostCrashMetadata.ps1'' }}',
+        '& $env:CRASH_METADATA_SCRIPT -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
         "TRAY_UI_TEST_STARTED_UTC"
     )) {
     Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
