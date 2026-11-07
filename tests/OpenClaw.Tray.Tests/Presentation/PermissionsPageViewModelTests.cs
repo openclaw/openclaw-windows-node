@@ -135,6 +135,43 @@ public sealed class PermissionsPageViewModelTests
     }
 
     [Fact]
+    public void AppAccessConsents_PersistIndependentlyFromNodeCapabilities()
+    {
+        using var harness = PermissionsHarness.CreateReal();
+        harness.ViewModel.Activate(null);
+        var nodeScreenEnabled = harness.Settings.NodeScreenEnabled;
+        var nodeCameraEnabled = harness.Settings.NodeCameraEnabled;
+        var nodeLocationEnabled = harness.Settings.NodeLocationEnabled;
+
+        harness.ViewModel.ScreenRecordingConsentGiven = true;
+        harness.ViewModel.CameraRecordingConsentGiven = true;
+        harness.ViewModel.LocationConsentGiven = true;
+
+        Assert.True(harness.Settings.ScreenRecordingConsentGiven);
+        Assert.True(harness.Settings.CameraRecordingConsentGiven);
+        Assert.True(harness.Settings.LocationConsentGiven);
+        Assert.Equal(nodeScreenEnabled, harness.Settings.NodeScreenEnabled);
+        Assert.Equal(nodeCameraEnabled, harness.Settings.NodeCameraEnabled);
+        Assert.Equal(nodeLocationEnabled, harness.Settings.NodeLocationEnabled);
+
+        var notifications = 0;
+        harness.ViewModel.ExternalChanged += (_, _) => notifications++;
+        harness.SettingsStore.Update(
+            harness.SettingsStore.CreateOrigin(),
+            edit =>
+            {
+                edit.ScreenRecordingConsentGiven = false;
+                edit.CameraRecordingConsentGiven = false;
+                edit.LocationConsentGiven = false;
+            });
+
+        Assert.False(harness.ViewModel.ScreenRecordingConsentGiven);
+        Assert.False(harness.ViewModel.CameraRecordingConsentGiven);
+        Assert.False(harness.ViewModel.LocationConsentGiven);
+        Assert.Equal(1, notifications);
+    }
+
+    [Fact]
     public void McpOnly_RuntimeProjectsFeatureAndTokenState()
     {
         using var harness = PermissionsHarness.CreateReal();

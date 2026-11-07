@@ -323,7 +323,8 @@ internal sealed partial class SettingsShellView : UserControl
     }
 
     /// <summary>
-    /// Apply persisted nav-pane state. Called from App.ShowHub() after creating the window.
+    /// Applies the pane state saved by the toggle. <c>WorkspaceWindow.EnsureSettings</c> calls this when it
+    /// creates the view, and <see cref="ContentOnly"/> calls it again when the section list returns.
     /// </summary>
     internal void ApplyNavPaneState(SettingsManager settings)
     {
@@ -351,6 +352,22 @@ internal sealed partial class SettingsShellView : UserControl
     private void OnNavPaneToggleButtonClick(object sender, RoutedEventArgs e)
     {
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
+        PersistNavPaneState(NavView.IsPaneOpen);
+    }
+
+    /// <summary>
+    /// Saves the pane state the user chose with the toggle. Only the toggle records that choice: NavigationView
+    /// also opens and closes the pane itself, for example when a pinned page hides the section list or a
+    /// controller's View button opens it, and those changes are not saved.
+    /// </summary>
+    private static void PersistNavPaneState(bool isOpen)
+    {
+        var settings = CurrentApp.Settings;
+        if (settings is null || settings.HubNavPaneOpen == isOpen)
+            return;
+        settings.HubNavPaneOpen = isOpen;
+        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
+        try { settings.Save(); } catch { /* swallow — don't block UI */ }
     }
 
     private void UpdatePaneChrome()
@@ -373,8 +390,12 @@ internal sealed partial class SettingsShellView : UserControl
         get => !NavView.IsPaneVisible;
         set
         {
+            var wasContentOnly = ContentOnly;
             NavView.IsPaneVisible = !value;
             SettingsNavigationToolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
+            if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
+                ApplyNavPaneState(settings);
         }
     }
 
@@ -416,13 +437,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _active = true;
-        var showAbout = tag == "about";
-        NavigateInternal(showAbout ? "settings" : tag);
-        if (ContentFrame.Content is SettingsPage settingsPage)
-        {
-            if (showAbout) settingsPage.ShowAbout();
-            else if (tag == "settings") settingsPage.ShowTop();
-        }
+        NavigateInternal(tag);
     }
 
     /// <summary>
@@ -612,8 +627,10 @@ internal sealed partial class SettingsShellView : UserControl
             NavSessions.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
-            NavAdvanced.Visibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
-            NavGatewaySeparator.Visibility = vis;
+            var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
+            AgentsNavItem.Visibility = gatewayToolVisibility;
+            NavUsage.Visibility = gatewayToolVisibility;
+            NavConfig.Visibility = gatewayToolVisibility;
 
             if (!connected)
             {
@@ -794,25 +811,6 @@ internal sealed partial class SettingsShellView : UserControl
             });
     }
 
-    /// <summary>
-    /// Persist the NavigationView's expanded/compact state on every toggle.
-    /// Both PaneOpening and PaneClosing route here; we read the current
-    /// state from the sender so we don't have to distinguish the two.
-    /// </summary>
-    private void OnNavPaneStateChanged(NavigationView sender, object args)
-    {
-        var settings = CurrentApp.Settings;
-        if (settings == null) return;
-        // PaneOpening fires BEFORE IsPaneOpen flips, PaneClosing fires
-        // BEFORE it flips the other way. Use the event identity to know
-        // the new state rather than reading IsPaneOpen.
-        var newState = args is NavigationViewPaneClosingEventArgs ? false : true;
-        if (settings.HubNavPaneOpen == newState) return;
-        settings.HubNavPaneOpen = newState;
-        // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
-        try { settings.Save(); } catch { /* swallow — don't block UI */ }
-    }
-
     private void InitializeCurrentPage()
     {
         switch (ContentFrame.Content)
@@ -832,30 +830,12 @@ internal sealed partial class SettingsShellView : UserControl
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
-            case AgentEventsPage agentEvents:
-                agentEvents.Initialize(GetAgentIds());
-                agentEvents.ClearCentralCache = () => AppModel?.ClearAgentEvents();
-                agentEvents.PopulateAgentFilter(GetAgentIds());
-                // When navigated via top-level nav (tag "agentevents") show all
-                // agents; when reached via an agent-scoped tag (e.g.
-                // "agent:main:agentevents") scope to that agent. Reading
-                // _currentNavTag (set by OnContentFrameNavigated) is more
-                // reliable than peeking NavView.SelectedItem, which may briefly
-                // disagree during Back/Forward.
-                var eventsAgentFilter = _currentNavTag?.StartsWith("agent:") == true ? _currentAgentId : null;
-                agentEvents.SetAgentFilter(eventsAgentFilter);
-                // Seed existing events from AppState
-                if (agentEvents.EventCount == 0 && AppModel?.AgentEvents is { Count: > 0 } events)
-                {
-                    for (int i = events.Count - 1; i >= 0; i--)
-                        agentEvents.AddEvent(events[i]);
-                }
-                break;
             case WorkspacePage workspace:
                 workspace.AgentId = _currentAgentId;
                 workspace.Initialize();
                 break;
             case SettingsPage settings: settings.Initialize(); break;
+            case AboutPage about: about.Initialize(); break;
             case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
             case DebugPage debug: debug.Initialize(); break;
         }
@@ -916,7 +896,6 @@ internal sealed partial class SettingsShellView : UserControl
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
         { "instances",   "\uE977" },
-        { "agentevents", "\uE943" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },
@@ -928,9 +907,9 @@ internal sealed partial class SettingsShellView : UserControl
         { "activity",    "\uEA95" },
         { "notifications", "\uE7F4" },
         { "debug",       "\uEBE8" },
+        { "about",       FluentIconCatalog.About },
     };
 
-    private const string AdvancedGroupGlyph = "\uE950";
     private const string AgentsGroupGlyph = "\uE99A";
     private bool _isHighContrast;
 
@@ -971,8 +950,6 @@ internal sealed partial class SettingsShellView : UserControl
 
         if (item == AgentsNavItem)
             return FluentIconCatalog.Build(AgentsGroupGlyph, 20);
-        if (item == NavAdvanced)
-            return FluentIconCatalog.Build(AdvancedGroupGlyph, 20);
 
         return FluentIconCatalog.Build("\uE700", 20);
     }

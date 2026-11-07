@@ -354,6 +354,72 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task SettingsPane_KeepsToggleChoiceAcrossPinnedPagesAndRestart()
+    {
+        await WithAppAsync(async run =>
+        {
+            var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")!;
+            const int CollapsedPaneStablePolls = 5;
+            // Search sits in the section-list toolbar and shows only while the list is expanded.
+            bool ListExpanded() => FindById(run, "SettingsSearch") is { Current.IsOffscreen: false };
+            async Task ShowFullSettingsAsync(string description)
+            {
+                await run.InvokeAsync("app.navigate", new { page = "settings" });
+                await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false
+                    && FindById(run, "SettingsTogglePane") is { Current.IsOffscreen: false }, description);
+            }
+            async Task WaitForCollapsedSettingsAsync(string description)
+            {
+                var stablePolls = 0;
+                await WaitUiAsync(run, () =>
+                {
+                    if (FindById(run, "SettingsTogglePane") is not { Current.IsOffscreen: false } || ListExpanded())
+                    {
+                        stablePolls = 0;
+                        return false;
+                    }
+
+                    return ++stablePolls >= CollapsedPaneStablePolls;
+                }, description);
+            }
+            async Task ShowPinnedConnectionAsync()
+            {
+                Invoke(await WaitForElementByIdAsync(run, "WorkspacePinnedPage:connection", "Connection pin"));
+                await WaitUiAsync(run, () => FindById(run, "ConnectionPageMarker")?.Current.IsOffscreen == false, "embedded Connection");
+            }
+
+            await ShowFullSettingsAsync("Settings");
+            await WaitUiAsync(run, ListExpanded, "section list expanded by default");
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            Invoke(await WaitForElementByIdAsync(run, "WorkspacePagesCustomize", "pin customization"));
+            Invoke(await WaitForElementByIdAsync(run, "WorkspacePagesToggle:connection", "Connection pin toggle"));
+            // A pinned page hides the section list. Exit while one is showing.
+            await ShowPinnedConnectionAsync();
+            await run.RestartAppAsync(app);
+
+            await ShowFullSettingsAsync("Settings after restart");
+            await WaitUiAsync(run, ListExpanded, "section list still expanded after exiting from a pinned page");
+            Invoke(FindById(run, "SettingsTogglePane")!);
+            await WaitUiAsync(run, () => !ListExpanded(), "toggle collapses the section list");
+            await run.WaitForAsync(() =>
+            {
+                using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.Profile.DataDirectory, "settings.json")));
+                return Task.FromResult(!settings.RootElement.GetProperty("HubNavPaneOpen").GetBoolean());
+            }, "toggle choice persisted");
+
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await ShowPinnedConnectionAsync();
+            await ShowFullSettingsAsync("Settings after the pinned page");
+            await WaitForCollapsedSettingsAsync("section list stays collapsed after returning from a pinned page");
+
+            await run.RestartAppAsync(app);
+            await ShowFullSettingsAsync("Settings after restarting with the list collapsed");
+            await WaitForCollapsedSettingsAsync("section list stays collapsed after restarting");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task PinnedPages_NativeSwitchTiming()
     {
         await WithAppAsync(async run =>

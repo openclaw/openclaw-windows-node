@@ -96,9 +96,14 @@ internal static class HubSearchCatalog
     internal static IEnumerable<HubSearchItem> Navigation(
         IEnumerable<HubCommand> commands, bool connected, bool dashboardSupported, Func<string, string> localize)
     {
-        foreach (var command in commands)
+        var destinations = commands.GroupBy(command =>
+            command.Action is { Kind: HubCommandActionKind.Navigate, Value: { } tag }
+                ? HubCommandAction.Navigate(HubPageRegistry.NormalizeTag(tag, HubPageRegistry.ParseAgentId(tag)))
+                : command.Action);
+        foreach (var destination in destinations)
         {
-            if (command.Action.Kind == HubCommandActionKind.Navigate && command.Action.Value is { } tag)
+            var command = destination.First();
+            if (destination.Key.Kind == HubCommandActionKind.Navigate && destination.Key.Value is { } tag)
             {
                 if (!connected && HubPageRegistry.IsGatewayPageTag(tag)) continue;
                 if (tag.StartsWith("agent:", StringComparison.Ordinal) && HubPageRegistry.ParseAgentId(tag).Length == 0) continue;
@@ -110,7 +115,8 @@ internal static class HubSearchCatalog
                     continue;
                 }
                 yield return new($"page:{tag}", HubSearchGroup.Settings, localize(presentation.TitleKey), command.Subtitle,
-                    presentation.Icon, new(HubSearchTargetKind.Page, tag), $"{tag} {command.Title}",
+                    presentation.Icon, new(HubSearchTargetKind.Page, tag),
+                    string.Join(" ", destination.Select(alias => $"{alias.Action.Value} {alias.Title} {alias.Subtitle}")),
                     Counterpart(tag, dashboardSupported));
             }
             else if (command.Action.Kind == HubCommandActionKind.OpenDashboard && string.IsNullOrEmpty(command.Action.Value))

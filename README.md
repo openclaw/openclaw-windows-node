@@ -67,7 +67,7 @@ OpenClaw applies more than one trust check:
 - **Permissions** controls what this PC advertises.
 - **Connection** shows pairing and reapproval requests.
 - **Command Center** explains commands filtered by gateway policy and provides copyable repair commands for safe capabilities.
-- **Advanced > Config** provides a schema-guided editor for the connected gateway's configuration.
+- **Config** provides a schema-guided editor for the connected gateway's configuration.
 
 After changing gateway command policy, approve any `pending-reapproval` request shown by the app and reconnect the node. The app never silently opts into privacy-sensitive gateway commands.
 

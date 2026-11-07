@@ -102,7 +102,7 @@ static class FluentIconCatalog
     public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
     public const string Develop = "\uE943";        // Code — engineering / explorations action
     public const string Telemetry = "\uE9F5";      // Processing — ongoing telemetry endpoint/stream
-    public const string AgentEvents = "\uE81C";    // History — agent events feed
+    public const string AgentEvents = "\uE81C";    // History, used by the Connection Timeline action
     public const string Doctor = "\uE95E";         // Health — "Run gateway doctor" health-check action
 
     // ── Agents / Workspace surface ─────────────────────────────────

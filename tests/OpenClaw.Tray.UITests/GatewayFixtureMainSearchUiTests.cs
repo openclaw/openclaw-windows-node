@@ -318,14 +318,17 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
+            var inputId = "WorkspaceSearchBox";
             foreach (var (query, title, marker) in new[]
             {
-                ("Agent Events", "Event Stream", "AgentEventsPageMarker"),
+                ("About", "About", "AboutPageMarker"),
+                ("General", "General", "SettingsPageMarker"),
+                ("Notification preferences", "General", "SettingsPageMarker"),
+                ("Models", "Models", "DefaultModelPageMarker"),
                 ("Config", "Config", "ConfigPageMarker")
             })
             {
                 Send(run, window, "^k");
-                var inputId = query == "Agent Events" ? "WorkspaceSearchBox" : "SettingsSearchBox";
                 await WaitUiAsync(run, () => FindById(run, inputId) is not null, "shared search popup");
                 var edit = SearchEdit(run, inputId);
                 ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
@@ -341,8 +344,17 @@ public sealed partial class GatewayFixtureUiTests
                 OwnedWindowCapture.Save(run, window, $"search-native-{query.Replace(" ", "-").ToLowerInvariant()}.png", row);
                 edit.SetFocus();
                 Send(run, window, "{ENTER}");
-                await WaitUiAsync(run, () => FindById(run, marker) is { Current.IsOffscreen: false },
+                await WaitUiAsync(run, () => FindById(run, inputId) is null &&
+                    FindById(run, marker) is { Current.IsOffscreen: false },
                     $"exact native {title} page");
+                if (query == "Models")
+                {
+                    var heading = FindById(run, marker)!;
+                    Assert.Equal("Models", heading.Current.Name);
+                    await WaitForStablePageGeometryAsync(run, window, heading.Current.BoundingRectangle.Left);
+                    OwnedWindowCapture.Save(run, window, "models-page.png", heading);
+                }
+                inputId = "SettingsSearchBox";
             }
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "chat.send");
         });

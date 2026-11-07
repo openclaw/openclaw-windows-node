@@ -54,6 +54,64 @@ public class StartupSetupStateTests
     }
 
     [Fact]
+    public void SettingsGatewayInventory_DoesNotTreatNativeLoopbackGatewayAsWsl()
+    {
+        var nativeGateway = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://localhost:18789",
+            NativePackageFamilyName = "OpenClawGateway_123"
+        };
+
+        Assert.False(SetupExistingGatewayClassifier.HasWslInstallationForSettings(
+            hasSetupState: false,
+            records: [nativeGateway],
+            activeGateway: nativeGateway,
+            legacyGatewayUrl: nativeGateway.Url));
+    }
+
+    [Fact]
+    public void SettingsGatewayInventory_PreservesManagedWslEvidenceAlongsideNativeGateway()
+    {
+        var managedGateway = new GatewayRecord
+        {
+            Id = "managed",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway"
+        };
+        var nativeGateway = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://localhost:18789",
+            NativePackageFamilyName = "OpenClawGateway_123"
+        };
+
+        Assert.True(SetupExistingGatewayClassifier.HasWslInstallationForSettings(
+            hasSetupState: false,
+            records: [managedGateway, nativeGateway],
+            activeGateway: nativeGateway,
+            legacyGatewayUrl: nativeGateway.Url));
+    }
+
+    [Fact]
+    public void SettingsGatewayInventory_PreservesExistingSetupStateEvidence()
+    {
+        var nativeGateway = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://localhost:18789",
+            NativePackageFamilyName = "OpenClawGateway_123"
+        };
+
+        Assert.True(SetupExistingGatewayClassifier.HasWslInstallationForSettings(
+            hasSetupState: true,
+            records: [nativeGateway],
+            activeGateway: nativeGateway,
+            legacyGatewayUrl: nativeGateway.Url));
+    }
+
+    [Fact]
     public void RequiresSetup_ReturnsFalse_WhenNodeHasStoredDeviceToken()
     {
         using var temp = TempSettings.Create();

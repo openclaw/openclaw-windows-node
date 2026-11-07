@@ -231,7 +231,7 @@ public sealed class WorkspaceNavigationTests
     public static IEnumerable<object[]> RemovedRoutes() =>
         new[] { "agents", "agent-detail", "writer-detail", "dashboards", "dashboard-detail", "canvas",
             "systems", "system-detail", "automations", "automation-detail", "plugins", "skills",
-            "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more" }
+            "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more", "agentevents" }
         .Select(route => new object[] { route });
 
     [Theory]

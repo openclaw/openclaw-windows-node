@@ -117,64 +117,6 @@ public class AppStateTests
         Assert.DoesNotContain(nameof(AppState.AuthFailureMessage), fired);
     }
 
-    // ── AddAgentEvent ring buffer ───────────────────────────────────────
-
-    [Fact]
-    public void AddAgentEvent_NewestFirst()
-    {
-        var state = CreateState();
-        var evt1 = new AgentEventInfo { RunId = "r1", Seq = 1 };
-        var evt2 = new AgentEventInfo { RunId = "r2", Seq = 2 };
-
-        state.AddAgentEvent(evt1);
-        state.AddAgentEvent(evt2);
-
-        Assert.Equal(2, state.AgentEvents.Count);
-        Assert.Equal("r2", state.AgentEvents[0].RunId); // newest first
-        Assert.Equal("r1", state.AgentEvents[1].RunId);
-    }
-
-    [Fact]
-    public void AddAgentEvent_CapsAt400()
-    {
-        var state = CreateState();
-        for (int i = 0; i < 450; i++)
-            state.AddAgentEvent(new AgentEventInfo { RunId = $"r{i}", Seq = i });
-
-        Assert.Equal(400, state.AgentEvents.Count);
-        Assert.Equal("r449", state.AgentEvents[0].RunId); // newest
-    }
-
-    [Fact]
-    public void AddAgentEvent_FiresAgentEventAdded()
-    {
-        var state = CreateState();
-        AgentEventInfo? received = null;
-        state.AgentEventAdded += evt => received = evt;
-
-        var expected = new AgentEventInfo { RunId = "test", Seq = 1 };
-        state.AddAgentEvent(expected);
-
-        Assert.NotNull(received);
-        Assert.Equal("test", received.RunId);
-    }
-
-    [Fact]
-    public void ClearAgentEvents_ClearsAndFiresPropertyChanged()
-    {
-        var state = CreateState();
-        state.AddAgentEvent(new AgentEventInfo { RunId = "r1", Seq = 1 });
-        Assert.Single(state.AgentEvents);
-
-        var fired = new List<string>();
-        state.PropertyChanged += (_, e) => fired.Add(e.PropertyName!);
-
-        state.ClearAgentEvents();
-
-        Assert.Empty(state.AgentEvents);
-        Assert.Contains(nameof(AppState.AgentEvents), fired);
-    }
-
     // ── Session previews ────────────────────────────────────────────────
 
     [Fact]
