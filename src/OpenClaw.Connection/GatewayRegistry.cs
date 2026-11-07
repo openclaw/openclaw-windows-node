@@ -104,6 +104,64 @@ public sealed class GatewayRegistry
     public GatewayRegistrySnapshot AdoptPersistedSnapshot(GatewayRegistrySnapshot expectedMemory) =>
         AdoptPersistedCore(expectedMemory, null, null);
 
+    /// <summary>
+    /// Loads a registry file written by another instance when this instance has no unsaved edits.
+    /// Returns false when local edits are still unsaved or the file cannot be read.
+    /// </summary>
+    public bool TryAdoptExternalSnapshot()
+    {
+        GatewayRegistrySnapshot baseline;
+        lock (_lock)
+        {
+            if (!HasSameSetupAuthority(new(_records, _activeId), _persisted))
+                return false;
+            baseline = _persisted;
+        }
+
+        try
+        {
+            AdoptPersistedCore(baseline, null, null);
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or JsonException)
+        {
+            _logger.Warn($"Could not adopt the saved Gateway registry: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes a gateway and saves. If the save fails, the in-memory list is restored.
+    /// </summary>
+    public void RemoveAndSave(string id)
+    {
+        List<GatewayRecord> snapshot;
+        string? activeId;
+        lock (_lock)
+        {
+            var beforeRecords = _records.ToList();
+            var beforeActive = _activeId;
+            _records.RemoveAll(record => record.Id == id);
+            if (_activeId == id)
+                _activeId = null;
+            try
+            {
+                SaveLocked();
+            }
+            catch
+            {
+                _records = beforeRecords;
+                _activeId = beforeActive;
+                throw;
+            }
+
+            snapshot = _records.ToList();
+            activeId = _activeId;
+        }
+
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, activeId));
+    }
+
     private GatewayRegistrySnapshot AdoptPersistedCore(
         GatewayRegistrySnapshot baseline, GatewayRegistrySnapshot? expectedOutput, string? completedGatewayId)
     {
