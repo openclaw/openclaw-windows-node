@@ -1029,7 +1029,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
         try
         {
-            await _bridge.ResolveExecApprovalAsync(requestId, decision);
+            await _bridge.ResolveExecApprovalAsync(requestId, _state.AlternateApprovalId(requestId), decision);
         }
         catch (Exception ex)
         {
@@ -1037,7 +1037,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             // retry. Clearing it on failure would silently swallow the
             // problem and leave the agent waiting on an approval that the
             // user has no way to re-issue.
-            Logger.Warn($"[Approval] response send failed requestId={requestId}: {ex.Message} (banner preserved for retry)");
+            Logger.Warn($"[Approval] response send failed decision={decision}: {ex.GetType().Name} (banner preserved for retry)");
             return;
         }
 
