@@ -12,6 +12,18 @@ dotnet test tests\OpenClaw.Tray.UITests --no-build -c Debug -r win-x64 --filter 
 
 Those tests launch the app in a real Windows desktop process and scan pages for WCAG violations through Axe.Windows. Failures are summarized in the GitHub Actions step summary and written to `Accessibility.trx`.
 
+Failure diagnostics retain rule IDs, bounded rule descriptions and canonical
+control types with scan-result ordinals. They omit UIA names, automation IDs
+(which can be data-derived), arbitrary properties and desktop focus state.
+Only the first 20 violations are printed; the total count remains visible.
+Missing or inconsistent scan metadata fails validation, including incomplete
+results for excluded rules. Test-authored context labels are bounded to 128
+characters; use static page/scenario labels, never user content.
+
+The data-only `FullyQualifiedName~AxeHelperTests` filter exercises this failure
+reporting without launching Companion or a native UI fixture. It does not
+replace real accessibility scans.
+
 ## Running locally
 
 From the repository root:
