@@ -319,7 +319,7 @@ public sealed class PinnedPagesTests
         Assert.Equal("agent:C:workspace", PinnedPages.ResolveRoute("workspace", "C"));
         Assert.Equal("agent:main:cron", PinnedPages.ResolveRoute("cron", null));
         Assert.Equal("usage", PinnedPages.ResolveRoute("usage", "C"));
-        Assert.Equal("instances", PinnedPages.ResolveRoute("instances", "A"));
+        Assert.Equal("systems", PinnedPages.ResolveRoute("instances", "A"));
     }
 
     [Fact]
@@ -361,7 +361,12 @@ public sealed class PinnedPagesTests
         Assert.Contains("_sidebarInvoked = true;", pins);
         Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", window);
         Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
-        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", window);
+        var operation = window[window.IndexOf("private void ShowOperation(", StringComparison.Ordinal)..];
+        operation = operation[..operation.IndexOf("private void OnEmbeddedOperationClosed(", StringComparison.Ordinal)];
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && _settings is { ContentOnly: true }", operation);
+        Assert.Contains("EmbeddedOperationInfo.Severity = severity", operation);
+        Assert.Contains("EmbeddedOperationInfo.Message = message", operation);
+        Assert.DoesNotContain("Destination.Embedded", operation);
         Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);

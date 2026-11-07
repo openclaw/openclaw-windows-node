@@ -260,7 +260,47 @@ public sealed class WorkspaceWindowProofTests
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: true);
-        Assert.Equal(toggle.Top, Find(root, "SettingsTogglePane").Current.BoundingRectangle.Top);
+        var scale = Find(root, "SettingsTogglePane").Current.BoundingRectangle.Width / 40;
+        foreach (var widthDip in new[] { 800, 1000 })
+        {
+            var window = (WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern);
+            window.SetWindowVisualState(WindowVisualState.Normal);
+            await WaitUntilAsync(() => window.Current.WindowVisualState == WindowVisualState.Normal &&
+                ((TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern)).Current.CanResize);
+            var transform = (TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern);
+            var boundsBeforeResize = root.Current.BoundingRectangle;
+            var requestedWidth = widthDip * scale;
+            var resizeContext = $"HWND={app.HubWindowHandle}; PID={root.Current.ProcessId}; " +
+                $"state={window.Current.WindowVisualState}; CanResize={transform.Current.CanResize}; " +
+                $"bounds={boundsBeforeResize}; requested={requestedWidth}x{boundsBeforeResize.Height}; scale={scale}";
+            try
+            {
+                transform.Resize(requestedWidth, boundsBeforeResize.Height);
+            }
+            catch (InvalidOperationException exception)
+            {
+                throw new InvalidOperationException($"Settings chrome resize failed. {resizeContext}", exception);
+            }
+            await WaitUntilAsync(() => Math.Abs(root.Current.BoundingRectangle.Width / scale - widthDip) <= 2);
+            await WaitUntilAsync(() => Find(root, "SettingsPageMarker").Current.BoundingRectangle.Top >=
+                Math.Max(Find(root, "SettingsBack").Current.BoundingRectangle.Bottom,
+                    Find(root, "SettingsForward").Current.BoundingRectangle.Bottom));
+            var boundsBeforeCapture = root.Current.BoundingRectangle;
+            Capture(app, theme, $"settings-collapsed-{widthDip}", preserveWindowState: true);
+            Assert.Equal(WindowVisualState.Normal, window.Current.WindowVisualState);
+            Assert.Equal(boundsBeforeCapture, root.Current.BoundingRectangle);
+        }
+        var collapsedHeader = Find(root, "SettingsPageMarker").Current.BoundingRectangle;
+        await app.NavigateAsync("permissions", "PermissionsPage", "PermissionsPageMarker");
+        Assert.True(Find(root, "PermissionsPageMarker").Current.BoundingRectangle.Top >=
+            Math.Max(Find(root, "SettingsBack").Current.BoundingRectangle.Bottom,
+                Find(root, "SettingsForward").Current.BoundingRectangle.Bottom));
+        Capture(app, theme, "permissions-collapsed", preserveWindowState: true);
+        Invoke(Find(root, "SettingsBack"));
+        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
+        Assert.Equal(toggle.Top - title.Bottom,
+            Find(root, "SettingsTogglePane").Current.BoundingRectangle.Top -
+                Find(root, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom);
         await WaitUntilAsync(() => root.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
             .Cast<AutomationElement>().Where(item => !item.Current.IsOffscreen &&
@@ -281,6 +321,8 @@ public sealed class WorkspaceWindowProofTests
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: false);
+        await WaitUntilAsync(() => Find(root, "SettingsPageMarker").Current.BoundingRectangle.Top < collapsedHeader.Top);
+        Capture(app, theme, "settings-expanded", preserveWindowState: true);
         // Regression: leaving Settings hides its (closed) search flyout. That must not leave the
         // deferred-open helper waiting for a close that never comes, which dropped every shortcut.
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
@@ -298,6 +340,50 @@ public sealed class WorkspaceWindowProofTests
             await Task.Delay(500);
         }
         Capture(app, theme, "settings-chrome");
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch(string theme)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
+        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
+
+        await FocusForKeyboardAsync(app, root, "SettingsPageAutoStart");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        Assert.True(IsVisible(root, "SettingsSearch"));
+        Assert.True(Find(root, "SettingsPageAutoStart").Current.HasKeyboardFocus);
+
+        await FocusForKeyboardAsync(app, root, "SettingsNavSettings");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
+            Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
+        Assert.Equal("Expand navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
+
+        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+        await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
+        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
+
+        Invoke(Find(root, "SettingsSearch"));
+        await WaitUntilAsync(() => FindPopup(root, "SettingsSearchBox")?.Current.HasKeyboardFocus == true);
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => FindPopup(root, "SettingsSearchBox") is null);
+        Assert.True(IsVisible(root, "SettingsSearch"));
+        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
+
+        await FocusForKeyboardAsync(app, root, "SettingsTogglePane");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
+            Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        Assert.Equal("Expand navigation", Find(root, "SettingsTogglePane").Current.Name);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
     }
 
     private static async Task VerifySettingsFooterAsync(AutomationElement root, bool compact)
@@ -1046,11 +1132,11 @@ public sealed class WorkspaceWindowProofTests
                 "TestResults", "WorkspaceProof")
             : null);
 
-    private static void Capture(AccessibilityAppFixture app, string theme, string page)
+    private static void Capture(AccessibilityAppFixture app, string theme, string page, bool preserveWindowState = false)
     {
         var directory = ProofDirectory;
         if (string.IsNullOrEmpty(directory)) return;
         using var environment = new EnvironmentScope("OPENCLAW_UI_SCREENSHOT_PATH", Path.Combine(directory, $"{theme}-{page}.png"));
-        app.CaptureHubScreenshotIfRequested();
+        app.CaptureHubScreenshotIfRequested(preserveWindowState);
     }
 }

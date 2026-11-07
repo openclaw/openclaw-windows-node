@@ -135,7 +135,7 @@ public sealed partial class GatewayScenario
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
-    /// <summary>Systems inventory: machines, pairings, statistics and backups. Mutations remain rejected.</summary>
+    /// <summary>Systems inventory: machines, pairings and statistics. Mutations remain rejected.</summary>
     public static GatewayScenario CreateSystems(bool empty)
     {
         var browse = CreateBrowse();

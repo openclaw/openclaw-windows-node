@@ -1,3 +1,4 @@
+// Connects the Settings frame to Systems state and actions. Usage: navigate to "systems" or "systems:<environment-id>".
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
@@ -19,12 +20,14 @@ namespace OpenClawTray.Pages;
 /// <summary>
 /// Systems page (formerly Instances). Hosts the Reactor <see cref="SystemsPageView"/>,
 /// feeds it app state and Gateway events through <see cref="SystemsController"/>, and owns
-/// the Gateway operations its confirmation dialogs run.
+/// the node rename/forget operations its confirmation dialogs run. Pairing decisions stay on
+/// the Connection page and web handoffs use the app's dashboard launcher.
 /// </summary>
-public sealed partial class SystemsPage : Page, IDisposable
+public sealed partial class SystemsPage : Page, IDisposable, Presentation.ISettingsPageContentInset
 {
     private static App CurrentApp => (App)Application.Current!;
     private readonly SystemsController _controller;
+    private readonly SystemsViewport _viewport = new();
     private ReactorHostControl? _host;
     private AppState? _appState;
     private IOperatorGatewayClient? _client;
@@ -42,6 +45,9 @@ public sealed partial class SystemsPage : Page, IDisposable
         Unloaded += (_, _) => Teardown();
     }
 
+    void Presentation.ISettingsPageContentInset.ApplyTopInset(double topInset) =>
+        _viewport.ApplyTopInset(topInset);
+
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -55,7 +61,7 @@ public sealed partial class SystemsPage : Page, IDisposable
     /// <summary>
     /// Systems pages are not cached, so leaving the frame ends this instance. Reactor keeps its tree
     /// across Unloaded (which also fires on reparenting), so the final cleanup runs here and when
-    /// the Hub window closes (see <see cref="Dispose"/>).
+    /// the owning Settings surface is deactivated or disposed (see <see cref="Dispose"/>).
     /// </summary>
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
@@ -80,7 +86,7 @@ public sealed partial class SystemsPage : Page, IDisposable
         _controller.Dispose();
     }
 
-    /// <summary>Called by HubWindow when this page becomes the navigation target.</summary>
+    /// <summary>Called by SettingsShellView when this page becomes the navigation target.</summary>
     public void Initialize()
     {
         if (_disposed)
@@ -102,7 +108,7 @@ public sealed partial class SystemsPage : Page, IDisposable
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 VerticalContentAlignment = VerticalAlignment.Stretch,
             };
-            var props = new SystemsPageProps(_controller, CreateActions());
+            var props = new SystemsPageProps(_controller, CreateActions()) { Viewport = _viewport };
             _host.Mount(_ => Component<SystemsPageView, SystemsPageProps>(props));
             ReactorHost.Child = _host;
         }
@@ -121,7 +127,7 @@ public sealed partial class SystemsPage : Page, IDisposable
             _controller.UpdateNodes(nodes);
     }
 
-    /// <summary>Sessions, config and pairings the app clears on disconnect; reloaded on each connection.</summary>
+    /// <summary>Sessions and pairings the app clears on disconnect; reloaded on each connection.</summary>
     private async Task RefreshAuxiliaryAsync()
     {
         if (CurrentApp.GatewayClient is not { } client)
@@ -129,7 +135,6 @@ public sealed partial class SystemsPage : Page, IDisposable
         try
         {
             await client.RequestSessionsAsync();
-            await RefreshConfigAsync(client);
             await (_approvals?.RefreshFromGatewayAsync() ?? Task.CompletedTask);
         }
         catch (Exception ex)
@@ -137,12 +142,6 @@ public sealed partial class SystemsPage : Page, IDisposable
             Logger.Warn($"[SystemsPage] Auxiliary refresh failed: {ex.Message}");
         }
     }
-
-    /// <summary>Desktop setup reads the host config, which only admins may read.</summary>
-    private static Task RefreshConfigAsync(IOperatorGatewayClient client) =>
-        SystemsController.HasScope(client.GrantedOperatorScopes, "operator.admin", legacyDefault: false)
-            ? client.RequestConfigAsync()
-            : Task.CompletedTask;
 
     private void Teardown()
     {
@@ -188,7 +187,6 @@ public sealed partial class SystemsPage : Page, IDisposable
                 break;
             case nameof(AppState.Presence):
             case nameof(AppState.Sessions):
-            case nameof(AppState.Config):
             case nameof(AppState.NodePairList):
             case nameof(AppState.DevicePairList):
                 PushInputs();
@@ -198,12 +196,7 @@ public sealed partial class SystemsPage : Page, IDisposable
 
     private void OnApprovalsChanged(object? sender, EventArgs e) => OnUi(PushInputs);
 
-    private void OnInventoryChanged(object? sender, string eventName) => OnUi(() =>
-    {
-        _controller.RequestRefresh();
-        if (eventName == "config.changed" && CurrentApp.GatewayClient is { } client)
-            _ = RefreshConfigAsync(client);
-    });
+    private void OnInventoryChanged(object? sender, string eventName) => OnUi(_controller.RequestRefresh);
 
     private void OnHostStats(object? sender, NodeHostStatsEvent update) =>
         OnUi(() => _controller.ApplyHostStats(update));
@@ -225,7 +218,6 @@ public sealed partial class SystemsPage : Page, IDisposable
             Scopes = client?.GrantedOperatorScopes ?? Array.Empty<string>(),
             Presence = _appState?.Presence ?? Array.Empty<PresenceEntry>(),
             Sessions = _appState?.Sessions ?? Array.Empty<SessionInfo>(),
-            Config = _appState?.Config,
             PendingApprovals = _approvals?.Current ?? Array.Empty<PendingApproval>(),
             NodePairList = _appState?.NodePairList,
             OwnNodeIds = CurrentApp.OwnNodeIds,
@@ -253,47 +245,46 @@ public sealed partial class SystemsPage : Page, IDisposable
         },
         Navigate = tag => ((IAppCommands)CurrentApp).Navigate(tag),
         CopyText = text => ClipboardHelper.CopyText(text),
+        // The launcher owns tunnel, credential and browser failures; device tokens never enter the URL.
+        OpenWeb = path => ((IAppCommands)CurrentApp).OpenDashboard(path),
+        PostUi = action => DispatcherQueue.TryEnqueue(() => { if (!_disposed) action(); }),
         RenameNode = RenameNodeAsync,
         ForgetNode = ForgetNodeAsync,
-        DecidePairing = DecidePairingAsync,
-        EnableHostDesktop = EnableHostDesktopAsync,
     };
+
+    /// <summary>The live client, or the reason a node management request must not be sent.</summary>
+    private static (IOperatorGatewayClient? Client, string? Error) ManagementClient()
+    {
+        if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
+            return (null, SystemsText.S("Disconnected_Title"));
+        // Scopes can change after the dialog opened, so check again before sending.
+        return SystemsController.HasScope(client.GrantedOperatorScopes, "operator.pairing", legacyDefault: true)
+            ? (client, null)
+            : (null, SystemsText.S("Manage_PairingRequired"));
+    }
 
     private async Task<string?> RenameNodeAsync(GatewayNodeInfo node, string name)
     {
-        if (CurrentApp.GatewayClient is not { } client)
-            return SystemsText.S("Disconnected_Title");
+        var (client, error) = ManagementClient();
+        if (client is null)
+            return error;
         var result = await client.NodeRenameAsync(node.NodeId, name);
         if (!result.Success)
             return result.ErrorMessage ?? LocalizationHelper.GetString("NodesPage_Rename_Error_Generic");
         // The Gateway does not broadcast renames. Reload node.list for the app and the inventory,
         // whose environment label is the name the page shows.
         _ = client.RequestNodesAsync();
-        _ = _controller.RefreshAsync(manual: false);
+        _ = _controller.RefreshAsync();
         return null;
     }
 
     private static async Task<string?> ForgetNodeAsync(GatewayNodeInfo node)
     {
-        if (CurrentApp.GatewayClient is not { } client)
-            return SystemsText.S("Disconnected_Title");
+        var (client, error) = ManagementClient();
+        if (client is null)
+            return error;
         var result = await client.NodePairRemoveAsync(node.NodeId);
         // On success the Gateway's node.pair.resolved broadcast refreshes the inventory.
         return result.Success ? null : result.ErrorMessage ?? LocalizationHelper.GetString("NodesPage_Forget_Error_Generic");
-    }
-
-    private async Task<string?> DecidePairingAsync(PendingApproval approval, bool approve)
-    {
-        if (_approvals is not { } approvals)
-            return SystemsText.S("Pairing_NotSent");
-        var sent = approve ? await approvals.ApproveAsync(approval.Key) : await approvals.RejectAsync(approval.Key);
-        PushInputs();
-        return sent ? null : SystemsText.S("Pairing_NotSent");
-    }
-
-    private async Task EnableHostDesktopAsync()
-    {
-        if (await _controller.EnableHostDesktopAsync() && CurrentApp.GatewayClient is { } client)
-            await client.RequestConfigAsync();
     }
 }

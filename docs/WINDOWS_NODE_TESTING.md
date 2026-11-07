@@ -39,8 +39,8 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.16`, which includes the recycled-anchor
-workaround from
+Both Reactor packages use `0.1.0-preview.17`, including the recycled-anchor
+workaround introduced in preview.16 from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
 [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865),
@@ -48,13 +48,15 @@ not evidence of a released native WinUI fix. Keep the existing row-targeted
 `StartBringItemIntoView` scrolling rather than the application-side extent-only
 workaround from #1407.
 
-Rechecked on 2026-10-22: `0.1.0-preview.16` remains the latest published version,
+Historical check on 2026-10-22: `0.1.0-preview.16` was the latest published version,
 including previews, in the authoritative NuGet feeds for
 [Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
 and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
 and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-Keep both references aligned. The core package requires `System.Drawing.Common`
-`10.0.12` or newer; the tray's direct reference meets that floor.
+The [official preview.17 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17)
+now supplies the hash-verified packages used here. Keep both references aligned.
+Preview.17 requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
+reference meets that floor.
 
 Preview.16 enforces pooled-control resets with `REACTOR_POOL_001`. Chat uses
 Reactor's declarative `HelpText`, `ToolTip` and `ItemStatus` modifiers instead of
@@ -71,6 +73,15 @@ assumed a horizontal StackElement and is incompatible with the upstream Grid.
 Sanitization, parser flags, inert links/images and custom block presentation
 remain application-owned.
 
+`build.ps1`, Store packaging and CI initialize the hash-verified official
+GitHub release packages in the ignored `artifacts\reactor-packages` feed.
+Before a direct `dotnet restore` or first test build, run
+`.\scripts\Initialize-ReactorPackages.ps1`. `NuGet.Config` maps only the two
+Reactor package IDs to that feed; it does not change machine NuGet settings.
+Package digests, not the release DLLs' development-style ProductVersion, identify
+the published assets. `.\scripts\test-reactor-packages.ps1` checks acquisition,
+cache integrity, failure cleanup and source mapping without network access.
+
 Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's
 native architecture. These mounted tests check ordered/unordered wrapping at
 240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
@@ -80,7 +91,7 @@ The Systems page relies on two preview.13 fixes: reconciling a ContentDialog
 while it is open (microsoft/microsoft-ui-reactor#1073) and clearing pooled Border
 backgrounds so `Theme.Ref` fills survive reuse (microsoft/microsoft-ui-reactor#952).
 On the `systems-inventory` fixture, switch between machines and confirm that every
-statistics tile keeps its fill and every sparkline sample bar is visible.
+statistics tile keeps its fill and usage meter.
 
 Before release, also exercise repeated session switching
 while a bring-into-view request is pending, using 240 mixed-height messages.

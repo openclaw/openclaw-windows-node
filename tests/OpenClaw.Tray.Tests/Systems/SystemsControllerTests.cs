@@ -12,13 +12,9 @@ public class SystemsControllerTests
     private sealed class FakeSystemsGateway : ISystemsGateway
     {
         public int InventoryReads;
-        public int BackupReads;
         public TaskCompletionSource<SystemsInventorySnapshot>? HeldInventory;
         public Func<SystemsInventorySnapshot> Inventory = () => new SystemsInventorySnapshot();
-        public Func<BackupStatus?> Backups = () => new BackupStatus([], [], []);
         public Exception? InventoryError;
-        public Exception? EnableError;
-        public int EnableCalls;
         public IReadOnlyList<GatewayNodeInfo> Nodes = Array.Empty<GatewayNodeInfo>();
         public int NodeReads;
         public TaskCompletionSource<IReadOnlyList<GatewayNodeInfo>>? HeldNodes;
@@ -38,25 +34,6 @@ public class SystemsControllerTests
         {
             NodeReads++;
             return HeldNodes?.Task ?? Task.FromResult(Nodes);
-        }
-
-        public Task<BackupStatus?> ReadBackupStatusAsync(CancellationToken cancellationToken)
-        {
-            BackupReads++;
-            return Task.FromResult(Backups());
-        }
-
-        public TaskCompletionSource<StorageProbeResult>? HeldProbe;
-
-        public Task<StorageProbeResult> ProbeStorageAsync(string name, CancellationToken cancellationToken) =>
-            HeldProbe?.Task ?? (name == "broken"
-                ? Task.FromException<StorageProbeResult>(new InvalidOperationException("probe failed"))
-                : Task.FromResult(new StorageProbeResult(StorageProbeState.Ok, 10, 20, null)));
-
-        public Task EnableHostDesktopAsync(CancellationToken cancellationToken)
-        {
-            EnableCalls++;
-            return EnableError is { } error ? Task.FromException(error) : Task.CompletedTask;
         }
     }
 
@@ -86,30 +63,84 @@ public class SystemsControllerTests
         new("studio", new NodeHostStats(new HostMeasurements { CpuCount = 4, MemoryTotalBytes = 100, MemoryFreeBytes = 100 - usedBytes }, at));
 
     [Fact]
-    public async Task Connecting_LoadsInventoryAndSelectsTheGatewayHost()
+    public async Task Connecting_LoadsInventoryAndExplicitRefreshReadsAgain()
     {
         var (controller, gateway) = Create();
-        controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        using (controller)
+        {
+            // The fake completes synchronously, so connecting already finishes the initial read.
+            controller.UpdateInputs(Connected());
+            var state = controller.State;
+            Assert.True(state.HasLoaded);
+            Assert.False(state.Loading);
+            Assert.Equal(["gateway", "node:studio"], state.Rows.Select(row => row.Id));
+            Assert.Equal("gateway", state.SelectedId);
+            Assert.Equal(Now, state.LastRefreshedAt);
+            Assert.Equal(1, gateway.InventoryReads);
 
-        var state = controller.State;
-        Assert.True(state.HasLoaded);
-        Assert.False(state.Loading);
-        Assert.Equal(["gateway", "node:studio"], state.Rows.Select(row => row.Id));
-        Assert.Equal("gateway", state.SelectedId);
-        Assert.Equal(Now, state.LastRefreshedAt);
-        Assert.True(gateway.BackupReads > 0);
+            gateway.Inventory = () => Inventory(Env("gateway", "local"), Env("node:refreshed"));
+            await controller.RefreshAsync();
+
+            Assert.Equal(2, gateway.InventoryReads);
+            Assert.Equal(["gateway", "node:refreshed"], controller.State.Rows.Select(row => row.Id));
+            Assert.Equal("gateway", controller.State.SelectedId);
+            Assert.False(controller.State.Loading);
+        }
+    }
+
+    [Fact]
+    public async Task InlineSelection_CollapsesOnlyTheSelectedRowAndPreservesMissingDeepLinks()
+    {
+        var (controller, _) = Create();
+        using (controller)
+        {
+            controller.UpdateInputs(Connected());
+            await controller.RefreshAsync();
+            controller.ToggleSelection("node:studio");
+            Assert.Equal("node:studio", controller.State.SelectedId);
+            controller.ToggleSelection("node:studio");
+            Assert.Null(controller.State.SelectedId);
+            controller.Select("node:missing");
+            Assert.True(controller.State.SelectionMissing);
+            Assert.Equal("node:missing", controller.State.SelectedId);
+            Assert.Equal(["gateway", "node:studio"], controller.State.Rows.Select(row => row.Id));
+        }
+    }
+
+    [Fact]
+    public async Task RelatedSessions_KeepOnlyReportedAgentAndTimestampMetadata()
+    {
+        var (controller, _) = Create();
+        using (controller)
+        {
+            controller.UpdateInputs(Connected() with
+            {
+                Sessions =
+                [
+                    new SessionInfo { Key = "reported", DisplayName = "Reported", AgentId = "builder", UpdatedAt = Now.UtcDateTime },
+                    new SessionInfo { Key = "sparse", DisplayName = "Sparse" },
+                ],
+            });
+            await controller.RefreshAsync();
+            var sessions = controller.State.Rows.Single(row => row.Id == "gateway").Sessions;
+            var reported = sessions.Single(relation => relation.Session.Key == "reported").Session;
+            Assert.Equal("builder", reported.AgentId);
+            Assert.Equal(Now, reported.UpdatedAt);
+            var sparse = sessions.Single(relation => relation.Session.Key == "sparse").Session;
+            Assert.Null(sparse.AgentId);
+            Assert.Null(sparse.UpdatedAt);
+        }
     }
 
     [Fact]
     public async Task Disconnected_DoesNotReadAndKeepsLastKnownRows()
     {
         var (controller, gateway) = Create();
-        await controller.RefreshAsync(manual: true);
+        await controller.RefreshAsync();
         Assert.Equal(0, gateway.InventoryReads);
 
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         var reads = gateway.InventoryReads;
         controller.UpdateInputs(new SystemsInputs { Connected = false });
         await controller.TickAsync();
@@ -125,14 +156,13 @@ public class SystemsControllerTests
         var (controller, gateway) = Create();
         gateway.Nodes = Inventory().Nodes;
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         Assert.Equal(0, gateway.NodeReads);
 
         controller.Select("node:studio");
         Assert.Equal(1, gateway.NodeReads);
 
-        controller.SetShowStatistics(false);
-        controller.Select("gateway");
+        // Reselecting the same machine does not read again.
         controller.Select("node:studio");
         Assert.Equal(1, gateway.NodeReads);
     }
@@ -147,7 +177,7 @@ public class SystemsControllerTests
             Sessions = [placed],
             Presence = [new PresenceEntry { DeviceId = "control-ui", Host = "Control UI", Mode = "webchat", Ts = Now.ToUnixTimeMilliseconds() }],
         });
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         var rowsBefore = controller.State.Rows.Count;
 
         // The app clears its node list, presence and sessions when the connection drops.
@@ -169,9 +199,9 @@ public class SystemsControllerTests
         var (controller, gateway) = Create();
         gateway.HeldInventory = new TaskCompletionSource<SystemsInventorySnapshot>();
         controller.UpdateInputs(Connected());
-        var first = controller.RefreshAsync(manual: false);
-        await controller.RefreshAsync(manual: false);
-        await controller.RefreshAsync(manual: false);
+        var first = controller.RefreshAsync();
+        await controller.RefreshAsync();
+        await controller.RefreshAsync();
         var reads = gateway.InventoryReads;
 
         var held = gateway.HeldInventory;
@@ -187,48 +217,47 @@ public class SystemsControllerTests
     {
         var (controller, gateway) = Create();
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         gateway.InventoryError = new InvalidOperationException("permission denied");
 
-        await controller.RefreshAsync(manual: true);
+        await controller.RefreshAsync();
 
         Assert.Equal("permission denied", controller.State.InventoryError);
         Assert.Equal(2, controller.State.Rows.Count);
     }
 
     [Fact]
-    public async Task WithoutReadScope_DoesNotLoadInventoryOrBackups()
+    public async Task WithoutReadScope_DoesNotLoadInventory()
     {
         var (controller, gateway) = Create();
         controller.UpdateInputs(Connected("operator.pairing"));
-        await controller.RefreshAsync(manual: true);
-        await controller.RefreshBackupsAsync();
+        await controller.RefreshAsync();
 
         Assert.False(controller.State.CanRead);
         Assert.Equal(0, gateway.InventoryReads);
-        Assert.Equal(0, gateway.BackupReads);
     }
 
     [Theory]
-    [InlineData(new string[0], true, false, false)]
-    [InlineData(new[] { "operator.read" }, true, false, false)]
-    [InlineData(new[] { "operator.pairing" }, false, false, true)]
-    [InlineData(new[] { "operator.admin" }, true, true, true)]
-    [InlineData(new[] { " operator.write " }, true, false, false)]
-    public void Scopes_MapToReadAdminAndPairingAccess(string[] scopes, bool read, bool admin, bool pair)
+    // Gateways that advertise no scopes keep read access and node management; the Gateway still enforces both.
+    [InlineData(new string[0], true, true)]
+    [InlineData(new[] { "operator.read" }, true, false)]
+    [InlineData(new[] { "operator.pairing" }, false, true)]
+    [InlineData(new[] { "operator.admin" }, true, true)]
+    [InlineData(new[] { " operator.write " }, true, false)]
+    public void Scopes_MapToReadAndNodeManagementAccess(string[] scopes, bool read, bool manage)
     {
         var (controller, _) = Create();
         controller.UpdateInputs(new SystemsInputs { Connected = false, Scopes = scopes });
-        Assert.Equal((read, admin, pair), (controller.State.CanRead, controller.State.CanAdmin, controller.State.CanPair));
+        Assert.Equal((read, manage), (controller.State.CanRead, controller.State.CanManageNodes));
     }
 
     [Fact]
-    public async Task HostStatsEvent_UpdatesTheNodeAndBuildsHistory()
+    public async Task HostStatsEvent_UpdatesTheNodeWithItsLatestReport()
     {
         var clock = Now;
         var (controller, _) = Create(() => clock);
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
 
         for (var i = 0; i < 3; i++)
         {
@@ -239,22 +268,24 @@ public class SystemsControllerTests
 
         var studio = controller.State.Rows.Single(row => row.Id == "node:studio");
         Assert.Equal(52, studio.Measurements!.MemoryUsedBytes);
-        Assert.Equal([50d, 51d, 52d], SystemsTelemetryHistory.TimedSeries(controller.Telemetry.For("node:studio"), s => s.MemoryUsedBytes).Select(p => p.Value));
+        Assert.Equal(Now.AddSeconds(60), studio.MeasuredAt);
     }
 
     [Fact]
-    public async Task Reconnecting_ClearsProbes()
+    public async Task WebSystemsPage_FollowsInventorySupportAndResetsOnGatewaySwitch()
     {
-        var (controller, _) = Create();
-        controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
-        await controller.ProbeStorageAsync("b2");
-        Assert.NotEmpty(controller.State.Probes);
+        var (controller, gateway) = Create();
+        controller.UpdateInputs(Connected() with { GatewayId = "a" });
+        await controller.RefreshAsync();
+        Assert.True(controller.State.HasWebSystemsPage);
 
-        controller.UpdateInputs(new SystemsInputs { Connected = false });
-        controller.UpdateInputs(Connected());
-
-        Assert.Empty(controller.State.Probes);
+        // An older Gateway without environments.list has no web Systems page to open.
+        gateway.Inventory = () => Inventory() with { Environments = null };
+        controller.UpdateInputs(Connected() with { GatewayId = "b" });
+        Assert.False(controller.State.HasWebSystemsPage);
+        await controller.RefreshAsync();
+        Assert.False(controller.State.HasWebSystemsPage);
+        Assert.Contains(controller.State.Rows, row => row.Id == "gateway");
     }
 
     [Fact]
@@ -262,61 +293,14 @@ public class SystemsControllerTests
     {
         var (controller, gateway) = Create();
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         controller.Select("node:studio");
 
         gateway.Inventory = () => Inventory(Env("gateway", "local"));
-        await controller.RefreshAsync(manual: true);
+        await controller.RefreshAsync();
 
         Assert.Equal("node:studio", controller.State.SelectedId);
         Assert.True(controller.State.SelectionMissing);
-    }
-
-    [Fact]
-    public async Task Probe_ReportsCheckingThenResultOrError()
-    {
-        var (controller, _) = Create();
-        controller.UpdateInputs(Connected());
-        var states = new List<ProbeStatus?>();
-        controller.Changed += (_, _) => states.Add(controller.State.Probes.GetValueOrDefault("b2")?.Status);
-
-        await controller.ProbeStorageAsync("b2");
-        await controller.ProbeStorageAsync("broken");
-
-        Assert.Contains(ProbeStatus.Checking, states);
-        Assert.Equal(StorageProbeState.Ok, controller.State.Probes["b2"].Result!.State);
-        Assert.Equal(new StorageProbeResult(StorageProbeState.Error, null, null, "probe failed"), controller.State.Probes["broken"].Result);
-    }
-
-    [Fact]
-    public async Task Backups_UnsupportedGatewayIsReportedSeparatelyFromErrors()
-    {
-        var (controller, gateway) = Create();
-        gateway.Backups = () => null;
-        controller.UpdateInputs(Connected());
-        await controller.RefreshBackupsAsync();
-        Assert.True(controller.State.BackupsUnsupported);
-        Assert.Null(controller.State.BackupsError);
-    }
-
-    [Fact]
-    public async Task EnableHostDesktop_RequiresAdminAndReportsFailure()
-    {
-        var (controller, gateway) = Create();
-        controller.UpdateInputs(Connected("operator.read"));
-        Assert.False(await controller.EnableHostDesktopAsync());
-        Assert.Equal(0, gateway.EnableCalls);
-
-        controller.UpdateInputs(Connected("operator.admin"));
-        gateway.EnableError = new InvalidOperationException("read-only");
-        Assert.False(await controller.EnableHostDesktopAsync());
-        Assert.Equal("read-only", controller.State.DesktopError);
-        Assert.False(controller.State.DesktopEnabling);
-
-        gateway.EnableError = null;
-        Assert.True(await controller.EnableHostDesktopAsync());
-        Assert.True(controller.State.HostDesktopEnabled);
-        Assert.Null(controller.State.DesktopError);
     }
 
     [Theory]
@@ -365,48 +349,12 @@ public class SystemsControllerTests
                 new SessionInfo { Key = "agent:main:main" },
             ],
         });
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
 
         var studio = controller.State.Rows.Single(row => row.Id == "node:studio");
         Assert.Equal([(SessionRelationKind.Placement, "Placed"), (SessionRelationKind.Runner, "Placed")],
             studio.Sessions.Select(r => (r.Kind, r.Session.Title)));
         Assert.Equal("agent:main:main", controller.State.Rows.Single(row => row.Id == "gateway").Sessions.Single().Session.Key);
-    }
-
-    [Fact]
-    public async Task EnableHostDesktop_CancelledByAConnectionDropDoesNotStayBusy()
-    {
-        var (controller, gateway) = Create();
-        controller.UpdateInputs(Connected("operator.admin"));
-        gateway.EnableError = new OperationCanceledException("connection lost");
-
-        Assert.False(await controller.EnableHostDesktopAsync());
-        Assert.False(controller.State.DesktopEnabling);
-        Assert.Null(controller.State.DesktopError);
-
-        gateway.EnableError = null;
-        Assert.True(await controller.EnableHostDesktopAsync());
-    }
-
-    [Fact]
-    public async Task HostDesktopEnabled_FollowsConfigSnapshotsAfterAnOptimisticEnable()
-    {
-        static System.Text.Json.JsonElement Config(bool enabled) =>
-            System.Text.Json.JsonDocument.Parse("{\"config\":{\"desktop\":{\"host\":{\"enabled\":" + (enabled ? "true" : "false") + "}}}}").RootElement.Clone();
-        var (controller, _) = Create();
-        var before = Config(false);
-        controller.UpdateInputs(Connected("operator.admin") with { Config = before });
-        Assert.False(controller.State.HostDesktopEnabled);
-
-        await controller.EnableHostDesktopAsync();
-        // The snapshot already held does not undo the optimistic enable...
-        controller.UpdateInputs(Connected("operator.admin") with { Config = before });
-        Assert.True(controller.State.HostDesktopEnabled);
-        // ...but every new response is authoritative, even with the same contents.
-        controller.UpdateInputs(Connected("operator.admin") with { Config = Config(false) });
-        Assert.False(controller.State.HostDesktopEnabled);
-        controller.UpdateInputs(Connected("operator.admin") with { Config = Config(true) });
-        Assert.True(controller.State.HostDesktopEnabled);
     }
 
     [Fact]
@@ -483,12 +431,12 @@ public class SystemsControllerTests
             Nodes = [],
             Errors = new SystemsPartialErrors(Nodes: "timeout"),
         };
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
 
         var studio = controller.State.Rows.Single(row => row.Id == "node:studio");
         Assert.Equal(40, studio.Measurements?.MemoryUsedBytes);
         Assert.Equal("timeout", controller.State.PartialErrors.Nodes);
-        Assert.Single(controller.Telemetry.For("node:studio"));
+        Assert.True(SystemsFreshness.IsLastKnown(studio, connected: true, refreshFailed: true, Now));
     }
 
     [Fact]
@@ -518,12 +466,12 @@ public class SystemsControllerTests
         var clock = Now;
         var (controller, _) = Create(() => clock);
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
 
         controller.ApplyHostStats(Stats(30, Now - skew));
         var studio = controller.State.Rows.Single(row => row.Id == "node:studio");
         Assert.Equal(Now, studio.MeasuredAt);
-        Assert.False(SystemsTelemetryHistory.IsLastKnown(studio, connected: true, refreshFailed: false, clock));
+        Assert.False(SystemsFreshness.IsLastKnown(studio, connected: true, refreshFailed: false, clock));
 
         clock = Now.AddSeconds(60);
         controller.ApplyHostStats(Stats(35, Now - skew + TimeSpan.FromSeconds(60)));
@@ -532,11 +480,10 @@ public class SystemsControllerTests
         studio = controller.State.Rows.Single(row => row.Id == "node:studio");
         Assert.Equal(35, studio.Measurements?.MemoryUsedBytes);
         Assert.Equal(clock, studio.MeasuredAt);
-        Assert.Equal(2, controller.Telemetry.For("node:studio").Count);
     }
 
     [Fact]
-    public async Task HostStats_LearningAGatewayAheadOfTheLocalClockKeepsBuildingHistory()
+    public async Task HostStats_LearningAGatewayAheadOfTheLocalClockAgesReportsOnTheLocalClock()
     {
         // node.list arrives before any event, so its first sample uses the raw (future) Gateway time.
         var skew = TimeSpan.FromMinutes(10);
@@ -547,7 +494,7 @@ public class SystemsControllerTests
             Nodes = [new GatewayNodeInfo { NodeId = "studio", IsOnline = true, HostStats = Stats(10, Now + skew).Stats }],
         };
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
 
         clock = Now.AddSeconds(60);
         controller.ApplyHostStats(Stats(20, Now + skew + TimeSpan.FromSeconds(60)));
@@ -555,18 +502,21 @@ public class SystemsControllerTests
         controller.ApplyHostStats(Stats(30, Now + skew + TimeSpan.FromSeconds(120)));
 
         Assert.Equal(-skew, controller.State.GatewayClockOffset);
-        Assert.Equal([Now.AddSeconds(60), Now.AddSeconds(120)], controller.Telemetry.For("node:studio").Select(s => s.At));
+        var studio = controller.State.Rows.Single(row => row.Id == "node:studio");
+        Assert.Equal(30, studio.Measurements?.MemoryUsedBytes);
+        Assert.Equal(Now.AddSeconds(120), studio.MeasuredAt);
+        Assert.False(SystemsFreshness.IsLastKnown(studio, connected: true, refreshFailed: false, clock));
     }
 
     [Fact]
-    public async Task LateTelemetryFromAnEarlierConnection_IsDropped()
+    public async Task LateMeasurementsFromAnEarlierConnection_AreDropped()
     {
         var (controller, gateway) = Create();
         controller.UpdateInputs(Connected());
         controller.Select("node:studio");
         gateway.HeldNodes = new TaskCompletionSource<IReadOnlyList<GatewayNodeInfo>>();
         // Starts the node read and leaves it held; awaiting it would wait for the test itself.
-        var pending = controller.RefreshTelemetryAsync();
+        var pending = controller.RefreshMeasurementsAsync();
         var held = gateway.HeldNodes;
 
         controller.UpdateInputs(new SystemsInputs());
@@ -578,7 +528,7 @@ public class SystemsControllerTests
         // The new connection is not blocked by the abandoned read.
         gateway.HeldNodes = null;
         var reads = gateway.NodeReads;
-        await controller.RefreshTelemetryAsync();
+        await controller.RefreshMeasurementsAsync();
         Assert.Equal(reads + 1, gateway.NodeReads);
     }
 
@@ -597,12 +547,12 @@ public class SystemsControllerTests
     }
 
     [Fact]
-    public async Task HostStats_OneLateEventDoesNotMoveTheClockOrWipeHistory()
+    public async Task HostStats_OneLateEventDoesNotMoveTheClock()
     {
         var clock = Now;
         var (controller, _) = Create(() => clock);
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
 
         for (var i = 0; i < 4; i++)
         {
@@ -613,7 +563,7 @@ public class SystemsControllerTests
         }
 
         Assert.Equal(TimeSpan.Zero, controller.State.GatewayClockOffset);
-        Assert.Equal(4, controller.Telemetry.For("node:studio").Count);
+        Assert.Equal(13, controller.State.Rows.Single(row => row.Id == "node:studio").Measurements?.MemoryUsedBytes);
     }
 
     [Fact]
@@ -622,7 +572,7 @@ public class SystemsControllerTests
         var clock = Now;
         var (controller, _) = Create(() => clock);
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         controller.ApplyHostStats(Stats(10, clock));
 
         // A 30 s stall releases two queued reports back to back, then reports arrive on time again.
@@ -633,7 +583,7 @@ public class SystemsControllerTests
         controller.ApplyHostStats(Stats(13, clock));
 
         Assert.Equal(TimeSpan.Zero, controller.State.GatewayClockOffset);
-        Assert.Equal(4, controller.Telemetry.For("node:studio").Count);
+        Assert.Equal(13, controller.State.Rows.Single(row => row.Id == "node:studio").Measurements?.MemoryUsedBytes);
     }
 
     [Fact]
@@ -642,7 +592,7 @@ public class SystemsControllerTests
         var clock = Now;
         var (controller, _) = Create(() => clock);
         controller.UpdateInputs(Connected());
-        await controller.RefreshAsync(manual: false);
+        await controller.RefreshAsync();
         controller.ApplyHostStats(Stats(10, Now));
 
         // From here on, every report is stamped 30 s behind the local clock.
@@ -655,22 +605,5 @@ public class SystemsControllerTests
         clock = Now.AddSeconds(90);
         controller.ApplyHostStats(Stats(13, clock - TimeSpan.FromSeconds(30)));
         Assert.Equal(TimeSpan.FromSeconds(30), controller.State.GatewayClockOffset);
-    }
-
-    [Fact]
-    public async Task Disconnect_EndsProbesThatWereStillChecking()
-    {
-        var (controller, gateway) = Create();
-        controller.UpdateInputs(Connected());
-        var probe = new TaskCompletionSource<StorageProbeResult>();
-        gateway.HeldProbe = probe;
-        var pending = controller.ProbeStorageAsync("b2");
-        Assert.Equal(ProbeStatus.Checking, controller.State.Probes["b2"].Status);
-
-        controller.UpdateInputs(new SystemsInputs());
-        probe.SetResult(new StorageProbeResult(StorageProbeState.Ok, 1, 2, null));
-        await pending;
-
-        Assert.Empty(controller.State.Probes);
     }
 }

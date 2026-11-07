@@ -1,3 +1,4 @@
+// Projects reported resource values into meters. Usage: SystemsMeters.MemoryUsedPercent(measurements).
 namespace OpenClaw.Shared.Systems;
 
 /// <summary>Usage meters shown under each statistic, as percentages from 0 to 100.</summary>

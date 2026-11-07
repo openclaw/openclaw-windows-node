@@ -1,3 +1,4 @@
+// Localized Systems presentation, never a data source. Usage: SystemsText.Ago(lastSeen, gatewayNow).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -47,35 +48,6 @@ internal static class SystemsText
         _ => S("Relation_Gateway"),
     };
 
-    public static string BackupKind(BackupKind kind) => kind switch
-    {
-        OpenClaw.Shared.Systems.BackupKind.Archive => S("Backups_Kind_Archive"),
-        OpenClaw.Shared.Systems.BackupKind.SqliteSnapshot => S("Backups_Kind_SqliteSnapshot"),
-        OpenClaw.Shared.Systems.BackupKind.Git => S("Backups_Kind_Git"),
-        OpenClaw.Shared.Systems.BackupKind.External => S("Backups_Kind_External"),
-        _ => S("Status_Unknown"),
-    };
-
-    public static string BackupHealth(BackupHealth health) => health switch
-    {
-        OpenClaw.Shared.Systems.BackupHealth.Ok => S("Backups_Ok"),
-        OpenClaw.Shared.Systems.BackupHealth.PushFailed => S("Backups_PushFailed"),
-        _ => S("Backups_Failed"),
-    };
-
-    public static string Probe(StorageProbeState state) => state switch
-    {
-        StorageProbeState.Ok => S("Backups_Probe_Ok"),
-        StorageProbeState.Unavailable => S("Backups_Probe_Unavailable"),
-        StorageProbeState.Uninitialized => S("Backups_Probe_Uninitialized"),
-        StorageProbeState.WrongKey => S("Backups_Probe_WrongKey"),
-        _ => S("Backups_Probe_Error"),
-    };
-
-    public static string DesktopTitle(OpenClaw.Shared.Systems.DesktopTitle title) => S("Desktop_Title_" + title);
-
-    public static string DesktopHint(OpenClaw.Shared.Systems.DesktopHint hint) => S("Desktop_Hint_" + hint);
-
     public static string Presence(PresenceStatus status) => status switch
     {
         PresenceStatus.Active => LocalizationHelper.GetString("InstancesPage_Status_Active"),
@@ -107,6 +79,30 @@ internal static class SystemsText
 
     public static string Ago(DateTimeOffset at, DateTimeOffset now) =>
         AgoSeconds((long)Math.Max(0, (now - at).TotalSeconds));
+
+    public static string NumberWord(int value) => value is >= 0 and < 10
+        ? S("Number_" + value.ToString(CultureInfo.InvariantCulture))
+        : value.ToString(CultureInfo.CurrentCulture);
+
+    public static string CompactAge(DateTimeOffset at, DateTimeOffset now)
+    {
+        var seconds = (long)Math.Max(0, (now - at).TotalSeconds);
+        return seconds < 60 ? F("Age_Seconds", seconds)
+            : seconds < 3600 ? F("Age_Minutes", seconds / 60)
+            : seconds < 86400 ? F("Age_Hours", seconds / 3600)
+            : F("Age_Days", seconds / 86400);
+    }
+
+    public static string PlatformName(string? platform) => platform?.Trim().ToLowerInvariant() switch
+    {
+        null or "" => S("Status_Unknown"),
+        "win32" or "windows" => "Windows",
+        "darwin" or "macos" => "macOS",
+        "linux" => "Linux",
+        "android" => "Android",
+        "ios" => "iOS",
+        _ => char.ToUpper(platform[0], CultureInfo.CurrentCulture) + platform[1..],
+    };
 
     public static string AgoSeconds(long seconds)
     {
@@ -153,8 +149,7 @@ internal static class SystemsText
     /// <summary>Fallback copy-debug text used when a presence beacon has no text, carried over from Instances.</summary>
     public static string DebugSummary(SystemRow row)
     {
-        if (!string.IsNullOrWhiteSpace(row.Instance?.DebugText))
-            return row.Instance!.DebugText!;
+        // Build an allowlisted summary. Presence debug text may contain raw commands or PATH.
         var lines = new List<string> { $"Machine: {DisplayName(row)}", $"Id: {row.Id}", $"Kind: {row.Kind}", $"Status: {row.Status}" };
         if (row.Node is { } node) lines.Add($"NodeId: {node.NodeId}");
         if (row.Instance?.Presence?.DeviceId is { Length: > 0 } deviceId) lines.Add($"DeviceId: {deviceId}");

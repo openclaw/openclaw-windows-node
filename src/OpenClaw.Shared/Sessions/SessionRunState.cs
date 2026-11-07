@@ -27,6 +27,11 @@ public enum SessionDisplayState
 
 public static class SessionRunState
 {
+    /// <summary>Queued work needs attention even when the Gateway still reports an active run.</summary>
+    public static bool NeedsAttention(SessionInfo session) =>
+        session.Status?.Equals("queued", StringComparison.OrdinalIgnoreCase) == true ||
+        GetDisplayState(session) == SessionDisplayState.NeedsAttention;
+
     public static SessionRunStatus ResolveStatus(string? status) => status?.Trim().ToLowerInvariant() switch
     {
         "active" or "running" => SessionRunStatus.Running,

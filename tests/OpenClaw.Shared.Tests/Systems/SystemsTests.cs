@@ -36,16 +36,15 @@ public class SystemsParserTests
         ]}
         """));
 
+        // Setup probes, worker slots and attached session ids are web-only details and are ignored.
         Assert.Equal(["gateway", "node:studio", "worker:p:abc"], environments.Select(e => e.Id));
         var host = environments[0];
-        Assert.Equal(new DesktopSetup(DesktopSetupState.NeedsServer, "no vnc"), host.DesktopSetup);
         Assert.Null(host.NodeId);
+        Assert.Null(host.Desktop);
 
         var studio = environments[1];
         Assert.Equal("studio", studio.NodeId);
         Assert.Equal(SystemStatus.Offline, studio.Status);
-        Assert.True(studio.SessionHost);
-        Assert.Equal(new WorkerSlots(4, 1), studio.WorkerSlots);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1700000000000), studio.LastSeenAt);
         Assert.Equal(["system"], studio.Capabilities);
         Assert.True(studio.Desktop);
@@ -54,7 +53,6 @@ public class SystemsParserTests
 
         var worker = environments[2].Worker!;
         Assert.Equal(("p", "gpu", "provisioning", "connecting"), (worker.ProviderId, worker.ProfileId, worker.State, worker.TunnelStatus));
-        Assert.Equal(["s1"], worker.AttachedSessionIds);
     }
 
     [Fact]
@@ -89,6 +87,32 @@ public class SystemsParserTests
     }
 
     [Theory]
+    [InlineData(0, 100, 50)]
+    [InlineData(2, 0, 0)]
+    [InlineData(2, 100, -1)]
+    [InlineData(2, 100, 101)]
+    public void ParseMeasurements_InvalidCoreValuesAreUnavailable(int cores, long total, long free)
+    {
+        var payload = JsonSerializer.SerializeToElement(new { cpuCount = cores, memoryTotalBytes = total, memoryFreeBytes = free });
+        Assert.Null(SystemsParser.ParseMeasurements(payload));
+    }
+
+    [Fact]
+    public void ParseMeasurements_InvalidOptionalValuesDoNotBecomeZeroUsage()
+    {
+        var stats = SystemsParser.ParseMeasurements(Json("""
+            {"cpuCount":2,"memoryTotalBytes":100,"memoryFreeBytes":20,"loadAverage":[-1,0,0],
+             "diskTotalBytes":10,"diskAvailableBytes":11,
+             "disks":[{"path":"invalid","totalBytes":10,"availableBytes":-1},{"path":"valid","totalBytes":10,"availableBytes":0}]}
+            """))!;
+        Assert.Equal(80, stats.MemoryUsedBytes);
+        Assert.Null(stats.Load1);
+        Assert.Null(stats.DiskAvailableBytes);
+        Assert.Null(stats.DiskTotalBytes);
+        Assert.Equal(new DiskStats("valid", 10, 0), Assert.Single(stats.Disks!));
+    }
+
+    [Theory]
     [InlineData("""{"placement":{"state":"active","environmentId":"worker:a","runner":{"deviceId":"d"}}}""", SessionPlacementState.Active, "worker:a", "d")]
     [InlineData("""{"placement":{"state":"reclaimed","environmentId":"node:x"}}""", SessionPlacementState.Reclaimed, "node:x", null)]
     [InlineData("""{"placement":{"state":"new-state"}}""", SessionPlacementState.Unknown, null, null)]
@@ -98,49 +122,6 @@ public class SystemsParserTests
     [Fact]
     public void ParseSessionPlacement_AbsentPlacementIsNull() =>
         Assert.Null(SystemsParser.ParseSessionPlacement(Json("""{"key":"k"}""")));
-
-    [Fact]
-    public void ParseBackupStatus_ReadsTargetsSchedulesAndLocations()
-    {
-        var status = SystemsParser.ParseBackupStatus(Json("""
-        {"targets":[
-           {"kind":"git","target":"repo","latest":{"id":"1","createdAt":10,"archivePath":"a","status":"ok","kind":"git","pushFailed":true},
-            "latestOk":{"id":"0","createdAt":5,"archivePath":"a","status":"ok","kind":"git","bytes":42}},
-           {"kind":"archive","target":"broken"}
-         ],
-         "schedules":[{"id":"s","mode":"git","target":"repo","enabled":true,"everyMs":1,"nextRunAtMs":99}],
-         "locations":[{"name":"b2","provider":"b2","displayTarget":"b2://x","encrypted":true}]}
-        """));
-
-        var target = Assert.Single(status.Targets);
-        Assert.Equal(BackupKind.Git, target.Kind);
-        Assert.True(target.Latest.Ok);
-        Assert.True(target.Latest.PushFailed);
-        Assert.Equal(42, target.LatestOk!.Bytes);
-        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(99), Assert.Single(status.Schedules).NextRunAt);
-        Assert.Equal(new StorageLocation("b2", "b2", "b2://x", true), Assert.Single(status.Locations));
-    }
-
-    [Theory]
-    [InlineData("ok", StorageProbeState.Ok)]
-    [InlineData("unavailable", StorageProbeState.Unavailable)]
-    [InlineData("uninitialized", StorageProbeState.Uninitialized)]
-    [InlineData("wrong-key", StorageProbeState.WrongKey)]
-    [InlineData("error", StorageProbeState.Error)]
-    [InlineData("unexpected", StorageProbeState.Error)]
-    public void ParseStorageProbe_MapsEveryState(string state, StorageProbeState expected)
-    {
-        var result = SystemsParser.ParseStorageProbe(Json($$"""{"state":"{{state}}","freeBytes":7,"message":"m"}"""));
-        Assert.Equal(new StorageProbeResult(expected, 7, null, "m"), result);
-    }
-
-    [Theory]
-    [InlineData("""{"config":{"desktop":{"host":{"enabled":true}}}}""", true)]
-    [InlineData("""{"desktop":{"host":{"enabled":true}}}""", true)]
-    [InlineData("""{"config":{"desktop":{"host":{"enabled":false}}}}""", false)]
-    [InlineData("""{"config":{"desktop":{}}}""", false)]
-    public void IsHostDesktopEnabled_ReadsConfigSnapshot(string config, bool expected) =>
-        Assert.Equal(expected, SystemsParser.IsHostDesktopEnabled(Json(config)));
 }
 
 public class SystemsProjectionTests
@@ -199,9 +180,9 @@ public class SystemsProjectionTests
             [
                 Env("gateway", "local"),
                 Env("node:studio", label: null),
-                Env("worker:p:abc123def", "worker", worker: new WorkerMetadata("p", "gpu", "ready", [], "connected", null, null)),
-                Env("worker:p:gone", "worker", SystemStatus.Offline, worker: new WorkerMetadata("p", "gpu", "destroyed", [], "stopped", null, null)),
-                Env("worker:p:failed", "worker", SystemStatus.Error, worker: new WorkerMetadata("p", "gpu", "failed", [], "stopped", null, null)),
+                Env("worker:p:abc123def", "worker", worker: new WorkerMetadata("p", "gpu", "ready", "connected", null, null)),
+                Env("worker:p:gone", "worker", SystemStatus.Offline, worker: new WorkerMetadata("p", "gpu", "destroyed", "stopped", null, null)),
+                Env("worker:p:failed", "worker", SystemStatus.Error, worker: new WorkerMetadata("p", "gpu", "failed", "stopped", null, null)),
             ],
             Nodes = [Node("studio", "Studio PC"), Node("suppressed", "Hidden")],
             SystemInfo = new GatewaySystemInfo { MachineName = "Gateway Box", OsLabel = "Ubuntu", Measurements = new HostMeasurements { CpuCount = 8 } },
@@ -231,8 +212,8 @@ public class SystemsProjectionTests
             Environments =
             [
                 Env("gateway", "local"),
-                Env("worker:p:abc", "worker", worker: new WorkerMetadata("p", "gpu", "ready", [], "connected", null, null)),
-                Env("worker:q:def", "worker", worker: new WorkerMetadata("q", null, "ready", [], "connected", null, null)),
+                Env("worker:p:abc", "worker", worker: new WorkerMetadata("p", "gpu", "ready", "connected", null, null)),
+                Env("worker:q:def", "worker", worker: new WorkerMetadata("q", null, "ready", "connected", null, null)),
                 Env("node:labelled", label: "Label"),
             ],
         };
@@ -301,6 +282,7 @@ public class SystemsProjectionTests
     {
         var offline = Node("mac", "MacBook");
         offline.IsOnline = false;
+        offline.ConnectedAt = new DateTime(2026, 10, 27, 8, 30, 0, DateTimeKind.Utc);
         var snapshot = new SystemsInventorySnapshot { Environments = null, Nodes = [Node("studio", "Studio"), offline] };
 
         var rows = SystemsProjection.Project(snapshot, [], Options with { GatewayConnected = false });
@@ -308,44 +290,51 @@ public class SystemsProjectionTests
         Assert.Equal(["gateway", "node:studio", "node:mac"], rows.Select(r => r.Id));
         Assert.Equal([SystemStatus.Offline, SystemStatus.Online, SystemStatus.Offline], rows.Select(r => r.Status));
         Assert.Equal("MacBook", rows[2].Name);
+        Assert.Equal(new DateTimeOffset(2026, 10, 27, 8, 30, 0, TimeSpan.Zero), rows[2].Environment!.LastConnectedAt);
+        Assert.Null(rows[1].Environment!.LastConnectedAt);
     }
 
     [Theory]
-    [InlineData(SystemsSortMode.Alphabetical, SystemsStatusFilter.All, "", new[] { "Alpha", "beta 2", "beta 10", "Gamma" })]
-    [InlineData(SystemsSortMode.OnlineFirst, SystemsStatusFilter.All, "", new[] { "Alpha", "beta 10", "beta 2", "Gamma" })]
-    [InlineData(SystemsSortMode.OfflineFirst, SystemsStatusFilter.All, "", new[] { "beta 2", "Gamma", "Alpha", "beta 10" })]
-    [InlineData(SystemsSortMode.Alphabetical, SystemsStatusFilter.Online, "", new[] { "Alpha", "beta 10" })]
-    [InlineData(SystemsSortMode.Alphabetical, SystemsStatusFilter.Offline, "", new[] { "beta 2", "Gamma" })]
-    [InlineData(SystemsSortMode.Alphabetical, SystemsStatusFilter.All, "BETA", new[] { "beta 2", "beta 10" })]
-    [InlineData(SystemsSortMode.Alphabetical, SystemsStatusFilter.All, "linux", new[] { "Gamma" })]
-    public void Query_FiltersSearchesAndSortsWithNumericNames(SystemsSortMode sort, SystemsStatusFilter filter, string query, string[] expected)
+    [InlineData(true, new[] { "alpha", "beta 2", "beta 10", "aardvark", "building", "client", "error", "stopping", "unknown" })]
+    [InlineData(false, new[] { "aardvark", "alpha", "beta 2", "beta 10", "building", "client", "error", "stopping", "unknown" })]
+    public void OrderForInventory_KeepsAllKindsAndStatusesUsingEffectiveOnlineFirstOrder(bool connected, string[] expected)
     {
-        SystemRow Row(string name, SystemStatus status, string? platform = null) =>
-            new() { Id = "node:" + name, Kind = SystemKind.Node, Status = status, Name = name, Platform = platform };
+        SystemRow Row(string name, SystemStatus status, SystemKind kind = SystemKind.Node) =>
+            new() { Id = name, Kind = kind, Status = status, Name = name };
         var rows = new[]
         {
-            Row("Gamma", SystemStatus.Offline, "Linux"),
+            Row("unknown", SystemStatus.Unknown),
+            Row("aardvark", SystemStatus.Offline),
             Row("beta 10", SystemStatus.Online),
-            Row("Alpha", SystemStatus.Online),
-            Row("beta 2", SystemStatus.Offline),
+            Row("alpha", SystemStatus.Online, SystemKind.Host),
+            Row("error", SystemStatus.Error),
+            Row("client", SystemStatus.Offline, SystemKind.Client),
+            Row("building", SystemStatus.Starting, SystemKind.Worker),
+            Row("beta 2", SystemStatus.Online),
+            Row("stopping", SystemStatus.Stopping),
         };
 
-        var result = SystemsProjection.Query(rows, query, filter, sort, row => row.Name!);
+        var result = SystemsProjection.OrderForInventory(rows, row => row.Name!, gatewayConnected: connected);
 
-        Assert.Equal(expected, result.Select(r => r.Name));
+        Assert.Equal(expected, result.Select(row => row.Id));
     }
 
     [Fact]
-    public void Query_WhileDisconnectedTreatsEveryRowAsOffline()
+    public void NeedsAttention_UsesReportedMachineIssuesNotPresenceOrDisabledPermissions()
     {
         SystemRow[] rows =
         [
-            new() { Id = "node:a", Kind = SystemKind.Node, Status = SystemStatus.Online, Name = "A" },
-            new() { Id = "node:b", Kind = SystemKind.Node, Status = SystemStatus.Offline, Name = "B" },
+            new() { Id = "node:offline", Kind = SystemKind.Node, Status = SystemStatus.Offline },
+            new() { Id = "node:pending", Kind = SystemKind.Node, Status = SystemStatus.Online,
+                Node = new GatewayNodeInfo { NodeId = "pending", ApprovalState = GatewayNodeApprovalState.PendingReapproval } },
+            new() { Id = "node:update", Kind = SystemKind.Node, Status = SystemStatus.Online,
+                Environment = new SystemEnvironment { Id = "node:update", Type = "node", Issues = [new("update-required", null)] } },
+            new() { Id = "node:allowed-choice", Kind = SystemKind.Node, Status = SystemStatus.Online,
+                Node = new GatewayNodeInfo { NodeId = "allowed-choice", Permissions = new() { ["screen"] = false } } },
+            new() { Id = "client:offline", Kind = SystemKind.Client, Status = SystemStatus.Offline },
         ];
 
-        Assert.Empty(SystemsProjection.Query(rows, "", SystemsStatusFilter.Online, SystemsSortMode.Alphabetical, r => r.Name!, gatewayConnected: false));
-        Assert.Equal(2, SystemsProjection.Query(rows, "", SystemsStatusFilter.Offline, SystemsSortMode.Alphabetical, r => r.Name!, gatewayConnected: false).Count);
+        Assert.Equal([true, true, true, false, false], rows.Select(row => row.NeedsAttention));
     }
 
     [Fact]
@@ -390,69 +379,18 @@ public class SystemsProjectionTests
         Assert.Equal(expected, PlatformLabels.Pretty(raw, family));
 }
 
-public class SystemsTelemetryHistoryTests
+public class SystemsFreshnessTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
 
-    private static double[] Values(IReadOnlyList<TelemetrySample> history, Func<HostMeasurements, double?> read) =>
-        SystemsTelemetryHistory.TimedSeries(history, read).Select(point => point.Value).ToArray();
-
-    private static SystemRow Row(string id, DateTimeOffset? at, long used = 10, SystemStatus status = SystemStatus.Online) => new()
+    private static SystemRow Row(string id, DateTimeOffset? at, SystemStatus status = SystemStatus.Online) => new()
     {
         Id = id,
         Kind = id == "gateway" ? SystemKind.Host : SystemKind.Node,
         Status = status,
         MeasuredAt = at,
-        Measurements = at is null ? null : new HostMeasurements { CpuCount = 1, MemoryTotalBytes = 100, MemoryFreeBytes = 100 - used },
+        Measurements = at is null ? null : new HostMeasurements { CpuCount = 1, MemoryTotalBytes = 100, MemoryFreeBytes = 90 },
     };
-
-    [Fact]
-    public void Record_DeduplicatesRepeatedReportsAndRestartsAfterStaleGaps()
-    {
-        var history = new SystemsTelemetryHistory();
-        history.Record([Row("node:a", T0, 10)]);
-        history.Record([Row("node:a", T0, 99)]);
-        history.Record([Row("node:a", T0.AddSeconds(60), 20)]);
-        Assert.Equal([10d, 20d], Values(history.For("node:a"), s => s.MemoryUsedBytes));
-
-        // Longer than the node stale window: the chart must not bridge the gap.
-        history.Record([Row("node:a", T0.AddMinutes(10), 30)]);
-        Assert.Equal([30d], Values(history.For("node:a"), s => s.MemoryUsedBytes));
-
-        // The Gateway host goes stale faster.
-        history.Record([Row("gateway", T0, 1)]);
-        history.Record([Row("gateway", T0.AddSeconds(45), 2)]);
-        Assert.Single(history.For("gateway"));
-    }
-
-    [Fact]
-    public void Record_CapsSamplesAndForgetsRowsThatLeaveTheInventory()
-    {
-        var history = new SystemsTelemetryHistory();
-        for (var i = 0; i < SystemsTelemetryHistory.SampleLimit + 5; i++)
-            history.Record([Row("node:a", T0.AddSeconds(i * 10), i), Row("node:b", T0.AddSeconds(i * 10))]);
-        Assert.Equal(SystemsTelemetryHistory.SampleLimit, history.For("node:a").Count);
-        Assert.Equal(5d, Values(history.For("node:a"), s => s.MemoryUsedBytes)[0]);
-
-        history.Record([Row("node:a", T0.AddHours(1)), Row("node:b", null)]);
-        Assert.Empty(history.For("node:b"));
-        history.Record([]);
-        Assert.Empty(history.For("node:a"));
-    }
-
-    [Fact]
-    public void TimedSeries_RestartsWhenAMetricIsMissing()
-    {
-        var samples = new[]
-        {
-            new TelemetrySample(T0, new HostMeasurements { Load1 = 1 }),
-            new TelemetrySample(T0.AddSeconds(1), new HostMeasurements { Load1 = null }),
-            new TelemetrySample(T0.AddSeconds(2), new HostMeasurements { Load1 = 3 }),
-            new TelemetrySample(T0.AddSeconds(3), new HostMeasurements { Load1 = double.NaN }),
-            new TelemetrySample(T0.AddSeconds(4), new HostMeasurements { Load1 = 5 }),
-        };
-        Assert.Equal([new TelemetryPoint(T0.AddSeconds(4), 5)], SystemsTelemetryHistory.TimedSeries(samples, s => s.Load1));
-    }
 
     [Fact]
     public void Meters_ClampOverloadAndRejectMissingTotals()
@@ -468,141 +406,63 @@ public class SystemsTelemetryHistoryTests
     public void IsLastKnown_CoversDisconnectOfflineFailedRefreshAndAge()
     {
         var fresh = Row("node:a", T0);
-        Assert.False(SystemsTelemetryHistory.IsLastKnown(fresh, connected: true, refreshFailed: false, T0.AddSeconds(30)));
-        Assert.True(SystemsTelemetryHistory.IsLastKnown(fresh, connected: false, refreshFailed: false, T0));
-        Assert.True(SystemsTelemetryHistory.IsLastKnown(fresh, connected: true, refreshFailed: true, T0));
-        Assert.True(SystemsTelemetryHistory.IsLastKnown(Row("node:a", T0, status: SystemStatus.Offline), true, false, T0));
-        Assert.True(SystemsTelemetryHistory.IsLastKnown(fresh, true, false, T0.AddMinutes(3)));
-    }
-}
-
-public class BackupsPresentationTests
-{
-    private static readonly DateTimeOffset T0 = new(2026, 10, 26, 12, 0, 0, TimeSpan.Zero);
-
-    private static BackupRunRecord Run(bool ok, bool pushFailed = false, string? error = null, BackupRunLocation? location = null, long? bytes = null) =>
-        new(T0, ok, error, pushFailed, bytes, location);
-
-    [Fact]
-    public void Project_ReportsHealthLocationsAndNextRun()
-    {
-        var b2 = new BackupRunLocation("b2", "b2", 900);
-        var status = new BackupStatus(
-            [
-                new BackupTarget(BackupKind.Archive, "b2", "home", Run(true, location: b2), Run(true, location: b2, bytes: 1000)),
-                new BackupTarget(BackupKind.Git, "repo", null, Run(true, pushFailed: true), Run(true, bytes: 5)),
-                new BackupTarget(BackupKind.Archive, "nas", "home", Run(false, error: "disk full"), null),
-                // Only Git targets can have push failures.
-                new BackupTarget(BackupKind.Archive, "odd", null, Run(true, pushFailed: true), null),
-            ],
-            [
-                new BackupSchedule("1", "offsite", "b2", "home", true, T0.AddHours(5)),
-                new BackupSchedule("2", "offsite", "b2", "home", true, T0.AddHours(2)),
-                new BackupSchedule("3", "offsite", "b2", "work", true, T0.AddHours(1)),
-                new BackupSchedule("4", "git", "repo", null, false, T0.AddMinutes(1)),
-                new BackupSchedule("5", "offsite", "s3", null, true, T0.AddDays(1)),
-            ],
-            [new StorageLocation("b2", "b2", "b2://bucket", true)]);
-
-        var view = BackupsPresentation.Project(status);
-
-        Assert.Equal([BackupHealth.Ok, BackupHealth.PushFailed, BackupHealth.Failed, BackupHealth.Ok], view.Targets.Select(t => t.Health));
-        var archive = view.Targets[0];
-        Assert.Equal(("b2", "b2://bucket", 900L, T0.AddHours(2)), (archive.Name, archive.Destination, archive.SizeBytes!.Value, archive.NextRunAt!.Value));
-        Assert.Null(view.Targets[1].NextRunAt);
-        Assert.Equal(5, view.Targets[1].SizeBytes);
-        Assert.Equal("disk full", view.Targets[2].Error);
-        Assert.Null(view.Targets[2].LastSuccessAt);
-        // Schedules for other namespaces or targets are listed separately; disabled ones are not.
-        Assert.Equal(["3", "5"], view.UnmatchedSchedules.Select(s => s.Id));
+        Assert.False(SystemsFreshness.IsLastKnown(fresh, connected: true, refreshFailed: false, T0.AddSeconds(30)));
+        Assert.True(SystemsFreshness.IsLastKnown(fresh, connected: false, refreshFailed: false, T0));
+        Assert.True(SystemsFreshness.IsLastKnown(fresh, connected: true, refreshFailed: true, T0));
+        Assert.True(SystemsFreshness.IsLastKnown(Row("node:a", T0, status: SystemStatus.Offline), true, false, T0));
+        Assert.True(SystemsFreshness.IsLastKnown(fresh, true, false, T0.AddMinutes(3)));
+        // The Gateway host reports more often, so its readings go stale sooner than a node's.
+        Assert.True(SystemsFreshness.IsLastKnown(Row("gateway", T0), true, false, T0.AddSeconds(45)));
+        Assert.False(SystemsFreshness.IsLastKnown(fresh, true, false, T0.AddSeconds(45)));
     }
 }
 
 public class DesktopPresentationTests
 {
-    private static SystemRow Host(DesktopSetupState? setup, string platform = "Linux", bool desktop = false,
-        SystemStatus status = SystemStatus.Online) => new()
+    [Fact]
+    public void Resolve_UnreportedDesktopDoesNotClaimSetupIsMissing()
     {
-        Id = "gateway",
-        Kind = SystemKind.Host,
+        var row = Row("gateway", desktop: false);
+        Assert.Null(DesktopPresentation.Resolve(row with { Environment = row.Environment! with { Desktop = null } }, connected: true));
+    }
+
+    private static SystemRow Row(string id, bool desktop, SystemStatus status = SystemStatus.Online, bool workerDesktop = false) => new()
+    {
+        Id = id,
+        Kind = id == "gateway" ? SystemKind.Host : SystemKind.Node,
         Status = status,
-        Platform = platform,
         Environment = new SystemEnvironment
         {
-            Id = "gateway",
-            Type = "local",
+            Id = id,
+            Type = id == "gateway" ? "local" : "node",
             Status = status,
             Desktop = desktop,
-            DesktopSetup = setup is { } state ? new DesktopSetup(state, state == DesktopSetupState.Unsupported ? "why" : null) : null,
+            Worker = workerDesktop ? new WorkerMetadata("p", null, "attached", "connected", null, true) : null,
         },
     };
 
-    [Theory]
-    [InlineData(DesktopSetupState.Ready, "macOS 15", DesktopTitle.ScreenSharingDetected, DesktopHint.EnableAccess, true, false)]
-    [InlineData(DesktopSetupState.Ready, "Linux", DesktopTitle.DesktopDetected, DesktopHint.EnableAccess, true, false)]
-    [InlineData(DesktopSetupState.Managed, "Linux", DesktopTitle.ManagedConfigured, DesktopHint.EnableAccess, true, false)]
-    [InlineData(DesktopSetupState.NeedsServer, "macOS 15", DesktopTitle.ScreenSharingNeeded, DesktopHint.ScreenSharingSetup, false, true)]
-    [InlineData(DesktopSetupState.NeedsServer, "Linux", DesktopTitle.DesktopServerNeeded, DesktopHint.DesktopServerSetup, false, true)]
-    [InlineData(DesktopSetupState.Unsupported, "Linux", DesktopTitle.Attention, DesktopHint.DesktopServerSetup, false, true)]
-    public void Resolve_HostSetupGuidance(DesktopSetupState state, string platform, DesktopTitle title, DesktopHint hint, bool showEnable, bool checkAgain)
-    {
-        var section = DesktopPresentation.Resolve(Host(state, platform), connected: true, hostDesktopEnabled: false, canAdmin: false);
-
-        Assert.Equal(DesktopSectionKind.HostSetup, section.Kind);
-        Assert.Equal((title, hint, showEnable, checkAgain), (section.Title, section.Hint, section.ShowEnable, section.ShowCheckAgain));
-        Assert.False(section.CanEnable);
-        Assert.Equal(state == DesktopSetupState.Unsupported ? "why" : null, section.Detail);
-    }
-
     [Fact]
-    public void Resolve_EnabledHostWaitsAndAdministratorsCanEnable()
+    public void Resolve_ReportsAvailabilityOnlyForAdvertisedDesktops()
     {
-        var enabled = DesktopPresentation.Resolve(Host(DesktopSetupState.Ready), true, hostDesktopEnabled: true, canAdmin: true);
-        Assert.Equal((DesktopTitle.Enabled, DesktopHint.Connecting, false), (enabled.Title, enabled.Hint, enabled.ShowEnable));
-
-        Assert.True(DesktopPresentation.Resolve(Host(DesktopSetupState.Ready), true, false, canAdmin: true).CanEnable);
+        Assert.Equal(DesktopSectionKind.Available, DesktopPresentation.Resolve(Row("node:a", desktop: true), connected: true));
         Assert.Equal(DesktopSectionKind.Available,
-            DesktopPresentation.Resolve(Host(null, desktop: true), true, hostDesktopEnabled: true, canAdmin: true).Kind);
-    }
-
-    [Theory]
-    [InlineData(null, false)]
-    [InlineData(null, true)]
-    [InlineData(DesktopSetupState.Ready, false)]
-    [InlineData(DesktopSetupState.Ready, true)]
-    [InlineData(DesktopSetupState.Managed, true)]
-    public void Resolve_AvailableHostDesktopTakesPrecedenceOverSetup(DesktopSetupState? setup, bool canAdmin)
-    {
-        var host = Host(setup, desktop: true);
-        var section = DesktopPresentation.Resolve(host, true, hostDesktopEnabled: true, canAdmin);
-
-        Assert.Equal((DesktopSectionKind.Available, DesktopTitle.Available, DesktopHint.ViewingDeferred),
-            (section.Kind, section.Title, section.Hint));
-        Assert.False(section.ShowEnable);
-        Assert.False(section.ShowCheckAgain);
+            DesktopPresentation.Resolve(Row("worker:p:a", desktop: false, workerDesktop: true), connected: true));
+        Assert.Equal(DesktopSectionKind.NotReady,
+            DesktopPresentation.Resolve(Row("node:a", desktop: true, SystemStatus.Starting), connected: true));
         Assert.Equal(DesktopSectionKind.Offline,
-            DesktopPresentation.Resolve(host, false, hostDesktopEnabled: true, canAdmin).Kind);
+            DesktopPresentation.Resolve(Row("node:a", desktop: true, SystemStatus.Offline), connected: true));
+        // A disconnected Gateway cannot vouch for a desktop being reachable.
+        Assert.Equal(DesktopSectionKind.Offline, DesktopPresentation.Resolve(Row("node:a", desktop: true), connected: false));
+        // Machines without a desktop show no desktop section at all.
+        Assert.Null(DesktopPresentation.Resolve(Row("node:a", desktop: false), connected: true));
     }
 
     [Fact]
-    public void Resolve_NonSetupStates()
+    public void Resolve_GatewayHostWithoutDesktopPointsToWebSetup()
     {
-        Assert.Equal(DesktopSectionKind.Offline, DesktopPresentation.Resolve(Host(DesktopSetupState.Ready), false, false, true).Kind);
-        Assert.Equal(DesktopSectionKind.NoHostDesktop, DesktopPresentation.Resolve(Host(null), true, false, true).Kind);
-        Assert.Equal(DesktopSectionKind.NotReady,
-            DesktopPresentation.Resolve(Host(null, status: SystemStatus.Starting), true, false, true).Kind);
-
-        var node = new SystemRow
-        {
-            Id = "node:a", Kind = SystemKind.Node, Status = SystemStatus.Online,
-            Environment = new SystemEnvironment { Id = "node:a", Type = "node", Status = SystemStatus.Online, Desktop = true },
-        };
-        var available = DesktopPresentation.Resolve(node, true, false, true);
-        Assert.Equal((DesktopSectionKind.Available, DesktopHint.ViewingDeferred), (available.Kind, available.Hint));
-        Assert.Equal(DesktopSectionKind.NoDesktop,
-            DesktopPresentation.Resolve(node with { Environment = node.Environment with { Desktop = false } }, true, false, true).Kind);
-        Assert.Equal(DesktopSectionKind.Offline,
-            DesktopPresentation.Resolve(node with { Status = SystemStatus.Offline }, true, false, true).Kind);
+        Assert.Equal(DesktopSectionKind.HostNotSetUp, DesktopPresentation.Resolve(Row("gateway", desktop: false), connected: true));
+        Assert.Equal(DesktopSectionKind.Available, DesktopPresentation.Resolve(Row("gateway", desktop: true), connected: true));
+        Assert.Null(DesktopPresentation.Resolve(Row("gateway", desktop: false), connected: false));
     }
 }
 
@@ -647,7 +507,8 @@ public class SystemsGatewayClientTests
         Assert.Equal("node.list timed out", snapshot.Errors.Nodes);
         // An unknown system.info method is an older Gateway, not an error.
         Assert.Null(snapshot.Errors.SystemInfo);
-        Assert.Contains(transport.Calls, call => call.Method == "environments.list" && call.Params.Contains("\"includeDesktopSetup\":true"));
+        // The native page never asks the Gateway to probe host desktop setup.
+        Assert.Contains(transport.Calls, call => call.Method == "environments.list" && call.Params == "{}");
     }
 
     [Fact]
@@ -672,32 +533,15 @@ public class SystemsGatewayClientTests
     }
 
     [Fact]
-    public async Task EnableHostDesktop_PatchesAgainstTheCurrentConfigHash()
-    {
-        var transport = new FakeTransport();
-        transport.Responses["config.get"] = () => Json("""{"hash":"abc123","config":{}}""");
-        transport.Responses["config.patch"] = () => Json("""{"ok":true}""");
-
-        await new SystemsGatewayClient(transport.Request).EnableHostDesktopAsync(CancellationToken.None);
-
-        Assert.Equal(["config.get", "config.patch"], transport.Calls.Select(c => c.Method));
-        var patch = JsonDocument.Parse(transport.Calls[1].Params).RootElement;
-        Assert.Equal("abc123", patch.GetProperty("baseHash").GetString());
-        Assert.True(JsonDocument.Parse(patch.GetProperty("raw").GetString()!).RootElement
-            .GetProperty("desktop").GetProperty("host").GetProperty("enabled").GetBoolean());
-    }
-
-    [Fact]
-    public async Task BackupsAndProbe_ReadAndHandleOlderGateways()
+    public async Task SystemInfo_OlderGatewayIsUnsupportedNotAnError()
     {
         var transport = new FakeTransport();
         var client = new SystemsGatewayClient(transport.Request);
-        Assert.Null(await client.ReadBackupStatusAsync(CancellationToken.None));
+        Assert.Null(await client.ReadSystemInfoAsync(CancellationToken.None));
 
-        transport.Responses["storage.locations.probe"] = () => Json("""{"state":"wrong-key"}""");
-        var probe = await client.ProbeStorageAsync("b2", CancellationToken.None);
-        Assert.Equal(StorageProbeState.WrongKey, probe.State);
-        Assert.Contains(transport.Calls, call => call.Method == "storage.locations.probe" && call.Params == """{"name":"b2"}""");
+        transport.Responses["system.info"] = () => throw new InvalidOperationException("missing scope: operator.read");
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadSystemInfoAsync(CancellationToken.None));
+        Assert.Equal("missing scope: operator.read", error.Message);
     }
 }
 

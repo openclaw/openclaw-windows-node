@@ -5,9 +5,9 @@ namespace OpenClaw.TestSupport.Gateway;
 
 /// <summary>
 /// Synthetic Systems inventory for the fixture Gateway: a Gateway host, paired nodes,
-/// workers, connected apps, pending pairings, host statistics and backups. Timestamps are
+/// workers, connected apps, pending pairings and host statistics. Timestamps are
 /// relative to the current time so the native page shows live and last-known states, and
-/// statistics move between reads so sparklines collect history. Nothing is real or mutable.
+/// statistics change between reads. Nothing is real or mutable.
 /// </summary>
 public sealed class SystemsFixture
 {
@@ -31,7 +31,6 @@ public sealed class SystemsFixture
     public static readonly string[] Methods =
     [
         "environments.list", "system.info", "node.list", "node.pair.list", "device.pair.list",
-        "backup.status", "storage.locations.probe",
     ];
 
     public static readonly string[] Events =
@@ -61,10 +60,6 @@ public sealed class SystemsFixture
             "node.list" => new { ts = Now, nodes = _empty ? Array.Empty<object>() : Nodes(sample) },
             "node.pair.list" => new { pending = _empty ? Array.Empty<object>() : NodePending(), paired = Array.Empty<object>() },
             "device.pair.list" => new { pending = _empty ? Array.Empty<object>() : DevicePending(), paired = Array.Empty<object>() },
-            "backup.status" => _empty
-                ? new { targets = Array.Empty<object>(), schedules = Array.Empty<object>(), locations = Array.Empty<object>() }
-                : Backups(),
-            "storage.locations.probe" => Probe(parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Systems method."),
         };
     }
@@ -127,7 +122,6 @@ public sealed class SystemsFixture
         {
             id = "gateway", type = "local", status = "available", platform = "linux",
             capabilities = new[] { "browser", "exec", "files" },
-            desktopSetup = new { state = "ready" },
         },
         new
         {
@@ -266,66 +260,4 @@ public sealed class SystemsFixture
             ts = Ago(TimeSpan.FromMinutes(5)),
         },
     ];
-
-    private static object Backups()
-    {
-        var archiveOk = new
-        {
-            id = "fixture-backup-1", createdAt = Ago(TimeSpan.FromHours(3)), archivePath = "/fixture/backups/home.tar",
-            status = "ok", kind = "archive", target = "b2-main", @namespace = "home", bytes = 1_300_000_000L,
-            location = new
-            {
-                name = "b2-main", provider = "b2", locationId = "fixture-loc-1", key = "home/2026", @namespace = "home",
-                plaintextBytes = 1_300_000_000L, storedBytes = 1_250_000_000L,
-            },
-        };
-        var gitPushed = new
-        {
-            id = "fixture-backup-2", createdAt = Ago(TimeSpan.FromMinutes(45)), archivePath = "/fixture/backups/config.git",
-            status = "ok", kind = "git", target = "config-repo", pushFailed = true, bytes = 4_200_000L,
-        };
-        var gitOk = new
-        {
-            id = "fixture-backup-3", createdAt = Ago(TimeSpan.FromDays(1)), archivePath = "/fixture/backups/config.git",
-            status = "ok", kind = "git", target = "config-repo", bytes = 4_100_000L,
-        };
-        var snapshotFailed = new
-        {
-            id = "fixture-backup-4", createdAt = Ago(TimeSpan.FromMinutes(20)), archivePath = "/fixture/backups/sessions.db",
-            status = "failed", kind = "sqlite-snapshot", target = "sessions-db", error = "Synthetic failure: the destination volume is full.",
-        };
-        return new
-        {
-            targets = new object[]
-            {
-                new { kind = "archive", target = "b2-main", @namespace = "home", latest = archiveOk, latestOk = archiveOk },
-                new { kind = "git", target = "config-repo", latest = gitPushed, latestOk = gitOk },
-                new { kind = "sqlite-snapshot", target = "sessions-db", latest = snapshotFailed },
-            },
-            schedules = new object[]
-            {
-                new { id = "fixture-schedule-1", mode = "offsite", target = "b2-main", @namespace = "home", enabled = true, everyMs = 86_400_000, nextRunAtMs = Now + 21 * 3_600_000L },
-                new { id = "fixture-schedule-2", mode = "git", target = "config-repo", enabled = true, everyMs = 3_600_000, nextRunAtMs = Now + 15 * 60_000L },
-                new { id = "fixture-schedule-3", mode = "offsite", target = "nas", @namespace = "home", enabled = true, everyMs = 604_800_000, nextRunAtMs = Now + 3 * 86_400_000L },
-            },
-            locations = new object[]
-            {
-                new { name = "b2-main", provider = "b2", displayTarget = "b2://fixture-backups/home", encrypted = true },
-                new { name = "nas", provider = "smb", displayTarget = @"\\fixture-nas\backups", encrypted = false },
-                new { name = "usb-drive", provider = "local", displayTarget = @"E:\OpenClaw", encrypted = true },
-            },
-        };
-    }
-
-    private static object Probe(JsonElement parameters)
-    {
-        GatewayScenario.ValidateProperties(parameters, "name");
-        return GatewayScenario.RequiredString(parameters, "name") switch
-        {
-            "b2-main" => new { state = "ok", freeBytes = 820 * Gb, totalBytes = 1024 * Gb },
-            "nas" => (object)new { state = "unavailable", message = "Synthetic: host unreachable." },
-            "usb-drive" => new { state = "uninitialized" },
-            _ => new { state = "wrong-key" },
-        };
-    }
 }

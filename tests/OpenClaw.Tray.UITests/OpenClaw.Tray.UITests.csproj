@@ -26,6 +26,9 @@
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <RootNamespace>OpenClaw.Tray.UITests</RootNamespace>
+    <!-- Preview.17 emits a public source-map helper also exported by the app.
+         Keep source mapping in the production assembly, not the test harness. -->
+    <ReactorSourceMap>false</ReactorSourceMap>
     <DefineConstants Condition="'$(LocalAiProofBaseline)' == 'true'">$(DefineConstants);LOCAL_AI_BASELINE</DefineConstants>
 
     <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the

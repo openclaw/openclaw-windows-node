@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 #if !OPENCLAW_TRAY_TESTS
 using Microsoft.UI.Dispatching;
 #endif
@@ -45,7 +46,15 @@ internal sealed class AppState : INotifyPropertyChanged
     // ── Connection ──────────────────────────────────────────────────────
 
     private ConnectionStatus _status = ConnectionStatus.Disconnected;
-    public ConnectionStatus Status { get => _status; set => SetField(ref _status, value); }
+    public ConnectionStatus Status
+    {
+        get => _status;
+        set
+        {
+            if (value != ConnectionStatus.Connected) InvalidateSessionsSnapshot();
+            SetField(ref _status, value);
+        }
+    }
 
     private AgentActivity? _currentActivity;
     public AgentActivity? CurrentActivity { get => _currentActivity; set => SetField(ref _currentActivity, value); }
@@ -69,7 +78,55 @@ internal sealed class AppState : INotifyPropertyChanged
     public ChannelsStatusSnapshot? ChannelsSnapshot { get => _channelsSnapshot; set => SetField(ref _channelsSnapshot, value); }
 
     private SessionInfo[] _sessions = Array.Empty<SessionInfo>();
-    public SessionInfo[] Sessions { get => _sessions; set => SetField(ref _sessions, value); }
+    private long? _sessionsConnectionEpoch;
+    public SessionInfo[] Sessions
+    {
+        get => _sessions;
+        set
+        {
+            InvalidateSessionsSnapshot();
+            SetField(ref _sessions, value);
+        }
+    }
+
+    /// <summary>Null until a tracked snapshot is admitted on the current authenticated epoch.</summary>
+    public int? SessionsAttentionCount => _sessionsConnectionEpoch.HasValue
+        ? _sessions.Count(session => !session.Archived && SessionRunState.NeedsAttention(session))
+        : null;
+
+    /// <summary>The epoch that owns the current tracked array's freshness, independent of inventory filters.</summary>
+    public long? SessionsConnectionEpoch => _sessionsConnectionEpoch;
+
+    internal void InvalidateSessionsSnapshot()
+    {
+#if !OPENCLAW_TRAY_TESTS
+        if (_dispatcher != null && !_dispatcher.HasThreadAccess)
+            throw new InvalidOperationException("AppState.Sessions freshness must be written on UI thread");
+#endif
+        if (_sessionsConnectionEpoch is null) return;
+        _sessionsConnectionEpoch = null;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionsConnectionEpoch)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionsAttentionCount)));
+    }
+
+    /// <summary>Publishes rows and validity before any observer runs; stale callbacks cannot replace either.</summary>
+    internal bool TryPublishSessions(SessionInfo[] sessions, int capturedGeneration, int currentGeneration,
+        long? capturedEpoch, long? currentEpoch, bool connected)
+    {
+        if (!connected || capturedGeneration != currentGeneration ||
+            capturedEpoch is null || capturedEpoch != currentEpoch)
+            return false;
+#if !OPENCLAW_TRAY_TESTS
+        if (_dispatcher != null && !_dispatcher.HasThreadAccess)
+            throw new InvalidOperationException("AppState.Sessions must be written on UI thread");
+#endif
+        _sessions = sessions;
+        _sessionsConnectionEpoch = capturedEpoch;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Sessions)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionsConnectionEpoch)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionsAttentionCount)));
+        return true;
+    }
 
     private GatewayNodeInfo[] _nodes = Array.Empty<GatewayNodeInfo>();
     public GatewayNodeInfo[] Nodes { get => _nodes; set => SetField(ref _nodes, value); }

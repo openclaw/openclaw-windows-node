@@ -209,6 +209,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-workflow-contract.ps1
 
+    - name: Validate official Reactor package bootstrap
+      shell: pwsh
+      run: ./scripts/test-reactor-packages.ps1
+
     - name: Validate MSIX CI artifacts
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
@@ -595,6 +599,8 @@ jobs:
 
     - name: Restore tray test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.Tray.Tests -r win-x64
         dotnet restore tests/OpenClaw.SetupEngine.Tests -r win-x64
@@ -694,6 +700,8 @@ jobs:
 
     - name: Restore UI test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
         dotnet restore tests/OpenClawTray.FunctionalUI.Tests -r win-x64
 
@@ -897,6 +905,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -973,6 +983,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1049,6 +1061,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1172,7 +1186,10 @@ jobs:
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
 
     - name: Download signed cleanup host
       if: needs.sign-cleanup-host.result == 'success'
@@ -1241,7 +1258,10 @@ jobs:
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
 
     - name: Download signed cleanup host
       if: needs.sign-cleanup-host.result == 'success'

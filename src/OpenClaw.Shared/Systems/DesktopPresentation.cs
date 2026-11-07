@@ -1,107 +1,37 @@
+// Projects reported desktop availability without provisioning. Usage: DesktopPresentation.Resolve(row, connected).
 namespace OpenClaw.Shared.Systems;
 
-/// <summary>What the desktop area of a machine's details shows.</summary>
+/// <summary>
+/// What the desktop area of a machine's details shows. The native app reports availability only;
+/// viewing, control and Gateway host desktop setup happen in the web interface.
+/// </summary>
 public enum DesktopSectionKind
 {
-    /// <summary>Gateway host desktop setup guidance and the enable action.</summary>
-    HostSetup,
-    /// <summary>A desktop is advertised. Viewing/control are deferred in the native app.</summary>
+    /// <summary>A desktop is advertised and the machine is online.</summary>
     Available,
+    /// <summary>A desktop was advertised, but the machine or the Gateway is offline.</summary>
     Offline,
-    /// <summary>Starting, stopping, error or unknown runtime state.</summary>
+    /// <summary>A desktop is advertised, but the machine is starting, stopping or in error.</summary>
     NotReady,
-    NoDesktop,
-    NoHostDesktop,
+    /// <summary>The online Gateway host has no desktop; it can be set up in the web interface.</summary>
+    HostNotSetUp,
 }
-
-public enum DesktopTitle
-{
-    Enabled,
-    ManagedConfigured,
-    ScreenSharingDetected,
-    DesktopDetected,
-    ScreenSharingNeeded,
-    DesktopServerNeeded,
-    Attention,
-    Available,
-    Offline,
-    NotReady,
-    NoDesktop,
-}
-
-public enum DesktopHint
-{
-    Connecting,
-    EnableAccess,
-    ScreenSharingSetup,
-    DesktopServerSetup,
-    ViewingDeferred,
-    Offline,
-    NoDesktop,
-    NoHostDesktop,
-}
-
-/// <summary>
-/// Desktop area content. <see cref="ShowEnable"/> offers "Enable desktop access"
-/// (always behind a confirmation); <see cref="CanEnable"/> is false for operators
-/// without administrator access, who are pointed to an administrator instead.
-/// </summary>
-public sealed record DesktopSection(
-    DesktopSectionKind Kind,
-    DesktopTitle Title,
-    DesktopHint Hint,
-    bool ShowEnable,
-    bool CanEnable,
-    bool ShowCheckAgain,
-    string? Detail);
 
 public static class DesktopPresentation
 {
-    public static DesktopSection Resolve(SystemRow row, bool connected, bool hostDesktopEnabled, bool canAdmin)
+    /// <summary>Null when the machine has no desktop to report, so the section is not shown.</summary>
+    public static DesktopSectionKind? Resolve(SystemRow row, bool connected)
     {
         ArgumentNullException.ThrowIfNull(row);
-        var environment = row.Environment;
-        var isHost = row.Id == SystemsProjection.GatewayId;
-        var setup = environment?.DesktopSetup;
-
-        if (!connected || row.Status == SystemStatus.Offline)
-            return Simple(DesktopSectionKind.Offline, DesktopTitle.Offline, DesktopHint.Offline);
-        if (row.Status != SystemStatus.Online)
-            return Simple(DesktopSectionKind.NotReady, DesktopTitle.NotReady, DesktopHint.Offline);
-        if (environment?.Desktop == true || environment?.Worker?.Desktop == true)
-            return Simple(DesktopSectionKind.Available, DesktopTitle.Available, DesktopHint.ViewingDeferred);
-
-        if (isHost && (setup is not null || hostDesktopEnabled))
+        var advertised = row.Environment?.Desktop == true || row.Environment?.Worker?.Desktop == true;
+        if (!advertised)
         {
-            var ready = setup?.State is DesktopSetupState.Ready or DesktopSetupState.Managed;
-            var mac = PlatformLabels.IsMac(row.Platform);
-            var title = hostDesktopEnabled ? DesktopTitle.Enabled : setup?.State switch
-            {
-                DesktopSetupState.Managed => DesktopTitle.ManagedConfigured,
-                DesktopSetupState.Ready => mac ? DesktopTitle.ScreenSharingDetected : DesktopTitle.DesktopDetected,
-                DesktopSetupState.NeedsServer => mac ? DesktopTitle.ScreenSharingNeeded : DesktopTitle.DesktopServerNeeded,
-                _ => DesktopTitle.Attention,
-            };
-            var hint = hostDesktopEnabled ? DesktopHint.Connecting
-                : ready ? DesktopHint.EnableAccess
-                : mac && setup?.State == DesktopSetupState.NeedsServer ? DesktopHint.ScreenSharingSetup
-                : DesktopHint.DesktopServerSetup;
-            return new DesktopSection(
-                DesktopSectionKind.HostSetup, title, hint,
-                ShowEnable: !hostDesktopEnabled && ready,
-                CanEnable: canAdmin,
-                ShowCheckAgain: !hostDesktopEnabled && !ready,
-                Detail: setup?.State == DesktopSetupState.Unsupported ? setup.Detail : null);
+            return row.Environment?.Desktop == false && row.Id == SystemsProjection.GatewayId && connected && row.Status == SystemStatus.Online
+                ? DesktopSectionKind.HostNotSetUp
+                : null;
         }
-
-        return isHost
-            ? Simple(DesktopSectionKind.NoHostDesktop, DesktopTitle.NoDesktop, DesktopHint.NoHostDesktop)
-            : Simple(DesktopSectionKind.NoDesktop, DesktopTitle.NoDesktop, DesktopHint.NoDesktop);
+        if (!connected || row.Status == SystemStatus.Offline)
+            return DesktopSectionKind.Offline;
+        return row.Status == SystemStatus.Online ? DesktopSectionKind.Available : DesktopSectionKind.NotReady;
     }
-
-    private static DesktopSection Simple(DesktopSectionKind kind, DesktopTitle title, DesktopHint hint) =>
-        new(kind, title, hint, ShowEnable: false, CanEnable: false, ShowCheckAgain: false, Detail: null);
-
-    /// <summary>The <c>config.patch</c> body that turns on the Gateway host desktop.</summary>
-    public const string EnableHostDesktopPatch = """{"desktop":{"host":{"enabled":true}}}""";
 }

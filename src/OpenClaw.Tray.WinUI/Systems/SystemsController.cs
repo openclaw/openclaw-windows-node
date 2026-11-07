@@ -1,7 +1,7 @@
+// Owns per-page Systems reads and connection fences. Usage: controller.UpdateInputs(inputs), then observe State/Changed.
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Connection;
@@ -17,7 +17,6 @@ internal sealed record SystemsInputs
     public IReadOnlyList<string> Scopes { get; init; } = Array.Empty<string>();
     public IReadOnlyList<PresenceEntry> Presence { get; init; } = Array.Empty<PresenceEntry>();
     public IReadOnlyList<SessionInfo> Sessions { get; init; } = Array.Empty<SessionInfo>();
-    public JsonElement? Config { get; init; }
     public IReadOnlyList<PendingApproval> PendingApprovals { get; init; } = Array.Empty<PendingApproval>();
     public PairingListInfo? NodePairList { get; init; }
     public IReadOnlyCollection<string> OwnNodeIds { get; init; } = Array.Empty<string>();
@@ -27,14 +26,6 @@ internal sealed record SystemsInputs
     public string? GatewayId { get; init; }
 }
 
-internal enum ProbeStatus
-{
-    Checking,
-    Done,
-}
-
-internal sealed record StorageProbeView(ProbeStatus Status, StorageProbeResult? Result);
-
 /// <summary>Immutable snapshot rendered by the Reactor Systems page.</summary>
 internal sealed record SystemsViewState
 {
@@ -42,26 +33,23 @@ internal sealed record SystemsViewState
     public bool Loading { get; init; }
     public bool HasLoaded { get; init; }
     public string? InventoryError { get; init; }
+    public bool InventoryTimedOut { get; init; }
     public SystemsPartialErrors PartialErrors { get; init; } = new();
     public IReadOnlyList<SystemRow> Rows { get; init; } = Array.Empty<SystemRow>();
     public string? SelectedId { get; init; }
-    public string Query { get; init; } = "";
-    public SystemsStatusFilter Filter { get; init; }
-    public SystemsSortMode Sort { get; init; } = SystemsSortMode.OnlineFirst;
-    public bool ShowStatistics { get; init; } = true;
-    public BackupStatus? Backups { get; init; }
-    public bool BackupsLoading { get; init; }
-    public bool BackupsUnsupported { get; init; }
-    public string? BackupsError { get; init; }
-    public IReadOnlyDictionary<string, StorageProbeView> Probes { get; init; } =
-        new Dictionary<string, StorageProbeView>(StringComparer.Ordinal);
-    public bool HostDesktopEnabled { get; init; }
-    public bool DesktopEnabling { get; init; }
-    public string? DesktopError { get; init; }
+    public int SelectionRequest { get; init; }
     public IReadOnlyList<PendingApproval> PendingApprovals { get; init; } = Array.Empty<PendingApproval>();
     public bool CanRead { get; init; }
-    public bool CanAdmin { get; init; }
-    public bool CanPair { get; init; }
+    /// <summary>
+    /// Rename and forget need <c>operator.pairing</c> (or admin) on the Gateway. Gateways that
+    /// do not advertise scopes keep the earlier behavior and report a denial as an error.
+    /// </summary>
+    public bool CanManageNodes { get; init; }
+    /// <summary>
+    /// The Gateway reports <c>environments.list</c>, which its web Systems page requires. Older
+    /// Gateways open the web interface root instead.
+    /// </summary>
+    public bool HasWebSystemsPage { get; init; }
     public string? LocalNodeId { get; init; }
     public DateTimeOffset? LastRefreshedAt { get; init; }
     /// <summary>
@@ -89,6 +77,7 @@ internal sealed record SystemsViewState
 /// </summary>
 internal sealed class SystemsController : IDisposable
 {
+    public static readonly TimeSpan InventoryTimeout = TimeSpan.FromSeconds(15);
     public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(
         int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_SYSTEMS_POLL_SECONDS"), out var seconds) && seconds >= 5
             ? seconds
@@ -119,16 +108,13 @@ internal sealed class SystemsController : IDisposable
     private string? _lastGatewayId;
     // Cancelled whenever the connection epoch changes, so no request outlives the connection it ran on.
     private CancellationTokenSource _connection;
-    private readonly SystemsTelemetryHistory _telemetry = new();
     private readonly CancellationTokenSource _lifetime = new();
     private SystemsInventorySnapshot? _snapshot;
     private SystemsInputs _inputs = new();
-    private JsonElement? _lastConfig;
     private CancellationTokenSource? _inventoryCts;
     private bool _inventoryPending;
     private bool _refreshQueued;
-    private bool _telemetryPending;
-    private bool _backupsPending;
+    private bool _measurementsPending;
     private bool _disposed;
 
     public SystemsController(
@@ -144,11 +130,9 @@ internal sealed class SystemsController : IDisposable
 
     public SystemsViewState State { get; private set; } = new();
 
-    public SystemsTelemetryHistory Telemetry => _telemetry;
-
     public event EventHandler? Changed;
 
-    /// <summary>Applies new app inputs. A reconnect clears telemetry and starts a fresh refresh.</summary>
+    /// <summary>Applies new app inputs. A reconnect clears pushed statistics and starts a fresh refresh.</summary>
     public void UpdateInputs(SystemsInputs inputs)
     {
         ArgumentNullException.ThrowIfNull(inputs);
@@ -178,52 +162,31 @@ internal sealed class SystemsController : IDisposable
             {
                 HasLoaded = false,
                 SelectedId = null,
+                SelectionRequest = 0,
                 InventoryError = null,
                 PartialErrors = new(),
-                Backups = null,
-                BackupsError = null,
-                BackupsUnsupported = false,
+                HasWebSystemsPage = false,
                 LastRefreshedAt = null,
             };
         }
         if (reconnected)
         {
-            _telemetry.Clear();
             _pushedHostStats.Clear();
             _gatewayClockOffset = TimeSpan.Zero;
             _clockCalibrated = false;
             _pendingClockOffset = null;
-            next = next with
-            {
-                DesktopError = null,
-                GatewayClockOffset = TimeSpan.Zero,
-            };
+            next = next with { GatewayClockOffset = TimeSpan.Zero };
         }
         if (epochChanged)
         {
             RenewConnection();
-            // In-flight probes were cancelled with the connection, so none may stay "Checking".
-            next = next with
-            {
-                ConnectionEpoch = next.ConnectionEpoch + 1,
-                DesktopEnabling = false,
-                BackupsLoading = false,
-                Probes = new Dictionary<string, StorageProbeView>(StringComparer.Ordinal),
-            };
+            next = next with { ConnectionEpoch = next.ConnectionEpoch + 1 };
         }
-        // A successful enable is shown optimistically until the next config response or reconnect.
-        var configChanged = !SameResponse(inputs.Config, _lastConfig);
-        _lastConfig = inputs.Config;
-        var hostDesktopEnabled = configChanged || reconnected
-            ? SystemsParser.IsHostDesktopEnabled(inputs.Config)
-            : next.HostDesktopEnabled;
         Publish(next with
         {
             Connected = inputs.Connected,
             CanRead = HasScope(inputs.Scopes, "operator.read", legacyDefault: true),
-            CanAdmin = HasScope(inputs.Scopes, "operator.admin", legacyDefault: false),
-            CanPair = HasScope(inputs.Scopes, "operator.pairing", legacyDefault: false),
-            HostDesktopEnabled = hostDesktopEnabled,
+            CanManageNodes = HasScope(inputs.Scopes, "operator.pairing", legacyDefault: true),
             PendingApprovals = inputs.PendingApprovals,
             OwnNodePending = inputs.Connected && inputs.NodePairList?.Pending.Any(request =>
                 !string.IsNullOrWhiteSpace(request.NodeId) &&
@@ -233,7 +196,7 @@ internal sealed class SystemsController : IDisposable
             Rows = Project(),
         });
         if (reconnected)
-            _ = RefreshAsync(manual: false);
+            _ = RefreshAsync();
     }
 
     /// <summary>
@@ -245,7 +208,7 @@ internal sealed class SystemsController : IDisposable
         if (_snapshot is null || !_inputs.Connected)
             return;
         _snapshot = _snapshot with { Nodes = nodes, Errors = _snapshot.Errors with { Nodes = null } };
-        PublishRows(recordTelemetry: true);
+        PublishRows();
     }
 
     /// <summary>
@@ -268,11 +231,9 @@ internal sealed class SystemsController : IDisposable
         if (CalibrateClock(_clock() - update.Stats.UpdatedAt) is { } offset)
         {
             _gatewayClockOffset = offset;
-            // Node history was recorded on the previous offset; mixing both would misorder samples.
-            _telemetry.Forget(id => id.StartsWith(SystemsProjection.NodeIdPrefix, StringComparison.Ordinal));
             Publish(State with { GatewayClockOffset = offset });
         }
-        PublishRows(recordTelemetry: true);
+        PublishRows();
     }
 
     /// <summary>
@@ -330,46 +291,48 @@ internal sealed class SystemsController : IDisposable
         {
             _eventRefreshScheduled = false;
         }
-        await RefreshAsync(manual: false).ConfigureAwait(true);
+        await RefreshAsync().ConfigureAwait(true);
     }
 
     public void Select(string id)
     {
-        if (string.IsNullOrWhiteSpace(id) || id == State.SelectedId)
+        if (string.IsNullOrWhiteSpace(id))
             return;
-        Publish(State with { SelectedId = id, DesktopError = null });
-        if (id == SystemsProjection.GatewayId)
-            _ = RefreshBackupsAsync();
+        var alreadySelected = id == State.SelectedId;
+        Publish(State with
+        {
+            SelectedId = id,
+            SelectionRequest = State.SelectionRequest + 1,
+        });
+        if (alreadySelected)
+            return;
         // Fresh measurements for the newly selected machine instead of waiting for the next poll.
-        if (State.ShowStatistics)
-            _ = RefreshTelemetryAsync();
+        _ = RefreshMeasurementsAsync();
     }
 
-    public void SetQuery(string query) => Publish(State with { Query = query ?? "" });
+    public void ToggleSelection(string id)
+    {
+        if (State.SelectedId == id)
+            Publish(State with { SelectedId = null });
+        else
+            Select(id);
+    }
 
-    public void SetFilter(SystemsStatusFilter filter) => Publish(State with { Filter = filter });
-
-    public void SetSort(SystemsSortMode sort) => Publish(State with { Sort = sort });
-
-    public void SetShowStatistics(bool show) => Publish(State with { ShowStatistics = show });
-
-    /// <summary>Periodic work: inventory when needed, otherwise the selected machine's measurements and backups.</summary>
+    /// <summary>Periodic work: inventory when needed, otherwise the selected machine's measurements.</summary>
     public async Task TickAsync()
     {
         if (!_inputs.Connected || _disposed)
             return;
         if (_snapshot is null || _refreshQueued)
         {
-            await RefreshAsync(manual: false).ConfigureAwait(true);
+            await RefreshAsync().ConfigureAwait(true);
             return;
         }
-        var refreshTelemetry = State.ShowStatistics ? RefreshTelemetryAsync() : Task.CompletedTask;
-        var refreshBackups = State.SelectedId is null or SystemsProjection.GatewayId ? RefreshBackupsAsync() : Task.CompletedTask;
-        await Task.WhenAll(refreshTelemetry, refreshBackups).ConfigureAwait(true);
+        await RefreshMeasurementsAsync().ConfigureAwait(true);
     }
 
     /// <summary>Reloads the inventory. Event bursts during a load collapse into one follow-up refresh.</summary>
-    public async Task RefreshAsync(bool manual)
+    public async Task RefreshAsync()
     {
         if (_disposed || !_inputs.Connected || _gateway() is not { } gateway)
             return;
@@ -384,12 +347,10 @@ internal sealed class SystemsController : IDisposable
         _refreshQueued = false;
         _inventoryPending = true;
         CancelInventory();
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        using var timeout = new CancellationTokenSource(InventoryTimeout);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, timeout.Token);
         _inventoryCts = cts;
-        Publish(State with { Loading = true });
-        var backups = manual || State.SelectedId is null or SystemsProjection.GatewayId
-            ? RefreshBackupsAsync()
-            : Task.CompletedTask;
+        Publish(State with { Loading = true, InventoryError = null, InventoryTimedOut = false });
         try
         {
             var snapshot = await gateway.LoadInventoryAsync(cts.Token).ConfigureAwait(true);
@@ -397,13 +358,19 @@ internal sealed class SystemsController : IDisposable
             if (!cts.IsCancellationRequested && ReferenceEquals(_inventoryCts, cts))
                 ApplyInventory(snapshot);
         }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested &&
+                                                  ReferenceEquals(_inventoryCts, cts) &&
+                                                  !_lifetime.IsCancellationRequested)
+        {
+            Publish(State with { Loading = false, InventoryError = "timeout", InventoryTimedOut = true });
+        }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
             if (ReferenceEquals(_inventoryCts, cts))
-                Publish(State with { Loading = false, InventoryError = ex.Message });
+                Publish(State with { Loading = false, InventoryError = ex.Message, InventoryTimedOut = false });
         }
         finally
         {
@@ -416,9 +383,8 @@ internal sealed class SystemsController : IDisposable
             }
             cts.Dispose();
         }
-        await backups.ConfigureAwait(true);
         if (_refreshQueued && _inputs.Connected && !_disposed)
-            await RefreshAsync(manual: false).ConfigureAwait(true);
+            await RefreshAsync().ConfigureAwait(true);
     }
 
     private void ApplyInventory(SystemsInventorySnapshot snapshot)
@@ -433,7 +399,6 @@ internal sealed class SystemsController : IDisposable
         }
         _snapshot = snapshot;
         var rows = Project();
-        _telemetry.Record(rows);
         var initial = !State.HasLoaded;
         Publish(State with
         {
@@ -441,7 +406,9 @@ internal sealed class SystemsController : IDisposable
             Loading = false,
             HasLoaded = true,
             InventoryError = null,
+            InventoryTimedOut = false,
             PartialErrors = snapshot.Errors,
+            HasWebSystemsPage = snapshot.Environments is not null,
             LastRefreshedAt = _clock(),
             SelectedId = initial && State.SelectedId is null
                 ? SystemsProjection.DefaultSelection(rows)
@@ -450,9 +417,9 @@ internal sealed class SystemsController : IDisposable
     }
 
     /// <summary>Refreshes only the selected machine's measurements without reloading the inventory.</summary>
-    public async Task RefreshTelemetryAsync()
+    public async Task RefreshMeasurementsAsync()
     {
-        if (_telemetryPending || _inventoryPending || _snapshot is null || _gateway() is not { } gateway ||
+        if (_measurementsPending || _inventoryPending || _snapshot is null || _gateway() is not { } gateway ||
             State.Selected is not { } row || !_inputs.Connected)
         {
             return;
@@ -460,7 +427,7 @@ internal sealed class SystemsController : IDisposable
         var host = row.Id == SystemsProjection.GatewayId;
         if (!host && row.Kind != SystemKind.Node)
             return;
-        _telemetryPending = true;
+        _measurementsPending = true;
         var token = _connection.Token;
         var epoch = State.ConnectionEpoch;
         try
@@ -484,7 +451,7 @@ internal sealed class SystemsController : IDisposable
                     return;
                 _snapshot = _snapshot with { Nodes = nodes, Errors = _snapshot.Errors with { Nodes = null } };
             }
-            PublishRows(recordTelemetry: true);
+            PublishRows();
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -497,123 +464,15 @@ internal sealed class SystemsController : IDisposable
                 {
                     Errors = host ? _snapshot.Errors with { SystemInfo = ex.Message } : _snapshot.Errors with { Nodes = ex.Message },
                 };
-                PublishRows(recordTelemetry: false);
+                PublishRows();
             }
         }
         finally
         {
             // A newer connection resets the flag itself and may already own it again.
             if (epoch == State.ConnectionEpoch)
-                _telemetryPending = false;
+                _measurementsPending = false;
         }
-    }
-
-    public async Task RefreshBackupsAsync()
-    {
-        if (_backupsPending || !_inputs.Connected || _gateway() is not { } gateway)
-            return;
-        if (!State.CanRead)
-        {
-            Publish(State with { Backups = null, BackupsError = null, BackupsLoading = false });
-            return;
-        }
-        _backupsPending = true;
-        Publish(State with { BackupsLoading = true });
-        var token = _connection.Token;
-        var epoch = State.ConnectionEpoch;
-        try
-        {
-            var status = await gateway.ReadBackupStatusAsync(token).ConfigureAwait(true);
-            if (epoch != State.ConnectionEpoch)
-                return;
-            Publish(State with
-            {
-                Backups = status,
-                BackupsUnsupported = status is null,
-                BackupsError = null,
-                BackupsLoading = false,
-            });
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
-        catch (Exception ex)
-        {
-            if (epoch == State.ConnectionEpoch)
-                Publish(State with { BackupsError = ex.Message, BackupsLoading = false });
-        }
-        finally
-        {
-            if (epoch == State.ConnectionEpoch)
-            {
-                _backupsPending = false;
-                if (State.BackupsLoading)
-                    Publish(State with { BackupsLoading = false });
-            }
-        }
-    }
-
-    public async Task ProbeStorageAsync(string name)
-    {
-        if (!_inputs.Connected || _gateway() is not { } gateway ||
-            State.Probes.TryGetValue(name, out var existing) && existing.Status == ProbeStatus.Checking)
-        {
-            return;
-        }
-        SetProbe(name, new StorageProbeView(ProbeStatus.Checking, null));
-        var epoch = State.ConnectionEpoch;
-        StorageProbeResult result;
-        try
-        {
-            result = await gateway.ProbeStorageAsync(name, _connection.Token).ConfigureAwait(true);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (Exception ex)
-        {
-            result = new StorageProbeResult(StorageProbeState.Error, null, null, ex.Message);
-        }
-        if (epoch == State.ConnectionEpoch)
-            SetProbe(name, new StorageProbeView(ProbeStatus.Done, result));
-    }
-
-    /// <summary>Enables the Gateway host desktop. Callers must confirm with the user first.</summary>
-    public async Task<bool> EnableHostDesktopAsync()
-    {
-        if (State.DesktopEnabling || !State.CanAdmin || !_inputs.Connected || _gateway() is not { } gateway)
-            return false;
-        Publish(State with { DesktopEnabling = true, DesktopError = null });
-        var epoch = State.ConnectionEpoch;
-        var enabled = false;
-        try
-        {
-            await gateway.EnableHostDesktopAsync(_connection.Token).ConfigureAwait(true);
-            // A result from an earlier connection says nothing about the current Gateway.
-            if (epoch == State.ConnectionEpoch)
-            {
-                enabled = true;
-                Publish(State with { DesktopEnabling = false, HostDesktopEnabled = true });
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A dropped connection cancels the request; the outcome is unknown, so report nothing.
-        }
-        catch (Exception ex)
-        {
-            if (epoch == State.ConnectionEpoch)
-                Publish(State with { DesktopError = ex.Message });
-        }
-        finally
-        {
-            if (epoch == State.ConnectionEpoch && State.DesktopEnabling)
-                Publish(State with { DesktopEnabling = false });
-        }
-        if (enabled)
-            await RefreshAsync(manual: true).ConfigureAwait(true);
-        return enabled;
     }
 
     public void Dispose()
@@ -628,19 +487,8 @@ internal sealed class SystemsController : IDisposable
         Changed = null;
     }
 
-    private void SetProbe(string name, StorageProbeView view)
-    {
-        var probes = new Dictionary<string, StorageProbeView>(State.Probes, StringComparer.Ordinal) { [name] = view };
-        Publish(State with { Probes = probes });
-    }
-
-    private void PublishRows(bool recordTelemetry)
-    {
-        var rows = Project();
-        if (recordTelemetry)
-            _telemetry.Record(rows);
-        Publish(State with { Rows = rows, PartialErrors = _snapshot?.Errors ?? new() });
-    }
+    private void PublishRows() =>
+        Publish(State with { Rows = Project(), PartialErrors = _snapshot?.Errors ?? new() });
 
     private IReadOnlyList<SystemRow> Project()
     {
@@ -653,7 +501,12 @@ internal sealed class SystemsController : IDisposable
                 session.Key,
                 FirstNonEmpty(session.DisplayName, session.Label, session.DerivedTitle) ?? session.Key,
                 session.Placement,
-                session.ExecNode))
+                session.ExecNode)
+            {
+                AgentId = session.AgentId,
+                UpdatedAt = session.UpdatedAt is { } updated
+                    ? new DateTimeOffset(DateTime.SpecifyKind(updated, DateTimeKind.Utc)) : null,
+            })
             .ToArray();
         return SystemsProjection.Project(snapshot, sessions, new SystemsProjectionOptions
         {
@@ -678,8 +531,7 @@ internal sealed class SystemsController : IDisposable
     {
         var previous = _connection;
         _connection = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _telemetryPending = false;
-        _backupsPending = false;
+        _measurementsPending = false;
         try { previous.Cancel(); }
         catch (ObjectDisposedException) { }
         previous.Dispose();
@@ -695,13 +547,6 @@ internal sealed class SystemsController : IDisposable
     /// <summary>Uses the Gateway's scope rules. Gateways that do not advertise scopes keep legacy read access only.</summary>
     internal static bool HasScope(IReadOnlyList<string> scopes, string scope, bool legacyDefault) =>
         scopes.Count == 0 ? legacyDefault : OperatorScopeHelper.Satisfies(scopes, scope);
-
-    /// <summary>
-    /// True for the same config response. JsonElement equality compares its document by reference,
-    /// so a new response is a change even when its contents match the previous one.
-    /// </summary>
-    private static bool SameResponse(JsonElement? a, JsonElement? b) =>
-        a is null ? b is null : b is not null && a.Value.Equals(b.Value);
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));

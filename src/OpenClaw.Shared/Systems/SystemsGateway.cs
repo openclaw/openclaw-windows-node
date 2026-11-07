@@ -1,10 +1,11 @@
+// Read-only Systems Gateway transport. Usage: await SystemsGatewayClient.For(client).LoadInventoryAsync(token).
 using System.Text.Json;
 
 namespace OpenClaw.Shared.Systems;
 
 public sealed record NodeHostStatsEvent(string NodeId, NodeHostStats Stats);
 
-/// <summary>Gateway reads and the one admin mutation behind the Systems page.</summary>
+/// <summary>Read-only Gateway requests behind the Systems page. Node management uses the operator client.</summary>
 public interface ISystemsGateway
 {
     /// <summary>
@@ -14,11 +15,6 @@ public interface ISystemsGateway
     Task<SystemsInventorySnapshot> LoadInventoryAsync(CancellationToken cancellationToken);
     Task<(GatewaySystemInfo Info, DateTimeOffset SampledAt)?> ReadSystemInfoAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<GatewayNodeInfo>> ReadNodesAsync(CancellationToken cancellationToken);
-    /// <summary>Null when the Gateway predates backups.</summary>
-    Task<BackupStatus?> ReadBackupStatusAsync(CancellationToken cancellationToken);
-    Task<StorageProbeResult> ProbeStorageAsync(string name, CancellationToken cancellationToken);
-    /// <summary>Sets <c>desktop.host.enabled</c> through a hash-guarded <c>config.patch</c>.</summary>
-    Task EnableHostDesktopAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>Request-delegate implementation so tests can drive it without a socket.</summary>
@@ -39,7 +35,7 @@ public sealed class SystemsGatewayClient : ISystemsGateway
 
     public async Task<SystemsInventorySnapshot> LoadInventoryAsync(CancellationToken cancellationToken)
     {
-        var environmentsTask = RequestOptionalAsync("environments.list", new { includeDesktopSetup = true }, cancellationToken);
+        var environmentsTask = RequestOptionalAsync("environments.list", new { }, cancellationToken);
         var nodesTask = ReadNodesAsync(cancellationToken);
         var infoTask = ReadSystemInfoAsync(cancellationToken);
         try
@@ -84,29 +80,6 @@ public sealed class SystemsGatewayClient : ISystemsGateway
             return Array.Empty<GatewayNodeInfo>();
         return OpenClawGatewayClient.ParseNodeListPayload(value)
             ?? throw new InvalidOperationException("The Gateway returned an invalid node list.");
-    }
-
-    public async Task<BackupStatus?> ReadBackupStatusAsync(CancellationToken cancellationToken)
-    {
-        var payload = await RequestOptionalAsync("backup.status", new { }, cancellationToken).ConfigureAwait(false);
-        return payload is { } value ? SystemsParser.ParseBackupStatus(value) : null;
-    }
-
-    public async Task<StorageProbeResult> ProbeStorageAsync(string name, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        var payload = await RequestAsync("storage.locations.probe", new { name }, cancellationToken).ConfigureAwait(false);
-        return SystemsParser.ParseStorageProbe(payload);
-    }
-
-    public async Task EnableHostDesktopAsync(CancellationToken cancellationToken)
-    {
-        var snapshot = await RequestAsync("config.get", new { }, cancellationToken).ConfigureAwait(false);
-        var baseHash = SystemsParser.String(snapshot, "hash");
-        object parameters = baseHash is null
-            ? new { raw = DesktopPresentation.EnableHostDesktopPatch }
-            : new { raw = DesktopPresentation.EnableHostDesktopPatch, baseHash };
-        await RequestAsync("config.patch", parameters, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<JsonElement> RequestAsync(string method, object parameters, CancellationToken cancellationToken)

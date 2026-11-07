@@ -80,4 +80,28 @@ pairing.
 
 ## Relationship to other validation
 
+### Settings navigation keyboard contract
+
+The Settings pane toggle exposes **Expand navigation** or **Collapse navigation**
+according to its state. Escape closes an expanded pane only while focus is in
+its navigation controls and returns focus to the toggle. Page controls keep
+their own Escape behavior; native search flyouts, menus and ContentDialogs
+handle dismissal before the shell. Collapsing the pane does not change the page.
+`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`
+checks the mounted Settings boundary in Light and Dark themes.
+
+Workspace still has an 800-DIP minimum width. The below-720-DIP rail is not a
+supported window-size claim. `WorkspaceSettingsLayout` uses the host window
+width, not an embedded page's smaller content width, and prepares compact
+Settings navigation without the Chat sidebar. Narrow expansion is temporary;
+returning to wide restores the saved pane preference and requested embedding.
+This branch is unreachable through normal resizing while the minimum remains 800.
+
+The integrated Config, Local AI, Default Model, Voice, Notifications, Event
+Stream and Diagnostics source adapts to allocated width after rail/sidebar
+subtraction. Config measures its editor grid and keeps draft controls mounted
+while stacking tree/detail panes. Source guards and XAML parsing do not prove
+native layout, focus retention, text scaling or six-locale reachability; these
+still require current-build native proof before any window-minimum reduction.
+
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

@@ -1,3 +1,4 @@
+// Validates reported Systems payloads. Usage: SystemsParser.ParseEnvironments(response).
 using System.Text.Json;
 
 namespace OpenClaw.Shared.Systems;
@@ -37,17 +38,13 @@ public static class SystemsParser
             Label = String(item, "label"),
             Status = ParseStatus(String(item, "status")),
             Platform = String(item, "platform"),
-            SessionHost = Bool(item, "sessionHost") == true,
-            WorkerSlots = Object(item, "workerSlots") is { } slots && Int(slots, "total") is { } total && Int(slots, "available") is { } available
-                ? new WorkerSlots(total, available)
-                : null,
             LastConnectedAt = Time(item, "lastConnectedAtMs"),
             LastDisconnectedAt = Time(item, "lastDisconnectedAtMs"),
             LastSeenAt = Time(item, "lastSeenAtMs"),
             LastSeenReason = String(item, "lastSeenReason"),
             Capabilities = Strings(item, "capabilities"),
             InvocableCommands = Strings(item, "invocableCommands"),
-            Desktop = Bool(item, "desktop") == true,
+            Desktop = Bool(item, "desktop"),
             DesktopAvailability = Object(item, "desktopAvailability") is { } desktop
                 ? String(desktop, "state") switch
                 {
@@ -65,20 +62,9 @@ public static class SystemsParser
                     provider,
                     String(worker, "profileId"),
                     String(worker, "state") ?? "unknown",
-                    Strings(worker, "attachedSessionIds"),
                     String(worker, "tunnelStatus"),
                     String(worker, "error"),
                     Bool(worker, "desktop"))
-                : null,
-            DesktopSetup = Object(item, "desktopSetup") is { } setup
-                ? new DesktopSetup(String(setup, "state") switch
-                {
-                    "ready" => DesktopSetupState.Ready,
-                    "needs-server" => DesktopSetupState.NeedsServer,
-                    "unsupported" => DesktopSetupState.Unsupported,
-                    "managed" => DesktopSetupState.Managed,
-                    _ => DesktopSetupState.Unknown,
-                }, String(setup, "detail"))
                 : null,
         };
     }
@@ -131,7 +117,8 @@ public static class SystemsParser
         if (value.ValueKind != JsonValueKind.Object ||
             Int(value, "cpuCount") is not { } cpuCount ||
             Long(value, "memoryTotalBytes") is not { } memoryTotal ||
-            Long(value, "memoryFreeBytes") is not { } memoryFree)
+            Long(value, "memoryFreeBytes") is not { } memoryFree ||
+            cpuCount <= 0 || memoryTotal <= 0 || memoryFree < 0 || memoryFree > memoryTotal)
         {
             return null;
         }
@@ -139,7 +126,7 @@ public static class SystemsParser
         // loadAverage is [1, 5, 15] minutes; only the one-minute value is shown.
         double? load1 = null;
         if (Array(value, "loadAverage") is { } load && load.GetArrayLength() == 3 &&
-            load[0] is { ValueKind: JsonValueKind.Number } first && first.TryGetDouble(out var one) && double.IsFinite(one))
+            load[0] is { ValueKind: JsonValueKind.Number } first && first.TryGetDouble(out var one) && double.IsFinite(one) && one >= 0)
         {
             load1 = one;
         }
@@ -149,21 +136,25 @@ public static class SystemsParser
         {
             disks = diskArray.EnumerateArray()
                 .Where(disk => disk.ValueKind == JsonValueKind.Object)
-                .Select(disk => String(disk, "path") is { } path && Long(disk, "totalBytes") is { } total && Long(disk, "availableBytes") is { } available
+                .Select(disk => String(disk, "path") is { } path && Long(disk, "totalBytes") is { } total && Long(disk, "availableBytes") is { } available &&
+                    total > 0 && available >= 0 && available <= total
                     ? new DiskStats(path, total, available)
                     : null)
                 .OfType<DiskStats>()
                 .ToArray();
         }
 
+        var diskTotal = Long(value, "diskTotalBytes");
+        var diskAvailable = Long(value, "diskAvailableBytes");
+        var validDisk = diskTotal > 0 && diskAvailable >= 0 && diskAvailable <= diskTotal;
         return new HostMeasurements
         {
             CpuCount = cpuCount,
             Load1 = load1,
             MemoryTotalBytes = memoryTotal,
             MemoryFreeBytes = memoryFree,
-            DiskTotalBytes = Long(value, "diskTotalBytes"),
-            DiskAvailableBytes = Long(value, "diskAvailableBytes"),
+            DiskTotalBytes = validDisk ? diskTotal : null,
+            DiskAvailableBytes = validDisk ? diskAvailable : null,
             Disks = disks,
         };
     }
@@ -193,101 +184,8 @@ public static class SystemsParser
             runner is { } r ? String(r, "deviceId") : null);
     }
 
-    public static BackupStatus ParseBackupStatus(JsonElement payload)
-    {
-        var targets = RequiredArray(payload, "targets").EnumerateArray()
-            .Select(ParseBackupTarget).OfType<BackupTarget>().ToArray();
-        var schedules = Items(payload, "schedules")
-            .Where(entry => entry.ValueKind == JsonValueKind.Object)
-            .Select(entry => String(entry, "id") is { } id && String(entry, "target") is { } target
-                ? new BackupSchedule(id, String(entry, "mode") ?? "", target, String(entry, "namespace"),
-                    Bool(entry, "enabled") == true, Time(entry, "nextRunAtMs"))
-                : null)
-            .OfType<BackupSchedule>().ToArray();
-        return new BackupStatus(targets, schedules, ParseStorageLocations(payload));
-    }
-
-    public static IReadOnlyList<StorageLocation> ParseStorageLocations(JsonElement payload) =>
-        Items(payload, "locations")
-            .Where(entry => entry.ValueKind == JsonValueKind.Object)
-            .Select(entry => String(entry, "name") is { } name
-                ? new StorageLocation(name, String(entry, "provider") ?? "", String(entry, "displayTarget"),
-                    Bool(entry, "encrypted") == true)
-                : null)
-            .OfType<StorageLocation>().ToArray();
-
-    private static BackupTarget? ParseBackupTarget(JsonElement entry)
-    {
-        if (entry.ValueKind != JsonValueKind.Object ||
-            String(entry, "target") is not { } target ||
-            Object(entry, "latest") is not { } latestElement ||
-            ParseBackupRun(latestElement) is not { } latest)
-        {
-            return null;
-        }
-        return new BackupTarget(
-            ParseBackupKind(String(entry, "kind")),
-            target,
-            String(entry, "namespace"),
-            latest,
-            Object(entry, "latestOk") is { } ok ? ParseBackupRun(ok) : null);
-    }
-
-    public static BackupKind ParseBackupKind(string? kind) => kind switch
-    {
-        "archive" => BackupKind.Archive,
-        "sqlite-snapshot" => BackupKind.SqliteSnapshot,
-        "git" => BackupKind.Git,
-        "external" => BackupKind.External,
-        _ => BackupKind.Unknown,
-    };
-
-    private static BackupRunRecord? ParseBackupRun(JsonElement run)
-    {
-        if (Time(run, "createdAt") is not { } createdAt)
-            return null;
-        var location = Object(run, "location") is { } l && String(l, "name") is { } name
-            ? new BackupRunLocation(name, String(l, "provider") ?? "", Long(l, "storedBytes") ?? 0)
-            : null;
-        return new BackupRunRecord(
-            createdAt,
-            String(run, "status") == "ok",
-            String(run, "error"),
-            Bool(run, "pushFailed") == true,
-            Long(run, "bytes"),
-            location);
-    }
-
-    public static StorageProbeResult ParseStorageProbe(JsonElement payload) =>
-        new(String(payload, "state") switch
-        {
-            "ok" => StorageProbeState.Ok,
-            "unavailable" => StorageProbeState.Unavailable,
-            "uninitialized" => StorageProbeState.Uninitialized,
-            "wrong-key" => StorageProbeState.WrongKey,
-            _ => StorageProbeState.Error,
-        },
-        Long(payload, "freeBytes"),
-        Long(payload, "totalBytes"),
-        String(payload, "message"));
-
-    /// <summary>True when a config snapshot has <c>desktop.host.enabled === true</c>.</summary>
-    public static bool IsHostDesktopEnabled(JsonElement? config)
-    {
-        if (config is not { ValueKind: JsonValueKind.Object } root)
-            return false;
-        // config.get returns { config: {...} } while some callers keep the parsed object directly.
-        var body = Object(root, "config") ?? Object(root, "parsed") ?? root;
-        return Object(body, "desktop") is { } desktop &&
-            Object(desktop, "host") is { } host &&
-            Bool(host, "enabled") == true;
-    }
-
     private static JsonElement RequiredArray(JsonElement value, string name) =>
         Array(value, name) ?? throw new InvalidOperationException($"The Gateway returned an invalid {name} list.");
-
-    private static IEnumerable<JsonElement> Items(JsonElement value, string name) =>
-        Array(value, name) is { } array ? array.EnumerateArray() : Enumerable.Empty<JsonElement>();
 
     internal static JsonElement? Array(JsonElement value, string name) =>
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var array) &&

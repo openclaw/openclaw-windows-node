@@ -1,18 +1,5 @@
+// Joins exact Gateway identities for presentation. Usage: SystemsProjection.Project(snapshot, sessions, options).
 namespace OpenClaw.Shared.Systems;
-
-public enum SystemsStatusFilter
-{
-    All,
-    Online,
-    Offline,
-}
-
-public enum SystemsSortMode
-{
-    Alphabetical,
-    OnlineFirst,
-    OfflineFirst,
-}
 
 /// <summary>Errors from auxiliary reads. Inventory failures are reported separately because they replace the list.</summary>
 public sealed record SystemsPartialErrors(string? Nodes = null, string? SystemInfo = null)
@@ -55,6 +42,11 @@ public sealed record SystemRow
     public DateTimeOffset? MeasuredAt { get; init; }
 
     public bool IsOnline => Status == SystemStatus.Online;
+
+    public bool NeedsAttention => Kind != SystemKind.Client &&
+        (Status is SystemStatus.Offline or SystemStatus.Error ||
+         Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval ||
+         Environment?.Issues.Any(issue => issue.Code == "update-required") == true);
 
     /// <summary>Rename/forget are offered only for strong node identity matches.</summary>
     public bool CanManageNode => Node is not null && Kind == SystemKind.Node &&
@@ -216,6 +208,8 @@ public static class SystemsProjection
                 Platform = node.Platform,
                 Capabilities = node.Capabilities,
                 InvocableCommands = node.Commands,
+                LastConnectedAt = node.ConnectedAt is { } connected
+                    ? new DateTimeOffset(DateTime.SpecifyKind(connected, DateTimeKind.Utc)) : null,
                 LastSeenAt = node.LastSeen is { } seen ? new DateTimeOffset(DateTime.SpecifyKind(seen, DateTimeKind.Utc)) : null,
                 LastSeenReason = node.LastSeenReason,
             });
@@ -302,41 +296,17 @@ public static class SystemsProjection
         return id.Substring(start, Math.Min(6, id.Length - start));
     }
 
-    /// <summary>
-    /// Applies search, status filter and sort on the status the page shows (see <see cref="EffectiveStatus"/>).
-    /// <paramref name="displayName"/> supplies localized fallbacks.
-    /// </summary>
-    public static IReadOnlyList<SystemRow> Query(
+    /// <summary>Lists every row, online first, then by numeric-aware name and ordinal identity.</summary>
+    public static IReadOnlyList<SystemRow> OrderForInventory(
         IEnumerable<SystemRow> rows,
-        string? query,
-        SystemsStatusFilter filter,
-        SystemsSortMode sort,
         Func<SystemRow, string> displayName,
         bool gatewayConnected = true)
     {
-        var needle = query?.Trim() ?? "";
         SystemStatus Status(SystemRow row) => EffectiveStatus(row, gatewayConnected);
-        var filtered = rows.Where(row => filter switch
-            {
-                SystemsStatusFilter.Online => Status(row) == SystemStatus.Online,
-                SystemsStatusFilter.Offline => Status(row) == SystemStatus.Offline,
-                _ => true,
-            })
-            .Where(row => needle.Length == 0 || new[]
-            {
-                displayName(row), row.Id, row.Platform ?? "", row.Environment?.Platform ?? row.Node?.Platform ?? "",
-            }.Any(value => value.Contains(needle, StringComparison.CurrentCultureIgnoreCase)));
-
         var comparer = StringComparer.Create(System.Globalization.CultureInfo.CurrentCulture,
             System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.NumericOrdering);
-        var first = sort switch
-        {
-            SystemsSortMode.OnlineFirst => SystemStatus.Online,
-            SystemsSortMode.OfflineFirst => SystemStatus.Offline,
-            _ => (SystemStatus?)null,
-        };
-        return filtered
-            .OrderBy(row => first is { } status && Status(row) == status ? 0 : 1)
+        return rows
+            .OrderBy(row => Status(row) == SystemStatus.Online ? 0 : 1)
             .ThenBy(displayName, comparer)
             .ThenBy(row => row.Id, StringComparer.Ordinal)
             .ToArray();

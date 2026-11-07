@@ -1,55 +1,80 @@
 using OpenClawTray.Systems;
+using OpenClawTray.Presentation;
 
 namespace OpenClaw.Tray.Tests.Systems;
 
 public sealed class SystemsLayoutTests
 {
-    [Fact]
-    public void WideWindows_ShowSideBySidePanesWithThreeStatisticColumns()
+    [Theory]
+    [InlineData(1400, PageWidthTier.Wide, 1200)]
+    [InlineData(1000, PageWidthTier.Wide, 936)]
+    [InlineData(999.99994, PageWidthTier.Wide, 936)]
+    [InlineData(760, PageWidthTier.Medium, 696)]
+    [InlineData(520, PageWidthTier.Narrow, 480)]
+    public void CanonicalHelper_UsesHostTierCappedContentAndEqualTiles(double width, PageWidthTier tier, double content)
     {
-        var layout = SystemsLayout.For(1600, 900);
-        Assert.False(layout.Stacked);
-        Assert.Equal(320, layout.InventoryWidth);
-        Assert.Equal(3, layout.StatColumns);
-        Assert.Equal(5, layout.SummaryColumns);
-        Assert.Equal(16, layout.CoresPerRow);
+        Assert.Equal(tier, PageResponsiveLayout.TierFor(width));
+        Assert.Equal(content, PageResponsiveLayout.ContentWidth(width));
+        var count = PageResponsiveLayout.TileColumns(content, SystemsLayout.StatTileMinWidth);
+        Assert.True(PageResponsiveLayout.TileWidth(content, count) >= SystemsLayout.StatTileMinWidth);
+        Assert.True(PageResponsiveLayout.TileWidth(content, count + 1) < SystemsLayout.StatTileMinWidth);
+    }
+
+    [Theory]
+    [InlineData(1400, false, false, 2, 4)]
+    [InlineData(1000, false, false, 2, 3)]
+    [InlineData(999.99994, false, false, 2, 3)]
+    [InlineData(999, true, false, 1, 5)]
+    [InlineData(760, true, false, 1, 3)]
+    [InlineData(720, true, false, 1, 3)]
+    [InlineData(719, true, true, 1, 3)]
+    [InlineData(520, true, true, 1, 2)]
+    [InlineData(480, true, true, 1, 2)]
+    public void HostWidth_SelectsSharedTiersAndTilesWithoutViolatingMinimums(
+        double width, bool stacked, bool compact, int attention, int stats)
+    {
+        var layout = SystemsLayout.For(width, 900);
+        Assert.Equal(stacked, layout.Stacked);
+        Assert.Equal(compact, layout.CompactHeader);
+        Assert.Equal(attention, layout.AttentionColumns);
+        Assert.Equal(stats, layout.StatColumns);
     }
 
     [Fact]
-    public void DefaultHubWidth_KeepsPanesSideBySideWithACompactList()
+    public void WideDetails_KeepAFixedCapabilitiesColumnAndTheDesignGap()
     {
-        // A 1000px hub window with its navigation pane open leaves about 740px for the page.
-        var layout = SystemsLayout.For(740, 900);
-        Assert.False(layout.Stacked);
-        Assert.Equal(260, layout.InventoryWidth);
-        Assert.Equal(1, layout.StatColumns);
-        Assert.InRange(layout.CoresPerRow, 4, 16);
-        Assert.Equal(2, SystemsLayout.For(980, 900).StatColumns);
+        Assert.Equal(340, SystemsLayout.CapabilitiesWidth);
+        Assert.Equal(32, SystemsLayout.DetailsColumnGap);
+
+        // Statistic tiles fit what is left beside the fixed Capabilities column, never the old half split.
+        foreach (var width in new[] { 1000d, 1100d, 1280d, 1400d, 1920d })
+        {
+            var layout = SystemsLayout.For(width, 900);
+            Assert.False(layout.Stacked);
+            var rightColumn = PageResponsiveLayout.ContentWidth(width) - 34
+                - SystemsLayout.CapabilitiesWidth - SystemsLayout.DetailsColumnGap;
+            Assert.True(PageResponsiveLayout.TileWidth(rightColumn, layout.StatColumns) >= SystemsLayout.StatTileMinWidth);
+            Assert.True(PageResponsiveLayout.TileWidth(rightColumn, layout.StatColumns + 1) < SystemsLayout.StatTileMinWidth);
+        }
     }
 
     [Fact]
     public void NarrowWindows_StackTheListAndReduceStatisticColumns()
     {
+        Assert.True(SystemsLayout.Default.Stacked);
+        Assert.Equal(1, SystemsLayout.Default.StatColumns);
         var stacked = SystemsLayout.For(560, 900);
         Assert.True(stacked.Stacked);
         Assert.Equal(2, stacked.StatColumns);
-        Assert.Equal(2, stacked.SummaryColumns);
-        Assert.Equal(1, SystemsLayout.For(440, 900).StatColumns);
+        Assert.Equal(2, SystemsLayout.For(440, 900).StatColumns);
         Assert.Equal(SystemsLayout.For(560, 900), SystemsLayout.For(561, 900));
     }
 
     [Fact]
-    public void ShortWindows_HideTheOverviewAndCapApprovalsLower()
+    public void ShortWindows_KeepTheSingleScrollPageLayout()
     {
         // The Hub allows a 400px minimum height; the machines must keep most of it.
-        var tall = SystemsLayout.For(1600, 1200);
-        var medium = SystemsLayout.For(1600, 700);
-        var shortPage = SystemsLayout.For(1600, 400);
-        Assert.True(tall.ShowOverview);
-        Assert.Equal(260, tall.ApprovalsMaxHeight);
-        Assert.Equal(160, medium.ApprovalsMaxHeight);
-        Assert.False(shortPage.ShowOverview);
-        Assert.Equal(72, shortPage.ApprovalsMaxHeight);
+        Assert.Equal(SystemsLayout.For(1600, 1200), SystemsLayout.For(1600, 400));
     }
 
     [Fact]
@@ -65,9 +90,26 @@ public sealed class SystemsLayoutTests
         Assert.Contains("_controller.Dispose();", body, StringComparison.Ordinal);
         Assert.Contains("ReactorHost.Child = null;", body, StringComparison.Ordinal);
 
-        // Closing the Hub does not navigate the frame, so the window disposes its page.
-        var hub = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
-        Assert.Contains("(ContentFrame.Content as IDisposable)?.Dispose();", hub, StringComparison.Ordinal);
+        // Hiding or closing Settings clears the frame without raising OnNavigatedFrom.
+        var shell = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
+        var dispose = shell.IndexOf("internal void Dispose()", StringComparison.Ordinal);
+        Assert.True(dispose >= 0);
+        Assert.Contains("Deactivate();",
+            shell[dispose..shell.IndexOf("private void OnAppNotificationChanged", dispose, StringComparison.Ordinal)],
+            StringComparison.Ordinal);
+        var deactivate = shell.IndexOf("internal void Deactivate()", StringComparison.Ordinal);
+        Assert.True(deactivate >= 0);
+        var clearFrame = shell.IndexOf("ContentFrame.Content = null;", deactivate, StringComparison.Ordinal);
+        Assert.True(clearFrame > deactivate);
+        Assert.Contains("(ContentFrame.Content as SystemsPage)?.Dispose();", shell[deactivate..clearFrame], StringComparison.Ordinal);
+
+        var workspace = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("Closed += OnClosed;", workspace, StringComparison.Ordinal);
+        var closed = workspace.IndexOf("private void OnClosed(", StringComparison.Ordinal);
+        Assert.True(closed >= 0);
+        Assert.Contains("_preparedSettings?.Dispose();", workspace[closed..], StringComparison.Ordinal);
+        Assert.Contains("settings.Dispose();", workspace[closed..], StringComparison.Ordinal);
     }
 }

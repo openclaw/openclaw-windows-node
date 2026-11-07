@@ -1,3 +1,4 @@
+// Samples node telemetry for publication to the Gateway. Usage: HostStatsSampler.Sample() before sending its node event.
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 

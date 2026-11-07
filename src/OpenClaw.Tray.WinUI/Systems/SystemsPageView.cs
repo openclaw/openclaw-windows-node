@@ -1,3 +1,4 @@
+// Renders the native Systems page. Usage: mount Component<SystemsPageView, SystemsPageProps>(props) in its page-owned host.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,6 +15,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Systems;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Systems.SystemsText;
 
@@ -28,10 +30,11 @@ internal sealed class SystemsPageActions
     public required Action<string> OpenSession { get; init; }
     public required Action<string> Navigate { get; init; }
     public required Action<string> CopyText { get; init; }
+    /// <summary>Opens a Gateway web interface path (null for its root) through the app's dashboard launcher.</summary>
+    public required Action<string?> OpenWeb { get; init; }
+    public required Action<Action> PostUi { get; init; }
     public required Func<GatewayNodeInfo, string, Task<string?>> RenameNode { get; init; }
     public required Func<GatewayNodeInfo, Task<string?>> ForgetNode { get; init; }
-    public required Func<PendingApproval, bool, Task<string?>> DecidePairing { get; init; }
-    public required Func<Task> EnableHostDesktop { get; init; }
 }
 
 /// <summary>
@@ -49,14 +52,24 @@ internal abstract record SystemsDialog(string? Error = null, bool Busy = false)
 }
 /// <summary>The typed name lives in a shared box so the close handler reads the latest text without re-rendering.</summary>
 internal sealed record RenameNodeDialog(GatewayNodeInfo Node, StrongBox<string> Text) : SystemsDialog;
-internal sealed record ForgetNodeDialog(GatewayNodeInfo Node) : SystemsDialog;
-internal sealed record PairingDialog(PendingApproval Approval, bool Approve) : SystemsDialog;
-internal sealed record EnableDesktopDialog() : SystemsDialog;
+internal sealed record ForgetNodeDialog(GatewayNodeInfo Node, string GatewayName) : SystemsDialog;
+internal sealed record AddSystemDialog() : SystemsDialog;
 
-internal sealed record SystemsPageProps(SystemsController Controller, SystemsPageActions Actions);
-
-[Microsoft.UI.Reactor.Wrappers.GenerateReactorWrapper(typeof(SystemsSparkline), AutoDiscover = false, RegisterAssembly = false)]
-internal partial record SystemsSparklineElement;
+internal sealed record SystemsPageProps(SystemsController Controller, SystemsPageActions Actions)
+{
+    public SystemsViewport Viewport { get; init; } = new();
+}
+internal sealed record SystemsAttentionItem(
+    string Key,
+    string Title,
+    string Message,
+    string Action,
+    Action Invoke,
+    SystemsHue Hue,
+    bool Enabled = true,
+    string? DisabledReason = null,
+    string? SecondaryAction = null,
+    Action? InvokeSecondary = null);
 
 /// <summary>A themed foreground brush and its translucent tint, from Themes/SystemsResources.xaml.</summary>
 internal readonly record struct SystemsHue(string Brush, string Tint)
@@ -81,17 +94,25 @@ internal readonly record struct SystemsHue(string Brush, string Tint)
 
 /// <summary>
 /// Native Systems inventory: one list of the Gateway host, paired nodes, workers and
-/// connected apps, with details, statistics, related sessions, desktop setup and backups
-/// for the selected machine. Viewing or controlling a remote desktop is deferred.
+/// connected apps, with details, current statistics, related sessions and desktop
+/// availability for the selected machine. Pairing decisions belong to the Connection page;
+/// desktop viewing and deeper machine work open the web interface.
 /// </summary>
 internal sealed class SystemsPageView : Component<SystemsPageProps>
 {
-    private const double SparkHeight = 44;
-
     public override Element Render()
     {
         var controller = Props.Controller;
         var actions = Props.Actions;
+        var viewport = Props.Viewport;
+        var (topInset, setTopInset) = UseState(viewport.TopInset, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            EventHandler changed = (_, _) => setTopInset(viewport.TopInset);
+            viewport.Changed += changed;
+            setTopInset(viewport.TopInset);
+            return () => viewport.Changed -= changed;
+        }), viewport);
         var (state, setState) = UseState(controller.State, threadSafe: true);
         UseEffect((Func<Action>)(() =>
         {
@@ -119,138 +140,212 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         if (dialog is not null && dialog.Epoch != state.ConnectionEpoch)
             dialog = null;
         var (layout, setLayout) = UseState(SystemsLayout.Default, threadSafe: true);
-        var reducedMotion = UseReducedMotion();
+        var initialExpandedRows = UseMemo(() =>
+            new HashSet<string>(state.SelectedId is { } selected ? [selected] : Array.Empty<string>(), StringComparer.Ordinal), []);
+        var (expandedRows, setExpandedRows) = UseState(initialExpandedRows, threadSafe: true);
+        var currentExpandedRows = UseRef(initialExpandedRows);
+        void PublishExpandedRows(HashSet<string> next)
+        {
+            currentExpandedRows.Current = next;
+            setExpandedRows(next);
+        }
+        var (issuesView, setIssuesView) = UseState(false, threadSafe: true);
+        var highContrast = UseHighContrast();
+        var (mastHeight, setMastHeight) = UseState(0d, threadSafe: true);
+        var (feedback, setFeedback) = UseState<string?>(null, threadSafe: true);
+        var announce = this.UseAnnounce();
+        UseEffect((Func<Action>)(() =>
+        {
+            var cancelled = false;
+            if (feedback is not null)
+                actions.PostUi(() => { if (!cancelled) announce.Announce(feedback); });
+            return () => cancelled = true;
+        }), feedback);
+        UseEffect((Func<Action>)(() =>
+        {
+            var cancellation = new CancellationTokenSource();
+            async Task DismissAsync()
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(4), cancellation.Token);
+                    setFeedback(null);
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            }
+            if (feedback is not null)
+                _ = DismissAsync();
+            return () => { cancellation.Cancel(); cancellation.Dispose(); };
+        }), feedback);
+        var expansionEpoch = UseRef(state.ConnectionEpoch);
+        var selectionKey = $"{state.ConnectionEpoch}:{state.SelectionRequest}";
+        UseEffect((Func<Action>)(() =>
+        {
+            if (expansionEpoch.Current != state.ConnectionEpoch)
+            {
+                expansionEpoch.Current = state.ConnectionEpoch;
+                PublishExpandedRows(new HashSet<string>(StringComparer.Ordinal));
+            }
+            if (state.SelectedId is { } selectedId)
+                PublishExpandedRows(new HashSet<string>(currentExpandedRows.Current, StringComparer.Ordinal) { selectedId });
+            return () => { };
+        }), selectionKey);
         var now = DateTimeOffset.UtcNow;
-        return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Star()],
-                Header(state, controller, now, layout.ShowOverview).Grid(row: 0),
-                Summary(state, controller, layout).Grid(row: 1),
-                Banners(state, controller, actions, setDialog, layout).Grid(row: 2),
-                Body(state, controller, actions, setDialog, now, reducedMotion, layout).Grid(row: 3),
-                Dialog(dialog, setDialog, actions, () => controller.State.ConnectionEpoch, () => currentDialog.Current))
-            .Padding(SystemsLayout.PagePadding, 20, SystemsLayout.PagePadding, 16)
-            .OnSizeChanged((_, args) => setLayout(SystemsLayout.For(args.NewSize.Width, args.NewSize.Height)))
+        var attentionItems = AttentionItems(state, actions, now, id =>
+        {
+            setIssuesView(false);
+            controller.Select(id);
+        });
+        return Grid([GridSize.Star()], [GridSize.Star()],
+                Border(null).Background(Theme.Ref("SystemsHeroBrush"))
+                    .Height(mastHeight + 32 + topInset).VAlign(VerticalAlignment.Top)
+                    .IsHitTestVisible(false).AccessibilityHidden()
+                    .AutomationId("SystemsPageBackdrop").WithKey("backdrop"),
+                (ScrollViewer(Grid([GridSize.Star()], [GridSize.Auto], VStack(24,
+                    Header(state, controller, actions, layout, setDialog, highContrast)
+                        .OnSizeChanged((_, args) => setMastHeight(args.NewSize.Height)),
+                    Banners(state, controller, actions, layout),
+                    state.CanRead && !issuesView ? NeedsYou(attentionItems, layout, () => setIssuesView(true)) : Empty(),
+                    Body(state, actions, setDialog, now, layout, expandedRows,
+                        (id, expanded) =>
+                        {
+                            var next = new HashSet<string>(currentExpandedRows.Current, StringComparer.Ordinal);
+                            if (expanded)
+                            {
+                                next.Add(id);
+                                controller.Select(id);
+                            }
+                            else
+                            {
+                                next.Remove(id);
+                                if (controller.State.SelectedId == id)
+                                    controller.ToggleSelection(id);
+                            }
+                            PublishExpandedRows(next);
+                        }, attentionItems, issuesView, () =>
+                        {
+                            setIssuesView(false);
+                        }))
+                    .MaxWidth(PageResponsiveLayout.ContentMaxWidth)
+                    .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsContentColumn")
+                    .Margin(layout.PagePadding, 20, layout.PagePadding, 32)))
+                    with { HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled })
+                    .Margin(0, topInset, 0, 0)
+                    .AutomationId("SystemsPageScroll").WithKey("scroll"),
+                feedback is null ? Empty() : ResultToast(feedback).WithKey("result"),
+                announce.Region.LiveRegion(AutomationLiveSetting.Polite).AutomationId("SystemsResultAnnouncements").WithKey("announcements"),
+                Dialog(dialog, setDialog, actions, () => controller.State.ConnectionEpoch, () => currentDialog.Current, setFeedback))
+            .OnSizeChanged((_, args) =>
+            {
+                setLayout(SystemsLayout.For(args.NewSize.Width, args.NewSize.Height));
+            })
             .AutomationId("SystemsPageRoot");
     }
 
+    private static Element ResultToast(string message) =>
+        Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+            Glyph("\uE73E", 18).Foreground(Theme.Ref("SystemFillColorSuccessBrush"))
+                .Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Center).Grid(column: 0),
+            TextBlock(message).TextWrapping(TextWrapping.WrapWholeWords).Foreground(Theme.Ref("TextFillColorPrimaryBrush"))
+                .AutomationId("SystemsResultMessage").VAlign(VerticalAlignment.Center).Grid(column: 1)))
+            .Padding(16, 12).Background(Theme.Ref("FlyoutPresenterBackground"))
+            .BorderBrush(Theme.Ref("FlyoutBorderThemeBrush")).BorderThickness(1).CornerRadius(8)
+            .Set(control => control.Shadow = new Microsoft.UI.Xaml.Media.ThemeShadow()).Translation(0, 0, 16)
+            .MaxWidth(480).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Bottom).Margin(20)
+            .AutomationId("SystemsResult");
+
     // ── Header and banners ─────────────────────────────────────────────
 
-    private static Element Header(SystemsViewState state, SystemsController controller, DateTimeOffset now, bool showSubtitle)
+    private static Element Header(SystemsViewState state, SystemsController controller, SystemsPageActions actions, SystemsLayout layout,
+        Action<SystemsDialog?> open, bool highContrast)
     {
         var refreshing = state.Loading;
         var refresh = Button(
-                HStack(8,
                     refreshing
                         ? ProgressRing().IsActive(true).Size(16, 16).AccessibilityView(AccessibilityView.Raw)
-                        : Glyph("\uE72C", 14),
-                    TextBlock(S("Refresh"))),
-                () => _ = controller.RefreshAsync(manual: true))
+                        : Glyph("\uE72C", 16),
+                () => _ = controller.RefreshAsync())
+            .SubtleButton()
+            .VAlign(VerticalAlignment.Center)
             .IsEnabled(state.Connected && !refreshing && state.CanRead)
             .AutomationName(S("Refresh_Name"))
             .ToolTip(S("Refresh_Name"))
             .AutomationId("SystemsRefreshButton");
 
-        var updated = state.LastRefreshedAt is { } at
-            ? TextBlock(F("UpdatedAgo", Ago(at, now))).FontSize(12)
-                .Foreground(Theme.Ref("TextFillColorTertiaryBrush")).VAlign(VerticalAlignment.Center)
-            : Empty();
-
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                VStack(4,
-                    TextBlock(S("Title")).FontSize(28).FontWeight(FontWeights.SemiBold)
+        var machines = state.Rows.Where(row => row.Kind is SystemKind.Host or SystemKind.Node).ToArray();
+        var online = machines.Count(row => EffectiveStatus(row, state.Connected) == SystemStatus.Online);
+        var gatewayName = state.Rows.FirstOrDefault(row => row.Id == SystemsProjection.GatewayId) is { } host
+            ? DisplayName(host) : S("Kind_Host");
+        var headline = !state.Connected ? F("Mast_Unreachable", gatewayName)
+            : !state.HasLoaded || !state.CanRead ? S("Title")
+            : machines.Length == 2 && online == 2 && machines.Any(row => row.IsThisDevice) &&
+              machines.Any(row => row.Id == SystemsProjection.GatewayId) ? S("Mast_JustUs")
+            : machines.Length > 0 && online == machines.Length ? F("Mast_AllOnline", NumberWord(machines.Length))
+            : F("Mast_Online", NumberWord(online), NumberWord(machines.Length));
+        if (headline.Length > 0)
+            headline = char.ToUpper(headline[0], System.Globalization.CultureInfo.CurrentCulture) + headline[1..];
+        var subtitles = new List<string>();
+        if (state.Connected && state.HasLoaded && state.CanRead)
+        {
+            if (machines.Any(row => row.IsThisDevice && row.IsOnline && row.Node?.IsOnline == true && !state.OwnNodePending &&
+                    row.Node.ApprovalState is not (GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval)))
+                subtitles.Add(S("Mast_ThisNodeConnected"));
+            var offline = machines.FirstOrDefault(row => row.Status == SystemStatus.Offline);
+            if (offline is not null)
+                subtitles.Add(offline.Environment?.LastSeenAt is { } seen
+                    ? F("Mast_NodeOfflineSince", DisplayName(offline), CompactAge(seen, DateTimeOffset.UtcNow - state.GatewayClockOffset))
+                    : F("Mast_NodeOffline", DisplayName(offline)));
+            if (state.PendingPairingCount > 0)
+                subtitles.Add(F("Mast_Pending", Count(state.PendingPairingCount)));
+            if (subtitles.Count == 0)
+                subtitles.Add(F("Mast_ConnectedTo", gatewayName));
+        }
+        var text = VStack(8,
+                    HStack(PageResponsiveLayout.GapInner,
+                        highContrast
+                            ? Glyph("\uE977", 20).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).Size(20, 20)
+                                .AccessibilityHidden()
+                            : Image("ms-appx:///Assets/SidebarIcons/Instances.svg").Size(20, 20).AccessibilityHidden(),
+                        TextBlock(S("Title")).FontSize(14).FontWeight(FontWeights.SemiBold)
+                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center)
+                            .AutomationId("SystemsEyebrowTitle"))
+                        .AutomationId("SystemsEyebrow"),
+                    TextBlock(headline).FontSize(28).FontWeight(FontWeights.SemiBold)
+                        .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(headline)
                         .HeadingLevel(AutomationHeadingLevel.Level1)
                         .AutomationId("SystemsPageMarker"),
-                    showSubtitle
-                        ? TextBlock(S("Subtitle")).FontSize(12).TextWrapping()
-                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                        : Empty()).Grid(column: 0),
-                HStack(12, updated, refresh).VAlign(VerticalAlignment.Top).Grid(column: 1))
-            .Margin(0, 0, 0, 16);
-    }
-
-    /// <summary>
-    /// Fleet at a glance. The machine tiles double as status filters; the backups tile jumps to
-    /// the Gateway host, where backups live. Every tile pairs its hue with a glyph and a label.
-    /// </summary>
-    private static Element Summary(SystemsViewState state, SystemsController controller, SystemsLayout layout)
-    {
-        if (!state.HasLoaded || state.Rows.Count == 0 || !layout.ShowOverview)
-            return Empty();
-
-        // Count what the rows show: while disconnected every machine reads as offline.
-        var online = state.Rows.Count(row => EffectiveStatus(row, state.Connected) == SystemStatus.Online);
-        var offline = state.Rows.Count(row => EffectiveStatus(row, state.Connected) == SystemStatus.Offline);
-        var tiles = new List<Element>
-        {
-            SummaryTile("all", "\uE977", SystemsHue.Accent, Count(state.Rows.Count), S("Summary_All"),
-                state.Filter == SystemsStatusFilter.All, () => controller.SetFilter(SystemsStatusFilter.All)),
-            SummaryTile("online", "\uF13E", SystemsHue.Success, Count(online), S("Status_Online"),
-                state.Filter == SystemsStatusFilter.Online, () => controller.SetFilter(SystemsStatusFilter.Online)),
-            SummaryTile("offline", "\uF140", SystemsHue.Neutral, Count(offline), S("Status_Offline"),
-                state.Filter == SystemsStatusFilter.Offline, () => controller.SetFilter(SystemsStatusFilter.Offline)),
-        };
-        if (state.PendingPairingCount > 0)
-        {
-            tiles.Add(SummaryTile("pairing", "\uE8FA", SystemsHue.Caution, Count(state.PendingPairingCount),
-                S("Summary_Pairing"), false, null));
-        }
-        if (state.Backups is { } backups && state.Rows.Any(row => row.Id == SystemsProjection.GatewayId))
-        {
-            var view = BackupsPresentation.Project(backups);
-            var issues = view.Targets.Count(target => target.Health != OpenClaw.Shared.Systems.BackupHealth.Ok);
-            var (value, label, hue) = view.IsEmpty
-                ? ("0", S("Summary_BackupsNone"), SystemsHue.Neutral)
-                : issues == 0
-                    ? (Count(view.Targets.Count), S("Summary_BackupsOk"), SystemsHue.Success)
-                    : (Count(issues), S("Summary_BackupsIssues"),
-                        view.Targets.Any(target => target.Health == OpenClaw.Shared.Systems.BackupHealth.Failed)
-                            ? SystemsHue.Critical : SystemsHue.Caution);
-            tiles.Add(SummaryTile("backups", "\uE777", hue, value, label, false,
-                () => controller.Select(SystemsProjection.GatewayId), S("Summary_ShowBackups")));
-        }
-
-        return Rows(tiles.Select((tile, index) => tile.WithKey("tile" + index)).ToList(),
-                Math.Min(layout.SummaryColumns, tiles.Count))
-            .Margin(0, 0, 0, 16)
-            .AutomationName(S("Summary_Name"))
-            .AutomationId("SystemsSummary");
+                    subtitles.Count == 0 ? Empty() : TextBlock(string.Join(" ", subtitles)).TextWrapping(TextWrapping.WrapWholeWords).AutomationId("SystemsMastSubtitle")
+                        .Foreground(Theme.Ref("TextFillColorSecondaryBrush")));
+        // Secondary actions use an overflow menu at constrained widths; actions never wrap.
+        var web = layout.Tier == PageWidthTier.Wide ? OpenWebButton(state, actions, "SystemsMastOpenWeb")
+            : Button(Glyph("\uE712", 16))
+                .WithFlyout(MenuItems(MenuItem(S("OpenWeb"), () => actions.OpenWeb(WebDestination(state)))))
+                .VAlign(VerticalAlignment.Center)
+                .AutomationName(S("OpenWeb")).AutomationId("SystemsMastOverflow");
+        var buttons = HStack(8, web,
+            Button(HStack(8, Glyph("\uE710", 14).VAlign(VerticalAlignment.Center),
+                    TextBlock(S("AddSystem")).TextWrapping(TextWrapping.NoWrap).VAlign(VerticalAlignment.Center)),
+                () => open(new AddSystemDialog()))
+                .AccentButton().VAlign(VerticalAlignment.Center)
+                .AutomationName(S("AddSystem")).AutomationId("SystemsAddSystem"), refresh)
+            .AutomationId("SystemsMastActions");
+        Element content = layout.CompactHeader ? VStack(16, text, buttons)
+            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                text.Grid(column: 0), buttons.Margin(20, 0, 0, 0).VAlign(VerticalAlignment.Top).Grid(column: 1));
+        return content.Padding(0, 8, 0, 12).AutomationId("SystemsMastGrid");
     }
 
     private static string Count(int value) => value.ToString(System.Globalization.CultureInfo.CurrentCulture);
 
-    private static Element SummaryTile(string id, string glyph, SystemsHue hue, string value, string label,
-        bool active, Action? onClick, string? help = null)
-    {
-        var content = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-            GlyphChip(glyph, hue, 36, 18).VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
-            VStack(0,
-                TextBlock(value).FontSize(20).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis),
-                TextBlock(label).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))).VAlign(VerticalAlignment.Center).Grid(column: 1));
-        var name = $"{label}: {value}";
-        if (onClick is null)
-        {
-            return Card(content).Padding(14, 10).AutomationName(name).AutomationId("SystemsSummary_" + id);
-        }
-        var tile = Button(content, onClick)
-            .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .Padding(14, 10).CornerRadius(8)
-            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-            .BorderThickness(active ? 2 : 1)
-            .BorderBrush(Theme.Ref(active ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"))
-            .AutomationName(name)
-            .HelpText(help ?? S("Filter_Name"))
-            .AutomationId("SystemsSummary_" + id);
-        return active ? tile.ItemStatus(S("Summary_Active")) : tile;
-    }
-
-    private static Element Banners(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
-        Action<SystemsDialog?> open, SystemsLayout layout)
+    private static Element Banners(SystemsViewState state, SystemsController controller,
+        SystemsPageActions actions, SystemsLayout layout)
     {
         var banners = new List<Element>();
         if (!state.Connected)
         {
             banners.Add(InfoBar(S("Disconnected_Title"), S("Disconnected_Message")).Warning().IsClosable(false)
-                .Content(Button(S("OpenConnection"), () => actions.Navigate("connection")).AutomationName(S("OpenConnection")).Margin(0, 0, 0, 8))
+                .Content(Button(S("OpenConnection"), () => actions.Navigate("connection"))
+                    .AutomationName(S("OpenConnection")).AutomationId("SystemsDisconnectedConnection").Margin(0, 0, 0, 8))
                 .AutomationId("SystemsDisconnectedBanner").WithKey("disconnected"));
         }
         else if (!state.CanRead)
@@ -261,9 +356,23 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
 
         if (state.InventoryError is { } error)
         {
-            banners.Add(InfoBar(S("InventoryError_Title"), error).Error().IsClosable(false)
-                .Content(Button(S("Retry"), () => _ = controller.RefreshAsync(manual: true)).AutomationName(S("Retry"))
-                    .IsEnabled(state.Connected && !state.Loading).Margin(0, 0, 0, 8))
+            var failure = InfoBar(S("LoadFailed"),
+                state.InventoryTimedOut
+                    ? F("RequestTimeout", Count((int)SystemsController.InventoryTimeout.TotalSeconds))
+                    : error);
+            Element recoveryActions = layout.Tier == PageWidthTier.Narrow
+                ? VStack(8,
+                    Button(S("Retry"), () => _ = controller.RefreshAsync()).AutomationName(S("Retry"))
+                        .AutomationId("SystemsRetry").IsEnabled(state.Connected && !state.Loading),
+                    Button(S("Connection"), () => actions.Navigate("connection")).AutomationName(S("Connection"))
+                        .AutomationId("SystemsInventoryConnection"))
+                : HStack(8,
+                    Button(S("Retry"), () => _ = controller.RefreshAsync()).AutomationName(S("Retry"))
+                        .AutomationId("SystemsRetry").IsEnabled(state.Connected && !state.Loading),
+                    Button(S("Connection"), () => actions.Navigate("connection")).AutomationName(S("Connection"))
+                        .AutomationId("SystemsInventoryConnection"));
+            banners.Add((state.HasLoaded ? failure.Warning() : failure.Error()).IsClosable(false)
+                .Content(recoveryActions)
                 .AutomationId("SystemsInventoryErrorBanner").WithKey("inventory-error"));
         }
 
@@ -273,158 +382,260 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 .AutomationId("SystemsPartialErrorsBanner").WithKey("partial-errors"));
         }
 
-        if (state.PendingPairingCount > 0)
-            banners.Add(PendingApprovals(state, actions, open, layout.ApprovalsMaxHeight).WithKey("pairing"));
-
         return banners.Count == 0 ? Empty() : VStack(8, banners.ToArray()).Margin(0, 0, 0, 12);
     }
 
-    private static Element PendingApprovals(SystemsViewState state, SystemsPageActions actions, Action<SystemsDialog?> open,
-        double maxHeight)
+    private static Element NeedsYou(IReadOnlyList<SystemsAttentionItem> items, SystemsLayout layout, Action reviewAll)
     {
-        var count = state.PendingPairingCount;
-        var title = count == 1 ? S("Pairing_TitleOne") : F("Pairing_TitleMany", count);
-        var message = state.OwnNodePending ? S("Pairing_OwnNodeMessage") : S("Pairing_Message");
-        var rows = state.PendingApprovals.Select<PendingApproval, Element>(approval =>
+        if (items.Count == 0)
+            return Empty();
+        var cards = items.Take(2).Select(item => AttentionCard(item.Title, item.Message, item.Action, item.Invoke,
+            item.Hue, "SystemsAttention_" + item.Key, enabled: item.Enabled, disabledReason: item.DisabledReason,
+            secondary: item.SecondaryAction, onSecondary: item.InvokeSecondary).WithKey(item.Key)).ToList();
+        var more = items.Count - cards.Count;
+        if (more > 0)
         {
-            var name = string.IsNullOrWhiteSpace(approval.DisplayName) ? approval.DeviceId : approval.DisplayName!;
-            var kind = approval.Kind == PairingApprovalKind.NodePair ? S("Pairing_KindNode") : S("Pairing_KindDevice");
-            var details = new[] { kind, PlatformLabels.Pretty(approval.Platform), approval.RemoteIp,
-                    approval.IsRepair ? S("Pairing_Repair") : null }
-                .Where(part => !string.IsNullOrWhiteSpace(part));
-            var scopes = approval.Scopes.Count > 0 ? F("Pairing_Scopes", string.Join(", ", approval.Scopes)) : null;
-            Element buttons = state.CanPair && approval.IsActionable
-                ? HStack(8,
-                    Button(S("Pairing_Approve"), () => open(new PairingDialog(approval, true))).AccentButton()
-                        .AutomationName(F("Pairing_ApproveName", name)).AutomationId("SystemsPairApprove_" + approval.DeviceId),
-                    Button(S("Pairing_Reject"), () => open(new PairingDialog(approval, false)))
-                        .AutomationName(F("Pairing_RejectName", name)).AutomationId("SystemsPairReject_" + approval.DeviceId))
-                : Button(S("Pairing_Review"), () => actions.Navigate("connection")).AutomationName(S("Pairing_Review"));
-            return Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    GlyphChip(approval.Kind == PairingApprovalKind.NodePair ? "\uE7F8" : "\uE8EA", SystemsHue.Caution, 36, 18)
-                        .VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
-                    VStack(2,
-                        TextBlock(name).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis),
-                        TextBlock(string.Join(" · ", details)).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-                        scopes is null ? Empty() : TextBlock(scopes).FontSize(12).TextWrapping()
-                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))).Grid(column: 1),
-                    buttons.VAlign(VerticalAlignment.Center).Grid(column: 2))
-                .WithKey(approval.Key);
-        }).ToList();
-        if (state.OwnNodePending)
-            rows.Insert(0, Button(S("Pairing_Review"), () => actions.Navigate("connection"))
-                .AutomationName(S("Pairing_Review"))
-                .AutomationId("SystemsOwnNodePairingReview").WithKey("own-node"));
-        return InfoBar(title, message).Warning().IsClosable(false)
-            // Many requests scroll inside the banner instead of pushing the machines off the page.
-            .Content((ScrollViewer(VStack(10, rows.ToArray())) with { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled })
-                .MaxHeight(maxHeight).Margin(0, 0, 0, 12))
-            .AutomationId("SystemsPendingPairingBanner");
+            cards.Add(AttentionCard(F("NeedsYou_More", Count(more)), S("NeedsYou_ReviewEveryIssue"),
+                S("NeedsYou_ReviewAllIssues"), reviewAll, SystemsHue.Caution, "SystemsNeedsYouMore", accent: true)
+                .WithKey("more"));
+        }
+        return VStack(12,
+            HStack(8, TextBlock(S("NeedsYou")).FontSize(18).FontWeight(FontWeights.SemiBold)
+                    .HeadingLevel(AutomationHeadingLevel.Level2),
+                Border(TextBlock(Count(items.Count)).FontSize(12).FontWeight(FontWeights.SemiBold)
+                    .Foreground(Theme.Ref("SystemFillColorCriticalBrush")))
+                    .Padding(8, 2).CornerRadius(10).Background(Theme.Ref("SystemsCriticalTintBrush"))
+                    .VAlign(VerticalAlignment.Center).AutomationId("SystemsNeedsYouCount")),
+            Rows(cards.Select(card => card.HAlign(HorizontalAlignment.Stretch)).ToArray(), layout.AttentionColumns)
+                .AutomationId("SystemsAttentionRows")).AutomationId("SystemsNeedsYou");
     }
+
+    private static Element Issues(IReadOnlyList<SystemsAttentionItem> items, Action showAllDevices)
+    {
+        var heading = HStack(8,
+                TextBlock(S("Issues")).FontSize(18).FontWeight(FontWeights.SemiBold)
+                    .HeadingLevel(AutomationHeadingLevel.Level2),
+                Border(TextBlock(Count(items.Count)).FontSize(12).FontWeight(FontWeights.SemiBold)
+                        .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
+                    .Padding(8, 2).CornerRadius(10).Background(Theme.Ref("ControlAltFillColorSecondaryBrush"))
+                    .VAlign(VerticalAlignment.Center))
+            .AutomationId("SystemsIssuesHeading");
+        var back = HyperlinkButton(S("AllDevices"), onClick: showAllDevices)
+            .AutomationName(S("AllDevices")).AutomationId("SystemsIssuesBack");
+        if (items.Count == 0)
+            return VStack(16, heading, back,
+                TextBlock(S("NothingNeedsYou")).TextWrapping(TextWrapping.WrapWholeWords)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).AutomationId("SystemsIssuesEmpty"))
+                .AutomationId("SystemsIssuesView");
+        var cards = items.Select(item => AttentionCard(item.Title, item.Message, item.Action, item.Invoke,
+                item.Hue, "SystemsIssue_" + item.Key, enabled: item.Enabled, disabledReason: item.DisabledReason,
+                secondary: item.SecondaryAction, onSecondary: item.InvokeSecondary).WithKey(item.Key))
+            .ToArray();
+        return VStack(16, heading, back,
+                Rows(cards.Select(card => card.HAlign(HorizontalAlignment.Stretch)).ToArray(), 2)
+                    .AutomationId("SystemsIssuesRows"))
+            .AutomationId("SystemsIssuesView");
+    }
+
+    private static IReadOnlyList<SystemsAttentionItem> AttentionItems(
+        SystemsViewState state, SystemsPageActions actions, DateTimeOffset now, Action<string> showSystem)
+    {
+        var items = new List<SystemsAttentionItem>();
+        if (state.OwnNodePending)
+        {
+            items.Add(new SystemsAttentionItem("own-pairing", S("Pairing_TitleOne"), S("Pairing_OwnNodeMessage"),
+                S("Pairing_Review"), () => actions.Navigate("connection"), SystemsHue.Caution));
+        }
+        foreach (var approval in state.PendingApprovals)
+        {
+            if (state.OwnNodePending && approval.Kind == PairingApprovalKind.NodePair &&
+                string.Equals(approval.DeviceId, state.LocalNodeId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var enabled = state.Connected && state.CanManageNodes && approval.IsActionable;
+            var reason = !state.Connected ? S("ConnectionRequired")
+                : !state.CanManageNodes ? S("Manage_PairingRequired")
+                : !approval.IsActionable ? S("Pairing_Unavailable")
+                : null;
+            var matchingApprovalRow = state.Rows.FirstOrDefault(row => row.Node is { } node &&
+                string.Equals(node.NodeId, approval.DeviceId, StringComparison.OrdinalIgnoreCase));
+            var reapproval = matchingApprovalRow?.Node?.ApprovalState == GatewayNodeApprovalState.PendingReapproval;
+            var message = reapproval ? S("AwaitingApproval") : S("Pairing_Message");
+            items.Add(new SystemsAttentionItem("pairing-" + approval.Key,
+                reapproval ? S("AwaitingApproval")
+                    : string.IsNullOrWhiteSpace(approval.DisplayName) ? S("Pairing_TitleOne")
+                    : F("Pairing_NamedTitle", approval.DisplayName), message,
+                S("Pairing_Review"), () => actions.Navigate("connection"), SystemsHue.Caution,
+                enabled, reason));
+        }
+
+        foreach (var row in state.Rows.Where(row => row.Kind != SystemKind.Client))
+        {
+            var nowForGateway = now - state.GatewayClockOffset;
+            var issue = IssueLine(row, state, nowForGateway);
+            var approval = row.Node?.ApprovalState;
+            if (approval is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval &&
+                !state.PendingApprovals.Any(item => string.Equals(item.DeviceId, row.Node?.NodeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                var reapproval = approval == GatewayNodeApprovalState.PendingReapproval;
+                items.Add(new SystemsAttentionItem("approval-" + row.Id,
+                    reapproval ? S("AwaitingApproval") : F("Pairing_NamedTitle", DisplayName(row)),
+                    issue ?? S("Pairing_Message"), S("Pairing_Review"),
+                    () => actions.Navigate("connection"), SystemsHue.Caution));
+            }
+            if (state.Connected && row.Status == SystemStatus.Offline)
+            {
+                items.Add(new SystemsAttentionItem("offline-" + row.Id,
+                    F("Attention_OfflineTitle", DisplayName(row)),
+                    F("Attention_OfflineMessage", issue ?? S("Status_Unknown")),
+                    S("HowToReconnect"), () => actions.Navigate("connection"), SystemsHue.Critical,
+                    SecondaryAction: S("ShowSystem"), InvokeSecondary: () => showSystem(row.Id)));
+            }
+            if (row.Environment?.Issues.Any(value => value.Code == "update-required") == true)
+            {
+                items.Add(new SystemsAttentionItem("update-" + row.Id, DisplayName(row), S("Issue_UpdateRequired"),
+                    S("CopyUpdate"), () => actions.CopyText("openclaw update"), SystemsHue.Caution));
+            }
+            if (row.Node?.Permissions is { } permissions)
+            {
+                foreach (var permission in permissions.Where(permission => !permission.Value))
+                {
+                    var isLocal = row.IsThisDevice;
+                    items.Add(new SystemsAttentionItem("permission-" + row.Id + "-" + permission.Key,
+                        F("PermissionAttention_Title", DisplayName(row)),
+                        F("Capability_Disabled", CapabilityLabel(permission.Key)),
+                        isLocal ? S("ManagePermissions") : S("ShowSystem"),
+                        isLocal ? () => actions.Navigate("permissions") : () => showSystem(row.Id),
+                        SystemsHue.Caution,
+                        isLocal || state.Connected,
+                        !isLocal && !state.Connected ? S("ConnectionRequired") : null));
+                }
+            }
+            if (row.Environment?.Worker is { Error: { Length: > 0 } workerError })
+            {
+                items.Add(new SystemsAttentionItem("worker-" + row.Id, F("WorkerError_Title", DisplayName(row)),
+                    workerError, S("ShowSystem"), () => showSystem(row.Id), SystemsHue.Critical));
+            }
+            else if (row.Status == SystemStatus.Error)
+            {
+                items.Add(new SystemsAttentionItem("error-" + row.Id, F("Attention_ErrorTitle", DisplayName(row)),
+                    issue ?? S("Status_Unknown"), S("ShowSystem"), () => showSystem(row.Id), SystemsHue.Critical));
+            }
+        }
+        return items;
+    }
+
+    private static Element AttentionCard(string title, string message, string action, Action onClick, SystemsHue hue, string id,
+        bool accent = false, string? actionId = null, string? secondary = null, Action? onSecondary = null,
+        bool enabled = true, string? disabledReason = null) =>
+        Card(Grid([GridSize.Px(4), GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+            Border(null).Background(Theme.Ref(hue.Brush)).AccessibilityView(AccessibilityView.Raw)
+                .AutomationId("SystemsAttentionStripe").Grid(column: 0),
+            GlyphChip("\uE7BA", hue, 32, 16).CornerRadius(16).Margin(12, 16, 0, 0)
+                .VAlign(VerticalAlignment.Top).Grid(column: 1),
+            VStack(4, TextBlock(title).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords),
+                Note(message),
+                WrapRow(8, HStack(8,
+                    (accent ? Button(TextBlock(action).TextWrapping(TextWrapping.NoWrap), onClick).AccentButton() : Button(TextBlock(action).TextWrapping(TextWrapping.NoWrap), onClick))
+                        .AutomationName(action).AutomationId(actionId ?? id + "_Action")
+                        .IsEnabled(enabled).HelpText(disabledReason ?? "").ToolTip(disabledReason ?? ""),
+                    secondary is null || onSecondary is null ? Empty() : HyperlinkButton(secondary, onClick: onSecondary).AutomationName(secondary))
+                    .AutomationId(id + "_Actions")))
+                .Padding(16).Grid(column: 2))).AutomationId(id);
 
     // ── Body ───────────────────────────────────────────────────────────
 
-    private static Element Body(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
-        Action<SystemsDialog?> open, DateTimeOffset now, bool reducedMotion, SystemsLayout layout)
+    private static Element Body(SystemsViewState state, SystemsPageActions actions,
+        Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout,
+        IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded,
+        IReadOnlyList<SystemsAttentionItem> attentionItems, bool issuesView, Action showAllDevices)
     {
-        var inventory = Inventory(state, controller, actions, compact: !layout.Stacked && layout.InventoryWidth < 300);
-        var details = Details(state, controller, actions, open, now, reducedMotion, layout);
-        // Narrow windows stack the list above the details, with the list capped so details stay visible.
-        return layout.Stacked
-            ? Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
-                inventory.MaxHeight(240).Grid(row: 0),
-                details.Margin(0, SystemsLayout.PaneGap, 0, 0).Grid(row: 1))
-            : Grid([GridSize.Px(layout.InventoryWidth), GridSize.Star()], [GridSize.Star()],
-                inventory.Grid(column: 0),
-                details.Margin(SystemsLayout.PaneGap, 0, 0, 0).Grid(column: 1));
+        if (!state.CanRead)
+            return Card(VStack(8, TextBlock(S("ReadAccess_Title")).FontSize(20), Note(S("ReadAccess_Message"))))
+                .Padding(24).AutomationId("SystemsReadAccessPanel");
+        if (issuesView)
+            return Issues(attentionItems, showAllDevices);
+        return VStack(16,
+            state.SelectionMissing
+                ? Placeholder("\uE7BA", SystemsHue.Caution, S("Missing_Title"), S("Missing_Hint"), "SystemsSelectionMissing")
+                : Empty(),
+            Inventory(state, actions, open, now, layout, expandedRows, toggleExpanded));
     }
 
-    private static Element Inventory(SystemsViewState state, SystemsController controller, SystemsPageActions actions, bool compact)
+    private static Element Inventory(SystemsViewState state, SystemsPageActions actions,
+        Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout,
+        IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded)
     {
-        var visible = SystemsProjection.Query(state.Rows, state.Query, state.Filter, state.Sort, DisplayName, state.Connected);
-        var search = TextBox(state.Query, controller.SetQuery, placeholderText: S("Search"))
-            .SearchInput()
-            .AutomationName(S("Search"))
-            .AutomationId("SystemsSearchBox");
-
-        var filters = new[] { SystemsStatusFilter.All, SystemsStatusFilter.Online, SystemsStatusFilter.Offline };
-        var filter = SelectorBar(
-                [SelectorBarItem(S("Filter_All")), SelectorBarItem(S("Status_Online")), SelectorBarItem(S("Status_Offline"))],
-                Array.IndexOf(filters, state.Filter),
-                index => { if (index >= 0) controller.SetFilter(filters[index]); })
-            .AutomationName(S("Filter_Name"))
-            .AutomationId("SystemsStatusFilter");
-
-        var sortLabel = SortLabel(state.Sort);
-        var sort = DropDownButton(sortLabel, MenuItems(
-                RadioMenuItem(S("Sort_OnlineFirst"), "systems-sort", state.Sort == SystemsSortMode.OnlineFirst,
-                    () => controller.SetSort(SystemsSortMode.OnlineFirst)),
-                RadioMenuItem(S("Sort_OfflineFirst"), "systems-sort", state.Sort == SystemsSortMode.OfflineFirst,
-                    () => controller.SetSort(SystemsSortMode.OfflineFirst)),
-                RadioMenuItem(S("Sort_Alphabetical"), "systems-sort", state.Sort == SystemsSortMode.Alphabetical,
-                    () => controller.SetSort(SystemsSortMode.Alphabetical))))
-            .AutomationName(F("Sort_Name", sortLabel))
-            .ToolTip(S("Sort_By"))
-            .AutomationId("SystemsSortButton");
+        var visible = SystemsProjection.OrderForInventory(state.Rows, DisplayName, state.Connected);
 
         Element list;
         if (!state.HasLoaded && state.Loading)
         {
-            list = VStack(8, ProgressRing().IsActive(true).Size(24, 24), TextBlock(S("Loading")).HAlign(HorizontalAlignment.Center))
-                .Margin(0, 32, 0, 0).HAlign(HorizontalAlignment.Center).AutomationId("SystemsLoading");
+            list = VStack(12, TextBlock(S("Loading")),
+                Card(Border(null).Height(64).Background(Theme.Ref("SubtleFillColorSecondaryBrush"))),
+                Card(Border(null).Height(64).Background(Theme.Ref("SubtleFillColorSecondaryBrush"))),
+                Card(Border(null).Height(64).Background(Theme.Ref("SubtleFillColorSecondaryBrush"))))
+                .AutomationName(S("Loading")).AutomationId("SystemsLoading");
         }
+        else if (!state.HasLoaded && state.InventoryError is not null)
+            list = Empty();
         else if (visible.Count == 0)
         {
-            var filtered = state.Rows.Count > 0;
             list = VStack(8,
-                    Glyph(filtered ? "\uE71E" : "\uE977", 32).HAlign(HorizontalAlignment.Center)
+                    Glyph("\uE977", 32).HAlign(HorizontalAlignment.Center)
                         .Foreground(Theme.Ref("TextFillColorTertiaryBrush")),
-                    TextBlock(filtered ? S("NoMatches") : S("Empty")).TextWrapping()
+                    TextBlock(S("Empty")).TextWrapping(TextWrapping.WrapWholeWords)
                         .TextAlignment(TextAlignment.Center).Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
                 .Margin(16, 32, 16, 0)
-                .AutomationId(filtered ? "SystemsNoMatches" : "SystemsEmpty");
+                .AutomationId("SystemsEmpty");
         }
         else
         {
-            var groups = new (SystemKind Kind, string Title)[]
-            {
-                (SystemKind.Host, S("Group_Host")),
-                (SystemKind.Node, S("Group_Nodes")),
-                (SystemKind.Worker, S("Group_Workers")),
-                (SystemKind.Client, S("Group_Clients")),
-            };
-            list = VStack(12, groups
-                .Select(group => (group.Title, group.Kind, Rows: visible.Where(row => row.Kind == group.Kind).ToArray()))
-                .Where(group => group.Rows.Length > 0)
-                .Select(group => InventoryGroup(group.Title, group.Kind, group.Rows, state, controller, actions)
-                    .WithKey(group.Kind.ToString()))
-                .ToArray());
+            var groups = new List<Element>();
+            var devices = visible.Where(row => row.Kind is SystemKind.Host or SystemKind.Node).ToArray();
+            if (devices.Length > 0)
+                groups.Add(InventoryGroup(S("DevicesAndGateway"), SystemKind.Host, devices,
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, "SystemsDevicesGroup"));
+            var workers = visible.Where(row => row.Kind == SystemKind.Worker).ToArray();
+            var clients = visible.Where(row => row.Kind == SystemKind.Client).ToArray();
+            if (workers.Length > 0)
+                groups.Add(InventoryGroup(S("Group_Workers"), SystemKind.Worker, workers,
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, "SystemsWorkersGroup", true));
+            if (clients.Length > 0)
+                groups.Add(InventoryGroup(S("ConnectedApps"), SystemKind.Client, clients,
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, "SystemsConnectedAppsGroup", true));
+            list = VStack(12, groups.ToArray());
         }
 
-        // The compact list has no room for the filter tabs and the sort button on one line.
-        Element controls = compact
-            ? VStack(4, filter, sort.HAlign(HorizontalAlignment.Right))
-            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto], filter.Grid(column: 0), sort.VAlign(VerticalAlignment.Center).Grid(column: 1));
-        return Card((ScrollViewer(VStack(8, search, controls, list)) with
-                { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled })
-                .AutomationId("SystemsInventoryScroll"))
-            .Padding(12)
+        return VStack(12,
+                TextBlock(F("DevicesAndGatewayCount",
+                        Count(visible.Count(row => row.Kind is SystemKind.Host or SystemKind.Node))))
+                    .FontSize(18).FontWeight(FontWeights.SemiBold)
+                    .HeadingLevel(AutomationHeadingLevel.Level2)
+                    .AutomationId("SystemsDevicesAndGatewayHeading"),
+                list)
             .AutomationName(S("Inventory"))
             .AutomationId("SystemsInventory");
     }
 
-    private static string SortLabel(SystemsSortMode sort) => sort switch
-    {
-        SystemsSortMode.Alphabetical => S("Sort_Alphabetical"),
-        SystemsSortMode.OfflineFirst => S("Sort_OfflineFirst"),
-        _ => S("Sort_OnlineFirst"),
-    };
-
     private static Element InventoryGroup(string title, SystemKind kind, IReadOnlyList<SystemRow> rows,
-        SystemsViewState state, SystemsController controller, SystemsPageActions actions)
+        SystemsViewState state, SystemsPageActions actions, Action<SystemsDialog?> open,
+        DateTimeOffset now, SystemsLayout layout, IReadOnlySet<string> expandedRows,
+        Action<string, bool> toggleExpanded, string automationId, bool showHeading = false)
     {
-        var selectedIndex = rows.ToList().FindIndex(row => row.Id == state.SelectedId);
-        var heading = kind == SystemKind.Host ? title : $"{title} ({rows.Count.ToString(System.Globalization.CultureInfo.CurrentCulture)})";
+        var heading = $"{title} ({Count(rows.Count)})";
+        var content = VStack(PageResponsiveLayout.GapInner, rows.Select(row =>
+                Expander("", Details(row, state, actions, open, now, layout).Padding(16, 0, 16, 16),
+                        expandedRows.Contains(row.Id), expanded => toggleExpanded(row.Id, expanded))
+                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+                    .BorderThickness(1).CornerRadius(8)
+                    .HeaderTemplate(InventoryItem(row, state, layout))
+                    .AutomationName(DisplayName(row) + ", " + StatusLabel(row, state))
+                    .HelpText(S(expandedRows.Contains(row.Id) ? "CollapseSystem" : "ExpandSystem"))
+                    .AutomationId("SystemsRow_" + row.Id).WithKey(row.Id)).ToArray())
+            .AutomationName(heading)
+            .AutomationId(automationId);
+        if (!showHeading)
+            return content;
         return VStack(4,
             HStack(8,
                 Border(null).Size(8, 8).CornerRadius(4).Background(Theme.Ref(SystemsHue.ForKind(kind).Brush))
@@ -433,272 +644,225 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
                     .HeadingLevel(AutomationHeadingLevel.Level2))
                 .Margin(4, 0, 0, 0),
-            ListView((int?)selectedIndex, index =>
-                    {
-                        if (index >= 0 && index < rows.Count)
-                            controller.Select(rows[index].Id);
-                    },
-                    rows.Select(row => InventoryItem(row, state, actions).WithKey(row.Id)).ToArray())
-                .SelectionMode(ListViewSelectionMode.Single)
-                .AutomationName(heading)
-                .AutomationId("SystemsGroup_" + kind));
+            content);
     }
 
-    private static Element InventoryItem(SystemRow row, SystemsViewState state, SystemsPageActions actions)
+    private static Element InventoryItem(SystemRow row, SystemsViewState state, SystemsLayout layout)
     {
         var name = DisplayName(row);
         var status = EffectiveStatus(row, state.Connected);
-        var secondary = status != SystemStatus.Online
-            ? Status(status)
-            : row.Kind == SystemKind.Worker ? SystemsProjection.ShortId(row.Id) : row.Platform ?? Status(status);
+        var secondary = Join(Kind(row), row.Platform);
         var badges = new List<Element>();
-        if (row.IsThisDevice)
+        if (row.IsThisDevice && !layout.CompactHeader)
             badges.Add(Tag(S("ThisDevice")));
-        if (row.Environment?.Desktop == true)
-            badges.Add(Glyph("\uE7F4", 14).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).ToolTip(S("Desktop")));
-        var helpText = row.Platform is { Length: > 0 } platform ? $"{Status(status)}, {platform}" : Status(status);
-        return Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+        var statusLabel = StatusLabel(row, state);
+        var helpText = row.Platform is { Length: > 0 } platform ? $"{statusLabel}, {platform}" : statusLabel;
+        var issue = IssueLine(row, state, DateTimeOffset.UtcNow - state.GatewayClockOffset);
+        var meta = VStack(4, StatusBadge(status, statusLabel),
+                issue is not null ? TextBlock(issue).FontSize(12).TextWrapping(TextWrapping.NoWrap)
+                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(issue)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")) : Empty())
+            .MaxWidth(layout.CompactHeader ? 300 : 180)
+            .HAlign(layout.CompactHeader ? HorizontalAlignment.Left : HorizontalAlignment.Right)
+            .AutomationId("SystemsMeta_" + row.Id);
+        return Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                layout.CompactHeader ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
                 MachineAvatar(row, status, 36, 18).VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
                 VStack(2,
-                    TextBlock(name).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis)
+                    TextBlock(name).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
+                        .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(name)
+                        .AutomationId(row.Id == state.SelectedId ? "SystemsSelectedName" : "SystemsName_" + row.Id)
                         .Opacity(status == SystemStatus.Offline ? 0.75 : 1),
-                    HStack(6,
-                        Glyph(StatusGlyph(status), 12).Foreground(Theme.Ref(StatusBrush(status))).VAlign(VerticalAlignment.Center),
-                        TextBlock(secondary).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
-                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                HStack(6, badges.ToArray()).VAlign(VerticalAlignment.Center).Margin(8, 0, 0, 0).Grid(column: 2))
-            .Padding(0, 6)
+                    TextBlock(secondary ?? "").FontSize(12).TextWrapping(TextWrapping.NoWrap)
+                        .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(secondary ?? "")
+                        .AutomationId("SystemsSubtitle_" + row.Id)
+                        .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                    HStack(6, badges.ToArray())).VAlign(VerticalAlignment.Center).Grid(column: 1),
+                meta.VAlign(VerticalAlignment.Center).Margin(layout.CompactHeader ? 0 : 12, layout.CompactHeader ? 8 : 0, 0, 0)
+                    .Grid(row: layout.CompactHeader ? 1 : 0, column: layout.CompactHeader ? 1 : 2))
+            .Padding(12)
             .AutomationName(name)
             .HelpText(helpText)
             .ToolTip(name)
-            .WithContextFlyout(MenuItems(MenuItem(S("CopyDebug"),
-                () => actions.CopyText(DebugSummary(row)))))
             .AutomationId("SystemsItem_" + row.Id);
+    }
+
+    private static string StatusLabel(SystemRow row, SystemsViewState state)
+    {
+        if (!state.Connected)
+            return row.Status switch
+            {
+                SystemStatus.Online => S("LastKnownOnline"),
+                SystemStatus.Offline => S("LastKnownOffline"),
+                _ => Status(EffectiveStatus(row, false)),
+            };
+        return Status(EffectiveStatus(row, true));
+    }
+
+    private static string? IssueLine(SystemRow row, SystemsViewState state, DateTimeOffset now)
+    {
+        if (row.Environment?.Issues.Any(issue => issue.Code == "update-required") == true)
+            return S("Issue_UpdateRequired");
+        if (row.IsThisDevice && state.OwnNodePending)
+            return S("Pairing_OwnNodeMessage");
+        if (row.Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval)
+            return S("AwaitingApproval");
+        if (!state.Connected)
+            return row.Environment?.LastSeenAt is { } lastSeen ? F("NotSeen", Ago(lastSeen, now)) : null;
+        if (row.Status == SystemStatus.Offline && row.Environment?.LastSeenAt is { } seen)
+            return F("NotSeen", Ago(seen, now));
+        if (row.Environment?.Worker is { } worker)
+            return Join(worker.Error, worker.State, worker.TunnelStatus);
+        if (row.Node?.Permissions.FirstOrDefault(pair => !pair.Value) is { Key: { Length: > 0 } key })
+            return F("Capability_Disabled", CapabilityLabel(key));
+        return row.Status == SystemStatus.Offline ? S("Offline_Title") : null;
     }
 
     // ── Details ────────────────────────────────────────────────────────
 
-    private static Element Details(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
-        Action<SystemsDialog?> open, DateTimeOffset now, bool reducedMotion, SystemsLayout layout)
+    private static Element Details(SystemRow row, SystemsViewState state, SystemsPageActions actions,
+        Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout)
     {
-        if (state.SelectionMissing)
-            return Placeholder("\uE7BA", SystemsHue.Caution, S("Missing_Title"), S("Missing_Hint"), "SystemsSelectionMissing");
-        if (state.Selected is not { } row)
-        {
-            if (state.HasLoaded && state.Rows.Count == 0)
-                return EmptyState(state, controller, actions);
-            return Placeholder("\uE977", SystemsHue.Accent, S("Select"), S("Select_Hint"), "SystemsSelectPrompt");
-        }
-
-        // Gateway timestamps are aged against the Gateway's clock so skew never shows as old or future data.
         var gatewayNow = now - state.GatewayClockOffset;
-        var sections = new List<Element> { DetailsHeader(row, state, actions, open, gatewayNow).WithKey("header") };
+        if (row.Kind == SystemKind.Client)
+            return MachineDetails(row, state, actions, gatewayNow).AutomationId("SystemsPresenceDetails");
+        var sections = new List<Element> { DetailsHeader(row, state, actions, open).WithKey("header") };
         var status = EffectiveStatus(row, state.Connected);
-        if (status == SystemStatus.Offline && row.Kind != SystemKind.Client)
+        if (IssueLine(row, state, gatewayNow) is { } issue &&
+            (status != SystemStatus.Online || row.Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval ||
+             row.IsThisDevice && state.OwnNodePending || row.Environment?.Issues.Any(value => value.Code == "update-required") == true))
         {
-            sections.Add(InfoBar(S("Offline_Title"), S("Offline_Hint")).Informational().IsClosable(false)
+            sections.Add(InfoBar(Status(status), issue).Warning().IsClosable(false)
                 .AutomationId("SystemsOfflineNote").WithKey("offline"));
         }
-        if (row.Kind != SystemKind.Client)
-            sections.Add(Statistics(row, state, controller, now, layout).WithKey("stats"));
-        sections.Add(MachineDetails(row, state, actions, gatewayNow).WithKey("details"));
-        if (row.Kind != SystemKind.Client)
-        {
-            sections.Add(Desktop(row, state, controller, open).WithKey("desktop"));
-            sections.Add(Sessions(row, actions).WithKey("sessions"));
-        }
-        if (Capabilities(row) is { } capabilities)
-            sections.Add(capabilities.WithKey("capabilities"));
-        if (row.Id == SystemsProjection.GatewayId)
-            sections.Add(Backups(state, controller, gatewayNow).WithKey("backups"));
-
-        // Keyed by machine: switching machines mounts a fresh pane, which plays the entrance.
-        Element pane = VStack(16, sections.ToArray()).Padding(0, 0, 12, 24);
-        if (!reducedMotion)
-        {
-            pane = pane.Transition(Microsoft.UI.Reactor.Animation.Transition.Enter(
-                Microsoft.UI.Reactor.Animation.Transition.Fade +
-                Microsoft.UI.Reactor.Animation.Transition.Slide(Microsoft.UI.Reactor.Animation.Edge.Bottom)));
-        }
-        return (ScrollViewer(pane.WithKey("pane:" + row.Id))
-                with { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled })
+        var right = new List<Element> { Statistics(row, state, now, layout).WithKey("stats") };
+        if (DesktopPresentation.Resolve(row, state.Connected) is { } desktop)
+            right.Add(Desktop(row, desktop).WithKey("desktop"));
+        right.Add(Sessions(row, actions, gatewayNow).WithKey("sessions"));
+        var left = Capabilities(row, actions);
+        // Capabilities keep a fixed readable width; the readings and sessions take the remaining space.
+        sections.Add(Grid(layout.Stacked
+                    ? [GridSize.Star()]
+                    : [GridSize.Px(SystemsLayout.CapabilitiesWidth), GridSize.Px(SystemsLayout.DetailsColumnGap), GridSize.Star()],
+                layout.Stacked ? [GridSize.Auto, GridSize.Px(PageResponsiveLayout.GapStack), GridSize.Auto] : [GridSize.Auto],
+                left.VAlign(VerticalAlignment.Top).Grid(column: 0),
+                VStack(PageResponsiveLayout.GapStack, right.ToArray())
+                    .Grid(row: layout.Stacked ? 2 : 0, column: layout.Stacked ? 0 : 2))
+            .AutomationId("SystemsDetailsGrid").WithKey("details-grid"));
+        sections.Add(Expander(S("Diagnostics"), VStack(12,
+                MachineDetails(row, state, actions, gatewayNow),
+                DiagnosticDeclarations(row),
+                Button(S("CopyDebug"), () => actions.CopyText(DebugSummary(row)))
+                    .AutomationName(S("CopyDebug")).AutomationId("SystemsCopyDebug").HAlign(HorizontalAlignment.Left)), false)
+            .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsDiagnostics").WithKey("diagnostics"));
+        return VStack(16, sections.ToArray()).WithKey("expanded:" + row.Id)
             .AutomationId("SystemsDetails");
     }
 
     private static Element Placeholder(string glyph, SystemsHue hue, string title, string hint, string automationId) =>
         VStack(12,
                 GlyphChip(glyph, hue, 72, 32).HAlign(HorizontalAlignment.Center),
-                TextBlock(title).FontSize(20).FontWeight(FontWeights.SemiBold).TextAlignment(TextAlignment.Center).TextWrapping(),
-                TextBlock(hint).TextWrapping().TextAlignment(TextAlignment.Center).MaxWidth(420)
+                TextBlock(title).FontSize(20).FontWeight(FontWeights.SemiBold).TextAlignment(TextAlignment.Center).TextWrapping(TextWrapping.WrapWholeWords),
+                TextBlock(hint).TextWrapping(TextWrapping.WrapWholeWords).TextAlignment(TextAlignment.Center).MaxWidth(420)
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
             .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center)
             .AutomationId(automationId);
 
-    /// <summary>
-    /// No machines: a small constellation of the three machine kinds around the Gateway, with
-    /// the ways forward. Decorative shapes stay out of the accessibility tree.
-    /// </summary>
-    private static Element EmptyState(SystemsViewState state, SystemsController controller, SystemsPageActions actions)
-    {
-        static Element Satellite(string glyph, SystemsHue hue, HorizontalAlignment h, VerticalAlignment v) =>
-            Border(GlyphChip(glyph, hue, 44, 20))
-                .Padding(3).CornerRadius(25)
-                .Background(Theme.Ref("SolidBackgroundFillColorBaseBrush"))
-                .HAlign(h).VAlign(v);
-
-        var art = Grid([GridSize.Px(200)], [GridSize.Px(140)],
-                Border(null).Size(120, 120).CornerRadius(60).Background(Theme.Ref("SystemsHeroBrush"))
-                    .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center),
-                GlyphChip("\uE968", SystemsHue.Accent, 76, 36).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center),
-                Satellite("\uE7F8", SystemsHue.Violet, HorizontalAlignment.Left, VerticalAlignment.Top),
-                Satellite("\uE753", SystemsHue.Teal, HorizontalAlignment.Right, VerticalAlignment.Bottom),
-                Satellite("\uE8EA", SystemsHue.Neutral, HorizontalAlignment.Right, VerticalAlignment.Top))
-            .HAlign(HorizontalAlignment.Center)
-            .AccessibilityView(AccessibilityView.Raw);
-
-        return VStack(12,
-                art.Margin(0, 0, 0, 8),
-                TextBlock(S("Empty_Title")).FontSize(24).FontWeight(FontWeights.SemiBold)
-                    .TextAlignment(TextAlignment.Center).TextWrapping()
-                    .HeadingLevel(AutomationHeadingLevel.Level2),
-                TextBlock(state.Connected ? S("Empty_Hint") : S("Disconnected_Message")).TextWrapping()
-                    .TextAlignment(TextAlignment.Center).MaxWidth(440)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-                HStack(8,
-                        Button(S("Empty_Pair"), () => actions.Navigate("connection")).AccentButton()
-                            .AutomationName(S("Empty_Pair")).AutomationId("SystemsEmptyPair"),
-                        Button(S("Refresh"), () => _ = controller.RefreshAsync(manual: true))
-                            .IsEnabled(state.Connected && !state.Loading)
-                            .AutomationName(S("Refresh_Name")).AutomationId("SystemsEmptyRefresh"))
-                    .HAlign(HorizontalAlignment.Center).Margin(0, 8, 0, 0))
-            .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center)
-            .AutomationId("SystemsDetailsEmpty");
-    }
-
     private static Element DetailsHeader(SystemRow row, SystemsViewState state, SystemsPageActions actions,
-        Action<SystemsDialog?> open, DateTimeOffset now)
+        Action<SystemsDialog?> open)
     {
-        var name = DisplayName(row);
-        var status = EffectiveStatus(row, state.Connected);
-        var subtitle = new[] { Kind(row), row.Platform }.Where(part => !string.IsNullOrWhiteSpace(part));
-        var buttons = new List<Element>
+        var primary = new List<AppBarButtonData>();
+        var secondary = new List<AppBarButtonData>
         {
-            Button(HStack(6, Glyph("\uE8C8", 14), TextBlock(S("CopyDebug"))), () => actions.CopyText(DebugSummary(row))).AutomationName(S("CopyDebug"))
-                .AutomationId("SystemsCopyDebug").WithKey("copy"),
+            AppBarButton(S("CopyIdentifier"), () => actions.CopyText(row.Node?.NodeId ?? row.Id), "\uE8C8"),
         };
+        if (row.IsThisDevice)
+            primary.Add(AppBarButton(S("OpenConnection"), () => actions.Navigate("connection"), "\uE713"));
+        Element manageNote = Empty();
         if (row.CanManageNode && row.Node is { } node)
         {
-            buttons.Add(Button(HStack(6, Glyph("\uE8AC", 14), TextBlock(LocalizationHelper.GetString("NodesPage_Action_Rename"))),
+            var canManage = state.Connected && state.CanManageNodes;
+            primary.Add(AppBarButton(LocalizationHelper.GetString("NodesPage_Action_Rename"),
                     () => open(new RenameNodeDialog(node, new StrongBox<string>(node.HasExplicitDisplayName ? node.DisplayName : ""))))
-                .AutomationName(LocalizationHelper.GetString("NodesPage_Action_Rename"))
-                .IsEnabled(state.Connected).AutomationId("SystemsRenameNode").WithKey("rename"));
-            buttons.Add(Button(HStack(6, Glyph("\uE74D", 14), TextBlock(LocalizationHelper.GetString("NodesPage_Action_Forget"))),
-                    () => open(new ForgetNodeDialog(node)))
-                .AutomationName(LocalizationHelper.GetString("NodesPage_Action_Forget"))
-                .IsEnabled(state.Connected)
-                .Foreground(Theme.Ref("SystemFillColorCriticalBrush"))
-                .AutomationId("SystemsForgetNode").WithKey("forget"));
+                with { Icon = "\uE8AC", IsEnabled = canManage });
+            secondary.Add(AppBarButton(LocalizationHelper.GetString("NodesPage_Action_Forget"),
+                    () => open(new ForgetNodeDialog(node,
+                        state.Rows.FirstOrDefault(value => value.Id == SystemsProjection.GatewayId) is { } gateway
+                            ? DisplayName(gateway) : S("Kind_Host"))), "\uE74D") with { IsEnabled = canManage });
+            if (!canManage)
+            {
+                manageNote = TextBlock(S(state.Connected ? "Manage_PairingRequired" : "ConnectionRequired"))
+                    .FontSize(12).TextWrapping(TextWrapping.WrapWholeWords)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).Margin(0, 8, 0, 0)
+                    .AutomationId("SystemsManageRequiresPairing");
+            }
         }
 
-        var badges = new List<Element> { StatusBadge(status).WithKey("status") };
-        if (row.IsThisDevice)
-            badges.Add(Tag(S("ThisDevice")).WithKey("this"));
-        if (row.Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval)
-            badges.Add(Tag(S("AwaitingApproval")).WithKey("pending"));
-
-        // Quick facts read at a glance; the full list stays in Machine details.
-        var facts = new List<Element>();
-        if (row.SystemInfo is { UptimeMs: > 0 } info)
-            facts.Add(Fact("\uE916", Duration(info.UptimeMs), S("Field_Uptime")).WithKey("uptime"));
-        if ((row.Node?.Version ?? row.Instance?.Version) is { Length: > 0 } version)
-            facts.Add(Fact("\uE8EC", version, LocalizationHelper.GetString("NodesPage_Label_Version").TrimEnd(':', ' ')).WithKey("version"));
-        if (row.Environment?.LastSeenAt is { } seen && status != SystemStatus.Online)
-            facts.Add(Fact("\uE823", Ago(seen, now), S("Field_LastSeen")).WithKey("seen"));
-        if (row.Sessions.Count > 0)
-            facts.Add(Fact("\uE8BD", Count(row.Sessions.Count), S("Sessions_Title")).WithKey("sessions"));
-
-        var content = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto, GridSize.Auto],
-            MachineAvatar(row, status, 64, 30).Margin(0, 0, 20, 0).VAlign(VerticalAlignment.Top).Grid(row: 0, column: 0, rowSpan: 2),
-            VStack(6,
-                WrapRow(12,
-                    TextBlock(name).FontSize(24).FontWeight(FontWeights.SemiBold)
-                        .TextWrapping(TextWrapping.WrapWholeWords).ToolTip(name)
-                        .HeadingLevel(AutomationHeadingLevel.Level2)
-                        .AutomationId("SystemsSelectedName"),
-                    WrapRow(6, badges.ToArray())),
-                TextBlock(string.Join(" · ", subtitle)).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-                facts.Count == 0 ? Empty() : WrapRow(8, facts.ToArray()).Margin(0, 4, 0, 0)).Grid(row: 0, column: 1),
-            WrapRow(8, buttons.ToArray()).Margin(0, 16, 0, 0).Grid(row: 1, column: 1));
-
-        return Card(Grid([GridSize.Star()], [GridSize.Auto],
-                // Decorative aurora wash behind the hero; high contrast maps it to the window color.
-                Border(null).Background(Theme.Ref("SystemsHeroBrush")).CornerRadius(8)
-                    .AccessibilityView(AccessibilityView.Raw),
-                content.Padding(20)))
-            .AutomationId("SystemsHero");
+        return VStack(8,
+            CommandBar(primary.ToArray(), secondary.ToArray())
+                .Set(bar =>
+                {
+                    bar.DefaultLabelPosition = CommandBarDefaultLabelPosition.Right;
+                    bar.IsDynamicOverflowEnabled = true;
+                    var priority = 1;
+                    foreach (var button in bar.PrimaryCommands.OfType<Microsoft.UI.Xaml.Controls.AppBarButton>().Reverse())
+                        button.DynamicOverflowOrder = priority++;
+                    NameCommands(bar);
+                })
+                .AutomationId("SystemsCommandBar"),
+            manageNote);
     }
 
-    private static Element Fact(string glyph, string text, string label) =>
-        Border(HStack(6,
-                Glyph(glyph, 12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center),
-                TextBlock(text).FontSize(12)))
-            .Padding(10, 4)
-            .CornerRadius(12)
-            .Background(Theme.Ref("SystemsNeutralTintBrush"))
-            .ToolTip(label)
-            .AutomationName($"{label}: {text}");
+    private static void NameCommands(Microsoft.UI.Xaml.Controls.CommandBar bar)
+    {
+        foreach (var button in bar.PrimaryCommands.Concat(bar.SecondaryCommands).OfType<Microsoft.UI.Xaml.Controls.AppBarButton>())
+        {
+            var id = button.Label == LocalizationHelper.GetString("NodesPage_Action_Rename") ? "SystemsRenameNode"
+                : button.Label == LocalizationHelper.GetString("NodesPage_Action_Forget") ? "SystemsForgetNode"
+                : button.Label == S("CopyIdentifier") ? "SystemsCopyIdentifier" : "SystemsConnection";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, id);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, button.Label);
+        }
+    }
 
     // ── Statistics ─────────────────────────────────────────────────────
 
-    private static Element Statistics(SystemRow row, SystemsViewState state, SystemsController controller, DateTimeOffset now,
-        SystemsLayout layout)
+    /// <summary>
+    /// The latest reported resource readings with their age. Only reported values are shown:
+    /// Windows nodes report processor count, memory and system-drive space, not processor usage.
+    /// </summary>
+    private static Element Statistics(SystemRow row, SystemsViewState state, DateTimeOffset now, SystemsLayout layout)
     {
-        var toggle = Button(state.ShowStatistics ? S("Stats_Hide") : S("Stats_Show"),
-                () => controller.SetShowStatistics(!state.ShowStatistics))
-            .SubtleButton()
-            .AutomationName(state.ShowStatistics ? S("Stats_Hide") : S("Stats_Show"))
-            .AutomationId("SystemsStatsToggle");
-        if (!state.ShowStatistics)
-            return Section(S("Stats_Title"), "\uE9D9", SystemsHue.Accent, Empty(), toggle, "SystemsStatistics");
-
         if (row.Measurements is not { } stats)
         {
-            return Section(S("Stats_Title"), "\uE9D9", SystemsHue.Accent,
-                TextBlock(S("Stats_None")).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+            return Section(S("Stats_Title"),
+                TextBlock(S("Stats_None")).TextWrapping(TextWrapping.WrapWholeWords).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
                     .AutomationId("SystemsNoStatistics"),
-                toggle, "SystemsStatistics");
+                null, "SystemsStatistics");
         }
 
         var refreshFailed = row.Id == SystemsProjection.GatewayId
             ? state.PartialErrors.SystemInfo is not null
             : state.PartialErrors.Nodes is not null;
-        var lastKnown = SystemsTelemetryHistory.IsLastKnown(row, state.Connected, refreshFailed, now);
-        var history = controller.Telemetry.For(row.Id);
-        if (history.Count == 0)
-            history = [new TelemetrySample(row.MeasuredAt ?? now, stats)];
-        SparklineData Spark(Func<HostMeasurements, double?> read, double ceiling, bool autorange, Func<double, string> format) =>
-            new(SystemsTelemetryHistory.TimedSeries(history, read), ceiling, autorange, !lastKnown, format, at => Ago(at, now));
+        var lastKnown = SystemsFreshness.IsLastKnown(row, state.Connected, refreshFailed, now);
 
-        var tiles = new List<Element>();
+        var tiles = new List<Element>
+        {
+            StatTile("cpu", S("Stats_Cpu"), SystemsHue.Accent,
+                stats.CpuCount > 0 ? stats.CpuCount.ToString(System.Globalization.CultureInfo.CurrentCulture) : S("Capability_NotReported"), S("Stats_CpuCores"),
+                null, null, lastKnown),
+        };
         if (stats.Load1 is { } load)
         {
             var percent = SystemsMeters.LoadPercent(stats);
-            tiles.Add(StatTile(row.Id, "load", S("Stats_Load"), "\uE9D9", SystemsHue.Accent, Load(load), F("Stats_Cores", stats.CpuCount),
-                null, percent is { } p ? F("Stats_LoadMeter", Math.Round(p)) : null,
-                Spark(sample => sample.Load1, Math.Max(1, stats.CpuCount), false, Load), CoreGrid(stats.CpuCount, percent, layout.CoresPerRow), lastKnown));
-        }
-        else
-        {
-            tiles.Add(StatTile(row.Id, "cpu", S("Stats_Cpu"), "\uE950", SystemsHue.Accent,
-                stats.CpuCount.ToString(System.Globalization.CultureInfo.CurrentCulture), S("Stats_CpuCores"),
-                null, null, null, CoreGrid(stats.CpuCount, null, layout.CoresPerRow), lastKnown));
+            tiles.Add(StatTile("load", S("Stats_Load"), SystemsHue.Accent, Load(load), F("Stats_Cores", stats.CpuCount),
+                percent, percent is { } p ? F("Stats_LoadMeter", Math.Round(p)) : null, lastKnown));
         }
 
         var memory = SystemsMeters.MemoryUsedPercent(stats);
-        tiles.Add(StatTile(row.Id, "memory", S("Stats_Memory"), "\uE964", SystemsHue.Violet, Bytes(stats.MemoryUsedBytes),
+        tiles.Add(StatTile("memory", S("Stats_Memory"), SystemsHue.Violet, Bytes(stats.MemoryUsedBytes),
             F("Stats_OfTotal", Bytes(stats.MemoryTotalBytes)),
-            memory, memory is { } m ? F("Stats_UsedMeter", Math.Round(m)) : null,
-            Spark(sample => sample.MemoryUsedBytes, stats.MemoryTotalBytes, false, value => Bytes((long)value)), null, lastKnown));
+            memory, memory is { } m ? F("Stats_UsedMeter", Math.Round(m)) : null, lastKnown));
 
         if (stats.Disks is { Count: > 0 } disks)
         {
@@ -706,94 +870,83 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             foreach (var disk in disks.DistinctBy(disk => disk.Path, StringComparer.Ordinal))
             {
                 var used = SystemsMeters.DiskUsedPercent(disk.AvailableBytes, disk.TotalBytes);
-                tiles.Add(StatTile(row.Id, "disk:" + disk.Path, F("Stats_DiskPath", disk.Path), "\uEDA2", SystemsHue.Teal,
+                tiles.Add(StatTile("disk:" + disk.Path, F("Stats_DiskPath", disk.Path), SystemsHue.Teal,
                     Bytes(disk.AvailableBytes), F("Stats_OfTotal", Bytes(disk.TotalBytes)),
-                    used, used is { } u ? F("Stats_UsedMeter", Math.Round(u)) : null,
-                    Spark(sample => sample.Disks?.FirstOrDefault(d => d.Path == disk.Path)?.AvailableBytes, disk.TotalBytes, true,
-                        value => Bytes((long)value)), null, lastKnown));
+                    used, used is { } u ? F("Stats_UsedMeter", Math.Round(u)) : null, lastKnown));
             }
         }
         else if (stats.DiskAvailableBytes is { } available)
         {
             var used = SystemsMeters.DiskUsedPercent(available, stats.DiskTotalBytes);
-            tiles.Add(StatTile(row.Id, "disk", S("Stats_Disk"), "\uEDA2", SystemsHue.Teal, Bytes(available),
+            tiles.Add(StatTile("disk", S("Stats_Disk"), SystemsHue.Teal, Bytes(available),
                 stats.DiskTotalBytes is { } total ? F("Stats_OfTotal", Bytes(total)) : "",
-                used, used is { } u ? F("Stats_UsedMeter", Math.Round(u)) : null,
-                Spark(sample => sample.Disks is null ? sample.DiskAvailableBytes : null, stats.DiskTotalBytes ?? available, true,
-                    value => Bytes((long)value)), null, lastKnown));
+                used, used is { } u ? F("Stats_UsedMeter", Math.Round(u)) : null, lastKnown));
         }
 
-        var captions = new List<Element>();
-        if (SystemsTelemetryHistory.IsCollecting(history.Count, lastKnown))
-            captions.Add(TextBlock(S("Stats_Collecting")).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).WithKey("collecting"));
+        Element sampled = Empty();
         if (row.MeasuredAt is { } measuredAt)
         {
-            captions.Add(HStack(4,
-                    Glyph(lastKnown ? "\uE823" : "\uE9D9", 12).Foreground(Theme.Ref("TextFillColorTertiaryBrush")),
-                    TextBlock(lastKnown ? F("Stats_LastKnown", Ago(measuredAt, now)) : F("Stats_Sampled", Ago(measuredAt, now)))
-                        .FontSize(12).Foreground(Theme.Ref("TextFillColorTertiaryBrush")))
-                .AutomationId("SystemsStatsSampled").WithKey("sampled"));
+            sampled = TextBlock(F("Stats_Sampled", CompactAge(measuredAt, now))).TextWrapping(TextWrapping.WrapWholeWords)
+                        .FontSize(12).Foreground(Theme.Ref("TextFillColorTertiaryBrush"))
+                .AutomationId("SystemsStatsSampled");
         }
 
-        var freshness = lastKnown
-            ? Pill(S("Stats_LastKnownBadge"), "\uE823", SystemsHue.Neutral).WithKey("stale")
-            : Pill(S("Stats_LiveBadge"), "\uE91F", SystemsHue.Success).WithKey("live");
-        var actions = WrapRow(8, freshness, toggle);
-        var body = VStack(10, Rows(tiles, layout.StatColumns), WrapRow(16, captions.ToArray()));
-        // A one-column pane has no room for the title, the badge and the button on one line.
-        return layout.StatColumns == 1
-            ? Section(S("Stats_Title"), "\uE9D9", SystemsHue.Accent, VStack(10, actions, body), null, "SystemsStatistics")
-            : Section(S("Stats_Title"), "\uE9D9", SystemsHue.Accent, body, actions, "SystemsStatistics");
+        var freshnessBrush = lastKnown ? "TextFillColorSecondaryBrush" : "SystemFillColorSuccessBrush";
+        var freshness = HStack(4, Glyph(lastKnown ? "\uE823" : "\uE91F", 10).Foreground(Theme.Ref(freshnessBrush)),
+            TextBlock(S(lastKnown ? "Stats_LastKnownBadge" : "Stats_LiveBadge")).FontSize(12)
+                .Foreground(Theme.Ref(freshnessBrush)));
+        return Section(S("Stats_Title"),
+            Component<SystemsStatRows, SystemsStatRowsProps>(new(tiles)), sampled, "SystemsStatistics", freshness);
     }
 
-    private static Element StatTile(string rowId, string metric, string label, string glyph, SystemsHue hue, string value, string sub,
-        double? meter, string? meterLabel, SparklineData? spark, Element? extra, bool lastKnown)
+    private sealed record SystemsStatRowsProps(IReadOnlyList<Element> Tiles);
+
+    // Expander template padding reduces the actual column below the host-width estimate.
+    private sealed class SystemsStatRows : Component<SystemsStatRowsProps>
     {
-        var summary = spark is { Points.Count: > 1 } trend
-            ? F("Stats_TrendName", label, value, trend.Points.Count)
-            : $"{label}, {value} {sub}";
+        public override Element Render()
+        {
+            var (width, setWidth) = UseState(0d, threadSafe: true);
+            var columns = PageResponsiveLayout.TileColumns(width, SystemsLayout.StatTileMinWidth);
+            return Rows(Props.Tiles, columns, stretchLastSingle: true)
+                .OnSizeChanged((_, args) => setWidth(args.NewSize.Width))
+                .AutomationId("SystemsStatRows");
+        }
+    }
+
+    private static Element StatTile(string metric, string label, SystemsHue hue, string value, string sub,
+        double? meter, string? meterLabel, bool lastKnown)
+    {
+        var summary = $"{label}, {value} {sub}";
         if (meterLabel is not null)
             summary += ", " + meterLabel;
 
         var children = new List<Element>
         {
-            Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                GlyphChip(glyph, hue, 28, 14).VAlign(VerticalAlignment.Center).Margin(0, 0, 10, 0).Grid(column: 0),
-                TextBlock(label).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).Grid(column: 1),
-                meterLabel is null ? Empty() : TextBlock(meterLabel).FontSize(12).VAlign(VerticalAlignment.Center)
-                    .Foreground(Theme.Ref(hue.Brush)).Margin(8, 0, 0, 0).Grid(column: 2)).WithKey("head"),
-            HStack(6,
-                TextBlock(value).FontSize(24).FontWeight(FontWeights.SemiBold),
-                TextBlock(sub).FontSize(12).VAlign(VerticalAlignment.Bottom).Margin(0, 0, 0, 5)
-                    .Foreground(Theme.Ref("TextFillColorTertiaryBrush"))).WithKey("value"),
+            TextBlock(value).FontSize(20).FontWeight(FontWeights.SemiBold)
+                .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(value).WithKey("value"),
+            TextBlock(label).FontSize(12).TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
+                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(label)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).WithKey("head"),
+            TextBlock(sub).FontSize(12).TextWrapping(TextWrapping.NoWrap)
+                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(sub)
+                .Foreground(Theme.Ref("TextFillColorTertiaryBrush")).WithKey("sub"),
         };
+        if (lastKnown)
+            children.Add(TextBlock(S("Stats_LastKnownBadge")).FontSize(12)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).WithKey("freshness")
+                .AutomationId("SystemsStatLastKnown"));
         if (meter is { } percent)
         {
             children.Add(Progress(percent)
-                .Foreground(Theme.Ref(hue.Brush))
+                .Foreground(Theme.Ref(lastKnown ? "TextFillColorTertiaryBrush" : hue.Brush))
                 .Background(Theme.Ref("SystemsMeterTrackBrush"))
                 .MinHeight(4).CornerRadius(2)
                 .AutomationName(meterLabel ?? label)
                 .WithKey("meter"));
         }
-        if (extra is not null)
-            children.Add(extra.WithKey("extra"));
-        // A lone last-known sample has no trend to draw; a live one shows the "now" dot while history collects.
-        if (spark is { } candidate && candidate.Points.Count < 2 && !candidate.Live)
-            spark = null;
-        if (spark is not null)
-        {
-            children.Add(SystemsSparklineElement.SystemsSparkline()
-                .Set(chart => chart.Update(spark))
-                .Foreground(Theme.Ref(lastKnown ? "TextFillColorTertiaryBrush" : hue.Brush))
-                .Height(SparkHeight)
-                .Margin(-14, 2, -14, 0)
-                .AccessibilityView(AccessibilityView.Raw)
-                .WithKey("spark"));
-        }
-        return Border(VStack(8, children.ToArray()))
-            .Padding(14, 12, 14, spark is null ? 14 : 0)
+        return Border(VStack(4, children.ToArray()))
+            .Padding(12)
             .CornerRadius(8)
             .BorderThickness(1)
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
@@ -801,45 +954,18 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .Opacity(lastKnown ? 0.8 : 1)
             .AutomationName(summary)
             .ToolTip(summary)
-            // Keyed per machine so a chart's hover and pulse never carry over to another machine.
-            .WithKey(rowId + ":" + metric);
+            .AutomationId("SystemsStat_" + metric)
+            .WithKey(metric);
     }
-
-    /// <summary>
-    /// One cell per logical core, up to 64. With a load reading, that share of cells lights up,
-    /// so a busy machine reads at a glance. Decorative; the tile names the numbers.
-    /// </summary>
-    private static Element CoreGrid(int cores, double? loadPercent, int perRow)
-    {
-        if (cores <= 0)
-            return Empty();
-        var shown = Math.Min(cores, 64);
-        var lit = loadPercent is { } percent ? (int)Math.Round(shown * percent / 100) : 0;
-        var rows = new List<Element>();
-        for (var start = 0; start < shown; start += perRow)
-        {
-            // Without a load reading the grid only counts cores, so no cell claims to be busy.
-            var cells = Enumerable.Range(start, Math.Min(perRow, shown - start))
-                .Select(index => (Element)Border(null).Size(9, 9).CornerRadius(2)
-                    .Background(Theme.Ref(index < lit ? SystemsHue.Accent.Brush : SystemsHue.Accent.Tint))
-                    .BorderThickness(loadPercent is null ? 1 : 0)
-                    .BorderBrush(Theme.Ref(SystemsHue.Accent.Brush))
-                    .Opacity(loadPercent is null ? 0.7 : 1)
-                    .WithKey("c" + index))
-                .ToArray();
-            rows.Add(HStack(3, cells).WithKey("r" + start));
-        }
-        return VStack(3, rows.ToArray()).Margin(0, 2, 0, 0).AccessibilityView(AccessibilityView.Raw);
-    }
-
-    // ── Machine details ────────────────────────────────────────────────
 
     private static Element MachineDetails(SystemRow row, SystemsViewState state, SystemsPageActions actions, DateTimeOffset now)
     {
         var rows = new List<(string Label, Element Value)>
         {
-            (S("Field_Identifier"), Identifier(row.Node?.NodeId ?? row.Instance?.IdentityCaption ?? row.Id, actions)),
-            (S("Field_Status"), StatusBadge(EffectiveStatus(row, state.Connected))),
+            (S("Field_Identifier"), row.Kind == SystemKind.Client
+                ? Value(row.Instance?.IdentityCaption ?? row.Id)
+                : Identifier(row.Node?.NodeId ?? row.Id, actions)),
+            (S("Field_Status"), StatusBadge(EffectiveStatus(row, state.Connected), StatusLabel(row, state))),
             (S("Field_Platform"), Value(row.Platform ?? S("Status_Unknown"))),
         };
 
@@ -891,15 +1017,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     text += " · " + reason;
                 rows.Add((S("Field_LastSeen"), Value(text).ToolTip(FormatDateTime(seen))));
             }
-            if (environment.SessionHost)
-            {
-                rows.Add((S("Field_SessionHost"), Value(environment.WorkerSlots is { } slots
-                    ? F("Field_SlotsValue", slots.Available, slots.Total)
-                    : S("Field_SessionHostEnabled"))));
-            }
             if (environment.Worker is { } worker)
             {
-                rows.Add((S("Field_Provider"), Value(Join(worker.ProviderId, worker.ProfileId) ?? worker.ProviderId)));
                 rows.Add((S("Field_WorkerState"), Value(Join(worker.State, worker.TunnelStatus) ?? worker.State)));
                 AddIf(rows, S("Field_WorkerError"), worker.Error);
             }
@@ -917,11 +1036,11 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         var grid = Grid([GridSize.Px(150), GridSize.Star()], rows.Select(_ => GridSize.Auto).ToArray(),
             rows.SelectMany((entry, index) => new[]
             {
-                TextBlock(entry.Label).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextWrapping()
+                TextBlock(entry.Label).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).TextWrapping(TextWrapping.WrapWholeWords)
                     .Margin(0, 4, 12, 4).Grid(row: index, column: 0),
                 entry.Value.Margin(0, 4, 0, 4).VAlign(VerticalAlignment.Center).Grid(row: index, column: 1),
             }).ToArray());
-        return Section(S("Details_Title"), "\uE946", SystemsHue.Neutral, grid, null, "SystemsMachineDetails");
+        return Section(S("Details_Title"), grid, null, "SystemsMachineDetails");
     }
 
     private static Element? RolePills(MergedInstance instance)
@@ -952,70 +1071,38 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
 
     // ── Desktop ────────────────────────────────────────────────────────
 
-    private static Element Desktop(SystemRow row, SystemsViewState state, SystemsController controller, Action<SystemsDialog?> open)
+    /// <summary>
+    /// Desktop availability only. Viewing, control and Gateway host desktop setup belong to the web
+    /// interface, reached through the page-level Open in web button.
+    /// </summary>
+    private static Element Desktop(SystemRow row, DesktopSectionKind kind)
     {
-        var section = DesktopPresentation.Resolve(row, state.Connected, state.HostDesktopEnabled, state.CanAdmin);
-        var (desktopGlyph, desktopHue) = section.Kind switch
+        var (glyph, title) = kind switch
         {
-            DesktopSectionKind.Available => ("\uE7F4", SystemsHue.Success),
-            DesktopSectionKind.Offline => ("\uE7F4", SystemsHue.Neutral),
-            DesktopSectionKind.HostSetup => ("\uE7F4", SystemsHue.Accent),
-            _ => ("\uE7BA", SystemsHue.Caution),
+            DesktopSectionKind.Available => ("\uE7F4", S("Desktop_Available")),
+            DesktopSectionKind.Offline => ("\uE7F4", S("Desktop_Title_Offline")),
+            DesktopSectionKind.NotReady => ("\uE7BA", S("Desktop_Title_NotReady")),
+            _ => ("\uE7F4", S("Desktop_Title_NoDesktop")),
         };
-        var content = new List<Element>
+        if (kind == DesktopSectionKind.Available && row.Environment?.DesktopAvailability is { } availability)
         {
-            Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                GlyphChip(desktopGlyph, desktopHue, 44, 20).VAlign(VerticalAlignment.Top).Margin(0, 0, 14, 0).Grid(column: 0),
-                VStack(4,
-                    TextBlock(DesktopTitle(section.Title)).FontWeight(FontWeights.SemiBold).TextWrapping()
-                        .AutomationId("SystemsDesktopTitle"),
-                    TextBlock(DesktopHint(section.Hint)).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
-                    .VAlign(VerticalAlignment.Center).Grid(column: 1)).WithKey("title"),
-        };
-        if (section.Detail is { } detail)
-            content.Add(TextBlock(detail).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush")).WithKey("detail"));
-        if (section.Kind == DesktopSectionKind.Available && row.Environment?.DesktopAvailability is { } availability)
-        {
-            content.Add(Tag(availability switch
+            title += " · " + (availability switch
             {
                 DesktopLockState.Locked => S("Desktop_Locked"),
                 DesktopLockState.Unlocked => S("Desktop_Unlocked"),
                 _ => S("Status_Unknown"),
-            }).HAlign(HorizontalAlignment.Left).WithKey("lock"));
+            });
         }
-        if (state.DesktopError is { } error && row.Id == SystemsProjection.GatewayId)
-        {
-            content.Add(TextBlock(F("Desktop_Failed", error)).TextWrapping()
-                .Foreground(Theme.Ref("SystemFillColorCriticalBrush")).WithKey("error"));
-        }
-        if (section.ShowEnable)
-        {
-            content.Add(section.CanEnable
-                ? VStack(4,
-                    Button(state.DesktopEnabling ? S("Desktop_Enabling") : S("Desktop_Enable"), () => open(new EnableDesktopDialog()))
-                        .AutomationName(S("Desktop_Enable"))
-                        .AccentButton().IsEnabled(!state.DesktopEnabling && state.Connected)
-                        .AutomationId("SystemsEnableDesktop"),
-                    TextBlock(S("Desktop_ApplyHint")).FontSize(12).Foreground(Theme.Ref("TextFillColorTertiaryBrush"))).WithKey("enable")
-                : TextBlock(S("Desktop_AdminHint")).FontSize(12).TextWrapping()
-                    .Foreground(Theme.Ref("TextFillColorTertiaryBrush")).WithKey("admin"));
-        }
-        if (section.ShowCheckAgain)
-        {
-            content.Add(Button(S("Desktop_CheckAgain"), () => _ = controller.RefreshAsync(manual: true)).AutomationName(S("Desktop_CheckAgain"))
-                .IsEnabled(state.Connected && !state.Loading).AutomationId("SystemsDesktopCheckAgain").WithKey("check"));
-        }
-        return Section(S("Desktop"), "\uE7F4", SystemsHue.Teal, VStack(8, content.ToArray()), null, "SystemsDesktop");
+        return Section(S("Desktop"),
+            WrapRow(8, Glyph(glyph, 16), TextBlock(title).TextWrapping(TextWrapping.WrapWholeWords).AutomationId("SystemsDesktopTitle")),
+            null, "SystemsDesktop");
     }
 
     // ── Sessions ───────────────────────────────────────────────────────
 
-    private static Element Sessions(SystemRow row, SystemsPageActions actions)
+    private static Element Sessions(SystemRow row, SystemsPageActions actions, DateTimeOffset now)
     {
-        var items = new List<Element>
-        {
-            TextBlock(S("Sessions_Hint")).FontSize(12).TextWrapping().Foreground(Theme.Ref("TextFillColorTertiaryBrush")).WithKey("hint"),
-        };
+        var items = new List<Element>();
         if (row.Sessions.Count == 0)
         {
             items.Add(TextBlock(S("Sessions_None")).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
@@ -1025,114 +1112,112 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         {
             items.AddRange(row.Sessions.Select((relation, index) =>
                 Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                        GlyphChip("\uE8BD", SystemsHue.Violet, 32, 14).VAlign(VerticalAlignment.Center).Margin(0, 0, 8, 0).Grid(column: 0),
-                        HyperlinkButton(relation.Session.Title, onClick: () => actions.OpenSession(relation.Session.Key))
-                            .ToolTip(relation.Session.Key)
-                            .AutomationName(F("Sessions_OpenName", relation.Session.Title, Relation(relation.Kind)))
+                        Glyph("\uE8A5", 14).VAlign(VerticalAlignment.Center).Margin(0, 0, 8, 0).Grid(column: 0),
+                        VStack(4, TextBlock(relation.Session.Title).TextWrapping(TextWrapping.WrapWholeWords),
+                            TextBlock(Join(Relation(relation.Kind), relation.Session.AgentId,
+                                relation.Session.UpdatedAt is { } updated ? Ago(updated, now) : null) ?? "")
+                                .FontSize(12).TextWrapping(TextWrapping.WrapWholeWords)
+                                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
+                            .VAlign(VerticalAlignment.Center).Grid(column: 1),
+                        Button(Glyph("\uE8BD", 16), () => actions.OpenSession(relation.Session.Key))
+                            .SubtleButton().ToolTip(S("OpenChat"))
+                            .AutomationName(F("OpenChat_Name", relation.Session.Title))
                             .AutomationId("SystemsSession_" + relation.Session.Key)
-                            .VAlign(VerticalAlignment.Center)
-                            .Grid(column: 1),
-                        Pill(Relation(relation.Kind), RelationGlyph(relation.Kind), RelationHue(relation.Kind))
                             .VAlign(VerticalAlignment.Center).Grid(column: 2))
                     .WithKey(relation.Kind + ":" + relation.Session.Key + ":" + index)));
         }
 
-        if (row.Environment?.Worker?.AttachedSessionIds is { Count: > 0 } attached)
-        {
-            items.Add(TextBlock(S("Sessions_Attached")).FontWeight(FontWeights.SemiBold).Margin(0, 8, 0, 0).WithKey("attached"));
-            items.Add(TextBlock(S("Sessions_AttachedHint")).FontSize(12).TextWrapping()
-                .Foreground(Theme.Ref("TextFillColorTertiaryBrush")).WithKey("attached-hint"));
-            items.AddRange(attached.Distinct(StringComparer.Ordinal).Select(id => HStack(8,
-                    Glyph("\uE71B", 12).Foreground(Theme.Ref(SystemsHue.Teal.Brush)).VAlign(VerticalAlignment.Center),
-                    TextBlock(id).FontFamily("Consolas").IsTextSelectionEnabled(true))
-                .WithKey("attached:" + id)));
-        }
-        return Section(S("Sessions_Title"), "\uE8BD", SystemsHue.Violet, VStack(6, items.ToArray()), null, "SystemsSessions");
+        // Related sessions come from the loaded list, so the full list stays one click away.
+        var viewAll = HyperlinkButton(S("Sessions_ViewAll"), onClick: () => actions.Navigate("sessions"))
+            .AutomationName(S("Sessions_ViewAll"))
+            .AutomationId("SystemsViewAllSessions");
+        return Section(S("Sessions_Title"), VStack(6, items.ToArray()), viewAll, "SystemsSessions");
     }
-
-    private static string RelationGlyph(SessionRelationKind kind) => kind switch
-    {
-        SessionRelationKind.Placement => "\uE81D",
-        SessionRelationKind.RetainedPlacement => "\uE718",
-        SessionRelationKind.Runner => "\uE768",
-        SessionRelationKind.ExecBinding => "\uE756",
-        _ => "\uE968",
-    };
-
-    private static SystemsHue RelationHue(SessionRelationKind kind) => kind switch
-    {
-        SessionRelationKind.Placement => SystemsHue.Accent,
-        SessionRelationKind.Runner => SystemsHue.Violet,
-        SessionRelationKind.ExecBinding => SystemsHue.Teal,
-        _ => SystemsHue.Neutral,
-    };
 
     // ── Capabilities ───────────────────────────────────────────────────
 
-    private static Element? Capabilities(SystemRow row)
+    private static Element Capabilities(SystemRow row, SystemsPageActions actions)
     {
         var capabilities = (row.Environment?.Capabilities ?? Array.Empty<string>())
             .Concat(row.Node?.Capabilities ?? new List<string>())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Concat(row.Node?.Permissions.Keys ?? Enumerable.Empty<string>())
+            .Distinct(StringComparer.Ordinal)
             .ToArray();
-        // Commands key their rows, so a repeated command is listed once.
-        var commands = (row.Node?.Commands ?? row.Environment?.InvocableCommands.ToList() ?? new List<string>())
-            .Distinct(StringComparer.Ordinal).ToList();
-        var hasPendingDeclarations =
-            row.Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval &&
-            (row.Node.PendingDeclaredCapabilities.Count > 0 || row.Node.PendingDeclaredCommands.Count > 0);
-        if (capabilities.Length == 0 && commands.Count == 0 && string.IsNullOrWhiteSpace(row.Node?.PathEnv) &&
-            !hasPendingDeclarations)
-            return null;
-
-        var permissions = row.Node?.Permissions ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        // Permission identity is exact, even if a transport-created dictionary uses a looser comparer.
+        var permissions = row.Node?.Permissions.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            ?? new Dictionary<string, bool>(StringComparer.Ordinal);
         var content = new List<Element>();
-        if (capabilities.Length > 0)
+        foreach (var capability in capabilities)
         {
-            content.Add(Rows(capabilities.Select(capability =>
-                {
-                    // Only claim enabled/disabled when the permissions map names this exact capability.
-                    var known = permissions.TryGetValue(capability, out var allowed);
-                    var label = !known ? capability : allowed
-                        ? F("Capability_Enabled", capability)
-                        : F("Capability_Disabled", capability);
-                    var parts = new List<Element>
-                    {
-                        Glyph(CapabilityGlyph(capability), 14).Foreground(Theme.Ref(SystemsHue.Accent.Brush))
-                            .VAlign(VerticalAlignment.Center).WithKey("glyph"),
-                        TextBlock(capability).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
-                            .VAlign(VerticalAlignment.Center).WithKey("name"),
-                    };
-                    if (known)
-                    {
-                        parts.Add(Glyph(allowed ? "\uE73E" : "\uE711", 10)
-                            .Foreground(Theme.Ref(allowed ? "SystemFillColorSuccessBrush" : "SystemFillColorCriticalBrush"))
-                            .VAlign(VerticalAlignment.Center).WithKey("permission"));
-                    }
-                    return Border(HStack(8, parts.ToArray()))
-                        .Padding(10, 6).CornerRadius(8).BorderThickness(1)
-                        .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
-                        .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-                        .ToolTip(label)
-                        .AutomationName(label)
-                        .WithKey(capability);
-                }).ToList(), 4, spacing: 6).WithKey("chips"));
+            var known = permissions.TryGetValue(capability, out var allowed);
+            var status = S(!known ? "Capability_NotReported" : allowed ? "Capability_Allowed" : "Capability_TurnedOff");
+            content.Add(Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                    Glyph(CapabilityGlyph(capability), 16).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Center).Grid(column: 0),
+                    TextBlock(CapabilityLabel(capability)).TextWrapping(TextWrapping.WrapWholeWords).ToolTip(capability)
+                        .VAlign(VerticalAlignment.Center).Grid(column: 1),
+                    TextBlock(status).FontSize(12).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(120)
+                        .Foreground(Theme.Ref(known && allowed ? "SystemFillColorSuccessBrush" : "TextFillColorSecondaryBrush"))
+                        .VAlign(VerticalAlignment.Center).Margin(12, 0, 0, 0).Grid(column: 2))
+                .Padding(0, 10).AutomationName(CapabilityLabel(capability) + ": " + status).WithKey(capability));
         }
-
-        if (hasPendingDeclarations && row.Node is { } pendingNode)
+        if (row.Node is { ApprovalState: GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval } pendingNode &&
+            (pendingNode.PendingDeclaredCapabilities.Count > 0 || pendingNode.PendingDeclaredCommands.Count > 0))
         {
-            content.Add(TextBlock(F("Capability_PendingDeclared",
-                    string.Join(", ", pendingNode.PendingDeclaredCapabilities.Concat(pendingNode.PendingDeclaredCommands))))
-                .FontSize(12).TextWrapping().Foreground(Theme.Ref("SystemFillColorCautionBrush"))
+            content.Add(TextBlock(pendingNode.PendingDeclaredCapabilities.Count > 0
+                    ? F("Capability_PendingDeclared", string.Join(", ", pendingNode.PendingDeclaredCapabilities.Select(CapabilityLabel)))
+                    : S("AwaitingApproval"))
+                .FontSize(12).TextWrapping(TextWrapping.WrapWholeWords).Foreground(Theme.Ref("SystemFillColorCautionBrush"))
                 .AutomationId("SystemsPendingDeclarations").WithKey("pending"));
         }
+        if (content.Count == 0)
+            content.Add(Note(S("Capability_NotReported")));
+        var manage = row.IsThisDevice ? HyperlinkButton(S("ManagePermissions"), onClick: () => actions.Navigate("permissions"))
+            .AutomationName(S("ManagePermissions")).AutomationId("SystemsManagePermissions") : null;
+        return Section(S("Capabilities_Title"), VStack(0, content.ToArray()), manage, "SystemsCapabilities");
+    }
 
+    private static string CapabilityLabel(string capability) => capability switch
+    {
+        "system" => S("Capability_System"),
+        "exec" or "shell" => S("Capability_Shell"),
+        "screen" => S("Capability_Screen"),
+        "camera" => S("Capability_Camera"),
+        "browser" => S("Capability_Browser"),
+        "files" => S("Capability_Files"),
+        "canvas" => S("Capability_Canvas"),
+        "clipboard" => S("Capability_Clipboard"),
+        "notifications" => S("Capability_Notifications"),
+        "audio" or "microphone" => S("Capability_Audio"),
+        _ => HumanizeCapability(capability),
+    };
+
+    private static string HumanizeCapability(string capability)
+    {
+        var label = string.Join(" ", capability.Replace('-', ' ').Replace('_', ' ')
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return label.Length == 0 ? label
+            : char.ToUpper(label[0], System.Globalization.CultureInfo.CurrentCulture) + label[1..];
+    }
+
+    private static Element DiagnosticDeclarations(SystemRow row)
+    {
+        var content = new List<Element>();
+        var commands = (row.Node?.Commands ?? row.Environment?.InvocableCommands.ToList() ?? new List<string>())
+            .Distinct(StringComparer.Ordinal).ToList();
+        var pending = new HashSet<string>(StringComparer.Ordinal);
+        if (row.Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval)
+        {
+            pending.UnionWith(row.Node.PendingDeclaredCommands.Except(commands, StringComparer.Ordinal));
+            commands.AddRange(pending);
+        }
         if (commands.Count > 0)
         {
             var disabled = new HashSet<string>(row.Node?.DisabledCommands ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
             content.Add(Expander(
                     string.Format(LocalizationHelper.GetString("NodesPage_Commands_Header"), commands.Count),
-                    VStack(2, commands.Select(command => TextBlock(disabled.Contains(command)
+                    VStack(2, commands.Select(command => TextBlock(pending.Contains(command)
+                                ? command + " · " + S("AwaitingApproval")
+                                : disabled.Contains(command)
                                 ? command + LocalizationHelper.GetString("NodesPage_Command_DisabledSuffix")
                                 : command)
                             .FontFamily("Consolas").FontSize(12).IsTextSelectionEnabled(true)
@@ -1153,10 +1238,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 .HAlign(HorizontalAlignment.Stretch)
                 .AutomationId("SystemsPathEnv").WithKey("path"));
         }
-        return Section(S("Capabilities_Title"), "\uE945", SystemsHue.Caution, VStack(10, content.ToArray()), null, "SystemsCapabilities");
+        return VStack(10, content.ToArray());
     }
-
-    // ── Backups ────────────────────────────────────────────────────────
 
     private static string CapabilityGlyph(string capability) => capability.Trim().ToLowerInvariant() switch
     {
@@ -1173,177 +1256,17 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         _ => "\uE945",
     };
 
-    private static Element Backups(SystemsViewState state, SystemsController controller, DateTimeOffset now)
-    {
-        Element content;
-        if (!state.CanRead)
-        {
-            content = Note(S("Backups_ReadAccess"));
-        }
-        else if (state.BackupsError is { } error)
-        {
-            content = VStack(8,
-                TextBlock(error).TextWrapping().Foreground(Theme.Ref("SystemFillColorCriticalBrush")),
-                Button(S("Retry"), () => _ = controller.RefreshBackupsAsync()).AutomationName(S("Retry"))
-                    .IsEnabled(state.Connected && !state.BackupsLoading).HAlign(HorizontalAlignment.Left));
-        }
-        else if (state.Backups is not { } backups)
-        {
-            content = state.BackupsUnsupported
-                ? Note(S("Backups_Unsupported"))
-                : HStack(8, ProgressRing().IsActive(state.Connected).Size(16, 16),
-                    TextBlock(state.Connected ? S("Backups_Loading") : S("Disconnected_Message")).TextWrapping());
-        }
-        else
-        {
-            content = BackupsContent(BackupsPresentation.Project(backups), state, controller, now);
-        }
-        return Section(S("Backups_Title"), "\uE777", SystemsHue.Success, content, null, "SystemsBackups");
-    }
-
-    private static Element BackupsContent(BackupsView view, SystemsViewState state, SystemsController controller, DateTimeOffset now)
-    {
-        var items = new List<Element>();
-        if (view.IsEmpty)
-        {
-            items.Add(VStack(4,
-                    TextBlock(S("Backups_Empty")).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-                    TextBlock("openclaw backup enable --to <location>").FontFamily("Consolas").IsTextSelectionEnabled(true))
-                .AutomationId("SystemsBackupsEmpty").WithKey("empty"));
-        }
-        items.AddRange(view.Targets.Select((target, index) => BackupTarget(target, now).WithKey("target:" + index + ":" + target.Name)));
-        items.AddRange(view.UnmatchedSchedules.Select(schedule =>
-        {
-            var parts = new List<string> { F("Backups_Scheduled", schedule.Target) };
-            if (schedule.Namespace is { } ns) parts.Add(F("Backups_Namespace", ns));
-            if (schedule.NextRunAt is { } next) parts.Add(F("Backups_NextRun", FormatDateTime(next)));
-            return (Element)Note(string.Join(" · ", parts)).WithKey("schedule:" + schedule.Id);
-        }));
-
-        if (view.Locations.Count > 0)
-        {
-            items.Add(TextBlock(S("Backups_Locations")).FontWeight(FontWeights.SemiBold).Margin(0, 8, 0, 0)
-                .HeadingLevel(AutomationHeadingLevel.Level3).WithKey("locations"));
-            items.AddRange(view.Locations.Select(location => StorageLocationRow(location, state, controller).WithKey("location:" + location.Name)));
-        }
-        return VStack(10, items.ToArray());
-    }
-
-    private static Element BackupTarget(BackupTargetView target, DateTimeOffset now)
-    {
-        var meta = new List<string> { BackupKind(target.Kind) };
-        var lastSuccess = target.LastSuccessAt is { } ok ? Ago(ok, now) : S("Backups_Never");
-        meta.Add(target.Health == OpenClaw.Shared.Systems.BackupHealth.PushFailed
-            ? F("Backups_LastLocalSuccess", lastSuccess)
-            : F("Backups_LastSuccess", lastSuccess));
-        if (target.SizeBytes is { } size) meta.Add(Bytes(size));
-        if (target.NextRunAt is { } next) meta.Add(F("Backups_NextRun", FormatDateTime(next)));
-
-        var (glyph, hue) = target.Health switch
-        {
-            OpenClaw.Shared.Systems.BackupHealth.Ok => ("\uE73E", SystemsHue.Success),
-            OpenClaw.Shared.Systems.BackupHealth.PushFailed => ("\uE7BA", SystemsHue.Caution),
-            _ => ("\uEA39", SystemsHue.Critical),
-        };
-        var lines = new List<Element>
-        {
-            Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                TextBlock(target.Name).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis)
-                    .VAlign(VerticalAlignment.Center).Grid(column: 0),
-                Pill(BackupHealth(target.Health), glyph, hue).Grid(column: 1)).WithKey("head"),
-            TextBlock(string.Join(" · ", meta)).FontSize(12).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush")).WithKey("meta"),
-            TextBlock(target.Destination).FontFamily("Consolas").FontSize(12).IsTextSelectionEnabled(true)
-                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(target.Destination).WithKey("destination"),
-        };
-        if (target.Namespace is { } ns)
-            lines.Add(TextBlock(F("Backups_Namespace", ns)).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).WithKey("ns"));
-        if (target.Health != OpenClaw.Shared.Systems.BackupHealth.Ok)
-        {
-            lines.Add(TextBlock(target.Error ?? (target.Health == OpenClaw.Shared.Systems.BackupHealth.PushFailed
-                    ? S("Backups_PushFailureHint") : S("Backups_FailureHint")))
-                .FontSize(12).TextWrapping().Foreground(Theme.Ref("SystemFillColorCriticalBrush")).WithKey("error"));
-        }
-        return Border(Grid([GridSize.Px(4), GridSize.Star()], [GridSize.Auto],
-                Border(null).Background(Theme.Ref(hue.Brush)).CornerRadius(2).Margin(0, 2, 0, 2)
-                    .AccessibilityView(AccessibilityView.Raw).Grid(column: 0),
-                VStack(4, lines.ToArray()).Margin(12, 0, 0, 0).Grid(column: 1)))
-            .Padding(12).CornerRadius(8).BorderThickness(1)
-            .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
-            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-            .AutomationName($"{target.Name}, {BackupHealth(target.Health)}");
-    }
-
-    private static Element StorageLocationRow(StorageLocation location, SystemsViewState state, SystemsController controller)
-    {
-        state.Probes.TryGetValue(location.Name, out var probe);
-        var checking = probe?.Status == ProbeStatus.Checking;
-        Element result = Empty();
-        if (probe?.Result is { } outcome)
-        {
-            var parts = new List<string> { Probe(outcome.State) };
-            if (!string.IsNullOrWhiteSpace(outcome.Message)) parts.Add(outcome.Message!);
-            if (outcome.FreeBytes is { } free)
-            {
-                parts.Add(outcome.TotalBytes is { } capacity
-                    ? F("Backups_FreeOf", Bytes(free), Bytes(capacity))
-                    : F("Backups_Free", Bytes(free)));
-            }
-            var ok = outcome.State == StorageProbeState.Ok;
-            var used = outcome.FreeBytes is { } available ? SystemsMeters.DiskUsedPercent(available, outcome.TotalBytes) : null;
-            result = VStack(6,
-                    HStack(4,
-                        Glyph(ok ? "\uE73E" : "\uE7BA", 12)
-                            .Foreground(Theme.Ref(ok ? "SystemFillColorSuccessBrush" : "SystemFillColorCautionBrush"))
-                            .VAlign(VerticalAlignment.Center),
-                        TextBlock(string.Join(" · ", parts)).FontSize(12).TextWrapping()),
-                    used is { } percent
-                        ? Progress(percent).Foreground(Theme.Ref(SystemsHue.Teal.Brush))
-                            .Background(Theme.Ref("SystemsMeterTrackBrush")).MinHeight(4).CornerRadius(2)
-                            .AutomationName(F("Stats_UsedMeter", Math.Round(percent)))
-                        : Empty())
-                .AutomationId("SystemsProbeResult_" + location.Name);
-        }
-        var name = location.Encrypted ? F("Backups_Encrypted", location.Name) : location.Name;
-        return Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
-            GlyphChip(StorageGlyph(location), SystemsHue.Teal, 36, 16).VAlign(VerticalAlignment.Top).Margin(0, 0, 12, 0)
-                .Grid(row: 0, column: 0, rowSpan: 2),
-            VStack(2,
-                HStack(6,
-                    TextBlock(name).FontWeight(FontWeights.SemiBold),
-                    location.Encrypted
-                        ? Glyph("\uE72E", 12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center)
-                        : Empty()),
-                TextBlock(location.DisplayTarget ?? location.Provider).FontFamily("Consolas").FontSize(12)
-                    .TextTrimming(TextTrimming.CharacterEllipsis).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))).Grid(row: 0, column: 1),
-            Button(checking ? S("Backups_Checking") : S("Backups_Check"), () => _ = controller.ProbeStorageAsync(location.Name))
-                .IsEnabled(!checking && state.Connected)
-                .AutomationName(F("Backups_CheckName", location.Name))
-                .AutomationId("SystemsProbe_" + location.Name)
-                .VAlign(VerticalAlignment.Center).Grid(row: 0, column: 2),
-            result.Margin(0, 6, 0, 0).Grid(row: 1, column: 1, columnSpan: 2));
-    }
-
-    private static string StorageGlyph(StorageLocation location)
-    {
-        var target = (location.DisplayTarget ?? "").Trim();
-        var provider = location.Provider.Trim().ToLowerInvariant();
-        if (target.StartsWith(@"\\", StringComparison.Ordinal) || provider is "smb" or "nfs" or "network")
-            return "\uE968";
-        if (provider is "local" or "file" or "path" || (target.Length > 1 && target[1] == ':') || target.StartsWith('/'))
-            return "\uEDA2";
-        return "\uE753";
-    }
-
     // ── Dialogs ────────────────────────────────────────────────────────
 
     private static Element Dialog(SystemsDialog? dialog, Action<SystemsDialog?> setDialog, SystemsPageActions actions,
-        Func<int> currentEpoch, Func<SystemsDialog?> currentDialog)
+        Func<int> currentEpoch, Func<SystemsDialog?> currentDialog, Action<string?> feedback)
     {
         if (dialog is null)
             return Empty();
 
         Element ErrorText() => dialog.Error is { } error
-            ? TextBlock(error).FontSize(12).TextWrapping().Foreground(Theme.Ref("SystemFillColorCriticalBrush"))
+            ? TextBlock(error).FontSize(12).TextWrapping(TextWrapping.WrapWholeWords).Foreground(Theme.Ref("SystemFillColorCriticalBrush"))
+                .LiveRegion(AutomationLiveSetting.Assertive)
                 .AutomationId("SystemsDialogError")
             : Empty();
 
@@ -1358,6 +1281,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             // The user may have opened another dialog meanwhile; leave it alone.
             if (!ReferenceEquals(currentDialog(), running))
                 return;
+            if (error is null && dialog.Epoch == currentEpoch())
+                feedback(dialog is ForgetNodeDialog forgotten ? F("Forgotten", NodeName(forgotten.Node)) : S("RenameSucceeded"));
             setDialog(error is null ? null : dialog with { Busy = false, Error = error });
         }
 
@@ -1373,10 +1298,22 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         ContentDialogElement element;
         switch (dialog)
         {
+            case AddSystemDialog:
+                element = ContentDialog(S("AddSystem"),
+                    VStack(16,
+                        TextBlock(S("AddSystemIntro")).TextWrapping(TextWrapping.WrapWholeWords),
+                        TextBlock(S("AddSystemSteps")).TextWrapping(TextWrapping.WrapWholeWords)),
+                    S("OpenConnection")) with
+                {
+                    DefaultButton = ContentDialogButton.Primary,
+                    OnClosed = OnPrimary(() => { setDialog(null); actions.Navigate("connection"); }),
+                };
+                element = element.Set(native => ConfigureDialog(native, "SystemsAddDialogTitleTemplate", primaryFocus: true));
+                break;
             case RenameNodeDialog rename:
                 element = ContentDialog(LocalizationHelper.GetString("NodesPage_Rename_Title"),
                     VStack(8,
-                        TextBlock(string.Format(LocalizationHelper.GetString("NodesPage_Rename_Body"), NodeName(rename.Node))).TextWrapping(),
+                        TextBlock(string.Format(LocalizationHelper.GetString("NodesPage_Rename_Body"), NodeName(rename.Node))).TextWrapping(TextWrapping.WrapWholeWords),
                         TextBox(rename.Text.Value ?? "", text => rename.Text.Value = text,
                                 placeholderText: LocalizationHelper.GetString("NodesPage_Rename_Placeholder"))
                             .MaxLength(64)
@@ -1395,81 +1332,239 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                             _ = RunAsync(() => actions.RenameNode(rename.Node, name));
                     }),
                 };
+                element = element.Set(ConfigureDialogSizing);
                 break;
             case ForgetNodeDialog forget:
-                var subtitle = string.Join(" · ", new[] { forget.Node.Platform, forget.Node.ShortId }
-                    .Where(part => !string.IsNullOrWhiteSpace(part)));
-                element = ContentDialog(LocalizationHelper.GetString("NodesPage_Forget_Title"),
-                    VStack(8,
-                        TextBlock(LocalizationHelper.GetString("NodesPage_Forget_Body")).TextWrapping(),
-                        VStack(2,
-                            TextBlock(NodeName(forget.Node)).FontWeight(FontWeights.SemiBold),
-                            TextBlock(subtitle).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))),
-                        TextBlock(LocalizationHelper.GetString("NodesPage_Forget_Warning")).FontSize(12).TextWrapping()
-                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                var now = DateTimeOffset.UtcNow;
+                element = ContentDialog(F("ForgetTitle", NodeName(forget.Node)),
+                    VStack(16,
+                        TextBlock(F("ForgetConsequence", forget.GatewayName)).TextWrapping(TextWrapping.WrapWholeWords),
+                        Border(Grid([GridSize.Px(120), GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                            Note(S("Field_Platform")).Grid(row: 0, column: 0),
+                            Value(PlatformName(forget.Node.Platform)).Grid(row: 0, column: 1),
+                            Note(S("Field_LastSeen")).Margin(0, 8, 0, 0).Grid(row: 1, column: 0),
+                            Value(forget.Node.LastSeen is { } seen
+                                ? DialogAge(new DateTimeOffset(DateTime.SpecifyKind(seen, DateTimeKind.Utc)), now)
+                                : S("Status_Unknown")).Margin(0, 8, 0, 0).Grid(row: 1, column: 1),
+                            Note(S("Field_Paired")).Margin(0, 8, 0, 0).Grid(row: 2, column: 0),
+                            Value(forget.Node.ApprovedAt is { } approved
+                                ? approved.ToLocalTime().ToString("MMM d", System.Globalization.CultureInfo.CurrentCulture)
+                                : S("Status_Unknown")).Margin(0, 8, 0, 0).Grid(row: 2, column: 1)).AutomationId("SystemsForgetFacts")
+                            ).Padding(16).CornerRadius(8).Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
+                            .AutomationId("SystemsForgetFactsSurface"),
                         ErrorText()),
-                    LocalizationHelper.GetString("NodesPage_Forget_Primary")) with
+                    S("ForgetAction")) with
                 {
-                    // Cancel is the default so Enter never removes a node.
-                    DefaultButton = ContentDialogButton.Close,
+                    // Enter must never implicitly choose a destructive action.
+                    DefaultButton = ContentDialogButton.None,
                     OnClosed = OnPrimary(() => _ = RunAsync(() => actions.ForgetNode(forget.Node))),
                 };
-                break;
-            case PairingDialog pairing:
-                var who = string.IsNullOrWhiteSpace(pairing.Approval.DisplayName) ? pairing.Approval.DeviceId : pairing.Approval.DisplayName!;
-                element = ContentDialog(
-                    pairing.Approve ? F("Pairing_ApproveTitle", who) : F("Pairing_RejectTitle", who),
-                    VStack(8,
-                        TextBlock(pairing.Approve ? F("Pairing_ApproveBody", who) : F("Pairing_RejectBody", who)).TextWrapping(),
-                        pairing.Approval.Scopes.Count > 0
-                            ? TextBlock(F("Pairing_Scopes", string.Join(", ", pairing.Approval.Scopes))).TextWrapping()
-                            : Empty(),
-                        ErrorText()),
-                    pairing.Approve ? S("Pairing_Approve") : S("Pairing_Reject")) with
-                {
-                    DefaultButton = ContentDialogButton.Close,
-                    OnClosed = OnPrimary(() => _ = RunAsync(() => actions.DecidePairing(pairing.Approval, pairing.Approve))),
-                };
+                element = element.Set(native => ConfigureDialog(native, "SystemsForgetDialogTitleTemplate", primaryFocus: false));
                 break;
             default:
-                element = ContentDialog(S("Desktop_ConfirmTitle"),
-                    TextBlock(S("Desktop_ConfirmBody")).TextWrapping(),
-                    S("Desktop_Enable")) with
-                {
-                    DefaultButton = ContentDialogButton.Close,
-                    // The desktop card reports the outcome, so the dialog closes immediately.
-                    OnClosed = OnPrimary(() =>
-                    {
-                        setDialog(null);
-                        _ = actions.EnableHostDesktop();
-                    }),
-                };
-                break;
+                return Empty();
         }
         if (dialog.Busy)
             return Empty();
         return (element with
             {
                 IsOpen = true,
-                CloseButtonText = LocalizationHelper.GetString("NodesPage_Common_Cancel"),
+                CloseButtonText = dialog is AddSystemDialog ? S("Close") : LocalizationHelper.GetString("NodesPage_Common_Cancel"),
             })
+            .AutomationName(dialog is ForgetNodeDialog f ? F("ForgetTitle", NodeName(f.Node)) : dialog is AddSystemDialog ? S("AddSystem") : LocalizationHelper.GetString("NodesPage_Rename_Title"))
+            .AutomationId("SystemsDialog")
             .WithKey("dialog-" + dialog.Show.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    private static void ConfigureDialog(Microsoft.UI.Xaml.Controls.ContentDialog dialog, string titleTemplate, bool primaryFocus)
+    {
+        dialog.TitleTemplate = (DataTemplate)Application.Current.Resources[titleTemplate];
+        dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+        ConfigureDialogSizing(dialog);
+        // ContentDialog is side-mounted by Reactor. Its own Opened event, not the
+        // collapsed Reactor placeholder's Loaded event, owns initial button focus.
+        dialog.Opened -= FocusPrimary;
+        dialog.Opened -= FocusCancel;
+        dialog.Opened += primaryFocus ? FocusPrimary : FocusCancel;
+        dialog.GettingFocus -= RedirectInitialFocus;
+        if (!primaryFocus)
+            dialog.GettingFocus += RedirectInitialFocus;
+        // A side-mounted dialog can have opened before Reactor applies this modifier.
+        // Only initialize once, so subsequent reconciles never steal keyboard focus.
+        if (dialog.IsLoaded && dialog.Tag is null)
+            QueueDialogFocus(dialog, primaryFocus ? "PrimaryButton" : "CloseButton");
+    }
+
+    private static void ConfigureDialogSizing(Microsoft.UI.Xaml.Controls.ContentDialog dialog)
+    {
+        dialog.Resources["ContentDialogMaxWidth"] = 560d;
+        dialog.Resources["ContentDialogMinWidth"] = 0d;
+        dialog.Opened -= SizeDialog;
+        dialog.Opened += SizeDialog;
+        dialog.SizeChanged -= SizeDialogOnResize;
+        dialog.SizeChanged += SizeDialogOnResize;
+    }
+
+    private static void SizeDialog(Microsoft.UI.Xaml.Controls.ContentDialog dialog, ContentDialogOpenedEventArgs args)
+    {
+        var root = dialog.XamlRoot;
+        void Resized(XamlRoot sender, XamlRootChangedEventArgs changed) => ApplyDialogLayout(dialog);
+        void Closed(Microsoft.UI.Xaml.Controls.ContentDialog sender, ContentDialogClosedEventArgs closed)
+        {
+            root.Changed -= Resized;
+            dialog.Closed -= Closed;
+        }
+        root.Changed += Resized;
+        dialog.Closed += Closed;
+        ApplyDialogLayout(dialog);
+    }
+
+    private static void SizeDialogOnResize(object sender, SizeChangedEventArgs args) =>
+        ApplyDialogLayout((Microsoft.UI.Xaml.Controls.ContentDialog)sender);
+
+    private static void ApplyDialogLayout(Microsoft.UI.Xaml.Controls.ContentDialog dialog)
+    {
+        var width = Math.Max(0, Math.Min(560, dialog.XamlRoot.Size.Width - 48));
+        // WinUI sizes the popup-hosted control to the window and centers this card inside it.
+        // Constraining the control instead would pin the dialog and its smoke layer to the left edge.
+        if (FindDialogPart<FrameworkElement>(dialog, "BackgroundElement") is { } card)
+            card.MaxWidth = width;
+        var primary = FindDialogButton(dialog, "PrimaryButton");
+        var close = FindDialogButton(dialog, "CloseButton");
+        var narrow = PageResponsiveLayout.TierFor(dialog.XamlRoot.Size.Width) == PageWidthTier.Narrow;
+        // Adapt only this dialog's native button grid, leaving the global ContentDialog style intact.
+        if (primary is not null && close is not null &&
+            Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(primary) is Microsoft.UI.Xaml.Controls.Grid footer &&
+            (footer.Tag is not bool previous || previous != narrow))
+        {
+            footer.Tag = narrow;
+            footer.ColumnDefinitions.Clear();
+            footer.RowDefinitions.Clear();
+            if (narrow)
+            {
+                footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                footer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                footer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+            else
+            {
+                footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                footer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(primary, 0);
+            Microsoft.UI.Xaml.Controls.Grid.SetRow(primary, 0);
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(close, narrow ? 0 : 1);
+            Microsoft.UI.Xaml.Controls.Grid.SetRow(close, narrow ? 1 : 0);
+            primary.HorizontalAlignment = close.HorizontalAlignment = HorizontalAlignment.Stretch;
+            primary.Margin = narrow ? new Thickness(0, 0, 0, 8) : new Thickness(0, 0, 8, 0);
+            close.Margin = new Thickness(0);
+        }
+        var facts = FindDialogElement(dialog, "SystemsForgetFacts") as Microsoft.UI.Xaml.Controls.Grid;
+        if (facts is not null)
+        {
+            var stacked = width < 400;
+            facts.ColumnDefinitions[0].Width = stacked ? new GridLength(1, GridUnitType.Star) : new GridLength(120);
+            facts.ColumnDefinitions[1].Width = stacked ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            while (facts.RowDefinitions.Count < 6)
+                facts.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (var index = 0; index < facts.Children.Count; index++)
+            {
+                var child = (FrameworkElement)facts.Children[index];
+                Microsoft.UI.Xaml.Controls.Grid.SetRow(child, stacked ? index : index / 2);
+                Microsoft.UI.Xaml.Controls.Grid.SetColumn(child, stacked ? 0 : index % 2);
+            }
+        }
+    }
+
+    private static FrameworkElement? FindDialogElement(DependencyObject parent, string id)
+    {
+        if (parent is FrameworkElement element && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(element) == id)
+            return element;
+        for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); index++)
+            if (FindDialogElement(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, index), id) is { } found)
+                return found;
+        return null;
+    }
+
+    private static void FocusPrimary(Microsoft.UI.Xaml.Controls.ContentDialog sender, ContentDialogOpenedEventArgs args) =>
+        QueueDialogFocus(sender, "PrimaryButton");
+
+    private static void FocusCancel(Microsoft.UI.Xaml.Controls.ContentDialog sender, ContentDialogOpenedEventArgs args) =>
+        QueueDialogFocus(sender, "CloseButton");
+
+    private static void RedirectInitialFocus(object sender, Microsoft.UI.Xaml.Input.GettingFocusEventArgs args)
+    {
+        var dialog = (Microsoft.UI.Xaml.Controls.ContentDialog)sender;
+        if (dialog.Tag is null && FindDialogButton(dialog, "CloseButton") is { } cancel &&
+            args.TrySetNewFocusedElement(cancel))
+            dialog.Tag = "CloseButton";
+    }
+
+    private static void QueueDialogFocus(Microsoft.UI.Xaml.Controls.ContentDialog dialog, string name) =>
+        // Finish WinUI's initial focus transaction before choosing the button.
+        dialog.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (dialog.IsLoaded && FindDialogButton(dialog, name) is { } button && dialog.Tag is null)
+            {
+                if (button.Focus(FocusState.Programmatic))
+                    dialog.Tag = name;
+            }
+        });
+
+    private static Microsoft.UI.Xaml.Controls.Button? FindDialogButton(DependencyObject parent, string name) =>
+        FindDialogPart<Microsoft.UI.Xaml.Controls.Button>(parent, name);
+
+    private static T? FindDialogPart<T>(DependencyObject parent, string name) where T : FrameworkElement
+    {
+        if (parent is T part && part.Name == name)
+            return part;
+        for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); index++)
+            if (FindDialogPart<T>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, index), name) is { } found)
+                return found;
+        return null;
     }
 
     private static string NodeName(GatewayNodeInfo node) =>
         string.IsNullOrWhiteSpace(node.DisplayName) ? node.ShortId : node.DisplayName;
 
+    private static string DialogAge(DateTimeOffset at, DateTimeOffset now)
+    {
+        var seconds = (int)Math.Clamp((now - at).TotalSeconds, 0, int.MaxValue);
+        return seconds < 60 ? F("SecondsAgo", seconds) : Ago(at, now);
+    }
+
     // ── Shared pieces ──────────────────────────────────────────────────
 
-    private static Element Section(string title, string glyph, SystemsHue hue, Element content, Element? action, string automationId) =>
-        Card(VStack(14,
-                Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    GlyphChip(glyph, hue, 32, 16).VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
-                    TextBlock(title).FontSize(16).FontWeight(FontWeights.SemiBold).TextWrapping()
-                        .HeadingLevel(AutomationHeadingLevel.Level3).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                    (action ?? Empty()).VAlign(VerticalAlignment.Center).Grid(column: 2)),
-                content))
-            .Padding(18, 16)
+    /// <summary>
+    /// Opens the Gateway's web Systems page. The web page keeps its own selection, so this cannot
+    /// open a specific machine; the identifier stays copyable here. Gateways without
+    /// <c>environments.list</c> have no Systems page, so they open the web interface root.
+    /// </summary>
+    private static string? WebDestination(SystemsViewState state) => state.HasWebSystemsPage ? "systems" : null;
+
+    private static Element OpenWebButton(SystemsViewState state, SystemsPageActions actions, string automationId)
+    {
+        var name = state.HasWebSystemsPage ? S("OpenWeb_Name") : S("OpenWeb_RootName");
+        var help = state.HasWebSystemsPage ? S("OpenWeb_Help") : S("OpenWeb_RootHelp");
+        return Button(HStack(6, Glyph(FluentIconCatalog.OpenInBrowser, 14).VAlign(VerticalAlignment.Center),
+                    TextBlock(S("OpenWeb")).TextWrapping(TextWrapping.NoWrap).VAlign(VerticalAlignment.Center)),
+                () => actions.OpenWeb(WebDestination(state)))
+            .VAlign(VerticalAlignment.Center)
+            .AutomationName(name)
+            .HelpText(help)
+            .ToolTip(help)
+            .AutomationId(automationId);
+    }
+
+    private static Element Section(string title, Element content, Element? action, string automationId, Element? badge = null) =>
+        VStack(10,
+                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                    WrapRow(8, TextBlock(title).FontSize(13).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
+                        .HeadingLevel(AutomationHeadingLevel.Level3).AutomationId(automationId + "Heading"), badge ?? Empty())
+                        .VAlign(VerticalAlignment.Center).Grid(column: 0),
+                    (action ?? Empty()).Margin(12, 0, 0, 0).VAlign(VerticalAlignment.Center).Grid(column: 1)),
+                content)
             .AutomationId(automationId);
 
     /// <summary>A row that wraps onto more lines instead of clipping when the pane is narrow.</summary>
@@ -1483,23 +1578,13 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         };
 
     /// <summary>A glyph on a rounded tint of its hue. Decorative: callers name the meaning in text.</summary>
-    private static Element GlyphChip(string glyph, SystemsHue hue, double size, double glyphSize) =>
+    private static BorderElement GlyphChip(string glyph, SystemsHue hue, double size, double glyphSize) =>
         Border(Glyph(glyph, glyphSize).Foreground(Theme.Ref(hue.Brush))
                 .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
             .Size(size, size)
             .CornerRadius(Math.Round(size * 0.3))
             .Background(Theme.Ref(hue.Tint))
             .AccessibilityView(AccessibilityView.Raw);
-
-    /// <summary>Compact labelled pill on a hue tint, with a glyph so the state never relies on color.</summary>
-    private static Element Pill(string text, string glyph, SystemsHue hue) =>
-        Border(HStack(5,
-                Glyph(glyph, 11).Foreground(Theme.Ref(hue.Brush)).VAlign(VerticalAlignment.Center),
-                TextBlock(text).FontSize(12).VAlign(VerticalAlignment.Center)))
-            .Padding(9, 3)
-            .CornerRadius(11)
-            .Background(Theme.Ref(hue.Tint))
-            .AutomationName(text);
 
     /// <summary>
     /// The machine's kind glyph on its kind hue, with a presence dot. The dot repeats the status
@@ -1528,7 +1613,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"));
 
     /// <summary>Lays children out in rows of <paramref name="columns"/> equal columns.</summary>
-    private static Element Rows(IReadOnlyList<Element> children, int columns, double spacing = 12)
+    private static Element Rows(IReadOnlyList<Element> children, int columns, double spacing = 12,
+        bool stretchLastSingle = false)
     {
         var rows = new List<Element>();
         for (var start = 0; start < children.Count; start += columns)
@@ -1536,7 +1622,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             var slice = children.Skip(start).Take(columns).ToArray();
             var cells = new List<Element>();
             for (var i = 0; i < slice.Length; i++)
-                cells.Add(slice[i].Grid(column: i * 2));
+                cells.Add(slice[i].Grid(column: i * 2,
+                    columnSpan: stretchLastSingle && slice.Length == 1 ? columns * 2 - 1 : 1));
             var definition = Enumerable.Range(0, columns * 2 - 1)
                 .Select(index => index % 2 == 0 ? GridSize.Star() : GridSize.Px(spacing)).ToArray();
             rows.Add(Grid(definition, [GridSize.Auto], cells.ToArray()).WithKey("row" + start));
@@ -1544,15 +1631,12 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         return VStack(spacing, rows.ToArray());
     }
 
-    private static Element StatusBadge(SystemStatus status) =>
-        Border(HStack(4,
+    private static Element StatusBadge(SystemStatus status, string? label = null) =>
+        HStack(4,
                 Glyph(StatusGlyph(status), 12).Foreground(Theme.Ref(StatusBrush(status))).VAlign(VerticalAlignment.Center),
-                TextBlock(Status(status)).FontSize(12)))
-            .Padding(8, 2)
-            .CornerRadius(10)
-            .Background(Theme.Ref(StatusBackground(status)))
+                TextBlock(label ?? Status(status)).FontSize(12))
             .HAlign(HorizontalAlignment.Left)
-            .AutomationName(F("Status_Name", Status(status)))
+            .AutomationName(F("Status_Name", label ?? Status(status)))
             .AutomationId("SystemsStatusBadge");
 
     private static Element Tag(string text) =>
@@ -1564,10 +1648,12 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
             .AutomationName(text);
 
-    private static TextBlockElement Value(string text) => TextBlock(text).TextWrapping().IsTextSelectionEnabled(true);
+    private static TextBlockElement Value(string text) => TextBlock(text).TextWrapping(TextWrapping.WrapWholeWords)
+        .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(text).IsTextSelectionEnabled(true);
 
     private static Element Note(string text) =>
-        TextBlock(text).TextWrapping().Foreground(Theme.Ref("TextFillColorSecondaryBrush"));
+        TextBlock(text).TextWrapping(TextWrapping.WrapWholeWords).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(text)
+            .MaxWidth(800).Foreground(Theme.Ref("TextFillColorSecondaryBrush"));
 
     private static TextBlockElement Glyph(string glyph, double size) =>
         TextBlock(glyph)
@@ -1609,14 +1695,6 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         SystemStatus.Error => "SystemFillColorCriticalBrush",
         SystemStatus.Offline => "TextFillColorTertiaryBrush",
         _ => "TextFillColorSecondaryBrush",
-    };
-
-    private static string StatusBackground(SystemStatus status) => status switch
-    {
-        SystemStatus.Online => "SystemFillColorSuccessBackgroundBrush",
-        SystemStatus.Starting or SystemStatus.Stopping => "SystemFillColorAttentionBackgroundBrush",
-        SystemStatus.Error => "SystemFillColorCriticalBackgroundBrush",
-        _ => "SubtleFillColorSecondaryBrush",
     };
 
     internal static string DeviceGlyph(SystemRow row)

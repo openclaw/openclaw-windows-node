@@ -8139,44 +8139,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Title" xml:space="preserve">
     <value>Systems</value>
   </data>
-  <data name="Systems_Subtitle" xml:space="preserve">
-    <value>Machines available to this Gateway: the Gateway host, paired nodes, workers and connected apps.</value>
-  </data>
   <data name="Systems_Inventory" xml:space="preserve">
     <value>Machines</value>
   </data>
-  <data name="Systems_Refresh" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
   <data name="Systems_Refresh_Name" xml:space="preserve">
     <value>Refresh machines</value>
-  </data>
-  <data name="Systems_UpdatedAgo" xml:space="preserve">
-    <value>Updated {0}</value>
-  </data>
-  <data name="Systems_Search" xml:space="preserve">
-    <value>Find a machine…</value>
-  </data>
-  <data name="Systems_Filter_All" xml:space="preserve">
-    <value>All</value>
-  </data>
-  <data name="Systems_Filter_Name" xml:space="preserve">
-    <value>Show machines by status</value>
-  </data>
-  <data name="Systems_Sort_By" xml:space="preserve">
-    <value>Sort by</value>
-  </data>
-  <data name="Systems_Sort_Name" xml:space="preserve">
-    <value>Sort by: {0}</value>
-  </data>
-  <data name="Systems_Sort_Alphabetical" xml:space="preserve">
-    <value>Alphabetical</value>
-  </data>
-  <data name="Systems_Sort_OnlineFirst" xml:space="preserve">
-    <value>Online first</value>
-  </data>
-  <data name="Systems_Sort_OfflineFirst" xml:space="preserve">
-    <value>Offline first</value>
   </data>
   <data name="Systems_Loading" xml:space="preserve">
     <value>Loading machines…</value>
@@ -8184,35 +8151,14 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Empty" xml:space="preserve">
     <value>No machines are available to this account.</value>
   </data>
-  <data name="Systems_Empty_Title" xml:space="preserve">
-    <value>No machines yet</value>
-  </data>
-  <data name="Systems_NoMatches" xml:space="preserve">
-    <value>No machines match your search or filters.</value>
-  </data>
-  <data name="Systems_Select" xml:space="preserve">
-    <value>Select a machine</value>
-  </data>
-  <data name="Systems_Select_Hint" xml:space="preserve">
-    <value>Choose a host, worker, or paired node to see its status, statistics and sessions.</value>
-  </data>
   <data name="Systems_Missing_Title" xml:space="preserve">
     <value>This machine is no longer listed</value>
   </data>
   <data name="Systems_Missing_Hint" xml:space="preserve">
     <value>Refresh the inventory or choose another machine. Your selection has not been changed.</value>
   </data>
-  <data name="Systems_Group_Host" xml:space="preserve">
-    <value>Gateway host</value>
-  </data>
-  <data name="Systems_Group_Nodes" xml:space="preserve">
-    <value>Paired nodes</value>
-  </data>
   <data name="Systems_Group_Workers" xml:space="preserve">
     <value>Workers</value>
-  </data>
-  <data name="Systems_Group_Clients" xml:space="preserve">
-    <value>Connected apps</value>
   </data>
   <data name="Systems_Kind_Host" xml:space="preserve">
     <value>Gateway host</value>
@@ -8278,10 +8224,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Read access required</value>
   </data>
   <data name="Systems_ReadAccess_Message" xml:space="preserve">
-    <value>Operator read access is required to view machines and backups.</value>
-  </data>
-  <data name="Systems_InventoryError_Title" xml:space="preserve">
-    <value>Machines could not be refreshed</value>
+    <value>Operator read access is required to view machines.</value>
   </data>
   <data name="Systems_PartialErrors_Title" xml:space="preserve">
     <value>Some machine information could not be refreshed.</value>
@@ -8289,68 +8232,24 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Offline_Title" xml:space="preserve">
     <value>This machine is offline</value>
   </data>
-  <data name="Systems_Offline_Hint" xml:space="preserve">
-    <value>Its last reported information is shown.</value>
-  </data>
   <data name="Systems_Pairing_TitleOne" xml:space="preserve">
-    <value>1 pairing approval waiting</value>
+    <value>1 device wants to join</value>
   </data>
+  <data name="Systems_Pairing_NamedTitle" xml:space="preserve"><value>{0} wants to join</value></data>
   <data name="Systems_Pairing_TitleMany" xml:space="preserve">
-    <value>{0} pairing approvals waiting</value>
+    <value>{0} devices want to join</value>
   </data>
   <data name="Systems_Pairing_Message" xml:space="preserve">
-    <value>A node or device is waiting for approval before it can join.</value>
+    <value>Approve only if you started this on that device.</value>
   </data>
   <data name="Systems_Pairing_OwnNodeMessage" xml:space="preserve">
-    <value>This PC is connected, but its capabilities and commands stay inactive until its pairing is approved.</value>
-  </data>
-  <data name="Systems_Pairing_KindNode" xml:space="preserve">
-    <value>Node</value>
-  </data>
-  <data name="Systems_Pairing_KindDevice" xml:space="preserve">
-    <value>Device</value>
-  </data>
-  <data name="Systems_Pairing_Repair" xml:space="preserve">
-    <value>Re-pairing</value>
-  </data>
-  <data name="Systems_Pairing_Scopes" xml:space="preserve">
-    <value>Requested access: {0}</value>
-  </data>
-  <data name="Systems_Pairing_Approve" xml:space="preserve">
-    <value>Approve</value>
-  </data>
-  <data name="Systems_Pairing_Reject" xml:space="preserve">
-    <value>Reject</value>
-  </data>
-  <data name="Systems_Pairing_ApproveName" xml:space="preserve">
-    <value>Approve {0}</value>
-  </data>
-  <data name="Systems_Pairing_RejectName" xml:space="preserve">
-    <value>Reject {0}</value>
+    <value>This PC is waiting for pairing approval. Its capabilities and commands stay inactive until approval.</value>
   </data>
   <data name="Systems_Pairing_Review" xml:space="preserve">
-    <value>Review on Connection page</value>
-  </data>
-  <data name="Systems_Pairing_ApproveTitle" xml:space="preserve">
-    <value>Approve {0}?</value>
-  </data>
-  <data name="Systems_Pairing_RejectTitle" xml:space="preserve">
-    <value>Reject {0}?</value>
-  </data>
-  <data name="Systems_Pairing_ApproveBody" xml:space="preserve">
-    <value>{0} will be able to join this Gateway with the access it requested.</value>
-  </data>
-  <data name="Systems_Pairing_RejectBody" xml:space="preserve">
-    <value>{0} will not be able to join this Gateway. It can request pairing again later.</value>
+    <value>Review</value>
   </data>
   <data name="Systems_Stats_Title" xml:space="preserve">
-    <value>Reported statistics</value>
-  </data>
-  <data name="Systems_Stats_Show" xml:space="preserve">
-    <value>Show statistics</value>
-  </data>
-  <data name="Systems_Stats_Hide" xml:space="preserve">
-    <value>Hide statistics</value>
+    <value>Resources</value>
   </data>
   <data name="Systems_Stats_None" xml:space="preserve">
     <value>This machine has not reported resource statistics.</value>
@@ -8362,7 +8261,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>{0} cores</value>
   </data>
   <data name="Systems_Stats_Cpu" xml:space="preserve">
-    <value>Processors</value>
+    <value>CPU count</value>
   </data>
   <data name="Systems_Stats_CpuCores" xml:space="preserve">
     <value>logical cores</value>
@@ -8379,17 +8278,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Stats_OfTotal" xml:space="preserve">
     <value>of {0}</value>
   </data>
-  <data name="Systems_Stats_TrendName" xml:space="preserve">
-    <value>{0}: {1}, {2} recent samples</value>
-  </data>
   <data name="Systems_Stats_Sampled" xml:space="preserve">
-    <value>Sampled {0}</value>
-  </data>
-  <data name="Systems_Stats_LastKnown" xml:space="preserve">
-    <value>Last reported {0}</value>
-  </data>
-  <data name="Systems_Stats_Collecting" xml:space="preserve">
-    <value>Collecting history…</value>
+    <value>Reported {0} ago</value>
   </data>
   <data name="Systems_Details_Title" xml:space="preserve">
     <value>Machine details</value>
@@ -8419,13 +8309,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Operating system</value>
   </data>
   <data name="Systems_Field_Processor" xml:space="preserve">
-    <value>Processor</value>
+    <value>CPU model</value>
   </data>
   <data name="Systems_Field_Address" xml:space="preserve">
-    <value>Address</value>
+    <value>LAN address</value>
   </data>
   <data name="Systems_Field_Runtime" xml:space="preserve">
-    <value>Runtime</value>
+    <value>Node version</value>
   </data>
   <data name="Systems_Field_Uptime" xml:space="preserve">
     <value>Uptime</value>
@@ -8445,18 +8335,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Field_Approved" xml:space="preserve">
     <value>Approved</value>
   </data>
-  <data name="Systems_Field_SessionHost" xml:space="preserve">
-    <value>Session host</value>
-  </data>
-  <data name="Systems_Field_SessionHostEnabled" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="Systems_Field_SlotsValue" xml:space="preserve">
-    <value>{0} of {1} worker slots available</value>
-  </data>
-  <data name="Systems_Field_Provider" xml:space="preserve">
-    <value>Provider</value>
-  </data>
   <data name="Systems_Field_WorkerState" xml:space="preserve">
     <value>Worker state</value>
   </data>
@@ -8464,7 +8342,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Worker error</value>
   </data>
   <data name="Systems_Field_Issue" xml:space="preserve">
-    <value>Needs attention</value>
+    <value>Issue</value>
   </data>
   <data name="Systems_Issue_UpdateRequired" xml:space="preserve">
     <value>Update required. Run openclaw update on this machine, then reconnect it.</value>
@@ -8478,30 +8356,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Duration_Minutes" xml:space="preserve">
     <value>{0} min</value>
   </data>
-  <data name="Systems_Desktop_Title_Enabled" xml:space="preserve">
-    <value>Desktop access is enabled</value>
-  </data>
-  <data name="Systems_Desktop_Title_ManagedConfigured" xml:space="preserve">
-    <value>A managed desktop is configured</value>
-  </data>
-  <data name="Systems_Desktop_Title_ScreenSharingDetected" xml:space="preserve">
-    <value>Screen Sharing is available</value>
-  </data>
-  <data name="Systems_Desktop_Title_DesktopDetected" xml:space="preserve">
-    <value>A desktop is available</value>
-  </data>
-  <data name="Systems_Desktop_Title_ScreenSharingNeeded" xml:space="preserve">
-    <value>Turn on Screen Sharing</value>
-  </data>
-  <data name="Systems_Desktop_Title_DesktopServerNeeded" xml:space="preserve">
-    <value>Set up a desktop server</value>
-  </data>
-  <data name="Systems_Desktop_Title_Attention" xml:space="preserve">
-    <value>Screen sharing needs attention</value>
-  </data>
-  <data name="Systems_Desktop_Title_Available" xml:space="preserve">
-    <value>A desktop is available</value>
-  </data>
   <data name="Systems_Desktop_Title_Offline" xml:space="preserve">
     <value>This machine is offline</value>
   </data>
@@ -8511,77 +8365,17 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Desktop_Title_NoDesktop" xml:space="preserve">
     <value>No desktop available</value>
   </data>
-  <data name="Systems_Desktop_Hint_Connecting" xml:space="preserve">
-    <value>Waiting for desktop access to become available.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_EnableAccess" xml:space="preserve">
-    <value>Enable desktop access to view and control this machine in OpenClaw.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_ScreenSharingSetup" xml:space="preserve">
-    <value>On this Mac, open System Settings &gt; General &gt; Sharing. Turn on Screen Sharing, or allow this account to Observe and Control in Remote Management, then check again.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_DesktopServerSetup" xml:space="preserve">
-    <value>Set up a password-protected VNC server on this machine, or configure a managed desktop on Linux, then check again.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_ViewingDeferred" xml:space="preserve">
-    <value>Viewing and controlling a desktop is not available in the Windows app yet. Use the OpenClaw web Control UI to open it.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_Offline" xml:space="preserve">
-    <value>Its last reported information is shown. Reconnect the machine to use its desktop.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_NoDesktop" xml:space="preserve">
-    <value>This machine has not reported a desktop. Its other capabilities remain available.</value>
-  </data>
-  <data name="Systems_Desktop_Hint_NoHostDesktop" xml:space="preserve">
-    <value>Refresh machines to check screen-sharing availability on this Gateway.</value>
-  </data>
-  <data name="Systems_Desktop_Enable" xml:space="preserve">
-    <value>Enable desktop access</value>
-  </data>
-  <data name="Systems_Desktop_Enabling" xml:space="preserve">
-    <value>Enabling desktop access…</value>
-  </data>
-  <data name="Systems_Desktop_ApplyHint" xml:space="preserve">
-    <value>Applies without restarting the Gateway.</value>
-  </data>
-  <data name="Systems_Desktop_AdminHint" xml:space="preserve">
-    <value>A Gateway administrator can enable desktop access.</value>
-  </data>
-  <data name="Systems_Desktop_CheckAgain" xml:space="preserve">
-    <value>Check again</value>
-  </data>
-  <data name="Systems_Desktop_Failed" xml:space="preserve">
-    <value>Desktop access could not be enabled: {0}</value>
-  </data>
   <data name="Systems_Desktop_Locked" xml:space="preserve">
     <value>Locked</value>
   </data>
   <data name="Systems_Desktop_Unlocked" xml:space="preserve">
     <value>Unlocked</value>
   </data>
-  <data name="Systems_Desktop_ConfirmTitle" xml:space="preserve">
-    <value>Enable desktop access?</value>
-  </data>
-  <data name="Systems_Desktop_ConfirmBody" xml:space="preserve">
-    <value>This changes the Gateway configuration so OpenClaw can view and control the Gateway host's desktop. It applies without restarting the Gateway.</value>
-  </data>
   <data name="Systems_Sessions_Title" xml:space="preserve">
     <value>Related sessions</value>
   </data>
-  <data name="Systems_Sessions_Hint" xml:space="preserve">
-    <value>Bindings from the loaded session list. A binding is not proof that a turn ran here.</value>
-  </data>
   <data name="Systems_Sessions_None" xml:space="preserve">
     <value>No related sessions in the loaded list.</value>
-  </data>
-  <data name="Systems_Sessions_OpenName" xml:space="preserve">
-    <value>Open session {0} ({1})</value>
-  </data>
-  <data name="Systems_Sessions_Attached" xml:space="preserve">
-    <value>Attached sessions</value>
-  </data>
-  <data name="Systems_Sessions_AttachedHint" xml:space="preserve">
-    <value>Attachment does not mean a session is currently running on this machine.</value>
   </data>
   <data name="Systems_Relation_Placement" xml:space="preserve">
     <value>Placed here</value>
@@ -8601,146 +8395,17 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Capabilities_Title" xml:space="preserve">
     <value>Capabilities</value>
   </data>
-  <data name="Systems_Capability_Enabled" xml:space="preserve">
-    <value>Capability {0}, enabled</value>
-  </data>
   <data name="Systems_Capability_Disabled" xml:space="preserve">
-    <value>Capability {0}, disabled</value>
+    <value>{0} turned off</value>
   </data>
   <data name="Systems_Capability_PendingDeclared" xml:space="preserve">
     <value>Waiting for approval: {0}</value>
-  </data>
-  <data name="Systems_Backups_Title" xml:space="preserve">
-    <value>Backups</value>
-  </data>
-  <data name="Systems_Backups_Loading" xml:space="preserve">
-    <value>Loading backups…</value>
-  </data>
-  <data name="Systems_Backups_ReadAccess" xml:space="preserve">
-    <value>Operator read access is required to view backups.</value>
-  </data>
-  <data name="Systems_Backups_Unsupported" xml:space="preserve">
-    <value>This Gateway does not report backups.</value>
-  </data>
-  <data name="Systems_Backups_Empty" xml:space="preserve">
-    <value>No backups recorded. To set one up, run:</value>
-  </data>
-  <data name="Systems_Backups_Ok" xml:space="preserve">
-    <value>Succeeded</value>
-  </data>
-  <data name="Systems_Backups_Failed" xml:space="preserve">
-    <value>Failed</value>
-  </data>
-  <data name="Systems_Backups_PushFailed" xml:space="preserve">
-    <value>Push failed</value>
-  </data>
-  <data name="Systems_Backups_LastSuccess" xml:space="preserve">
-    <value>Last success: {0}</value>
-  </data>
-  <data name="Systems_Backups_LastLocalSuccess" xml:space="preserve">
-    <value>Last local success: {0}</value>
-  </data>
-  <data name="Systems_Backups_Never" xml:space="preserve">
-    <value>never</value>
-  </data>
-  <data name="Systems_Backups_NextRun" xml:space="preserve">
-    <value>Next run: {0}</value>
-  </data>
-  <data name="Systems_Backups_Namespace" xml:space="preserve">
-    <value>Namespace: {0}</value>
-  </data>
-  <data name="Systems_Backups_Scheduled" xml:space="preserve">
-    <value>Scheduled: {0}</value>
-  </data>
-  <data name="Systems_Backups_FailureHint" xml:space="preserve">
-    <value>Check the backup job logs and try again.</value>
-  </data>
-  <data name="Systems_Backups_PushFailureHint" xml:space="preserve">
-    <value>The local backup succeeded, but pushing to the Git remote failed. Check the remote and retry.</value>
-  </data>
-  <data name="Systems_Backups_Kind_Archive" xml:space="preserve">
-    <value>Archive file</value>
-  </data>
-  <data name="Systems_Backups_Kind_SqliteSnapshot" xml:space="preserve">
-    <value>SQLite snapshot</value>
-  </data>
-  <data name="Systems_Backups_Kind_Git" xml:space="preserve">
-    <value>Git repository</value>
-  </data>
-  <data name="Systems_Backups_Kind_External" xml:space="preserve">
-    <value>External</value>
-  </data>
-  <data name="Systems_Backups_Locations" xml:space="preserve">
-    <value>Storage locations</value>
-  </data>
-  <data name="Systems_Backups_Check" xml:space="preserve">
-    <value>Check</value>
-  </data>
-  <data name="Systems_Backups_CheckName" xml:space="preserve">
-    <value>Check {0}</value>
-  </data>
-  <data name="Systems_Backups_Checking" xml:space="preserve">
-    <value>Checking…</value>
-  </data>
-  <data name="Systems_Backups_Free" xml:space="preserve">
-    <value>{0} free</value>
-  </data>
-  <data name="Systems_Backups_Encrypted" xml:space="preserve">
-    <value>{0} (encrypted)</value>
-  </data>
-  <data name="Systems_Backups_Probe_Ok" xml:space="preserve">
-    <value>Available</value>
-  </data>
-  <data name="Systems_Backups_Probe_Unavailable" xml:space="preserve">
-    <value>Unavailable</value>
-  </data>
-  <data name="Systems_Backups_Probe_Uninitialized" xml:space="preserve">
-    <value>Not initialized</value>
-  </data>
-  <data name="Systems_Backups_Probe_WrongKey" xml:space="preserve">
-    <value>Wrong encryption key</value>
-  </data>
-  <data name="Systems_Backups_Probe_Error" xml:space="preserve">
-    <value>Check failed</value>
   </data>
   <data name="Command_GoToSystems_Title" xml:space="preserve">
     <value>Go to Systems</value>
   </data>
   <data name="Command_GoToSystems_Subtitle" xml:space="preserve">
-    <value>Gateway host, nodes, workers and backups</value>
-  </data>
-  <data name="Systems_Pairing_NotSent" xml:space="preserve">
-    <value>The decision could not be sent. Check the connection and your pairing access, then try again.</value>
-  </data>
-  <data name="Systems_Summary_All" xml:space="preserve">
-    <value>All machines</value>
-  </data>
-  <data name="Systems_Summary_Pairing" xml:space="preserve">
-    <value>Waiting to pair</value>
-  </data>
-  <data name="Systems_Summary_BackupsOk" xml:space="preserve">
-    <value>Backups healthy</value>
-  </data>
-  <data name="Systems_Summary_BackupsIssues" xml:space="preserve">
-    <value>Backups need attention</value>
-  </data>
-  <data name="Systems_Summary_BackupsNone" xml:space="preserve">
-    <value>Backups not set up</value>
-  </data>
-  <data name="Systems_Summary_ShowBackups" xml:space="preserve">
-    <value>Show backups on the Gateway host</value>
-  </data>
-  <data name="Systems_Summary_Name" xml:space="preserve">
-    <value>Machine summary</value>
-  </data>
-  <data name="Systems_Summary_Active" xml:space="preserve">
-    <value>Current filter</value>
-  </data>
-  <data name="Systems_Empty_Hint" xml:space="preserve">
-    <value>Pair a PC, phone or server with this Gateway and it appears here, along with workers and connected apps.</value>
-  </data>
-  <data name="Systems_Empty_Pair" xml:space="preserve">
-    <value>Pair a device</value>
+    <value>Gateway host, nodes and workers</value>
   </data>
   <data name="Systems_Stats_LoadMeter" xml:space="preserve">
     <value>{0}% of cores</value>
@@ -8754,8 +8419,26 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Stats_LastKnownBadge" xml:space="preserve">
     <value>Last known</value>
   </data>
-  <data name="Systems_Backups_FreeOf" xml:space="preserve">
-    <value>{0} free of {1}</value>
+  <data name="Systems_OpenWeb" xml:space="preserve">
+    <value>Open in web</value>
+  </data>
+  <data name="Systems_OpenWeb_Name" xml:space="preserve">
+    <value>Open Systems in the web interface</value>
+  </data>
+  <data name="Systems_OpenWeb_Help" xml:space="preserve">
+    <value>Opens the Gateway's Systems page in your browser. Select this machine there to continue.</value>
+  </data>
+  <data name="Systems_OpenWeb_RootName" xml:space="preserve">
+    <value>Open the Gateway web interface</value>
+  </data>
+  <data name="Systems_OpenWeb_RootHelp" xml:space="preserve">
+    <value>Opens the Gateway web interface in your browser. This Gateway does not report a Systems page.</value>
+  </data>
+  <data name="Systems_Manage_PairingRequired" xml:space="preserve">
+    <value>Pairing access is required to rename or remove this node.</value>
+  </data>
+  <data name="Systems_Sessions_ViewAll" xml:space="preserve">
+    <value>View all sessions</value>
   </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node Sandbox</value>
@@ -8820,4 +8503,88 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="Systems_Mast_Unreachable" xml:space="preserve"><value>Can't reach {0}</value></data>
+  <data name="Systems_Mast_JustUs" xml:space="preserve"><value>This PC and Gateway are online</value></data>
+  <data name="Systems_Mast_AllOnline" xml:space="preserve"><value>All {0} systems are online</value></data>
+  <data name="Systems_Mast_Online" xml:space="preserve"><value>{0} of {1} systems are online</value></data>
+  <data name="Systems_AddSystem" xml:space="preserve"><value>Add a system</value></data>
+  <data name="Systems_NeedsYou" xml:space="preserve"><value>Needs you</value></data>
+  <data name="Systems_CopyUpdate" xml:space="preserve"><value>Copy update command</value></data>
+  <data name="Systems_ShowSystem" xml:space="preserve"><value>Show system</value></data>
+  <data name="Systems_CollapseSystem" xml:space="preserve"><value>Collapse system details</value></data>
+  <data name="Systems_ExpandSystem" xml:space="preserve"><value>Expand system details</value></data>
+  <data name="Systems_NotSeen" xml:space="preserve"><value>Last seen {0}</value></data>
+  <data name="Systems_Diagnostics" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="Systems_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Systems_OpenChat_Name" xml:space="preserve"><value>Open chat: {0}</value></data>
+  <data name="Systems_Capability_NotReported" xml:space="preserve"><value>Not reported</value></data>
+  <data name="Systems_Capability_Allowed" xml:space="preserve"><value>Allowed</value></data>
+  <data name="Systems_Capability_TurnedOff" xml:space="preserve"><value>Turned off</value></data>
+  <data name="Systems_Capability_System" xml:space="preserve"><value>System tools</value></data>
+  <data name="Systems_Capability_Shell" xml:space="preserve"><value>Shell commands</value></data>
+  <data name="Systems_Capability_Screen" xml:space="preserve"><value>Screen capture</value></data>
+  <data name="Systems_Capability_Camera" xml:space="preserve"><value>Camera</value></data>
+  <data name="Systems_Capability_Browser" xml:space="preserve"><value>Browser</value></data>
+  <data name="Systems_Capability_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="Systems_Capability_Clipboard" xml:space="preserve"><value>Clipboard</value></data>
+  <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio input</value></data>
+  <data name="Systems_ManagePermissions" xml:space="preserve"><value>Manage permissions</value></data>
+  <data name="Systems_AllDevices" xml:space="preserve"><value>All devices</value></data>
+  <data name="Systems_Connection" xml:space="preserve"><value>Connection</value></data>
+  <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connect to the Gateway to use this action.</value></data>
+  <data name="Systems_ConnectedApps" xml:space="preserve"><value>Connected apps</value></data>
+  <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Devices and Gateway</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway {0}</value></data>
+  <data name="Systems_Issues" xml:space="preserve"><value>Issues</value></data>
+  <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Last known offline</value></data>
+  <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Last known online</value></data>
+  <data name="Systems_LoadFailed" xml:space="preserve"><value>Load failed.</value></data>
+  <data name="Systems_NeedsYou_More" xml:space="preserve"><value>{0} more need you</value></data>
+  <data name="Systems_NeedsYou_ReviewAllIssues" xml:space="preserve"><value>Review all issues</value></data>
+  <data name="Systems_NeedsYou_ReviewEveryIssue" xml:space="preserve"><value>Review every issue, including devices, pairing and workers.</value></data>
+  <data name="Systems_NothingNeedsYou" xml:space="preserve"><value>Nothing needs you right now.</value></data>
+  <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>This pairing request is no longer available.</value></data>
+  <data name="Systems_PermissionAttention_Title" xml:space="preserve"><value>{0} needs permission review</value></data>
+  <data name="Systems_RequestTimeout" xml:space="preserve"><value>Request timed out after {0} s.</value></data>
+  <data name="Systems_Attention_ErrorTitle" xml:space="preserve"><value>{0} needs attention</value></data>
+  <data name="Systems_WorkerError_Title" xml:space="preserve"><value>{0} has a worker error</value></data>
+  <data name="Systems_ForgetTitle" xml:space="preserve"><value>Forget {0}?</value></data>
+  <data name="Systems_Forgotten" xml:space="preserve"><value>Forgot {0}.</value></data>
+  <data name="Systems_RenameSucceeded" xml:space="preserve"><value>The node was renamed.</value></data>
+  <data name="Systems_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Systems_AddSystemSteps" xml:space="preserve"><value>1. Install a supported OpenClaw node app on the other device.
+2. Connect it to this Gateway.
+3. Open Connection to review its pairing request.</value></data>
+  <data name="Systems_Number_0" xml:space="preserve"><value>zero</value></data>
+  <data name="Systems_Number_1" xml:space="preserve"><value>one</value></data>
+  <data name="Systems_Number_2" xml:space="preserve"><value>two</value></data>
+  <data name="Systems_Number_3" xml:space="preserve"><value>three</value></data>
+  <data name="Systems_Number_4" xml:space="preserve"><value>four</value></data>
+  <data name="Systems_Number_5" xml:space="preserve"><value>five</value></data>
+  <data name="Systems_Number_6" xml:space="preserve"><value>six</value></data>
+  <data name="Systems_Number_7" xml:space="preserve"><value>seven</value></data>
+  <data name="Systems_Number_8" xml:space="preserve"><value>eight</value></data>
+  <data name="Systems_Number_9" xml:space="preserve"><value>nine</value></data>
+  <data name="Systems_Age_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} h</value></data>
+  <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Systems_Mast_ThisNodeConnected" xml:space="preserve"><value>This PC is connected as a node.</value></data>
+  <data name="Systems_Mast_NodeOfflineSince" xml:space="preserve"><value>{0} was last seen {1} ago.</value></data>
+  <data name="Systems_Mast_NodeOffline" xml:space="preserve"><value>{0} is offline.</value></data>
+  <data name="Systems_Mast_Pending" xml:space="preserve"><value>{0} devices are waiting for approval.</value></data>
+  <data name="Systems_Mast_ConnectedTo" xml:space="preserve"><value>Connected to {0}.</value></data>
+  <data name="Systems_Attention_OfflineTitle" xml:space="preserve"><value>{0} is offline</value></data>
+  <data name="Systems_Attention_OfflineMessage" xml:space="preserve"><value>{0}. Agents can't use it until it reconnects.</value></data>
+  <data name="Systems_HowToReconnect" xml:space="preserve"><value>How to reconnect</value></data>
+  <data name="Systems_ForgetConsequence" xml:space="preserve"><value>It's unpaired from {0}. To come back, it has to ask for approval again.</value></data>
+  <data name="Systems_Field_Paired" xml:space="preserve"><value>Paired</value></data>
+  <data name="Systems_AddSystemIntro" xml:space="preserve"><value>Pair a PC, Mac or phone so agents can use it.</value></data>
+  <data name="Systems_ForgetAction" xml:space="preserve"><value>Forget</value></data>
+  <data name="Systems_SecondsAgo" xml:space="preserve"><value>{0} seconds ago</value></data>
+  <data name="Systems_Desktop_Available" xml:space="preserve"><value>Available</value></data>
+  <data name="Systems_Capability_Files" xml:space="preserve"><value>Files</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
 </root>
