@@ -1095,6 +1095,13 @@ public class GatewayRuntimeInfo
 
 public class UpdateCommandCenterInfo
 {
+    public const string AvailableStatus = "Available";
+    public const string SkippedByUserDetail = "skipped by user";
+
+    /// <summary>A newer release is known and the user has not chosen to skip it.</summary>
+    public bool IsUpdateAvailable =>
+        Status == AvailableStatus && !string.Equals(Detail, SkippedByUserDetail, StringComparison.Ordinal);
+
     public string Status { get; set; } = "Not checked";
     public string CurrentVersion { get; set; } = "unknown";
     public string? LatestVersion { get; set; }

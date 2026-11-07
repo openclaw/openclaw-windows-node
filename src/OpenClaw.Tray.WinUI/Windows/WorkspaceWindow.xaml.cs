@@ -22,6 +22,9 @@ namespace OpenClawTray.Windows;
 public sealed partial class WorkspaceWindow : WindowEx
 {
     private static App CurrentApp => (App)Application.Current;
+    // VK_OEM_COMMA; VirtualKey has no named member for it.
+    private const global::Windows.System.VirtualKey SettingsShortcutKey = (global::Windows.System.VirtualKey)188;
+    private const string SettingsShortcutText = "Ctrl+,";
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
@@ -33,8 +36,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
     private readonly FlyoutShowRequest _workspaceSearchShow;
-    // One account menu per footer that shows the account button; their status rows update together.
-    private readonly List<(MenuFlyoutItem Item, FontIcon Icon)> _connectionStatusItems = new();
     // Sidebar rows keyed by session key; SyncSessionItems keeps MenuItems in step with these.
     private readonly Dictionary<string, NavigationViewItem> _sessionItems = new(StringComparer.Ordinal);
     private bool _updating;
@@ -960,6 +961,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             _ = RefreshAsync();
         if (e.PropertyName == nameof(AppState.Status))
             UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+        if (e.PropertyName == nameof(AppState.UpdateInfo))
+            UpdateAvailableBadge();
     }
 
     internal void UpdateConnectionStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
@@ -970,14 +973,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         var label = LocalizationHelper.GetString(labelKey);
         foreach (var footer in Footers)
             footer.ApplyConnection(label, accent);
-        var badge = ChatFooter.BadgeStyle(accent);
-        var name = $"{LocalizationHelper.GetString("ConnectionStatusWindow.Title")}: {label}";
-        foreach (var (item, icon) in _connectionStatusItems)
-        {
-            item.Text = label;
-            icon.Style = badge;
-            AutomationProperties.SetName(item, name);
-        }
     }
 
     private void RefreshOwnerIdentity(bool invalidate = false)
@@ -989,12 +984,15 @@ public sealed partial class WorkspaceWindow : WindowEx
     private UserAvatarImage? _shownAvatar;
     private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _ownerImage;
 
+    // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
+    private string OwnerLabel() =>
+        _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
+            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
-        // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
-        var label = _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
-            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        var label = OwnerLabel();
         if (!IsClosed && name is not null)
             AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync, new AppLogger(), nameof(UpdateOwnerIdentity));
         var avatar = _identity.Avatar;
@@ -1059,6 +1057,14 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateOwnerIdentity();
         UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
         UpdateNotificationsBadge();
+        UpdateAvailableBadge();
+    }
+
+    private void UpdateAvailableBadge()
+    {
+        var text = _state.UpdateInfo?.IsUpdateAvailable == true ? Text("AccountUpdateAvailable") : null;
+        foreach (var footer in Footers)
+            footer.ApplyUpdateAvailable(text);
     }
 
     private string? ResolveDashboardPath()
@@ -1314,6 +1320,12 @@ public sealed partial class WorkspaceWindow : WindowEx
             e.Handled = true;
             OpenCommandCenter();
         }
+        else if (ctrl && !shift && !alt && e.Key == SettingsShortcutKey)
+        {
+            // Ctrl+, opens Settings, as shown beside the account menu's Settings row.
+            e.Handled = true;
+            if (!e.KeyStatus.WasKeyDown) OpenCompanion(CompanionPageId.Settings);
+        }
         else if (alt && e.Key == global::Windows.System.VirtualKey.Left)
         {
             e.Handled = true;
@@ -1329,22 +1341,15 @@ public sealed partial class WorkspaceWindow : WindowEx
     private MenuFlyout BuildOwnerMenu(WorkspacePaneFooter footer)
     {
         var menu = new MenuFlyout();
-        void Add(string label, Action action, string glyph)
-        {
-            var item = new MenuFlyoutItem { Text = Text(label), Icon = FluentIconCatalog.Build(glyph) };
-            item.Click += (_, _) => action();
-            menu.Items.Add(item);
-        }
-        Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
-        Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
-        Add("PairDevice", () => ((IAppCommands)Application.Current).OpenDashboard("channels"), FluentIconCatalog.Devices);
         var showConnectionStatus = false;
-        var connectionStatusIcon = new FontIcon();
-        var connectionStatusItem = new MenuFlyoutItem { Icon = connectionStatusIcon };
-        AutomationProperties.SetAutomationId(connectionStatusItem, "WorkspaceOwnerConnectionStatus");
-        connectionStatusItem.Click += (_, _) => showConnectionStatus = true;
-        _connectionStatusItems.Add((connectionStatusItem, connectionStatusIcon));
-        menu.Opening += (_, _) => UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+        void RequestConnectionStatus() => showConnectionStatus = true;
+        // Rebuilt on every open so the profile, saved Gateways, status and update badge are current.
+        menu.Opening += (_, _) =>
+        {
+            if (IsClosed) return;
+            UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+            PopulateOwnerMenu(menu, RequestConnectionStatus);
+        };
         menu.Closed += (_, _) =>
         {
             if (!showConnectionStatus || IsClosed) return;
@@ -1354,32 +1359,205 @@ public sealed partial class WorkspaceWindow : WindowEx
                 : Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft;
             _gatewayStatusFlyout.ShowAt(footer.OwnerAnchor);
         };
-        menu.Items.Add(connectionStatusItem);
-        Add("GetApps", () => _ = OpenLinkAsync("https://docs.openclaw.ai/platforms"), FluentIconCatalog.OpenInBrowser);
-        Add("ConnectionTimeline", OpenTimeline, FluentIconCatalog.AgentEvents);
+        PopulateOwnerMenu(menu, RequestConnectionStatus);
+        return menu;
+    }
+
+    /// <summary>
+    /// Account menu: profile, Gateway submenu (plus Retry now while offline), Settings with the update
+    /// badge, Pair a device, and Help &amp; about. <see cref="WorkspaceAccountMenu"/> owns the projection.
+    /// </summary>
+    private void PopulateOwnerMenu(MenuFlyout menu, Action requestConnectionStatus)
+    {
+        var snapshot = CurrentApp.ConnectionManager?.CurrentSnapshot;
+        var registry = CurrentApp.Registry;
+        var model = WorkspaceAccountMenu.Project(new(
+            registry?.GetAll() ?? [], registry?.GetActive()?.Id, snapshot?.OverallState, _state.Status,
+            _state.GatewaySelf?.ServerVersion, _state.UpdateInfo,
+            WorkspaceAccountMenuInput.IsOperatorConnected(snapshot, _state.Status)));
+        var statusLabel = LocalizationHelper.GetString(model.StatusLabelKey);
+        var connected = model.OperatorConnected;
+        var commands = (IAppCommands)CurrentApp;
+
+        menu.Items.Clear();
+        var ownerLabel = OwnerLabel();
+        var ownerDetail = WorkspaceAccountMenu.ProfileDetail(ownerLabel, _identity.Email);
+        var profile = new AccountMenuItem
+        {
+            Style = AccountMenuItem.ProfileStyle,
+            Text = ownerLabel,
+            Description = ownerDetail,
+            Picture = _ownerImage,
+            PictureName = _identity.DisplayName ?? "",
+            IsEnabled = connected,
+        };
+        AutomationProperties.SetAutomationId(profile, "WorkspaceOwnerProfile");
+        AutomationProperties.SetName(profile, ownerLabel);
+        if (ownerDetail is not null) AutomationProperties.SetHelpText(profile, ownerDetail);
+        profile.Click += (_, _) => OpenDashboard(WorkspaceAccountMenu.ProfileDashboardPath);
+        menu.Items.Add(profile);
         menu.Items.Add(new MenuFlyoutSeparator());
-        var help = new MenuFlyoutSubItem { Text = Text("Help") };
+
+        var gatewayDetail = model.ServerVersion is { } version
+            ? LocalizationHelper.Format("WorkspaceShell_AccountGatewayVersionFormat", statusLabel, version)
+            : statusLabel;
+        var gateway = new MenuFlyoutSubItem
+        {
+            Style = (Style)Application.Current.Resources["AccountMenuSubItemStyle"],
+            Text = model.ActiveGatewayName ?? Text("AccountNoGateway"),
+            Tag = gatewayDetail,
+            Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) },
+        };
+        AutomationProperties.SetAutomationId(gateway, "WorkspaceOwnerGateway");
+        AutomationProperties.SetHelpText(gateway, gatewayDetail);
+        PopulateGatewayMenu(gateway, model, statusLabel, requestConnectionStatus);
+        menu.Items.Add(gateway);
+        if (model.ShowRetry)
+            menu.Items.Add(MenuItem("AccountRetry", "WorkspaceOwnerRetry", FluentIconCatalog.Refresh, () =>
+            {
+                if (WorkspaceAccountMenu.NeedsRetry(CurrentApp.ConnectionManager?.CurrentSnapshot?.OverallState, _state.Status))
+                    commands.Reconnect();
+            }));
+        menu.Items.Add(new MenuFlyoutSeparator());
+
+        var settingsLabel = Text("Settings");
+        var settings = new AccountMenuItem
+        {
+            Style = AccountMenuItem.ItemStyle,
+            Text = settingsLabel,
+            Icon = FluentIconCatalog.Build(FluentIconCatalog.Settings),
+            // While an update routes this row to About, Ctrl+, (always Settings) is not its shortcut.
+            KeyboardAcceleratorTextOverride = model.SettingsTarget == CompanionPageId.Settings ? SettingsShortcutText : "",
+            Badge = model.UpdateAvailable ? Text("AccountUpdateBadge") : null,
+        };
+        AutomationProperties.SetAutomationId(settings, "WorkspaceOwnerSettings");
+        if (model.UpdateAvailable)
+            AutomationProperties.SetName(settings,
+                LocalizationHelper.Format("WorkspaceShell_AccountSettingsUpdateFormat", settingsLabel));
+        settings.Click += (_, _) => OpenCompanion(model.SettingsTarget);
+        menu.Items.Add(settings);
+        menu.Items.Add(MenuItem("PairDevice", "WorkspaceOwnerPairDevice", FluentIconCatalog.Devices,
+            () => OpenDashboard(WorkspaceAccountMenu.PairDeviceDashboardPath)));
+
+        var help = new MenuFlyoutSubItem
+        {
+            Text = Text("Help"),
+            Icon = FluentIconCatalog.Build(FluentIconCatalog.Help),
+        };
+        AutomationProperties.SetAutomationId(help, "WorkspaceOwnerHelp");
         foreach (var (label, url) in new[]
         {
             ("Documentation", "https://docs.openclaw.ai"),
             ("Support", SupportLinks.OfficialSupportUrl),
             ("Community", "https://openclaw.ai/discord?from=openclaw-windows-node-community"),
-            ("ReleaseNotes", "https://docs.openclaw.ai/releases")
+            ("ReleaseNotes", "https://docs.openclaw.ai/releases"),
         })
-        {
-            var item = new MenuFlyoutItem { Text = Text(label) };
-            item.Click += async (_, _) => await OpenLinkAsync(url);
-            help.Items.Add(item);
-        }
-        var github = new MenuFlyoutItem
-        {
-            Text = LocalizationHelper.GetString("SettingsPage_AppInfoGitHub.Content")
-        };
-        github.Click += async (_, _) => await OpenLinkAsync("https://github.com/openclaw/openclaw-windows-node");
+            help.Items.Add(MenuItem(label, null, null, () => _ = OpenLinkAsync(url)));
+        var github = new MenuFlyoutItem { Text = LocalizationHelper.GetString("SettingsPage_AppInfoGitHub.Content") };
+        github.Click += (_, _) => _ = OpenLinkAsync("https://github.com/openclaw/openclaw-windows-node");
         help.Items.Add(github);
+        help.Items.Add(new MenuFlyoutSeparator());
+        help.Items.Add(MenuItem("GetApps", null, null, () => _ = OpenLinkAsync("https://docs.openclaw.ai/platforms")));
+        help.Items.Add(MenuItem("ConnectionTimeline", null, null, OpenTimeline));
+        help.Items.Add(new MenuFlyoutSeparator());
+        var about = MenuItem("About", "WorkspaceOwnerAbout", null, () => OpenCompanion(CompanionPageId.About));
+        about.KeyboardAcceleratorTextOverride = AppVersionInfo.Version;
+        AutomationProperties.SetHelpText(about, AppVersionInfo.Version);
+        help.Items.Add(about);
         menu.Items.Add(help);
-        Add("About", () => OpenCompanion(CompanionPageId.About), FluentIconCatalog.About);
-        return menu;
+    }
+
+    private void PopulateGatewayMenu(
+        MenuFlyoutSubItem menu, WorkspaceAccountMenuModel model, string statusLabel, Action requestConnectionStatus)
+    {
+        var commands = (IAppCommands)CurrentApp;
+        for (var index = 0; index < model.Gateways.Count; index++)
+        {
+            var saved = model.Gateways[index];
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = saved.Name,
+                GroupName = "WorkspaceOwnerGateways",
+                IsChecked = saved.IsActive,
+                KeyboardAcceleratorTextOverride = saved.IsActive ? statusLabel : saved.Host,
+            };
+            AutomationProperties.SetAutomationId(item, $"WorkspaceOwnerGateway_{index}");
+            AutomationProperties.SetHelpText(item, item.KeyboardAcceleratorTextOverride);
+            if (!saved.IsActive)
+                item.Click += (_, _) => AsyncEventHandlerGuard.Run(
+                    () => SwitchGatewayAsync(saved.Id), new AppLogger(), nameof(PopulateGatewayMenu));
+            menu.Items.Add(item);
+        }
+        if (model.Gateways.Count > 0)
+            menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(MenuItem("AccountAddGateway", "WorkspaceOwnerAddGateway", FluentIconCatalog.Add, OpenAddGateway));
+        var reconnect = MenuItem("AccountReconnect", "WorkspaceOwnerReconnect", FluentIconCatalog.Refresh, commands.Reconnect);
+        reconnect.IsEnabled = model.ActiveGatewayName is not null;
+        menu.Items.Add(reconnect);
+        var title = LocalizationHelper.GetString("ConnectionStatusWindow.Title");
+        var status = new MenuFlyoutItem
+        {
+            Text = title,
+            Icon = FluentIconCatalog.Build(FluentIconCatalog.About),
+            KeyboardAcceleratorTextOverride = statusLabel,
+        };
+        AutomationProperties.SetAutomationId(status, "WorkspaceOwnerConnectionStatus");
+        AutomationProperties.SetName(status, $"{title}: {statusLabel}");
+        status.Click += (_, _) => requestConnectionStatus();
+        menu.Items.Add(status);
+        menu.Items.Add(MenuItem("AccountConnectionSettings", "WorkspaceOwnerConnectionSettings", FluentIconCatalog.Settings,
+            () => OpenCompanion(CompanionPageId.Connection)));
+        var dashboard = MenuItem("AccountGatewayDashboard", "WorkspaceOwnerGatewayDashboard", FluentIconCatalog.OpenInBrowser,
+            () => OpenDashboard(WorkspaceAccountMenu.GatewaySettingsDashboardPath));
+        dashboard.IsEnabled = model.ActiveGatewayName is not null;
+        menu.Items.Add(dashboard);
+    }
+
+    private static MenuFlyoutItem MenuItem(string key, string? automationId, string? glyph, Action action)
+    {
+        var item = new MenuFlyoutItem { Text = Text(key) };
+        if (glyph is not null) item.Icon = FluentIconCatalog.Build(glyph);
+        if (automationId is not null) AutomationProperties.SetAutomationId(item, automationId);
+        item.Click += (_, _) => action();
+        return item;
+    }
+
+    /// <summary>Switches through the same manager path as the Connection page's saved-gateway Connect action.</summary>
+    private static async Task SwitchGatewayAsync(string gatewayId)
+    {
+        if (CurrentApp.ConnectionManager is not { } manager) return;
+        try
+        {
+            await manager.SwitchGatewayAsync(gatewayId);
+        }
+        catch (Exception ex)
+        {
+            CurrentApp.ShowTransientConnectionError(ex.Message);
+        }
+    }
+
+    /// <summary>Opens Connection settings with its Add gateway form, once the page is shown.</summary>
+    private void OpenAddGateway()
+    {
+        // Already on Connection: keep the live page (and any form in progress) instead of re-rendering it.
+        if (IsSettingsVisible && _settings?.CurrentPage is ConnectionPage current && current.IsLoaded)
+        {
+            current.BeginAddGateway();
+            return;
+        }
+        OpenCompanion(CompanionPageId.Connection);
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            if (_settings is not { } settings) return;
+            await settings.WaitForCurrentContentReadyAsync();
+            if (IsClosed || settings.CurrentPage is not ConnectionPage page) return;
+            if (page.IsLoaded) page.BeginAddGateway();
+            else
+            {
+                void Loaded(object sender, RoutedEventArgs e) { page.Loaded -= Loaded; page.BeginAddGateway(); }
+                page.Loaded += Loaded;
+            }
+        }, new AppLogger(), nameof(OpenAddGateway));
     }
 
     internal async Task OpenLinkAsync(string url)
