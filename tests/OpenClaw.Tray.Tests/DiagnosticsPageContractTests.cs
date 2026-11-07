@@ -699,11 +699,14 @@ public sealed class DiagnosticsPageContractTests
         // Hosts own the Inbox binding: a late Unloaded from a quick close/reopen must not unbind the open flyout.
         Assert.DoesNotContain("Unloaded +=", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
         Assert.Contains("Unloaded += (_, _) => Inbox.Unbind();", Read("src", "OpenClaw.Tray.WinUI", "Pages", "NotificationsPage.xaml.cs"));
+        // Rows, tab counts and badge share InboxFeed; no host reads either source on its own.
+        Assert.DoesNotContain("AppNotificationService", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        Assert.DoesNotContain("InboxProjection.Build(", workspace);
         Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml");
         Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);
         Assert.DoesNotContain("Click=\"OnNotifications\"", xaml);
-        Assert.Contains("_notifications.Changed -= OnNotificationsChanged;", workspace);
+        Assert.Contains("_inbox.Changed -= OnNotificationsChanged;", workspace);
         Assert.Contains("footer.Close();", workspace);
         Assert.Contains("NotificationContent.Unbind();", footer);
     }
