@@ -144,12 +144,10 @@ public sealed partial class GatewayFixtureUiTests
                             .Select(text => BindNativeInboxText(run, text.GetRuntimeId())).ToArray();
                         var selectable = Assert.Single(bindings, binding => binding.Pattern.SupportedTextSelection !=
                             ComUia.SupportedTextSelection.SupportedTextSelection_None);
-                        var document = selectable.Pattern.DocumentRange;
-                        Assert.Equal(InboxDenyOnlyNote, document.GetText(-1)
-                            .Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\r', '\n'));
-                        document.ScrollIntoView(0);
-                        await WaitUiAsync(run, () => InboxRangeIsVisible(run, selectable.Pattern, document),
-                            "visible unreviewable-scope explanation");
+                        // Prove every meaningful character, excluding only provider-added document
+                        // positions outside the independently checked explanation. Also read back
+                        // actual selection endpoints, just as for ordinary disclosure ranges.
+                        await RevealInboxTextRangeAsync(run, selectable, InboxDenyOnlyNote, InboxDenyOnlyNote);
                         GC.KeepAlive(bindings);
                     }
                     else
