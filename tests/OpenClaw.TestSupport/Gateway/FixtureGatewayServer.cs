@@ -452,7 +452,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         if (p.ValueKind != JsonValueKind.Object)
             throw new FixtureRequestException("INVALID_PARAMS", "connect params must be an object.");
-        if (!p.TryGetProperty("auth", out var auth) || ReadString(auth, "token") is not { } token
+        if (!p.TryGetProperty("auth", out var auth) ||
+            (ReadString(auth, "deviceToken") ?? ReadString(auth, "token")) is not { } token
             || !CryptographicOperations.FixedTimeEquals(_tokenHash, SHA256.HashData(Encoding.UTF8.GetBytes(token))))
             throw new FixtureRequestException("AUTH_TOKEN_MISMATCH", "Unauthorized: fixture token mismatch.");
         if (ReadString(p, "role") != "operator")
