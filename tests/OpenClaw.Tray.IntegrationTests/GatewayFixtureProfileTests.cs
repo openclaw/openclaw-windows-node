@@ -59,6 +59,31 @@ public sealed class GatewayFixtureProfileTests
     }
 
     [Fact]
+    public void McpOnlyProfileDoesNotSupplyGatewayCredentialsOrNodeExecution()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "unused-fixture-token", connectGateway: false);
+        var registry = new GatewayRegistry(profile.DataDirectory);
+        registry.Load();
+        var record = Assert.Single(registry.GetAll());
+        Assert.False(profile.ConnectGateway);
+        Assert.False(profile.NodeBrowserProxyEnabled);
+        Assert.Null(record.SharedGatewayToken);
+        Assert.Null(record.BootstrapToken);
+        Assert.False(File.Exists(Path.Combine(profile.DataDirectory, "gateways", record.Id, "device-key-ed25519.json")));
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
+        Assert.False(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(settings.RootElement.GetProperty("EnableManagedLocalGatewayAutoRepair").GetBoolean());
+    }
+
+    [Fact]
+    public void BrowserProxyCannotUseAnMcpOnlyProfile()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new GatewayFixtureProfile(Endpoint, "fixture-token", enableNodeBrowserProxy: true, connectGateway: false));
+    }
+
+    [Fact]
     public void BrowserProxyProfileKeepsExecutionCapabilitiesOff()
     {
         using var profile = new GatewayFixtureProfile(Endpoint, "only-this-fixture", enableNodeBrowserProxy: true);
@@ -102,6 +127,67 @@ public sealed class GatewayFixtureProfileTests
         Directory.Delete(root, recursive: true);
         profile.Dispose();
         Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
+    public async Task CleanupWaitsForTransientLogSharingLock()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        using var environment = new EnvironmentScope("OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS", "5");
+        using var log = new FileStream(Path.Combine(profile.DataDirectory, "openclaw-tray.log"),
+            FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanup = Task.Run(() =>
+        {
+            started.SetResult();
+            profile.Dispose();
+        });
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.ThrowsAsync<TimeoutException>(() => cleanup.WaitAsync(TimeSpan.FromMilliseconds(100)));
+            Assert.True(Directory.Exists(root));
+            log.Dispose();
+            await cleanup.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            log.Dispose();
+            try { await cleanup; }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CleanupSharingLockDeadlineIsVisibleAndCleanupCanResumeAfterRelease()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        using var environment = new EnvironmentScope("OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS", "0.1");
+        using var log = new FileStream(Path.Combine(profile.DataDirectory, "openclaw-tray.log"),
+            FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        try
+        {
+            var error = Assert.Throws<TimeoutException>(profile.Dispose);
+            Assert.IsType<IOException>(error.InnerException);
+            Assert.Contains(root, error.Message, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(profile.DataDirectory, "openclaw-tray.log")));
+            log.Dispose();
+            profile.Dispose();
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            log.Dispose();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

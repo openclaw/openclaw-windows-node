@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
@@ -8,6 +9,8 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    private const uint WmNull = 0;
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task CronEditor_PreservesAbsentAndUnlistedZonesUntilExplicitSelection()
@@ -214,7 +217,7 @@ public sealed partial class GatewayFixtureUiTests
         Assert.NotEqual(IntPtr.Zero, previous);
         try
         {
-            Assert.Equal(handle, GetForegroundWindow());
+            ConfirmForegroundAfterRequest(handle);
             var bounds = title.Current.BoundingRectangle;
             Assert.True(bounds.Width > 0 && bounds.Height > 0 && !title.Current.IsOffscreen);
             var point = new CronPoint { X = (int)(bounds.Left + bounds.Width / 2), Y = (int)(bounds.Top + bounds.Height / 2) };
@@ -231,7 +234,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.True(SetCursorPos(point.X, point.Y));
             Assert.True(GetCursorPos(out var actual));
             Assert.Equal(point, actual);
-            Assert.Equal(handle, GetForegroundWindow());
+            AssertOwnedForeground(handle, GetForegroundWindow);
             Assert.Equal(handle, GetAncestor(WindowFromPoint(actual), 2));
             var inputs = new[]
             {
@@ -245,6 +248,43 @@ public sealed partial class GatewayFixtureUiTests
         finally { SetThreadDpiAwarenessContext(previous); }
     }
 
+    private static void ConfirmForegroundAfterRequest(IntPtr handle, TimeSpan? foregroundTimeout = null) =>
+        ConfirmForegroundAfterRequest(handle,
+            () => SendMessageTimeout(handle, WmNull, IntPtr.Zero, IntPtr.Zero, 0,
+                checked((uint)FixtureForegroundTimeout.TotalMilliseconds), out _) != IntPtr.Zero,
+            GetForegroundWindow, foregroundTimeout);
+
+    private static void ConfirmForegroundAfterRequest(
+        IntPtr handle, Func<bool> acknowledge, Func<IntPtr> getForeground, TimeSpan? foregroundTimeout = null)
+    {
+        // Cross-thread activation is asynchronous. WM_NULL waits for the target queue to process it.
+        if (!acknowledge())
+            throw new InvalidOperationException(
+                $"Owned window 0x{handle.ToInt64():X} did not acknowledge activation within " +
+                $"{FixtureForegroundTimeout.TotalMilliseconds:0} ms (Win32 error {Marshal.GetLastWin32Error()}); " +
+                "refusing pointer input.");
+        // A popup can still hold foreground after the target queue acknowledges activation.
+        var foreground = IntPtr.Zero;
+        if (!SpinWait.SpinUntil(() => (foreground = getForeground()) == handle,
+                foregroundTimeout ?? FixtureForegroundTimeout))
+            AssertOwnedForeground(handle, foreground);
+    }
+
+    private static void AssertOwnedForeground(IntPtr handle, Func<IntPtr> getForeground) =>
+        AssertOwnedForeground(handle, getForeground());
+
+    private static void AssertOwnedForeground(IntPtr handle, IntPtr foreground)
+    {
+        if (foreground == handle) return;
+        GetWindowThreadProcessId(foreground, out var processId);
+        var className = new StringBuilder(256);
+        var classLength = GetClassName(foreground, className, className.Capacity);
+        throw new InvalidOperationException(
+            $"Expected owned window 0x{handle.ToInt64():X} in the foreground, but found " +
+            $"0x{foreground.ToInt64():X} (PID {processId}, class {(classLength > 0 ? className.ToString() : "<unavailable>")}); " +
+            "refusing pointer input.");
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct CronPoint { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)]
@@ -253,6 +293,11 @@ public sealed partial class GatewayFixtureUiTests
     private struct CronMouse { public int X, Y; public uint Data, Flags, Time; public nuint Extra; }
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr handle, StringBuilder className, int maxCount);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(CronPoint point);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);

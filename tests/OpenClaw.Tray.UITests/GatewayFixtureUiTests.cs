@@ -180,16 +180,18 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             await CaptureIfRequestedAsync(run, "pins-offline-retained-disabled.png");
 
+            // Any Gateway-dependent catalog page that is not pinned above proves the offline picker.
+            const string offlinePinTag = "usage";
             Invoke(FindById(run, "WorkspacePagesCustomize")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:channels") is not null, "offline picker");
+            await WaitUiAsync(run, () => FindById(run, $"WorkspacePagesToggle:{offlinePinTag}") is not null, "offline picker");
             foreach (var tag in identities.Keys)
             {
                 var toggle = FindById(run, $"WorkspacePagesToggle:{tag}")!;
                 Assert.True(toggle.Current.IsEnabled);
                 Assert.Equal(ToggleState.On, ((TogglePattern)toggle.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
             }
-            Invoke(FindById(run, "WorkspacePagesToggle:channels")!);
-            await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:channels") is { Current.IsEnabled: false },
+            Invoke(FindById(run, $"WorkspacePagesToggle:{offlinePinTag}")!);
+            await WaitUiAsync(run, () => FindById(run, $"WorkspacePinnedPage:{offlinePinTag}") is { Current.IsEnabled: false },
                 "offline picker can add an unavailable page");
             Assert.Equal(composerIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
             ReleaseHandshake();
@@ -201,7 +203,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 Assert.Equal(identity, retained.GetRuntimeId());
                 Assert.True(retained.Current.IsEnabled);
             }
-            Assert.True(FindById(run, "WorkspacePinnedPage:channels")!.Current.IsEnabled);
+            Assert.True(FindById(run, $"WorkspacePinnedPage:{offlinePinTag}")!.Current.IsEnabled);
             Invoke(FindById(run, "WorkspacePinnedPage:sessions")!);
             await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker")?.Current.IsOffscreen == false, "restored pin remains usable");
             await CaptureIfRequestedAsync(run, "pins-reconnected-enabled.png");
@@ -349,6 +351,72 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                         : color.R > 192 && color.G > 192 && color.B > 192;
                 }, $"embedded background matches {theme} after returning from Settings");
             }
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SettingsPane_KeepsToggleChoiceAcrossPinnedPagesAndRestart()
+    {
+        await WithAppAsync(async run =>
+        {
+            var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")!;
+            const int CollapsedPaneStablePolls = 5;
+            // Search sits in the section-list toolbar and shows only while the list is expanded.
+            bool ListExpanded() => FindById(run, "SettingsSearch") is { Current.IsOffscreen: false };
+            async Task ShowFullSettingsAsync(string description)
+            {
+                await run.InvokeAsync("app.navigate", new { page = "settings" });
+                await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker")?.Current.IsOffscreen == false
+                    && FindById(run, "SettingsTogglePane") is { Current.IsOffscreen: false }, description);
+            }
+            async Task WaitForCollapsedSettingsAsync(string description)
+            {
+                var stablePolls = 0;
+                await WaitUiAsync(run, () =>
+                {
+                    if (FindById(run, "SettingsTogglePane") is not { Current.IsOffscreen: false } || ListExpanded())
+                    {
+                        stablePolls = 0;
+                        return false;
+                    }
+
+                    return ++stablePolls >= CollapsedPaneStablePolls;
+                }, description);
+            }
+            async Task ShowPinnedConnectionAsync()
+            {
+                Invoke(await WaitForElementByIdAsync(run, "WorkspacePinnedPage:connection", "Connection pin"));
+                await WaitUiAsync(run, () => FindById(run, "ConnectionPageMarker")?.Current.IsOffscreen == false, "embedded Connection");
+            }
+
+            await ShowFullSettingsAsync("Settings");
+            await WaitUiAsync(run, ListExpanded, "section list expanded by default");
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            Invoke(await WaitForElementByIdAsync(run, "WorkspacePagesCustomize", "pin customization"));
+            Invoke(await WaitForElementByIdAsync(run, "WorkspacePagesToggle:connection", "Connection pin toggle"));
+            // A pinned page hides the section list. Exit while one is showing.
+            await ShowPinnedConnectionAsync();
+            await run.RestartAppAsync(app);
+
+            await ShowFullSettingsAsync("Settings after restart");
+            await WaitUiAsync(run, ListExpanded, "section list still expanded after exiting from a pinned page");
+            Invoke(FindById(run, "SettingsTogglePane")!);
+            await WaitUiAsync(run, () => !ListExpanded(), "toggle collapses the section list");
+            await run.WaitForAsync(() =>
+            {
+                using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.Profile.DataDirectory, "settings.json")));
+                return Task.FromResult(!settings.RootElement.GetProperty("HubNavPaneOpen").GetBoolean());
+            }, "toggle choice persisted");
+
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await ShowPinnedConnectionAsync();
+            await ShowFullSettingsAsync("Settings after the pinned page");
+            await WaitForCollapsedSettingsAsync("section list stays collapsed after returning from a pinned page");
+
+            await run.RestartAppAsync(app);
+            await ShowFullSettingsAsync("Settings after restarting with the list collapsed");
+            await WaitForCollapsedSettingsAsync("section list stays collapsed after restarting");
         });
     }
 
@@ -696,15 +764,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task OwnerFooterRendersSharedOwnerForGatewayOwnerProfile()
+    public async Task OwnerFooterRendersNamedSharedOwnerForGatewayOwnerProfile()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Shared owner",
-                "shared Gateway owner label in footer");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Shared Person · Shared owner",
+                "named shared Gateway owner label in footer");
             var owner = FindById(run, "WorkspaceOwner")!;
-            Assert.Equal("Shared owner", owner.Current.Name);
+            Assert.Equal("Fixture Shared Person · Shared owner", owner.Current.Name);
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             await WaitForAuthenticatedOwnerPhotoAsync(run);
         }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("gateway-owner", "Fixture Shared Person"));
@@ -1194,7 +1262,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
-        Action? releasePendingResponses = null)
+        Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
+        bool connectGateway = true)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
@@ -1203,7 +1272,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
             allowSessionMutations: allowSessionMutations,
             scenario: scenario, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
-            releasePendingResponses: releasePendingResponses);
+            releasePendingResponses: releasePendingResponses, configureProfile: configureProfile,
+            connectGateway: connectGateway);
         try
         {
             output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
@@ -1394,13 +1464,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         return element!;
     }
 
-    private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description)
+    private static async Task WaitUiAsync(GatewayFixtureRun run, Func<bool> condition, string description,
+        TimeSpan? timeout = null)
     {
         await run.WaitForAsync(() =>
         {
             try { return Task.FromResult(condition()); }
             catch (ElementNotAvailableException) { return Task.FromResult(false); }
-        }, description);
+        }, description, timeout);
     }
 
     private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)

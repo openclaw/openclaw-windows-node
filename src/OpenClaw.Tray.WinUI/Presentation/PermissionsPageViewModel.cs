@@ -37,6 +37,9 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
     private bool _nodeTtsEnabled;
     private bool _nodeSttEnabled;
     private bool _nodeOllamaInferenceEnabled;
+    private bool _screenRecordingConsentGiven;
+    private bool _cameraRecordingConsentGiven;
+    private bool _locationConsentGiven;
     private IReadOnlyList<PermissionsCapabilityState> _capabilities = Array.Empty<PermissionsCapabilityState>();
     private bool _areFeaturesEnabled;
     private string _featuresDescriptionResourceKey = "PermissionsPage_FeaturesDescription_Disabled";
@@ -111,6 +114,36 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             {
                 PersistSetting(edit => edit.EnableMcpServer = value);
             }
+        }
+    }
+
+    public bool ScreenRecordingConsentGiven
+    {
+        get => _screenRecordingConsentGiven;
+        set
+        {
+            if (SetField(ref _screenRecordingConsentGiven, value) && !_loadingSettings)
+                PersistSetting(edit => edit.ScreenRecordingConsentGiven = value);
+        }
+    }
+
+    public bool CameraRecordingConsentGiven
+    {
+        get => _cameraRecordingConsentGiven;
+        set
+        {
+            if (SetField(ref _cameraRecordingConsentGiven, value) && !_loadingSettings)
+                PersistSetting(edit => edit.CameraRecordingConsentGiven = value);
+        }
+    }
+
+    public bool LocationConsentGiven
+    {
+        get => _locationConsentGiven;
+        set
+        {
+            if (SetField(ref _locationConsentGiven, value) && !_loadingSettings)
+                PersistSetting(edit => edit.LocationConsentGiven = value);
         }
     }
 
@@ -420,6 +453,9 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             _nodeTtsEnabled = snapshot.NodeTtsEnabled;
             _nodeSttEnabled = snapshot.NodeSttEnabled;
             _nodeOllamaInferenceEnabled = snapshot.NodeOllamaInferenceEnabled;
+            SetField(ref _screenRecordingConsentGiven, snapshot.ScreenRecordingConsentGiven, nameof(ScreenRecordingConsentGiven));
+            SetField(ref _cameraRecordingConsentGiven, snapshot.CameraRecordingConsentGiven, nameof(CameraRecordingConsentGiven));
+            SetField(ref _locationConsentGiven, snapshot.LocationConsentGiven, nameof(LocationConsentGiven));
         }
         finally
         {

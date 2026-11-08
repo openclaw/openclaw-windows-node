@@ -7,9 +7,10 @@ public sealed class HubPageRegistryTests
 {
     [Theory]
     [InlineData("home", "connection")]
-    [InlineData("general", "connection")]
-    [InlineData("about", "settings")]
-    [InlineData("info", "settings")]
+    [InlineData("general", "settings")]
+    [InlineData("about", "about")]
+    [InlineData("info", "about")]
+    [InlineData("notification-preferences", "settings")]
     [InlineData("nodes", "instances")]
     [InlineData("cron", "agent:alpha:cron")]
     [InlineData("workspace", "agent:alpha:workspace")]
@@ -26,12 +27,14 @@ public sealed class HubPageRegistryTests
     [InlineData("nodes", (int)HubPageKind.Instances)]
     [InlineData("capabilities", (int)HubPageKind.Permissions)]
     [InlineData("permissions", (int)HubPageKind.Permissions)]
-    [InlineData("activity", (int)HubPageKind.Channels)]
     [InlineData("conversations", (int)HubPageKind.Sessions)]
-    [InlineData("info", (int)HubPageKind.Settings)]
+    [InlineData("settings", (int)HubPageKind.Settings)]
+    [InlineData("general", (int)HubPageKind.Settings)]
+    [InlineData("notification-preferences", (int)HubPageKind.Settings)]
+    [InlineData("info", (int)HubPageKind.About)]
+    [InlineData("about", (int)HubPageKind.About)]
     [InlineData("agent:main", (int)HubPageKind.Workspace)]
     [InlineData("agent:main:sessions", (int)HubPageKind.Sessions)]
-    [InlineData("agent:main:agentevents", (int)HubPageKind.AgentEvents)]
     [InlineData("agent:main:cron", (int)HubPageKind.Cron)]
     [InlineData("agent:main:workspace", (int)HubPageKind.Workspace)]
     [InlineData("dashboards", (int)HubPageKind.Dashboards)]
@@ -44,11 +47,15 @@ public sealed class HubPageRegistryTests
     [Theory]
     [InlineData("bindings")]
     [InlineData("chat")]
+    [InlineData("channels")]
+    [InlineData("activity")]
     [InlineData("PERMISSIONS")]
     [InlineData("Agent:main")]
     [InlineData("agent:main:unknown")]
     [InlineData("skills")]
     [InlineData("agent:main:skills")]
+    [InlineData("agentevents")]
+    [InlineData("agent:main:agentevents")]
     [InlineData("unknown")]
     [InlineData("Dashboards")]
     [InlineData("")]
@@ -63,9 +70,7 @@ public sealed class HubPageRegistryTests
     [InlineData("AGENT:MAIN")]
     [InlineData("chat")]
     [InlineData("SESSIONS")]
-    [InlineData("channels")]
     [InlineData("instances")]
-    [InlineData("agentevents")]
     [InlineData("config")]
     [InlineData("usage")]
     [InlineData("cron")]
@@ -79,12 +84,14 @@ public sealed class HubPageRegistryTests
 
     [Theory]
     [InlineData("connection")]
+    [InlineData("channels")]
     [InlineData("permissions")]
     [InlineData("local-ai")]
     [InlineData("model")]
     [InlineData("debug")]
     [InlineData("skills")]
     [InlineData("bindings")]
+    [InlineData("agentevents")]
     [InlineData("BINDINGS")]
     [InlineData(null)]
     public void GatewayClassification_RejectsNonGatewayTags(string? tag)
@@ -112,19 +119,23 @@ public sealed class HubPageRegistryTests
         Assert.Equal(
             new string?[]
             {
-                "connection", "local-ai", "model", "chat", "sessions", "dashboards", "agentevents",
+                "connection", "local-ai", "model", "chat", "sessions", "dashboards",
                 "agent:alpha:cron", "agent:alpha", "channels", "instances", "config",
-                "usage", "permissions", "settings", "notifications", null
+                "usage", "permissions", "settings", "notifications", "notification-preferences",
+                "about", null
             },
             commands.Select(CommandValue).ToArray());
         Assert.Equal(
-            ["🔌", "AI", "AI", "💬", "🧠", "📊", "🧠", "🧠", "🧠", "📡", "📡", "📡", "📡", "🛡️", "⚙️", "🔔", "🌐"],
+            [
+                "🔌", "AI", "AI", "💬", "🧠", "📊", "🧠", "🧠",
+                "📡", "📡", "📡", "📡", "🛡️", "⚙️", "🔔", "🔔", "ℹ️", "🌐"
+            ],
             commands.Select(command => command.Icon).ToArray());
         Assert.Equal("Command_GoToConnection_Title", commands[0].Title);
         Assert.Equal("Command_GoToConnection_Subtitle", commands[0].Subtitle);
-        Assert.Equal("Cron alpha", commands[7].Title);
-        Assert.Equal(HubCommandActionKind.OpenDashboard, commands[16].Action.Kind);
-        Assert.Null(commands[16].Action.Value);
+        Assert.Equal("Cron alpha", commands[6].Title);
+        Assert.Equal(HubCommandActionKind.OpenDashboard, commands[17].Action.Kind);
+        Assert.Null(commands[17].Action.Value);
         Assert.Single(commands, command => command.Action == HubCommandAction.Navigate("chat"));
     }
 
@@ -136,7 +147,7 @@ public sealed class HubPageRegistryTests
             toggles: new HubCommandToggleState(true, false, true, false, true),
             sessions: ["session/z", "session/a"]));
 
-        Assert.Equal("debug", CommandValue(commands[17]));
+        Assert.Equal("debug", CommandValue(commands[18]));
         Assert.Equal(
             [
                 HubSettingToggle.NodeMode,
@@ -145,10 +156,10 @@ public sealed class HubPageRegistryTests
                 HubSettingToggle.ScreenCapture,
                 HubSettingToggle.BrowserControl
             ],
-            commands.Skip(18).Take(5).Select(command => command.Action.Toggle).ToArray());
+            commands.Skip(19).Take(5).Select(command => command.Action.Toggle).ToArray());
         Assert.Equal(
             new string?[] { "Command_Subtitle_CurrentlyOn", "Command_Subtitle_CurrentlyOff", "Command_Subtitle_CurrentlyOn", "Command_Subtitle_CurrentlyOff", "Command_Subtitle_CurrentlyOn" },
-            commands.Skip(18).Take(5).Select(command => command.Subtitle).ToArray());
+            commands.Skip(19).Take(5).Select(command => command.Subtitle).ToArray());
         var sessionCommands = commands.TakeLast(4).ToArray();
         Assert.Equal(
             ["Go to session: session/z", "Command_OpenSessionDashboard_TitleFormat", "Go to session: session/a", "Command_OpenSessionDashboard_TitleFormat"],
@@ -161,31 +172,6 @@ public sealed class HubPageRegistryTests
             sessionCommands.Select(command => command.Action.Kind).ToArray());
         Assert.Equal("Open in dashboard", sessionCommands[0].Subtitle);
         Assert.Equal("Command_OpenSessionDashboard_Subtitle", sessionCommands[1].Subtitle);
-    }
-
-    [Fact]
-    public void Search_EmptyReturnsFirstEightAndQueryMatchesTitleOrSubtitleInInsertionOrder()
-    {
-        var commands = Enumerable.Range(0, 14)
-            .Select(index => new HubCommand(
-                index.ToString(),
-                index is 2 or 11 ? $"Target {index}" : $"Title {index}",
-                index is 4 or 12 ? $"TARGET subtitle {index}" : $"Subtitle {index}",
-                HubCommandAction.Navigate(index.ToString())))
-            .ToImmutableArray();
-
-        Assert.Equal(Enumerable.Range(0, 8).Select(i => i.ToString()), HubPageRegistry.SearchCommands(commands, "   ").Select(c => c.Icon));
-        Assert.Equal(["2", "4", "11", "12"], HubPageRegistry.SearchCommands(commands, "target").Select(c => c.Icon));
-    }
-
-    [Fact]
-    public void Search_QueryIsLimitedToFirstTenMatches()
-    {
-        var commands = Enumerable.Range(0, 12)
-            .Select(index => new HubCommand("", $"Match {index}", null, HubCommandAction.Navigate(index.ToString())))
-            .ToImmutableArray();
-
-        Assert.Equal(10, HubPageRegistry.SearchCommands(commands, "MATCH").Length);
     }
 
     private static HubCommandContext Context(

@@ -62,6 +62,22 @@
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
 
+  <Target Name="UseSourceSetupAssetsForPriConsumerCopy"
+          AfterTargets="AddPriPayloadFilesToCopyToOutputDirectoryItems">
+    <ItemGroup>
+      <!-- Like the tray consumer, use stable sources rather than transient
+           SetupEngine.UI PRI expansion files, retaining the qualified URI paths. -->
+      <_AllChildProjectItemsWithTargetPath
+          Remove="@(_AllChildProjectItemsWithTargetPath)"
+          Condition="$([System.String]::Copy('%(_AllChildProjectItemsWithTargetPath.TargetPath)').StartsWith('OpenClaw.SetupEngine.UI\Assets\Setup\'))" />
+      <_SetupPriAssetSource Include="..\..\src\OpenClaw.Tray.WinUI\Assets\Setup\**\*" />
+      <_AllChildProjectItemsWithTargetPath Include="@(_SetupPriAssetSource)">
+        <TargetPath>OpenClaw.SetupEngine.UI\Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </_AllChildProjectItemsWithTargetPath>
+    </ItemGroup>
+  </Target>
+
   <!-- A WinExe ProjectReference copies its named PRI but not its compiled
        window payload. The unpackaged testhost also needs a default PRI name. -->
   <Target Name="CopyStoreMigrationWindowTestResources" AfterTargets="Build">
@@ -76,8 +92,6 @@
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\ChatPage.xbf')"
           DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\LocalAiPage.xbf')"
-          DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\ChannelsPage.xbf')"
           DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)OpenClaw.Tray.WinUI.pri')"
           DestinationFiles="$(TargetDir)resources.pri" SkipUnchangedFiles="true" />

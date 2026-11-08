@@ -72,6 +72,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
     private TaskCompletionSource? _sessionListCaptured;
+    private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -471,6 +472,21 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _sessionListCaptured = null;
             held.TrySetResult();
         }
+    }
+
+    public void OverrideSearchRead(string method, Func<JsonElement, object> response)
+    {
+        if (method is not ("skills.status" or "sessions.search" or "sessions.list"))
+            throw new ArgumentException("Only search reads may be overridden.", nameof(method));
+        lock (_sync) _readResponses[method] = response;
+    }
+
+    public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
+        throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
+
+    public void ClearSearchReadOverride(string method)
+    {
+        lock (_sync) _readResponses.Remove(method);
     }
 
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
@@ -905,6 +921,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
+                Func<JsonElement, object>? readResponse;
+                lock (_sync) _readResponses.TryGetValue(method, out readResponse);
+                if (method == "sessions.list" && !id.StartsWith("search:", StringComparison.Ordinal))
+                    readResponse = null;
                 JsonElement? agentsRoster;
                 bool agentsListUnsupported;
                 lock (_sync)
@@ -914,7 +934,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 }
                 if (agentsListUnsupported)
                     throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
-                payload = agentsRoster is { } roster ? roster
+                payload = readResponse is not null ? readResponse(parameters)
+                    : agentsRoster is { } roster ? roster
                     : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
