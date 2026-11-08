@@ -116,9 +116,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>活躍會話</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>頻道</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>閘道拓撲</value>
   </data>
@@ -166,12 +163,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>頻道設定、技能和排程自動化由閘道管理。連線的閘道公開相符儀表板頁面時，請使用這些連結。</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>頻道設定 / 結構描述</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>在可用時開啟頻道設定，用於結構描述導向的驗證、QR、登入和儀表板流程。</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / 排程</value>
@@ -456,9 +447,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>節點清單</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>頻道摘要</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>活動摘要</value>
@@ -1090,9 +1078,6 @@
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>開啟功能表列面板</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
-    <value>連接訊息頻道</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
     <value>試用語音喚醒</value>
   </data>
@@ -1267,9 +1252,6 @@
   <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
     <value>從系統匣存取</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
-    <value>設定 → 頻道</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
     <value>用語音喚醒</value>
   </data>
@@ -1422,50 +1404,11 @@
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>正在產生設定碼</value>
   </data>
-  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>代理程式事件</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>代理程式</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>所有代理程式</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>代理程式活動的即時串流……工具呼叫、回應、錯誤和生命週期事件。</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>所有代理程式</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>工具</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>助理</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>錯誤</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>生命週期</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>計畫</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>核准</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>思考中</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>修補程式</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>尚無代理程式事件</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>代理程式執行時，即時代理程式事件 (工具呼叫、回應、錯誤) 會顯示在這裡。</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>清除</value>
@@ -1479,6 +1422,13 @@
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>透過閘道提供給代理程式的裝置功能。切換這部電腦可以執行的動作。</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>應用程式存取權</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>允許敏感擷取作業而不必每次都提示。OpenClaw 仍會在每次存取前通知你，並在錄製前顯示倒數計時。</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>本機 MCP 伺服器</value>
   </data>
@@ -1500,14 +1450,8 @@
   <data name="NodeStatusText.Text" xml:space="preserve">
     <value>節點模式已停用</value>
   </data>
-  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>📡 頻道</value>
-  </data>
   <data name="ConnectionWarning.Title" xml:space="preserve">
     <value>未連線</value>
-  </data>
-  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
-    <value>未設定頻道</value>
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>連線到閘道以開始聊天</value>
@@ -2202,17 +2146,11 @@
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>對話</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>代理程式事件</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>代理程式</value>
   </data>
   <data name="DefaultAgentNavItem.Content" xml:space="preserve">
     <value>main</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
-    <value>頻道</value>
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
     <value>系統</value>
@@ -2224,7 +2162,7 @@
     <value>用量</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>排程工作</value>
+    <value>自動化</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>這部電腦</value>
@@ -2232,8 +2170,14 @@
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>功能</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>系統</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>關於</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>應用程式設定</value>
+    <value>一般</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>權限</value>
@@ -3756,18 +3700,6 @@
   <data name="FilterAllButton.Text" xml:space="preserve">
     <value>全部</value>
   </data>
-  <data name="ChannelsPage_Title.Text" xml:space="preserve">
-    <value>頻道</value>
-  </data>
-  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
-    <value>重新整理</value>
-  </data>
-  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
-    <value>已設定</value>
-  </data>
-  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
-    <value>可用</value>
-  </data>
   <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
     <value>首頁</value>
   </data>
@@ -3806,27 +3738,6 @@
   </data>
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>沙盒</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
-    <value>Your gateway didn't list any channels</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
-  </data>
-  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
-    <value>Read the channels guide</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to manage channels.</value>
-  </data>
-  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No channels available</value>
-  </data>
-  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
-    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
   </data>
   <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
     <value>Diagnostics</value>
@@ -4801,8 +4712,11 @@
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>還原</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>進階</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>設定</value>
+    <value>一般</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>一般</value>
@@ -5077,20 +4991,11 @@
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>已中斷連線</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>進階</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>記錄尾端會經過清理並截斷。敏感權杖、內容、錄製資料與原始設定檔會被排除。分享前請先檢查。</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>分享前請檢查</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>即時</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>清除</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>此閘道目前正在處理的對話，依頻道分組。</value>
@@ -5109,12 +5014,6 @@
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>代理直接在閘道上執行的命令不受此限制。如果閘道在此電腦上，它們仍可能存取您的 Windows 檔案、剪貼簿和網路……請檢查閘道的設定。</value>
-  </data>
-  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} / {1} 個事件</value>
   </data>
   <data name="CronPage_CreateJobLabel" xml:space="preserve">
     <value>建立任務</value>
@@ -5684,293 +5583,8 @@
   <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
     <value>等待閘道連線完成逾時。</value>
   </data>
-  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
-    <value>此頻道需要 macOS 主機，無法從 Windows 電腦進行設定。</value>
-  </data>
-  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
-    <value>替換憑證</value>
-  </data>
-  <data name="ChannelsPage_Configuration" xml:space="preserve">
-    <value>設定</value>
-  </data>
-  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>將此裝置與頻道取消連結。掌描新的 QR 碼以重新連線……您的帳戶仍會在手機上保持配對。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>暫時暫停頻道……憑證會被保留，以便您可以重新啟動。或完全中斷連線以清除憑證。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>啟動頻道……它將使用已儲存的憑證開始處理訊息。或完全中斷連線以清除憑證。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>暫停頻道……憑證會被保留，以便您可以重新啟動。</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>啟動頻道……它將使用已儲存的憑證開始處理訊息。</value>
-  </data>
-  <data name="ChannelsPage_Start" xml:space="preserve">
-    <value>啟動</value>
-  </data>
-  <data name="ChannelsPage_Stop" xml:space="preserve">
-    <value>停止</value>
-  </data>
-  <data name="ChannelsPage_Logout" xml:space="preserve">
-    <value>登出</value>
-  </data>
-  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
-    <value>中斷連線並清除憑證</value>
-  </data>
-  <data name="ChannelsPage_Controls" xml:space="preserve">
-    <value>控制</value>
-  </data>
-  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
-    <value>WhatsApp 已連結裝置說明 →</value>
-  </data>
-  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
-    <value>Signal 已連結裝置說明 →</value>
-  </data>
-  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
-    <value>如何建立 Telegram 機器人 →</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>如何建立 Discord 機器人 →</value>
-  </data>
-  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
-    <value>如何新增 Google Chat webhook →</value>
-  </data>
-  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
-    <value>Slack 應用程式控制台 →</value>
-  </data>
-  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
-    <value>關於 Nostr →</value>
-  </data>
-  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
-    <value>關於 macOS「訊息」→</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
-    <value>連結您的 WhatsApp 手機</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>點擊下方「連結」區段中的 "Show QR"。</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
-    <value>在手機上：WhatsApp → 設定 → 已連結裝置 → 連結裝置。</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
-    <value>掌描此處顯示的 QR 碼。</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
-    <value>連結您的 Signal 手機</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>點擊下方「連結」區段中的 "Show QR"。</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
-    <value>在手機上：Signal → 設定 → 已連結裝置 → 連結新裝置。</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
-    <value>掌描此處顯示的 QR 碼。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
-    <value>透過機器人連接 Telegram</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
-    <value>開啟 Telegram 並向 @BotFather 傳送訊息。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
-    <value>傳送 /newbot 並按照提示操作。最後複製機器人權杖。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
-    <value>將權杖貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。頻道將自動啟動。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>透過機器人連接 Discord</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>開啟 Discord 開發者入口網站，然後建立或選取應用程式。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>開啟 Bot，視需要新增機器人，然後重設並複製其權杖。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>將機器人權杖貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>點擊 "Save and start"，然後使用 OAuth2 安裝連結將機器人新增到伺服器。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
-    <value>透過 webhook 連接 Google Chat</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
-    <value>在 Google Chat 中，開啟聊天室 → 管理 webhook → 新增 webhook。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
-    <value>複製 webhook URL。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
-    <value>將 URL 貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
-    <value>透過應用程式連接 Slack</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
-    <value>在 api.slack.com/apps 上建立 Slack 應用程式並將其安裝到您的工作區。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
-    <value>複製機器人權杖 (xoxb-…) 和簽署密鑰。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
-    <value>將兩者貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
-    <value>透過中繼連接 Nostr</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
-    <value>產生或貼上私鑰 (nsec)。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
-    <value>選擇一個或多個中繼 URL（例如 wss://relay.damus.io）。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
-    <value>將兩者貼到下方的設定表單中。</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>點擊 "Save and start"。</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
-    <value>iMessage 僅適用於 macOS</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
-    <value>iMessage 讀取本機 Messages.app 資料庫，該資料庫僅存在於 macOS 上。</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
-    <value>若要將 iMessage 與 OpenClaw 搭配使用，請在 Mac 上執行閘道，而非此 Windows 主機。</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
-    <value>此列表中的所有其他頻道都可以在 Windows 託管的閘道上正常使用。</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
-    <value>連接此頻道</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>"{0}" 是一個外掛頻道。請參閱其文件以了解所需欄位。</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>使用下方「設定」區段中的 "Open Config page" 在 channels.{0} 下新增設定。</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
-    <value>儲存設定；OpenClaw 將自動啟動頻道。</value>
-  </data>
-  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
-    <value>機器人權杖</value>
-  </data>
-  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
-    <value>Discord 機器人權杖</value>
-  </data>
-  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
-    <value>貼上 Discord 機器人權杖</value>
-  </data>
-  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
-    <value>Webhook 網址</value>
-  </data>
-  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
-    <value>簽署密鑰</value>
-  </data>
-  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
-    <value>私鑰 (nsec)</value>
-  </data>
-  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
-    <value>中繼 URL</value>
-  </data>
-  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
-    <value>從 @BotFather (/newbot) 取得。</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
-    <value>從 Discord 開發者入口網站 → Bot → Reset Token 複製。</value>
-  </data>
-  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
-    <value>開啟聊天室 → 管理 webhook → 新增 webhook。</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
-    <value>來自您 Slack 應用程式的 OAuth 權杖。</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
-    <value>Basic Information → App Credentials。</value>
-  </data>
-  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
-    <value>每行一個。</value>
-  </data>
-  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
-    <value>儲存變更</value>
-  </data>
-  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
-    <value>儲存並啟動</value>
-  </data>
-  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
-    <value>開啟設定頁面</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
-    <value>在閘道設定頁面中編輯此頻道的設定。</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
-    <value>按照上述步驟操作後，儲存設定以啟動頻道。</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
-    <value>未連線</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
-    <value>請先連線到閘道，然後再儲存頻道設定。</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
-    <value>缺少欄位</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
-    <value>{0} 為必填項。</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
-    <value>正在儲存 {0}…</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
-    <value>正在寫入 {0} 個欄位並啟用頻道。</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
-    <value>無法載入閘道設定</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>閘道未傳回其目前設定……沒有它無法安全儲存。請嘗試重新整理並再次儲存。</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
-    <value>閘道設定在儲存過程中被清除。請嘗試重新整理並再次儲存。</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
-    <value>{0} 的儲存被封鎖</value>
-  </data>
-  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+  <data name="ConfigPage_BannerGatewayNoResponse" xml:space="preserve">
     <value>閘道未回應。</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
-    <value>{0} 的儲存失敗</value>
-  </data>
-  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>您的閘道設定已在其他位置變更（例如，從設定頁面）。我們已重新整理快取……請再次嘗試儲存。詳細資訊：{0}</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
-    <value>{0} 如果這看起來像是線路格式不符，請開啟設定頁面進行直接 JSON 編輯。</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
-    <value>{0} 設定已儲存</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
-    <value>正在等待閘道確認頻道已執行…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL 閘道</value>
@@ -6032,18 +5646,6 @@
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>重新啟動 WSL 閘道</value>
   </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>即時</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>離線</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
-  </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
   </data>
@@ -6099,10 +5701,22 @@
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>一般設定</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>前往通知偏好設定</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>設定通知偏好設定</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>前往關於</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>應用程式與 Gateway 資訊</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
+    <value>前往一般</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6782,7 +6396,7 @@
     <value>Permissions incomplete</value>
   </data>
   <data name="SettingsPage_About.Text" xml:space="preserve">
-    <value>About</value>
+    <value>關於</value>
   </data>
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
     <value>Gateway info</value>
@@ -6925,8 +6539,8 @@
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} 內容範圍 · {1} KV · 第一次要求時載入</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>前往本機 AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>檢視 llama-server、模型和閘道狀態</value></data>
-  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>模型</value></data>
-  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>預設模型</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>代理程式與工具</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>模型</value></data>
   <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>前往預設模型</value></data>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>選擇閘道使用的模型</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>模型</value></data>
@@ -6952,7 +6566,7 @@
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB / {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>已取消變更模型。</value></data>
   <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>模型變更仍在進行中。完成後即可再次變更模型。</value></data>
-  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>預設模型</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>模型</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>閘道會在新對話中使用此模型。每個聊天仍可選擇自己的模型。</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>連線到閘道以選擇其模型</value></data>
   <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>開啟連線</value></data>
@@ -7362,12 +6976,9 @@
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>已取消</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0}，共 {1}</value></data>
   <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>您的 AI 已就緒</value></data>
-  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>您想先做什麼？</value></data>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>與我的代理程式聊天</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>開啟 Chat，與代理程式聊天。</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>與我的代理程式聊天，建議</value></data>
-  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>連接頻道</value></data>
-  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您選擇何時登入。</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>與我的代理程式聊天</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新檢查就緒狀態</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在準備 AI 選項</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在準備閘道</value></data>
@@ -7409,15 +7020,13 @@
   <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>啟動原生閘道或確認其監聽連接埠逾時。請檢查閘道狀態，然後重試。</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>暫時無法驗證 AI。請檢查 Gateway 連線及模型是否就緒，然後重試或返回 AI 設定。</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 設定未能完成。所選目標尚未開啟。請重試或返回 AI 設定。</value></data>
-  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>應用程式無法開啟所選目標。請再次選擇以重試。未啟動任何頻道登入。</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>應用程式無法開啟所選目標。請再次選擇以重試。</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>無法開啟所選設定目標</value></data>
   <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此設定交接已中斷、不相容、已過期或已使用，無法重播。請在「連線」中檢查已儲存的閘道，然後明確重新開啟 AI 設定進行驗證。不會自動重複先前的設定操作。</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>已驗證的 Gateway 或代理程式已變更。請返回原 Gateway 並重新開啟 AI 設定。未開啟其他帳戶。</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>已驗證的 Gateway 或應用程式頁面尚未就緒。請檢查 Connection，然後手動重試。</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>關閉</value></data>
-  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>此 Gateway 未提供所選頻道。請查看可用頻道，或更新 Gateway 後重新整理。</value></data>
-  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>無法確認頻道是否可用。請重新整理以重試。未啟動任何頻道登入或設定。</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>深入瞭解風險與安全</value></data>
   <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>設定 OpenClaw</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Gateway 將您的 AI 助理連接到應用程式與工具。請選擇執行位置，您可以稍後變更。</value></data>
@@ -7778,10 +7387,8 @@
   <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
-  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -7896,6 +7503,7 @@
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>擁有者</value></data>
   <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>共用擁有者</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · 共用擁有者</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -8418,6 +8026,49 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>搜尋結果</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>沒有相符的結果。</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>頻道</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>此結果沒有對應的控制面板頁面。</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>顯示更多</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>重試</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>聊天</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>訊息內容</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>設定</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>自動化</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>技能</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>代理程式</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>模型</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>控制面板</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}：正在搜尋…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}：連線至閘道以進行搜尋。</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}：需要讀取權限。</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}：最多可使用 4096 個字元。</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}：此閘道不支援。</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}：結果可能不完整。請縮小搜尋範圍。</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}：搜尋失敗。其他結果仍然可用。</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>核准</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>祕密</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>模型提供者</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>喚醒與心跳</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>閘道 MCP 伺服器</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>記憶</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>閘道安全性</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>閘道記錄</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>系統</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>控制面板集合</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>外掛程式</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>應用程式</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>會議</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>閘道活動</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>入口網站</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作樹</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>移除項目</value>
   </data>

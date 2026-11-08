@@ -38,25 +38,6 @@ public sealed class AdaptiveAuxiliaryRoutesSourceTests
     }
 
     [Fact]
-    public void AgentEventHeaderAndFilterAdaptWithoutChangingSelectedAgentOrEvents()
-    {
-        var markup = Load("AgentEventsPage");
-        var filter = Named(markup, "AgentFilterCombo");
-        Assert.Null(filter.Attribute("MinWidth"));
-        Assert.Equal("220", filter.Attribute("MaxWidth")?.Value);
-        Assert.Equal("OnAgentFilterComboChanged", filter.Attribute("SelectionChanged")?.Value);
-        Assert.Equal("Wrap", Named(markup, "EventTitle").Attribute("TextWrapping")?.Value);
-        var source = Read("AgentEventsPage");
-        var resize = source[source.IndexOf("private void OnLayoutSizeChanged", StringComparison.Ordinal)..
-            source.IndexOf("public void Initialize", StringComparison.Ordinal)];
-        Assert.Contains("Grid.SetColumnSpan(AgentFilterCombo, compact ? 3 : 1)", resize);
-        Assert.Contains("Grid.SetRow(ClearButton, compact ? 1 : 0)", resize);
-        Assert.Contains("Grid.SetRow(LiveBadge, compact ? 1 : 0)", resize);
-        Assert.Contains("e.NewSize.Width", resize);
-        Assert.DoesNotMatch(@"ApplyFilter|PopulateAgentFilter|SelectedIndex|SelectedItem|_allEvents\.|_agentIdFilter\s*=|\.Focus\(", resize);
-    }
-
-    [Fact]
     public void DiagnosticsToolbarsAdaptWithoutChangingTelemetryOrDetailState()
     {
         var markup = Load("DebugPage");

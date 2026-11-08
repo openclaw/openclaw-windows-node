@@ -7,6 +7,8 @@ using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
+using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 #if !OPENCLAW_TRAY_TESTS
 using Microsoft.UI.Dispatching;
 #endif
@@ -18,8 +20,10 @@ namespace OpenClawTray.Services;
 /// must happen on the UI thread (enforced by <see cref="SetField{T}"/>).
 /// Pages and HubWindow observe changes via <see cref="INotifyPropertyChanged"/>.
 /// </summary>
-internal sealed class AppState : INotifyPropertyChanged
+internal sealed class AppState : INotifyPropertyChanged, IChatAgentRosterSource
 {
+    private long _agentRosterRevision;
+
 #if !OPENCLAW_TRAY_TESTS
     private readonly DispatcherQueue? _dispatcher;
     public AppState(DispatcherQueue? dispatcher = null) => _dispatcher = dispatcher;
@@ -28,6 +32,7 @@ internal sealed class AppState : INotifyPropertyChanged
 #endif
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler? AgentRosterChanged;
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
@@ -40,6 +45,11 @@ internal sealed class AppState : INotifyPropertyChanged
         if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        if (name is nameof(AgentsList) or nameof(AgentIdentities))
+        {
+            Interlocked.Increment(ref _agentRosterRevision);
+            AgentRosterChanged?.Invoke(this, EventArgs.Empty);
+        }
         return true;
     }
 
@@ -66,16 +76,6 @@ internal sealed class AppState : INotifyPropertyChanged
 
     private ChannelHealth[] _channels = Array.Empty<ChannelHealth>();
     public ChannelHealth[] Channels { get => _channels; set => SetField(ref _channels, value); }
-
-    /// <summary>
-    /// Rich channels.status snapshot from the gateway (channelOrder, channelLabels,
-    /// channelMeta, channelAccounts, per-channel typed status). Distinct from
-    /// <see cref="Channels"/> which is the slim per-event health array pushed on
-    /// the gateway's <c>ChannelHealthUpdated</c> events. <see cref="ChannelsSnapshot"/>
-    /// is fetched on demand via <c>OpenClawGatewayClient.GetChannelsStatusAsync</c>.
-    /// </summary>
-    private ChannelsStatusSnapshot? _channelsSnapshot;
-    public ChannelsStatusSnapshot? ChannelsSnapshot { get => _channelsSnapshot; set => SetField(ref _channelsSnapshot, value); }
 
     private SessionInfo[] _sessions = Array.Empty<SessionInfo>();
     private long? _sessionsConnectionEpoch;
@@ -173,6 +173,30 @@ internal sealed class AppState : INotifyPropertyChanged
     private JsonElement? _agentsList;
     public JsonElement? AgentsList { get => _agentsList; set => SetField(ref _agentsList, value); }
 
+    // Gateway-resolved identities (agent.identity.get) for roster entries, keyed by agent ID.
+    private IReadOnlyDictionary<string, ChatAgentIdentity> _agentIdentities = EmptyAgentIdentities;
+    public IReadOnlyDictionary<string, ChatAgentIdentity> AgentIdentities
+    {
+        get => _agentIdentities;
+        set => SetField(ref _agentIdentities, value);
+    }
+
+    public ChatAgentPresentation? FindAgent(string agentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        var agent = WorkspaceProjection.Agents(AgentsList, Sessions, AgentIdentities)
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, agentId, StringComparison.Ordinal));
+        return agent is null
+            ? null
+            : new ChatAgentPresentation(agent.Id, agent.Name, agent.AvatarUrl, agent.Emoji,
+                Interlocked.Read(ref _agentRosterRevision));
+    }
+
+    internal void ClearAgentIdentities() => AgentIdentities = EmptyAgentIdentities;
+
+    private static readonly IReadOnlyDictionary<string, ChatAgentIdentity> EmptyAgentIdentities =
+        new Dictionary<string, ChatAgentIdentity>(StringComparer.Ordinal);
+
     private bool _agentsListUnsupported;
     public bool AgentsListUnsupported { get => _agentsListUnsupported; set => SetField(ref _agentsListUnsupported, value); }
 
@@ -223,36 +247,6 @@ internal sealed class AppState : INotifyPropertyChanged
 
     private DateTime _lastCheckTime = DateTime.Now;
     public DateTime LastCheckTime { get => _lastCheckTime; set => SetField(ref _lastCheckTime, value); }
-
-    // ── Agent events (ring buffer, newest-first) ────────────────────────
-
-    private readonly List<AgentEventInfo> _agentEvents = new();
-    public IReadOnlyList<AgentEventInfo> AgentEvents => _agentEvents;
-
-    /// <summary>Fires on UI thread when a new event is added.</summary>
-    public event Action<AgentEventInfo>? AgentEventAdded;
-
-    public void AddAgentEvent(AgentEventInfo evt)
-    {
-#if !OPENCLAW_TRAY_TESTS
-        if (_dispatcher != null && !_dispatcher.HasThreadAccess)
-        {
-            throw new InvalidOperationException("AppState.AddAgentEvent must be called on UI thread");
-        }
-#endif
-        _agentEvents.Insert(0, evt);
-        if (_agentEvents.Count > MaxAgentEvents)
-            _agentEvents.RemoveRange(MaxAgentEvents, _agentEvents.Count - MaxAgentEvents);
-        AgentEventAdded?.Invoke(evt);
-    }
-
-    public void ClearAgentEvents()
-    {
-        _agentEvents.Clear();
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AgentEvents)));
-    }
-
-    private const int MaxAgentEvents = 400;
 
     // ── Session previews (thread-safe, not observable) ───────────────────
 
@@ -315,7 +309,6 @@ internal sealed class AppState : INotifyPropertyChanged
         // and cleared explicitly on Connected (not on disconnect/error).
         CurrentActivity = null;
         Channels = Array.Empty<ChannelHealth>();
-        ChannelsSnapshot = null;
         Sessions = Array.Empty<SessionInfo>();
         Nodes = Array.Empty<GatewayNodeInfo>();
         Usage = null;
@@ -327,6 +320,7 @@ internal sealed class AppState : INotifyPropertyChanged
         ModelsList = null;
         Presence = null;
         AgentsList = null;
+        AgentIdentities = EmptyAgentIdentities;
         AgentsListUnsupported = false;
         Config = null;
         ConfigSchema = null;
@@ -337,7 +331,6 @@ internal sealed class AppState : INotifyPropertyChanged
         CronList = null;
         CronStatus = null;
         CronRuns = null;
-        ClearAgentEvents();
         lock (_sessionPreviewsLock) _sessionPreviews.Clear();
     }
 }

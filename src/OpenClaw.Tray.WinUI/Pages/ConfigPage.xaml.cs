@@ -46,6 +46,8 @@ public sealed partial class ConfigPage : Page
     private IOperatorGatewayClient? _permissionClient;
 
     private string _selectedPath = "";
+    private string? _searchPath;
+    private (string Section, string Field)? _searchField;
     private string _searchText = "";
     private bool _showSchemaFallback;
     private bool _loading;
@@ -76,6 +78,9 @@ public sealed partial class ConfigPage : Page
         NavigationCacheMode = NavigationCacheMode.Required;
         Unloaded += (_, _) =>
         {
+            _searchPath = null;
+            _searchField = null;
+            CancelDetailRender();
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
             UnsubscribePermissionClient();
             _searchDebounceTimer.Stop();
@@ -371,14 +376,44 @@ public sealed partial class ConfigPage : Page
         if (!_serverSnapshot.HasRoot || !_lastSchema.HasValue)
             return;
 
-        if (TryGetElementAtPath(_serverSnapshot.Root, _selectedPath, out var element))
+        if (_searchPath is { } requested)
+        {
+            _searchPath = null;
+            var section = ConfigEditorModel.ResolveSearchSection(GetSchemaRoot(_lastSchema.Value), requested);
+            if (section is null)
+            {
+                _searchField = null;
+                ShowStatus(L("Search_TargetUnavailable"), "", InfoBarSeverity.Warning);
+                return;
+            }
+            _selectedPath = section;
+            _searchField = requested == section ? null :
+                (section, section.Length == 0 ? requested : requested[(section.Length + 1)..]);
+        }
+
+        if (TryGetElementAtPath(_serverSnapshot.Root, _selectedPath, out var element) &&
+            element.ValueKind == JsonValueKind.Object)
         {
             ShowDetail(_selectedPath, element);
             return;
         }
 
+        if (ConfigEditorModel.ResolveSearchSection(GetSchemaRoot(_lastSchema.Value), _selectedPath) == _selectedPath)
+        {
+            ShowDetail(_selectedPath, s_emptyObject);
+            return;
+        }
         _selectedPath = "";
         ShowDetail("", _serverSnapshot.Root);
+    }
+
+    internal void RevealSearchPath(string path)
+    {
+        CancelDetailRender();
+        _searchField = null;
+        _searchPath = path;
+        RestoreSelectedDetail();
+        if (_searchField is null) DetailPanel.StartBringIntoView();
     }
 
     private void ShowDetail(string path, JsonElement element)
@@ -386,13 +421,14 @@ public sealed partial class ConfigPage : Page
         if (!_lastSchema.HasValue)
             return;
 
+        if (_searchField is { } target && target.Section != path) _searchField = null;
         DetailPanel.Children.Clear();
         DetailPlaceholder.Visibility = Visibility.Collapsed;
         _selectedPath = path;
         DetailBreadcrumb.Text = BuildBreadcrumb(path);
         DetailPath.Text = string.IsNullOrEmpty(path) ? "Full config" : FriendlyLabel(path.Split('.').Last());
 
-        var nodeSchema = ResolveSchemaAtPath(GetSchemaRoot(_lastSchema.Value), path);
+        var nodeSchema = ConfigEditorModel.ResolveSchemaAtPath(GetSchemaRoot(_lastSchema.Value), path);
         var displayElement = ConfigEditorModel.ApplyRelativeChanges(element, path, _pendingChanges);
         var sectionDirty = CountPathsUnder(path, _pendingChanges.Keys) > 0;
         ResetSectionButton.Visibility = sectionDirty ? Visibility.Visible : Visibility.Collapsed;
@@ -407,8 +443,10 @@ public sealed partial class ConfigPage : Page
             {
                 var editor = new SchemaConfigEditor();
                 editor.LoadSchema(leafSchema, displayElement);
+                editor.IsEnabled = !IsConfigEditingLocked(GetConfigPermissionState());
                 editor.ConfigChanged += (_, args) => ApplyEditorChanges(path, args);
                 DetailPanel.Children.Add(editor);
+                RevealSearchField(editor);
             }
             else
             {
@@ -441,6 +479,7 @@ public sealed partial class ConfigPage : Page
             editor.IsEnabled = !IsConfigEditingLocked(GetConfigPermissionState());
             editor.ConfigChanged += (_, args) => ApplyEditorChanges(path, args);
             DetailPanel.Children.Add(editor);
+            RevealSearchField(editor);
             return;
         }
 
@@ -450,6 +489,23 @@ public sealed partial class ConfigPage : Page
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
             TextWrapping = TextWrapping.Wrap
         });
+    }
+
+    private void RevealSearchField(SchemaConfigEditor editor)
+    {
+        if (_searchField is not { } target) return;
+        editor.Loaded += (_, _) =>
+        {
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!IsLoaded || !DetailPanel.Children.Contains(editor) || _searchField != target ||
+                    _selectedPath != target.Section) return;
+                _searchField = null;
+                editor.UpdateLayout();
+                if (!editor.RevealField(target.Field))
+                    ShowStatus(L("Search_TargetUnavailable"), "", InfoBarSeverity.Warning);
+            });
+        };
     }
 
     private void ApplyEditorChanges(string sectionPath, SchemaConfigChangedEventArgs args)
@@ -578,7 +634,7 @@ public sealed partial class ConfigPage : Page
                     ShowStatus(
                         L("ConfigPage_StatusSaveFailedTitle"),
                         result.Error ?? L(result.TimedOut
-                            ? "ChannelsPage_BannerGatewayNoResponse"
+                            ? "ConfigPage_BannerGatewayNoResponse"
                             : "ConfigPage_StatusSaveRejectedMessage"),
                         InfoBarSeverity.Error);
                 }
@@ -1383,25 +1439,6 @@ public sealed partial class ConfigPage : Page
         return null;
     }
 
-    private static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
-    {
-        if (string.IsNullOrEmpty(path)) return schema;
-        var current = schema;
-        foreach (var segment in path.Split('.'))
-        {
-            if (current.TryGetProperty("properties", out var props) &&
-                props.TryGetProperty(segment, out var child))
-            {
-                current = child;
-            }
-            else
-            {
-                return null;
-            }
-        }
-        return current;
-    }
-
     private static bool TryGetElementAtPath(JsonElement root, string path, out JsonElement element)
     {
         element = root;
@@ -1428,6 +1465,8 @@ public sealed partial class ConfigPage : Page
     {
         if (args.InvokedItem is TreeViewNode node && _nodeMap.TryGetValue(node, out var entry))
         {
+            _searchPath = null;
+            _searchField = null;
             await ShowDetailWithProgress(entry.Path, entry.Element);
         }
     }
@@ -1457,6 +1496,12 @@ public sealed partial class ConfigPage : Page
             if (renderVersion == _detailRenderVersion)
                 DetailLoadingOverlay.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void CancelDetailRender()
+    {
+        _detailRenderVersion++;
+        DetailLoadingOverlay.Visibility = Visibility.Collapsed;
     }
 
     private bool MatchesSearch(string path, JsonElement schemaNode)

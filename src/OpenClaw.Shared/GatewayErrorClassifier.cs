@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 
 namespace OpenClaw.Shared;
 
@@ -74,6 +75,7 @@ public enum GatewayErrorKind
 /// Pure heuristic classifier for gateway error strings. Order is significant:
 /// the more specific kinds (scope, token drift) are matched before the generic
 /// auth bucket so a "re-pair" path wins over a plain "retry" path.
+/// Numeric HTTP hints must be standalone codes, not digits in an endpoint port.
 /// </summary>
 public static class GatewayErrorClassifier
 {
@@ -88,7 +90,7 @@ public static class GatewayErrorClassifier
             return GatewayErrorKind.ProtocolMismatch;
 
         if ((Contains(e, "rate") && Contains(e, "limit")) ||
-            Contains(e, "429") || Contains(e, "too many request"))
+            ContainsStatusCode(e, "429") || Contains(e, "too many request"))
             return GatewayErrorKind.RateLimited;
 
         // SSH/tunnel first: SSH failures often read "Permission denied
@@ -140,12 +142,12 @@ public static class GatewayErrorClassifier
         // Server (5xx) before the broad auth bucket: a transient
         // "500 internal error: token validation failed" must not route the
         // user to a re-pair flow.
-        if (Contains(e, "500") || Contains(e, "502") || Contains(e, "503") ||
+        if (ContainsStatusCode(e, "500") || ContainsStatusCode(e, "502") || ContainsStatusCode(e, "503") ||
             Contains(e, "internal error") || Contains(e, "server error"))
             return GatewayErrorKind.Server;
 
         // Generic auth — after the more specific auth-adjacent kinds above.
-        if (Contains(e, "401") || Contains(e, "unauthor") || Contains(e, "forbid") ||
+        if (ContainsStatusCode(e, "401") || Contains(e, "unauthor") || Contains(e, "forbid") ||
             Contains(e, "auth") || Contains(e, "token") || Contains(e, "credential"))
             return GatewayErrorKind.Auth;
 
@@ -161,6 +163,10 @@ public static class GatewayErrorClassifier
 
     private static bool Contains(string haystack, string needle) =>
         haystack.Contains(needle, StringComparison.Ordinal);
+
+    private static bool ContainsStatusCode(string error, string code) =>
+        Regex.IsMatch(error, $@"(?:\b(?:http|status(?:\s+code)?)\s*[:=]\s*|(?<![\w:])){code}(?!\w)",
+            RegexOptions.CultureInvariant);
 
     public static bool IsSharedGatewayTokenMismatch(string? message) =>
         !string.IsNullOrWhiteSpace(message) &&

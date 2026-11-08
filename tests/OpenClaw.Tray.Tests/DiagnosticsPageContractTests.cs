@@ -421,26 +421,56 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void SettingsPage_HostsAboutAndGatewayInfoAfterAboutPageRemoval()
+    public void General_KeepsNotificationPreferences_WhileAboutOwnsUpdatesAndAppInfo()
     {
         var settingsXaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml");
         var settingsCs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs");
+        var aboutXaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml");
+        var aboutCs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs");
         var registry = Read("src", "OpenClaw.Tray.WinUI", "Presentation", "HubPageRegistry.cs");
+        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
-        Assert.Contains("SettingsPage_AppInfoExpander", settingsXaml);
-        Assert.Contains("SettingsPage_GatewayInfoExpander", settingsXaml);
-        Assert.Contains("OnCheckUpdates", settingsXaml);
-        Assert.Contains("OnDocumentationLink", settingsXaml);
-        Assert.Contains("OnGitHubLink", settingsXaml);
-        Assert.Contains("OnDashboardLink", settingsXaml);
-        Assert.Contains("RefreshGatewayInfo", settingsCs);
-        Assert.Contains("SettingsAppInfoProjection.ResolveDisplayVersion(", settingsCs);
-        Assert.Contains("PackageHelper.PackageVersion", settingsCs);
-        Assert.Contains("\"settings\" or \"info\" or \"about\" => HubPageKind.Settings", registry);
+        Assert.DoesNotContain("SettingsPage_AppInfoExpander", settingsXaml);
+        Assert.DoesNotContain("SettingsPage_GatewayInfoExpander", settingsXaml);
+        Assert.Contains("SettingsPage_Notifications", settingsXaml);
+        Assert.DoesNotContain("RefreshGatewayInfo", settingsCs);
+        Assert.DoesNotContain("StoreMigrationCard", settingsXaml);
+        Assert.Contains("SettingsPage_AppInfoExpander", aboutXaml);
+        Assert.Contains("SettingsPage_GatewayInfoExpander", aboutXaml);
+        Assert.Contains("OnCheckUpdates", aboutXaml);
+        Assert.Contains("OnDocumentationLink", aboutXaml);
+        Assert.Contains("OnGitHubLink", aboutXaml);
+        Assert.Contains("OnDashboardLink", aboutXaml);
+        Assert.Contains("RefreshGatewayInfo", aboutCs);
+        Assert.Contains("SettingsAppInfoProjection.ResolveDisplayVersion(", aboutCs);
+        Assert.Contains("PackageHelper.PackageVersion", aboutCs);
+        Assert.Contains("Click=\"OnTestNotification\"", settingsXaml);
+        Assert.Contains("new ToastContentBuilder()", settingsCs);
+        var general = System.Xml.Linq.XDocument.Parse(settingsXaml);
+        foreach (var (id, property, binding) in new[]
+        {
+            ("SettingsPageNotifications", "IsOn", "ShowNotifications"),
+            ("SettingsPageSound", "SelectedValue", "NotificationSound"),
+            ("SettingsPageNotifyHealth", "IsChecked", "NotifyHealth"),
+            ("SettingsPageNotifyUrgent", "IsChecked", "NotifyUrgent"),
+            ("SettingsPageNotifyReminder", "IsChecked", "NotifyReminder"),
+            ("SettingsPageNotifyEmail", "IsChecked", "NotifyEmail"),
+            ("SettingsPageNotifyCalendar", "IsChecked", "NotifyCalendar"),
+            ("SettingsPageNotifyBuild", "IsChecked", "NotifyBuild"),
+            ("SettingsPageNotifyStock", "IsChecked", "NotifyStock"),
+            ("SettingsPageNotifyInfo", "IsChecked", "NotifyInfo"),
+        })
+        {
+            var control = Assert.Single(general.Descendants(),
+                element => (string?)element.Attribute("AutomationProperties.AutomationId") == id);
+            Assert.Equal($"{{Binding {binding}, Mode=TwoWay}}", (string?)control.Attribute(property));
+        }
+        Assert.Contains("\"info\" or \"about\" => HubPageKind.About", registry);
         Assert.Contains("HubPageKind.Settings => typeof(SettingsPage)", registry);
-        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
-        Assert.False(File.Exists(Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml")));
-        Assert.False(File.Exists(Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs")));
+        Assert.Contains("HubPageKind.About => typeof(AboutPage)", registry);
+        Assert.DoesNotContain("NotificationPreferencesPage", registry);
+        Assert.DoesNotContain("NotificationPreferencesPage", app);
+        Assert.Contains("[typeof(Pages.SettingsPage)] = typeof(SettingsPageViewModel)", app);
     }
 
     [Fact]
@@ -467,20 +497,14 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void SettingsShellView_TitleSearchBox_ProjectsCommandTitles()
+    public void SettingsShellView_SearchUsesSharedPopupWithReadableResultTitles()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml");
-        var searchStart = xaml.IndexOf("<AutoSuggestBox x:Uid=\"TitleSearchBox\"", StringComparison.Ordinal);
-        Assert.True(searchStart >= 0, "The title search box must exist.");
-
-        var searchEnd = xaml.IndexOf('>', searchStart);
-        Assert.True(searchEnd > searchStart, "The title search box opening tag must be complete.");
-
-        var searchTag = xaml.Substring(searchStart, searchEnd - searchStart);
-        Assert.Contains("TextMemberPath=\"Title\"", searchTag);
-
-        var commandItem = Read("src", "OpenClaw.Tray.WinUI", "Windows", "CommandPaletteDialog.xaml.cs");
-        Assert.Contains("public override string ToString() => Title;", commandItem);
+        Assert.Contains("<controls:SearchHost", xaml);
+        Assert.DoesNotContain("<AutoSuggestBox", xaml);
+        var host = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SearchHost.xaml");
+        Assert.Contains("Text=\"{Binding Title}\"", host);
+        Assert.Contains("Text=\"{Binding Detail}\"", host);
     }
 
     [Fact]
@@ -543,7 +567,7 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void WorkspaceAndSettings_ShareOnePaneFooter_AndDiagnosticsLivesInThisComputer()
+    public void WorkspaceAndSettings_ShareOnePaneFooter_AndDiagnosticsLivesInSystem()
     {
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var settings = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml"));
@@ -559,7 +583,6 @@ public sealed class DiagnosticsPageContractTests
                 Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == name);
         }
 
-        // Diagnostics and the companion App settings page end the "This Computer" group.
         var menu = settings.Descendants().Single(element => element.Name.LocalName == "NavigationView.MenuItems");
         var thisComputer = menu.Elements()
             .SkipWhile(element => (string?)element.Attribute("Content") != "This Computer")
@@ -567,15 +590,97 @@ public sealed class DiagnosticsPageContractTests
             .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
             .ToList();
         var tags = thisComputer.Select(element => (string?)element.Attribute("Tag")).ToArray();
-        Assert.Equal(new[] { "voice", "permissions", "sandbox", "debug", "settings" },
-            tags.Where(tag => tag is "voice" or "permissions" or "sandbox" or "debug" or "settings"));
-        Assert.Equal(new[] { "debug", "settings" }, tags.TakeLast(2));
-        Assert.Equal("SettingsNavDiagnostics", (string?)thisComputer[^2].Attribute("AutomationProperties.AutomationId"));
-        Assert.Equal("SettingsNavSettings", (string?)thisComputer[^1].Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal(new[] { "voice", "permissions", "sandbox" }, tags);
+
+        var system = menu.Elements()
+            .SkipWhile(element => (string?)element.Attribute("Content") != "System")
+            .Skip(1)
+            .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
+            .ToList();
+        var systemTags = system.Select(element => (string?)element.Attribute("Tag")).ToArray();
+        Assert.Equal(new[] { "settings", "debug", "about" }, systemTags);
+        Assert.Equal("SettingsNavDiagnostics", (string?)system[1].Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal("SettingsNavGeneral", (string?)system[0].Attribute("AutomationProperties.AutomationId"));
+
+        var connection = menu.Elements().Single(element => (string?)element.Attribute("Tag") == "connection");
+        Assert.Equal("SettingsNavConnection", (string?)connection.Attribute("AutomationProperties.AutomationId"));
+        Assert.Null(connection.Attribute("Visibility"));
+        Assert.Null(connection.Attribute("IsEnabled"));
+        Assert.DoesNotContain(settings.Descendants(), element =>
+            (string?)element.Attribute("Tag") == "notification-preferences");
+
+        // Moving Connection retains its artwork; About reuses the former Info page icon.
+        var iconSources = settings.Descendants()
+            .Where(element => element.Name.LocalName == "SvgImageSource")
+            .ToDictionary(element => (string)element.Attribute(x + "Key")!, element => (string?)element.Attribute("UriSource"));
+        foreach (var (tag, key, file) in new[]
+        {
+            ("connection", "Connection_Icon", "Connection.svg"),
+            ("about", "Info_Icon", "Info.svg"),
+        })
+        {
+            var item = menu.Elements().Single(element => (string?)element.Attribute("Tag") == tag);
+            var icon = Assert.Single(item.Descendants(), element => element.Name.LocalName == "ImageIcon");
+            Assert.Equal($"{{StaticResource {key}}}", (string?)icon.Attribute("Source"));
+            Assert.Equal($"ms-appx:///Assets/SidebarIcons/{file}", iconSources[key]);
+            Assert.True(File.Exists(Path.Combine(
+                TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Assets", "SidebarIcons", file)));
+        }
+
         var hub = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
         Assert.Contains("NavDiagnostics.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;", hub);
         Assert.DoesNotContain("StatusPill", hub);
         Assert.DoesNotContain("ConnectionStatusPresenter", hub);
+    }
+
+    [Fact]
+    public void SettingsNavigation_ExposesGatewayWorkAsDirectEntries_WithItsExistingVisibilityGate()
+    {
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var settings = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml"));
+        var menu = settings.Descendants().Single(element => element.Name.LocalName == "NavigationView.MenuItems");
+        var gateway = menu.Elements()
+            .SkipWhile(element => (string?)element.Attribute("Content") != "Gateway")
+            .Skip(1)
+            .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
+            .ToArray();
+
+        Assert.Equal(new[] { "connection", "systems", "cron", "usage", "config" },
+            gateway.Select(element => (string?)element.Attribute("Tag")).OfType<string>());
+        var tools = menu.Elements()
+            .SkipWhile(element => (string?)element.Attribute("Content") != "Agents and Tools")
+            .Skip(1)
+            .TakeWhile(element => element.Name.LocalName is not ("NavigationViewItemHeader" or "NavigationViewItemSeparator"))
+            .ToArray();
+        Assert.Equal(new[] { "AgentsNavItem", "sessions", "model", "local-ai" },
+            tools.Select(element => (string?)element.Attribute("Tag") ?? (string?)element.Attribute(x + "Name")));
+        var agents = Assert.Single(tools, element => (string?)element.Attribute(x + "Name") == "AgentsNavItem");
+        Assert.Contains(agents.Descendants(), element => (string?)element.Attribute("Tag") == "agent:main");
+        Assert.DoesNotContain(settings.Descendants(), element => (string?)element.Attribute(x + "Name") == "NavAdvanced");
+        Assert.DoesNotContain(settings.Descendants(), element => (string?)element.Attribute(x + "Uid") == "HubWindow_Advanced");
+
+        // Relocated entries must retain the disconnect gate formerly inherited from the Advanced group,
+        // including staying visible while Config is the current page.
+        var hub = Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
+        Assert.Contains("var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;", hub);
+        Assert.Contains("AgentsNavItem.Visibility = gatewayToolVisibility;", hub);
+        Assert.Contains("NavSessions.Visibility = vis;", hub);
+        Assert.Contains("NavUsage.Visibility = gatewayToolVisibility;", hub);
+        Assert.Contains("NavConfig.Visibility = gatewayToolVisibility;", hub);
+        Assert.DoesNotContain("NavGatewayHeader.Visibility =", hub);
+        Assert.Null(settings.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NavGatewayHeader")
+            .Attribute("Visibility"));
+    }
+
+    [Fact]
+    public void SettingsNavigation_SeparatesSectionsWithHeadersOnly()
+    {
+        var settings = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml"));
+        var menu = settings.Descendants().Single(element => element.Name.LocalName == "NavigationView.MenuItems");
+        Assert.DoesNotContain(settings.Descendants(), element => element.Name.LocalName == "NavigationViewItemSeparator");
+        Assert.Equal(new[] { "Gateway", "Agents and Tools", "This Computer", "System" },
+            menu.Elements().Where(element => element.Name.LocalName == "NavigationViewItemHeader")
+                .Select(element => (string?)element.Attribute("Content")));
     }
 
     [Fact]

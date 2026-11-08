@@ -42,6 +42,38 @@ internal static class LocalizationHelper
 }
 #endif
 
+/// <summary>Loads the Gateway-resolved identity (agent.identity.get) for one agent.</summary>
+public interface IChatAgentIdentitySource
+{
+    Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId);
+}
+
+/// <summary>Provides the current Workspace presentation for a Gateway roster agent.</summary>
+public interface IChatAgentRosterSource
+{
+    event EventHandler? AgentRosterChanged;
+
+    ChatAgentPresentation? FindAgent(string agentId);
+}
+
+/// <summary>The display identity already composed from the current Gateway roster and resolved identity.</summary>
+public sealed record ChatAgentPresentation(
+    string AgentId,
+    string Name,
+    string? AvatarUrl = null,
+    string? Emoji = null,
+    long Revision = 0)
+{
+    internal ChatAgentIdentity ToChatAgentIdentity() => new(AgentId, Name, AvatarUrl, Emoji);
+}
+
+/// <summary>Gateway identity for one agent. Absent values let the roster or generated face decide.</summary>
+public sealed record ChatAgentIdentity(
+    string AgentId,
+    string? DisplayName = null,
+    string? AvatarUrl = null,
+    string? Emoji = null);
+
 /// <summary>
 /// Adapts <see cref="IChatGatewayBridge"/> (which wraps a live
 /// <see cref="OpenClawGatewayClient"/>) into the
@@ -74,7 +106,7 @@ internal static class LocalizationHelper
 /// subsequent <see cref="SendMessageAsync"/> calls.
 /// </para>
 /// </remarks>
-public sealed class OpenClawChatDataProvider : IChatDataProvider
+public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIdentitySource
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
@@ -102,6 +134,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     public string DisplayName => "OpenClaw gateway";
     public IChatPlacementGateway? PlacementGateway => _bridge.PlacementGateway;
+
+    public async Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        var response = await _bridge.RequestAgentIdentityAsync(agentId).ConfigureAwait(false);
+        return ChatWelcomePresentation.ParseAgentIdentity(agentId, response);
+    }
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
