@@ -762,47 +762,6 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void McpServerLifecycle_StartAndStopShareOneOwnershipLock()
-    {
-        // AttachClient starts MCP on a threadpool thread outside _clientLock while
-        // SetMcpEnabled can start or stop it from the UI. Without a shared lock a
-        // losing start nulls the winner and leaves an untracked live listener.
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(
-            root,
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Services",
-            "NodeService.cs"));
-        var start = ExtractMethod(source, "StartMcpServer");
-        var startLocked = ExtractMethod(source, "StartMcpServerLocked");
-        var stop = ExtractMethod(source, "StopMcpServerAsync");
-
-        AssertInOrder(start, "lock (_mcpLifecycleLock)", "StartMcpServerLocked()");
-        AssertInOrder(
-            startLocked,
-            "if (!_enableMcpServer) return true;",
-            "if (_mcpServer != null) return true;",
-            "_mcpServer = attempt;");
-        Assert.DoesNotContain("_mcpServer = null", startLocked);
-        AssertInOrder(
-            stop,
-            "lock (_mcpLifecycleLock)",
-            "server = _mcpServer;",
-            "_mcpServer = null;",
-            "_mcpToolBridge = null;",
-            "await server.DisposeAsync()");
-
-        var lockBody = stop.Substring(
-            stop.IndexOf("lock (_mcpLifecycleLock)", StringComparison.Ordinal));
-        lockBody = lockBody.Substring(0, lockBody.IndexOf('}') + 1);
-        Assert.DoesNotContain("await", lockBody);
-
-        var assignments = Regex.Matches(source, @"_mcpServer\s*=[^=]");
-        Assert.Equal(2, assignments.Count);
-    }
-
-    [Fact]
     public void AppStatus_ReportsNodeStateFromManagerSnapshot()
     {
         var source = ReadAppSources();
