@@ -772,6 +772,7 @@ jobs:
         -HangTimeoutSeconds 300
 
     - name: Run steady-resource Automations UI tests
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 15
       env:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production

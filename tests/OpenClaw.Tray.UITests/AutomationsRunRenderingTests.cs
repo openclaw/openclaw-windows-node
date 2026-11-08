@@ -1,5 +1,5 @@
 // Mounts the production automation result row to protect formatting and inert content.
-// Run AutomationsRunRenderingTests in the serialized native UI test lane.
+// Run Category=ProductionResources with OPENCLAW_UI_TEST_RESOURCE_PROFILE=Production.
 using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.UI.Reactor.Hosting;
@@ -13,6 +13,7 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>Successful full results use safe Markdown; errors remain selectable literal text.</summary>
 [Collection(UICollection.Name)]
+[Trait("Category", "ProductionResources")]
 public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
 {
     private const string Response = "## Summary\n\n- **Ready**\n- [details](https://example.invalid)\n\n"
@@ -26,6 +27,8 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
     [InlineData(true, true)]
     public async Task ExpandedResultKeepsFormattingAndInertLinksOrSelectableErrors(bool inline, bool error)
     {
+        Assert.True(ui.UsesProductionResources,
+            $"Run Category=ProductionResources with {TestAppResourceLoader.ProfileVariable}=Production.");
         var repo = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
             ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT for mounted Automations tests.");
         var catalog = XDocument.Load(Path.Combine(repo,

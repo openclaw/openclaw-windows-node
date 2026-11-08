@@ -1,5 +1,5 @@
 // Exercises the editor's live owner snapshot without a parent rerender or Gateway write.
-// Run with dotnet test --filter FullyQualifiedName~AutomationsEditorSaveTests.
+// Set OPENCLAW_UI_TEST_RESOURCE_PROFILE=Production, then run dotnet test --filter FullyQualifiedName~AutomationsEditorSaveTests.
 using System.Xml.Linq;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml.Automation;
@@ -15,6 +15,7 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>Queued Save actions validate the current root-owned draft, not stale render props.</summary>
 [Collection(UICollection.Name)]
+[Trait("Category", "ProductionResources")]
 public sealed class AutomationsEditorSaveTests(UIThreadFixture ui)
 {
     [Theory]
@@ -23,6 +24,8 @@ public sealed class AutomationsEditorSaveTests(UIThreadFixture ui)
     [InlineData(false, true)]
     public async Task SaveReadsCurrentOwnerStateBeforeValidation(bool retired, bool alreadySaving)
     {
+        Assert.True(ui.UsesProductionResources,
+            $"Run Category=ProductionResources with {TestAppResourceLoader.ProfileVariable}=Production.");
         var repo = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
             ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT for mounted Automations tests.");
         var catalog = XDocument.Load(Path.Combine(repo,
@@ -53,23 +56,52 @@ public sealed class AutomationsEditorSaveTests(UIThreadFixture ui)
                 ui.Container.Children.Add(renderer);
             });
             await ui.YieldToRenderAsync();
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 updates = 0;
-                // Model an input callback already accepted by the owner while its render is queued.
-                // The rendered props remain blank; the still-missing prompt keeps this off the wire.
-                latest = retired ? null : latest! with
-                {
-                    Form = latest!.Form with { Name = "Latest owner name" },
-                    Saving = alreadySaving,
-                };
                 var root = Assert.IsAssignableFrom<Microsoft.UI.Xaml.DependencyObject>(renderer!.Content);
                 var save = Assert.Single(FindLogical<Button>(root), button =>
                     AutomationProperties.GetAutomationId(button) == "AutomationEditorSave");
-                Assert.IsAssignableFrom<IInvokeProvider>(new ButtonAutomationPeer(save)
+                void InvokeSave() => Assert.IsAssignableFrom<IInvokeProvider>(new ButtonAutomationPeer(save)
                     .GetPattern(PatternInterface.Invoke)).Invoke();
+                if (retired || alreadySaving)
+                {
+                    latest = retired ? null : latest! with { Saving = true };
+                    InvokeSave();
+                    return;
+                }
+
+                // Run after Reactor's TextChanged handler, before any parent reconciliation.
+                // The rendered props stay blank; the missing prompt keeps this off the wire.
+                var input = Assert.Single(FindLogical<TextBox>(root), box =>
+                    AutomationProperties.GetAutomationId(box) == "AutomationEditorName");
+                var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                TextChangedEventHandler? changed = null;
+                changed = (_, _) =>
+                {
+                    if (input.Text != "Latest owner name") return;
+                    input.TextChanged -= changed;
+                    try
+                    {
+                        Assert.Equal("Latest owner name", latest!.Form.Name);
+                        InvokeSave();
+                        invoked.TrySetResult();
+                    }
+                    catch (Exception error) { invoked.TrySetException(error); }
+                };
+                input.TextChanged += changed;
+                try
+                {
+                    input.Text = "Latest owner name";
+                    await WaitForRenderedConditionAsync(() => invoked.Task.IsCompleted, "accepted editor TextChanged callback");
+                    await invoked.Task;
+                }
+                finally { input.TextChanged -= changed; }
             });
             await ui.YieldToRenderAsync();
+            if (!retired && !alreadySaving)
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => latest?.Submitted == true,
+                    "Save validated the accepted input"));
             await ui.RunOnUIAsync(() =>
             {
                 if (retired || alreadySaving)

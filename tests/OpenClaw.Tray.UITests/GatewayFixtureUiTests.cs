@@ -51,7 +51,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("Customize pages", customize.Current.Name);
             const string draft = "Keep this other conversation draft";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
-            await WaitUiAsync(run, () => ComposerText(run) == draft &&
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { } composer &&
+                ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == draft &&
                 FindById(run, "ChatComposerPrimaryAction") is { Current.Name: "Send", Current.IsEnabled: true },
                 "non-main draft acknowledged before native pointer input");
             Assert.Null(FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}"));

@@ -471,6 +471,11 @@ foreach ($token in @(
         -Message "Mixed UI tests must stay separate from the production-resource lane: '$token'."
 }
 $productionUiStep = Get-StepBlock -Text $uiJob -Name "Run steady-resource Automations UI tests"
+Assert-Contains -Text $productionUiStep `
+    -Expected "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}" `
+    -Message "Independent Automations proof must run after unrelated UI failures when all launch prerequisites succeeded."
+Assert-NotContains -Text $productionUiStep -Unexpected 'continue-on-error:' `
+    -Message "Automations proof failures must continue to fail the UI job."
 foreach ($token in @(
         "OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production",
         "OPENCLAW_UI_TEST_APP_THEME: Light",

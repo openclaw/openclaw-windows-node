@@ -192,8 +192,19 @@ public sealed partial class GatewayFixtureUiTests
             if (!emptyAgent) Assert.Null(FindById(run, "AutomationRow:scheduled-059"));
             Invoke(FindById(run, emptyAgent ? "AutomationsEmptyNew" : "AutomationsNew")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "create editor");
+            // Exercise invalid-to-valid creation. Cleared owner-derived errors acknowledge
+            // TextChanged; ValuePattern alone only observes the native control's text.
+            Invoke(FindById(run, "AutomationEditorSave")!);
+            await WaitUiAsync(run, () => FindText(run, "Enter a name.") is not null
+                && FindText(run, "Describe the task this agent should run.") is not null,
+                "empty editor validation before input");
             SetEditorValue(run, "AutomationEditorName", "Created from native designer proof");
             SetEditorValue(run, "AutomationEditorPrompt", "Synthetic prompt, do not execute anything");
+            await WaitUiAsync(run, () => EditorValue(run, "AutomationEditorName") == "Created from native designer proof"
+                && EditorValue(run, "AutomationEditorPrompt") == "Synthetic prompt, do not execute anything"
+                && FindById(run, "AutomationEditorName") is { Current.ItemStatus: "" }
+                && FindById(run, "AutomationEditorPrompt") is { Current.ItemStatus: "" },
+                "root-owned draft accepted both required fields");
             Invoke(FindById(run, "AutomationEditorSave")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null
                 && FindById(run, "AutomationRow:created-1") is { Current.HasKeyboardFocus: true, Current.IsOffscreen: false },
@@ -1054,64 +1065,99 @@ public sealed partial class GatewayFixtureUiTests
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)));
     }
 
+    private const double AutomationScrollInsetPixels = 16;
+    private const double AutomationScrollTolerancePixels = 1;
+    private const int AutomationScrollCorrectionLimit = 3;
+
+    private static (double Percent, double ViewSize, global::System.Windows.Rect Viewport,
+        global::System.Windows.Rect Target, bool Offscreen) ReadAutomationScroll(
+        GatewayFixtureRun run, AutomationElement page, ScrollPattern scroll, string? id) =>
+        OwnedWindowCapture.WithPhysicalCoordinates(() =>
+        {
+            var info = scroll.Current;
+            var target = id is null ? null : FindById(run, id);
+            return (info.VerticallyScrollable ? info.VerticalScrollPercent : 0, info.VerticalViewSize,
+                page.Current.BoundingRectangle, target?.Current.BoundingRectangle ?? global::System.Windows.Rect.Empty,
+                id is not null && (target is null || target.Current.IsOffscreen));
+        });
+
+    private static async Task MoveAutomationScrollAsync(GatewayFixtureRun run, AutomationElement page,
+        ScrollPattern scroll, double requested, string? id = null)
+    {
+        var observed = ReadAutomationScroll(run, page, scroll, id);
+        var previous = observed;
+        previous.Percent = double.NaN;
+        if (scroll.Current.VerticallyScrollable)
+            scroll.SetScrollPercent(ScrollPattern.NoScroll, requested);
+        try
+        {
+            await WaitUiAsync(run, () =>
+            {
+                observed = ReadAutomationScroll(run, page, scroll, id);
+                var range = observed.ViewSize > 0
+                    ? observed.Viewport.Height * (100 / observed.ViewSize - 1) : 0;
+                var tolerance = range > 0 ? AutomationScrollTolerancePixels * 100 / range : 0;
+                var arrived = Math.Abs(observed.Percent - requested) <= tolerance;
+                var settled = previous.Equals(observed);
+                previous = observed;
+                return arrived && settled;
+            }, $"settled page scroll at {requested:0.###}% for {id ?? "page"}");
+        }
+        finally
+        {
+            File.AppendAllText(Path.Combine(run.ArtifactsDirectory, "automations-scroll.jsonl"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    id, requested, actual = observed.Percent, observed.ViewSize, observed.Offscreen,
+                    viewport = observed.Viewport.ToString(), target = observed.Target.ToString(),
+                }) + Environment.NewLine);
+        }
+    }
+
     private static async Task ScrollAutomationIntoViewAsync(GatewayFixtureRun run, string id)
     {
         var page = await WaitForPageScrollPeerAsync(run);
-        var target = await WaitForElementByIdAsync(run, id, $"automation target {id}");
+        await WaitForElementByIdAsync(run, id, $"automation target {id}");
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        bool HasGeometry() => OwnedWindowCapture.WithPhysicalCoordinates(() =>
-            FindById(run, id) is { } current && current.Current.BoundingRectangle is { Width: > 0, Height: > 0 });
-        if (!HasGeometry())
+        await MoveAutomationScrollAsync(run, page, scroll, 0, id);
+        var observed = ReadAutomationScroll(run, page, scroll, id);
+        while (observed.Target.Width <= 0 || observed.Target.Height <= 0 || observed.Target.IsEmpty)
         {
-            // WinUI can expose an offscreen peer with an empty bounding rectangle.
-            // Page through the owned ScrollPattern until it is measurable, rather than
-            // inventing coordinates or treating a peer lookup as visible proof.
-            await ScrollAutomationsToTopAsync(run);
-            while (!HasGeometry())
-            {
-                var before = scroll.Current;
-                Assert.True(before.VerticallyScrollable && before.VerticalScrollPercent < 100,
-                    $"No geometry for {id} after reaching the end of the page.");
-                scroll.Scroll(ScrollAmount.NoAmount, ScrollAmount.LargeIncrement);
-                await WaitUiAsync(run, () => HasGeometry() ||
-                    scroll.Current.VerticalScrollPercent > before.VerticalScrollPercent,
-                    $"page scroll advances toward {id}");
-            }
+            Assert.True(observed.Percent < 100 && observed.ViewSize is > 0 and < 100,
+                $"No geometry for {id} after reaching the end of the page.");
+            // Half a viewport keeps adjacent observations overlapping. Await the requested
+            // destination, not the first geometry/progress reported during the native update.
+            var next = Math.Min(100, observed.Percent + 50 * observed.ViewSize / (100 - observed.ViewSize));
+            Assert.True(next > observed.Percent, $"Page scroll did not advance toward {id}.");
+            await MoveAutomationScrollAsync(run, page, scroll, next, id);
+            observed = ReadAutomationScroll(run, page, scroll, id);
         }
-        target = await WaitForElementByIdAsync(run, id, $"measurable automation target {id}");
-        OwnedWindowCapture.WithPhysicalCoordinates(() =>
+
+        var atBoundary = false;
+        for (var correction = 0; correction < AutomationScrollCorrectionLimit; correction++)
         {
-            var viewport = page.Current.BoundingRectangle;
-            var bounds = target.Current.BoundingRectangle;
-            Assert.True(bounds.Width > 0 && bounds.Height > 0, $"No geometry for {id}.");
-            var info = scroll.Current;
-            if (info.VerticallyScrollable)
-            {
-                var range = viewport.Height * (100 / info.VerticalViewSize - 1);
-                Assert.True(range > 0, $"Invalid page scroll range for {id}.");
-                var percent = Math.Clamp(info.VerticalScrollPercent + (bounds.Top - viewport.Top - 16) * 100 / range, 0, 100);
-                scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
-            }
-            return true;
-        });
-        await WaitUiAsync(run, () => OwnedWindowCapture.WithPhysicalCoordinates(() =>
-        {
-            var current = FindById(run, id);
-            if (current is null || current.Current.IsOffscreen) return false;
-            var viewport = page.Current.BoundingRectangle;
-            var bounds = current.Current.BoundingRectangle;
-            return bounds.Top >= viewport.Top && bounds.Bottom <= viewport.Bottom;
-        }), $"visible automation target {id}");
+            var delta = observed.Target.Top - observed.Viewport.Top - AutomationScrollInsetPixels;
+            if (Math.Abs(delta) <= AutomationScrollTolerancePixels) break;
+            var range = observed.Viewport.Height * (100 / observed.ViewSize - 1);
+            if (range <= 0) { atBoundary = true; break; }
+            var next = Math.Clamp(observed.Percent + delta * 100 / range, 0, 100);
+            atBoundary = next == 0 && delta < 0 || next == 100 && delta > 0;
+            await MoveAutomationScrollAsync(run, page, scroll, next, id);
+            observed = ReadAutomationScroll(run, page, scroll, id);
+            if (atBoundary) break;
+        }
+        Assert.True(!observed.Offscreen && !observed.Target.IsEmpty && observed.Target.Width > 0
+            && observed.Target.Height > 0 && observed.Target.Top >= observed.Viewport.Top
+            && observed.Target.Bottom <= observed.Viewport.Bottom,
+            $"Automation target {id} is clipped after settled scrolling: {observed.Target}; viewport {observed.Viewport}.");
+        Assert.True(atBoundary || Math.Abs(observed.Target.Top - observed.Viewport.Top - AutomationScrollInsetPixels)
+            <= AutomationScrollTolerancePixels, $"Automation target {id} did not settle at the requested inset.");
     }
 
     private static async Task ScrollAutomationsToTopAsync(GatewayFixtureRun run)
     {
         var page = await WaitForPageScrollPeerAsync(run);
-        var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        if (scroll.Current.VerticallyScrollable)
-            scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
-        await WaitUiAsync(run, () => !scroll.Current.VerticallyScrollable || scroll.Current.VerticalScrollPercent <= 0.1,
-            "page ScrollView is at the top");
+        await MoveAutomationScrollAsync(run, page, (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern), 0);
     }
 
     /// <summary>
