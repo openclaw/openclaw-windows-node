@@ -318,7 +318,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(IsVisible(root, "SettingsSearch"));
         Assert.True(Find(root, "SettingsPageAutoStart").Current.HasKeyboardFocus);
 
-        await FocusForKeyboardAsync(app, root, "SettingsNavSettings");
+        await FocusForKeyboardAsync(app, root, "SettingsNavGeneral");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
             Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
