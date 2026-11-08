@@ -51,6 +51,9 @@ public sealed partial class InboxView : UserControl
         TitleText.Style = (Style)Application.Current.Resources["TitleTextBlockStyle"];
         AutomationProperties.SetAutomationId(TitleText, PageMarkerAutomationId);
         FooterRow.Visibility = Visibility.Collapsed;
+        // The compact title-to-tabs spacing is only for the flyout; the page keeps the standard spacing.
+        TabsBar.ClearValue(FrameworkElement.MarginProperty);
+        TabsBar.ClearValue(Control.PaddingProperty);
     }
 
     internal void Initialize(AppNotificationService service, InboxViewCommands commands)

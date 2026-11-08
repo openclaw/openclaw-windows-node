@@ -36,7 +36,8 @@
             </Button>
         </Grid>
 
-        <!-- The negative top margin cancels the row spacing so the tabs sit directly under the title. -->
+        <!-- Flyout only: the negative top margin cancels the row spacing so the tabs sit directly under the title.
+             UsePageLayout restores the standard spacing on the full page. -->
         <SelectorBar x:Name="TabsBar" x:Uid="Inbox_Tabs" Grid.Row="1" Margin="-4,-12,0,-4" Padding="0"
                      AutomationProperties.AutomationId="WorkspaceNotificationsTabs"
                      SelectionChanged="OnTabSelectionChanged">
