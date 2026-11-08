@@ -915,8 +915,15 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Contains("Responding", AutomationProperties.GetName(FindControl<TextBlock>(host, "ChatRunProgressText"))));
             Assert.Contains("1m", before);
             Assert.Contains("120 output tokens", before);
-            await Task.Delay(1200);
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControl<TextBlock>(host, "ChatRunProgressText").Text != before,
+                "active run elapsed text to advance",
+                () =>
+                {
+                    var progress = FindControl<TextBlock>(host, "ChatRunProgressText");
+                    return $"IsLoaded={progress.IsLoaded}, HasXamlRoot={progress.XamlRoot is not null}, " +
+                        $"TextUnchanged={progress.Text == before}, HostLoaded={host.IsLoaded}";
+                }));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.NotEqual(before, FindControl<TextBlock>(host, "ChatRunProgressText").Text);
