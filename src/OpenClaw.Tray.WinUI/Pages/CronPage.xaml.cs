@@ -27,6 +27,7 @@ public sealed partial class CronPage : Page
     private Border? _editingCard = null; // card hidden during inline edit
     private string? _historyJobId = null; // job whose history is currently displayed
     private HashSet<string> _runningJobIds = new(); // jobs currently being triggered
+    private readonly CronRunTokenRegistry _runTokens = new();
     private HashSet<string> _removedJobIds = new(); // jobs user explicitly removed (suppress auto-delete notification)
     private HashSet<string> _expandedJobIds = new(); // persisted expanded state
     private readonly Dictionary<string, CancellationTokenSource> _runRefreshCts = new();
@@ -201,6 +202,7 @@ public sealed partial class CronPage : Page
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         var vm = _jobs.Find(j => j.Id == jobId);
         if (_runningJobIds.Contains(jobId)) return;
+        var runToken = _runTokens.BeginRun(jobId);
         _runningJobIds.Add(jobId);
         RefreshJobActionButtons(jobId);
 
@@ -208,6 +210,9 @@ public sealed partial class CronPage : Page
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
+                if (!_runTokens.IsCurrentRun(jobId, runToken))
+                    return;
+
                 var client = CurrentApp.GatewayClient;
                 var result = t.IsCompletedSuccessfully ? t.Result : null;
                 if (t.IsFaulted || result?.Enqueued != true)
@@ -228,29 +233,22 @@ public sealed partial class CronPage : Page
 
                 if (client != null)
                 {
+                    _runTokens.SetRunId(jobId, runToken, result?.RunId);
                     StartRunRefreshLoop(jobId);
                 }
             });
         });
 
         // Safety timeout: clear running state after 90s if gateway never reports completion
-        // Safety timeout uses CurrentApp directly
         Task.Delay(TimeSpan.FromSeconds(90)).ContinueWith(_ =>
         {
-            if (_runningJobIds.Contains(jobId))
+            DispatcherQueue?.TryEnqueue(() =>
             {
-                DispatcherQueue?.TryEnqueue(() =>
-                {
-                    ClearRunningJob(jobId);
-                    var client = CurrentApp.GatewayClient;
-                    if (client != null)
-                    {
-                        _ = client.RequestCronListAsync();
-                        if (_historyJobId == jobId)
-                            _ = client.RequestCronRunsAsync(jobId, limit: 20, offset: 0);
-                    }
-                });
-            }
+                if (!_runTokens.IsCurrentRun(jobId, runToken))
+                    return;
+
+                ClearRunningJob(jobId);
+            });
         });
     }
 
@@ -312,6 +310,7 @@ public sealed partial class CronPage : Page
     private void ClearRunningJob(string jobId)
     {
         _runningJobIds.Remove(jobId);
+        _runTokens.ClearRun(jobId);
         CancelRunRefreshLoop(jobId);
         RefreshJobActionButtons(jobId);
     }
@@ -2042,6 +2041,13 @@ public sealed partial class CronPage : Page
 
             var jobId = jobIdEl.GetString();
             if (string.IsNullOrWhiteSpace(jobId) || !_runningJobIds.Contains(jobId))
+                continue;
+
+            var runId = entry.TryGetProperty("runId", out var runIdEl) && runIdEl.ValueKind == JsonValueKind.String
+                ? runIdEl.GetString()
+                : null;
+            // Without a server RunId, history cannot be tied safely to this invocation.
+            if (!_runTokens.MatchesRunId(jobId, runId))
                 continue;
 
             var oldVm = _jobs.Find(j => j.Id == jobId);

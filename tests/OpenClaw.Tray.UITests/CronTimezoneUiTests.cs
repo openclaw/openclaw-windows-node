@@ -13,6 +13,31 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task CronRunNow_FixtureRejectionRestoresTheRunAction()
+    {
+        var scenario = GatewayScenario.CreateCronEditing();
+        await WithAppAsync(async run =>
+        {
+            await OpenCronPageAsync(run);
+            var title = CronControl(run, "CronJobTitle:listed");
+            ScrollCronControlIntoView(run, title);
+            ClickOwnedElement(run, CronWindow(run), title);
+            await WaitUiAsync(run, () => FindCronControl(run, "CronRunNow:listed") is not null,
+                "expanded cron job actions");
+            var runNow = CronControl(run, "CronRunNow:listed");
+            ScrollCronControlIntoView(run, runNow);
+            Invoke(runNow);
+
+            await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
+                request.Method == "cron.run" && request.Outcome == "error:FIXTURE_READ_ONLY")),
+                "read-only fixture rejects cron.run without executing it");
+            await WaitUiAsync(run, () => FindCronControl(run, "CronRunNow:listed") is { } button
+                && button.Current.IsEnabled, "Run Now action restored after rejection");
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task CronEditor_PreservesAbsentAndUnlistedZonesUntilExplicitSelection()
     {
         var scenario = GatewayScenario.CreateCronEditing();

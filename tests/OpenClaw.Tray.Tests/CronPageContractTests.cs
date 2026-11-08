@@ -34,11 +34,22 @@ public sealed class CronPageContractTests
         var runNowHandler = ExtractMethod(source, "OnRunNowClick");
         Assert.DoesNotContain("if (vm != null && !vm.IsEnabled) return;", runNowHandler);
         Assert.Contains("if (_runningJobIds.Contains(jobId)) return;", runNowHandler);
+        Assert.Contains("var runToken = _runTokens.BeginRun(jobId);", runNowHandler);
         Assert.Contains("RunCronJobDetailedAsync(jobId)", runNowHandler);
         Assert.Contains("result?.Enqueued != true", runNowHandler);
         Assert.Contains("ShowRunNotStartedNotification", runNowHandler);
         Assert.Contains("RefreshJobActionButtons(jobId);", runNowHandler);
         Assert.Contains("StartRunRefreshLoop(jobId);", runNowHandler);
+        var runTimeout = ExtractContinuation(source, "Task.Delay(TimeSpan.FromSeconds(90))");
+        Assert.Contains("DispatcherQueue?.TryEnqueue", runTimeout);
+        Assert.Contains("_runTokens.IsCurrentRun(jobId, runToken)", runTimeout);
+        Assert.DoesNotContain("RequestCronListAsync()", runTimeout);
+        Assert.DoesNotContain("RequestCronRunsAsync(", runTimeout);
+        Assert.True(
+            runTimeout.IndexOf("_runTokens.IsCurrentRun(jobId, runToken)", StringComparison.Ordinal)
+            < runTimeout.IndexOf("ClearRunningJob(jobId)", StringComparison.Ordinal));
+        var completedRuns = ExtractMethod(source, "DetectCompletedRunsFromHistory");
+        Assert.Contains("_runTokens.MatchesRunId(jobId, runId)", completedRuns);
         var refreshLoop = ExtractMethod(source, "StartRunRefreshLoop");
         Assert.Contains("RequestCronRunsAsync(jobId, limit: 20, offset: 0)", refreshLoop);
         Assert.DoesNotContain("RequestCronListAsync()", refreshLoop);
@@ -105,5 +116,15 @@ public sealed class CronPageContractTests
 
         Assert.Fail($"Could not parse {methodName} body.");
         return string.Empty;
+    }
+
+    private static string ExtractContinuation(string source, string marker)
+    {
+        var start = source.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find {marker}.");
+
+        var end = source.IndexOf("\n        });", start, StringComparison.Ordinal);
+        Assert.True(end >= 0, $"Could not find the end of {marker} continuation.");
+        return source[start..end];
     }
 }
