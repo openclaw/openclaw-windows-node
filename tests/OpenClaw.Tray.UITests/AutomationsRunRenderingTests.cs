@@ -73,14 +73,17 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
                 {
                     var rich = FindLogical<RichTextBlock>(root).ToArray();
                     Assert.NotEmpty(rich);
-                    var runs = rich.SelectMany(text => text.Blocks.OfType<Paragraph>())
-                        .SelectMany(paragraph => AllInlines(paragraph.Inlines)).OfType<Run>().ToArray();
+                    var paragraphs = rich.SelectMany(text => text.Blocks.OfType<Paragraph>()).ToArray();
+                    var runs = paragraphs.SelectMany(paragraph => AllInlines(paragraph.Inlines))
+                        .OfType<Run>().ToArray();
                     Assert.Contains(runs, run => run.Text == "Summary");
                     Assert.Contains(runs, run => run.Text == "Ready" && run.FontWeight.Weight > 400);
-                    Assert.Contains(runs, run => run.Text == "details");
+                    Assert.Contains(paragraphs, paragraph => string.Concat(
+                        AllInlines(paragraph.Inlines).OfType<Run>().Select(run => run.Text))
+                        == "details (https://example.invalid)");
                     Assert.DoesNotContain(runs, run => run.Text.Contains("**Ready**"));
-                    Assert.DoesNotContain(rich.SelectMany(text => text.Blocks.OfType<Paragraph>())
-                        .SelectMany(paragraph => AllInlines(paragraph.Inlines)), item => item is Hyperlink);
+                    Assert.DoesNotContain(paragraphs.SelectMany(paragraph => AllInlines(paragraph.Inlines)),
+                        item => item is Hyperlink);
                     Assert.All(rich, text => Assert.True(text.IsTextSelectionEnabled));
                 }
                 Assert.Empty(FindLogical<Image>(root));

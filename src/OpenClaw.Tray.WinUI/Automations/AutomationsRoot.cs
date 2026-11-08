@@ -299,6 +299,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             var nonce = currentEditor.Nonce;
             dialog = (ContentDialog("", Component<AutomationEditor, AutomationEditorProps>(
                 new(host, currentEditor, state.DefaultAgentId, state.CanManage && state.Connected,
+                    () => editorRef.Current is { } active && active.Nonce == nonce ? active : null,
                     change => UpdateEditor(nonce, change), id => CloseEditor(nonce, id))
                 { Narrow = narrow })
                 .Height(EditorHeight).WithKey($"editor-{nonce}"), "") with

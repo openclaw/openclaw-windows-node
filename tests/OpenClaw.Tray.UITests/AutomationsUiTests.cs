@@ -38,7 +38,21 @@ public sealed partial class GatewayFixtureUiTests
                     - outerWindowDip) <= 2, $"owned window at {outerWindowDip} DIP");
             }
             double AgendaWidth() => OwnedWindowCapture.WithPhysicalCoordinates(() =>
-                FindById(run, "AutomationsAgenda")!.Current.BoundingRectangle.Width) / OwnedWindowCapture.OwnedDpiScale(run, AutomationsWindow(run));
+            {
+                // Reactor layout Borders have no UIA peer. Measure the exposed agenda columns.
+                if (FindById(run, "AutomationsAgendaList") is not { } list) return 0;
+                var bounds = list.Current.BoundingRectangle;
+                foreach (var earlier in AutomationsWindow(run).FindAll(TreeScope.Descendants, Condition.TrueCondition)
+                    .Cast<AutomationElement>().Where(element => element.Current.AutomationId.StartsWith("AutomationEarlier:", StringComparison.Ordinal)))
+                    bounds.Union(earlier.Current.BoundingRectangle);
+                return bounds.Width / OwnedWindowCapture.OwnedDpiScale(run, AutomationsWindow(run));
+            });
+            async Task CaptureAgendaAsync(string name)
+            {
+                await ScrollAutomationIntoViewAsync(run, "AutomationAgenda:inbox-sweep");
+                if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                    OwnedWindowCapture.Save(run, AutomationsWindow(run), name, FindById(run, "AutomationAgenda:inbox-sweep")!);
+            }
             int AgendaRows() => AutomationsWindow(run).FindAll(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
                 .Cast<AutomationElement>().Count(element => element.Current.AutomationId.StartsWith("AutomationAgenda:", StringComparison.Ordinal));
@@ -46,12 +60,12 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => AgendaWidth() >= 1000 && AgendaRows() == 6, "wide agenda has six scheduled rows");
             Assert.NotNull(FindById(run, "AutomationAgenda:inbox-sweep"));
             Assert.Null(FindById(run, "AutomationAgendaMore:Running"));
-            Capture(run, "automations-designer-Light-1400.png", "AutomationsAgenda");
+            await CaptureAgendaAsync("automations-designer-Light-1400.png");
             await ResizeAsync(1000);
             await WaitUiAsync(run, () => AgendaWidth() < 820 && AgendaRows() == 4
                 && FindById(run, "AutomationAgendaMore:Tomorrow")?.Current.Name == "Show all 5", "own-width compact budget and fully hidden group");
             Assert.Null(FindById(run, "AutomationAgendaMore:Running"));
-            Capture(run, "automations-designer-Light-shell-minimum.png", "AutomationsAgenda");
+            await CaptureAgendaAsync("automations-designer-Light-shell-minimum.png");
             Invoke(FindById(run, "AutomationAgendaMore:Hour")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationAgendaMore:Hour")?.Current.Name == "Show fewer",
                 "hour group expanded");
@@ -60,7 +74,9 @@ public sealed partial class GatewayFixtureUiTests
             Invoke(FindById(run, "AutomationEditorSave")!);
             await WaitUiAsync(run, () => FindText(run, "Enter a name.") is not null
                 && FindText(run, "Describe the task this agent should run.") is not null, "editor required errors");
-            Capture(run, "automations-designer-editor-errors.png", "AutomationEditorName", "AutomationEditorSave");
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                OwnedWindowCapture.Save(run, AutomationsWindow(run), "automations-designer-editor-errors.png",
+                    FindById(run, "AutomationEditorName")!, FindById(run, "AutomationEditorSave")!);
             SetEditorValue(run, "AutomationEditorName", "Resize-kept name");
             SetEditorValue(run, "AutomationEditorPrompt", "Resize-kept prompt");
             await ResizeAsync(1400);
@@ -74,7 +90,7 @@ public sealed partial class GatewayFixtureUiTests
             await SelectAppThemeAsync(run, "Dark");
             await OpenMainAutomationsAsync(run, maximize: false);
             await WaitUiAsync(run, () => AgendaWidth() >= 1000 && AgendaRows() == 6, "Dark wide agenda");
-            Capture(run, "automations-designer-Dark-1400.png", "AutomationsAgenda");
+            await CaptureAgendaAsync("automations-designer-Dark-1400.png");
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "cron.add" or "cron.update" or "cron.run");
         }, scenario: scenario);
     }
@@ -119,7 +135,7 @@ public sealed partial class GatewayFixtureUiTests
 
             await InvokeWhenEnabledAsync(run, () => FindCommand(run, "Edit"), "reopen source draft");
             await WaitUiAsync(run, () => EditorValue(run, "AutomationEditorName") == "Edited draft only", "separate edit draft restored");
-            Assert.NotNull(FindById(run, "AutomationEditorDraftNotice"));
+            Assert.NotNull(FindById(run, "AutomationEditorDiscardDraft"));
             SetEditorValue(run, "AutomationEditorName", "");
             Invoke(FindById(run, "AutomationEditorSave")!);
             await WaitUiAsync(run, () => EditorValueElement(run, "AutomationEditorName") is { Current.HasKeyboardFocus: true }
@@ -133,7 +149,7 @@ public sealed partial class GatewayFixtureUiTests
             await ScrollEditorFieldIntoViewAsync(run, "AutomationEditorDiscardDraft");
             Invoke(FindById(run, "AutomationEditorDiscardDraft")!);
             await WaitUiAsync(run, () => EditorValue(run, "AutomationEditorName") == ""
-                && FindById(run, "AutomationEditorDraftNotice") is null, "discard resets only new draft");
+                && FindById(run, "AutomationEditorDiscardDraft") is null, "discard resets only new draft");
             Invoke(FindById(run, "AutomationEditorCancel")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "closed reset new editor");
             await OpenAutomationMoreAsync(run, "morning-brief");
@@ -144,7 +160,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "closed copy");
             var inboxTop = OwnedWindowCapture.WithPhysicalCoordinates(() => FindById(run, "AutomationRow:inbox-sweep")!.Current.BoundingRectangle.Top);
             Invoke(FindById(run, "AutomationRow:inbox-sweep")!);
-            bool HasTextInCard(string id, string value) => FindById(run, $"AutomationCard:{id}")!
+            bool HasTextInCard(string id, string value) => FindById(run, $"AutomationExpander:{id}")!
                 .FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
                 .Cast<AutomationElement>().Any(element => element.Current.Name.Contains(value, StringComparison.Ordinal));
             await WaitUiAsync(run, () => HasTextInCard("inbox-sweep", "Archived 4 newsletters, flagged 0 message."),
@@ -168,7 +184,10 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = emptyAgent ? "agent:research:cron" : "agent:main:cron" });
-            await WaitUiAsync(run, () => FindById(run, emptyAgent ? "AutomationsEmpty" : "AutomationRow:scheduled-000") is not null,
+            await WaitUiAsync(run, () => emptyAgent
+                ? FindById(run, "AutomationsEmptyNew") is { Current.IsOffscreen: false }
+                    && FindText(run, "No automations yet") is { Current.IsOffscreen: false }
+                : FindById(run, "AutomationRow:scheduled-000") is not null,
                 "initial scoped inventory");
             if (!emptyAgent) Assert.Null(FindById(run, "AutomationRow:scheduled-059"));
             Invoke(FindById(run, emptyAgent ? "AutomationsEmptyNew" : "AutomationsNew")!);
@@ -182,7 +201,8 @@ public sealed partial class GatewayFixtureUiTests
             var expander = FindById(run, "AutomationExpander:created-1")!;
             Assert.Equal(ExpandCollapseState.Expanded,
                 ((ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
-            Assert.Null(FindById(run, "AutomationsEmpty"));
+            Assert.Null(FindById(run, "AutomationsEmptyNew"));
+            Assert.Null(FindText(run, "No automations yet"));
             if (!emptyAgent) Assert.NotNull(FindById(run, "AutomationRow:scheduled-059"));
             Assert.Single(run.Gateway.Requests, request => request.Method == "cron.add" && request.Outcome == "ok");
             Capture(run, emptyAgent ? "automations-designer-created-from-empty.png" : "automations-designer-created-later-page.png",
@@ -366,6 +386,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.StartsWith("Open chat:", FindByIdPrefix(run, "AutomationRunChat:")!.Current.Name);
                 await ScanStateAsync("inline details");
                 Assert.NotNull(FindCommand(run, "Edit"));
+                await ScrollAutomationIntoViewAsync(run, "AutomationRow:morning-brief");
                 await WaitUiAsync(run, () => FindById(run, "CronJobTitle:morning-brief") is { Current.IsOffscreen: false }
                     && FindById(run, "AutomationScheduleSummary") is { Current.IsOffscreen: false }, "visible expanded row and definition");
                 Capture(run, "automations-details.png", "CronJobTitle:morning-brief", "AutomationScheduleSummary");
@@ -482,7 +503,9 @@ public sealed partial class GatewayFixtureUiTests
                     && FindText(run, "Remove “Weekly digest”?") is not null, "named destructive confirmation");
                 RecordTransientPeers(run, "remove-dialog-open");
                 Assert.Empty(VisibleMenuPeers(run));
-                Assert.NotNull(FindText(run, $"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone."));
+                var removeBody = await WaitForElementByIdAsync(run, "AutomationConfirmationBody", "removal destination text");
+                Assert.Equal($"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone.",
+                    removeBody.Current.Name);
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
                 var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
@@ -848,6 +871,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Null(FindCommand(run, label));
             Assert.NotNull(FindCommand(run, "Copy automation ID"));
             await ScanAutomationsAsync(run, "Default", "read-only");
+            await ScrollAutomationIntoViewAsync(run, "AutomationRow:morning-brief");
             await WaitUiAsync(run, () => FindById(run, "CronJobTitle:morning-brief") is { Current.IsOffscreen: false }
                 && FindById(run, "AutomationScheduleSummary") is { Current.IsOffscreen: false }, "visible read-only definition");
             Capture(run, "automations-read-only.png", "CronJobTitle:morning-brief", "AutomationScheduleSummary");
@@ -1027,6 +1051,36 @@ public sealed partial class GatewayFixtureUiTests
         await WaitUiAsync(run, () => FindById(run, $"CronMore:{id}") is not null, "automation overflow");
         Invoke(FindById(run, $"CronMore:{id}")!.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)));
+    }
+
+    private static async Task ScrollAutomationIntoViewAsync(GatewayFixtureRun run, string id)
+    {
+        var page = await WaitForPageScrollPeerAsync(run);
+        var target = await WaitForElementByIdAsync(run, id, $"automation target {id}");
+        var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
+        OwnedWindowCapture.WithPhysicalCoordinates(() =>
+        {
+            var viewport = page.Current.BoundingRectangle;
+            var bounds = target.Current.BoundingRectangle;
+            Assert.True(bounds.Width > 0 && bounds.Height > 0, $"No geometry for {id}.");
+            var info = scroll.Current;
+            if (info.VerticallyScrollable)
+            {
+                var range = viewport.Height * (100 / info.VerticalViewSize - 1);
+                Assert.True(range > 0, $"Invalid page scroll range for {id}.");
+                var percent = Math.Clamp(info.VerticalScrollPercent + (bounds.Top - viewport.Top - 16) * 100 / range, 0, 100);
+                scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
+            }
+            return true;
+        });
+        await WaitUiAsync(run, () => OwnedWindowCapture.WithPhysicalCoordinates(() =>
+        {
+            var current = FindById(run, id);
+            if (current is null || current.Current.IsOffscreen) return false;
+            var viewport = page.Current.BoundingRectangle;
+            var bounds = current.Current.BoundingRectangle;
+            return bounds.Top >= viewport.Top && bounds.Bottom <= viewport.Bottom;
+        }), $"visible automation target {id}");
     }
 
     private static async Task ScrollAutomationsToTopAsync(GatewayFixtureRun run)

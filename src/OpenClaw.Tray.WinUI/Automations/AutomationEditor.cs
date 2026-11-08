@@ -22,6 +22,7 @@ internal sealed record AutomationEditorProps(
     EditorSession Session,
     string AgentId,
     bool CanManage,
+    Func<EditorSession?> ReadSession,
     Action<Func<EditorSession, EditorSession>> UpdateSession,
     Action<string?> OnClose)
 {
@@ -65,7 +66,7 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
     {
         var rootRef = this.UseElementRef<Microsoft.UI.Xaml.Controls.Grid>();
         var announce = this.UseAnnounce();
-        var (host, session, agentId, canManage, updateSession, onClose) = Props;
+        var (host, session, agentId, canManage, readSession, updateSession, onClose) = Props;
         var t = host.Text;
         var form = session.Form;
         var errors = session.Errors;
@@ -94,10 +95,16 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
 
         async Task SaveAsync(bool runAfter)
         {
-            var validation = new Dictionary<CronFormField, CronFormError>(Validate(form.Normalize(), editing, cloneSource));
+            // Input can update the root-owned draft before Reactor commits another render.
+            // A queued click must read that draft, not this render's captured form.
+            if (readSession() is not { Saving: false } latestSession) return;
+            var saveForm = latestSession.Form;
+            var saveEditing = latestSession.Mode == EditorMode.Edit ? latestSession.Source : null;
+            var saveCloneSource = latestSession.Mode == EditorMode.Clone ? latestSession.Source : null;
+            var validation = new Dictionary<CronFormField, CronFormError>(Validate(saveForm.Normalize(), saveEditing, saveCloneSource));
             if (rootRef.Current is { } validationRoot)
             {
-                var timeId = form.ScheduleKind == CronScheduleKind.At ? "AutomationEditorRunTime" : "AutomationEditorCalendarTime";
+                var timeId = saveForm.ScheduleKind == CronScheduleKind.At ? "AutomationEditorRunTime" : "AutomationEditorCalendarTime";
                 if (FindControl(validationRoot, timeId) is Microsoft.UI.Xaml.Controls.TimePicker { SelectedTime: null })
                     validation[CronFormField.ScheduleTime] = CronFormError.TimeRequired;
                 if (FindControl(validationRoot, "AutomationEditorWeekday") is Microsoft.UI.Xaml.Controls.ComboBox { SelectedIndex: < 0 })
@@ -116,7 +123,7 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                 if (rootRef.Current is { } root)
                     root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                     {
-                        var id = FirstInvalidControl(validation, form);
+                        var id = FirstInvalidControl(validation, saveForm);
                         if (FindControl(root, id) is { } control)
                         {
                             control.StartBringIntoView();
@@ -126,7 +133,7 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
                 return;
             }
             updateSession(current => current with { Saving = true, Banner = null });
-            var result = await host.Store.SaveAsync(form, editing, cloneSource, runAfter);
+            var result = await host.Store.SaveAsync(saveForm, saveEditing, saveCloneSource, runAfter);
             updateSession(current => current with { Saving = false });
             switch (result)
             {

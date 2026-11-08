@@ -10,6 +10,7 @@ public sealed partial class GatewayFixtureUiTests
     [InlineData("Light")]
     [InlineData("Dark")]
     [Trait("Category", "GatewayFixture")]
+    [Trait("KeyboardProof", "Required")]
     public async Task Automations_PinnedHostToggleHitTabAndBanner(string theme)
     {
         Assert.Equal("1", Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF"));
