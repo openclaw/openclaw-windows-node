@@ -178,6 +178,25 @@ public sealed class GatewayMessageSendScopeTests
         Assert.Equal(scope.GetHashCode(), equal.GetHashCode());
     }
 
+    [Fact]
+    public void RecipientSyncRootCannotMutateSnapshotOrClone()
+    {
+        var scope = new GatewayApprovalScope(GatewayApprovalScopeKind.MessageSend)
+        { Target = "email", RecipientCount = 1, Recipients = ["first@example.test"] };
+        var clone = scope with { Audience = "external" };
+        var expected = scope with { Recipients = ["first@example.test"] };
+        var hash = scope.GetHashCode();
+        var collection = Assert.IsAssignableFrom<System.Collections.ICollection>(scope.Recipients);
+        // Read-only array wrappers expose their mutable array through this public interface.
+        if (collection.SyncRoot is System.Collections.IList backing)
+            Assert.Throws<NotSupportedException>(() => { backing[0] = "changed@example.test"; });
+        Assert.Equal(["first@example.test"], scope.Recipients);
+        Assert.Equal(["first@example.test"], clone.Recipients);
+        Assert.Equal(expected, scope);
+        Assert.Equal(hash, scope.GetHashCode());
+        Assert.Equal(expected.GetHashCode(), scope.GetHashCode());
+    }
+
     [Theory]
     [InlineData("kind")]
     [InlineData("automation")]

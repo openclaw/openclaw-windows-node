@@ -10,6 +10,7 @@
 //       if (requested && GatewayPendingApprovalParser.TryParse(kind, payload, out var approval)) Show(approval);
 //   var pending = GatewayPendingApprovalParser.ParseList(GatewayApprovalKind.Exec, listReply);
 
+using System.Collections.Immutable;
 using System.Text.Json;
 
 namespace OpenClaw.Shared;
@@ -48,7 +49,7 @@ public sealed record GatewayApprovalScope(GatewayApprovalScopeKind Kind)
     public IReadOnlyList<string>? Recipients
     {
         get => _recipients;
-        init => _recipients = value is null ? null : Array.AsReadOnly(value.ToArray());
+        init => _recipients = value?.ToImmutableList();
     }
     /// <summary>Exact internal/external message audience, when supplied by the Gateway.</summary>
     public string? Audience { get; init; }
