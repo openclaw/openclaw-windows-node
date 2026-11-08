@@ -7888,8 +7888,15 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, jusqu'à révocation (révocable)</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, pendant {1} jours (révocable)</value></data>
   <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Envoie à {0} destinataire(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>Destinataires indiqués :
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>Aucun indiqué</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>Audience : {0}</value></data>
   <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Paie {0} {1} à {2}</value></data>
   <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Publie en externe sur {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>Commande :
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>Visibilité : {0}</value></data>
   <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Le compte nécessite une attention : {0}</value></data>
   <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Connexion requise</value></data>
   <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>La clé API nécessite une attention</value></data>

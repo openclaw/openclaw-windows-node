@@ -74,6 +74,30 @@ public class OpenClawGatewayClientApprovalTranslationTests
         Assert.Equal("missing", observed.Data.GetProperty("decisionAccess").GetString());
     }
 
+    [Theory]
+    [InlineData("scope")]
+    [InlineData("cwd")]
+    [InlineData("warningText")]
+    public void ExecApprovalWithAdditionalConsent_TranslatesToDenyOnlyChat(string field)
+    {
+        var client = NewClient();
+        AgentEventInfo? observed = null;
+        client.AgentEventReceived += (_, evt) => observed = evt;
+        var request = new System.Collections.Generic.Dictionary<string, object>
+        { ["command"] = "echo preview", ["sessionKey"] = "agent:main:main" };
+        request[field] = field == "scope"
+            ? (object)new { kind = "standing-grant", automation = "nightly", command = "echo actual" }
+            : "Additional reviewer context";
+        InvokeHandleEvent(client, JsonSerializer.Serialize(new
+        {
+            type = "event", @event = "exec.approval.requested",
+            payload = new { id = "scoped", createdAtMs = 1, expiresAtMs = 2, request },
+        }));
+        Assert.NotNull(observed);
+        Assert.True(observed.Data.GetProperty("requiresInboxReview").GetBoolean());
+        Assert.Equal(["deny"], observed.Data.GetProperty("allowedDecisions").EnumerateArray().Select(value => value.GetString()));
+    }
+
     [Fact]
     public void ExecApprovalResolved_DenyDecision_MapsToDeniedPhase()
     {

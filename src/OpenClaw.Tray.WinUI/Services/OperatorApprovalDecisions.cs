@@ -224,7 +224,7 @@ internal sealed class OperatorApprovalDecisions
             throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotPending);
         if (pending.Approval.Kind != GatewayApprovalKind.Exec || !IsLive(client, pending, out var epoch))
             throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotPending);
-        if (!GatewayApprovalDecisions.Effective(pending.Approval).Contains(decision))
+        if (!GatewayApprovalDecisions.EffectiveForChat(pending.Approval).Contains(decision))
             throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotAllowed);
 
         var approvalId = pending.Approval.Id;
@@ -236,7 +236,7 @@ internal sealed class OperatorApprovalDecisions
         try
         {
             await client.ResolveApprovalAsync(GatewayApprovalKind.Exec, approvalId, decision, epoch,
-                () => { ValidateBeforeSend(client, pending, decision); admitted = true; }).ConfigureAwait(false);
+                () => { ValidateBeforeSend(client, pending, decision, chat: true); admitted = true; }).ConfigureAwait(false);
             Logger.Info($"[Approval] chat decision sent decision={decision}");
             Retire(client, approvalId, epoch, pending);
         }
@@ -305,7 +305,7 @@ internal sealed class OperatorApprovalDecisions
     }
 
     // This callback reads immutable source snapshots; it can run on the transport thread.
-    private void ValidateBeforeSend(IOperatorGatewayClient client, InboxGatewaySource.PendingApproval observation, string decision)
+    private void ValidateBeforeSend(IOperatorGatewayClient client, InboxGatewaySource.PendingApproval observation, string decision, bool chat = false)
     {
         var state = _source.Approvals;
         if (IsUncertain(observation.Approval.Id))
@@ -315,7 +315,7 @@ internal sealed class OperatorApprovalDecisions
             !ReferenceEquals(current, observation) || !IsLive(client, observation, out _))
             throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotPending);
         if (!state.CanDecide || !GatewayApprovalDecisions.HasDecisionGrant(client.GrantedOperatorScopes) ||
-            !GatewayApprovalDecisions.Effective(observation.Approval).Contains(decision))
+            !(chat ? GatewayApprovalDecisions.EffectiveForChat(observation.Approval) : GatewayApprovalDecisions.Effective(observation.Approval)).Contains(decision))
             throw new ApprovalDecisionRefusedException(ApprovalDecisionOutcome.NotAllowed);
     }
 

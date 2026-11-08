@@ -7941,8 +7941,15 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Sempre permitir executa este comando exato para "{0}" sem perguntar, até ser revogado (revogável)</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Sempre permitir executa este comando exato para "{0}" sem perguntar, por {1} dias (revogável)</value></data>
   <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Envia para {0} destinatário(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>Destinatários listados:
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>Nenhum listado</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>Público: {0}</value></data>
   <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Paga {0} {1} para {2}</value></data>
   <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Publica externamente em {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>Comando:
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>Visibilidade: {0}</value></data>
   <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>A conta precisa de atenção: {0}</value></data>
   <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>É necessário entrar</value></data>
   <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>A chave de API precisa de atenção</value></data>
