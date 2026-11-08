@@ -1,5 +1,7 @@
 // Mounted Inbox consent proof, through canonical plugin events and real UIA actions.
 // Run GatewayFixtureUiTests.InboxPluginReview_* with the existing fixture app/desktop opt-in.
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows.Automation;
 using ComUia = global::Interop.UIAutomationClient;
 using OpenClaw.GatewayFixtureHost;
@@ -150,10 +152,16 @@ public sealed partial class GatewayFixtureUiTests
 
     private const int InboxAutomationNodeLimit = 4096;
 
-    private static async Task RevealInboxTextRangeAsync(GatewayFixtureRun run, string disclosure, string suffix)
+    private static Task RevealInboxTextRangeAsync(GatewayFixtureRun run, string disclosure, string suffix)
     {
         var text = FindInboxDisclosure(run, disclosure)!;
-        var binding = BindNativeInboxText(run, text.GetRuntimeId());
+        return RevealInboxTextRangeAsync(run, BindNativeInboxText(run, text.GetRuntimeId()), disclosure, suffix);
+    }
+
+    private static async Task RevealInboxTextRangeAsync(GatewayFixtureRun run,
+        (ComUia.IUIAutomation Client, ComUia.IUIAutomationElement Element, ComUia.IUIAutomationTextPattern Pattern) binding,
+        string disclosure, string suffix)
+    {
         var textPattern = binding.Pattern;
         Assert.NotEqual(ComUia.SupportedTextSelection.SupportedTextSelection_None, textPattern.SupportedTextSelection);
         var document = textPattern.DocumentRange;
@@ -183,7 +191,19 @@ public sealed partial class GatewayFixtureUiTests
             return false;
         }, $"selected expanded approval text: {suffix}");
         range.ScrollIntoView(0);
-        await WaitUiAsync(run, () => InboxRangeIsVisible(run, textPattern, range), $"reachable expanded approval text: {suffix}");
+        try
+        {
+            await WaitUiAsync(run, () => InboxRangeIsVisible(run, textPattern, range), $"reachable expanded approval text: {suffix}");
+        }
+        catch (TimeoutException failure)
+        {
+            try { RecordInboxVisibilityFailure(run, textPattern, range); }
+            catch (Exception diagnosticFailure)
+            {
+                throw new AggregateException("Native visibility and its diagnostic capture both failed.", failure, diagnosticFailure);
+            }
+            throw;
+        }
         GC.KeepAlive(binding); // Retain the COM client and owning element across the asynchronous checks.
     }
 
@@ -224,21 +244,43 @@ public sealed partial class GatewayFixtureUiTests
     {
         // Complete document text alone is not visible proof. Require full native range containment
         // and positive rectangles entirely inside the visible Inbox list viewport.
+        const ComUia.TextPatternRangeEndpoint first = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start;
+        const ComUia.TextPatternRangeEndpoint last = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_End;
         var visibleRanges = text.GetVisibleRanges();
-        var contained = false;
-        for (var i = 0; visibleRanges is not null && i < visibleRanges.Length; i++)
+        if (visibleRanges is null || visibleRanges.Length == 0 || range.CompareEndpoints(first, range, last) >= 0)
+            return false;
+        var ordered = new List<ComUia.IUIAutomationTextRange>();
+        for (var i = 0; i < visibleRanges.Length; i++)
         {
             var visible = visibleRanges.GetElement(i);
-            contained |= visible.CompareEndpoints(ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
-                range, ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start) <= 0 &&
-                visible.CompareEndpoints(ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
-                range, ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_End) >= 0;
+            if (visible is null) return false;
+            ordered.Add(visible);
+        }
+        // WinUI can return one range per wrapped text rectangle. Require a gap-free union,
+        // not one enclosing span or extrema that could hide an invisible interior section.
+        ordered.Sort((left, right) => left.CompareEndpoints(first, right, first));
+        var covered = range.Clone();
+        covered.MoveEndpointByRange(last, range, first);
+        var contained = false;
+        foreach (var visible in ordered)
+        {
+            if (visible.CompareEndpoints(last, covered, last) <= 0) continue;
+            if (visible.CompareEndpoints(first, covered, last) > 0) return false;
+            covered.MoveEndpointByRange(last, visible, last);
+            if (covered.CompareEndpoints(last, range, last) >= 0)
+            {
+                contained = true;
+                break;
+            }
         }
         if (!contained) return false;
         var viewport = FindInboxReviewList(run)!.Current.BoundingRectangle;
         var rectangles = range.GetBoundingRectangles();
         const int coordinatesPerRectangle = 4;
-        if (rectangles.Length == 0 || rectangles.Length % coordinatesPerRectangle != 0 || viewport.IsEmpty) return false;
+        if (rectangles is null || rectangles.Length == 0 || rectangles.Length % coordinatesPerRectangle != 0 || viewport.IsEmpty ||
+            !double.IsFinite(viewport.Left) || !double.IsFinite(viewport.Top) ||
+            !double.IsFinite(viewport.Right) || !double.IsFinite(viewport.Bottom) ||
+            rectangles.Any(coordinate => !double.IsFinite(coordinate))) return false;
         for (var i = 0; i < rectangles.Length; i += coordinatesPerRectangle)
             if (rectangles[i + 2] <= 0 || rectangles[i + 3] <= 0 ||
                 rectangles[i] < viewport.Left - 1 || rectangles[i + 1] < viewport.Top - 1 ||
@@ -246,6 +288,50 @@ public sealed partial class GatewayFixtureUiTests
                 rectangles[i + 1] + rectangles[i + 3] > viewport.Bottom + 1)
                 return false;
         return true;
+    }
+
+    private const int InboxVisibilityDiagnosticLimit = 64;
+
+    private static void RecordInboxVisibilityFailure(GatewayFixtureRun run, ComUia.IUIAutomationTextPattern text,
+        ComUia.IUIAutomationTextRange target)
+    {
+        const ComUia.TextPatternRangeEndpoint first = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start;
+        const ComUia.TextPatternRangeEndpoint last = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_End;
+        var visible = text.GetVisibleRanges();
+        var ordered = new List<ComUia.IUIAutomationTextRange>();
+        for (var i = 0; visible is not null && i < visible.Length; i++)
+            if (visible.GetElement(i) is { } item) ordered.Add(item);
+        ordered.Sort((left, right) => left.CompareEndpoints(first, right, first));
+        var comparisons = new List<object>();
+        for (var i = 0; i < Math.Min(ordered.Count, InboxVisibilityDiagnosticLimit); i++)
+        {
+            var item = ordered[i];
+            comparisons.Add(new
+            {
+                index = i,
+                startVsPreviousEnd = i == 0 ? (int?)null : item.CompareEndpoints(first, ordered[i - 1], last),
+                startVsTargetStart = item.CompareEndpoints(first, target, first),
+                endVsTargetStart = item.CompareEndpoints(last, target, first),
+                startVsTargetEnd = item.CompareEndpoints(first, target, last),
+                endVsTargetEnd = item.CompareEndpoints(last, target, last),
+            });
+        }
+        var rectangles = target.GetBoundingRectangles();
+        var viewport = FindInboxReviewList(run)!.Current.BoundingRectangle;
+        // Record geometry and comparisons once on failure, never raw approval or credential text.
+        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "inbox-range-visibility.json"),
+            JsonSerializer.Serialize(new
+            {
+                observedAfterTimeoutUtc = DateTimeOffset.UtcNow,
+                targetLength = target.GetText(-1).Length, documentLength = text.DocumentRange.GetText(-1).Length,
+                targetEndVsDocumentEnd = target.CompareEndpoints(last, text.DocumentRange, last),
+                visibleRangeCount = visible?.Length ?? 0, nullRangeCount = (visible?.Length ?? 0) - ordered.Count, comparisons,
+                rangesTruncated = visible is not null && visible.Length > InboxVisibilityDiagnosticLimit,
+                rectangleCoordinateCount = rectangles?.Length ?? 0,
+                rectangleCoordinates = rectangles?.Take(InboxVisibilityDiagnosticLimit * 4).ToArray(),
+                rectanglesTruncated = rectangles is not null && rectangles.Length > InboxVisibilityDiagnosticLimit * 4,
+                viewport = new { viewport.Left, viewport.Top, viewport.Right, viewport.Bottom },
+            }, new JsonSerializerOptions { WriteIndented = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals }));
     }
 
     private static AutomationElement? FindInboxReviewAction(GatewayFixtureRun run, string id) =>
