@@ -60,7 +60,7 @@ public sealed class OnboardingMockPresentationTests
         foreach (var (pageName, choiceName) in new[]
                  {
                      ("WelcomePage", "NativeChoice"), ("WelcomePage", "InstallChoice"),
-                     ("CapabilitiesPage", "StandardChoice"), ("AiReadyPage", "ChatChoice")
+                     ("CapabilitiesPage", "StandardChoice")
                  })
         {
             var choice = Named(Page(pageName), choiceName);

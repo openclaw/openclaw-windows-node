@@ -113,6 +113,10 @@ public sealed class WorkspaceWindowProofTests
         AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
             color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145,
             expectedWidth: toggle.Width * 32 / 40);
+        // "fallback" has no image or text avatar, so it gets the generated face: pale teal background (D5F6F3).
+        AssertIconCenter(FindPopup(root, "WorkspaceAgent:fallback")!.Current.BoundingRectangle, center,
+            color => color.R is > 190 and < 235 && color.G > color.R + 20 && color.B > color.R + 15,
+            expectedWidth: toggle.Width * 32 / 40);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
@@ -248,11 +252,11 @@ public sealed class WorkspaceWindowProofTests
             .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
         Invoke(Find(root, "SettingsSearch"));
         await WaitUntilAsync(() => SearchBox() is not null);
-        var input = SearchBox()!.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+        var input = SearchBox()!;
+        Assert.Equal(ControlType.Edit, input.Current.ControlType);
         await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
-        System.Windows.Forms.SendKeys.SendWait("Go to Settings");
-        await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to Settings");
+        System.Windows.Forms.SendKeys.SendWait("Go to General");
+        await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
         await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
         await WaitUntilAsync(() => SearchBox() is null);
@@ -297,8 +301,7 @@ public sealed class WorkspaceWindowProofTests
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
         await WaitUntilAsync(() => SearchBox() is not null);
-        await WaitUntilAsync(() => SearchBox()!.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Current.HasKeyboardFocus);
+        await WaitUntilAsync(() => SearchBox()!.Current.HasKeyboardFocus);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Find(root, "SettingsTogglePane").SetFocus();
@@ -389,9 +392,9 @@ public sealed class WorkspaceWindowProofTests
         var bell = Find(root, "SettingsNotifications").Current.BoundingRectangle;
         Assert.True(owner.Top > Find(root, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom);
         var settingsItem = root.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsNavSettings"));
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsNavGeneral"));
         var footerTop = Math.Min(owner.Top, Math.Min(dashboard.Top, bell.Top));
-        // The nav item list always ends above the footer, even when App settings is scrolled away.
+        // The nav item list always ends above the footer, even when General is scrolled away.
         var menu = Find(root, "NavView").FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "MenuItemsScrollViewer"));
         Assert.NotNull(menu);
@@ -399,7 +402,7 @@ public sealed class WorkspaceWindowProofTests
             $"Nav items {menu.Current.BoundingRectangle} overlap footer at {footerTop}; compact={compact}");
         if (settingsItem is not null && !settingsItem.Current.IsOffscreen)
             Assert.True(settingsItem.Current.BoundingRectangle.Bottom <= footerTop + 1,
-                $"App settings {settingsItem.Current.BoundingRectangle} overlaps footer at {footerTop}; compact={compact}");
+                $"General {settingsItem.Current.BoundingRectangle} overlaps footer at {footerTop}; compact={compact}");
         if (compact)
         {
             var toggle = Find(root, "SettingsTogglePane").Current.BoundingRectangle;
@@ -770,8 +773,7 @@ public sealed class WorkspaceWindowProofTests
         {
             ("Settings", "settings", "SettingsPage", "SettingsPageMarker"),
             ("Usage", "usage", "UsagePage", "UsagePageMarker"),
-            ("Pair device", "channels", "ChannelsPage", "ChannelsPageMarker"),
-            ("About OpenClaw", "about", "SettingsPage", "SettingsPageMarker")
+            ("About OpenClaw", "about", "AboutPage", "AboutPageMarker")
         })
         {
             await app.NavigateAsync("workspace:home", "ChatPage", "WorkspaceNavHome");

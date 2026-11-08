@@ -30,11 +30,23 @@ public sealed class GatewayFixtureAppTests
             var tools = discovery.RootElement.GetProperty("result").GetProperty("tools")
                 .EnumerateArray().Select(tool => tool.GetProperty("name").GetString()).ToArray();
             Assert.Contains("app.chat.snapshot", tools);
+            Assert.Contains("app.search", tools);
             Assert.DoesNotContain("system.run", tools);
             Assert.DoesNotContain("camera.snap", tools);
             Assert.DoesNotContain("browser.proxy", tools);
             var sessions = await run.InvokeAsync("app.sessions");
             Assert.True(sessions.GetArrayLength() >= 5);
+            var cameraBefore = await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" });
+            var matches = await run.InvokeAsync("app.search", new { query = "camera" });
+            Assert.InRange(matches.GetArrayLength(), 1, 10);
+            Assert.All(matches.EnumerateArray(), match =>
+            {
+                Assert.Equal("Settings", match.GetProperty("Group").GetString());
+                Assert.False(match.GetProperty("OpensDashboard").GetBoolean());
+            });
+            var cameraAfter = await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" });
+            Assert.Equal(cameraBefore.GetRawText(), cameraAfter.GetRawText());
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "search-mcp-results.json"), matches.GetRawText());
             using var autoStart = await run.Client.CallToolAsync("app.settings.set", new { name = "AutoStart", value = "true" });
             Assert.True(autoStart.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
             Assert.False((await run.InvokeAsync("app.settings.get", new { name = "AutoStart" })).GetBoolean());

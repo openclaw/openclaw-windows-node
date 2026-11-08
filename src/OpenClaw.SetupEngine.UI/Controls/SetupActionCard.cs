@@ -1,6 +1,6 @@
+using System.Runtime.InteropServices;
 using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 
@@ -19,10 +19,13 @@ public sealed partial class SetupActionCard : SettingsCard
     private sealed partial class ActionCardAutomationPeer(SetupActionCard owner)
         : SettingsCardAutomationPeer(owner), IInvokeProvider
     {
+        private const int UiaElementNotEnabled = unchecked((int)0x80040200);
+
         public void Invoke()
         {
             if (!owner.IsEnabled || !owner.IsClickEnabled)
-                throw new ElementNotEnabledException();
+                // Native UIA clients recognize UIA_E_ELEMENTNOTENABLED, not XAML's E_ELEMENTNOTENABLED.
+                throw new COMException(null, UiaElementNotEnabled);
             if (!owner.DispatcherQueue.TryEnqueue(() =>
                 owner.InvokeRequested?.Invoke(owner, new RoutedEventArgs())))
                 throw new ObjectDisposedException(nameof(SetupActionCard));

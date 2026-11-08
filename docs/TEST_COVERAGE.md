@@ -155,6 +155,7 @@ Unset the opt-in after the run.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
   Markdown renderer record-shape tests also belong to `UICollection`: their WinRT-backed types must not initialize concurrently with the shared Windows App SDK bootstrap. A smoke-test contract guards both Markdown test classes' collection membership.
 - Onboarding AI card-action tests wait up to 10 seconds for the target card to be loaded, enabled, click-enabled, and attached to the page's non-null XamlRoot. Readiness timeouts report each condition; regression tests hold each readiness flag false before releasing it and verify that a permanently blocked card never invokes its action. A dispatcher yield alone is not a control-loaded guarantee.
+- Native current-model UIA coverage requires the standard disabled HRESULT (`UIA_E_ELEMENTNOTENABLED`, `0x80040200`) even when the client worker carries unrelated COM error info. It verifies that the same card remains available and mounted without activation, that non-clickable cards do not advertise Invoke, and that enabled native invocation activates the selected model.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
 - **OpenClawTray.FunctionalUI.Tests** covers newer UI surfaces outside the main tray test project.
@@ -189,6 +190,23 @@ required closeout lane for code changes.
 | Disposable Inno to Store migration | `.\scripts\Enable-StoreMigrationTest.ps1` with [`STORE_MIGRATION_TESTING.md`](./STORE_MIGRATION_TESTING.md) | Manual signed-artifact, installer and visible handoff proof on a disposable machine. Select eligible source/target metadata and matching architecture; alpha ProductVersion cannot be fixed by registry relabeling. Helper preflight is not completed migration proof. Record exact artifacts, actual outcomes and preservation evidence, or report the missing artifact/runtime prerequisite as blocked |
 | Local AI model fixture | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~SparseFixtureFileTests\|FullyQualifiedName~LocalAiPortLifecycleTests"` | Test-only sparse files preserve the catalog-sized logical length and readable zeros without model downloads. Checks cover Windows sparse allocation, independent mutation, overwrite refusal, and cleanup. Windows requires a sparse-capable filesystem and fails explicitly if marking the fixture sparse fails; Unix uses the holes created by `SetLength`. Production receipt, size, and hash checks remain unchanged |
 | Legacy installer runtime ordering | `.\tests\PackagingTests\Test-InnoUninstallOrdering.ps1` | Deprecated. It targets the old `[UninstallRun]` layout, while current cleanup is owned by `[Code]`; do not use it as current installer runtime proof |
+
+The hosted setup/connect filter also includes
+`SetupAndConnectTestsSearchProof.ReleasedGateway_SearchDenialAndDashboardRoutes`.
+It reuses the run's disposable WSL Gateway, seeds one synthetic conversation
+without calling an AI provider, and exercises the production metadata,
+transcript and schema readers. A separately scoped operator connection must
+receive `FORBIDDEN` for transcript search. Preinstalled headless Edge uses a
+fresh fixture-owned profile to render authenticated Dashboard root and Skills
+routes and capture screenshots. Credentials are sent through local CDP, not
+browser command-line arguments; only the test's synthetic session is deleted.
+Browser profile storage is excluded from collected artifacts; only its
+screenshots and bounded proof outcomes are retained.
+The existing fixture owns Gateway and profile teardown. This is a real released
+WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
+The run's `gateway-release.json`, result report and screenshots identify actual
+execution; compilation or a locally gated skip is not successful runtime proof.
+Local execution still requires the existing WSL E2E runtime authority.
 
 Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs

@@ -46,7 +46,8 @@ internal sealed record WindowManagerCallbacks(
     Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
     Func<ISettingsStore?>? GetSettingsStore = null,
     Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
-    Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null);
+    Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null,
+    Func<SetupNativeCompletion, string, CancellationToken, Task<bool>>? OpenSetupDashboard = null);
 
 /// <summary>
 /// Coordinates every application-owned window and transitions between workspace, onboarding and setup UI.
@@ -224,12 +225,17 @@ internal sealed class WindowManager : IWindowManager
         ct.ThrowIfCancellationRequested();
         if (_isShuttingDown)
             throw new InvalidOperationException(ShuttingDownMessage);
+        if (HubPageRegistry.GetNativeSetupDashboardPath(completion.Target.Destination) is { } dashboardPath)
+        {
+            var openDashboard = _callbacks.OpenSetupDashboard
+                ?? throw new InvalidOperationException("The Gateway dashboard launcher is unavailable.");
+            if (!await openDashboard(completion, dashboardPath, ct))
+                throw new InvalidOperationException("The Gateway dashboard could not be opened.");
+            return;
+        }
         Window window;
         if (request.WorkspaceDestination is { } destination)
             ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request);
-        else
-            ShowWorkspace(WorkspaceDestination.Settings("settings"), activate: false, preserveCurrent: false, nativeRequest: request,
-                settingsTag: request.PageTag);
         if (_workspaceWindow is not { } workspace)
             throw new InvalidOperationException("The native window is unavailable.");
         await workspace.WaitForNativeSetupAsync(request, ct);
@@ -468,7 +474,8 @@ internal sealed class WindowManager : IWindowManager
             }
 
             ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
-        }, tag => ShowWorkspace(WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag));
+        }, tag => ShowWorkspace(WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag),
+            path => ((IAppCommands)Application.Current).OpenDashboard(path));
     }
 
     private void ShowWorkspace(
@@ -493,7 +500,7 @@ internal sealed class WindowManager : IWindowManager
 
         if (nativeRequest is not null)
         {
-            if (settingsTag is null) nativeRequest.RequireWorkspaceDestination(destination);
+            nativeRequest.RequireWorkspaceDestination(destination);
             _workspaceWindow.NavigateNativeSetup(nativeRequest);
         }
         else if (settingsTag is not null)

@@ -64,6 +64,11 @@ public interface IOperatorGatewayClient
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
     bool HasHandshakeSnapshot { get; }
+    long ServerHandshakeGeneration => 0;
+    Task<GatewaySearchResult> SearchSessionsAsync(string query, bool messages, CancellationToken cancellationToken) =>
+        Task.FromException<GatewaySearchResult>(new NotSupportedException("Session search is unavailable."));
+    Task<JsonElement> ReadSearchCatalogAsync(string method, object? parameters, CancellationToken cancellationToken) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Search catalogs are unavailable."));
     /// <summary>True only after the current Gateway explicitly rejects agents.list as unsupported.</summary>
     bool IsAgentsListUnsupported => false;
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
@@ -165,24 +170,12 @@ public interface IOperatorGatewayClient
     Task RequestDevicePairListAsync();
     Task<bool> DevicePairApproveAsync(string requestId);
     Task<bool> DevicePairRejectAsync(string requestId);
-    Task<bool> StartChannelAsync(string channelName);
-    /// <summary>Start a channel and return the full gateway response so the page can detect "unknown channel" (plugin not loaded).</summary>
-    Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000);
-    Task<bool> StopChannelAsync(string channelName);
-    /// <summary>Fetch the rich channels.status snapshot from the gateway. Mac/web canonical wire method.</summary>
-    Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000);
     /// <summary>
     /// Fetches the Gateway's effective update track (<c>update.status</c>).
     /// Older Gateway client implementations return no status.
     /// </summary>
     Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000) =>
         Task.FromResult<GatewayUpdateStatus?>(null);
-    /// <summary>Log out / unlink a channel (whatsapp, telegram). Sends channels.logout { channel }.</summary>
-    Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000);
-    /// <summary>Begin a QR linking flow (whatsapp, signal). Sends web.login.start { force, timeoutMs }.</summary>
-    Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000);
-    /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
-    Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
     /// <summary>Sends only on the captured authenticated connection; refuses before transmission when the epoch changed.</summary>
     Task<JsonElement> SendWizardRequestOnConnectionAsync(string method, object? parameters, long connectionEpoch, int timeoutMs = 30000)
