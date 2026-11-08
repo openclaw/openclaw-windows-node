@@ -1953,7 +1953,6 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnDisconnected()
     {
-        _activeInvocations.CancelAll();
         _isConnected = false;
         Volatile.Write(ref _pendingConnectRequestId, null);
         // Don't reset pairing state when disconnected due to pairing — gateway
@@ -1964,6 +1963,9 @@ public class WindowsNodeClient : WebSocketClientBase
             _isPaired = false;
         }
     }
+
+    protected override Action CaptureTransportLossNotification() =>
+        _activeInvocations.CaptureTransportCancellation();
 
     protected override void OnError(Exception ex)
     {

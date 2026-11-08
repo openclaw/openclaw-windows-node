@@ -104,6 +104,23 @@ public sealed class InvocationCancellationRegistryTests
     }
 
     [Fact]
+    public void CapturedTransportCancellation_DoesNotCancelLaterInvocations()
+    {
+        var registry = new InvocationCancellationRegistry();
+        Assert.True(registry.TryRegister("old", CancellationToken.None, out var oldCandidate));
+        using var old = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(oldCandidate);
+        var cancelLostTransport = registry.CaptureTransportCancellation();
+        Assert.True(registry.TryRegister("new", CancellationToken.None, out var newCandidate));
+        using var current = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(newCandidate);
+
+        cancelLostTransport();
+
+        Assert.True(old.Token.IsCancellationRequested);
+        Assert.False(current.Token.IsCancellationRequested);
+        Assert.False(old.CancelledByCaller);
+    }
+
+    [Fact]
     public void TryCancel_UnknownOrCompletedId_IsHarmless()
     {
         var registry = new InvocationCancellationRegistry();

@@ -3814,11 +3814,15 @@ public class WindowsNodeClientTests
 
         try
         {
+            using var server = new LoopbackWebSocketServer();
+            await server.StartAsync();
             using var client = new WindowsNodeClient(
-                "ws://localhost:18789",
+                server.WebSocketUrl,
                 "test-token",
                 dataPath);
             client.RegisterCapability(blocking);
+            await client.ConnectAsync();
+            await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(5));
             var telemetryTcs = new TaskCompletionSource<NodeToolTelemetryCompletion>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             client.ToolTelemetryCompleted += (_, completion) =>
@@ -3829,10 +3833,7 @@ public class WindowsNodeClientTests
                 BuildNodeInvokeRequest("shutdown-cancel", "mock.slow"));
             await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-            var onDisconnected = typeof(WindowsNodeClient).GetMethod(
-                "OnDisconnected",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            onDisconnected!.Invoke(client, null);
+            await server.CloseSocketAsync(0);
 
             await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
             var telemetry = await telemetryTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));

@@ -550,6 +550,7 @@ public class OpenClawGatewayClientTests
         }
 
         public void SetGrantedScopes(string[] scopes) => SetPrivateField("_grantedOperatorScopes", scopes);
+        public void SetAdvertisedMethods(string[] methods) => SetPrivateField("_advertisedServerMethods", methods);
 
         public void SetOperatorDeviceId(string? id) => SetPrivateField("_operatorDeviceId", id);
 
@@ -1530,6 +1531,104 @@ public class OpenClawGatewayClientTests
         Assert.Equal("service restart", exception.CloseStatusDescription);
         Assert.False(client.HasHandshakeSnapshot);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task ClientAbort_InvalidatesHandshakeAndFailsPendingRequestImmediately()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("operator-abort-");
+        await server.StartAsync();
+        using var client = new LossProbeGatewayClient(server.WebSocketUrl, identity.Path);
+        var helper = new GatewayClientTestHelper(client);
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady("agent:old:main");
+        helper.SetAdvertisedMethods(["health"]);
+        var handshakeGeneration = client.ServerHandshakeGeneration;
+        var response = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
+        await server.ReceiveTextAsync().WaitAsync(CloseHandshakeTimeout);
+
+        client.AbortTransport();
+
+        await Assert.ThrowsAsync<GatewayConnectionLostException>(
+            () => response.WaitAsync(CloseHandshakeTimeout));
+        Assert.False(client.HasHandshakeSnapshot);
+        Assert.NotEqual("agent:old:main", client.MainSessionKey);
+        Assert.Empty(client.AdvertisedServerMethods);
+        Assert.Equal(handshakeGeneration + 1, client.ServerHandshakeGeneration);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CheckHealth_StaleRecoveryCannotReplaceNewerSocket(bool delayedSend)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("operator-health-owner-");
+        await server.StartAsync();
+        using var client = new LossProbeGatewayClient(server.WebSocketUrl, identity.Path)
+        {
+            DelayHealthSend = delayedSend,
+        };
+        var helper = new GatewayClientTestHelper(client);
+        var backoffEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Connecting)
+                backoffEntered.TrySetResult();
+        };
+        var authorizationCalls = 0;
+        client.ReconnectAuthorizationAsync = _ =>
+        {
+            Interlocked.Increment(ref authorizationCalls);
+            return Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        };
+        if (delayedSend)
+        {
+            await client.ConnectAsync();
+            helper.MarkHandshakeReady();
+        }
+        var health = client.CheckHealthAsync();
+        if (delayedSend)
+            await client.HealthSendEntered.Task.WaitAsync(CloseHandshakeTimeout);
+        else
+            await backoffEntered.Task.WaitAsync(CloseHandshakeTimeout);
+
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady("agent:new:main");
+        var generation = client.ServerHandshakeGeneration;
+        client.ReleaseHealthSend.TrySetResult();
+        await health.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(client.IsConnectedToGateway);
+        Assert.Equal("agent:new:main", client.MainSessionKey);
+        Assert.Equal(generation, client.ServerHandshakeGeneration);
+        Assert.Equal(0, authorizationCalls);
+        Assert.Equal(delayedSend ? 2 : 1, server.AcceptedCount);
+        await client.CheckHealthAsync();
+    }
+
+    private sealed class LossProbeGatewayClient(string url, string identityPath)
+        : OpenClawGatewayClient(url, "test-token", new TestLogger(), identityPath: identityPath)
+    {
+        public bool DelayHealthSend { get; set; }
+        public TaskCompletionSource HealthSendEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseHealthSend { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _healthSends;
+
+        public void AbortTransport() => AbortCurrentWebSocket(CurrentConnectionGeneration);
+
+        protected override async Task<bool> SendRawAsync(string message, long generation, CancellationToken cancellationToken)
+        {
+            if (DelayHealthSend && Interlocked.Increment(ref _healthSends) == 1)
+            {
+                HealthSendEntered.TrySetResult();
+                await ReleaseHealthSend.Task.WaitAsync(cancellationToken);
+                throw new IOException("synthetic delayed health send failure");
+            }
+            return await base.SendRawAsync(message, generation, cancellationToken);
+        }
     }
 
     [Fact]

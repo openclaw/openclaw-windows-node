@@ -913,6 +913,23 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 
 Both paths dispose old clients before creating new ones.
 
+Within a client, `WebSocketClientBase` reports transport loss once per current
+socket generation, including client abort, oversized messages and listen errors.
+Oversized-message cleanup runs before waiting for the peer's close handshake.
+`OpenClawGatewayClient.OnDisconnected` is the invalidation owner: it clears the
+live handshake, canonical session key and advertised methods/capabilities, and
+fails wizard requests with `GatewayConnectionLostException`; other pending
+waiters are canceled. Listen errors use that same cleanup before publishing
+Error. Invalidation is serialized with socket publication; transport events and
+node invocation cancellation run outside that lock. Superseded listeners and
+disposal do not invalidate a replacement connection.
+
+Health checks capture their socket and generation before sending or starting
+recovery. Backoff and reconnect authorization recheck that ownership, so delayed
+health work cannot replace a newer open socket. An explicit `ConnectAsync` may
+still publish a new attempt; failed or closed attempts retain the existing
+single-flight recovery policy.
+
 ## Setup-code and pairing flow
 
 Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `SetupCodeDecoder`. The flow:

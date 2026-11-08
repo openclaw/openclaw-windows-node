@@ -176,7 +176,9 @@ internal sealed class InvocationCancellationRegistry
             : InvocationCancellationResult.NotFound;
     }
 
-    public void CancelAll()
+    public void CancelAll() => CaptureTransportCancellation()();
+
+    internal Action CaptureTransportCancellation()
     {
         InvocationCancellation[] active;
         lock (_registrationGate)
@@ -184,10 +186,11 @@ internal sealed class InvocationCancellationRegistry
             active = _active.Values.SelectMany(invocations => invocations).ToArray();
         }
 
-        foreach (var invocation in active)
+        return () =>
         {
-            invocation.CancelFromTransport();
-        }
+            foreach (var invocation in active)
+                invocation.CancelFromTransport();
+        };
     }
 
     private void Remove(string requestId, InvocationCancellation invocation)

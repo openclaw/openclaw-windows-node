@@ -411,11 +411,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _assistantMediaHttpClient.Dispose();
     }
 
-    protected override void OnError(Exception ex)
-    {
-        _pendingRequests.Drain();
-    }
-
     // Events
     public event EventHandler<OpenClawNotification>? NotificationReceived;
     public event EventHandler<AgentActivity>? ActivityChanged;
@@ -635,13 +630,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>Verifies the connection, reconnecting through the transport policy when it is unavailable.</summary>
     public async Task CheckHealthAsync()
     {
+        var owner = CaptureConnection();
         if (!IsConnected)
         {
-            await ReconnectWithBackoffAsync();
+            await ReconnectWithBackoffAsync(owner.Socket, owner.Generation);
             return;
         }
 
-        if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
+        if (!TryGetReadyConnectionGeneration(out var connectionGeneration) ||
+            connectionGeneration != owner.Generation)
             return;
 
         try
@@ -657,9 +654,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (Exception ex)
         {
+            if (!IsCurrentConnectionGeneration(owner.Generation))
+                return;
             _logger.Error("Health check failed", ex);
             RaiseStatusChanged(ConnectionStatus.Error);
-            await ReconnectWithBackoffAsync();
+            await ReconnectWithBackoffAsync(owner.Socket, owner.Generation);
         }
     }
 
