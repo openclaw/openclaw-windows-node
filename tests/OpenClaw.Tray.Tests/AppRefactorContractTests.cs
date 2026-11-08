@@ -109,8 +109,20 @@ public sealed class AppRefactorContractTests
             "await ShowOnboardingAsync();",
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
-            "CheckOrdinaryStartupUpdateAsync(",
-            "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);");
+            "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);",
+            "CheckOrdinaryStartupUpdateAsync(");
+    }
+
+    [Fact]
+    public void Startup_GlobalHotkey_UsesTheSettingsOwner()
+    {
+        var source = ReadAppSources();
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+
+        // Retire when mounted App lifecycle tests cover startup and settings changes together.
+        AssertInOrder(startup, "ApplyGlobalHotkey(_settings.ToSettingsData());", "CheckOrdinaryStartupUpdateAsync(");
+        Assert.DoesNotContain("new GlobalHotkeyService(", startup);
+        Assert.Single(Regex.Matches(source, @"\bnew\s+GlobalHotkeyService\s*\("));
     }
 
     [Fact]
