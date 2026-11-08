@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Cron;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Automations;
@@ -286,7 +287,17 @@ internal static class AutomationsVisuals
         }
     }
 
-    internal sealed record AutomationRowLabelsProps(string Title, string Subtitle, string? Tag, string JobId);
+    internal sealed record AutomationRowLabelsProps(
+        string Title,
+        string Subtitle,
+        string? Tag,
+        string JobId,
+        bool IsFailing,
+        bool IsAutoDisabled,
+        string? FailureReason,
+        int? ConsecutiveErrors,
+        AutomationsText Text,
+        bool ReduceMotion);
 
     internal sealed class AutomationRowLabels : Component<AutomationRowLabelsProps>
     {
@@ -300,12 +311,32 @@ internal static class AutomationsVisuals
                 return probe.DesiredSize.Width;
             }
             var showTag = Props.Tag is { } tag && NaturalWidth(Props.Subtitle) + NaturalWidth(tag, true) + 24 <= width;
-            return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
-                AutomationsVisuals.SingleLine(Props.Title, 14).FontWeight(FontWeights.SemiBold)
-                    .AutomationId($"CronJobTitle:{Props.JobId}").Grid(row: 0).Set(native => Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(native, 2)),
-                AutomationsVisuals.SingleLine(Props.Subtitle).Foreground(Theme.SecondaryText).Margin(0, 4, 0, 0).Grid(row: 1),
-                (showTag ? AutomationsVisuals.Pill(Props.Tag!, Theme.SecondaryText, Theme.SystemNeutralBackground).Margin(8, 4, 0, 0) : Empty())
-                    .Grid(column: 1, row: 1))
+            var failureDetail = string.Join(" ", new[]
+            {
+                Props.ConsecutiveErrors is { } count ? Props.Text.Format("Redesign_FailureStreak", count) : null,
+                Props.FailureReason,
+                Props.IsAutoDisabled ? Props.Text["Review_SchedulerStopped"] : null,
+            }.Where(value => !string.IsNullOrWhiteSpace(value)));
+            var titleBadge = Props.IsAutoDisabled
+                ? (Element)PageHero.AttentionBadge($"AutomationAttentionBadge:{Props.JobId}",
+                    Props.Text["Scheduler_Off"], failureDetail, GlyphLock, PageHeroTone.Critical, Props.ReduceMotion,
+                    reconciliationKey: "AutomationRowStatusBadge")
+                : Props.IsFailing
+                    ? PageHero.AttentionBadge($"AutomationAttentionBadge:{Props.JobId}",
+                        Props.Text["State_Failing"], failureDetail, GlyphError, PageHeroTone.Critical, Props.ReduceMotion,
+                        reconciliationKey: "AutomationRowStatusBadge")
+                    : Empty();
+            return PageHero.WithMotion(
+                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
+                    Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        AutomationsVisuals.SingleLine(Props.Title, 14).FontWeight(FontWeights.SemiBold)
+                            .AutomationId($"CronJobTitle:{Props.JobId}").Grid(column: 0),
+                        titleBadge.VAlign(VerticalAlignment.Center).Grid(column: 1))
+                        .Grid(row: 0).Set(native => Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(native, 2)),
+                    AutomationsVisuals.SingleLine(Props.Subtitle).Foreground(Theme.SecondaryText).Margin(0, 4, 0, 0).Grid(row: 1),
+                    (showTag ? AutomationsVisuals.Pill(Props.Tag!, Theme.SecondaryText, Theme.SystemNeutralBackground).Margin(8, 4, 0, 0) : Empty())
+                        .Grid(column: 1, row: 1)),
+                Props.ReduceMotion, staggerChildren: false)
                 .OnSizeChanged((_, args) => setWidth(args.NewSize.Width));
         }
     }
@@ -345,19 +376,6 @@ internal static class AutomationsVisuals
                     .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
     }
-
-    /// <summary>
-    /// Decorative accent wash behind the page ScrollView. It stays at the viewport
-    /// top while content scrolls, so it must never take input or join the UIA tree.
-    /// </summary>
-    internal static Element PageBackdrop(double height) =>
-        Border(Empty())
-            .Background(Theme.Ref("AutomationsPageWashBrush"))
-            .Height(height)
-            .HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
-            .IsHitTestVisible(false)
-            .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
-            .AutomationId("AutomationsBackdrop");
 
     /// <summary>The colourful Automations artwork, or its Fluent glyph in high contrast.</summary>
     internal static Element AppIcon(bool highContrast, double size) =>

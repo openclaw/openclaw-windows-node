@@ -8431,6 +8431,7 @@
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} 個正在等待事件</value></data>
   <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>今天稍早</value></data>
   <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>排程器狀態未知</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>排程器</value></data>
   <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>即將執行</value></data>
   <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>全部 ({0})</value></data>
   <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>已開啟 ({0})</value></data>

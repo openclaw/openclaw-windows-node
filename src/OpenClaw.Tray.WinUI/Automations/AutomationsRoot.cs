@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -48,6 +49,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         var scrollRef = this.UseElementRef<ScrollView>();
         var pageRef = this.UseElementRef<Microsoft.UI.Xaml.Controls.Grid>();
         var announce = this.UseAnnounce();
+        var look = new AutomationsLook(UseReducedMotion(), UseHighContrast());
         var confirmDialogRef = UseRef<ContentDialog?>(null);
         var measuredRows = UseRef(new Dictionary<string, WeakReference<FrameworkElement>>(StringComparer.Ordinal));
         var revealedSelection = UseRef<string?>(null);
@@ -58,10 +60,8 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         {
             RevealElement = target => target.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                if (!target.IsLoaded || scrollRef.Current is not { IsLoaded: true, Content: UIElement content } scroll) return;
-                var top = target.TransformToVisual(content).TransformPoint(new global::Windows.Foundation.Point()).Y;
-                scroll.ScrollTo(scroll.HorizontalOffset, Math.Clamp(top, 0, Math.Max(0, scroll.ScrollableHeight)),
-                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                if (target.IsLoaded && scrollRef.Current is { IsLoaded: true })
+                    PageHero.RevealAndHighlight(target, look.ReduceMotion);
             }),
             Confirm = async request =>
             {
@@ -107,10 +107,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 setExpandedJobs(expandedJobsRef.Current);
             }
         }, state.SelectedJobId ?? "");
-        var look = new AutomationsLook(UseReducedMotion(), UseHighContrast());
         var (hostSize, setHostSize) = UseState((Page: PageResponsiveLayout.WideMin, Window: PageResponsiveLayout.WideMin));
-        // The viewport backdrop matches the header band's top-of-page height.
-        var (bandHeight, setBandHeight) = UseState(0.0);
         var viewport = host.Viewport;
         var (topInset, setTopInset) = UseState(viewport.TopInset);
         UseEffect((Func<Action>)(() =>
@@ -254,10 +251,6 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             if (store.State.SelectedJobId != id || pendingReveal.Current != id || revealedSelection.Current == id) return;
             revealedSelection.Current = id;
             host.RevealElement?.Invoke(row);
-            row.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (row.IsLoaded && FindRowButton(row, id) is { } button) button.Focus(FocusState.Programmatic);
-            });
         }
         var actions = new AutomationsActions(
             () => OpenEditor(EditorMode.Create, CronJobForm.CreateDefault(state.DefaultAgentId), null),
@@ -268,8 +261,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         if (state.ReadDenied)
             content = Hero(GlyphLock, t["ReadDenied_Title"], t["Redesign_ReadDenied"], "AutomationsReadDenied");
         else if (!state.Connected && !state.ListLoaded)
-            content = Hero(GlyphDisconnected, t["Disconnected_Title"], t["Disconnected_Body"], "AutomationsDisconnected",
-                GlyphButton(GlyphPlug, t["OpenConnection"], host.OpenConnection, "AutomationsOpenConnection"));
+            content = Empty();
         else if (!state.ListLoaded && state.ListError is null)
             content = VStack(PageResponsiveLayout.GapInner, Enumerable.Range(0, 4).Select(i => (Element)Surface(
                 HStack(12, Border(Empty()).Size(40, 40).CornerRadius(8).Background(Theme.SubtleFill),
@@ -287,7 +279,6 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 Secondary(t["Review_EmptyWebCaption"], 13).TextAlignment(TextAlignment.Center).HAlign(HorizontalAlignment.Center));
         else
             content = VStack(32,
-                RenderAttention(host, state, !twoColumns, Reveal),
                 RenderAgenda(host, state, expandedGroups, ToggleGroup, Reveal, look, !twoColumns),
                 RenderInventory(host, state, search, OnSearch, actions, look, tier, twoColumns, RegisterRow,
                     expandedJobs, ToggleJob, detailSnapshots.Current, visitedJobs.Current));
@@ -340,17 +331,19 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             })
                 .WithKey(pending.Id);
 
+        var hero = RenderHeader(host, state, actions, look, tier);
+        var banner = RenderBanners(host, state);
+        var headerContent = state.Connected
+            ? VStack(12, hero, RenderSummaryTiles(host, state, look, hostSize.Page, Reveal))
+            : VStack(12, hero, banner);
+        var body = state.Connected
+            ? VStack(24, banner, content)
+            : VStack(24, content);
         return Grid([GridSize.Star()], [GridSize.Star()],
-            PageBackdrop(bandHeight + topInset).WithKey("page-backdrop"),
             ScrollView(VStack(24,
-                Grid([GridSize.Star()], [GridSize.Auto],
-                    RenderHeader(host, state, actions, look, tier)
-                        .Width(contentWidth).HAlign(HorizontalAlignment.Center))
-                    .Width(hostSize.Page).Padding(0, 24, 0, 0)
-                    .OnSizeChanged((_, args) => setBandHeight(args.NewSize.Height))
-                    .WithKey("page-header-band"),
-                VStack(24, RenderBanners(host, state), content)
-                    .Width(contentWidth).HAlign(HorizontalAlignment.Center)
+                PageHero.WithMotion(headerContent, look.ReduceMotion).Width(contentWidth).HAlign(HorizontalAlignment.Center)
+                    .Padding(0, 24, 0, 0).WithKey("page-header"),
+                PageHero.WithMotion(body, look.ReduceMotion).Width(contentWidth).HAlign(HorizontalAlignment.Center)
                     .Margin(PageResponsiveLayout.HorizontalPadding(tier), 0, PageResponsiveLayout.HorizontalPadding(tier), 24))
                 .Width(hostSize.Page).HAlign(HorizontalAlignment.Stretch))
                 .Margin(0, topInset, 0, 0)
@@ -406,26 +399,29 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
     {
         var t = host.Text;
         var all = state.OverviewJobs;
-        var attention = all.Count(j => j.IsFailing || j.IsAutoDisabled);
+        var attention = all.Count(job => job.IsFailing || job.IsAutoDisabled);
         var next = all.Where(j => j.Enabled && !j.IsAutoDisabled && j.State.NextRunAtMs is not null)
             .OrderBy(j => j.State.NextRunAtMs).FirstOrDefault();
-        var title = !state.Connected && state.LastSeenAtMs is { } seen ? t.Format("Redesign_LastSeen", t.DateTime(seen))
-            : !state.OverviewLoaded ? t["Title"] : all.Count == 0 ? t["Review_NothingScheduled"] : state.Status?.Enabled == false ? t["SchedulerOff_Title"]
+        var answer = !state.Connected && state.LastSeenAtMs is { } seen
+            ? t.Format("Redesign_LastSeen", t.DateTime(seen))
+            : !state.Connected ? t["Disconnected_BannerBody"]
+            : !state.OverviewLoaded ? t["Redesign_SchedulerUnknown"]
+            : state.Status?.Enabled == false ? t["SchedulerOff_Title"]
+            : all.Count == 0 ? t["Review_NothingScheduled"]
+            : next?.State.NextRunAtMs is { } at ? t.Format("Redesign_Next", next.Title, t.Relative(at))
             : attention == 1 ? t["Redesign_NeedYouOne"]
-            : attention > 0 ? t.Format("Redesign_NeedYou", attention) : t["Redesign_OnSchedule"];
+            : attention > 1 ? t.Format("Redesign_NeedYou", attention)
+            : t["Redesign_OnSchedule"];
         var agentCount = all.Select(j => j.Owner ?? state.DefaultAgentId).Distinct().Count();
-        var subtitle = !state.OverviewLoaded ? t.AgentScope(state.AgentFilter)
-            : string.Join(" ", next is { State.NextRunAtMs: { } at } ? t.Format("Redesign_Next", next.Title, t.Clock(at)) : "",
-                t.InventorySummary(all.Count(j => j.Enabled && !j.IsAutoDisabled),
-                    all.Count(j => !j.Enabled || j.IsAutoDisabled), agentCount));
-        var narrow = tier == PageWidthTier.Narrow;
-        var text = VStack(12,
-                HStack(PageResponsiveLayout.GapInner, AppIcon(look.HighContrast, 20).VAlign(VerticalAlignment.Center),
-                    TextBlock(t["Title"]).FontWeight(FontWeights.SemiBold).Foreground(Theme.SecondaryText)
-                        .VAlign(VerticalAlignment.Center).AutomationId("CronPageMarker")),
-                TextBlock(title).FontSize(28).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
-                    .MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(title).AutomationId("AutomationsHeadline"),
-                Secondary(subtitle, 14).AutomationId("AutomationsAgentScope"));
+        var detail = state.OverviewLoaded
+            ? t.InventorySummary(
+                all.Count(job => job.Enabled && !job.IsAutoDisabled),
+                all.Count(job => !job.Enabled || job.IsAutoDisabled),
+                agentCount)
+            : t.AgentScope(state.AgentFilter);
+        var detailLine = string.IsNullOrWhiteSpace(detail)
+            ? null
+            : (Element)Secondary(detail, 14).AutomationId("AutomationsAgentScope");
         var commands = HStack(8,
                     tier != PageWidthTier.Wide ? Empty() : GlyphButton(GlyphOpenInBrowser, t["OpenInWeb"], () => host.OpenWeb(null), "AutomationsOpenWeb", state.Connected),
                     state.CanManage && !state.ReadDenied ? GlyphButton(GlyphAdd, t["NewAutomation"], actions.New, "AutomationsNew", accent: true) : Empty(),
@@ -445,12 +441,50 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                             };
                             foreach (var item in menu.Items.OfType<MenuFlyoutItem>()) item.IsEnabled = state.Connected;
                         }) : Empty())
-                .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top).AutomationId("AutomationsHeaderActions");
-        return Border(Grid(narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
-            narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
-            text.Margin(0, 0, narrow ? 0 : 16, 0).Grid(column: 0),
-            commands.Margin(0, narrow ? 12 : 0, 0, 0).Grid(column: narrow ? 0 : 1, row: narrow ? 1 : 0))
-            .Padding(0, 8, 0, 16).AutomationId("AutomationsMastGrid")).AutomationId("AutomationsMast");
+                .HAlign(HorizontalAlignment.Left).AutomationId("AutomationsHeaderActions");
+        return PageHero.Header("AutomationsMast", GlyphCalendar, t["Title"], "AutomationsHeadline",
+            TextBlock(answer).FontSize(14).Foreground(Theme.SecondaryText)
+                .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).AutomationId("AutomationsHeroAnswer"),
+            detailLine, commands, tier == PageWidthTier.Narrow, look.ReduceMotion, look.HighContrast,
+            glyphAutomationId: "CronPageMarker");
+    }
+
+    private static Element RenderSummaryTiles(AutomationsHost host, AutomationsSnapshot state, AutomationsLook look,
+        double pageWidth, Action<string> reveal)
+    {
+        var t = host.Text;
+        var jobs = state.OverviewJobs;
+        var known = state.OverviewLoaded;
+        var running = known ? jobs.Count(job => job.IsRunning || state.IsRunning(job.Id)) : (int?)null;
+        var failing = known ? jobs.Where(job => job.IsFailing || job.IsAutoDisabled).ToArray() : [];
+        var firstFailure = failing.FirstOrDefault();
+        string Count(int? value) => value?.ToString("N0", CultureInfo.CurrentCulture) ?? AutomationsText.Unavailable;
+        var failingName = $"{t["State_Failing"]}: {Count(known ? failing.Length : null)}";
+        var schedulerTone = state.Status?.Enabled switch
+        {
+            true => PageHeroTone.Success,
+            false => PageHeroTone.Critical,
+            _ => PageHeroTone.Neutral,
+        };
+        var tiles = new[]
+        {
+            new PageHeroTile(t["Redesign_Scheduler"], state.Status?.Enabled switch
+                {
+                    true => t["Redesign_On"],
+                    false => t["Scheduler_Off"],
+                    _ => t["Redesign_SchedulerUnknown"],
+                }, GlyphCalendar, "AutomationsTileScheduler", schedulerTone, StatusDot: true),
+            new PageHeroTile(t["Review_RunningNow"], Count(running), GlyphPlay, "AutomationsTileRunning",
+                running is > 0 ? PageHeroTone.Accent : PageHeroTone.Neutral),
+            new PageHeroTile(t["State_Failing"], Count(known ? failing.Length : null), GlyphError,
+                "AutomationsTileFailing", PageHeroTone.Critical,
+                OnInvoked: () => { if (firstFailure is not null) reveal(firstFailure.Id); },
+                AutomationName: failingName, IsEnabled: firstFailure is not null),
+            new PageHeroTile(t["Redesign_Off"], Count(known ? state.PausedCount : null), GlyphPause,
+                "AutomationsTilePaused", PageHeroTone.Neutral),
+        };
+        return PageHero.SummaryTiles("AutomationsSummaryTiles", t["Title"], tiles, pageWidth,
+            look.ReduceMotion, look.HighContrast);
     }
 
     private static Element RenderBanners(AutomationsHost host, AutomationsSnapshot state)
@@ -484,60 +518,16 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
 
     private static Element Heading(AutomationsText t, string key, int? count) =>
         HStack(12, TextBlock(t[key]).FontSize(20).FontWeight(FontWeights.SemiBold),
-            count is { } known ? CountPill(known, key == "Redesign_NeedsYou") : Empty());
+            count is { } known ? CountPill(known) : Empty());
 
-    private static Element CountPill(int count, bool critical = false) =>
+    private static Element CountPill(int count) =>
         Border(TextBlock(count.ToString()).FontSize(12).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
-                .Foreground(critical ? Theme.SystemCritical : Theme.SecondaryText).Center())
+                .Foreground(Theme.SecondaryText).Center())
             .Padding(8, 2).CornerRadius(10).VAlign(VerticalAlignment.Center)
-            .Background(critical ? Theme.SystemCriticalBackground : Theme.SystemNeutralBackground);
+            .Background(Theme.SystemNeutralBackground);
 
     private static Element GroupHeading(AutomationsText text, string key, int count) =>
         HStack(8, TextBlock(text[key]).FontSize(14).FontWeight(FontWeights.SemiBold), CountPill(count));
-
-    private static Element RenderAttention(AutomationsHost host, AutomationsSnapshot state, bool narrow, Action<string> reveal)
-    {
-        var t = host.Text;
-        var jobs = state.OverviewJobs.Where(j => j.IsAutoDisabled || j.IsFailing).ToArray();
-        if (jobs.Length == 0) return Empty();
-        var cards = jobs.Take(jobs.Length > 3 ? 2 : 3).Select(job =>
-            (Element)Border(Grid([GridSize.Px(4), GridSize.Star()], [GridSize.Auto],
-                Border(Empty()).Background(Theme.SystemCritical).Grid(column: 0),
-                Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                    Border(Glyph(job.IsAutoDisabled ? GlyphLock : GlyphError, 16, Theme.SystemCritical).Center())
-                        .Size(DialogBadgeSize, DialogBadgeSize).CornerRadius(DialogBadgeSize / 2)
-                        .Background(Theme.SystemCriticalBackground).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top).Grid(column: 0),
-                    VStack(8,
-                    TextBlock(job.IsAutoDisabled ? t.Format("Review_TurnedOff", job.Title) : job.Title)
-                        .FontSize(14).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.Wrap).AutomationId($"AutomationAttentionTitle:{job.Id}"),
-                    Secondary(string.Join(" ", new[]
-                    {
-                        (job.State.AutoDisabled?.ConsecutiveErrors ?? job.State.ConsecutiveErrors) is { } count
-                            ? t.Format("Redesign_FailureStreak", count) + "." : t["Redesign_FailedLast"] + ".",
-                        job.State.LastError,
-                        job.IsAutoDisabled ? t["Review_SchedulerStopped"] : null,
-                    }.Where(value => !string.IsNullOrWhiteSpace(value)))).AutomationId($"AutomationAttentionBody:{job.Id}"),
-                    HStack(8,
-                        job.IsAutoDisabled ? Empty() : state.CanManage
-                            ? GlyphButton(GlyphPlay, t["Redesign_RetryNow"], () => _ = host.Store.RunNowAsync(job.Id),
-                                $"AutomationRetry:{job.Id}", state.Connected && !state.IsBusy(job.Id) && !state.IsRunning(job.Id) && !job.IsRunning, accent: true) : Empty(),
-                        Button(t["Redesign_SeeRuns"], () => reveal(job.Id)).AutomationName(t["Redesign_SeeRuns"]).AutomationId($"AutomationSeeRuns:{job.Id}"),
-                        job.IsAutoDisabled && state.CanManage ? Button(t["Redesign_TurnOn"], () => _ = host.Store.SetEnabledAsync(job.Id, true))
-                            .AutomationName(t["Redesign_TurnOn"]).ApplyStyle("SubtleButtonStyle")
-                            .IsEnabled(state.Connected && !state.IsBusy(job.Id)).WithKey($"AutomationTurnOn:{job.Id}") : Empty())).Grid(column: 1))
-                    .Padding(16).Grid(column: 1)))
-                .CornerRadius(CardRadius).Background(Theme.CardBackground).BorderBrush(Theme.CardStroke).BorderThickness(1)
-                .AutomationId($"AutomationAttention:{job.Id}").WithKey(job.Id)).ToList();
-        if (jobs.Length > 3)
-            cards.Add(Surface(Button(t.Format("Redesign_MoreAttention", jobs.Length - 2),
-                () => reveal(jobs[2].Id)).AutomationName(t.Format("Redesign_MoreAttention", jobs.Length - 2))));
-        Element layout = narrow ? VStack(PageResponsiveLayout.GapInner, cards.ToArray()).HAlign(HorizontalAlignment.Stretch)
-            : Grid([GridSize.Star(), GridSize.Star()], Enumerable.Repeat(GridSize.Auto, (cards.Count + 1) / 2).ToArray(),
-                cards.Select((card, i) => card.Margin(i % 2 == 0 ? 0 : 6, 0, i % 2 == 0 ? 6 : 0, 8)
-                    .Grid(column: i % 2, row: i / 2).WithKey(jobs.Length > 3 && i == 2 ? "more-attention" : jobs[i].Id))
-                    .Append(Empty().Grid(column: 1)).ToArray());
-        return VStack(12, Heading(t, "Redesign_NeedsYou", jobs.Length), layout.AutomationId("AutomationsAttentionLayout")).AutomationId("AutomationsAttention");
-    }
 
     private static Element RenderAgenda(AutomationsHost host, AutomationsSnapshot state, ImmutableHashSet<string> expanded, Action<string> toggle, Action<string> reveal, AutomationsLook look, bool narrow)
         => Component<AutomationAgenda, AutomationAgendaProps>(new(host, state, expanded, toggle, reveal, look));
@@ -736,7 +726,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 return (Element)Surface((Expander(job.Title,
                     visited.Contains(job.Id) ? Component<AutomationDetail, AutomationDetailProps>(new(host, detailsState, exact, actions) { Narrow = !twoColumns })
                         .WithKey("detail-" + job.Id) : Empty(), open, value => toggle(job.Id, value)) with
-                    { HeaderTemplate = RenderRow(host, state, job, open, narrow, tier == PageWidthTier.Wide, () => toggle(job.Id, !open)) })
+                    { HeaderTemplate = RenderRow(host, state, job, open, narrow, tier == PageWidthTier.Wide, look, () => toggle(job.Id, !open)) })
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
                     .AutomationName(job.Title).AutomationId($"AutomationExpander:{job.Id}"), 0)
                     .OnSizeChanged((sender, args) =>
@@ -762,12 +752,14 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         return null;
     }
 
-    private static Element RenderRow(AutomationsHost host, AutomationsSnapshot state, CronJob job, bool selected, bool narrow, bool wide, Action toggle)
+    private static Element RenderRow(AutomationsHost host, AutomationsSnapshot state, CronJob job, bool selected, bool narrow, bool wide,
+        AutomationsLook look, Action toggle)
     {
         var t = host.Text;
         var running = job.IsRunning;
         var queued = !running && state.IsRunning(job.Id);
         var accessibleState = queued ? t["Toast_RunQueued"] : t.JobState(job, running);
+        var attentionState = job.IsAutoDisabled ? t["Scheduler_Off"] : job.IsFailing ? t["State_Failing"] : null;
         var eventDriven = job.Schedule.Kind is CronScheduleKind.Event or CronScheduleKind.OnExit or CronScheduleKind.Stream;
         var when = eventDriven ? t["Review_OnEvent"]
             : job.Enabled && job.State.NextRunAtMs is { } next ? t.Clock(next) : AutomationsText.Unavailable;
@@ -788,7 +780,9 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 AgentAvatar(job.Owner ?? state.DefaultAgentId).Margin(0, 0, 12, 0).Grid(column: 0),
                 Component<AutomationRowLabels, AutomationRowLabelsProps>(new(job.Title,
                     $"{job.Owner ?? state.DefaultAgentId} · {t.Schedule(job.Schedule)}",
-                    wide && IsAdvanced(job) ? t["Redesign_Advanced"] : null, job.Id)).Grid(column: 1),
+                    wide && IsAdvanced(job) ? t["Redesign_Advanced"] : null, job.Id, job.IsFailing,
+                    job.IsAutoDisabled, job.State.LastError,
+                    job.State.AutoDisabled?.ConsecutiveErrors ?? job.State.ConsecutiveErrors, t, look.ReduceMotion)).Grid(column: 1),
                 VStack(4, SingleLine(when).TextAlignment(narrow ? TextAlignment.Left : TextAlignment.Right),
                     HStack(4, Glyph(statusGlyph, 11, statusBrush), SingleLine(last).Foreground(statusBrush))
                         .HAlign(narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right))
@@ -797,7 +791,9 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 toggle)
                 .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
                 .Padding(16).BorderThickness(0).Background(Theme.Ref("SubtleFillColorTransparentBrush"))
-                .AutomationName($"{job.Title}. {t.AgentScope(job.Owner)}. {accessibleState}. {t.Schedule(job.Schedule)}")
+                .AutomationName($"{job.Title}. {t.AgentScope(job.Owner)}. {accessibleState}. "
+                    + (attentionState is null ? "" : $"{attentionState}. {job.State.LastError}. ")
+                    + t.Schedule(job.Schedule))
                 .ItemStatus(state.SelectedJobId == job.Id ? t["Selected"] : accessibleState)
                 .AutomationId($"AutomationRow:{job.Id}").Grid(column: 0),
             string.IsNullOrWhiteSpace(chatSession) ? Empty().Grid(column: 1)

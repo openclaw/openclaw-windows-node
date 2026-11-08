@@ -3,15 +3,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!--
         Automations palette. Each schedule kind has a hue (glyph) and a tinted fill
-        (tile). The header wash follows the user's Windows accent. High contrast maps
-        everything to system colors. Documented in DESIGN.md (automationKind*).
+        (tile). High contrast maps these accents to system colors. Documented in
+        DESIGN.md (automationKind*).
     -->
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
-            <LinearGradientBrush x:Key="AutomationsPageWashBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.14">
-                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColorLight1}" />
-                <GradientStop Offset="1" Color="Transparent" />
-            </LinearGradientBrush>
             <SolidColorBrush x:Key="AutomationsKindEveryBrush" Color="#4FD1D6" />
             <SolidColorBrush x:Key="AutomationsKindEveryFillBrush" Color="#334FD1D6" />
             <SolidColorBrush x:Key="AutomationsKindAtBrush" Color="#F5C65B" />
@@ -31,10 +27,6 @@
             <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="Transparent" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
-            <LinearGradientBrush x:Key="AutomationsPageWashBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.10">
-                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColor}" />
-                <GradientStop Offset="1" Color="Transparent" />
-            </LinearGradientBrush>
             <SolidColorBrush x:Key="AutomationsKindEveryBrush" Color="#00747A" />
             <SolidColorBrush x:Key="AutomationsKindEveryFillBrush" Color="#2400A3AB" />
             <SolidColorBrush x:Key="AutomationsKindAtBrush" Color="#8A5A00" />
@@ -54,7 +46,6 @@
             <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="Transparent" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
-            <SolidColorBrush x:Key="AutomationsPageWashBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AutomationsKindEveryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="AutomationsKindEveryFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AutomationsKindAtBrush" Color="{ThemeResource SystemColorWindowTextColor}" />

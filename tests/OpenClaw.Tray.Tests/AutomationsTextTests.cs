@@ -302,8 +302,7 @@ public sealed class AutomationsTextTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
         Assert.DoesNotContain("RenderDetailPane", page);
-        // AutomationsBackdrop is the page accent wash; any other AutomationsBack* id would be the removed back button.
-        Assert.DoesNotMatch(@"AutomationsBack(?!drop\b)", page);
+        Assert.DoesNotContain("AutomationsBack", page);
         Assert.DoesNotContain("ListPaneWidth", page);
         var detail = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationDetail.cs"));
         Assert.Contains("CommandBar(primaryCommands:", detail);
@@ -311,24 +310,26 @@ public sealed class AutomationsTextTests
     }
 
     [Fact]
-    public void PageBackdrop_IsAViewportLayerOutsideTheScrollingContent()
+    public void PageHero_OwnsTheHeaderWashWithoutReintroducingTheViewportBackdrop()
     {
-        var dir = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Automations");
-        var page = File.ReadAllText(Path.Combine(dir, "AutomationsRoot.cs"));
-        var layout = page[page.IndexOf("return Grid([GridSize.Star()], [GridSize.Star()],", StringComparison.Ordinal)..];
-        var backdrop = layout.IndexOf("PageBackdrop(bandHeight + topInset)", StringComparison.Ordinal);
-        Assert.InRange(backdrop, 0, layout.IndexOf("ScrollView(", StringComparison.Ordinal));
-
-        // The wash brush has a single owner, so no scrolling element can paint it again.
-        var washOwner = Assert.Single(Directory.GetFiles(dir, "*.cs"),
-            f => File.ReadAllText(f).Contains("\"AutomationsPageWashBrush\"", StringComparison.Ordinal));
-        Assert.Equal("AutomationsVisuals.cs", Path.GetFileName(washOwner));
-        var visuals = File.ReadAllText(Path.Combine(dir, "AutomationsVisuals.cs"));
-        var helper = visuals[visuals.IndexOf("internal static Element PageBackdrop(", StringComparison.Ordinal)..];
-        helper = helper[..helper.IndexOf(';')];
-        Assert.Contains("Theme.Ref(\"AutomationsPageWashBrush\")", helper);
-        Assert.Contains(".IsHitTestVisible(false)", helper);
-        Assert.Contains("AccessibilityView.Raw", helper);
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
+        var helper = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Presentation", "Adapters", "PageHero.cs"));
+        var visuals = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsVisuals.cs"));
+        Assert.Contains("PageHero.Header(", page);
+        Assert.Contains("PageHero.SummaryTiles(", page);
+        Assert.DoesNotContain("RenderAttention(", page);
+        Assert.DoesNotContain("AutomationsBackdrop", page);
+        Assert.Contains("private static Element AccentWash(", helper);
+        Assert.Contains("AccentGradient(native.ActualTheme)", helper);
+        Assert.Contains(".Padding(narrow ? 16 : 24", helper);
+        Assert.DoesNotContain("AutomationsPageWashBrush", helper);
+        Assert.DoesNotContain("SeenBadgeEntrances", helper);
+        Assert.Contains("keyedBadge.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade", helper);
+        Assert.Contains("reconciliationKey ?? automationId", helper);
+        Assert.Contains("reconciliationKey: \"AutomationRowStatusBadge\"", visuals);
+        Assert.Contains("new UISettings().AnimationsEnabled", helper);
+        Assert.Contains("ChildrenTransitions", helper);
     }
 
     [Fact]

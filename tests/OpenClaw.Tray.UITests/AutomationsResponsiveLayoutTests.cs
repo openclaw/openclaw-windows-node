@@ -107,17 +107,29 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
     }
 
     [Theory]
-    [InlineData(1400, 2, 1, 2)]
-    [InlineData(1000, 2, 1, 2)]
-    [InlineData(760, 2, 2, 1)]
-    [InlineData(937, 2, 2, 1)]
-    [InlineData(520, 1, 3, 1)]
+    [InlineData(1400, 3, 1, 2)]
+    [InlineData(1000, 3, 1, 2)]
+    [InlineData(760, 3, 2, 1)]
+    [InlineData(759, 3, 2, 1)]
+    [InlineData(937, 3, 2, 1)]
+    [InlineData(520, 2, 3, 1)]
+    [InlineData(380, 2, 3, 1)]
+    [InlineData(379, 2, 3, 1)]
     public async Task Page_UsesHostWidthWithoutOverlappingActionsOrRows(double width, int mastColumns, int filterRows, int detailColumns)
+        => await RunMountedPageAsync(width, mastColumns, filterRows, detailColumns, retainActionFocus: false);
+
+    [Fact]
+    public async Task Page_RetainsOriginalAddAndParentsAndFocusAcross760560760()
+        => await RunMountedPageAsync(760, 3, 2, 1, retainActionFocus: true);
+
+    private async Task RunMountedPageAsync(double width, int mastColumns, int filterRows, int detailColumns, bool retainActionFocus)
     {
         RequireProductionResources();
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
             ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT.");
         var capture = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1";
+        if (retainActionFocus)
+            Assert.True(capture, "Actual-page focus proof requires fresh captures with OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS=1.");
         var runId = Guid.NewGuid().ToString("N");
         var artifactRoot = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS")
             ?? Path.Combine(root, "artifacts", "automations-mounted");
@@ -207,6 +219,87 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 && Bounds(Find(surface!, "AutomationsMast"), surface!).Right <= width + 1,
                 "measured page host and completed content arrangement",
                 () => $"host={Find(surface!, "AutomationsRoot").ActualWidth}; mast={Bounds(Find(surface!, "AutomationsMast"), surface!)}; requested={width}"));
+            if (retainActionFocus)
+            {
+                Button? originalAdd = null;
+                DependencyObject? originalAddParent = null;
+                Grid? originalActionHost = null;
+                Grid? originalContent = null;
+                await ui.RunOnUIAsync(() =>
+                {
+                    originalAdd = Assert.IsType<Button>(Assert.Single(Controls(surface!), element =>
+                        AutomationProperties.GetAutomationId(element) == "AutomationsNew"));
+                    originalAddParent = VisualTreeHelper.GetParent(originalAdd);
+                    Assert.Same(Find(surface!, "AutomationsHeaderActions"), originalAddParent);
+                    originalActionHost = Assert.IsType<Grid>(VisualTreeHelper.GetParent(originalAddParent));
+                    originalContent = Assert.IsType<Grid>(Find(surface!, "AutomationsMastGrid"));
+                    Assert.Same(originalContent, VisualTreeHelper.GetParent(originalActionHost));
+                    Assert.True(originalAdd.Focus(FocusState.Programmatic));
+                    Assert.Same(originalAdd, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface!.XamlRoot));
+                });
+                foreach (var focusWidth in new[] { 760, 560, 760 })
+                {
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        surface!.Width = focusWidth;
+                        requestedScale = surface.XamlRoot.RasterizationScale;
+                        requestedClient = new global::Windows.Graphics.SizeInt32(
+                            (int)Math.Ceiling(focusWidth * requestedScale),
+                            (int)Math.Ceiling(ProofClientHeight * requestedScale));
+                        proofWindow!.AppWindow.ResizeClient(requestedClient);
+                    });
+                    await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                        Math.Abs(Find(surface!, "AutomationsRoot").ActualWidth - focusWidth) < 1
+                        && Math.Abs(Find(surface!, "AutomationsMast").ActualWidth -
+                            PageResponsiveLayout.ContentWidth(focusWidth)) < 1,
+                        "same reactive page focus viewport settled",
+                        () => RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "focus-timeout")));
+                    await ui.YieldToRenderAsync();
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        var add = Assert.IsType<Button>(Assert.Single(Controls(surface!), element =>
+                            AutomationProperties.GetAutomationId(element) == "AutomationsNew"));
+                        Assert.Same(originalAdd, add);
+                        Assert.True(add.IsLoaded);
+                        Assert.Same(originalAddParent, VisualTreeHelper.GetParent(add));
+                        Assert.Same(originalActionHost, VisualTreeHelper.GetParent(originalAddParent));
+                        Assert.Same(originalContent, Find(surface!, "AutomationsMastGrid"));
+                        Assert.Same(originalContent, VisualTreeHelper.GetParent(originalActionHost));
+                        Assert.Same(originalAdd, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface!.XamlRoot));
+                        var narrow = focusWidth == 560;
+                        Assert.Equal(narrow ? 1 : 0, Microsoft.UI.Xaml.Controls.Grid.GetRow(originalActionHost));
+                        Assert.Equal(narrow ? 1 : 2, Microsoft.UI.Xaml.Controls.Grid.GetColumn(originalActionHost));
+                        Assert.Equal(narrow ? 2 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(originalActionHost));
+                        var glyph = Assert.IsType<Border>(Find(surface!, "CronPageMarker"));
+                        var title = Assert.IsType<TextBlock>(Find(surface!, "AutomationsHeadline"));
+                        var copy = Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(title));
+                        Assert.Same(originalContent, VisualTreeHelper.GetParent(copy));
+                        var glyphBounds = Bounds(glyph, originalContent!);
+                        var copyBounds = Bounds(copy, originalContent!);
+                        var actionBounds = Bounds(originalActionHost!, originalContent!);
+                        Assert.InRange(copyBounds.Left - glyphBounds.Right, 15.5, 16.5);
+                        if (narrow)
+                        {
+                            Assert.InRange(actionBounds.Left - copyBounds.Left, -0.5, 0.5);
+                            Assert.InRange(actionBounds.Top - copyBounds.Bottom, 11.5, 12.5);
+                        }
+                        RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, $"focus-{focusWidth}");
+                        File.AppendAllText(Path.Combine(artifacts, "focus-retention.jsonl"), JsonSerializer.Serialize(new
+                        {
+                            runId, width = focusWidth, timestampUtc = DateTimeOffset.UtcNow,
+                            sameAdd = ReferenceEquals(originalAdd, add),
+                            sameAddParent = ReferenceEquals(originalAddParent, VisualTreeHelper.GetParent(add)),
+                            sameActionHost = ReferenceEquals(originalActionHost, VisualTreeHelper.GetParent(originalAddParent)),
+                            sameContentGrid = ReferenceEquals(originalContent, VisualTreeHelper.GetParent(originalActionHost)),
+                            sameFocusedObject = ReferenceEquals(originalAdd, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot)),
+                            glyphBounds, copyBounds, actionBounds,
+                            captureLimit = "Owned window capture is not compositor acceptance."
+                        }) + Environment.NewLine);
+                        OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts,
+                            $"automations-focus-{focusWidth}-{(narrow ? "narrow" : "wide")}-{Guid.NewGuid():N}.png");
+                    });
+                }
+            }
             if (width == 1400)
             {
                 await ui.RunOnUIAsync(() =>
@@ -222,36 +315,34 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Controls(Find(surface!, "AutomationDetail")).Any(element => element is Expander
                     && AutomationProperties.GetAutomationId(element).StartsWith("AutomationRunExpand:", StringComparison.Ordinal))
-                && Find(surface!, "AutomationsBackdrop").ActualHeight > 0,
-                "inline run summary disclosure"));
+                && Find(surface!, "AutomationsSummaryTiles") is Grid,
+                "inline run summary and shared page tiles"));
             await ui.YieldToRenderAsync();
             ScrollView? retainedScroll = null;
             FrameworkElement? retainedMast = null;
-            double originalBackdropHeight = 0;
+            double originalMastTop = 0;
             await ui.RunOnUIAsync(() =>
             {
                 retainedScroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
                 retainedMast = Find(surface!, "AutomationsMast");
-                originalBackdropHeight = Find(surface!, "AutomationsBackdrop").ActualHeight;
+                originalMastTop = Bounds(retainedMast, surface!).Top;
                 viewport.ApplyTopInset(56);
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 56
-                && Math.Abs(Find(surface!, "AutomationsBackdrop").ActualHeight - originalBackdropHeight - 56) < 1,
-                "inset-only change at constant width updates scroll and measured backdrop"));
+                && Math.Abs(Bounds(Find(surface!, "AutomationsMast"), surface!).Top - originalMastTop - 56) < 1,
+                "inset-only change at constant width updates the retained scroll content"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(retainedScroll, Find(surface!, "AutomationsList"));
                 Assert.Same(retainedMast, Find(surface!, "AutomationsMast"));
                 Assert.Equal(width, surface!.ActualWidth);
-                Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationsBackdrop"), surface).Top), 0, 1);
                 Assert.True(Bounds(retainedMast!, surface).Top >= 56);
                 viewport.ApplyTopInset(0);
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 0
-                && Math.Abs(Find(surface!, "AutomationsBackdrop").ActualHeight - originalBackdropHeight) < 1,
-                "removing inset restores retained full viewport"));
+                Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 0,
+                "removing inset restores the retained page viewport"));
             await ui.RunOnUIAsync(() =>
             {
                 surface!.UpdateLayout();
@@ -259,9 +350,9 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 AssertNewButton(surface, artifacts, width);
                 var mast = Assert.IsType<Grid>(Find(surface, "AutomationsMastGrid"));
                 Assert.Equal(mastColumns, mast.ColumnDefinitions.Count);
-                var backdrop = Bounds(Find(surface, "AutomationsBackdrop"), surface);
-                Assert.InRange(Math.Abs(backdrop.Left), 0, 1);
-                Assert.InRange(Math.Abs(backdrop.Width - width), 0, 1);
+                Assert.DoesNotContain(Controls(surface), element =>
+                    AutomationProperties.GetAutomationId(element) is "AutomationsBackdrop" or "AutomationsAttention"
+                    || AutomationProperties.GetAutomationId(element).StartsWith("AutomationAttention:", StringComparison.Ordinal));
                 Assert.InRange(Math.Abs(Find(surface, "AutomationsMast").ActualWidth
                     - PageResponsiveLayout.ContentWidth(width)), 0, 1);
                 Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationsAgentScope"), surface).Left
@@ -282,24 +373,19 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     Assert.InRange(Math.Abs(Bounds(header, surface).Left - agendaListBounds.Left), 0, 1);
                 if (detailColumns == 1)
                     Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationEarlierHeading"), surface).Left - agendaListBounds.Left), 0, 1);
-                var attention = Find(surface, "AutomationsAttentionLayout");
-                Assert.Equal(detailColumns, attention is Grid attentionColumns ? attentionColumns.ColumnDefinitions.Count : 1);
-                if (detailColumns == 1)
+                var tiles = Assert.IsType<Grid>(Find(surface, "AutomationsSummaryTiles"));
+                Assert.Equal(width >= 760 ? 4 : width < 380 ? 1 : 2, tiles.ColumnDefinitions.Count);
+                Assert.Equal(width >= 760 ? 1 : width < 380 ? 4 : 2, tiles.RowDefinitions.Count);
+                var tileBounds = new[]
                 {
-                    var section = Assert.IsType<StackPanel>(Find(surface, "AutomationsAttention"));
-                    var heading = Assert.IsAssignableFrom<FrameworkElement>(section.Children[0]);
-                    var headingBounds = Bounds(heading, surface);
-                    var contentWidth = Find(surface, "AutomationsMast").ActualWidth;
-                    var cards = Controls(attention).Where(element =>
-                        AutomationProperties.GetAutomationId(element).StartsWith("AutomationAttention:", StringComparison.Ordinal)).ToArray();
-                    Assert.NotEmpty(cards);
-                    foreach (var card in cards)
-                    {
-                        var cardBounds = Bounds(card, surface);
-                        Assert.InRange(Math.Abs(cardBounds.Left - headingBounds.Left), 0, 1);
-                        Assert.InRange(Math.Abs(cardBounds.Width - contentWidth), 0, 1);
-                    }
-                }
+                    "AutomationsTileScheduler", "AutomationsTileRunning", "AutomationsTileFailing", "AutomationsTilePaused",
+                }.Select(id => Bounds(Find(tiles, id), surface)).ToArray();
+                Assert.All(tileBounds, bounds => Assert.True(bounds.Left >= -1 && bounds.Right <= width + 1, $"Tile outside host: {bounds}."));
+                var failingBadge = Find(surface, "AutomationAttentionBadge:flaky-report");
+                var badgeLabel = Assert.Single(Controls(failingBadge).OfType<TextBlock>(), text => text.Text == "Stopped");
+                Assert.Equal(TextWrapping.NoWrap, badgeLabel.TextWrapping);
+                Assert.Equal(TextTrimming.None, badgeLabel.TextTrimming);
+                Assert.False(badgeLabel.IsTextTrimmed);
                 var actions = Assert.IsType<StackPanel>(Find(surface, "AutomationsHeaderActions"));
                 Assert.Equal(Orientation.Horizontal, actions.Orientation);
                 var actionBounds = actions.Children.OfType<FrameworkElement>()
@@ -351,7 +437,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 await ui.YieldToRenderAsync();
                 OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, $"automations-responsive-{width}-Light.png");
             }
-            await AssertViewportBackdropAsync(surface!, width, capture
+            await AssertPageScrollAsync(surface!, width, capture
                 ? name => OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, name)
                 : null);
             if (width == 1400)
@@ -459,45 +545,21 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
         return json;
     }
 
-    /// <summary>The accent wash is a root layer behind the ScrollView: content scrolls, the wash stays put.</summary>
-    private async Task AssertViewportBackdropAsync(Border surface, double width, Action<string>? save)
+    private async Task AssertPageScrollAsync(Border surface, double width, Action<string>? save)
     {
-        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-            Math.Abs(Find(surface, "AutomationsBackdrop").ActualHeight - HeaderBand(surface).ActualHeight) < 1,
-            "viewport backdrop matches the header band",
-            () => $"backdrop={Find(surface, "AutomationsBackdrop").ActualHeight}; band={HeaderBand(surface).ActualHeight}"));
-        await ui.RunOnUIAsync(() =>
-        {
-            var root = Assert.IsAssignableFrom<Panel>(Find(surface, "AutomationsRoot"));
-            var backdrop = Find(surface, "AutomationsBackdrop");
-            var scroll = Assert.IsType<ScrollView>(Find(surface, "AutomationsList"));
-            Assert.Same(root, VisualTreeHelper.GetParent(backdrop));
-            Assert.InRange(root.Children.IndexOf(backdrop), 0, root.Children.IndexOf(scroll) - 1);
-            Assert.DoesNotContain(backdrop, Controls(scroll));
-            Assert.False(backdrop.IsHitTestVisible);
-            Assert.Equal(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(backdrop));
-        });
         var atTop = await CaptureViewportFrameAsync(surface, 0, save, $"automations-viewport-{width}-Light-top.png");
         Assert.InRange(Math.Abs(atTop.Offset), 0, 0.5);
-        Assert.InRange(Math.Abs(atTop.Backdrop.Top), 0, 1);
-        Assert.InRange(Math.Abs(atTop.Backdrop.Left), 0, 1);
-        Assert.InRange(Math.Abs(atTop.Backdrop.Width - width), 0, 1);
-        Assert.InRange(Math.Abs(atTop.Backdrop.Height - atTop.BandHeight), 0, 1);
         Assert.True(atTop.ScrollableHeight > 100, $"The mounted page must scroll; {atTop}.");
         var offset = Math.Min(240, atTop.ScrollableHeight);
         var scrolled = await CaptureViewportFrameAsync(surface, offset, save, $"automations-viewport-{width}-Light-scrolled.png");
         Assert.InRange(Math.Abs(scrolled.Offset - offset), 0, 0.5);
-        Assert.InRange(Math.Abs(scrolled.Backdrop.Top - atTop.Backdrop.Top), 0, 0.5);
-        Assert.InRange(Math.Abs(scrolled.Backdrop.Left - atTop.Backdrop.Left), 0, 0.5);
-        Assert.InRange(Math.Abs(scrolled.Backdrop.Width - atTop.Backdrop.Width), 0, 0.5);
-        Assert.InRange(Math.Abs(scrolled.Backdrop.Height - atTop.Backdrop.Height), 0, 0.5);
         Assert.True(Math.Abs(atTop.Mast.Top - offset - scrolled.Mast.Top) <= 1,
-            $"Header must scroll normally: {atTop} -> {scrolled}.");
+            $"The hero should scroll with the page: {atTop} -> {scrolled}.");
         await ScrollPageAsync(surface, 0);
     }
 
     private readonly record struct ViewportFrame(double Offset, double ScrollableHeight,
-        global::Windows.Foundation.Rect Backdrop, global::Windows.Foundation.Rect Mast, double BandHeight, int ScrollRequests);
+        global::Windows.Foundation.Rect Mast, int ScrollRequests);
 
     /// <summary>
     /// Measures and captures one rendered viewport frame. A screenshot is kept only when the page is
@@ -570,12 +632,9 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
     private static ViewportFrame ReadViewportFrame(Border surface, int scrollRequests)
     {
         var scroll = Assert.IsType<ScrollView>(Find(surface, "AutomationsList"));
-        return new(scroll.VerticalOffset, scroll.ScrollableHeight, Bounds(Find(surface, "AutomationsBackdrop"), surface),
-            Bounds(Find(surface, "AutomationsMast"), surface), HeaderBand(surface).ActualHeight, scrollRequests);
+        return new(scroll.VerticalOffset, scroll.ScrollableHeight,
+            Bounds(Find(surface, "AutomationsMast"), surface), scrollRequests);
     }
-
-    private static FrameworkElement HeaderBand(Border surface) =>
-        Assert.IsAssignableFrom<FrameworkElement>(VisualTreeHelper.GetParent(Find(surface, "AutomationsMast")));
 
     private static FrameworkElement Find(DependencyObject root, string id) =>
         Assert.Single(Controls(root), element => AutomationProperties.GetAutomationId(element) == id);
@@ -612,21 +671,13 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
     {
         Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationsAgentScope"), surface).Left
             - Bounds(Find(surface, "AutomationsHeadline"), surface).Left), 0, 1);
-        foreach (var title in Controls(surface).Where(element =>
-            AutomationProperties.GetAutomationId(element).StartsWith("AutomationAttentionTitle:", StringComparison.Ordinal)))
-        {
-            var id = AutomationProperties.GetAutomationId(title)["AutomationAttentionTitle:".Length..];
-            Assert.InRange(Math.Abs(Bounds(Find(surface, $"AutomationAttentionBody:{id}"), surface).Left
-                - Bounds(title, surface).Left), 0, 1);
-        }
-
     }
 
-    // Measures arranged card edges, so a margin added on top of the panel spacing fails as a doubled gap.
+    // Measures arranged card edges, so a margin added on top of panel spacing fails as a doubled gap.
     private static void AssertSeparatedInventoryCards(Border surface, string artifacts, double width)
     {
         var reference = Assert.IsType<Border>(Controls(surface).First(element =>
-            AutomationProperties.GetAutomationId(element).StartsWith("AutomationAttention:", StringComparison.Ordinal)));
+            AutomationProperties.GetAutomationId(element).StartsWith("AutomationCard:", StringComparison.Ordinal)));
         var cardBackground = Assert.IsType<SolidColorBrush>(reference.Background).Color;
         var cardStroke = Assert.IsType<SolidColorBrush>(reference.BorderBrush).Color;
         var measured = new List<(string List, string Above, string Below, double AboveHeight, double Gap)>();

@@ -40,7 +40,7 @@ public sealed class TestAppResourceLoaderTests
         Assert.Equal(new[] { "Default", "Light", "HighContrast" },
             resources.Element(presentation + "ResourceDictionary.ThemeDictionaries")!
                 .Elements().Select(element => (string?)element.Attribute(x + "Key")));
-        foreach (var key in new[] { "ChatCanvasBrush", "AutomationsPageWashBrush" })
+        foreach (var key in new[] { "ChatCanvasBrush" })
             Assert.Contains(resources.Descendants(), element => (string?)element.Attribute(x + "Key") == key);
 
         var highContrast = resources.Element(presentation + "ResourceDictionary.ThemeDictionaries")!

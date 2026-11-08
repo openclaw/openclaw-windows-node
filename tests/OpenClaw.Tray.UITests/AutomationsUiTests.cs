@@ -189,6 +189,14 @@ public sealed partial class GatewayFixtureUiTests
                     && FindText(run, "No automations yet") is { Current.IsOffscreen: false }
                 : FindById(run, "AutomationRow:scheduled-000") is not null,
                 "initial scoped inventory");
+            if (emptyAgent)
+            {
+                await WaitUiAsync(run, () => FindById(run, "AutomationsTileFailing") is not null,
+                    "empty agent has the zero-count failing tile");
+                var failing = FindById(run, "AutomationsTileFailing")!;
+                Assert.Equal(ControlType.Button, failing.Current.ControlType);
+                Assert.False(failing.Current.IsEnabled);
+            }
             if (!emptyAgent) Assert.Null(FindById(run, "AutomationRow:scheduled-059"));
             Invoke(FindById(run, emptyAgent ? "AutomationsEmptyNew" : "AutomationsNew")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "create editor");
@@ -219,6 +227,26 @@ public sealed partial class GatewayFixtureUiTests
             Capture(run, emptyAgent ? "automations-designer-created-from-empty.png" : "automations-designer-created-later-page.png",
                 "AutomationRow:created-1");
         }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task Automations_FailingSummaryTileRevealsAndFocusesItsInventoryRow()
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenMainAutomationsAsync(run);
+            await WaitUiAsync(run, () => FindById(run, "AutomationsTileFailing") is { Current.IsEnabled: true }
+                && FindById(run, "AutomationRow:flaky-report") is not null,
+                "failing tile and target automation");
+            Invoke(FindById(run, "AutomationsTileFailing")!);
+            await WaitUiAsync(run, () => FindById(run, "AutomationRow:flaky-report") is
+                { Current.HasKeyboardFocus: true, Current.IsOffscreen: false },
+                "failing tile reveals, scrolls to and focuses the real inventory row");
+            var row = FindById(run, "AutomationRow:flaky-report")!;
+            Capture(run, "automations-failing-tile-reveal.png", "AutomationsTileFailing", "AutomationRow:flaky-report");
+            Assert.Equal("AutomationRow:flaky-report", row.Current.AutomationId);
+        }, scenario: GatewayScenario.CreateAutomations());
     }
 
     [GatewayFixtureUiFact]
@@ -941,7 +969,7 @@ public sealed partial class GatewayFixtureUiTests
                 && FindCommand(run, "Pause") is { Current.IsEnabled: true }
                 && FindCommand(run, "Edit") is { Current.IsEnabled: true }, "authorized controls before disconnect");
             await run.Gateway.GoOfflineAsync();
-            await WaitUiAsync(run, () => FindById(run, "AutomationsHeadline")?.Current.Name.Contains("as last seen", StringComparison.Ordinal) == true, "offline last seen");
+            await WaitUiAsync(run, () => FindById(run, "AutomationsHeroAnswer")?.Current.Name.Contains("as last seen", StringComparison.Ordinal) == true, "offline last seen");
             Assert.NotNull(FindById(run, "AutomationRow:morning-brief"));
             foreach (var action in new[] { "Run now", "Pause", "Edit" })
                 Assert.False(FindCommand(run, action)!.Current.IsEnabled);

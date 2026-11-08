@@ -8484,6 +8484,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} aguardam eventos</value></data>
   <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Mais cedo hoje</value></data>
   <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>Status do agendador desconhecido</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>Agendador</value></data>
   <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>Em breve</value></data>
   <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>Todas ({0})</value></data>
   <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>Ativadas ({0})</value></data>

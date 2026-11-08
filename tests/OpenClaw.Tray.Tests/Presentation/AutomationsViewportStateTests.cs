@@ -51,7 +51,8 @@ public sealed class AutomationsViewportStateTests
         Assert.Contains("viewport.Changed += changed", source);
         Assert.Contains("setTopInset(viewport.TopInset)", source);
         Assert.Contains("return () => viewport.Changed -= changed", source);
-        Assert.Contains("PageBackdrop(bandHeight + topInset).WithKey(\"page-backdrop\")", source);
+        Assert.Contains("PageHero.Header(", source);
+        Assert.DoesNotContain("PageBackdrop(", source);
         var scroll = source[source.IndexOf("ScrollView(VStack(24,", StringComparison.Ordinal)..
             source.IndexOf(".WithKey(\"page-scroll\")", StringComparison.Ordinal)];
         Assert.Contains(".Margin(0, topInset, 0, 0)", scroll);

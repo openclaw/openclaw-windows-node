@@ -8431,6 +8431,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} attendent des événements</value></data>
   <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Plus tôt aujourd'hui</value></data>
   <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>État du planificateur inconnu</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>Planificateur</value></data>
   <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>À venir</value></data>
   <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>Toutes ({0})</value></data>
   <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>Actives ({0})</value></data>

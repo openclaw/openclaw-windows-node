@@ -8432,6 +8432,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} wachten op gebeurtenissen</value></data>
   <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Eerder vandaag</value></data>
   <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>Plannerstatus onbekend</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>Planner</value></data>
   <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>Binnenkort</value></data>
   <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>Alle ({0})</value></data>
   <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>Aan ({0})</value></data>

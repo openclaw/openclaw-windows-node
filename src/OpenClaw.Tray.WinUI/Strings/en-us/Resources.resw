@@ -8499,6 +8499,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} wait for events</value></data>
   <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Earlier today</value></data>
   <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>Scheduler status unknown</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>Scheduler</value></data>
   <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>Coming up</value></data>
   <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>All ({0})</value></data>
   <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>On ({0})</value></data>
