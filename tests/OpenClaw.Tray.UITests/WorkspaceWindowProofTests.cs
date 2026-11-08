@@ -402,21 +402,46 @@ public sealed class WorkspaceWindowProofTests
         Capture(app, "System", $"settings-back-to-app-{activation}");
 
         // Back to app returns to the app page Settings was opened from, not always to chat.
+        // Seed via the real notification producer; a capable host has no containment warning.
+        const string notificationTitle = "Settings return focus fixture";
+        await app.SendNotificationAsync(notificationTitle, "Keep this reminder while visiting Settings.");
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
+        await WaitUntilAsync(() => Find(workspace, "ClearButton").Current.IsEnabled &&
+            workspace.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, "Dismiss " + notificationTitle)) is not null);
+        Assert.True(Find(workspace, "ClearButton").Current.IsEnabled, "The fixture must first prove populated Notifications.");
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         settings = AutomationElement.FromHandle(app.HubWindowHandle);
         ActivateBackToApp();
         await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
         Assert.False(IsVisible(workspace, "ConnectionPageMarker"));
-        // Focus lands on the rebuilt destination, not on the hidden Settings button, sidebar or title bar.
-        await WaitUntilAsync(() => AutomationElement.FocusedElement is { } focused
-            && !focused.Current.IsOffscreen && !IsWithin(focused, "SettingsBackToApp", "WorkspaceNavigation", "WorkspaceTitleBar"));
+        // WorkspaceNavigation includes the page, and its layout Grid has no automation peer.
+        // Require focus on a Notifications control in this exact window, not outside sidebar IDs.
+        await WaitUntilAsync(
+            () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
+            () => $"Notifications did not receive focus. Expected workspace foreground: {GetForegroundWindow() == workspaceHandle}. " +
+                $"Target controls: {DescribeNotificationFocus(workspace)}");
+        Capture(app, "System", $"settings-back-to-notifications-populated-{activation}");
+
+        Invoke(Find(workspace, "ClearButton"));
+        await WaitUntilAsync(() => !Find(workspace, "ClearButton").Current.IsEnabled &&
+            !IsVisible(workspace, "NotificationsList"));
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        settings = AutomationElement.FromHandle(app.HubWindowHandle);
+        ActivateBackToApp();
+        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        Capture(app, "System", $"settings-back-to-notifications-empty-{activation}");
+        await WaitUntilAsync(
+            () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
+            () => $"Empty Notifications did not receive focus. Expected workspace foreground: {GetForegroundWindow() == workspaceHandle}. " +
+                $"Target controls: {DescribeNotificationFocus(workspace)}");
 
         void ActivateBackToApp()
         {
             var button = Find(settings, "SettingsBackToApp");
             button.SetFocus();
             Assert.Equal(new IntPtr(settings.Current.NativeWindowHandle), GetForegroundWindow());
+            Assert.False(HasVisibleNotificationsFocus(workspace));
             switch (activation)
             {
                 case "mouse":
@@ -906,14 +931,47 @@ public sealed class WorkspaceWindowProofTests
     private static bool IsVisible(AutomationElement root, string id) =>
         FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
 
-    private static bool IsWithin(AutomationElement element, params string[] ancestorIds)
+    private static bool HasVisibleNotificationsFocus(AutomationElement workspace)
     {
-        for (var current = element; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
+        try
         {
-            if (ancestorIds.Contains(current.Current.AutomationId))
+            if (AutomationElement.FocusedElement is not { } focused || focused.Current.IsOffscreen)
+                return false;
+            // These are the page's focusable controls. Resolve the current peers after each rebuild;
+            // exact element identity also rejects another window with the same automation IDs.
+            var clear = FindOrNull(workspace, "ClearButton");
+            var list = FindOrNull(workspace, "NotificationsList");
+            if (clear is { Current.IsEnabled: false } &&
+                (list is null || list.Current.IsOffscreen) &&
+                FindOrNull(workspace, "NotificationsPage") is { } emptyPage &&
+                Automation.Compare(focused, emptyPage))
                 return true;
+            for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
+            {
+                if ((clear is not null && Automation.Compare(current, clear)) ||
+                    (list is not null && Automation.Compare(current, list)))
+                    return true;
+            }
+            return false;
         }
-        return false;
+        catch (ElementNotAvailableException) { return false; }
+    }
+
+    private static string DescribeNotificationFocus(AutomationElement workspace)
+    {
+        // Only report known fixture controls and boolean state. UI names, data-derived IDs and
+        // the focused element in another application must never enter failure logs.
+        return string.Join("; ", new[] { "NotificationsPage", "ClearButton", "NotificationsList", "SettingsBackToApp" }.Select(id =>
+        {
+            try
+            {
+                var element = FindOrNull(workspace, id);
+                if (element is null) return $"{id}: absent";
+                var info = element.Current;
+                return $"{id}: enabled={info.IsEnabled}, offscreen={info.IsOffscreen}, focused={info.HasKeyboardFocus}";
+            }
+            catch (ElementNotAvailableException) { return $"{id}: unavailable"; }
+        }));
     }
 
     /// <summary>Returns null while the item is missing or stale, e.g. while the sidebar rebuilds session items.</summary>
@@ -947,7 +1005,7 @@ public sealed class WorkspaceWindowProofTests
         });
     }
 
-    private static async Task WaitUntilAsync(Func<bool> predicate)
+    private static async Task WaitUntilAsync(Func<bool> predicate, Func<string>? failureMessage = null)
     {
         var timeout = Stopwatch.StartNew();
         while (timeout.Elapsed < TimeSpan.FromSeconds(10))
@@ -955,7 +1013,8 @@ public sealed class WorkspaceWindowProofTests
             if (predicate()) return;
             await Task.Delay(100);
         }
-        Assert.True(predicate(), "Native navigation did not reach the expected state.");
+        if (!predicate())
+            Assert.Fail(failureMessage?.Invoke() ?? "Native navigation did not reach the expected state.");
     }
 
     private static async Task EnsureWorkspacePaneOpenAsync(AutomationElement root)

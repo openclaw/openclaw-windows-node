@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClawTray.Services;
 using OpenClawTray.ViewModels;
 using System.Collections.ObjectModel;
@@ -17,6 +18,16 @@ public sealed partial class NotificationsPage : Page
         InitializeComponent();
         NotificationsList.ItemsSource = _notificationItems;
         Unloaded += OnUnloaded;
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new NotificationsPageAutomationPeer(this);
+
+    // Page has no default peer. Expose the empty destination and its localized heading
+    // so the keyboard focus handoff is also announced by assistive technology.
+    private sealed class NotificationsPageAutomationPeer(NotificationsPage owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
+        protected override string GetClassNameCore() => nameof(NotificationsPage);
     }
 
     internal void Initialize(AppNotificationService? notificationService)
@@ -61,6 +72,9 @@ public sealed partial class NotificationsPage : Page
         NotificationsList.Visibility = hasNotifications ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = hasNotifications ? Visibility.Collapsed : Visibility.Visible;
         ClearButton.IsEnabled = hasNotifications;
+        // An empty inbox has no enabled child control. Keep a named destination for
+        // the workspace focus handoff instead of leaving focus in the Settings pane.
+        IsTabStop = !hasNotifications;
     }
 
     private void OnClearClick(object sender, RoutedEventArgs e)
