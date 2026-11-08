@@ -1042,6 +1042,17 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void AccountMenuGatewayList_UsesOneIconColumn_WithoutRadioCheckColumn()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var gateways = code[code.IndexOf("private void PopulateGatewayMenu(", StringComparison.Ordinal)..];
+        gateways = gateways[..gateways.IndexOf("private static MenuFlyoutItem MenuItem(", StringComparison.Ordinal)];
+        Assert.DoesNotContain("RadioMenuFlyoutItem", gateways);
+        Assert.DoesNotContain("ToggleMenuFlyoutItem", gateways);
+        Assert.Contains("item.Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) };", gateways);
+    }
+
+    [Fact]
     public void AccountMenuAddGateway_KeepsAnAddOrEditFormAlreadyInProgress()
     {
         var page = File.ReadAllText(Source("Pages", "ConnectionPage.xaml.cs"));

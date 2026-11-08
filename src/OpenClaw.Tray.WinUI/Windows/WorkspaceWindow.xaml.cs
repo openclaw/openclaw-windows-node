@@ -1461,13 +1461,15 @@ public sealed partial class WorkspaceWindow : WindowEx
         for (var index = 0; index < model.Gateways.Count; index++)
         {
             var saved = model.Gateways[index];
-            var item = new RadioMenuFlyoutItem
+            // Plain items keep one icon column like the parent menu; a radio check column would add a
+            // second empty column before every row. The current Gateway carries its live status dot.
+            var item = new MenuFlyoutItem
             {
                 Text = saved.Name,
-                GroupName = "WorkspaceOwnerGateways",
-                IsChecked = saved.IsActive,
                 KeyboardAcceleratorTextOverride = saved.IsActive ? statusLabel : saved.Host,
             };
+            if (saved.IsActive)
+                item.Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) };
             AutomationProperties.SetAutomationId(item, $"WorkspaceOwnerGateway_{index}");
             AutomationProperties.SetHelpText(item, item.KeyboardAcceleratorTextOverride);
             if (!saved.IsActive)
