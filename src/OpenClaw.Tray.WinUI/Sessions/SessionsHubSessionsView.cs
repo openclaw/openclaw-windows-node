@@ -32,14 +32,13 @@ internal static class SessionsHubSessionsView
             : Roster(context, titles);
 
         return Grid([GridSize.Star()],
-                [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
-                Overview(context).Grid(row: 0),
-                InventoryTitle(context).Margin(0, 4, 0, 10).Grid(row: 1),
-                Toolbar(context).Grid(row: 2),
-                FilterNote(state).Grid(row: 3),
-                TranscriptPrompt(context).Grid(row: 4),
-                SelectionBar(context).Grid(row: 5),
-                main.Grid(row: 6))
+                [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                InventoryTitle(context).Margin(0, 4, 0, 10).Grid(row: 0),
+                Toolbar(context).Grid(row: 1),
+                FilterNote(state).Grid(row: 2),
+                TranscriptPrompt(context).Grid(row: 3),
+                SelectionBar(context).Grid(row: 4),
+                main.Grid(row: 5))
             .Padding(0, 0, 12, 12);
     }
 
@@ -73,75 +72,6 @@ internal static class SessionsHubSessionsView
             .AutomationId("SessionsHubFilterNote");
     }
 
-    private static Element Overview(SessionsHubViewContext context)
-    {
-        var state = context.State;
-        if (!state.IsConnected)
-            return Empty();
-        var attention = SessionsHubPresentation.AttentionRows(state).ToArray();
-        if (attention.Length == 0)
-            return Empty();
-        var titles = SessionsHubPresentation.Titles(state.TrackedRows);
-        var cards = attention.Select(row => AttentionCard(context, row, titles)).ToArray();
-        return VStack(10,
-                SessionsHubView.SectionTitle(T("NeedsYou"), attention.Length, "SessionsHubNeedsYouTitle", countColor: "red"),
-                CardGrid(context, cards, 280, 2, "attention"))
-            .AutomationId("SessionsHubNeedsYou")
-            .Margin(0, 0, 0, 20);
-    }
-
-    private static Element CardGrid(
-        SessionsHubViewContext context, IReadOnlyList<Element> cards, double minTile, int maxColumns, string keyPrefix)
-    {
-        var columns = context.IsWide
-            ? PageResponsiveLayout.TileColumns(context.ContentWidth, minTile, maxColumns)
-            : 1;
-        var rows = Math.Max(1, (cards.Count + columns - 1) / columns);
-        var cells = cards.Select((card, index) =>
-            card.Margin(
-                    index % columns == 0 ? 0 : PageResponsiveLayout.GapGroup / 2,
-                    index < columns ? 0 : PageResponsiveLayout.GapGroup / 2,
-                    index % columns == columns - 1 ? 0 : PageResponsiveLayout.GapGroup / 2,
-                    index >= (rows - 1) * columns ? 0 : PageResponsiveLayout.GapGroup / 2)
-                .Grid(row: index / columns, column: index % columns)
-                .WithKey($"{keyPrefix}:{index}")).ToArray();
-        return Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
-            Enumerable.Repeat(GridSize.Auto, rows).ToArray(), cells);
-    }
-
-    private static Element AttentionCard(
-        SessionsHubViewContext context, SessionInfo row, IReadOnlyDictionary<string, string> titles)
-    {
-        var title = titles.TryGetValue(row.Key, out var known) ? known : row.Key;
-        var message = string.IsNullOrWhiteSpace(row.LastRunError) ? T("NeedsAttentionFallback") : row.LastRunError!;
-        var openEnabled = row.Kind != "global";
-        return Border(
-                Grid([GridSize.Px(4), GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                    Border(Empty()).Background(SessionsHubView.Strong("red"))
-                        .AutomationId("SessionsHubAttentionStripe:" + row.Key)
-                        .Grid(column: 0),
-                    SessionsHubView.IconTile(FluentIconCatalog.StatusWarn, "red", 40)
-                        .Margin(16, 16, 0, 16).VAlign(VerticalAlignment.Top).Grid(column: 1),
-                    VStack(8,
-                        TextBlock(F("StoppedTitle", title)).FontSize(15).FontWeight(FontWeights.SemiBold)
-                            .TextTrimming(TextTrimming.CharacterEllipsis),
-                        TextBlock(message).FontSize(12).Foreground(Theme.SecondaryText)
-                            .TextWrapping(TextWrapping.Wrap).MaxLines(3),
-                        HStack(8,
-                            SessionsHubView.CommandButton(FluentIconCatalog.Chat, T("OpenChatShort"),
-                                () => context.Controller.OpenInChat(row.Key), openEnabled,
-                                "SessionsHubAttentionOpen:" + row.Key, accent: true),
-                            Button(T("DetailsShort"), () => _ = RevealAttentionDetailsAsync(context, row.Key))
-                                .SubtleButton().AutomationName(F("ShowDetailsNamed", title))
-                                .AutomationId("SessionsHubAttentionDetails:" + row.Key)))
-                        .Margin(12, 16, 16, 16).Grid(column: 2)))
-            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-            .WithBorder(Theme.CardStroke, 1)
-            .CornerRadius(12)
-            .AutomationId("SessionsHubAttention:" + row.Key)
-            .HAlign(HorizontalAlignment.Stretch);
-    }
-
     private static Element TranscriptPrompt(SessionsHubViewContext context)
     {
         var state = context.State;
@@ -166,12 +96,6 @@ internal static class SessionsHubSessionsView
             .Padding(4)
             .Margin(0, 0, 0, 8)
             .AutomationId("SessionsHubTranscriptPrompt");
-    }
-
-    private static async Task RevealAttentionDetailsAsync(SessionsHubViewContext context, string key)
-    {
-        if (await context.Controller.LoadAttentionRowAsync(key))
-            RevealDetails(context, key);
     }
 
     /// <summary>Reveals a loaded session in its roster page and group before expanding it.</summary>
@@ -636,7 +560,9 @@ internal static class SessionsHubSessionsView
         var (statusLabel, _) = SessionsHubPresentation.Status(row);
         return string.Join(", ", new[]
         {
-            title, statusLabel, row.Unread ? T("Unread") : null, row.Archived ? T("Archived") : null,
+            title, statusLabel,
+            SessionsHubPresentation.HasStoppedWithError(row) ? T("StoppedWithError") : null,
+            row.Unread ? T("Unread") : null, row.Archived ? T("Archived") : null,
             SessionsHubPresentation.RelativeTime(row.UpdatedAt, context.NowUtc),
         }.Where(part => !string.IsNullOrEmpty(part)));
     }
@@ -758,6 +684,23 @@ internal static class SessionsHubSessionsView
                 colorId is null ? Theme.SecondaryText : SessionsHubView.Strong(colorId)).VAlign(VerticalAlignment.Center));
         titleLine.Add(TextBlock(title).FontSize(14).FontWeight(row.Unread ? FontWeights.SemiBold : FontWeights.Normal)
             .TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center));
+        if (SessionsHubPresentation.HasStoppedWithError(row))
+        {
+            var error = string.IsNullOrWhiteSpace(row.LastRunError) ? T("NeedsAttentionFallback") : row.LastRunError!;
+            var stoppedBadge = Border(TextBlock(T("StoppedWithError")).FontSize(12)
+                    .Foreground(Theme.Ref("SystemFillColorCriticalBrush")))
+                .Background(Theme.Ref("SystemFillColorCriticalBackgroundBrush"))
+                .CornerRadius(4)
+                .Padding(6, 1)
+                .VAlign(VerticalAlignment.Center)
+                .ToolTip(error)
+                .AutomationName(T("StoppedWithError"))
+                .AutomationId("SessionsHubStoppedWithError:" + row.Key);
+            if (new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                stoppedBadge = stoppedBadge.WithTransitions(
+                    new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition());
+            titleLine.Add(stoppedBadge);
+        }
         if (row.Pinned)
             titleLine.Add(SessionsHubView.Glyph(FluentIconCatalog.Pin, 12, SessionsHubView.Strong("yellow")).VAlign(VerticalAlignment.Center));
         if (row.Unread)

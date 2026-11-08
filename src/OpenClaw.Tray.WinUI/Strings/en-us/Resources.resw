@@ -9330,7 +9330,18 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
 <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} stopped</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Untitled session</value></data>
 <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} active, {1} removed</value></data>
-  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Managed worktrees on this Gateway</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Managed worktrees on {0}</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>this Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>{0} working among {1} loaded sessions</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>Getting the latest session inventory from the Gateway.</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>Sessions, as last seen at {0}.</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>Sessions are unavailable while disconnected</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>Reconnect to load the latest session inventory.</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>No sessions yet</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>Conversations with your agents will appear here.</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>No sessions match these filters</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>Try changing the search or filters to find another session.</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>Stopped with an error</value></data>
 <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>Active</value></data>
   <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>Removed</value></data>
 <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>Not archived</value></data>

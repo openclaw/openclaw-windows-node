@@ -59,6 +59,9 @@ internal static class SessionsHubPresentation
         };
     }
 
+    public static bool HasStoppedWithError(SessionInfo row) =>
+        !row.Archived && SessionRunState.GetDisplayState(row) == SessionDisplayState.NeedsAttention;
+
     public static string KindLabel(string kind) => kind switch
     {
         "global" => T("KindGlobal"),
@@ -192,14 +195,54 @@ internal static class SessionsHubPresentation
     {
         if (state.Tab == SessionsHubTab.Worktrees)
         {
+            var gatewayName = string.IsNullOrWhiteSpace(state.GatewayName)
+                ? T("WorktreesGatewayFallback")
+                : state.GatewayName;
+            var headline = F("WorktreeMastTitle", gatewayName);
+            if (!state.IsConnected)
+                return (headline, T("DisconnectedTitle"));
             if (state.Worktrees.Rows is not { } worktrees)
-                return (T("WorktreeMastTitle"), T("NotAvailable"));
-            return (T("WorktreeMastTitle"), F("WorktreeMastSubtitle",
+            {
+                var subtitle = state.Worktrees.Load switch
+                {
+                    SessionsHubLoad.Loading or SessionsHubLoad.Idle => T("Loading"),
+                    SessionsHubLoad.Failed => T("WorktreesFailed"),
+                    SessionsHubLoad.Unsupported => T("WorktreesUnsupported"),
+                    _ => T("NotAvailable"),
+                };
+                return (headline, subtitle);
+            }
+            return (headline, F("WorktreeMastSubtitle",
                 worktrees.Count(row => !row.IsRemoved), worktrees.Count(row => row.IsRemoved)));
         }
 
-        // Rows belong to the list's current query, not a Gateway-wide summary.
-        return (T("Title"), T("Subtitle"));
+        if (!state.IsConnected)
+        {
+            return state.LastLoadedAtUtc is { } lastLoadedAt
+                ? (F("HeroSessionsLastSeenAt", AbsoluteTime(lastLoadedAt)), T("HeroSessionsDisconnectedDetail"))
+                : (T("HeroSessionsDisconnected"), T("HeroSessionsDisconnectedDetail"));
+        }
+
+        if ((state.Load is SessionsHubLoad.Idle or SessionsHubLoad.Loading) && state.Rows.Count == 0)
+            return (T("Loading"), T("HeroSessionsLoadingDetail"));
+        if (state.Load == SessionsHubLoad.Failed)
+            return (T("LoadFailedTitle"), state.LoadError ?? T("NotAvailable"));
+        if (state.Load == SessionsHubLoad.Unsupported)
+            return (T("UnsupportedTitle"), T("Unsupported"));
+        if (state.Rows.Count == 0)
+        {
+            var filtered = state.Filters.IsNarrowed
+                || state.Filters.AgentId is not null
+                || state.Filters.Status != SessionArchiveFilter.Active;
+            return filtered
+                ? (T("HeroSessionsNoMatches"), T("HeroSessionsNoMatchesDetail"))
+                : (T("HeroSessionsEmpty"), T("HeroSessionsEmptyDetail"));
+        }
+
+        // The summary is scoped to the loaded inventory, not the Gateway-wide live-turn feed.
+        var working = state.Rows.Count(row => !row.Archived
+            && SessionRunState.GetDisplayState(row) == SessionDisplayState.Working);
+        return (F("HeroSessionsLoaded", Count(working), state.Rows.Count), T("Subtitle"));
     }
 
     // ── Appearance ──

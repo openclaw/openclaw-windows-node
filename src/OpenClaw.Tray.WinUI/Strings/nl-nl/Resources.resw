@@ -9264,7 +9264,18 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
 <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} is gestopt</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Sessie zonder titel</value></data>
 <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} actief, {1} verwijderd</value></data>
-  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Beheerde worktrees op deze Gateway</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Beheerde worktrees op {0}</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>deze Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>{0} actief van {1} geladen sessies</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>De nieuwste sessie-inventaris wordt opgehaald van de Gateway.</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>Sessies, voor het laatst gezien om {0}.</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>Sessies zijn niet beschikbaar zolang de verbinding ontbreekt</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>Maak opnieuw verbinding om de nieuwste sessie-inventaris te laden.</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>Nog geen sessies</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>Gesprekken met je agents worden hier weergegeven.</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>Geen sessies komen overeen met deze filters</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>Wijzig de zoekopdracht of filters om andere sessies te vinden.</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>Gestopt met een fout</value></data>
 <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>Actief</value></data>
   <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>Verwijderd</value></data>
 <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>Niet gearchiveerd</value></data>

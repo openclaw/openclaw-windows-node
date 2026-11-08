@@ -9263,7 +9263,18 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
 <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} s’est arrêtée</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Session sans titre</value></data>
 <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} actives, {1} supprimées</value></data>
-  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Arbres de travail gérés sur ce Gateway</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Arbres de travail gérés sur {0}</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>ce Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>{0} en cours parmi {1} sessions chargées</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>Chargement de l’inventaire récent des sessions depuis le Gateway.</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>Sessions, telles qu’elles ont été vues pour la dernière fois à {0}.</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>Les sessions sont indisponibles hors connexion</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>Reconnectez-vous pour charger l’inventaire récent des sessions.</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>Aucune session pour le moment</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>Les conversations avec vos agents apparaîtront ici.</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>Aucune session ne correspond à ces filtres</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>Modifiez la recherche ou les filtres pour trouver une autre session.</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>Arrêtée avec une erreur</value></data>
 <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>Actifs</value></data>
   <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>Supprimés</value></data>
 <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>Non archivées</value></data>

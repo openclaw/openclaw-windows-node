@@ -114,6 +114,8 @@ internal sealed record SessionsHubState
     public SessionsHubLoad Load { get; init; }
     public string? LoadError { get; init; }
     public IReadOnlyList<SessionInfo> Rows { get; init; } = Array.Empty<SessionInfo>();
+    public DateTime? LastLoadedAtUtc { get; init; }
+    public string? GatewayName { get; init; }
     /// <summary>Gateway-wide attention input, independent of the roster query and its loading state.</summary>
     public IReadOnlyList<SessionInfo> TrackedRows { get; init; } = Array.Empty<SessionInfo>();
     public bool HasMore { get; init; }

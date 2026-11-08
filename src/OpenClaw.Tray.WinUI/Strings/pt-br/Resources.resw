@@ -9315,7 +9315,18 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
 <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} parou</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Sessão sem título</value></data>
 <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} ativas, {1} removidas</value></data>
-  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Árvores de trabalho gerenciadas neste Gateway</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Árvores de trabalho gerenciadas em {0}</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>este Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>{0} em andamento entre {1} sessões carregadas</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>Buscando o inventário mais recente de sessões no Gateway.</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>Sessões, vistas pela última vez às {0}.</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>As sessões estão indisponíveis enquanto desconectado</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>Reconecte-se para carregar o inventário mais recente de sessões.</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>Nenhuma sessão ainda</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>As conversas com seus agentes aparecerão aqui.</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>Nenhuma sessão corresponde a estes filtros</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>Altere a pesquisa ou os filtros para encontrar outra sessão.</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>Parou com erro</value></data>
 <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>Ativas</value></data>
   <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>Removidas</value></data>
 <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>Não arquivadas</value></data>

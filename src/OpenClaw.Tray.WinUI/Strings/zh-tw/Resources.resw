@@ -9263,7 +9263,18 @@
 <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} 已停止</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>未命名工作階段</value></data>
 <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} 個使用中，{1} 個已移除</value></data>
-  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>此 Gateway 上的受管理工作樹</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>{0} 上的受管理工作樹</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>此 Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>已載入 {1} 個工作階段，其中 {0} 個正在執行</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>正在從 Gateway 取得最新工作階段清單。</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>工作階段，上次檢視時間為 {0}。</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>中斷連線時無法檢視工作階段</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>重新連線以載入最新工作階段清單。</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>尚無工作階段</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>與代理程式的對話會顯示在這裡。</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>沒有工作階段符合這些篩選條件</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>請嘗試變更搜尋內容或篩選條件，以尋找其他工作階段。</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>已停止並發生錯誤</value></data>
 <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>使用中</value></data>
   <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>已移除</value></data>
 <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>未封存</value></data>

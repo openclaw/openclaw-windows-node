@@ -43,7 +43,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 Tab = SessionsHubTab.Worktrees,
                 Worktrees = new WorktreesState(Load: SessionsHubLoad.Loading),
             });
-            Assert.Equal(SessionsHubPresentation.T("NotAvailable"), worktreesLoading.Subtitle);
+            Assert.Equal(SessionsHubPresentation.T("Loading"), worktreesLoading.Subtitle);
         });
     }
 
@@ -118,7 +118,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task SessionMast_RemainsStableAcrossFiltersAndLoadingStates()
+    public async Task SessionMast_ReflectsLoadedAndEmptyStatesWithoutInventingCounts()
     {
         await ui.RunOnUIAsync(() =>
         {
@@ -128,29 +128,47 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 Load = SessionsHubLoad.Loaded,
                 Rows = [new SessionInfo { Key = "agent:main:failed", Status = "failed" }],
             };
-            foreach (var state in new[]
-            {
-                current,
-                current with
+            Assert.Equal(
+                (SessionsHubPresentation.F("HeroSessionsLoaded", "Zero", 1), SessionsHubPresentation.T("Subtitle")),
+                SessionsHubPresentation.MastCopy(current));
+            Assert.Equal(
+                (SessionsHubPresentation.T("HeroSessionsNoMatches"), SessionsHubPresentation.T("HeroSessionsNoMatchesDetail")),
+                SessionsHubPresentation.MastCopy(current with
                 {
                     Filters = new SessionsHubFilters(Status: SessionArchiveFilter.Archived),
                     Rows = [],
-                },
-                current with
+                }));
+            Assert.Equal(
+                (SessionsHubPresentation.T("Loading"), SessionsHubPresentation.T("HeroSessionsLoadingDetail")),
+                SessionsHubPresentation.MastCopy(current with { Load = SessionsHubLoad.Loading, Rows = [] }));
+            Assert.Equal(
+                (SessionsHubPresentation.T("LoadFailedTitle"), SessionsHubPresentation.T("NotAvailable")),
+                SessionsHubPresentation.MastCopy(current with { Load = SessionsHubLoad.Failed, Rows = [] }));
+            Assert.Equal(
+                (SessionsHubPresentation.T("HeroSessionsDisconnected"), SessionsHubPresentation.T("HeroSessionsDisconnectedDetail")),
+                SessionsHubPresentation.MastCopy(new SessionsHubState()));
+            var lastSeen = new DateTime(2026, 6, 1, 13, 30, 0, DateTimeKind.Utc);
+            Assert.Equal(
+                (SessionsHubPresentation.F("HeroSessionsLastSeenAt", SessionsHubPresentation.AbsoluteTime(lastSeen)),
+                    SessionsHubPresentation.T("HeroSessionsDisconnectedDetail")),
+                SessionsHubPresentation.MastCopy(new SessionsHubState { LastLoadedAtUtc = lastSeen }));
+            Assert.Equal(
+                (SessionsHubPresentation.F("WorktreeMastTitle", "home-gateway"),
+                    SessionsHubPresentation.F("WorktreeMastSubtitle", 2, 1)),
+                SessionsHubPresentation.MastCopy(new SessionsHubState
                 {
-                    Filters = new SessionsHubFilters(AgentId: "other", Search: "no match", Status: SessionArchiveFilter.All),
-                    Load = SessionsHubLoad.Loading,
-                    IsReloading = true,
-                    Rows = [],
-                },
-                current with { Load = SessionsHubLoad.Failed, Rows = [] },
-                new SessionsHubState(),
-            })
-            {
-                Assert.Equal(
-                    ("Sessions", "Browse, organize, and clean up the conversations on this Gateway."),
-                    SessionsHubPresentation.MastCopy(state));
-            }
+                    IsConnected = true,
+                    Tab = SessionsHubTab.Worktrees,
+                    GatewayName = "home-gateway",
+                    Worktrees = new WorktreesState(
+                        Load: SessionsHubLoad.Loaded,
+                        Rows:
+                        [
+                            new WorktreeRecord("a", "a", "", null, "", null, "", null, 0, 0, null),
+                            new WorktreeRecord("b", "b", "", null, "", null, "", null, 0, 0, 1),
+                            new WorktreeRecord("c", "c", "", null, "", null, "", null, 0, 0, null),
+                        ]),
+                }));
         });
     }
 
@@ -647,11 +665,11 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Theory]
-    [InlineData(1400, 2)]
-    [InlineData(1000, 2)]
-    [InlineData(760, 1)]
-    [InlineData(520, 1)]
-    public async Task ResponsiveLayout_UsesDeterministicAttentionColumnsAndUnsplitMastActions(double width, int expectedColumns)
+    [InlineData(1400)]
+    [InlineData(1000)]
+    [InlineData(760)]
+    [InlineData(520)]
+    public async Task ResponsiveLayout_UsesInlineErrorBadgesAndKeepsMastActionsAligned(double width)
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true, width: width, height: 700);
         await ui.RunOnUIAsync(async () =>
@@ -668,7 +686,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                     row.UpdatedAt = DateTime.UtcNow.AddMinutes(-index);
                     row.Status = index < 2 ? "failed" : "done";
                     row.HasActiveRun = false;
-                    row.LastRunError = index < 2 ? $"Responsive attention card {index}" : null;
+                    row.LastRunError = index < 2 ? $"Responsive run error {index}" : null;
                     return row;
                 }).ToArray(),
             };
@@ -677,15 +695,17 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await harness.RenderAsync();
         await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
             () => TestSupport.FindDescendants<FrameworkElement>(harness.Root!)
-                .Count(element => AutomationProperties.GetAutomationId(element).StartsWith("SessionsHubAttention:", StringComparison.Ordinal)) == 2,
-            $"responsive attention cards at {width}"));
+                .Count(element => AutomationProperties.GetAutomationId(element).StartsWith("SessionsHubStoppedWithError:", StringComparison.Ordinal)) == 2,
+            $"responsive stopped-error badges at {width}"));
         await ui.RunOnUIAsync(() =>
         {
-            var cards = TestSupport.FindDescendants<FrameworkElement>(harness.Root!)
-                .Where(element => AutomationProperties.GetAutomationId(element).StartsWith("SessionsHubAttention:", StringComparison.Ordinal))
+            var badges = TestSupport.FindDescendants<FrameworkElement>(harness.Root!)
+                .Where(element => AutomationProperties.GetAutomationId(element).StartsWith("SessionsHubStoppedWithError:", StringComparison.Ordinal))
                 .ToArray();
             Assert.DoesNotContain(TestSupport.FindDescendants<FrameworkElement>(harness.Root!),
                 element => AutomationProperties.GetAutomationId(element) == "SessionsHubJumpBackIn");
+            Assert.DoesNotContain(TestSupport.FindDescendants<FrameworkElement>(harness.Root!),
+                element => AutomationProperties.GetAutomationId(element) == "SessionsHubNeedsYou");
             if (width is 1400 or 1000)
             {
                 var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
@@ -699,13 +719,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                     PageResponsiveLayout.ContentWidth(width) + 1);
                 Assert.InRange(Math.Abs(contentLeft - ((width - contentColumn.ActualWidth) / 2)), 0, 1);
             }
-            var columns = cards.Select(card => Math.Round(card.TransformToVisual(harness.Root).TransformPoint(default).X, 0))
-                .Distinct().Count();
-            Assert.Equal(expectedColumns, columns);
-
-            var heading = harness.Find<FrameworkElement>("SessionsHubNeedsYouTitle");
-            var attention = harness.Find<FrameworkElement>("SessionsHubAttention:agent:main:responsive-0");
-            var section = harness.Find<FrameworkElement>("SessionsHubNeedsYou");
             var mastHeadline = harness.Find<TextBlock>("SessionsHubMastHeadline");
             var eyebrow = harness.Find<TextBlock>("SessionsPageMarker");
             var eyebrowIcon = harness.Find<Image>("SessionsHubEyebrowGlyph");
@@ -722,21 +735,15 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 ((Microsoft.UI.Xaml.Media.SolidColorBrush)eyebrow.Foreground).Color);
             var tab = harness.Find<SelectorBarItem>("SessionsHubTabSessions");
             var tabText = Assert.Single(TestSupport.FindDescendants<TextBlock>(tab), item => item.Text == "Sessions");
-            var headingBounds = heading.TransformToVisual(harness.Root).TransformBounds(
-                new global::Windows.Foundation.Rect(0, 0, heading.ActualWidth, heading.ActualHeight));
-            var attentionBounds = attention.TransformToVisual(harness.Root).TransformBounds(
-                new global::Windows.Foundation.Rect(0, 0, attention.ActualWidth, attention.ActualHeight));
             var headlineLeft = mastHeadline.TransformToVisual(harness.Root).TransformPoint(default).X;
             var tabLeft = tabText.TransformToVisual(harness.Root).TransformPoint(default).X;
             Assert.InRange(Math.Abs(headlineLeft - tabLeft), 0, 1.25);
-            Assert.InRange(Math.Abs(headlineLeft - headingBounds.Left), 0, 1.25);
-            Assert.InRange(Math.Abs(headlineLeft - attentionBounds.Left), 0, 1.25);
-            var stripe = harness.Find<FrameworkElement>("SessionsHubAttentionStripe:agent:main:responsive-0");
-            var stripeLeft = stripe.TransformToVisual(harness.Root).TransformPoint(default).X;
-            Assert.InRange(Math.Abs(stripeLeft - attentionBounds.Left), 0, 1.25);
-            Assert.InRange(stripe.ActualWidth, 3.9, 4.1);
-            if (width == 760)
-                Assert.InRange(Math.Abs(attention.ActualWidth - section.ActualWidth), 0, 1);
+            Assert.Equal(2, badges.Length);
+            var firstRow = harness.Find<Expander>("SessionsHubRow:agent:main:responsive-0");
+            Assert.Contains(SessionsHubPresentation.T("StoppedWithError"), AutomationProperties.GetName(firstRow));
+            Assert.Equal("Responsive run error 0",
+                Microsoft.UI.Xaml.Controls.ToolTipService.GetToolTip(badges[0]) as string);
+            Assert.All(badges, badge => Assert.True(badge.ActualWidth > 0));
 
             var actions = harness.Find<StackPanel>("SessionsHubMastActions");
             var actionButtons = TestSupport.FindDescendants<Button>(actions).Where(button => IsShown(button, actions)).ToArray();
@@ -763,27 +770,14 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 control.TransformToVisual(harness.Root).TransformPoint(default).Y + (control.ActualHeight / 2)).ToArray();
             Assert.InRange(toolbarCenters.Max() - toolbarCenters.Min(), 0, 1.5);
 
-            for (var left = 0; left < cards.Length; left++)
-            for (var right = left + 1; right < cards.Length; right++)
+            foreach (var badge in badges)
             {
-                var a = cards[left].TransformToVisual(harness.Root).TransformBounds(
-                    new global::Windows.Foundation.Rect(0, 0, cards[left].ActualWidth, cards[left].ActualHeight));
-                var b = cards[right].TransformToVisual(harness.Root).TransformBounds(
-                    new global::Windows.Foundation.Rect(0, 0, cards[right].ActualWidth, cards[right].ActualHeight));
-                var overlaps = a.Left < b.Right && a.Right > b.Left && a.Top < b.Bottom && a.Bottom > b.Top;
-                Assert.False(overlaps, $"Responsive attention cards overlap at width {width}: {a} and {b}.");
-            }
-            foreach (var card in cards)
-            {
-                var cardBounds = card.TransformToVisual(harness.Root).TransformBounds(
-                    new global::Windows.Foundation.Rect(0, 0, card.ActualWidth, card.ActualHeight));
-                foreach (var label in TestSupport.FindDescendants<TextBlock>(card).Where(label => IsShown(label, card)))
-                {
-                    var labelBounds = label.TransformToVisual(harness.Root).TransformBounds(
-                        new global::Windows.Foundation.Rect(0, 0, label.ActualWidth, label.ActualHeight));
-                    Assert.True(labelBounds.Right <= cardBounds.Right + 1,
-                        $"Attention text '{label.Text}' extends past its card at width {width}: {labelBounds} vs {cardBounds}.");
-                }
+                var row = harness.Find<FrameworkElement>(
+                    "SessionsHubRow:" + AutomationProperties.GetAutomationId(badge)["SessionsHubStoppedWithError:".Length..]);
+                var bounds = badge.TransformToVisual(row).TransformBounds(
+                    new global::Windows.Foundation.Rect(0, 0, badge.ActualWidth, badge.ActualHeight));
+                Assert.True(bounds.Left >= -1 && bounds.Right <= row.ActualWidth + 1,
+                    $"Stopped-error badge extends past its row at width {width}: {bounds}.");
             }
         });
     }
@@ -2390,6 +2384,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         public XamlRoot? XamlRoot => thread.Container.XamlRoot;
         public IntPtr WindowHandle => IntPtr.Zero;
         public IReadOnlyList<SessionInfo> TrackedSessions => Gateway.Page.Sessions;
+        public string? GatewayName { get; set; } = "Fixture Gateway";
         public JsonElement? AgentsList => null;
         public ElementTheme ActualTheme => _theme?.ElementTheme ?? ElementTheme.Default;
         public bool ShowCompletedSessions

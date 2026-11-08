@@ -214,6 +214,8 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
         }
     }
 
+    string? ISessionsHubHost.GatewayName => CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayName;
+
     JsonElement? ISessionsHubHost.AgentsList => _appState?.AgentsList;
 
     ElementTheme ISessionsHubHost.ActualTheme => ActualTheme;

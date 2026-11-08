@@ -9263,7 +9263,18 @@
 <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} 已停止</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>未命名会话</value></data>
 <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} 个活动，{1} 个已移除</value></data>
-  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>此 Gateway 上的托管工作树</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>{0} 上的托管工作树</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>此 Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>已加载 {1} 个会话，其中 {0} 个正在运行</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>正在从 Gateway 获取最新会话清单。</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>会话，上次查看时间为 {0}。</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>断开连接时无法查看会话</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>重新连接以加载最新会话清单。</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>暂无会话</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>与代理的对话会显示在此处。</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>没有会话符合这些筛选条件</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>尝试更改搜索内容或筛选条件以查找其他会话。</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>已停止并出现错误</value></data>
 <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>活动</value></data>
   <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>已移除</value></data>
 <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>未存档</value></data>

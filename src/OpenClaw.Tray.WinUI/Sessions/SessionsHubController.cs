@@ -21,6 +21,7 @@ internal interface ISessionsHubHost
     IntPtr WindowHandle { get; }
     IOperatorGatewayClient? Client { get; }
     IReadOnlyList<SessionInfo> TrackedSessions { get; }
+    string? GatewayName { get; }
     JsonElement? AgentsList { get; }
     ElementTheme ActualTheme { get; }
     bool ShowCompletedSessions { get; set; }
@@ -138,6 +139,7 @@ internal sealed class SessionsHubController
             Permissions = new SessionsHubPermissions(true, ["operator.read"], ["sessions.list"]),
             Load = SessionsHubLoad.Loaded,
             Rows = rows,
+            LastLoadedAtUtc = DateTime.UtcNow,
             TrackedRows = rows,
         });
     }
@@ -171,6 +173,7 @@ internal sealed class SessionsHubController
         {
             IsConnected = connected,
             Permissions = permissions,
+            GatewayName = _host.GatewayName,
             Load = connected ? s.Load : SessionsHubLoad.Idle,
             Rows = connected ? s.Rows : Array.Empty<SessionInfo>(),
             TrackedRows = connected ? _host.TrackedSessions : Array.Empty<SessionInfo>(),
@@ -204,6 +207,7 @@ internal sealed class SessionsHubController
             Load = connected ? SessionsHubLoad.Loading : SessionsHubLoad.Idle,
             LoadError = null,
             Rows = Array.Empty<SessionInfo>(),
+            LastLoadedAtUtc = connected ? null : s.LastLoadedAtUtc,
             TrackedRows = Array.Empty<SessionInfo>(),
             HasMore = false,
             NextOffset = null,
@@ -387,6 +391,7 @@ internal sealed class SessionsHubController
             {
                 Load = SessionsHubLoad.Loaded,
                 Rows = rows,
+                LastLoadedAtUtc = DateTime.UtcNow,
                 HasMore = page.HasMore,
                 NextOffset = page.NextOffset,
                 TotalCount = page.TotalCount,
