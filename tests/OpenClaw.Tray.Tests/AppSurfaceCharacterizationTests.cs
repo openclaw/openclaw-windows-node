@@ -11,7 +11,7 @@ public sealed class AppSurfaceCharacterizationTests
         Assert.Contains(".Selected += OnTrayIconSelected", source);
         Assert.Contains(".ContextMenu += OnTrayContextMenu", source);
         Assert.Contains("CurrentSnapshot.OperatorState == RoleConnectionState.Connected", source);
-        Assert.Contains("ShowChatWindow();", source);
+        Assert.Contains("ShowHub(\"chat\")", source);
         Assert.Contains("ShowHub(\"connection\")", source);
         Assert.Contains("new TrayMenuWindow()", source);
         Assert.Contains(".MenuItemClicked += OnTrayMenuItemClicked", source);
@@ -30,15 +30,18 @@ public sealed class AppSurfaceCharacterizationTests
     {
         var source = ReadSurfaceSources();
 
-        Assert.Contains("if (_hubWindow is null || _hubWindow.IsClosed)", source);
-        Assert.Contains("new HubWindow()", source);
-        Assert.Contains("_callbacks.ApplyTheme(_hubWindow)", source);
-        Assert.Contains("_hubWindow.NavigateTo(navigateTo)", source);
-        Assert.Contains("WaitForCurrentContentReadyAsync()", source);
-        Assert.Contains("hub.Activate()", source);
+        Assert.DoesNotMatch(@"(?<![A-Za-z])HubWindow(?![A-Za-z_])",
+            File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.cs")));
+        Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", source);
+        Assert.Contains("new WorkspaceWindow(state, notifications, ShowConnectionStatus)", source);
+        Assert.Contains("_callbacks.ApplyTheme(_workspaceWindow)", source);
+        Assert.Contains("_workspaceWindow.OpenSettings(settingsTag)", source);
+        Assert.Contains("_workspaceWindow.Navigate(destination)", source);
+        Assert.Contains("_workspaceWindow.Activate()", source);
         Assert.Contains("Show(activateWindow: false)", source);
         Assert.Contains("_callbacks.GetPageActivator()?.Reset()", source);
-        Assert.Contains("hub.SettingsSaved -= _callbacks.SettingsSaved", source);
+        Assert.Contains("workspace.SettingsSaved -= OnWorkspaceSettingsSaved", source);
+        Assert.Contains("ResetNavigationScope();", source);
     }
 
     [Fact]
@@ -48,9 +51,6 @@ public sealed class AppSurfaceCharacterizationTests
 
         Assert.Contains("TryResolveChatCredentials", source);
         Assert.Contains("ShowConnectionSettingsForPairingIssue", source);
-        Assert.Contains("RefreshCredentials(request.GatewayUrl, request.GatewayToken)", source);
-        Assert.Contains("HideNearTray()", source);
-        Assert.Contains("ShowNearTrayAnimated()", source);
         Assert.Contains("DispatcherQueuePriority.Low", source);
 
         Assert.Contains("_settings?.NodeCanvasEnabled == false", source);

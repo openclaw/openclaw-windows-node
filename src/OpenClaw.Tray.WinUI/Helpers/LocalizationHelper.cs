@@ -7,6 +7,9 @@ namespace OpenClawTray.Helpers;
 
 public static class LocalizationHelper
 {
+    public static string CurrentLanguage =>
+        _languageOverride ?? System.Globalization.CultureInfo.CurrentUICulture.Name;
+
     private static ResourceManager? _resourceManager;
     private static ResourceContext? _overrideContext;
     private static string? _languageOverride;

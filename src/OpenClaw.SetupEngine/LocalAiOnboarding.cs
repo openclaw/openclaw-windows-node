@@ -17,7 +17,8 @@ public enum NativeLocalAiOwnershipState
 
 public enum LocalAiSetupStage
 {
-    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider
+    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider,
+    CheckingConfiguration, VerifyingEndpoint
 }
 
 /// <summary>The exact existing Gateway, not a request to create or replace one.</summary>
@@ -151,6 +152,8 @@ public sealed record SetupLocalAiUseResult(
 public sealed class LocalAiSelectionRejectedException(string message) : InvalidOperationException(message);
 /// <summary>The runtime returned after confirming cleanup. No uncertain publication remains.</summary>
 public sealed class LocalAiStartFailedException(string message) : InvalidOperationException(message);
+public sealed class LocalAiRepairRequiresStopException() : InvalidOperationException(
+    "Stop Local AI and resolve its original Gateway route in Local AI settings before repairing its files.");
 
 /// <summary>Window-scoped, single-use consent for the exact native installation reviewed by the user.</summary>
 public sealed class LocalAiInstallAndUseIntent
@@ -273,11 +276,14 @@ public sealed class LocalAiOnboardingObservation(ISetupLocalAiHost host) : IAsyn
     public Task RefreshAsync() => RefreshAsync(null);
 
     public Task RefreshAsync(IProgress<LocalAiSetupStage>? progress)
+        => RefreshAsync(progress, CancellationToken.None);
+
+    public Task RefreshAsync(IProgress<LocalAiSetupStage>? progress, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_closed, this);
         _request?.Cancel();
         _request?.Dispose();
-        _request = new();
+        _request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var generation = ++_generation;
         Snapshot = new(LocalAiOnboardingState.Checking);
         Changed?.Invoke();

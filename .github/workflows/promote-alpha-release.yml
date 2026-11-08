@@ -1,0 +1,104 @@
+name: Promote alpha to stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      alpha_tag:
+        description: "Published alpha to promote (for example v2026.9.5-alpha.93)"
+        required: true
+        type: string
+      prepare:
+        description: "Rebuild the candidate and request publication approval (false is preview only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: openclaw-alpha-promotion
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    outputs:
+      record: ${{ steps.candidate.outputs.record }}
+      source_sha: ${{ steps.candidate.outputs.source_sha }}
+      stable_tag: ${{ steps.candidate.outputs.stable_tag }}
+    steps:
+      - name: Require canonical main
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REPOSITORY -cne 'openclaw/openclaw-windows-node' -or $env:GITHUB_REF -cne 'refs/heads/main') {
+            throw 'Run promotion on main in openclaw/openclaw-windows-node.'
+          }
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate candidate and preview promotion
+        id: candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALPHA_TAG: ${{ inputs.alpha_tag }}
+        run: |
+          . ./scripts/AlphaPromotion.ps1
+          $record = Get-AlphaPromotion -AlphaTag $env:ALPHA_TAG -PipelineSha $env:GITHUB_SHA
+          "record=$($record | ConvertTo-Json -Compress)" >> $env:GITHUB_OUTPUT
+          "source_sha=$($record.sourceSha)" >> $env:GITHUB_OUTPUT
+          "stable_tag=$($record.stableTag)" >> $env:GITHUB_OUTPUT
+          @(
+            "## Alpha promotion preview"
+            "| Field | Value |"
+            "|---|---|"
+            "| Alpha | $($record.alphaTag) |"
+            "| Stable | $($record.stableTag) |"
+            "| Product SHA | $($record.sourceSha) |"
+            "| Pipeline SHA | $($record.pipelineSha) |"
+            "| Original CI | https://github.com/openclaw/openclaw-windows-node/actions/runs/$($record.alphaRunId) |"
+            ""
+            "[Included changes](https://github.com/openclaw/openclaw-windows-node/compare/$($record.previousStableTag)...$($record.alphaTag))"
+            "[Excluded newer changes](https://github.com/openclaw/openclaw-windows-node/compare/$($record.alphaTag)...$($record.pipelineSha))"
+            ""
+            "Preview does not create tags, reserve MSIX versions, sign, or publish."
+          ) >> $env:GITHUB_STEP_SUMMARY
+
+  validate:
+    needs: preview
+    if: inputs.prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Recheck candidate and approval protection
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTION_RECORD: ${{ needs.preview.outputs.record }}
+        run: |
+          . ./scripts/AlphaPromotion.ps1
+          $record = $env:PROMOTION_RECORD | ConvertFrom-Json
+          $fresh = Get-AlphaPromotion -AlphaTag $record.alphaTag -PipelineSha $record.pipelineSha `
+            -ExpectedSourceSha $record.sourceSha -RequireApproval
+          if (($fresh | ConvertTo-Json -Compress) -cne $env:PROMOTION_RECORD) {
+            throw 'Promotion eligibility changed after preview.'
+          }
+
+  build:
+    needs: [preview, validate]
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    with:
+      promotion_alpha: ${{ inputs.alpha_tag }}
+      promotion_source_sha: ${{ needs.preview.outputs.source_sha }}
+      promotion_stable_tag: ${{ needs.preview.outputs.stable_tag }}
+    secrets: inherit

@@ -19,6 +19,20 @@ public sealed record AssistantMediaResolutionResult(
         new(AssistantMediaResolutionStatus.Unavailable);
 }
 
+/// <summary>
+/// Outcome of a connection-owned assistant file download. The download URL and its
+/// ticket stay inside the chat bridge; renderers only see this result.
+/// </summary>
+public enum AssistantFileDownloadStatus
+{
+    /// <summary>The default browser accepted the download.</summary>
+    Started,
+    /// <summary>The Gateway did not return a usable download for this attachment.</summary>
+    Unavailable,
+    /// <summary>A download was resolved but the browser could not be launched.</summary>
+    Failed,
+}
+
 internal readonly record struct GatewayConnectionLease(
     Guid ClientId,
     long Generation,

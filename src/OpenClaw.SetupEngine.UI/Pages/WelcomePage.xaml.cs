@@ -95,7 +95,9 @@ public sealed partial class WelcomePage : Page
         WindowsUpdateButton.Visibility = Visibility.Collapsed;
         NativeCheckProgress.IsActive = true;
         NativeCheckProgress.Visibility = Visibility.Visible;
-        NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_CheckingSupport");
+        NativeGatewayEligibilityText.ApplyPlain(
+            NativeSupportStatus,
+            SetupLocalization.GetString("Onboarding_Native_CheckingSupport"));
         ApplySelection();
 
         NativeGatewayEligibility eligibility;
@@ -121,7 +123,10 @@ public sealed partial class WelcomePage : Page
         NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         WindowsUpdateButton.Visibility = eligibility == NativeGatewayEligibility.CapabilityUnavailable
             ? Visibility.Visible : Visibility.Collapsed;
-        NativeSupportStatus.Text = available ? "" : NativeGatewayEligibilityText.Get(eligibility);
+        if (available)
+            NativeGatewayEligibilityText.ApplyPlain(NativeSupportStatus, "");
+        else
+            NativeGatewayEligibilityText.Apply(NativeSupportStatus, eligibility);
         NativeCheckProgress.IsActive = false;
         NativeCheckProgress.Visibility = Visibility.Collapsed;
         SetChoice(NativeGatewaySetupEligibility.ResolveSelection(_selectedChoice, eligibility));
@@ -185,7 +190,9 @@ public sealed partial class WelcomePage : Page
         {
             NativeSupportCard.Visibility = Visibility.Visible;
             NativeSupportStatusPanel.Visibility = Visibility.Visible;
-            NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_UpdateLaunchFailed");
+            NativeGatewayEligibilityText.ApplyPlain(
+                NativeSupportStatus,
+                SetupLocalization.GetString("Onboarding_Native_UpdateLaunchFailed"));
         }
     }
 

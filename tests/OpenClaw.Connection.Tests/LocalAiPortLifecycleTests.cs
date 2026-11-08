@@ -12,8 +12,150 @@ using System.Text.Json.Nodes;
 
 namespace OpenClaw.Connection.Tests;
 
-public sealed class LocalAiPortLifecycleTests
+public sealed partial class LocalAiPortLifecycleTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiptlessStop_RefreshRecognizesRepairedInstallWithoutStartingIt(bool releaseOwnership)
+    {
+        using var temp = new TempDirectory("local-ai-repaired-");
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_766);
+        var lifecycle = new FakeLifecycle(events)
+        {
+            HasReleasableOwnership = true,
+            ConfirmWithdrawnHandler = _ => Task.CompletedTask,
+        };
+        await using var runtime = CreateRuntime(new LocalAiPaths(temp.Path),
+            host, platform, new FakeClient(events), lifecycle);
+        await runtime.StopAsync();
+        Assert.Null(runtime.Snapshot.ModelId);
+        if (releaseOwnership)
+            lifecycle.HasReleasableOwnership = false;
+        await PrepareInstallAsync(temp);
+        var refreshed = await runtime.RefreshAsync();
+        Assert.Equal(LocalAiRuntimeState.Stopped, refreshed.State);
+        Assert.Equal(ValidManifest().ModelCatalogId, refreshed.ModelId);
+        Assert.False(refreshed.GatewayRouteRequiresResolution);
+        Assert.Null(refreshed.ProcessId);
+        Assert.Null(host.LastSpec);
+        Assert.False(lifecycle.AutomaticRecoveryEnabled);
+        Assert.Equal(!releaseOwnership, runtime.HasReleasableOwnership);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiptlessStop_PreservesReleaseAcrossRefreshCancellationAndReopen(bool reopen)
+    {
+        using var temp = new TempDirectory("local-ai-receiptless-");
+        using var cancellation = new CancellationTokenSource();
+        var lifecycle = new FakeLifecycle(new SynchronizedEventLog())
+        {
+            HasReleasableOwnership = true,
+            ConfirmWithdrawnHandler = ct =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled(ct);
+            },
+        };
+        var options = new LlamaServerRuntimeOptions
+        { Paths = new LocalAiPaths(temp.Path), EndpointLifecycle = lifecycle };
+        await using var initial = new LlamaServerRuntimeService(options, NullLogger.Instance);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initial.StopAsync(cancellation.Token));
+        Assert.True((await initial.RefreshAsync()).GatewayRouteRequiresResolution);
+        Assert.False(lifecycle.AutomaticRecoveryEnabled);
+        Assert.True(initial.HasReleasableOwnership);
+        int confirmations = 0;
+        lifecycle.ConfirmWithdrawnHandler = ct =>
+        {
+            ct.ThrowIfCancellationRequested();
+            confirmations++;
+            return Task.CompletedTask;
+        };
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await initial.StopAsync()).State);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await initial.RefreshAsync()).State);
+        await using var reopened = new LlamaServerRuntimeService(options, NullLogger.Instance);
+        var runtime = reopen ? reopened : initial;
+        if (reopen)
+        {
+            Assert.True(runtime.Snapshot.GatewayRouteRequiresResolution);
+            await runtime.ReconcileStoppedAsync();
+        }
+        Assert.Equal(reopen ? 2 : 1, confirmations);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await runtime.RefreshAsync()).State);
+        using var releaseCancellation = new CancellationTokenSource();
+        int releases = 0;
+        lifecycle.ReleaseHandler = ct =>
+        {
+            releases++;
+            releaseCancellation.Cancel();
+            return Task.FromCanceled(ct);
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runtime.ReleaseOwnershipAsync(releaseCancellation.Token));
+        Assert.True(runtime.HasReleasableOwnership);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await runtime.RefreshAsync()).State);
+        lifecycle.ReleaseHandler = _ => throw new InvalidOperationException("Gateway withdrawal changed.");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.ReleaseOwnershipAsync());
+        Assert.True(runtime.HasReleasableOwnership);
+        lifecycle.ReleaseHandler = _ =>
+        {
+            releases++;
+            lifecycle.HasReleasableOwnership = false;
+            return Task.CompletedTask;
+        };
+        await runtime.ReleaseOwnershipAsync();
+        Assert.Equal(2, releases);
+        Assert.False(runtime.HasReleasableOwnership);
+        Assert.False(runtime.Snapshot.GatewayRouteRequiresResolution);
+        Assert.Equal(LocalAiRuntimeState.NotInstalled, (await runtime.RefreshAsync()).State);
+    }
+
+    [Fact]
+    public async Task ExplicitStartReportsPublicationBeforePausedEndpointWriteAndDiscardsLateProgress()
+    {
+        using var temp = new TempDirectory("local-ai-start-progress-");
+        var paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        var client = new FakeClient(events);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<LocalAiEndpointLifecycleResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stages = new System.Collections.Concurrent.ConcurrentQueue<LocalAiRuntimeStartStage>();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            PublishHandler = (_, ct) =>
+            {
+                Assert.Contains("probe:28765", events);
+                Assert.Equal(LocalAiRuntimeStartStage.PublishingProvider, stages.Last());
+                entered.SetResult();
+                return release.Task.WaitAsync(ct);
+            }
+        };
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        var starting = runtime.EnsureStartedAsync(default, new StartProgress(stages.Enqueue));
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(starting.IsCompleted);
+            Assert.Equal(LocalAiRuntimeStartStage.PublishingProvider, stages.Last());
+        }
+        finally { release.TrySetResult(LocalAiEndpointLifecycleResult.Ok()); }
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await starting).State);
+        Assert.Single(events, item => item == "publish:28765");
+        var count = stages.Count;
+        lifecycle.LastStartProgress!.Report(LocalAiRuntimeStartStage.VerifyingEndpoint);
+        Assert.Equal(count, stages.Count);
+    }
+
+    private sealed class StartProgress(Action<LocalAiRuntimeStartStage> report) : IProgress<LocalAiRuntimeStartStage>
+    {
+        public void Report(LocalAiRuntimeStartStage value) => report(value);
+    }
+
     [Fact]
     public async Task ChildProcessPathResolver_ResolvesExistingFileAndDirectoryPaths()
     {
@@ -3130,7 +3272,8 @@ public sealed class LocalAiPortLifecycleTests
         ILocalAiModelFileVerifier? modelFileVerifier = null,
         Func<string>? getApiKey = null,
         Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null,
-        Func<string, string>? resolveChildProcessPath = null) => new(
+        Func<string, string>? resolveChildProcessPath = null,
+        OpenClaw.Shared.Inference.IHostHardwareProbe? hardwareProbe = null) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
@@ -3148,7 +3291,8 @@ public sealed class LocalAiPortLifecycleTests
             host,
             platform,
             client,
-            modelFileVerifier);
+            modelFileVerifier,
+            hardwareProbe);
 
     private static async Task<LocalAiPaths> PrepareInstallAsync(TempDirectory temp)
     {
@@ -3412,6 +3556,53 @@ public sealed class LocalAiPortLifecycleTests
         }
     }
 
+    [Fact]
+    public async Task BonsaiReceipt_UsesPrismRuntimeAndBoundsOutputToSmallContext()
+    {
+        using var temp = new TempDirectory("local-ai-bonsai-");
+        var paths = new LocalAiPaths(temp.Path);
+        var model = LocalModelCatalog.Find(LocalModelCatalog.Bonsai2ModelId)!;
+        var runtime = BonsaiRuntimeCatalog.X64;
+        var source = (HuggingFaceRevisionSource)model.Weights.Source;
+        static LocalAiAssetReceipt Receipt(PinnedArtifact artifact) => new()
+        {
+            FileName = Path.GetFileName(artifact.RelativePath), SourceUrl = artifact.DownloadUri.AbsoluteUri,
+            SizeBytes = artifact.SizeBytes, Sha256 = artifact.Sha256.Value,
+        };
+        var manifest = ValidManifest() with
+        {
+            Architecture = "x64", EngineVersion = runtime.ReleaseTag, RuntimeId = runtime.Id,
+            ModelCatalogId = model.Id, ModelAlias = model.Id,
+            ModelPath = Path.Combine("models", model.Weights.RelativePath),
+            ExecutablePath = Path.Combine("engines", runtime.Id, LlamaRuntimeCatalog.ServerExecutableName),
+            ModelId = $"{source.RepositoryId}@{source.RevisionSha}", ModelAsset = Receipt(model.Weights),
+            RuntimeAssets = runtime.Artifacts.Select(Receipt).ToImmutableArray(),
+            ContextLength = 8192, Endpoint = "http://127.0.0.1:28765/v1",
+            KeyCachePrecision = KvCachePrecision.F16, ValueCachePrecision = KvCachePrecision.F16,
+            DraftKeyCachePrecision = KvCachePrecision.F16, DraftValueCachePrecision = KvCachePrecision.F16,
+        };
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(manifest);
+        var install = (await store.LoadAsync())!;
+        var launch = LlamaServerRouterConfiguration.Build(paths, install);
+        Assert.Contains("ctx-size = 8192", launch.PresetContent);
+        Assert.Contains("n-predict = 2048", launch.PresetContent);
+        Assert.DoesNotContain("spec-type", launch.PresetContent);
+        using var provider = JsonDocument.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install));
+        Assert.Equal(2048, provider.RootElement.GetProperty("models")[0].GetProperty("maxTokens").GetInt32());
+
+        // Even a structurally valid stock-runtime receipt cannot launch ternary weights.
+        var stock = LlamaRuntimeCatalog.Find(System.Runtime.InteropServices.Architecture.X64)!;
+        await store.SaveAsync(manifest with
+        {
+            RuntimeId = stock.Id, EngineVersion = stock.ReleaseTag,
+            RuntimeAssets = stock.Artifacts.Select(Receipt).ToImmutableArray(),
+        });
+        install = (await store.LoadAsync())!;
+        var error = Assert.Throws<InvalidDataException>(() => LlamaServerRouterConfiguration.Build(paths, install));
+        Assert.Contains("runtime family", error.Message);
+    }
+
     private static LocalAiInstallManifest ValidManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(
@@ -3664,6 +3855,22 @@ public sealed class LocalAiPortLifecycleTests
 
     private sealed class FakeLifecycle(SynchronizedEventLog events) : ILocalAiEndpointLifecycle
     {
+        public bool HasReleasableOwnership { get; set; }
+        public Func<CancellationToken, Task>? ConfirmWithdrawnHandler { get; set; }
+        public Task ConfirmWithdrawnWithoutInstallAsync(CancellationToken ct) =>
+            ConfirmWithdrawnHandler?.Invoke(ct) ?? throw new InvalidOperationException("Withdrawal not configured.");
+        public Func<CancellationToken, Task>? ReleaseHandler { get; set; }
+        public Task ReleaseOwnershipAsync(CancellationToken ct) =>
+            ReleaseHandler?.Invoke(ct) ?? throw new InvalidOperationException("Release not configured.");
+        public IProgress<LocalAiRuntimeStartStage>? LastStartProgress { get; private set; }
+        public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install, CancellationToken ct,
+            IProgress<LocalAiRuntimeStartStage>? progress)
+        {
+            LastStartProgress = progress;
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(LocalAiRuntimeStartStage.PublishingProvider);
+            return PublishAsync(install, ct);
+        }
         public LocalAiNativeBindingStore? BindingStore { get; init; }
         public Func<CancellationToken, Task>? PrepareStartHandler { get; set; }
         public Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
@@ -3723,6 +3930,29 @@ public sealed class LocalAiPortLifecycleTests
             return Task.FromResult(FailPublish
                 ? LocalAiEndpointLifecycleResult.Failed("publish failed")
                 : LocalAiEndpointLifecycleResult.Ok());
+        }
+
+        public Action? OnRebind { get; set; }
+        public async Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
+            Func<Task> commitManifest, CancellationToken cancellationToken)
+        {
+            Rebinds.Add($"rebind:{next.Manifest.ModelAlias}");
+            OnRebind?.Invoke();
+            try { await commitManifest(); Rebinds.Add("committed"); }
+            catch { Rebinds.Add("failed"); throw; }
+        }
+
+        /// <summary>Rebind and settle calls, kept apart from <c>events</c> because every manifest load settles.</summary>
+        public List<string> Rebinds { get; } = [];
+        public async Task SettleModelRebindAsync(Func<CancellationToken, Task<LocalAiResolvedInstall?>> loadCommitted,
+            CancellationToken cancellationToken)
+            => Rebinds.Add($"settle:{(await loadCommitted(cancellationToken))?.Manifest.ModelAlias}");
+
+        public Exception? FallbackException { get; set; }
+        public Task SetFallbackModelAsync(string? model, CancellationToken cancellationToken)
+        {
+            events.Add($"fallback:{model}");
+            return FallbackException is null ? Task.CompletedTask : Task.FromException(FallbackException);
         }
     }
 

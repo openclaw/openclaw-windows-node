@@ -188,6 +188,12 @@ public partial class OpenClawGatewayClient
 
     // ── sessions.create ──
 
+    public IChatPlacementGateway CreateChatPlacementGateway() =>
+        new GatewayChatPlacementClient(
+            () => SessionMutationConnectionEpoch,
+            (method, parameters, timeoutMs, epoch) =>
+                SendResponseRequestAsync(method, parameters, timeoutMs, epoch));
+
     /// <summary>
     /// Creates a distinct gateway session. Unsupported gateways return a typed
     /// result with <see cref="SessionCreateResult.IsSupported"/> = false.
@@ -281,6 +287,12 @@ public partial class OpenClawGatewayClient
             parameters["emitCommandHooks"] = request.EmitCommandHooks;
             if (!string.IsNullOrWhiteSpace(request.ParentSessionKey))
                 parameters["parentSessionKey"] = request.ParentSessionKey;
+            if (request.Fork)
+            {
+                parameters["fork"] = true;
+                if (!string.IsNullOrWhiteSpace(request.ForkFrom))
+                    parameters["forkFrom"] = request.ForkFrom;
+            }
         }
 
         if (!legacyLifecycleFallback && request.SucceedsParent.HasValue)
@@ -471,6 +483,122 @@ public partial class OpenClawGatewayClient
         if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(false);
         if (patch is null || !patch.HasChanges) return Task.FromResult(false);
         return TrySendTrackedRequestAsync("sessions.patch", patch.ToPayload(key));
+    }
+
+    public async Task PatchSessionConfirmedAsync(
+        string key, SessionPatch patch, long connectionEpoch, int timeoutMs = 15000)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(patch);
+        if (!patch.HasChanges)
+            throw new ArgumentException("The session patch must contain a change.", nameof(patch));
+        var payload = await SendResponseRequestAsync(
+            "sessions.patch", patch.ToPayload(key), timeoutMs, connectionEpoch).ConfigureAwait(false);
+        RequireSessionMutationAccepted(payload, key);
+    }
+
+    public async Task DeleteSessionConfirmedAsync(string key, long connectionEpoch, int timeoutMs = 15000)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        var payload = await SendResponseRequestAsync(
+            "sessions.delete", new { key, deleteTranscript = true }, timeoutMs, connectionEpoch).ConfigureAwait(false);
+        RequireSessionMutationAccepted(payload, key);
+        if (payload.TryGetProperty("deleted", out var deleted) && deleted.ValueKind != JsonValueKind.True)
+            throw new InvalidOperationException("The Gateway did not delete the session.");
+    }
+
+    private static void RequireSessionMutationAccepted(JsonElement payload, string key)
+    {
+        if (payload.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("The Gateway returned an invalid session mutation response.");
+        if (payload.TryGetProperty("ok", out var ok) && ok.ValueKind != JsonValueKind.True)
+            throw new InvalidOperationException(GetString(payload, "reason") ?? "The Gateway rejected the session mutation.");
+        if (payload.TryGetProperty("key", out var returnedKey) &&
+            (returnedKey.ValueKind != JsonValueKind.String || returnedKey.GetString() != key))
+            throw new InvalidOperationException("The Gateway returned a different session key.");
+    }
+
+    // ── sessions.list (archived) ──
+
+    /// <summary>
+    /// Fetches only the archived sessions (<c>sessions.list</c> with
+    /// <c>archived:true</c>). Rows are detached: they never touch the live
+    /// session tracking, so they must be consumed as a snapshot. Unsupported or
+    /// pre-handshake gateways return <c>IsSupported = false</c>; other request
+    /// failures propagate.
+    /// </summary>
+    public async Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
+    {
+        var payload = await TryRequestPayloadAsync("sessions.list", new { archived = true, includeDerivedTitles = true }, timeoutMs).ConfigureAwait(false);
+        if (payload is null) return new SessionListResult { IsSupported = false };
+        return new SessionListResult { Sessions = ParseDetachedSessionRows(payload.Value) };
+    }
+
+    internal IReadOnlyList<SessionInfo> ParseDetachedSessionRows(JsonElement payload)
+    {
+        if (!TryGetSessionsPayload(payload, out var rows) || rows.ValueKind != JsonValueKind.Array)
+            return Array.Empty<SessionInfo>();
+        var sessions = new List<SessionInfo>();
+        foreach (var item in rows.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var key = GetString(item, "key");
+            if (string.IsNullOrWhiteSpace(key))
+                continue;
+            var session = new SessionInfo { Key = key };
+            UpdateSessionMainStatus(session, key, item);
+            PopulateSessionFromObject(session, item, authoritativeSessionList: true);
+            sessions.Add(session);
+        }
+        return sessions;
+    }
+
+    public async Task<GatewaySearchResult> SearchSessionsAsync(
+        string query, bool messages, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (query.Length > GatewaySearchProtocol.MaximumQueryLength)
+            throw new ArgumentOutOfRangeException(nameof(query));
+        if (messages)
+        {
+            var payload = await SendResponseRequestAsync("sessions.search",
+                new { query, limit = GatewaySearchProtocol.MessageLimit, scope = GatewaySearchProtocol.Scope() },
+                GatewaySearchProtocol.MessageTimeoutMilliseconds, requestCancellationToken: cancellationToken, searchRead: true).ConfigureAwait(false);
+            if (payload.ValueKind != JsonValueKind.Object ||
+                !payload.TryGetProperty("results", out var hits) || hits.ValueKind != JsonValueKind.Array)
+                throw new InvalidDataException("Invalid transcript search response.");
+            return GatewaySearchProtocol.ParseTranscript(payload, ParseDetachedSessionRows(payload));
+        }
+        return await SearchSessionMetadataAsync(query, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<GatewaySearchResult> SearchSessionMetadataAsync(string query, CancellationToken cancellationToken)
+    {
+        var rows = await SendResponseRequestAsync("sessions.list", new
+        {
+            search = query, limit = 50, includeDerivedTitles = true,
+            includeGlobal = false, includeUnknown = false, configuredAgentsOnly = true,
+            excludeSubagents = true, excludeCron = true, excludeSystem = true, excludeDock = true
+        }, GatewaySearchProtocol.CatalogTimeoutMilliseconds, requestCancellationToken: cancellationToken, searchRead: true).ConfigureAwait(false);
+        if (!TryGetSessionsPayload(rows, out var sessions) || sessions.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Invalid session search response.");
+        return new(ParseDetachedSessionRows(rows), [],
+            Truncated: rows.ValueKind == JsonValueKind.Object &&
+                rows.TryGetProperty("hasMore", out var more) && more.ValueKind == JsonValueKind.True);
+    }
+
+    public Task<JsonElement> ReadSearchCatalogAsync(
+        string method, object? parameters, CancellationToken cancellationToken)
+    {
+        if (method is not ("cron.list" or "skills.status" or "config.schema" or "agents.list" or "models.list"))
+            throw new ArgumentException("Not a read-only search catalog method.", nameof(method));
+        if (method == "cron.list")
+            return GatewaySearchProtocol.ReadAutomationPagesAsync(
+                (args, ct) => SendResponseRequestAsync(method, args, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
+                    requestCancellationToken: ct, searchRead: true), parameters, cancellationToken);
+        return SendResponseRequestAsync(method, parameters, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
+            requestCancellationToken: cancellationToken, searchRead: true);
     }
 
     // ── sessions.files.list / sessions.files.get ──

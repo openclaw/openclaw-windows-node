@@ -31,6 +31,40 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
     [Trait("Category", "NativeOnboardingProof")]
+    public async Task UnavailableWelcome_AllScrollViewports_WithManualForegroundAdmission(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _manualForegroundPending = Environment.GetEnvironmentVariable("OPENCLAW_UI_GALLERY_MANUAL_FOCUS") == "1";
+        Assert.True(_manualForegroundPending, "This bounded proof requires explicit manual foreground admission.");
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        var result = new SceneResult(new Scene("unavailable-welcome", "welcome", "unavailable"), theme);
+        _results.Add(result);
+        try
+        {
+            await CaptureSceneAsync(result);
+            Assert.NotEmpty(result.Frames);
+            Assert.True(result.AllViewportsCaptured);
+            OnboardingNativeProof.AssertSourceUnchanged();
+            _sourceVerifiedAfterCapture = true;
+            result.Status = "captured";
+        }
+        catch (Exception error)
+        {
+            result.Status = "failed";
+            result.Failure = _failure = error.ToString();
+            throw;
+        }
+        finally
+        {
+            WriteManifest();
+        }
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task FollowupProof_CapabilitiesAndWelcome(ElementTheme theme)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
@@ -248,6 +282,34 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task SimplifiedLocalAi_CapturesRecommendedAndConnectedChoices()
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        var scene = new SceneResult(new Scene("12-ai-simplified-local", "ai", "simplified-local"), ElementTheme.Dark);
+        _results.Add(scene);
+        OnboardingNativeProof.AssertSourceUnchanged();
+        await CaptureSceneAsync(scene);
+        Assert.True(scene.AllViewportsCaptured);
+        OnboardingNativeProof.AssertSourceUnchanged();
+    }
+
+    [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task RecommendedInstallOnly_HidesCloudHeading()
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        var scene = new SceneResult(new Scene("13-ai-installs-only", "ai", "installs-only"), ElementTheme.Dark);
+        _results.Add(scene);
+        OnboardingNativeProof.AssertSourceUnchanged();
+        await CaptureSceneAsync(scene);
+        Assert.True(scene.AllViewportsCaptured);
+        OnboardingNativeProof.AssertSourceUnchanged();
+    }
+
+    [Fact]
     public async Task SemanticHeaders_RejectDecorativeHiddenAndWrongPageContent()
     {
         Assert.All(RequiredScenes, scene => Assert.False(string.IsNullOrWhiteSpace(HeaderFor(scene).Text)));
@@ -275,6 +337,13 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             }
             finally { ui.Container.Children.Clear(); }
         });
+    }
+
+    [Fact]
+    public void GallerySceneInventory_CoversEveryLocalAiState()
+    {
+        Assert.All(Enum.GetValues<LocalAiOnboardingState>(), state =>
+            Assert.Contains(RequiredScenes, scene => scene.Family == "ai" && scene.State == state.ToString()));
     }
 
     [Fact]
@@ -485,8 +554,9 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                         OnboardingNativeProof.ActivateOwned(window);
                     await WaitAsync(() => root.IsLoaded, "gallery window Loaded");
                     var scale = root.XamlRoot.RasterizationScale;
-                    window.AppWindow.Resize(new(NativeProofLayout.PhysicalPixels(720, scale),
-                        NativeProofLayout.PhysicalPixels(820, scale)));
+                    var proofSize = result.Scene.State == "simplified-local" ? (Width: 1200, Height: 900) : (Width: 720, Height: 820);
+                    window.AppWindow.Resize(new(NativeProofLayout.PhysicalPixels(proofSize.Width, scale),
+                        NativeProofLayout.PhysicalPixels(proofSize.Height, scale)));
                     var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(window.AppWindow.Id,
                         Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
                     var size = window.AppWindow.Size;
@@ -534,10 +604,22 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                     available ? Visibility.Collapsed : Visibility.Visible;
                                 Find<StackPanel>(welcome, "NativeSupportStatusPanel").Visibility =
                                     available ? Visibility.Collapsed : Visibility.Visible;
-                                Find<TextBlock>(welcome, "NativeSupportStatus").Text =
-                                    available ? "" : "Synthetic unavailable host. Windows update required.";
+                                var nativeStatus = Find<TextBlock>(welcome, "NativeSupportStatus");
+                                if (available)
+                                    NativeGatewayEligibilityTextTestAccess.ApplyPlain(nativeStatus, "");
+                                else
+                                    NativeGatewayEligibilityTextTestAccess.Apply(nativeStatus, NativeGatewayEligibility.CapabilityUnavailable);
+                                Find<Button>(welcome, "WindowsUpdateButton").Visibility =
+                                    available ? Visibility.Collapsed : Visibility.Visible;
                                 Assert.True(VisualStateManager.GoToState(welcome,
                                     available ? "NativeRecommendedState" : "WslRecommendedState", false));
+                                if (!available)
+                                {
+                                    Assert.False(nativeChoice.IsEnabled);
+                                    Assert.True(Find<ListViewItem>(welcome, "InstallChoice").IsEnabled);
+                                    Assert.True(Find<ListViewItem>(welcome, "ConnectChoice").IsEnabled);
+                                    Assert.Equal(nativeStatus.Text, AutomationProperties.GetName(nativeStatus));
+                                }
                                 result.Facts.Add("Synthetic availability projection using production visual states, not host eligibility proof.");
                             }
                             if (scene.State == "existing")
@@ -796,7 +878,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         }
         if (state == "api-key")
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(window, Find<SettingsCard>(page, "ApiKeysButton"));
+            await OnboardingNativeProof.InvokeSettingsCardAsync(window, Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible,
                 "API Keys card opens the separate manual form");
             Assert.Null(page.FindName("ApiKeysChoices"));
@@ -824,13 +906,46 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             var panel = Find<StackPanel>(page, "ChoicePanel");
             var prepare = Find<StackPanel>(page, "PrepareSection");
             var providers = Find<StackPanel>(page, "SignInSection");
+            var detected = Find<StackPanel>(page, "CandidatesSection");
+            var pageChoices = Assert.IsType<StackPanel>(detected.Parent);
+            Assert.True(pageChoices.Children.IndexOf(detected) < pageChoices.Children.IndexOf(Find<StackPanel>(page, "LocalGroupHeader")));
             Assert.True(panel.Children.IndexOf(prepare) < panel.Children.IndexOf(providers));
-            Assert.Equal("Set up a local model", Find<TextBlock>(page, "PrepareHeading").Text);
+            Assert.Equal("Local AI", Find<TextBlock>(page, "LocalGroupHeading").Text);
+            Assert.Equal("Cloud-based AI", Find<TextBlock>(page, "SignInHeading").Text);
             Assert.Null(page.FindName("LocalAiHeading"));
-            result.Facts.Add("Detected Local AI and Gateway model choices precede Gateway preparation, provider cards, API Keys and the separate manual form.");
+            if (state == "providers")
+            {
+                Assert.Contains(TestSupport.FindDescendants<TextBlock>(detected), text => text.Text == "Claude on your Gateway");
+                result.Facts.Add("Saved cloud-provider access remains a detected Gateway choice above Local AI and setup options.");
+            }
+            result.Facts.Add("Detected Gateway choices precede managed Local AI, Ollama, LM Studio, cloud provider cards, API Keys and the separate manual form.");
+        }
+        if (state == "simplified-local")
+        {
+            Assert.Equal("Set up a local model", Find<TextBlock>(page, "LocalAiTitle").Text);
+            Assert.Equal("Set up a model on this PC, or connect to LM Studio or Ollama.",
+                Find<TextBlock>(page, "LocalGroupDescription").Text);
+            Assert.Equal("Runs on this PC without provider usage charges. We'll help you set up a model suited to your hardware.",
+                Find<TextBlock>(page, "LocalAiDescription").Text);
+            Assert.Contains(TestSupport.FindDescendants<TextBlock>(page), text =>
+                text.Text == "Connect to Ollama on this PC or another host, using local or cloud models.");
+            Assert.Equal(Visibility.Visible, Find<RecommendedBadge>(page, "LocalAiRecommendedBadge").Visibility);
+            Assert.Equal(2, Find<ItemsControl>(page, "PrepareChoices").Items.Count);
+            Assert.Single(Find<ItemsControl>(page, "FeaturedSignInChoices").Items);
+            Assert.Equal("Local AI", Find<TextBlock>(page, "LocalGroupHeading").Text);
+            Assert.Equal("Cloud-based AI", Find<TextBlock>(page, "SignInHeading").Text);
+        }
+        if (state == "installs-only")
+        {
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "SignInSection").Visibility);
+            Assert.Equal(Visibility.Visible, Find<SettingsExpander>(page, "RecommendedSection").Visibility);
         }
         if (state == "catalog")
-            Assert.False(Find<CheckBox>(page, "CatalogPreference").IsChecked);
+        {
+            var preference = Find<CheckBox>(page, "CatalogPreference");
+            Assert.Equal(Visibility.Visible, preference.Visibility);
+            Assert.Equal(false, preference.IsChecked);
+        }
         if (result.Scene.Family == "ai-return")
         {
             Assert.NotNull(reviewedModel);

@@ -17,6 +17,10 @@ namespace OpenClawTray.Chat;
 internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : IChatComposerRuntimePort
 {
     public bool SupportsNativeLifecycle => provider is OpenClawChatDataProvider;
+    public bool SupportsSessionScopedModelCatalog =>
+        provider is OpenClawChatDataProvider { SupportsSessionScopedModelCatalog: true };
+    public long ModelCatalogRevision =>
+        provider is OpenClawChatDataProvider native ? native.ModelCatalogRevision : 0;
 
     public async Task<bool> SendMessageAsync(
         string threadId,
@@ -26,6 +30,13 @@ internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : ICha
     {
         try
         {
+            if (provider is OpenClawChatDataProvider native)
+                return await native.SendMessageReportingAcceptanceAsync(
+                    threadId,
+                    message,
+                    cancellationToken,
+                    attachments).ConfigureAwait(true);
+
             await provider.SendMessageAsync(threadId, message, cancellationToken, attachments).ConfigureAwait(true);
             return true;
         }
@@ -80,6 +91,18 @@ internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : ICha
         try { await provider.ClearModelAsync(threadId, cancellationToken).ConfigureAwait(true); }
         catch (OperationCanceledException) { }
         catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] operation failed: {ex}"); }
+    }
+
+    public async Task<ModelsListInfo?> RequestSessionModelsListAsync(
+        string threadId,
+        CancellationToken cancellationToken)
+    {
+        if (provider is not OpenClawChatDataProvider native)
+            return null;
+        cancellationToken.ThrowIfCancellationRequested();
+        var models = await native.RequestSessionModelsListAsync(threadId).ConfigureAwait(true);
+        cancellationToken.ThrowIfCancellationRequested();
+        return models;
     }
 
     public async Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken)

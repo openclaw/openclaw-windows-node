@@ -7,6 +7,10 @@ branches:
     regex: ^(master|main)$
     label: alpha
     increment: Patch
+  release:
+    label: alpha
+    prevent-increment:
+      when-current-commit-tagged: true
 
 ignore:
   sha: []

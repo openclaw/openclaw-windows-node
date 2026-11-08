@@ -12,6 +12,8 @@ public enum LocalInferenceUnavailableReasonKind
     DriverTooOld,
     CudaCapabilityTooLow,
     Unknown,
+    InsufficientSystemMemory,
+    InsufficientDiskSpace,
 }
 
 /// <summary>
@@ -26,7 +28,9 @@ public sealed record LocalInferenceUnavailableReason(
     double RequiredGigabytes,
     double? DetectedGigabytes,
     string? DetectedDriverVersion,
-    string MinimumDriverVersion);
+    string MinimumDriverVersion,
+    double RequiredSystemGigabytes = 0,
+    double RequiredDiskGigabytes = 0);
 
 public static class LocalInferenceEligibilityDiagnostics
 {
@@ -52,6 +56,10 @@ public static class LocalInferenceEligibilityDiagnostics
                     LocalInferenceUnavailableReasonKind.DriverTooOld,
                 LocalInferenceEligibilityFailureCode.CudaCapabilityTooLow =>
                     LocalInferenceUnavailableReasonKind.CudaCapabilityTooLow,
+                LocalInferenceEligibilityFailureCode.InsufficientSystemMemory =>
+                    LocalInferenceUnavailableReasonKind.InsufficientSystemMemory,
+                LocalInferenceEligibilityFailureCode.InsufficientDiskSpace =>
+                    LocalInferenceUnavailableReasonKind.InsufficientDiskSpace,
                 _ => LocalInferenceUnavailableReasonKind.Unknown,
             },
         };
@@ -62,7 +70,9 @@ public static class LocalInferenceEligibilityDiagnostics
             ToGigabytes(eligibility.RequiredTotalMemoryBytes),
             eligibility.DetectedTotalMemoryBytes is { } detected ? ToGigabytes(detected) : null,
             eligibility.SelectedGpu?.DriverVersion,
-            LocalInferenceEligibility.MinimumNvidiaDriverVersion.ToString());
+            LocalInferenceEligibility.MinimumNvidiaDriverVersion.ToString(),
+            ToGigabytes(eligibility.RequiredSystemMemoryBytes),
+            ToGigabytes(eligibility.RequiredDiskBytes));
     }
 
     private static double ToGigabytes(long bytes) => bytes / (1024d * 1024d * 1024d);

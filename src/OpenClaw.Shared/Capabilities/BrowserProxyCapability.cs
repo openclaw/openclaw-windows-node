@@ -49,7 +49,9 @@ public class BrowserProxyCapability : NodeCapabilityBase
         _allowGatewayPortFallback = allowGatewayPortFallback ??
             BrowserControlEndpoint.AllowsGatewayPortFallback(gatewayUrl);
         _authorizeEndpointAsync = authorizeEndpointAsync;
-        _httpClient = handler == null ? new HttpClient() : new HttpClient(handler);
+        _httpClient = handler == null
+            ? new HttpClient(CreateDirectHandler(), disposeHandler: true)
+            : new HttpClient(handler);
     }
 
     public override string Category => "browser";
@@ -124,6 +126,11 @@ public class BrowserProxyCapability : NodeCapabilityBase
             return Error("Browser proxy file read denied");
         }
     }
+
+    private static SocketsHttpHandler CreateDirectHandler() => new()
+    {
+        UseProxy = false,
+    };
 
     private HttpRequestMessage CreateHttpRequest(string method, Uri uri, JsonElement args, bool usePasswordAuth)
     {

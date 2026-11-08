@@ -157,34 +157,41 @@ public sealed class InnoMigrationContractTests
         Assert.Contains("!GatewayFixtureIsolation.IsEnabled", helper);
         Assert.Contains(".HasValidConsent(installation.Version.ToString())", helper);
         Assert.Contains("Environment.ProcessPath", helper);
-        var settings = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs");
-        var settingsXaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml");
-        Assert.Contains("x:Name=\"StoreMigrationCard\"", settingsXaml);
-        Assert.Contains("Migration2_InnoRecommendation", settingsXaml);
-        Assert.Contains("Migration2_InnoCardTitle", settingsXaml);
-        Assert.Contains("Migration2_InnoCardDescription", settingsXaml);
-        var card = settingsXaml[
-            settingsXaml.IndexOf("x:Name=\"StoreMigrationCard\"", StringComparison.Ordinal)..
-            settingsXaml.IndexOf("<InfoBar x:Name=\"StoreMigrationStatus\"", StringComparison.Ordinal)];
+        var about = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs");
+        var aboutXaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml");
+        Assert.Contains("x:Name=\"StoreMigrationCard\"", aboutXaml);
+        Assert.Contains("Migration2_InnoRecommendation", aboutXaml);
+        Assert.Contains("Migration2_InnoCardTitle", aboutXaml);
+        Assert.Contains("Migration2_InnoCardDescription", aboutXaml);
+        var card = aboutXaml[
+            aboutXaml.IndexOf("x:Name=\"StoreMigrationCard\"", StringComparison.Ordinal)..
+            aboutXaml.IndexOf("<InfoBar x:Name=\"StoreMigrationStatus\"", StringComparison.Ordinal)];
+        var titleHeaderStart = card.IndexOf("<toolkit:SettingsCard.Header>", StringComparison.Ordinal);
+        var titleHeaderEnd = card.IndexOf("</toolkit:SettingsCard.Header>", StringComparison.Ordinal);
+        var titleHeader = card[titleHeaderStart..titleHeaderEnd];
         Assert.Contains("x:Name=\"StoreMigrationAction\"", card);
         Assert.Contains("Style=\"{StaticResource AccentButtonStyle}\"", card);
         Assert.Contains("<Button.ContentTemplate>", card);
+        Assert.Contains("<Grid ColumnSpacing=\"8\">", titleHeader);
+        Assert.Contains("<ColumnDefinition Width=\"Auto\"/>", titleHeader);
+        Assert.Contains("<ColumnDefinition Width=\"*\"/>", titleHeader);
+        Assert.Contains("Grid.Column=\"1\" x:Uid=\"Migration2_InnoCardTitle\"", titleHeader);
         // The card carries no decorative icon tile so its text column aligns with
         // every other settings row, and the action shares that single row.
         Assert.DoesNotContain("<FontIcon", card);
         // HubWindow enforces MinWidth=1000, so any AdaptiveTrigger below that is
         // permanently satisfied and its fallback state can never render. Keeping
         // one here would assert behavior no proof run can ever observe.
-        Assert.DoesNotContain("<AdaptiveTrigger", settingsXaml);
-        Assert.DoesNotContain("<VisualStateManager.VisualStateGroups>", settingsXaml);
+        Assert.DoesNotContain("<AdaptiveTrigger", aboutXaml);
+        Assert.DoesNotContain("<VisualStateManager.VisualStateGroups>", aboutXaml);
         Assert.Contains("HorizontalAlignment=\"Right\"", card);
         Assert.True(card.IndexOf("Migration2_InnoRecommendation", StringComparison.Ordinal) <
             card.IndexOf("Migration2_InnoCardTitle", StringComparison.Ordinal));
-        Assert.Contains("StoreMigrationCard.Visibility = InnoMigrationHandoff.IsAvailable", settings);
-        Assert.Contains("LocalizationHelper.GetString(\"Migration2_InnoConsentTitle\")", settings);
-        Assert.Contains("DefaultButton = ContentDialogButton.Close", settings);
-        Assert.True(settings.IndexOf("await confirmation.ShowAsync()", StringComparison.Ordinal) <
-            settings.IndexOf("await InnoMigrationHandoff.GrantAndLaunchAsync()", StringComparison.Ordinal));
+        Assert.Contains("StoreMigrationCard.Visibility = InnoMigrationHandoff.IsAvailable", about);
+        Assert.Contains("LocalizationHelper.GetString(\"Migration2_InnoConsentTitle\")", about);
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", about);
+        Assert.True(about.IndexOf("await confirmation.ShowAsync()", StringComparison.Ordinal) <
+            about.IndexOf("await InnoMigrationHandoff.GrantAndLaunchAsync()", StringComparison.Ordinal));
         Assert.True(helper.IndexOf(".Grant(", StringComparison.Ordinal) <
             helper.IndexOf("Launcher.LaunchUriAsync", StringComparison.Ordinal));
         var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
@@ -198,6 +205,52 @@ public sealed class InnoMigrationContractTests
         Assert.Contains("'$(PackageMsix)' == 'true'", target.ToString());
         Assert.DoesNotContain(project.Descendants("InnoMigrationPreview"), element => element.Value == "true");
         Assert.Empty(project.Descendants("MigrationPreviewStoreProductId"));
+    }
+
+    [Fact]
+    public void InnoHandoff_OffersSetupRecoveryOnlyForTheRecognizedPayloadFailure()
+    {
+        var helper = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "InnoMigrationHandoff.cs");
+        Assert.Contains("requiresInstallerRepair ? \"Migration2_InnoRepairRequired\" : \"Migration2_InnoFailed\"", helper);
+        Assert.Contains("isOwnProcess && detected.Status == InnoInstallationStatus.Unsupported", helper);
+        Assert.Contains("detected.RequiresInstallerRepair", helper);
+        var about = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs");
+        Assert.DoesNotContain("InnoMigrationHandoff.Check", about);
+        Assert.Contains("canDownloadSetup: messageKey == \"Migration2_InnoRepairRequired\"", about);
+        var download = about[about.IndexOf("private async Task DownloadMigrationSetupAsync()", StringComparison.Ordinal)..];
+        download = download[..download.IndexOf("private void ShowStoreMigrationStatus", StringComparison.Ordinal)];
+        Assert.Contains("Launcher.LaunchUriAsync(InnoMigrationHandoff.InstallerUri)", download);
+        Assert.Contains("StoreMigrationLinkFailure.Present(message, address)", about);
+        Assert.Contains("StoreMigrationSetupAddress.Text = presented.SelectableAddress", about);
+        Assert.Contains("StoreMigrationSetupAddress.Visibility = Visibility.Collapsed", about);
+        Assert.DoesNotContain("string.Format(CultureInfo.CurrentCulture, message, address)", about);
+        Assert.DoesNotContain("Process.Start", download);
+        Assert.DoesNotContain("GrantAndLaunchAsync", download);
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml");
+        Assert.Contains("x:Uid=\"Migration2_InnoDownloadSetup\"", xaml);
+        Assert.Contains("Click=\"OnDownloadMigrationSetup\"", xaml);
+        var statusBar = xaml[
+            xaml.IndexOf("x:Name=\"StoreMigrationStatus\"", StringComparison.Ordinal)..
+            xaml.IndexOf("<toolkit:SettingsExpander x:Uid=\"SettingsPage_AppInfoExpander\"", StringComparison.Ordinal)];
+        Assert.Contains("x:Name=\"StoreMigrationSetupAddress\"", statusBar);
+        Assert.Contains("IsTextSelectionEnabled=\"True\"", statusBar);
+    }
+
+    [Fact]
+    public void RemovalLabels_UseValidatedRegistrationAndPackageMetadata()
+    {
+        var detector = Read("src", "OpenClaw.Connection", "Migration", "InnoInstallationDetector.cs");
+        Assert.Contains("architecture, version, registration.DisplayName)", detector);
+        var operations = Read("src", "OpenClaw.Tray.WinUI", "Helpers", "StoreMigrationOperations.cs");
+        Assert.Contains("StoreDisplayName = package.DisplayName", operations);
+        Assert.True(operations.IndexOf("identity.Name != MigrationRecordCodec.PackageName", StringComparison.Ordinal)
+            < operations.IndexOf("StoreDisplayName = package.DisplayName", StringComparison.Ordinal));
+        var window = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml.cs");
+        Assert.Contains("Migration2_AwaitingRemovalWithApps", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalSourceDisplayName)", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalStoreDisplayName)", window);
+        Assert.Contains("string.IsNullOrWhiteSpace(_workflow.RemovalStoreVersion)", window);
+        Assert.DoesNotContain("Process.Start", window);
     }
 
     [Fact]

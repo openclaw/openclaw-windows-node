@@ -289,7 +289,16 @@ public sealed class SessionPatch
     public PatchField<string> ExecNode { get; set; }
     public PatchField<SessionSendPolicy> SendPolicy { get; set; }
     public PatchField<SessionGroupActivation> GroupActivation { get; set; }
-
+    public PatchField<string> Label { get; set; }
+    public PatchField<bool> Pinned { get; set; }
+    public PatchField<bool> Unread { get; set; }
+    public PatchField<bool> Archived { get; set; }
+    /// <summary>
+    /// Optimistic-concurrency guard for <c>unread:false</c> acknowledgement, not a
+    /// mutation: the gateway rejects the patch when the session was marked unread
+    /// again after <c>markedUnreadAt</c>. Only valid as the only change.
+    /// </summary>
+    public PatchField<long> ExpectedMarkedUnreadAt { get; set; }
     /// <summary>
     /// True when the patch would change something: any field cleared, or any
     /// field set to a meaningful value (a blank string value produces nothing).
@@ -299,7 +308,8 @@ public sealed class SessionPatch
         ProducesString(VerboseLevel) || ProducesString(TraceLevel) || ProducesString(ReasoningLevel) ||
         ResponseUsage.IsSpecified || ProducesString(ElevatedLevel) || ProducesString(ExecHost) ||
         ProducesString(ExecSecurity) || ProducesString(ExecAsk) || ProducesString(ExecNode) ||
-        SendPolicy.IsSpecified || GroupActivation.IsSpecified;
+        SendPolicy.IsSpecified || GroupActivation.IsSpecified || ProducesString(Label) ||
+        Pinned.IsSpecified || Unread.IsSpecified || Archived.IsSpecified;
 
     /// <summary>
     /// Builds the <c>sessions.patch</c> request parameters: always includes
@@ -326,6 +336,11 @@ public sealed class SessionPatch
         AddString(payload, "execNode", ExecNode);
         AddEncoded(payload, "sendPolicy", SendPolicy, p => p == SessionSendPolicy.Allow ? "allow" : "deny");
         AddEncoded(payload, "groupActivation", GroupActivation, g => g == SessionGroupActivation.Mention ? "mention" : "always");
+        AddString(payload, "label", Label);
+        AddEncoded(payload, "pinned", Pinned, v => v);
+        AddEncoded(payload, "unread", Unread, v => v);
+        AddEncoded(payload, "archived", Archived, v => v);
+        AddEncoded(payload, "expectedMarkedUnreadAt", ExpectedMarkedUnreadAt, v => v);
         return payload;
     }
 
@@ -366,6 +381,18 @@ public sealed class SessionPatch
         ResponseUsageMode.Full => "full",
         _ => "on"
     };
+}
+
+/// <summary>
+/// Typed result of <c>sessions.list</c> with <c>archived:true</c>: archived-only
+/// rows that are kept out of the client's live session tracking.
+/// </summary>
+public sealed class SessionListResult
+{
+    public IReadOnlyList<SessionInfo> Sessions { get; init; } = Array.Empty<SessionInfo>();
+
+    /// <summary>False when the connected gateway does not support the archived list filter.</summary>
+    public bool IsSupported { get; init; } = true;
 }
 
 // ── Session files (sessions.files.list / sessions.files.get) ──

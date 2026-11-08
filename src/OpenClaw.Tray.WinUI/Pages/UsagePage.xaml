@@ -99,7 +99,7 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center" Padding="0,24,0,16"
                                Visibility="Collapsed"/>
-                    <ListView x:Name="ProviderListView" SelectionMode="None" Visibility="Collapsed">
+                    <ListView x:Name="ProviderListView" SelectionMode="None" Visibility="Collapsed" ContainerContentChanging="UsageList_ContainerContentChanging">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="4,8">
@@ -158,7 +158,7 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                HorizontalAlignment="Center" Padding="0,24,0,16"
                                Visibility="Collapsed"/>
-                     <ListView x:Name="DailyListView" SelectionMode="None">
+                     <ListView x:Name="DailyListView" SelectionMode="None" ContainerContentChanging="UsageList_ContainerContentChanging">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="4,6">

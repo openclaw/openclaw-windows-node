@@ -243,7 +243,7 @@ try {
         'Microsoft.ui.xaml.dll',
         'OpenClaw.SetupEngine.dll',
         'OpenClaw.SetupEngine.UI.dll',
-        "tools/mxc/$Architecture/wxc-exec.exe",
+        'Microsoft.Mxc.Sdk.dll', 'mxc_ffi.dll', 'wslcsdk.dll', 'plm.exe', 'wxc-wslc-daemon.exe',
         'tools/local-ai-vc-runtime/msvcp140.dll',
         'tools/local-ai-vc-runtime/vcruntime140.dll',
         'tools/local-ai-vc-runtime/vcruntime140_1.dll'
@@ -255,7 +255,11 @@ try {
         'vcruntime140.dll',
         'vcruntime140_1.dll',
         'msvcp140.dll',
-        'msvcp140_1.dll'
+        'msvcp140_1.dll',
+        'tools/mxc/x64/wxc-exec.exe',
+        'tools/mxc/x64/wslcsdk.dll',
+        'tools/mxc/arm64/wxc-exec.exe',
+        'tools/mxc/arm64/wslcsdk.dll'
     )
 
     $packageEntries = [System.Collections.Generic.HashSet[string]]::new(

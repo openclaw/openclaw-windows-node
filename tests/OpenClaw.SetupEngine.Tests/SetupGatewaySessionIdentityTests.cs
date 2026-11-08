@@ -26,6 +26,7 @@ public sealed class SetupGatewaySessionIdentityTests
         await using var server = await FixtureGatewayServer.StartAsync(
             GatewayScenario.CreateNativeSetup((_, _) => new { ok = true }),
             FixtureToken);
+        server.AcceptedDeviceToken = FixtureToken;
         var registry = new GatewayRegistry(temp.Path);
         var record = registry.AddOrUpdate(new GatewayRecord
         {

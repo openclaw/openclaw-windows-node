@@ -27,6 +27,16 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Custom model provider API types are protocol product names, and the
+        // provider/model ID placeholders are literal identifier examples.
+        "DefaultModelPage_CustomApiAnthropic.Content",
+        "DefaultModelPage_CustomApiOpenAiResponses.Content",
+        "DefaultModelPage_CustomProviderId.PlaceholderText",
+        "DefaultModelPage_CustomProviderModels.PlaceholderText",
+        // Updater dependency recovery is seeded in English across every locale.
+        // Translate the explanation and manual-release action together after review.
+        "Update_Message_Unavailable",
+        "Update_ManualDownload",
         // Canonical setup product/transport names, not untranslated prose.
         "Onboarding_V2_NodeMode.Header",
         "Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -40,7 +50,6 @@ public class LocalizationValidationTests
         "Onboarding_V2_DetailTailscale",
         "CanvasWindow_TextBlock_31.Text",
         "CanvasWindow_winexWindowEx_2.Title",
-        "ChatWindow_winexWindowEx_2.Title",
         "HubWindow_winexWindowEx_2.Title",
         "TitleText.Text",
         "TokenPromptBox.Header",
@@ -51,7 +60,7 @@ public class LocalizationValidationTests
         "WindowTitle_TrayMenu",
         "WindowTitle_Update",
         // VoiceOverlayWindow window-title key — matches the convention
-        // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
+        // for HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
@@ -107,11 +116,9 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_NodeStatus_Disabled",
-        // About / Gateway info strings added as part of the Windows-native
-        // settings reorg are seeded in English across locales until the next
-        // translation pass lands. They are still present in every locale file
-        // so key parity stays strict; this set only documents deferred copy.
-        "SettingsPage_About.Text",
+        // Gateway info strings remain seeded in English across locales until
+        // the next translation pass; they are still present everywhere so
+        // resource-key parity remains strict.
         "SettingsPage_GatewayInfoExpander.Header",
         "SettingsPage_GatewayInfoLabel_Version.Text",
         "SettingsPage_GatewayInfoLabel_Protocol.Text",
@@ -235,6 +242,9 @@ public class LocalizationValidationTests
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
         "SandboxPage_SystemRun.Text",
+        // Canonical product surface name, unchanged across locales.
+        "SandboxPage_Title.Text",
+        "SandboxPage_OneDrive.Text",
         // SessionsPage runtime accessibility strings — seeded English-only across
         // all 5 locales using the deferred-translation pattern. These are
         // tooltip / AutomationProperties.Name overrides on the OpenChat button.
@@ -248,14 +258,13 @@ public class LocalizationValidationTests
         // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
         "CronPage_JobCompleted",
         "CronPage_JobCompletedRanSuccessfully",
-        "BindingsPage_CouldNotLoadBindings",
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
-        // same deferred-translation pattern as the AgentEventsPage / SkillsPage
-        // / CronPage entries above. The Description_Format key takes the WSL
+        // same deferred-translation pattern as the CronPage entries above.
+        // The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
         "ConnectionPage_GatewayHostControlsDescription_Format",
         // GatewayHostAccess plan strings (terminal label / tooltip / disabled
@@ -274,10 +283,6 @@ public class LocalizationValidationTests
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
-        "Command_GoToAgentEvents_Title",
-        "Command_GoToAgentEvents_Subtitle",
-        "Command_GoToSkills_Title",
-        "Command_GoToSkills_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -290,16 +295,12 @@ public class LocalizationValidationTests
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
         "Command_GoToUsage_Subtitle",
-        "Command_GoToBindings_Title",
-        "Command_GoToBindings_Subtitle",
         "Command_GoToPermissions_Title",
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",
         "Command_GoToSettings_Subtitle",
         "Command_GoToDiagnostics_Title",
         "Command_GoToDiagnostics_Subtitle",
-        "Command_OpenChatWindow_Title",
-        "Command_OpenChatWindow_Subtitle",
         "Command_OpenDashboard_Title",
         "Command_OpenDashboard_Subtitle",
         "Command_ToggleNodeMode_Title",
@@ -377,10 +378,6 @@ public class LocalizationValidationTests
         "SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DownloadsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DesktopAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SettingsPage_NotificationSoundComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "VoiceSettingsPage_LanguageCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -625,7 +622,6 @@ public class LocalizationValidationTests
     private static bool IsInvariantOrDeferred(string key, string value) =>
         InvariantOrDeferredResourceKeys.Contains(key)
         || IsInvariantValue(value)
-        || key.StartsWith("ChannelsPage_", StringComparison.Ordinal)
         || key.StartsWith("DiagnosticsPage_", StringComparison.Ordinal)
         || key.StartsWith("SettingsRow_", StringComparison.Ordinal)
         // Approved Workspace copy is seeded consistently in English while
@@ -1008,6 +1004,28 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void NoLocale_HasStrayTextOutsideResourceElements()
+    {
+        var offenders = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()).OrderBy(d => d, StringComparer.Ordinal))
+        {
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var locale = Path.GetFileName(localeDir);
+            foreach (var text in XDocument.Load(reswPath).Root!.Nodes().OfType<XText>())
+            {
+                if (!string.IsNullOrWhiteSpace(text.Value))
+                    offenders.Add($"{locale}: '{text.Value.Trim()}'");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Resources.resw files contain text outside <data>/<resheader> elements (merge residue?): " +
+            string.Join("; ", offenders));
+    }
+
+    [Fact]
     public void NoLocale_HasWindows1252MojibakeValues()
     {
         var stringsDir = GetStringsDirectory();
@@ -1109,11 +1127,19 @@ public class LocalizationValidationTests
                 // These ordinary words are spelled identically in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
-                    "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
-                    "Onboarding_V2_ProfileReadOnlyTitle.Text" => ["fr-fr"],
-                    "Onboarding_V2_ProfileFullTitle.Text" => ["nl-nl"],
-                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
+                    "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
+                        "LocalAiPage_ModelSelector.Header" => ["nl-nl"],
+                    "Onboarding_V2_ProfileReadOnlyTitle.Text" or "SandboxPage_PresetStrict.Text" => ["fr-fr"],
+                    "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
+                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
+                        or "HubWindow_NavigationViewItem_145.Content"
+                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
+                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
+                    "Search_Dashboard_Plugins" => ["pt-br"],
+                    "Search_Dashboard_Secrets" => ["fr-fr"],
+                    "Search_Group_Agents" => ["fr-fr", "nl-nl"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&
@@ -1143,5 +1169,18 @@ public class LocalizationValidationTests
         Assert.True(identicalWithoutRationale.Count == 0,
             "Resources identical to en-us in every non-English locale need an invariant/deferred rationale. Entries: " +
             string.Join("; ", identicalWithoutRationale.Take(20)));
+    }
+
+    [Fact]
+    public void SandboxComposer_UsesExistingLocalizedSurfaceNames()
+    {
+        foreach (var localeDirectory in Directory.EnumerateDirectories(GetStringsDirectory()))
+        {
+            var resources = LoadResw(Path.Combine(localeDirectory, "Resources.resw"));
+            var title = resources["Chat_Composer_Sandbox_Title"];
+            Assert.Contains(title, resources["SandboxPage_StatusOnTitle"], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(resources["HubWindow_NavigationViewItem_Sandbox.Content"],
+                resources["Chat_Composer_Sandbox_OpenSettings"], StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

@@ -24,10 +24,10 @@ internal static class ChatVisuals
     internal const double HeadingTopInset = 8;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
-    internal const double CompactSessionBreakpoint = 400;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
 
+    internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
     internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 32;
     internal static double ProseWidth(double width) =>
@@ -58,19 +58,76 @@ internal static class ChatVisuals
     internal static void StylePickerAccent(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["ChatPickerAccentTextStyle"];
 
+    internal static void StyleSecondaryText(TextBlock text)
+    {
+        text.Style = (Style)Application.Current.Resources["ChatSecondaryTextStyle"];
+        text.ClearValue(TextBlock.ForegroundProperty);
+    }
+
+    internal static void StylePrimaryText(TextBlock text)
+    {
+        text.Style = (Style)Application.Current.Resources["ChatPrimaryTextStyle"];
+        text.ClearValue(TextBlock.ForegroundProperty);
+    }
+
+    internal static void StyleQuestionOption(Border border)
+    {
+        border.Style = (Style)Application.Current.Resources["ChatQuestionOtherStyle"];
+        border.ClearValue(Border.BackgroundProperty);
+        border.ClearValue(Border.BorderBrushProperty);
+    }
+
+    internal static void StyleQuestionQuietButton(Button button) => StyleQuestionAction(button, "ChatQuestionQuietButtonStyle");
+    internal static void StyleQuestionSubmit(Button button) => StyleQuestionAction(button, "ChatQuestionSubmitStyle");
+
+    private static void StyleQuestionAction(Button button, string style)
+    {
+        button.Style = (Style)Application.Current.Resources[style];
+        button.ClearValue(Control.ForegroundProperty);
+        button.ClearValue(Control.BackgroundProperty);
+        button.ClearValue(Control.BorderThicknessProperty);
+    }
+
+    internal static void StyleQuestionInput(TextBox input, bool inline)
+    {
+        if (!inline) return;
+        input.Style = (Style)Application.Current.Resources["ChatQuestionInputStyle"];
+        input.ClearValue(Control.ForegroundProperty);
+        input.ClearValue(Control.BackgroundProperty);
+        input.ClearValue(Control.PaddingProperty);
+        input.ClearValue(Control.BorderThicknessProperty);
+        input.ClearValue(Control.MinHeightProperty);
+    }
+
+    internal static void StyleQuestionCard(Border border)
+    {
+        border.Style = (Style)Application.Current.Resources["ChatQuestionCardStyle"];
+        border.ClearValue(Border.BackgroundProperty);
+        border.ClearValue(Border.BorderBrushProperty);
+    }
+    internal static void StyleFlyoutHeading(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
+
+    internal static void StyleFlyoutCaption(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+
     private static readonly ConditionalWeakTable<FrameworkElement, SizeChangedEventHandler> Observers = new();
 
-    internal static void Observe(FrameworkElement element, Action<double> changed)
+    internal static void Observe(FrameworkElement element, Action<double> changed, Action<double>? heightChanged = null)
     {
         SizeChangedEventHandler handler = (_, args) =>
         {
             if (args.NewSize.Width > 0)
                 changed(args.NewSize.Width);
+            if (args.NewSize.Height > 0)
+                heightChanged?.Invoke(args.NewSize.Height);
         };
         Observers.Add(element, handler);
         element.SizeChanged += handler;
         if (element.ActualWidth > 0)
             changed(element.ActualWidth);
+        if (element.ActualHeight > 0)
+            heightChanged?.Invoke(element.ActualHeight);
     }
 
     internal static void StopObserving(FrameworkElement element)

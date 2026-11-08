@@ -12,7 +12,7 @@ param([string]$RepoRoot = (Split-Path $PSScriptRoot -Parent))
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $exporter = Join-Path $RepoRoot 'scripts\Export-DevMsixArtifact.ps1'
-$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) "openclaw-msix-ci-tests-$([guid]::NewGuid().ToString('N'))"
+$temporaryRoot = Join-Path $RepoRoot "TestResults\openclaw-msix-ci-tests-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temporaryRoot | Out-Null
 $rsa = [Security.Cryptography.RSA]::Create(2048)
 $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
@@ -57,7 +57,8 @@ function New-Package {
         foreach ($name in @(
             'AppxManifest.xml', 'AppxSignature.p7x', 'OpenClaw.Tray.WinUI.exe', 'OpenClaw.Tray.WinUI.dll',
             'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll', 'Microsoft.ui.xaml.dll',
-            'OpenClaw.SetupEngine.dll', 'OpenClaw.SetupEngine.UI.dll', "tools/mxc/$Architecture/wxc-exec.exe",
+            'OpenClaw.SetupEngine.dll', 'OpenClaw.SetupEngine.UI.dll',
+            'Microsoft.Mxc.Sdk.dll', 'mxc_ffi.dll', 'wslcsdk.dll', 'plm.exe', 'wxc-wslc-daemon.exe',
             'tools/local-ai-vc-runtime/msvcp140.dll',
             'tools/local-ai-vc-runtime/vcruntime140.dll',
             'tools/local-ai-vc-runtime/vcruntime140_1.dll'
@@ -110,6 +111,16 @@ function New-VersionInfo {
 
 try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($obsolete in @('tools/mxc/x64/wxc-exec.exe', 'tools/mxc/x64/wslcsdk.dll',
+        'tools/mxc/arm64/wxc-exec.exe', 'tools/mxc/arm64/wslcsdk.dll')) {
+        $arguments = New-Arguments
+        New-Package -Directory $arguments.PackageDirectory
+        $zip = [IO.Compression.ZipFile]::Open((Join-Path $arguments.PackageDirectory 'Dev.msix'),
+            [IO.Compression.ZipArchiveMode]::Update)
+        try { $stream = $zip.CreateEntry($obsolete).Open(); $stream.Dispose() }
+        finally { $zip.Dispose() }
+        Assert-Fails { & $exporter @arguments } 'obsolete MXC payload'
+    }
     foreach ($architecture in @('x64', 'arm64')) {
         $arguments = New-Arguments
         $arguments.Architecture = $architecture

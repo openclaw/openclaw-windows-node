@@ -182,10 +182,10 @@ function Resolve-AppDataDir {
     }
 
     function Expand-ExecApprovalsHomePath {
-        param([string]$Path, [string]$Home)
-        if ($Path -eq '~') { return $Home }
+        param([string]$Path, [string]$HomePath)
+        if ($Path -eq '~') { return $HomePath }
         if ($Path.StartsWith('~\') -or $Path.StartsWith('~/')) {
-            return Join-Path $Home $Path.Substring(2)
+            return Join-Path $HomePath $Path.Substring(2)
         }
         return $Path
     }
@@ -279,8 +279,10 @@ function Resolve-AppDataDir {
 
         try {
             $uri = [Uri]$Url
-            $host = $uri.Host.ToLowerInvariant()
-            return $host -eq 'localhost' -or $host -eq '127.0.0.1' -or $host -eq '::1' -or $host -eq '[::1]'
+            $urlHost = $uri.Host.ToLowerInvariant()
+            # Windows PowerShell 5.1 runs on .NET Framework, whose Uri expands [::1] to its full form.
+            return $urlHost -eq 'localhost' -or $urlHost -eq '127.0.0.1' -or $urlHost -eq '::1' -or $urlHost -eq '[::1]' -or
+                $urlHost -eq '[0000:0000:0000:0000:0000:0000:0000:0001]'
         } catch {
             return $false
         }
@@ -288,6 +290,11 @@ function Resolve-AppDataDir {
 
     function Test-SetupManagedLocalRecord {
         param([object]$Record)
+
+        # Native package ownership must never be inferred as legacy WSL ownership from a display name.
+        if ($null -ne (Get-JsonPropertyValue $Record 'nativePackageFamilyName')) {
+            return $false
+        }
 
         $isLocal = [bool](Get-JsonPropertyValue $Record 'isLocal')
         $sshTunnel = Get-JsonPropertyValue $Record 'sshTunnel'
@@ -568,9 +575,11 @@ function Resolve-AppDataDir {
         }
 
         $changed = $false
-        if ($settings.PSObject.Properties['GatewayUrl']) {
-            $settings.PSObject.Properties.Remove('GatewayUrl')
-            $changed = $true
+        foreach ($propertyName in @('GatewayUrl', 'Token', 'BootstrapToken')) {
+            if ($settings.PSObject.Properties[$propertyName]) {
+                $settings.PSObject.Properties.Remove($propertyName)
+                $changed = $true
+            }
         }
 
         if (-not $PreserveNodeSettings -and $settings.PSObject.Properties['EnableNodeMode']) {
@@ -590,7 +599,7 @@ function Resolve-AppDataDir {
 
         try {
             Write-JsonFileAtomic -Path $settingsPath -Value $settings
-            Write-GatewayLog 'Reset onboarding settings.'
+            Write-GatewayLog 'Reset onboarding settings; legacy gateway fields are absent.'
         } catch {
             Add-CleanupWarning "Failed to reset onboarding settings: $($_.Exception.Message)"
         }

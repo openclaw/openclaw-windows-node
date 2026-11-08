@@ -20,9 +20,10 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     private readonly IExecApprovalV2PromptHandler _prompt;
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _promptTimeout;
+    private readonly TimeProvider _timeProvider;
 
     // Bounded lifetime for an approval dialog: if the owner does not respond within this window
-    // the prompt is cancelled and resolves to Deny, so a request never hangs forever (the
+    // the prompt is cancelled and fails closed, so a request never hangs forever (the
     // requester has its own independent timeout). Mirrors the spirit of the macOS approval
     // timeout, shortened for the node's synchronous invoke path.
     private static readonly TimeSpan DefaultPromptTimeout = TimeSpan.FromMinutes(5);
@@ -36,22 +37,26 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         ICanPresentEvaluator canPresentEvaluator,
         IExecApprovalV2PromptHandler promptHandler,
         IOpenClawLogger logger,
-        TimeSpan? promptTimeout = null)
+        TimeSpan? promptTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         _store = store;
         _canPresent = canPresentEvaluator;
         _prompt = promptHandler;
         _logger = logger;
         _promptTimeout = promptTimeout ?? DefaultPromptTimeout;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public async Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
+    public async Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(correlationId))
             correlationId = Guid.NewGuid().ToString("N");
 
         try
         {
+        cancellationToken.ThrowIfCancellationRequested();
         // Step 1: validate
         var validation = ExecApprovalV2InputValidator.Validate(request);
         if (!validation.IsValid)
@@ -66,7 +71,11 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         var identity = norm.Identity!;
 
         // Step 3: buildContext
-        var resolved = _store.ResolveReadOnly(identity.AgentId);
+        var resolution = _store.ResolveReadOnlyWithFailure(identity.AgentId);
+        if (resolution.Failure is not null)
+            return LogAndReturn(ExecApprovalV2Result.InternalError("approval-store-unavailable"),
+                correlationId, promptAttempted: false, fallbackUsed: false);
+        var resolved = resolution.Resolved;
 
         // Snapshot the authorizing policy so a human-approved command can be re-checked
         // against the live policy before execution (mirrors macOS
@@ -136,6 +145,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                     correlationId, promptAttempted: false, fallbackUsed: false, canonical: context.DisplayCommand);
 
             // Side effects are best-effort: a metadata write failure must not flip an allow to a deny.
+            cancellationToken.ThrowIfCancellationRequested();
             try { await RecordAllowlistUsageAsync(context).ConfigureAwait(false); }
             catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: record-usage failed (non-fatal): {ex.Message}"); }
             _logger.Info($"[EXEC-APPROVALS] [{correlationId}] path=new " +
@@ -163,7 +173,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         bool fallbackAllowWasMatchDependent = false;
         bool persistAllowlistEntry = false;
 
-        await _promptLock.WaitAsync().ConfigureAwait(false);
+        await _promptLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ExecApprovalDecision followupDecision;
@@ -172,23 +182,42 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             {
                 promptAttempted = true;
                 ExecApprovalPromptOutcome promptResult;
+                using var expiry = new CancellationTokenSource(_promptTimeout, _timeProvider);
+                using var promptCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken, expiry.Token);
                 try
                 {
                     // Bound the dialog's lifetime: on timeout the token cancels, the prompt
-                    // handler tears the window down and resolves Deny, so an unanswered prompt
+                    // handler tears the window down and fails closed, so an unanswered prompt
                     // never hangs the request forever.
-                    using var promptCts = new CancellationTokenSource(_promptTimeout);
                     promptResult = await _prompt.PromptAsync(
                         BuildPromptRequest(context, identity, correlationId),
-                        promptCts.Token).ConfigureAwait(false);
+                        promptCts.Token).WaitAsync(promptCts.Token).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (promptCts.IsCancellationRequested)
+                        return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-timeout"),
+                            correlationId, promptAttempted: true, fallbackUsed: false,
+                            canonical: context.DisplayCommand);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (OperationCanceledException) when (promptCts.IsCancellationRequested)
+                {
+                    return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-timeout"),
+                        correlationId, promptAttempted: true, fallbackUsed: false,
+                        canonical: context.DisplayCommand);
                 }
                 catch
                 {
                     // Presenter failure → fail-closed, no fallback delegation
-                    return LogAndReturn(ExecApprovalV2Result.UserDenied("prompt-failed"),
+                    return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-failed"),
                         correlationId, promptAttempted: true, fallbackUsed: false,
                         canonical: context.DisplayCommand);
                 }
+
+                if (promptResult == ExecApprovalPromptOutcome.Failed)
+                    return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-failed"),
+                        correlationId, promptAttempted: true, fallbackUsed: false,
+                        canonical: context.DisplayCommand);
 
                 // Allow (plain) from a prompt handler is an invariant violation —
                 // only AllowOnce and AllowAlways are semantically valid from UI.
@@ -304,16 +333,23 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // writes an allowlist entry. Residual: actual process launch happens after HandleAsync
         // returns (SystemCapability), so a change in that final window is not caught here; closing
         // it fully requires revalidating the snapshot at the execution boundary.
-        if (!policyCurrency.IsStillCurrent(_store.ResolveReadOnly(identity.AgentId)))
+        var currentResolution = _store.ResolveReadOnlyWithFailure(identity.AgentId);
+        if (currentResolution.Failure is not null)
             return LogAndReturn(
-                ExecApprovalV2Result.ValidationFailed("policy-changed-before-execution"),
+                ExecApprovalV2Result.InternalError("approval-store-unavailable"),
+                correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
+        if (!policyCurrency.IsStillCurrent(currentResolution.Resolved))
+            return LogAndReturn(
+                ExecApprovalV2Result.PolicyDenied("policy-changed-before-execution"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
 
         // Step 9: side effects — only reached when the payload is valid.
         // Each side effect is independently best-effort so a failure in one does not skip the other.
+        cancellationToken.ThrowIfCancellationRequested();
         if (persistAllowlistEntry && context.Security == ExecSecurity.Allowlist)
         {
-            try { await PersistAllowlistEntriesAsync(context, identity.ReusableCommand).ConfigureAwait(false); }
+            try { await PersistAllowlistEntriesAsync(context, identity.ReusableCommand, cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: persist-entry failed (non-fatal): {ex.Message}"); }
         }
         try { await RecordAllowlistUsageAsync(context).ConfigureAwait(false); }
@@ -328,6 +364,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         return ExecApprovalV2Result.Allow(execution);
         }
 
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             // Outer safety net: any unhandled exception in buildContext, CanPresent, FallbackDecision,
@@ -355,11 +392,18 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 
         try
         {
-            var fresh = _store.ResolveReadOnly(execution.PolicyAgentId);
+            var fresh = _store.ResolveReadOnlyWithFailure(execution.PolicyAgentId);
+            if (fresh.Failure is not null)
+            {
+                _logger.Warn(
+                    $"[EXEC-APPROVALS] [{correlationId}] execution-boundary policy store unavailable ({fresh.Failure.Kind})");
+                return ValueTask.FromResult(
+                    ExecApprovalRevalidationResult.NotCurrent("approval-store-unavailable"));
+            }
             return ValueTask.FromResult(
-                execution.PolicyCurrency.IsStillCurrent(fresh)
+                execution.PolicyCurrency.IsStillCurrent(fresh.Resolved)
                     ? ExecApprovalRevalidationResult.Current
-                    : ExecApprovalRevalidationResult.NotCurrent(
+                    : ExecApprovalRevalidationResult.PolicyDenied(
                         "policy-changed-before-execution"));
         }
         catch (Exception ex)
@@ -503,7 +547,8 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     // host is never written without it.
     private async Task PersistAllowlistEntriesAsync(
         ExecApprovalEvaluation context,
-        ExecReusableCommand? reusableCommand)
+        ExecReusableCommand? reusableCommand,
+        CancellationToken cancellationToken)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pattern in context.AllowAlwaysPatterns)
@@ -513,7 +558,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 context.AgentId,
                 pattern,
                 reusableCommand?.ArgPattern,
-                context.DisplayCommand).ConfigureAwait(false);
+                context.DisplayCommand, cancellationToken).ConfigureAwait(false);
         }
     }
 

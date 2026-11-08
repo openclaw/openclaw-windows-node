@@ -30,18 +30,15 @@ public enum ReactorChatTimelineMode
 public sealed record ReactorChatTimelineProps(
     ReactorChatTimelineMode Mode,
     ChatTimelinePresentationContext Timeline,
-    Action<string>? OnSuggestionPicked = null,
-    bool SuggestionsDisabled = false,
-    ReactorChatIdentity? AssistantIdentity = null,
+    ChatAgentIdentity? AssistantIdentity = null,
     Action<string>? OnOpenCheckpoints = null,
     long HistoryRevision = 0,
     double ViewportWidth = 800,
-    Func<string, bool>? TryCopyText = null);
-
-public sealed record ReactorChatIdentity(
-    string? DisplayName = null,
-    string? Avatar = null,
-    string? Emoji = null);
+    Func<string, bool>? TryCopyText = null,
+    string? AssistantAgentId = null,
+    OpenClaw.Shared.ChatPlacementCatalog? AssistantCatalog = null,
+    IChatAgentAvatarImageSource? AssistantAvatarImageSource = null,
+    ChatAgentPresentation? AssistantRosterAgent = null);
 
 /// <summary>
 /// Reactor-owned production timeline. Reactor's keyed ItemsView handles row
@@ -225,7 +222,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             return [ReactorTimelineRow.Loading(props)];
 
         if (props.Mode == ReactorChatTimelineMode.Empty)
-            return [ReactorTimelineRow.Empty(props)];
+            return [];
 
         var rows = new List<ReactorTimelineRow>(props.Timeline.Entries.Count + 2);
         if (props.Timeline.HasMoreHistory)
@@ -263,7 +260,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 assistantRunsByEntryId.TryGetValue(entry.Id, out var position) ? position : default));
         }
 
-        if (props.Timeline.ShowThinkingIndicator)
+        if (props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is not null)
             rows.Add(ReactorTimelineRow.Thinking(props));
 
         if (props.Timeline.QueuedMessages is { } queuedMessages)
@@ -285,7 +282,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         ChatToolActivityExpansionState toolActivityExpansionState) => row.Kind switch
     {
         ReactorTimelineRowKind.Loading => BuildLoading(row),
-        ReactorTimelineRowKind.Empty => BuildEmpty(row),
         ReactorTimelineRowKind.LoadEarlier => BuildLoadEarlier(row),
         ReactorTimelineRowKind.Thinking => BuildThinking(row),
         ReactorTimelineRowKind.Activity when row.Activity is { } activity =>
@@ -328,56 +324,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
     }
 
-    private static Element BuildEmpty(ReactorTimelineRow row)
-    {
-        var children = new List<Element>
-        {
-            Image("ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png")
-                .Size(40, 40)
-                .AutomationName("OpenClaw")
-                .HAlign(HorizontalAlignment.Center),
-            Text(
-                    LocalizedOrDefault("Chat_ZeroState_WelcomeTitle", "Welcome to OpenClaw"),
-                    20,
-                    FontWeights.SemiBold)
-                .TextAlignment(TextAlignment.Center)
-                .HAlign(HorizontalAlignment.Stretch),
-            Text(
-                    LocalizedOrDefault("Chat_ZeroState_WelcomeSubtitle", "How can I help you today?"),
-                    14,
-                    FontWeights.Normal,
-                    "TextFillColorSecondaryBrush")
-                .HAlign(HorizontalAlignment.Center),
-        };
-
-        foreach (var suggestion in new[]
-        {
-            "Say hi 👋",
-            "What can you do?",
-            "Give me a quick tour of OpenClaw",
-        })
-        {
-            children.Add(Button(TextBlock(suggestion).TextWrapping(TextWrapping.Wrap).TextAlignment(TextAlignment.Center),
-                    () => row.Props.OnSuggestionPicked?.Invoke(suggestion))
-                .IsEnabled(!row.Props.SuggestionsDisabled)
-                .MinHeight(40)
-                .BorderThickness(0)
-                .Resources(resources =>
-                {
-                    ChatVisuals.ToolbarButtonResources(resources);
-                    resources.Set("ButtonBackground", Theme.Ref("ControlAltFillColorSecondaryBrush"));
-                })
-                .HAlign(HorizontalAlignment.Stretch)
-                .AutomationName(suggestion));
-        }
-
-        return VStack(12, children.ToArray())
-            .Margin(0, 48, 0, 24)
-            .MaxWidth(400)
-            .HAlign(HorizontalAlignment.Center)
-            .VAlign(VerticalAlignment.Center);
-    }
-
     private static Element BuildLoadEarlier(ReactorTimelineRow row)
     {
         var label = LocalizedOrDefault("Chat_Timeline_LoadEarlier", "Load earlier messages");
@@ -389,6 +335,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildThinking(ReactorTimelineRow row)
     {
+        if (row.Props.Timeline.RunProgress is { } progress)
+            return Component<ReactorRunProgress, ReactorRunProgressProps>(new(progress));
         var format = LocalizedOrDefault("Chat_Timeline_AssistantThinkingFormat", "{0} is thinking…");
         return Text(
                 string.Format(format, row.Props.Timeline.AssistantSenderLabel),
@@ -503,7 +451,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationName(accessibleText)
             .AutomationId(queuedMessage is null ? string.Empty : $"ChatQueuedMessage_{queuedMessage.Id}")
-            .Set(panel => AutomationProperties.SetItemStatus(panel, status))
+            .ItemStatus(status)
             .LiveRegion(queuedMessage is null ? AutomationLiveSetting.Off : AutomationLiveSetting.Polite);
     }
 
@@ -555,7 +503,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 ChatAssistantMediaRenderer.Render(
                     media,
                     row.Props.Timeline.SessionId,
-                    row.Props.Timeline.ResolveAssistantMediaAsync)));
+                    row.Props.Timeline.ResolveAssistantMediaAsync,
+                    row.Props.Timeline.DownloadAssistantFileAsync)));
             if (renderPlan.OmittedImages > 0)
             {
                 content.Add(TextBlock(string.Format(
@@ -632,25 +581,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .Margin(0, 0, 8, 0)
                 .VAlign(VerticalAlignment.Top);
 
-        var identity = row.Props.AssistantIdentity;
-        var glyph = !string.IsNullOrWhiteSpace(identity?.Avatar)
-            ? identity.Avatar
-            : identity?.Emoji;
-        Element content = !string.IsNullOrWhiteSpace(glyph)
-            ? Text(glyph, 16, FontWeights.SemiBold, "TextFillColorSecondaryBrush").Center()
-            : Image("ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png")
-                .Size(36, 36)
-                .AutomationName(identity?.DisplayName ?? "Assistant");
-
-        return Border(content)
+        // Same identity rules as the welcome header and sidebar: image, text avatar, then generated face.
+        var agent = ChatWelcomePresentation.AgentIdentity(
+            row.Props.AssistantCatalog, row.Props.AssistantAgentId,
+            row.Props.AssistantIdentity, row.Props.AssistantRosterAgent);
+        return NativeChatWelcomeAvatarElement.NativeChatWelcomeAvatar()
+            .Set(avatar => avatar.Update(agent, 36, row.Props.AssistantAvatarImageSource))
             .Size(36, 36)
-            .CornerRadius(18)
-            .Background(BrushFor("CardBackgroundFillColorDefaultBrush", Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
-            .BorderBrush(BrushFor("ControlStrokeColorDefaultBrush", Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
-            .BorderThickness(1)
             .Margin(0, 0, 8, 0)
             .VAlign(VerticalAlignment.Top)
-            .AutomationName(identity?.DisplayName ?? "Assistant");
+            .AutomationId("ChatAssistantAvatar")
+            .AutomationName(agent.Name);
     }
 
     internal static Element BuildSafeMarkdown(string? text, Func<string, bool>? tryCopy = null)
@@ -661,7 +602,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             Paragraph = ChatMarkdownPresentation.Paragraph,
             CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
             ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml,
-            ListItem = BuildWrappingMarkdownListItem,
             Image = (alt, _) => Text(
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
                     14,
@@ -678,19 +618,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
 
         return ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options));
-    }
-
-    private static Element BuildWrappingMarkdownListItem(Element defaultElement)
-    {
-        // preview.12 measures list content at infinite width in an HStack. Use the
-        // Auto/Star layout from microsoft/microsoft-ui-reactor#1197 until #1424 retires the pin.
-        if (defaultElement is not StackElement { Orientation: Orientation.Horizontal, Children.Length: 2 } row)
-            throw new InvalidOperationException("Unexpected Reactor Markdown list item shape. Review the preview.12 workaround.");
-
-        return Grid([GridSize.Auto, GridSize.Star()], [],
-            row.Children[0],
-            row.Children[1].Grid(column: 1)) with { ColumnSpacing = row.Spacing };
+            Microsoft.UI.Reactor.Advanced.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options));
     }
 
     private static Element BuildAssistantFooter(
@@ -1287,9 +1215,6 @@ internal sealed record ReactorTimelineRow(
     public static ReactorTimelineRow Loading(ReactorChatTimelineProps props) =>
         new("timeline:loading", ReactorTimelineRowKind.Loading, props, null);
 
-    public static ReactorTimelineRow Empty(ReactorChatTimelineProps props) =>
-        new("timeline:empty", ReactorTimelineRowKind.Empty, props, null);
-
 }
 
 internal enum ReactorTimelineRowKind
@@ -1299,7 +1224,6 @@ internal enum ReactorTimelineRowKind
     Thinking,
     LoadEarlier,
     Loading,
-    Empty,
 }
 
 internal readonly record struct ChatAssistantRunPosition(bool IsStart, bool IsEnd);

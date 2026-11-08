@@ -86,8 +86,6 @@ public partial class App
         // Status is updated by OnManagerStateChanged when reconnect starts.
         UpdateTrayIcon();
 
-        // Reset the chat window because it has a stale URL or token.
-        _windowManager?.ResetChatForCredentialChange();
     }
 
     // Handle the MCP server lifecycle separately from gateway reconnects because MCP-only mode

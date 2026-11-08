@@ -415,10 +415,18 @@ public sealed partial class ConnectionStatusWindow : WindowEx
                 DirectConnectResult.Text = LocalizationHelper.GetString("ConnectionPage_SshServerPortInvalid");
                 return;
             }
-            int.TryParse(DiagSshRemotePortBox.Text, out var remotePort);
-            int.TryParse(DiagSshLocalPortBox.Text, out var localPort);
-            if (remotePort <= 0) remotePort = 18789;
-            if (localPort <= 0) localPort = 18790;
+            var forwardPorts = SshForwardPorts.TryParse(
+                DiagSshRemotePortBox.Text,
+                DiagSshLocalPortBox.Text,
+                out var remotePort,
+                out var localPort);
+            if (forwardPorts != SshForwardPortParseResult.Ok)
+            {
+                DirectConnectResult.Text = forwardPorts == SshForwardPortParseResult.RemoteInvalid
+                    ? LocalizationHelper.GetString("ConnectionPage_SshRemotePortInvalid")
+                    : LocalizationHelper.GetString("ConnectionPage_SshLocalPortInvalid");
+                return;
+            }
             var app = (App)Microsoft.UI.Xaml.Application.Current;
             var includeBrowserProxyForward = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
                 app.Settings.NodeBrowserProxyEnabled,

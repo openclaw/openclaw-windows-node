@@ -17,16 +17,49 @@ public sealed class NativeGatewaySetupSession(
     NativeGatewayPackage package,
     IReadOnlyDictionary<string, string> environment,
     INativeGatewaySetupHost host,
-    INativeGatewayRuntime runtime) : IAsyncDisposable
+    INativeGatewayRuntime runtime,
+    TimeProvider? timeProvider = null) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
+    private int _operatorTokenRecoveryUsed;
     private bool _wizardCompleted;
     private bool _optionalSetupDeferred;
     private bool _disposed;
     private bool _published;
     private string? _identityBinding;
     private IDisposable? _terminal;
+    // A logger can span replacement sessions after Retry.
+    private static long s_connectionAttempt;
+    private long? _admissionStartedAt;
+    internal TimeProvider AdmissionTimeProvider { get; } = timeProvider ?? TimeProvider.System;
+
+    internal TimeSpan BeginAdmission()
+    {
+        _admissionStartedAt ??= AdmissionTimeProvider.GetTimestamp();
+        return GetAdmissionRemaining()!.Value;
+    }
+
+    internal TimeSpan? GetAdmissionRemaining()
+    {
+        if (_admissionStartedAt is not { } startedAt)
+            return null;
+
+        var remaining = IsolatedGatewayRuntime.AdmissionTimeout -
+            AdmissionTimeProvider.GetElapsedTime(startedAt);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    internal void EndAdmission() => _admissionStartedAt = null;
+
+    internal long NextConnectionAttempt() => Interlocked.Increment(ref s_connectionAttempt);
+
+    internal void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation)
+    {
+        if (!_disposed && !_lifetime.IsCancellationRequested)
+            host.ReportHandshakeObservation(connectionAttempt, observation);
+    }
+
     public GatewayRecord Record { get; private set; } = record;
     public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
     public bool IsPublished => _published;
@@ -63,18 +96,81 @@ public sealed class NativeGatewaySetupSession(
         await AuthorizeAsync(cancellationToken);
     }
 
-    internal async Task PrepareAsync(CancellationToken cancellationToken)
+    internal async Task PrepareConnectionForAdmissionAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
+        if (_published || IsIsolated || File.Exists(ReloadBackupPath))
+            return;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(linked.Token);
         try
         {
-            if (!IsIsolated)
-                SuspendReload();
-            await host.ValidateConfigurationAsync(package, environment, cancellationToken);
-            await AuthorizeCoreAsync(cancellationToken);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            await PrepareRestartCoreAsync(linked.Token);
         }
         finally { _gate.Release(); }
     }
+
+    internal async Task PrepareAsync(CancellationToken cancellationToken)
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(operation.Token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!IsIsolated)
+                SuspendReload();
+            await ValidateConfigurationAsync(operation.Token);
+            await AuthorizeWithinAdmissionBudgetAsync(operation.Token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task ValidateConfigurationAsync(CancellationToken cancellationToken)
+    {
+        using var deadline = new CancellationTokenSource(
+            NativeGatewaySetupService.ConfigurationValidationTimeout, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
+        {
+            await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
+        {
+            int seconds = (int)NativeGatewaySetupService.ConfigurationValidationTimeout.TotalSeconds;
+            throw new TimeoutException(
+                $"Native Gateway configuration validation exceeded its {seconds}-second budget.", error);
+        }
+    }
+
+    private async Task AuthorizeWithinAdmissionBudgetAsync(CancellationToken cancellationToken)
+    {
+        var remaining = BeginAdmission();
+        if (remaining == TimeSpan.Zero)
+            throw CreateAdmissionTimeout();
+
+        using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token, deadline.Token);
+        try
+        {
+            await AuthorizeCoreAsync(linked.Token);
+        }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
+        {
+            throw CreateAdmissionTimeout(error);
+        }
+    }
+
+    private static TimeoutException CreateAdmissionTimeout(Exception? innerException = null) =>
+        new($"The native Gateway admission budget of " +
+            $"{IsolatedGatewayRuntime.AdmissionTimeout.TotalSeconds:0} seconds expired after configuration validation.",
+            innerException);
 
     public async Task AuthorizeAsync(CancellationToken cancellationToken)
     {
@@ -131,6 +227,33 @@ public sealed class NativeGatewaySetupSession(
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Retires an operator device token the verified Gateway has just rejected so the
+    /// next attempt can fall back to the shared setup credential and re-pair. Allowed
+    /// once per staged session. Gateway ownership and the setup credential are
+    /// re-verified first, so a token is never discarded because an unverified listener
+    /// refused it.
+    /// </summary>
+    /// <returns><c>true</c> if the rejected token was retired.</returns>
+    internal async Task<bool> RecoverRejectedOperatorTokenAsync(
+        string rejectedToken, CancellationToken cancellationToken)
+    {
+        if (Interlocked.CompareExchange(ref _operatorTokenRecoveryUsed, 1, 0) != 0)
+            return false;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(linked.Token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            await AuthorizeCoreAsync(linked.Token);
+            await RequireIsolatedPairingConfigurationAsync(linked.Token);
+            RequirePairingConfiguration();
+            return DeviceIdentity.TryClearDeviceTokenForRoleIfMatches(
+                IdentityDirectory, "operator", rejectedToken);
+        }
+        finally { _gate.Release(); }
+    }
+
     private void RequirePairingConfiguration()
     {
         if (IsIsolated)
@@ -164,7 +287,9 @@ public sealed class NativeGatewaySetupSession(
         host.ReportProgress(NativeGatewaySetupStage.VerifyingEndpoint);
         var provenance = await runtime.InspectAsync(Record, cancellationToken);
         if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
-            throw new InvalidOperationException("Native gateway ownership could not be verified. No credential was sent.");
+            throw new InvalidOperationException(provenance.Detail is { Length: > 0 } detail
+                ? $"Native gateway ownership could not be verified. No credential was sent. {detail}"
+                : "Native gateway ownership could not be verified. No credential was sent.");
         cancellationToken.ThrowIfCancellationRequested();
     }
 
@@ -213,18 +338,24 @@ public sealed class NativeGatewaySetupSession(
         }
     }
 
-    public async Task<SetupVerifiedNativeRoute> VerifyAsync(GatewayAiSetupCompletion expected, CancellationToken ct)
+    public Task<SetupVerifiedNativeRoute> VerifyAsync(GatewayAiSetupCompletion expected, CancellationToken ct) =>
+        VerifyAsync(expected, ct, null);
+
+    public async Task<SetupVerifiedNativeRoute> VerifyAsync(GatewayAiSetupCompletion expected, CancellationToken ct,
+        IProgress<SetupLoadingStep>? progress)
     {
         RequireCompletion(expected);
-        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(this, ct);
-        return await VerifyConnectionAsync(connection, expected, ct);
+        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(this, ct, progress);
+        return await VerifyConnectionAsync(connection, expected, ct, progress);
     }
 
     private static async Task<SetupVerifiedNativeRoute> VerifyConnectionAsync(
-        NativeGatewaySetupConnection connection, GatewayAiSetupCompletion expected, CancellationToken ct)
+        NativeGatewaySetupConnection connection, GatewayAiSetupCompletion expected, CancellationToken ct,
+        IProgress<SetupLoadingStep>? progress = null)
     {
         SetupNativeVerification.RequireRoute(expected, connection.Route);
         var client = new GatewayAiSetupClient(connection, expected.ModelRef, expected.Intent, expected.RequiresManagedLocalAi);
+        progress?.Report(SetupLoadingStep.VerifyModel);
         var result = new SetupVerifiedNativeRoute(
             await SetupNativeCompletionVerifier.VerifyModelAsync(client, expected.ModelRef, ct),
             connection.Route.SessionKey ?? "");
@@ -238,23 +369,28 @@ public sealed class NativeGatewaySetupSession(
         await _gate.WaitAsync(linked.Token);
         try
         {
-            BeginWizard();
-            _terminal?.Dispose();
-            _terminal = null;
-            if (!IsIsolated)
-                await runtime.StopAsync(linked.Token);
-            // Upstream may have changed configuration before an error. Validate before restart.
-            if (!IsIsolated)
-            {
-                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-                SuspendReload();
-            }
-            await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            await PrepareRestartCoreAsync(linked.Token);
             if (IsIsolated)
                 await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
         }
         finally { _gate.Release(); }
+    }
+
+    private async Task PrepareRestartCoreAsync(CancellationToken cancellationToken)
+    {
+        BeginWizard();
+        _terminal?.Dispose();
+        _terminal = null;
+        if (!IsIsolated)
+            await runtime.StopAsync(cancellationToken);
+        // Upstream may have changed configuration before an error. Validate before restart.
+        if (!IsIsolated)
+        {
+            Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+            SuspendReload();
+        }
+        await ValidateConfigurationAsync(cancellationToken);
     }
 
     public void MarkWizardCompleted() => _wizardCompleted = true;
@@ -274,15 +410,17 @@ public sealed class NativeGatewaySetupSession(
 
     public Task<GatewayRecord> CompleteVerifiedAsync(
         GatewayAiSetupCompletion proof, CapabilitiesConfig capabilities, CancellationToken cancellationToken,
-        Func<IGatewayAiSetupTransport, CancellationToken, Task>? afterVerification = null)
+        Func<IGatewayAiSetupTransport, CancellationToken, Task>? afterVerification = null,
+        IProgress<SetupLoadingStep>? progress = null)
     {
         RequireCompletion(proof);
-        return CompleteCoreAsync(cancellationToken, capabilities, proof, afterVerification);
+        return CompleteCoreAsync(cancellationToken, capabilities, proof, afterVerification, progress);
     }
 
     private async Task<GatewayRecord> CompleteCoreAsync(
         CancellationToken cancellationToken, CapabilitiesConfig? capabilities, GatewayAiSetupCompletion? proof,
-        Func<IGatewayAiSetupTransport, CancellationToken, Task>? afterVerification = null)
+        Func<IGatewayAiSetupTransport, CancellationToken, Task>? afterVerification = null,
+        IProgress<SetupLoadingStep>? progress = null)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         await _gate.WaitAsync(linked.Token);
@@ -296,13 +434,20 @@ public sealed class NativeGatewaySetupSession(
             // Focused setup has drained its operator. Keep isolated stop ownership
             // through RestartAsync; StopAsync would discard that lifecycle attribution.
             if (!IsIsolated || proof is null)
+            {
+                progress?.Report(SetupLoadingStep.StopGateway);
                 await runtime.StopAsync(linked.Token);
+            }
             linked.Token.ThrowIfCancellationRequested();
             if (IsIsolated)
             {
                 if (capabilities is not null)
+                {
+                    progress?.Report(SetupLoadingStep.ApplyCapabilities);
                     await host.ApplyIsolatedCapabilitiesAsync(
                         package, capabilities.GetEnabledCommandIds().ToArray(), linked.Token);
+                }
+                progress?.Report(SetupLoadingStep.CheckConfiguration);
                 IsolatedGatewayConfiguration configured =
                     await host.CheckIsolatedPairingConfigurationAsync(package, linked.Token);
                 if (configured.Port != draft.Port || configured.Token != Record.SharedGatewayToken)
@@ -314,26 +459,46 @@ public sealed class NativeGatewaySetupSession(
             {
                 RestoreReload();
                 if (capabilities is not null)
+                {
+                    progress?.Report(SetupLoadingStep.ApplyCapabilities);
                     ApplyCapabilities(capabilities);
+                }
                 Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
             }
+            progress?.Report(SetupLoadingStep.CheckConfiguration);
             await host.ValidateConfigurationAsync(package, environment, linked.Token);
             if (IsIsolated && proof is not null)
+            {
+                progress?.Report(SetupLoadingStep.RestartGateway);
                 await runtime.RestartAsync(Record, linked.Token);
+            }
+            progress?.Report(SetupLoadingStep.ConnectGateway);
             await AuthorizeCoreAsync(linked.Token);
+            progress?.Report(SetupLoadingStep.CheckHealth);
             await host.VerifyHealthAsync(package, environment, linked.Token);
             if (proof is not null)
             {
                 RequireCompletion(proof);
                 // The owner gate stays held while a fresh connection verifies the restarted runtime.
                 await using var connection = await NativeGatewaySetupConnection.ConnectForFinalizationAsync(
-                    this, AuthorizeCoreAsync, linked.Token);
-                await VerifyConnectionAsync(connection, proof, linked.Token);
+                    this, AuthorizeCoreAsync, linked.Token, progress);
+                await VerifyConnectionAsync(connection, proof, linked.Token, progress);
                 if (afterVerification is not null)
+                {
+                    progress?.Report(SetupLoadingStep.ReconcileLocalAi);
                     await afterVerification(connection, linked.Token);
+                }
             }
-            await runtime.StopAsync(linked.Token);
+            // A verified isolated Gateway stays up through publication so the restarted
+            // Companion adopts it instead of waiting through another cold start.
+            bool handOff = IsIsolated && proof is not null;
+            if (!handOff)
+            {
+                progress?.Report(SetupLoadingStep.StopGateway);
+                await runtime.StopAsync(linked.Token);
+            }
             linked.Token.ThrowIfCancellationRequested();
+            progress?.Report(SetupLoadingStep.PublishGateway);
             registry.Load();
             var beforePublication = registry.GetSnapshot();
             if (registry.GetById(Record.Id) is not null)
@@ -342,6 +507,8 @@ public sealed class NativeGatewaySetupSession(
             registry.SetActive(Record.Id);
             registry.Save(beforePublication);
             _published = true;
+            if (handOff)
+                await runtime.ReleaseAsync(CancellationToken.None);
             // Keep the credential-free draft descriptor. CreateDraftAsync recognizes
             // the published ID and replaces it instead of taking over an active gateway.
             return Record;
@@ -349,7 +516,11 @@ public sealed class NativeGatewaySetupSession(
         finally
         {
             // A failed health/config check is retryable, but must not leak a running gateway.
-            try { await runtime.StopAsync(CancellationToken.None); }
+            try
+            {
+                progress?.Report(SetupLoadingStep.StopGateway);
+                await runtime.StopAsync(CancellationToken.None);
+            }
             finally { _gate.Release(); }
         }
     }

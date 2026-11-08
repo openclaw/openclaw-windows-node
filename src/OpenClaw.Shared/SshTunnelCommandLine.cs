@@ -13,6 +13,7 @@ public static class SshTunnelCommandLine
     private const string BaseOptions =
         "-o BatchMode=yes " +
         "-o ExitOnForwardFailure=yes " +
+        "-o GatewayPorts=no " +
         "-o ServerAliveInterval=15 " +
         "-o ServerAliveCountMax=3 " +
         "-o TCPKeepAlive=yes " +
@@ -89,7 +90,7 @@ public static class SshTunnelCommandLine
 
     private static void AppendLocalForward(StringBuilder sb, int localPort, int remotePort)
     {
-        sb.Append("-L ");
+        sb.Append("-L 127.0.0.1:");
         sb.Append(localPort);
         sb.Append(":127.0.0.1:");
         sb.Append(remotePort);

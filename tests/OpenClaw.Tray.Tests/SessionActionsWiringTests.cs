@@ -12,6 +12,30 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SessionActionsWiringTests
 {
     [Fact]
+    public void ArchiveBrowsingBelongsToSettingsNotWorkspace()
+    {
+        var workspaceXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml");
+        var workspace = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs");
+        var settingsXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml");
+        var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
+        Assert.DoesNotContain("WorkspaceArchivedToggle", workspaceXaml);
+        Assert.DoesNotContain("ArchivedHeader", workspaceXaml);
+        Assert.DoesNotContain("WorkspaceArchivedSession", workspaceXaml);
+        Assert.DoesNotContain("_archived", workspace);
+        Assert.DoesNotContain("ArchivedSessionsSource", workspace);
+        Assert.Contains("SessionsPageArchived", settingsXaml);
+        Assert.Contains("OnUnarchiveSession", settingsXaml);
+        Assert.Contains("new ArchivedSessionsSource", settings);
+        Assert.Contains("new WorkspaceSessionOperation", settings);
+        Assert.Contains("new SessionPatch { Archived = false }", settings);
+        var document = XDocument.Parse(settingsXaml);
+        var section = Assert.Single(document.Descendants(),
+            element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "ArchivedSection"));
+        Assert.Equal("StackPanel", section.Parent!.Name.LocalName);
+        Assert.DoesNotContain(section.Ancestors(), element => element.Name.LocalName == "Button");
+    }
+
+    [Fact]
     public void SessionsPage_ConfirmsDestructiveActions_ViaPlanner()
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
@@ -63,7 +87,6 @@ public sealed class SessionActionsWiringTests
         var host = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatHostExtensions.cs");
         var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
         var chatPage = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
-        var chatWindow = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
         var sessions = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
         var checkpoints = ReadSource(
             "src",
@@ -75,12 +98,10 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("Action<string>? onOpenCheckpoints", host);
         Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
         Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatPage);
-        Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatWindow);
         Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatPage);
-        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatWindow);
         Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", sessions);
         Assert.Contains("XamlRoot = _xamlRoot", checkpoints);
-        Assert.DoesNotContain("ShowHub(\"sessions\")", chatWindow);
+        Assert.DoesNotContain("ShowHub(\"sessions\")", chatPage);
     }
 
     [Fact]

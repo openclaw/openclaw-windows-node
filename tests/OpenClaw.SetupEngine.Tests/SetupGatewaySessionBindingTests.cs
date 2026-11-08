@@ -29,6 +29,106 @@ public sealed class SetupGatewaySessionBindingTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task PublishedNonNativeReadyBorrowsManagerWithoutCreatingOrDisposingASecondConnection(bool setupManaged)
+    {
+        using var temp = new TempDirectory();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(SetupReply), Token);
+        var registry = new GatewayRegistry(temp.Path);
+        var record = registry.AddOrUpdate(new()
+        {
+            Id = "published", Url = server.Endpoint.ToString(), SharedGatewayToken = Token,
+            SetupManagedDistroName = setupManaged ? "fixture-owned-distro" : null,
+        });
+        registry.SetActive(record.Id);
+        registry.Save();
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(), registry, NullLogger.Instance,
+            endpointProvenanceProbe: (_, _) => Task.FromResult(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.ExpectedManagedGateway, server.Endpoint.Port)));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await manager.ConnectAsync(record.Id);
+        var transport = await GatewayAiSetupTransport.BorrowAsync(temp.Path, manager, record.Id, deadline.Token,
+            GatewayDashboardBinding.Capture(record), readOnlyRequests: true);
+        var client = new GatewayAiSetupClient(transport, Model);
+        await client.VerifyConfiguredAsync(Model, deadline.Token);
+        var proof = client.GetVerifiedCompletion();
+        Assert.False(proof.RequiresManagedLocalAi);
+        var borrowed = manager.OperatorClient;
+        var connections = server.ConnectionCount;
+        var route = await SetupNativeCompletionVerifier.VerifyAsync(
+            temp.Path, proof, deadline.Token, manager, captureReadiness: true);
+        Assert.NotNull(route.ReadyBinding);
+        Assert.Same(borrowed, manager.OperatorClient);
+        Assert.Equal(connections, server.ConnectionCount);
+        var probes = server.Requests.Count(request => request.Method == "openclaw.setup.verify");
+        using var chooser = new SetupReadyCoordinator(route.ReadyBinding!, (_, _) => Task.CompletedTask);
+        await chooser.SelectAsync(SetupNativeDestination.Chat);
+        Assert.Equal(probes, server.Requests.Count(request => request.Method == "openclaw.setup.verify"));
+        Assert.True(borrowed!.IsConnectedToGateway);
+        Assert.DoesNotContain(server.Requests, request =>
+            request.Method.StartsWith("openclaw.setup.activate", StringComparison.Ordinal) ||
+            request.Method.StartsWith("openclaw.setup.prepare", StringComparison.Ordinal) ||
+            request.Method is "config.patch" or "config.apply" or "wizard.start" or "wizard.next");
+        await manager.DisconnectAsync();
+        await manager.ConnectAsync(record.Id);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() =>
+            route.ReadyBinding!.RequireCurrentAsync(deadline.Token));
+    }
+
+    [Fact]
+    public async Task PublishedWslReadyWaitsForModelRecoveryBeforeBorrowingGateway()
+    {
+        using var temp = new TempDirectory();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(SetupReply), Token);
+        var registry = new GatewayRegistry(temp.Path);
+        var record = registry.AddOrUpdate(new()
+        {
+            Id = "published-wsl", Url = server.Endpoint.ToString(), SharedGatewayToken = Token,
+            SetupManagedDistroName = "fixture-owned-distro",
+        });
+        registry.SetActive(record.Id);
+        registry.Save();
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(), registry, NullLogger.Instance,
+            endpointProvenanceProbe: (_, _) => Task.FromResult(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.ExpectedManagedGateway, server.Endpoint.Port)));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await manager.ConnectAsync(record.Id);
+        var transport = await GatewayAiSetupTransport.BorrowAsync(temp.Path, manager, record.Id, deadline.Token,
+            GatewayDashboardBinding.Capture(record), readOnlyRequests: true);
+        var client = new GatewayAiSetupClient(transport, Model);
+        Assert.True((await client.VerifyConfiguredAsync(Model, deadline.Token)).Ok);
+        var proof = client.GetVerifiedCompletion();
+        await manager.DisconnectAsync();
+        var connectionsBeforeRecovery = server.ConnectionCount;
+        var recoveryEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishRecovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var verifying = SetupNativeCompletionVerifier.VerifyAsync(temp.Path, proof, deadline.Token, manager,
+            async (_, ct) =>
+            {
+                recoveryEntered.SetResult();
+                await finishRecovery.Task.WaitAsync(ct);
+            }, captureReadiness: true);
+        try
+        {
+            await recoveryEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(connectionsBeforeRecovery, server.ConnectionCount);
+            await manager.ConnectAsync(record.Id, deadline.Token);
+            finishRecovery.SetResult();
+            var ready = await verifying;
+            Assert.NotNull(ready.ReadyBinding);
+        }
+        finally
+        {
+            finishRecovery.TrySetResult();
+            try { await verifying.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (Exception) when (verifying.IsCompleted) { }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task IdOnlyLocalAiSelectionRetainsTypedRejectionBeforeOrdinaryOrNativeTransport(bool native)
     {
         using var temp = new TempDirectory();

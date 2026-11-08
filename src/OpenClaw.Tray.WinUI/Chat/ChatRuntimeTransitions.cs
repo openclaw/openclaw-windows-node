@@ -166,4 +166,6 @@ internal sealed record ChatAssistantPreparation(
     AssistantQueueFrameDisposition Disposition,
     ChatDataSnapshot? PromotionSnapshot,
     ChatEntryMetadata Metadata,
-    string? ActiveRunId);
+    string? ActiveRunId,
+    bool IsBackgroundFinal,
+    ChatDataSnapshot? BackgroundFinalSnapshot);

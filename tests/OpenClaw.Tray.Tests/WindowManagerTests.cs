@@ -62,17 +62,6 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
-    public void ChatRequest_RejectsMissingCredentialsAndRetainsValues()
-    {
-        var request = new ChatWindowRequest("ws://127.0.0.1:18789", "token");
-
-        Assert.Equal("ws://127.0.0.1:18789", request.GatewayUrl);
-        Assert.Equal("token", request.GatewayToken);
-        Assert.Throws<ArgumentException>(() => new ChatWindowRequest("", "token"));
-        Assert.Throws<ArgumentException>(() => new ChatWindowRequest("ws://127.0.0.1:18789", ""));
-    }
-
-    [Fact]
     public void LocalAiSetup_ChoosesRecoveryOnlyAfterManagedGatewayProof()
     {
         var manager = ReadManager();
@@ -207,13 +196,17 @@ public sealed class WindowManagerTests
         Assert.Contains("public void BeginShutdown() => _isShuttingDown = true;", manager);
         Assert.Contains("return _closeForShutdownTask ??= CloseOwnedWindowsAsync();", manager);
         Assert.Contains("if (_isShuttingDown)", manager);
-        Assert.Equal(2, Count(manager, "ResetNavigationScope();"));
+        Assert.Equal(1, Count(manager, "ResetNavigationScope();"));
         AssertInOrder(
             manager,
-            "hub.Closed -= OnHubClosed;",
-            "TryClose(\"Hub window\", hub.Close, ref failures);",
-            "_hubWindow = null;",
+            "private void OnWorkspaceClosed(object sender, WindowEventArgs args)",
+            "_workspaceWindow = null;",
             "ResetNavigationScope();");
+        AssertInOrder(
+            manager,
+            "_workspaceWindow.Closed -= OnWorkspaceClosed;",
+            "TryClose(\"Workspace window\", _workspaceWindow.Close, ref failures);",
+            "_workspaceWindow = null;");
         AssertInOrder(
             manager,
             "setupWindow.Closed -= OnSetupClosed;",
@@ -229,17 +222,18 @@ public sealed class WindowManagerTests
     {
         var manager = ReadManager();
 
-        Assert.Contains("if (_hubWindow is null || _hubWindow.IsClosed)", manager);
+        Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", manager);
+        Assert.DoesNotContain("_hubWindow", manager);
         Assert.Contains("Show(activateWindow: false)", manager);
-        Assert.Contains("DispatcherQueuePriority.Low", manager);
-        Assert.Contains("_chatWindow.HideNearTray()", manager);
-        Assert.Contains("window.ShowNearTrayAnimated()", manager);
+        Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", manager);
         Assert.Contains("window.Closed -= OnConnectionStatusClosed", manager);
         Assert.Contains("await existingSetupWindow.CleanupCompleted", manager);
         Assert.Contains("_callbacks.ApplyTheme(_keepAliveWindow)", manager);
         Assert.Contains("_callbacks.ApplyTheme(_setupWindow)", manager);
-        Assert.Contains("_hubWindow is { IsClosed: false } hub", manager);
-        Assert.Contains("(hub.Content as FrameworkElement)?.XamlRoot", manager);
+        Assert.Contains("_callbacks.ApplyTheme(_readyWindow)", manager);
+        Assert.Contains("_callbacks.ApplyTheme(_restartProgressWindow)", manager);
+        Assert.Contains("_workspaceWindow is { IsClosed: false }", manager);
+        Assert.Contains("(ActiveHubWindow?.Content as FrameworkElement)?.XamlRoot", manager);
         Assert.Contains("ActiveHubWindow is { } window", manager);
         Assert.Contains("WinRT.Interop.WindowNative.GetWindowHandle(window)", manager);
         Assert.Contains("WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow)", manager);

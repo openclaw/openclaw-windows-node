@@ -96,6 +96,11 @@ $cases = @(
         Classification = "docs_only"
     },
     @{
+        Scenario = "Scoped WinUI instructions"
+        Paths = @("src/OpenClaw.Tray.WinUI/AGENTS.md")
+        Classification = "docs_only"
+    },
+    @{
         Scenario = "WinNode skill reference"
         Paths = @(".agents/skills/winnode/SKILL.md")
         Classification = "targeted"
@@ -309,7 +314,60 @@ if ($emptyImpact.classification -ne "full" -or -not $emptyImpact.full) {
     throw "An empty explicit path list must select full validation."
 }
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+$expectedPlanProperties = @('schemaVersion', 'impact', 'reason', 'selectedPaths', 'hostedLanes', 'mandatoryLocal', 'customProofCandidates', 'boundary')
+foreach ($scenario in @(
+    @{ path = 'README.md'; reason = 'maintained-documentation-checks'; classification = 'docs_only' },
+    @{ path = '.agents/skills/winnode/SKILL.md'; reason = 'shipped-winnode-command-contract'; classification = 'targeted' },
+    @{ path = 'src/OpenClaw.Cli/Program.cs'; reason = 'recognized-project-boundary'; classification = 'targeted' },
+    @{ path = 'scripts/run-proof-tests.ps1'; reason = 'build-or-validation-infrastructure'; classification = 'full' },
+    @{ path = 'unknown/deleted.cs'; reason = 'unknown-path'; classification = 'full' },
+    @{ path = '../escape'; reason = 'invalid-path'; classification = 'full' }
+)) {
+    $plan = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths $scenario.path -Explain) | ConvertFrom-Json
+    if (@(Compare-Object $expectedPlanProperties @($plan.PSObject.Properties.Name)).Count -ne 0 -or $plan.schemaVersion -ne 1) {
+        throw 'Explanatory plan schema changed unexpectedly.'
+    }
+    if ($plan.impact.classification -ne $scenario.classification -or $plan.selectedPaths[0].reason -ne $scenario.reason) {
+        throw "Missing classification reason for $($scenario.path)."
+    }
+    foreach ($job in @('change-classification', 'fast-validation', 'proof-pool-contracts', 'ci-gate')) {
+        if ($job -notin $plan.hostedLanes) { throw "Plan omitted always-on CI Gate job: $job" }
+    }
+    foreach ($job in @('metadata', 'build-msix', 'build-msix-bundle')) {
+        if (($job -in $plan.hostedLanes) -ne ($plan.impact.x64_release -or $plan.impact.arm64_release)) {
+            throw "Plan misreported release-dependent CI job: $job"
+        }
+    }
+    if ($scenario.classification -eq 'docs_only') {
+        if ($plan.mandatoryLocal.required -or $plan.mandatoryLocal.commands.Count -or $plan.customProofCandidates.Count) {
+            throw 'Documentation-only plan selected runtime validation.'
+        }
+    } else {
+        if (-not $plan.mandatoryLocal.required -or $plan.mandatoryLocal.commands.Count -ne 3 -or $plan.mandatoryLocal.commands[0] -ne '.\build.ps1') {
+            throw 'Code-change plan lost mandatory local closeout.'
+        }
+        $inventory = Get-Content (Join-Path $repoRootPath '.github\proof-pools.json') -Raw | ConvertFrom-Json
+        if ($plan.customProofCandidates.Count -ne $inventory.pools.Count) { throw 'Plan must expose the inventory for applicability review.' }
+        foreach ($pool in $inventory.pools) {
+            $candidate = @($plan.customProofCandidates | Where-Object { $_.id -eq $pool.id })[0]
+            if ($candidate.authorization -ne 'explicit-approval-required' -or $candidate.applicability -ne 'review-required' -or $candidate.status -ne 'not-run') {
+                throw 'Candidate accidentally became an authorized run.'
+            }
+            foreach ($pair in @(@('commands', 'authoritativeCommands'), @('prerequisites', 'requiredCapabilities'))) {
+                if (($candidate.($pair[0]) | ConvertTo-Json -Depth 10 -Compress) -cne ($pool.($pair[1]) | ConvertTo-Json -Depth 10 -Compress)) {
+                    throw 'Plan drifted from proof inventory.'
+                }
+            }
+            if (($candidate.doesNotProve -join '|') -cne ($pool.selection.doesNotProve -join '|')) { throw 'Proof boundary lost.' }
+        }
+    }
+}
+$invalidPlan = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -BaseSha bad -HeadSha bad -Explain) | ConvertFrom-Json
+if ($invalidPlan.reason -ne 'invalid-or-missing-revisions' -or -not $invalidPlan.impact.full) { throw 'Invalid revision explanation narrowed validation.' }
+$human = (& $classifierPath -EventName pull_request -RepoRoot $repoRootPath -ChangedPaths 'src/OpenClaw.Cli/Program.cs' -Human) -join "`n"
+if ($human -notmatch 'Mandatory local|Does not prove|explicit approval' -or $human -notmatch 'Read-only') { throw 'Human plan is missing boundaries.' }
+
+$tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-change-classifier-" + [guid]::NewGuid().ToString("N"))
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null

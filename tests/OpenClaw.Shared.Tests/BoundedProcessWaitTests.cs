@@ -5,6 +5,14 @@ using OpenClaw.Shared.Audio;
 
 namespace OpenClaw.Shared.Tests;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class BoundedProcessWaitCollection
+{
+    public const string Name = "Bounded process wait";
+}
+
+// Real-process deadlines must not compete with the suite's thread-pool-heavy tests.
+[Collection(BoundedProcessWaitCollection.Name)]
 public sealed class BoundedProcessWaitTests
 {
     [Fact]

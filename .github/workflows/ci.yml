@@ -7,9 +7,35 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      local_ai_proof_baseline:
+        description: 'Optional full main SHA for before/after Local AI UI proof'
+        type: string
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      promotion_alpha:
+        type: string
+        required: true
+      promotion_source_sha:
+        type: string
+        required: true
+      promotion_stable_tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  OPENCLAW_RELEASE_SOURCE_SHA: ${{ inputs.promotion_source_sha || github.sha }}
+  OPENCLAW_RELEASE_REF: ${{ inputs.promotion_stable_tag && format('refs/tags/{0}', inputs.promotion_stable_tag) || github.ref }}
+  OPENCLAW_RELEASE_TAG: ${{ inputs.promotion_stable_tag || github.ref_name }}
+  # GitVersion.MsBuild must not normalize a candidate checkout to the caller's main ref.
+  GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '' && 'true' || 'false' }}
+  GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '' && 'true' || 'false' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}
@@ -29,10 +55,39 @@ jobs:
       x64_release: ${{ steps.classify.outputs.x64_release }}
       arm64_release: ${{ steps.classify.outputs.arm64_release }}
       full: ${{ steps.classify.outputs.full }}
+      promotion_record: ${{ steps.promotion.outputs.record }}
+      gateway_version: ${{ steps.gateway.outputs.version }}
+      gateway_release: ${{ steps.gateway.outputs.release }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+
+    - name: Bind alpha promotion to the approved source and pipeline
+      id: promotion
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ALPHA_TAG: ${{ inputs.promotion_alpha }}
+        INPUT_SOURCE_SHA: ${{ inputs.promotion_source_sha }}
+        INPUT_STABLE_TAG: ${{ inputs.promotion_stable_tag }}
+      run: |
+        if ([string]::IsNullOrEmpty($env:ALPHA_TAG)) {
+          if ($env:INPUT_SOURCE_SHA -or $env:INPUT_STABLE_TAG) { throw 'Partial promotion inputs are not allowed.' }
+          exit 0
+        }
+        if ($env:INPUT_SOURCE_SHA -cnotmatch '\A[0-9a-f]{40}\z' -or -not $env:INPUT_STABLE_TAG) {
+          throw 'Promotion requires an exact source SHA and stable tag.'
+        }
+        if ($env:GITHUB_REPOSITORY -cne 'openclaw/openclaw-windows-node' -or
+            $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') {
+          throw 'Alpha promotion must be dispatched from canonical main.'
+        }
+        . ./scripts/AlphaPromotion.ps1
+        $record = Get-AlphaPromotion -AlphaTag $env:ALPHA_TAG -PipelineSha $env:GITHUB_SHA `
+          -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval
+        if ($record.stableTag -cne $env:OPENCLAW_RELEASE_TAG) { throw 'Unexpected stable target.' }
+        "record=$($record | ConvertTo-Json -Compress)" >> $env:GITHUB_OUTPUT
 
     - name: Classify changed paths
       id: classify
@@ -66,6 +121,12 @@ jobs:
         }
         "CI change classification: $($impact.classification)" >> $env:GITHUB_STEP_SUMMARY
 
+    - name: Snapshot latest WSL Gateway baseline
+      id: gateway
+      if: ${{ steps.classify.outputs.setup_e2e == 'true' || steps.classify.outputs.revocation_e2e == 'true' || steps.classify.outputs.network_e2e == 'true' }}
+      shell: pwsh
+      run: ./scripts/Resolve-CiGateway.ps1
+
   fast-validation:
     runs-on: windows-latest
     steps:
@@ -86,6 +147,20 @@ jobs:
     - name: Test repository triage automation and dashboard
       run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs
 
+    - name: Test upstream welcome copy monitoring
+      run: node --test .github/scripts/welcome-content-notification.test.cjs
+
+    - name: Test mock Gateway screenshot report
+      shell: pwsh
+      run: |
+        npm ci --prefix .github/scripts/gateway-fixture-report --ignore-scripts --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        node --test .github/scripts/gateway-fixture-report/report.test.mjs
+
+    - name: Test hosted desktop preflight
+      shell: pwsh
+      run: ./scripts/test-ci-desktop-resolution.ps1
+
     - name: Validate documentation
       shell: pwsh
       run: ./scripts/validate-docs.ps1
@@ -98,9 +173,25 @@ jobs:
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
 
+    - name: Test proof results and local evidence
+      shell: pwsh
+      run: ./scripts/test-proof-evidence.ps1
+
+    - name: Test read-only agent readiness
+      shell: pwsh
+      run: ./scripts/test-agent-readiness.ps1
+
     - name: Test native Gateway source build safety
       shell: pwsh
       run: ./scripts/test-native-gateway-source-build.ps1
+
+    - name: Test Gateway npm release selection
+      shell: pwsh
+      run: ./scripts/test-gateway-npm-release.ps1
+
+    - name: Test packaged Gateway provenance
+      shell: pwsh
+      run: ./scripts/test-gateway-packaged-release.ps1
 
     - name: Validate CI change classifier
       shell: pwsh
@@ -112,7 +203,9 @@ jobs:
 
     - name: Validate CI workflow contracts
       shell: pwsh
-      run: ./scripts/test-ci-workflow-contract.ps1
+      run: |
+        ./scripts/test-ci-workflow-contract.ps1
+        ./scripts/test-ci-crash-metadata-source.ps1
 
     - name: Validate MSIX CI artifacts
       shell: pwsh
@@ -121,6 +214,10 @@ jobs:
     - name: Validate developer migration test package
       shell: pwsh
       run: ./scripts/test-migration-test-msix.ps1
+
+    - name: Validate Store migration helper fixtures
+      shell: pwsh
+      run: .\scripts\test-store-migration-test-script.ps1
 
     # installer.iss is only compiled for real in the tag-only release job, so a
     # Pascal Script error would otherwise be found at release time. The runner image
@@ -131,6 +228,12 @@ jobs:
     - name: Compile installer script
       shell: pwsh
       run: ./scripts/Test-InstallerScriptCompiles.ps1 -RequireCompiler
+
+    - name: Validate Store submission and source authorization
+      shell: pwsh
+      run: |
+        ./scripts/test-microsoft-store-submission.ps1
+        ./scripts/Test-StoreSubmissionSource.Tests.ps1
 
     - name: Validate Store MSIX bundle construction
       shell: pwsh
@@ -148,9 +251,32 @@ jobs:
       shell: pwsh
       run: ./scripts/test-dev-msix-release.ps1
 
+    - name: Validate daily alpha release-line selection
+      shell: pwsh
+      run: ./scripts/test-daily-alpha-version.ps1
+
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
+
+    - name: Validate release-candidate outcome classification
+      shell: pwsh
+      run: ./scripts/Resolve-ReleaseCandidateE2EOutcome.Tests.ps1
+
+    - name: Validate alpha promotion policy and workflow
+      shell: pwsh
+      run: ./scripts/test-alpha-promotion.ps1
+
+    - name: Validate alpha promotion GitVersion behavior
+      shell: pwsh
+      run: |
+        dotnet tool restore
+        if ($LASTEXITCODE -ne 0) { throw 'GitVersion restore failed.' }
+        ./scripts/test-alpha-promotion-versioning.ps1
+
+    - name: Validate release branch GitVersion behavior
+      shell: pwsh
+      run: ./scripts/test-release-branch-versioning.ps1
 
   proof-pool-contracts:
     name: Proof-pool contracts
@@ -198,6 +324,21 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - &promotion-version-tag
+      name: Create checkout-only stable tag for candidate versioning
+      if: inputs.promotion_alpha != ''
+      shell: pwsh
+      run: |
+        $existing = git rev-parse --verify --quiet "$($env:OPENCLAW_RELEASE_TAG)^{commit}"
+        if ($LASTEXITCODE -eq 0) {
+          if ($existing -cne $env:OPENCLAW_RELEASE_SOURCE_SHA) { throw 'Stable tag points to another candidate.' }
+        } else {
+          git -c tag.gpgsign=false tag $env:OPENCLAW_RELEASE_TAG $env:OPENCLAW_RELEASE_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the checkout-only versioning tag.' }
+        }
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -212,6 +353,8 @@ jobs:
     - name: Determine Version
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4
+      with:
+        disableNormalization: ${{ inputs.promotion_alpha != '' }}
 
     - name: Resolve release version
       id: release_version
@@ -226,8 +369,8 @@ jobs:
         $isPrerelease = $semVer.Contains("-")
         $isStableCorrection = $false
 
-        if ($env:GITHUB_REF.StartsWith("refs/tags/v", [StringComparison]::Ordinal)) {
-          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+        if ($env:OPENCLAW_RELEASE_REF.StartsWith("refs/tags/v", [StringComparison]::Ordinal)) {
+          $tagVersion = $env:OPENCLAW_RELEASE_TAG -replace '^v', ''
           # Match every numeric suffix, including malformed ones such as -0 and
           # -03, so the correction validator is the single authority that can
           # accept or reject them.
@@ -237,7 +380,7 @@ jobs:
 
           if ($correction.Success) {
             $validation = .\scripts\Test-OpenClawStableCorrectionRelease.ps1 `
-              -Tag $env:GITHUB_REF_NAME `
+              -Tag $env:OPENCLAW_RELEASE_TAG `
               -GitHubToken $env:GH_TOKEN
             $semVer = $tagVersion
             $majorMinorPatch = $validation.BaseVersion
@@ -254,7 +397,7 @@ jobs:
         "isStableCorrection=$($isStableCorrection.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
     - name: Resolve MSIX preview version
       id: msix_preview
-      if: ${{ !(github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
+      if: ${{ inputs.promotion_alpha == '' && !(github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
@@ -262,8 +405,8 @@ jobs:
         $sourceVersion = .\scripts\Get-OpenClawMsixPreviewSourceVersion.ps1 `
           -GitHubToken $env:GH_TOKEN
         $info = .\scripts\Resolve-MsixPackageVersion.ps1 `
-          -SourceVersion $sourceVersion -SourceCommit $env:GITHUB_SHA `
-          -SourceRef $env:GITHUB_REF -Repository openclaw/openclaw-windows-node `
+          -SourceVersion $sourceVersion -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA `
+          -SourceRef $env:OPENCLAW_RELEASE_REF -Repository openclaw/openclaw-windows-node `
           -GitHubToken $env:GH_TOKEN
         "sourceVersion=$sourceVersion" >> $env:GITHUB_OUTPUT
         "versionInfo=$($info | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
@@ -271,10 +414,11 @@ jobs:
   reserve-msix-version:
     name: Reserve official MSIX version
     needs: [change-classification, metadata]
-    if: ${{ !cancelled() && needs.metadata.result == 'success' && github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ !cancelled() && needs.metadata.result == 'success' && github.repository == 'openclaw/openclaw-windows-node' && (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       versionInfo: ${{ steps.reserve.outputs.versionInfo }}
       sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}
@@ -288,12 +432,26 @@ jobs:
       id: reserve
       shell: pwsh
       env:
+        PROMOTION_ALPHA: ${{ inputs.promotion_alpha }}
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
         SOURCE_VERSION: ${{ needs.metadata.outputs.semVer }}
         GH_TOKEN: ${{ github.token }}
       run: |
-        $info = .\scripts\Resolve-MsixPackageVersion.ps1 `
-          -SourceVersion $env:SOURCE_VERSION -SourceCommit $env:GITHUB_SHA `
-          -SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve
+        $promotionArguments = @{}
+        if ($env:PROMOTION_ALPHA) {
+          . ./scripts/AlphaPromotion.ps1
+          $record = Get-AlphaPromotion -AlphaTag $env:PROMOTION_ALPHA -PipelineSha $env:GITHUB_SHA `
+            -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval
+          if (($record | ConvertTo-Json -Compress) -cne $env:PROMOTION_RECORD -or
+              $record.version -cne $env:SOURCE_VERSION -or
+              "refs/tags/$($record.stableTag)" -cne $env:OPENCLAW_RELEASE_REF) {
+            throw 'Promotion provenance changed before MSIX reservation.'
+          }
+          $promotionArguments.PromotionAlphaTag = $record.alphaTag
+        }
+        $info = .\scripts\Resolve-MsixPackageVersion.ps1 @promotionArguments `
+          -SourceVersion $env:SOURCE_VERSION -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA `
+          -SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve
         "sourceVersion=$($info.sourceVersion)" >> $env:GITHUB_OUTPUT
         "versionInfo=$($info | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
 
@@ -309,6 +467,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -366,6 +528,7 @@ jobs:
         dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
+      timeout-minutes: 15
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
@@ -373,6 +536,7 @@ jobs:
         -Project tests/OpenClaw.Shared.Tests
         -ResultsDirectory TestResults\Shared
         -TrxFileName OpenClaw.Shared.Tests.trx
+        -HangTimeoutSeconds 300
 
     - name: Run Connection Tests
       run: >
@@ -409,6 +573,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -469,6 +637,18 @@ jobs:
         -TrxFileName OpenClaw.SetupEngine.Tests.trx
         -Runtime win-x64
 
+    - name: Test cleanup helper signing boundary
+      shell: pwsh
+      run: .\scripts\test-cleanup-host-signing.ps1
+
+    - name: Run Dev containment settings tests
+      run: >
+        dotnet test tests/OpenClaw.Tray.Tests
+        -c Debug -r win-x64 --no-restore -p:DevBuild=true
+        --filter "FullyQualifiedName~SettingsManagerIsolationTests|FullyQualifiedName~AppRefactorContractTests.SandboxPage_"
+        --results-directory TestResults\TrayDev
+        --logger "trx;LogFileName=OpenClaw.Tray.DevSettings.Tests.trx"
+
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v7
@@ -492,6 +672,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -516,6 +700,7 @@ jobs:
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build UI test projects
+      id: ui-build
       run: |
         dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClawTray.FunctionalUI.Tests -c Debug -r win-x64 --no-restore
@@ -524,6 +709,7 @@ jobs:
     # framework MSIX. The hosted runner image does not preinstall it, so install
     # the runtime matching the repo-level WindowsAppSDK version.
     - name: Install WindowsAppRuntime
+      id: ui-runtime
       shell: pwsh
       run: |
         [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
@@ -545,6 +731,11 @@ jobs:
         & $exe --quiet
         if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
 
+    - name: Configure UI desktop
+      id: ui-desktop
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
     - name: Run Functional UI Tests
       run: >
         ./scripts/Invoke-CiTest.ps1
@@ -552,6 +743,12 @@ jobs:
         -ResultsDirectory TestResults\FunctionalUI
         -TrxFileName OpenClawTray.FunctionalUI.Tests.trx
         -Runtime win-x64
+
+    - name: Mark Tray UI crash metadata window
+      id: tray-ui-crash-window
+      shell: pwsh
+      run: |
+        "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
 
     - name: Run Tray UI Tests
       timeout-minutes: 15
@@ -561,12 +758,77 @@ jobs:
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
+
+    - name: Capture non-memory Tray UI crash metadata
+      if: always() && steps.tray-ui-crash-window.outcome == 'success'
+      shell: pwsh
+      env:
+        TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline crash metadata helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+
+    - name: Run mock Gateway application scenarios
+      id: gateway-fixture
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 30
+      shell: pwsh
+      run: >
+        ./scripts/test-gateway-fixture.ps1
+        -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        -ArtifactsDirectory .\TestResults\GatewayFixture
+        -Screenshots
+
+    - name: Run latest stable profile compatibility
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the latest stable release.' }
+        $assets = @($release.assets | Where-Object { $_.name -match '^OpenClawTray-[^/\\]+-win-x64\.zip$' })
+        if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+          throw 'Latest stable must have one x64 portable archive with a published SHA256 digest.'
+        }
+        $asset = $assets[0]
+        $archive = Join-Path $env:RUNNER_TEMP ("gateway-fixture-stable-" + [guid]::NewGuid().ToString('N') + '.zip')
+        $expanded = [IO.Path]::ChangeExtension($archive, $null)
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
+        $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+        if ($digest -ne $asset.digest.Substring(7)) { throw 'Stable archive SHA256 does not match its release metadata.' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+        $apps = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter OpenClaw.Tray.WinUI.exe)
+        if ($apps.Count -ne 1) { throw 'Stable archive must contain exactly one Companion executable.' }
+        $artifacts = Join-Path $env:GITHUB_WORKSPACE 'TestResults\GatewayFixture'
+        New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
+        @{
+          releaseTag = $release.tag_name
+          releaseUrl = $release.html_url
+          publishedAt = $release.published_at
+          archiveUrl = $asset.browser_download_url
+          archiveSha256 = $digest
+          appPath = $apps[0].FullName
+          appSha256 = (Get-FileHash -LiteralPath $apps[0].FullName -Algorithm SHA256).Hash
+          candidateCheckout = (git rev-parse HEAD)
+        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifacts 'stable-release.json')
+        ./scripts/test-gateway-fixture.ps1 `
+          -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
+          -StableAppPath $apps[0].FullName `
+          -ArtifactsDirectory $artifacts
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
       id: a11y
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       run: >
         dotnet test tests/OpenClaw.Tray.UITests
         --no-build
@@ -611,6 +873,12 @@ jobs:
 
         Write-Host "DevBuild identity marker verified at $($marker.FullName): $identity"
 
+    - name: Capture Local AI hardware profiles before and after
+      timeout-minutes: 20
+      env:
+        LOCAL_AI_PROOF_BASELINE: ${{ inputs.local_ai_proof_baseline }}
+      run: ./scripts/Invoke-LocalAiVisualProof.ps1 -BaselineRef $env:LOCAL_AI_PROOF_BASELINE
+
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v7
@@ -619,18 +887,56 @@ jobs:
         path: TestResults/
         if-no-files-found: warn
 
+    - name: Prepare mock Gateway screenshot publisher
+      id: screenshot-publisher
+      if: always() && steps.gateway-fixture.outcome == 'failure'
+      shell: pwsh
+      run: npm ci --prefix .github/scripts/gateway-fixture-report --ignore-scripts --no-audit --no-fund
+
+    - name: Publish browsable mock Gateway screenshots
+      if: always() && steps.screenshot-publisher.outcome == 'success'
+      uses: actions/github-script@v9
+      with:
+        script: |
+          const path = require('node:path');
+          const { pathToFileURL } = require('node:url');
+          const report = await import(pathToFileURL(path.join(
+            process.env.GITHUB_WORKSPACE, '.github', 'scripts', 'gateway-fixture-report', 'report.mjs')).href);
+          await report.run({ core, context });
+
   setup-e2e:
-    name: Setup and connect E2E
+    name: Setup and connect E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -656,6 +962,7 @@ jobs:
         dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
     - name: Run setup and connect E2E tests
+      timeout-minutes: 20
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -674,17 +981,38 @@ jobs:
         if-no-files-found: warn
 
   revocation-e2e:
-    name: Revocation recovery E2E
+    name: Revocation recovery E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -710,6 +1038,7 @@ jobs:
         dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
     - name: Run revocation recovery E2E tests
+      timeout-minutes: 20
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -728,17 +1057,38 @@ jobs:
         if-no-files-found: warn
 
   network-e2e:
-    name: Network recovery E2E
+    name: Network recovery E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -764,6 +1114,7 @@ jobs:
         dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
     - name: Run network recovery E2E tests
+      timeout-minutes: 20
       env:
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
@@ -781,18 +1132,86 @@ jobs:
           TestResults/E2E/
         if-no-files-found: warn
 
+  sign-cleanup-host:
+    name: Sign embedded cleanup host before compilation
+    needs: [change-classification, metadata]
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.metadata.result == 'success'
+    runs-on: windows-latest
+    environment: release-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    - name: Build AnyCPU cleanup host
+      run: dotnet build src/OpenClaw.GatewayCleanupHost -c Release -o signing-cleanup-host
+
+    - name: Disable NuGet source mapping for cleanup signing
+      shell: pwsh
+      run: |
+        if (Test-Path NuGet.Config) { Rename-Item NuGet.Config NuGet.Config.signing.bak }
+
+    - name: Azure Login for Cleanup Signing
+      uses: azure/login@v3
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Sign cleanup executable before embedding
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-cleanup-host
+        files-folder-filter: exe
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Verify signed cleanup input
+      shell: pwsh
+      run: >
+        .\scripts\Test-CleanupHostSignature.ps1
+        -HostPath signing-cleanup-host\OpenClaw.GatewayCleanupHost.exe -RequireSigned
+        -SignerSubject "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-signed-cleanup-host
+        path: signing-cleanup-host/OpenClaw.GatewayCleanupHost.exe
+        if-no-files-found: error
+
   build-x64:
     name: x64 release publish smoke
-    needs: [change-classification, metadata]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && needs.change-classification.outputs.x64_release == 'true' }}
+    needs: [change-classification, metadata, sign-cleanup-host]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.sign-cleanup-host.result == 'success' || needs.sign-cleanup-host.result == 'skipped') && needs.change-classification.outputs.x64_release == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
 
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -809,6 +1228,19 @@ jobs:
 
     - name: Restore WinUI Tray App
       run: dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+
+    - name: Download signed cleanup host
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-cleanup-host
+        path: ${{ runner.temp }}\signed-cleanup-host
+
+    - name: Bind signed cleanup host path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -839,16 +1271,21 @@ jobs:
 
   build-arm64:
     name: ARM64 release publish
-    needs: [change-classification, metadata]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && needs.change-classification.outputs.arm64_release == 'true' }}
+    needs: [change-classification, metadata, sign-cleanup-host]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.sign-cleanup-host.result == 'success' || needs.sign-cleanup-host.result == 'skipped') && needs.change-classification.outputs.arm64_release == 'true' }}
     runs-on: windows-11-arm
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
 
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -865,6 +1302,19 @@ jobs:
 
     - name: Restore WinUI Tray App
       run: dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
+
+    - name: Download signed cleanup host
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-cleanup-host
+        path: ${{ runner.temp }}\signed-cleanup-host
+
+    - name: Bind signed cleanup host path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -897,12 +1347,13 @@ jobs:
 
   build-msix:
     name: MSIX artifacts (${{ matrix.architecture }})
-    needs: [change-classification, metadata, reserve-msix-version]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
+    needs: [change-classification, metadata, reserve-msix-version, sign-cleanup-host]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.sign-cleanup-host.result == 'success' || needs.sign-cleanup-host.result == 'skipped') && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
     # Dev-signed packages publish on tag releases. Unsigned Store packages stay workflow-only.
     runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
       DEV_MSIX_REVISION: ${{ github.run_number }}
       MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
       MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
@@ -915,6 +1366,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6
@@ -937,9 +1392,23 @@ jobs:
         }
         . .\scripts\MsixVersioning.ps1
         $info = Assert-MsixVersionInfo -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
-          -SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
+          -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
         $info | ConvertTo-Json -Depth 4 |
           Set-Content -LiteralPath "$env:RUNNER_TEMP\openclaw-msix-version.json" -Encoding utf8
+
+    - name: Download signed cleanup host
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-cleanup-host
+        path: ${{ runner.temp }}\signed-cleanup-host
+
+    # Resolve runner-owned paths at step runtime, outside the source checkout.
+    - name: Bind signed cleanup host path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
 
     - name: Build and validate unsigned Store MSIX
       shell: pwsh
@@ -1076,7 +1545,7 @@ jobs:
         }
         . .\scripts\MsixVersioning.ps1
         $info = Assert-MsixVersionInfo -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
-          -SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
+          -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
         "packageVersion=$($info.storePackageVersion)" >> $env:GITHUB_OUTPUT
 
     - name: Compose unsigned multi-architecture Store MSIX bundle
@@ -1162,7 +1631,7 @@ jobs:
   # overlap the long UI and E2E tail. Publication remains gated by ci-gate below.
   prepare-release-assets:
     needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
@@ -1172,9 +1641,26 @@ jobs:
     concurrency:
       group: openclaw-windows-node-release-preparation
       cancel-in-progress: false
-
     steps:
     - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Check out candidate installer sources
+      if: inputs.promotion_alpha != ''
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.promotion_source_sha }}
+        path: candidate-source
+        persist-credentials: false
+
+    - name: Select installer source
+      shell: pwsh
+      env:
+        IS_PROMOTION: ${{ inputs.promotion_alpha != '' }}
+      run: |
+        $installer = if ($env:IS_PROMOTION -eq 'true') { 'candidate-source\installer.iss' } else { 'installer.iss' }
+        "OPENCLAW_INSTALLER_SCRIPT=$installer" >> $env:GITHUB_ENV
 
     - name: Download win-x64 tray artifact
       uses: actions/download-artifact@v8
@@ -1328,7 +1814,8 @@ jobs:
         copy artifacts/tray-win-x64/* publish-x64/ -Recurse
         .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-x64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.x64.exe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=x64 "/Dpublish=$env:GITHUB_WORKSPACE\publish-x64" "/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.x64.exe" "/O$env:GITHUB_WORKSPACE\Output" $env:OPENCLAW_INSTALLER_SCRIPT
+        if ($LASTEXITCODE -ne 0) { throw 'x64 installer compilation failed.' }
 
     - name: Build arm64 Installer
       run: |
@@ -1340,7 +1827,8 @@ jobs:
         #                             LoadLibrary an arm64 DLL.
         .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=arm64 "/Dpublish=$env:GITHUB_WORKSPACE\publish-arm64" "/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.arm64.exe" "/O$env:GITHUB_WORKSPACE\Output" $env:OPENCLAW_INSTALLER_SCRIPT
+        if ($LASTEXITCODE -ne 0) { throw 'ARM64 installer compilation failed.' }
 
     - name: Sign Installers
       uses: azure/artifact-signing-action@v2
@@ -1368,7 +1856,7 @@ jobs:
 
   release:
     needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.prepare-release-assets.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.prepare-release-assets.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
@@ -1377,11 +1865,15 @@ jobs:
     concurrency:
       group: openclaw-windows-node-release
       cancel-in-progress: false
+    outputs:
+      promotion_artifact_id: ${{ steps.promotion_artifact.outputs.artifact-id }}
+      prepared_attempt: ${{ steps.promotion_manifest.outputs.prepared_attempt }}
 
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Download prepared release assets
       uses: actions/download-artifact@v8
@@ -1453,10 +1945,50 @@ jobs:
           -ExpectedRevision $env:DEV_MSIX_REVISION `
           -ExpectedWorkflowRunId $env:GITHUB_RUN_ID `
           -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json" `
-          -ExpectedSourceCommit $env:GITHUB_SHA
+          -ExpectedSourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA
         @('files<<MSIX_RELEASE_FILES'; $assets.Files; 'MSIX_RELEASE_FILES') >> $env:GITHUB_OUTPUT
         @('notes<<MSIX_RELEASE_NOTES'; $assets.Notes; 'MSIX_RELEASE_NOTES') >> $env:GITHUB_OUTPUT
 
+    - name: Prepare immutable promotion artifact
+      if: inputs.promotion_alpha != ''
+      id: promotion_manifest
+      shell: pwsh
+      env:
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
+        MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}
+      run: |
+        . ./scripts/AlphaPromotion.ps1
+        $record = $env:PROMOTION_RECORD | ConvertFrom-Json
+        New-Item -ItemType Directory -Path promotion-assets | Out-Null
+        foreach ($name in (Get-PromotionAssetNames $record.version)) {
+          $source = if ($name.EndsWith('.exe')) { Join-Path Output $name }
+            elseif ($name.StartsWith('OpenClawTray-')) { $name }
+            else { Join-Path msix-release $name }
+          Copy-Item -LiteralPath $source -Destination (Join-Path promotion-assets $name)
+        }
+        $manifest = New-PromotionArtifactManifest -Record $record -Directory promotion-assets `
+          -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
+          -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
+        $manifest | ConvertTo-Json -Depth 10 | Set-Content promotion-assets\promotion.json -Encoding utf8
+        "prepared_attempt=$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
+        @(
+          "## Stable publication approval"
+          "Review docs/RELEASING.md acceptance gates against these exact artifacts, including both architectures."
+          "Record acceptance evidence in the environment review. Do not approve missing proof."
+          '```json'
+          ($manifest | ConvertTo-Json -Depth 10)
+          '```'
+        ) >> $env:GITHUB_STEP_SUMMARY
+
+    - name: Upload prepared promotion artifact
+      if: inputs.promotion_alpha != ''
+      id: promotion_artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: alpha-promotion-${{ github.run_attempt }}
+        path: promotion-assets/
+        if-no-files-found: error
+        retention-days: 30
     - name: Remove trusted Dev MSIX certificates
       if: ${{ always() }}
       shell: pwsh
@@ -1578,8 +2110,8 @@ jobs:
         "body<<$delimiter" >> $env:GITHUB_OUTPUT
         $notesBody >> $env:GITHUB_OUTPUT
         $delimiter >> $env:GITHUB_OUTPUT
-
     - name: Create Release
+      if: inputs.promotion_alpha == ''
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: ${{ ! contains(github.ref_name, '-alpha.') }}
@@ -1676,3 +2208,67 @@ jobs:
             | @tsv
           ' <<< "$releases_json"
         )
+
+  publish-promotion:
+    needs: [change-classification, release]
+    if: inputs.promotion_alpha != '' && needs.release.result == 'success'
+    runs-on: windows-latest
+    environment:
+      name: stable-release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: openclaw-windows-node-release
+      cancel-in-progress: false
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Download exact prepared promotion artifact
+      uses: actions/download-artifact@v8
+      with:
+        artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}
+        merge-multiple: true
+        path: promotion-assets
+    - name: Publish approved stable release
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
+        PREPARED_ATTEMPT: ${{ needs.release.outputs.prepared_attempt }}
+      run: |
+        . ./scripts/AlphaPromotion.ps1
+        Publish-AlphaPromotion -Record ($env:PROMOTION_RECORD | ConvertFrom-Json) `
+          -Directory promotion-assets -RunId $env:GITHUB_RUN_ID -PreparedAttempt $env:PREPARED_ATTEMPT
+
+  store-release-source:
+    name: Record authorized Store release source
+    needs: [metadata, release, publish-promotion, build-msix-bundle]
+    if: >-
+      ${{ !cancelled() && needs.metadata.outputs.isPrerelease == 'false' &&
+          needs.release.result == 'success' && needs.build-msix-bundle.result == 'success' &&
+          (needs.publish-promotion.result == 'success' || needs.publish-promotion.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-store-unsigned-bundle
+        path: store
+    - name: Bind Store bundle to published release
+      shell: pwsh
+      run: |
+        [ordered]@{
+          runId = $env:GITHUB_RUN_ID
+          runAttempt = $env:GITHUB_RUN_ATTEMPT
+          releaseTag = $env:OPENCLAW_RELEASE_TAG
+          sourceSha = $env:OPENCLAW_RELEASE_SOURCE_SHA
+          bundleSha256 = (Get-FileHash ./store/OpenClaw.msixbundle -Algorithm SHA256).Hash.ToLowerInvariant()
+        } | ConvertTo-Json | Set-Content store-source.json -Encoding utf8
+    - uses: actions/upload-artifact@v7
+      with:
+        name: store-release-source-${{ github.run_attempt }}
+        path: store-source.json
+        if-no-files-found: error
+        retention-days: 90

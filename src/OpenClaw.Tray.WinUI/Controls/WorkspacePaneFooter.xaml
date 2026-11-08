@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenClawTray.Controls.WorkspacePaneFooter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:OpenClawTray.Controls">
+    <UserControl.Resources>
+        <Style x:Key="ConnectionBadgeIcon" TargetType="FontIcon">
+            <Setter Property="Glyph" Value="&#xE91F;"/>
+            <Setter Property="FontSize" Value="10"/>
+        </Style>
+        <Style x:Key="ConnectionBadgeNeutral" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorNeutralBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionBadgeSuccess" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionBadgeCaution" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionBadgeCritical" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}"/>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- One footer layout for Chat, Settings and the Chat title bar. Cells are placed by Layout.
+         Gaps are button margins, not Grid spacing, because spacing also applies around empty rows
+         and columns of the unused layouts. -->
+    <Grid x:Name="FooterGrid" Margin="4,8,4,8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="OwnerColumn" Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch">
+            <Grid x:Name="OwnerContent" ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Grid Width="24" Height="24" VerticalAlignment="Center">
+                    <PersonPicture x:Name="OwnerPicture" Width="24" Height="24"
+                                   IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+                    <!-- Rail layout has no status line, so the avatar carries the connection dot. -->
+                    <FontIcon x:Name="OwnerAvatarStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
+                              HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3,-3"
+                              Visibility="Collapsed" IsHitTestVisible="False"
+                              AutomationProperties.AccessibilityView="Raw"/>
+                </Grid>
+                <StackPanel x:Name="OwnerText" Grid.Column="1">
+                    <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
+                    <Grid ColumnSpacing="4">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <FontIcon x:Name="OwnerStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
+                                  VerticalAlignment="Center" IsHitTestVisible="False"
+                                  AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis"
+                                   Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Button>
+        <Button x:Name="DashboardButton" x:Uid="WorkspaceShell_DashboardButton" Grid.Column="1" Click="OnDashboardClick"
+                Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}" Padding="0"
+                CornerRadius="{ThemeResource ControlCornerRadius}"
+                Style="{StaticResource SubtleButtonStyle}" VerticalAlignment="Center">
+            <FontIcon x:Name="DashboardGlyph" Glyph="&#xF246;" FontSize="16"
+                      AutomationProperties.AccessibilityView="Raw"/>
+        </Button>
+        <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="2"
+                Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}" Padding="0"
+                CornerRadius="{ThemeResource ControlCornerRadius}"
+                Style="{StaticResource SubtleButtonStyle}" VerticalAlignment="Center">
+            <Grid>
+                <FontIcon x:Name="NotificationsGlyph" Glyph="&#xEA8F;" FontSize="16"
+                          AutomationProperties.AccessibilityView="Raw"/>
+                <InfoBadge x:Name="NotificationsBadge" Value="0" Visibility="Collapsed"
+                           HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-8,-10,0"/>
+            </Grid>
+            <Button.Flyout>
+                <Flyout x:Name="NotificationsFlyout" Placement="TopEdgeAlignedLeft"
+                        Opening="OnNotificationsOpening" Closed="OnNotificationsClosed">
+                    <controls:NotificationFlyoutContent x:Name="NotificationContent"/>
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+    </Grid>
+</UserControl>

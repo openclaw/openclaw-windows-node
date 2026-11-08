@@ -32,6 +32,8 @@ static class FluentIconCatalog
     public const string Devices = "\uE772";        // Devices (two devices — section header)
     public const string Hostname = "\uE977";       // Devices/IT — single hostname/system info pill
     public const string Permissions = "\uEA18";    // Shield
+    public const string Sandbox = Permissions;    // Shared protection metaphor.
+    public const string SandboxStrict = "\uE72E";  // Lock
 
     // ── Capabilities (per-permission glyphs) ───────────────────────
     public const string Browser = "\uE774";        // Globe
@@ -67,10 +69,6 @@ static class FluentIconCatalog
     public const string Inference = "\uE839";      // PC1 (alias of System/Plug) — Ollama local inference runs on this PC
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
 
-    // ── Channel actions ────────────────────────────────────────────
-    public const string ChannelLogout = "\uF3B1";   // SignOut — per-channel logout (WhatsApp/Signal in the header; non-QR channels' destructive "disconnect" body action)
-    public const string ChannelStart = "\uE768";    // Play — start-channel header action
-
     // ── Glance chips (Connection page) ─────────────────────────────
     public const string People = "\uE716";         // People — N clients chip
     public const string Money = "\uE9D9";          // Money — $today chip
@@ -104,7 +102,7 @@ static class FluentIconCatalog
     public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
     public const string Develop = "\uE943";        // Code — engineering / explorations action
     public const string Telemetry = "\uE9F5";      // Processing — ongoing telemetry endpoint/stream
-    public const string AgentEvents = "\uE81C";    // History — agent events feed
+    public const string AgentEvents = "\uE81C";    // History, used by the Connection Timeline action
     public const string Doctor = "\uE95E";         // Health — "Run gateway doctor" health-check action
 
     // ── Agents / Workspace surface ─────────────────────────────────
@@ -114,6 +112,21 @@ static class FluentIconCatalog
     // See reference/concepts/states/workspace.md.
     public const string Workspace = "\uE8DA";      // OpenLocal (alias of Folder)
     public const string Cron = "\uE787";           // Calendar — Cron / scheduled jobs (matches HubWindow search mapping)
+
+    // ── Workspace session menu ──────────────────────────────────────
+    // Sidebar session context menu (Pin/Unpin, Rename, Mark unread,
+    // Archive, Fork, Copy, Reset, Compact, Export, Delete).
+    public const string Pin = "\uE718";           // Pin
+    public const string Unpin = "\uE77A";         // Unpin
+    public const string Rename = "\uE8AC";       // Rename
+    public const string MarkUnread = "\uE715";    // Mail — mark as unread
+    public const string MarkRead = "\uE8C3";      // Read — mark as read
+    public const string Archive = "\uE7B8";       // Package
+    public const string Unarchive = "\uE777";     // UpdateRestore
+    public const string Fork = "\uE8AB";          // Switch
+    public const string Compact = "\uE74C";       // Reduce — matches SessionsPage compact glyph
+    public const string Export = "\uEDE1";        // Export — matches SessionsPage export glyph
+    public const string Delete = "\uE74D";        // Delete — matches SessionsPage delete glyph
 
     public static FontFamily SymbolThemeFontFamily =>
         (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];

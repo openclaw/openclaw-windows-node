@@ -6,6 +6,21 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class LocalAiHardwareProbeCacheTests
 {
+    [Fact]
+    public async Task DiskShortageIsReprobedWhenSetupIsRevisited()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        var lowDisk = new HostHardwareInfo(Architecture.X64, 32 * gib, 24 * gib,
+            [new(GpuVendor.Nvidia, "Synthetic 8 GiB GPU", 8 * gib, 8 * gib,
+                CudaMajorVersion: 13, StableId: "fixture-gpu")], false, new(4 * gib, 4 * gib, true));
+        var calls = 0;
+        var cache = new LocalAiHardwareProbeCache(() => Interlocked.Increment(ref calls) == 1
+            ? lowDisk : lowDisk with { LocalAiDiskSpace = new(16 * gib, 16 * gib, true) });
+        Assert.False(LocalInferenceEligibility.Evaluate(await cache.GetAsync()).CanInstall);
+        Assert.True(LocalInferenceEligibility.Evaluate(await cache.GetAsync()).CanInstall);
+        Assert.Equal(2, calls);
+    }
+
     private static readonly HostHardwareInfo Complete = new(Architecture.X64, 128L << 30, 96L << 30,
         [new(GpuVendor.Nvidia, "Synthetic GPU", 48L << 30, 44L << 30,
             DriverVersion: "999.0", CudaMajorVersion: 13, StableId: "fixture-gpu")], false);

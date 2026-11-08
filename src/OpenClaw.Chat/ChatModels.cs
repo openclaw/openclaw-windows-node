@@ -114,8 +114,8 @@ public record ChatThread
     public required string Title { get; init; }
     public string? AgentId { get; init; }
     public bool IsBackground { get; init; }
-    public bool IsVisibleInSessionPicker(string? activeThreadId) =>
-        !IsBackground || string.Equals(Id, activeThreadId, StringComparison.Ordinal);
+    public bool IsArchived { get; init; }
+    public bool IsChannelSession { get; init; }
     public ChatThreadStatus Status { get; init; }
     public ChatActivity Activity { get; init; }
     public string? Cwd { get; init; }
@@ -161,7 +161,9 @@ public record ChatTimelineItem(
     long ToolOutcomeSequence = 0,
     string? ToolRunId = null,
     long ToolLegacyTurn = 0,
-    ChatToolErrorTextQuality ToolErrorTextQuality = ChatToolErrorTextQuality.Unspecified);
+    ChatToolErrorTextQuality ToolErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
+    int ToolProgressSequence = 0,
+    bool IsBackgroundFinal = false);
 
 public readonly record struct ChatToolCorrelationKey(
     string? RunId,
@@ -187,7 +189,11 @@ public record ChatTimelineState(
     System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, long>? TerminalToolCorrelations = null,
     long NextToolOutcomeSequence = 1,
     long NextToolCorrelationSequence = 1,
-    long ToolLegacyTurn = 1)
+    long ToolLegacyTurn = 1,
+    DateTimeOffset? TurnStartedAt = null,
+    DateTimeOffset? TurnEndedAt = null,
+    string? ProgressText = null,
+    ChatRunUsage? RunUsage = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -198,6 +204,8 @@ public record ChatTimelineState(
         PendingToolOutcomes: System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolOutcome>.Empty,
         TerminalToolCorrelations: System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, long>.Empty);
 }
+
+public sealed record ChatRunUsage(string RunId, long? OutputTokens = null, int Sequence = 0);
 
 public record ChatPendingToolPresentation(
     string ToolName,
@@ -231,7 +239,9 @@ public record ChatHistoryPage(ChatEvent[] Events, int NextSince, int PrevBefore,
 
 public abstract record ChatEvent;
 public record ChatUserMessageEvent(string Text, string? Nonce = null) : ChatEvent;
-public record ChatThinkingEvent(string Text) : ChatEvent;
+public record ChatThinkingEvent(string Text, string? RunId = null) : ChatEvent;
+public record ChatProgressEvent(string Text) : ChatEvent;
+public record ChatRunUsageEvent(string RunId, long OutputTokens, int Sequence) : ChatEvent;
 public record ChatReasoningEvent(string Text) : ChatEvent;
 public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
 /// <summary>
@@ -243,6 +253,7 @@ public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
 public record ChatReasoningEndEvent() : ChatEvent;
 public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
+public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
 public record ChatToolStartEvent(
@@ -264,6 +275,12 @@ public record ChatToolOutputEvent(
     string Text,
     string? ToolCallId = null,
     string? RunId = null) : ChatEvent;
+public record ChatToolProgressEvent(
+    string Text,
+    string? ToolCallId,
+    string? RunId,
+    int Sequence = 0,
+    bool Append = false) : ChatEvent;
 public record ChatToolErrorEvent(
     string Text,
     string? ToolCallId = null,
@@ -278,6 +295,10 @@ public record ChatPermissionRequestEvent(string RequestId, string PermissionKind
 public record ChatModelChangedEvent(string Model) : ChatEvent;
 public record ChatRawEvent(string EventType, string? Text = null) : ChatEvent;
 
+/// <remarks>
+/// <see cref="CurrentHistoryThreads"/> contains session keys whose history is authoritative for the current connection.
+/// Null means freshness is unknown, even when a cached timeline has HistoryLoaded.
+/// </remarks>
 public record ChatDataSnapshot(
     ChatThread[] Threads,
     IReadOnlyDictionary<string, ChatTimelineState> Timelines,
@@ -290,7 +311,8 @@ public record ChatDataSnapshot(
     bool CommandsSupported = true,
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
-    IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null);
+    IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
+    IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from
@@ -341,6 +363,7 @@ public sealed class ChatProviderNotificationEventArgs(ChatProviderNotification n
 public interface IChatDataProvider : IAsyncDisposable
 {
     string DisplayName { get; }
+    IChatPlacementGateway? PlacementGateway => null;
 
     event EventHandler<ChatDataChangedEventArgs>? Changed;
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;

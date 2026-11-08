@@ -190,6 +190,30 @@ public sealed class LocalAiOnboardingTests
         Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingHardware], stages);
     }
 
+    [Fact]
+    public async Task InitialObservationCancellationFencesLateSnapshotAndExplicitRefreshHasItsOwnLifetime()
+    {
+        var first = new TaskCompletionSource<LocalAiOnboardingSnapshot>();
+        var host = new ObservationHost(first.Task, Task.FromResult(new LocalAiOnboardingSnapshot(
+            LocalAiOnboardingState.SetUp, Target)));
+        await using var observation = new LocalAiOnboardingObservation(host);
+        using var initial = new CancellationTokenSource();
+        var notifications = 0;
+        observation.Changed += () => notifications++;
+        var pending = observation.RefreshAsync(null, initial.Token);
+        initial.Cancel();
+        Assert.True(host.Tokens[0].IsCancellationRequested);
+        first.SetResult(new(LocalAiOnboardingState.Use, Target));
+        await pending;
+        Assert.Equal(LocalAiOnboardingState.Checking, observation.Snapshot.State);
+        Assert.Equal(1, notifications);
+        await observation.RefreshAsync();
+        Assert.False(host.Tokens[1].IsCancellationRequested);
+        Assert.Equal(LocalAiOnboardingState.SetUp, observation.Snapshot.State);
+        Assert.Equal(3, notifications);
+        Assert.Equal(0, host.Mutations);
+    }
+
     [Theory]
     [InlineData(LocalAiRuntimeState.Stopped, LocalAiOnboardingState.StartAndUse)]
     [InlineData(LocalAiRuntimeState.Healthy, LocalAiOnboardingState.Use)]
@@ -217,6 +241,84 @@ public sealed class LocalAiOnboardingTests
         Assert.Equal(expected, snapshot.State);
         Assert.True(snapshot.CanUse || snapshot.CanReview);
         Assert.Equal(LocalModelCatalog.Qwen35B_IQ4XSModelId, snapshot.Eligibility!.Plan!.Model.Id);
+    }
+
+    [Theory]
+    [InlineData(196608, false, LocalAiOnboardingState.ManagementBlocked)]
+    [InlineData(131072, true, LocalAiOnboardingState.ManagementBlocked)]
+    [InlineData(131072, false, LocalAiOnboardingState.Repair)]
+    public async Task Observation_BoltReceiptQualificationGatesRepairWithoutUseOrMutation(
+        int contextTokens, bool mismatchedWeights, LocalAiOnboardingState expected)
+    {
+        using var directory = new TempDirectory();
+        var registry = Registry(directory.Path);
+        var model = LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId)!;
+        var recipe = LlamaRuntimeCatalog.Find(Architecture.Arm64, model.RuntimeFamily)!;
+        var profile = LocalModelCatalog.GetProfiles(model).Single(p => p.ContextTokens == 131072);
+        var source = (HuggingFaceRevisionSource)model.Weights.Source;
+        string cache = Path.Combine(directory.Path, "hf");
+        string Snapshot(PinnedArtifact artifact)
+        {
+            var origin = (HuggingFaceRevisionSource)artifact.Source;
+            Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(cache, origin.RepositoryId, origin.RevisionSha,
+                artifact.RelativePath, out var path, out _, out var error), error);
+            return path;
+        }
+        static LocalAiAssetReceipt Receipt(PinnedArtifact artifact) => new()
+        {
+            FileName = Path.GetFileName(artifact.RelativePath), SourceUrl = artifact.DownloadUri.AbsoluteUri,
+            SizeBytes = artifact.SizeBytes, Sha256 = artifact.Sha256.Value,
+        };
+        var paths = new LocalAiPaths(directory.Path);
+        var manifest = new LocalAiInstallManifest
+        {
+            SchemaVersion = LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
+            Architecture = "arm64", EngineVersion = recipe.ReleaseTag, RuntimeId = recipe.Id,
+            ModelCatalogId = model.Id, ModelAlias = model.Id, SelectedGpuId = "GPU-spark",
+            ExecutablePath = Path.Combine("engines", "bolt", LlamaRuntimeCatalog.ServerExecutableName),
+            RuntimeAssets = recipe.Artifacts.Select(Receipt).ToImmutableArray(),
+            ModelPath = Path.Combine("models", model.Weights.RelativePath),
+            ModelId = source.RepositoryId + "@" + source.RevisionSha,
+            ModelAsset = mismatchedWeights ? Receipt(model.Weights) with { Sha256 = new string('a', 64) } : Receipt(model.Weights),
+            ModelCacheRoot = cache, CachedModelPath = Snapshot(model.Weights),
+            AdditionalModelAssets = LocalModelCatalog.AdditionalArtifacts(model).Select(Receipt).ToImmutableArray(),
+            AdditionalModelPaths = LocalModelCatalog.AdditionalArtifacts(model).Select(Snapshot).ToImmutableArray(),
+            ContextLength = contextTokens, KeyCachePrecision = profile.KeyCachePrecision,
+            ValueCachePrecision = profile.ValueCachePrecision, DraftKeyCachePrecision = profile.DraftKeyCachePrecision,
+            DraftValueCachePrecision = profile.DraftValueCachePrecision,
+            Endpoint = "http://127.0.0.1:18803/v1",
+        };
+        var install = new LocalAiManifestStore(paths).ResolveAndValidate(manifest);
+        if (expected == LocalAiOnboardingState.ManagementBlocked)
+            Assert.Throws<InvalidDataException>(() => LlamaServerRouterConfiguration.ResolveInstalledPlan(install));
+        var runtime = new FakeRuntime(RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
+        var hardware = new HostHardwareInfo(Architecture.Arm64, 48L << 30, 32L << 30,
+            [new(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 48L << 30, 48L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false)
+            { AvailableCommitMemoryBytes = 48L << 30 };
+        var inspections = 0;
+        var host = new SetupLocalAiHost(
+            () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
+                new("gateway", "Managed", 18789, model.Id, manifest.RequestedPort))),
+            () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
+            (_, _) => { inspections++; return Task.FromResult(false); }, _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
+
+        var snapshot = await host.ObserveAsync(CancellationToken.None);
+
+        Assert.Equal(expected, snapshot.State);
+        Assert.Equal(expected == LocalAiOnboardingState.Repair, snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+        Assert.True(snapshot.HasInstallationEvidence);
+        if (expected == LocalAiOnboardingState.ManagementBlocked)
+            Assert.Equal("LocalOwnershipInvalid", snapshot.ReasonKey);
+        else
+            Assert.Equal(contextTokens, snapshot.Eligibility!.Plan!.Profile.ContextTokens);
+        Assert.Equal(expected == LocalAiOnboardingState.Repair ? 1 : 0, inspections);
+        Assert.Equal(0, runtime.Calls);
+        await using var observation = new LocalAiOnboardingObservation(host);
+        await observation.RefreshAsync();
+        Assert.Equal(expected, observation.Snapshot.State);
     }
 
     [Fact]
@@ -843,6 +945,8 @@ public sealed class LocalAiOnboardingTests
         public int WithdrawOnlyCalls { get; private set; }
         public Action? OnStart { get; init; }
         public Func<Task>? OnStartAsync { get; init; }
+        public Func<IProgress<LocalAiRuntimeStartStage>?, Task>? OnStartWithProgressAsync { get; init; }
+        public Action? AfterStart { get; set; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
@@ -850,13 +954,20 @@ public sealed class LocalAiOnboardingTests
             EnsureStartedAsync(cancellationToken);
         public Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
         { WithdrawOnlyCalls++; return Task.FromResult(Snapshot); }
-        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
+        public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken, null);
+        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
+            IProgress<LocalAiRuntimeStartStage>? progress)
         {
+            progress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
             Calls++;
             OnStart?.Invoke();
             Snapshot = StartResult ?? Snapshot;
             if (OnStartAsync is not null) await OnStartAsync();
-            return Snapshot;
+            if (OnStartWithProgressAsync is not null) await OnStartWithProgressAsync(progress);
+            var result = Snapshot;
+            AfterStart?.Invoke();
+            return result;
         }
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Observation must not stop a runtime.");

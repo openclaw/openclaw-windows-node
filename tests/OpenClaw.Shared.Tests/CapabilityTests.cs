@@ -1,14 +1,17 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -1153,6 +1156,30 @@ public class BrowserProxyCapabilityTests
     }
 
     [Fact]
+    public async Task BrowserProxy_UnverifiedListener_DoesNotSendTheRequest()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "shared-gateway-token",
+            handler,
+            controlPortOverride: 18791,
+            authorizeEndpointAsync: (_, _) => Task.FromResult(false));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-unverified-listener",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/tabs"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Contains("could not be verified", res.Error);
+        Assert.Null(handler.LastRequest);
+    }
+
+    [Fact]
     public async Task BrowserProxy_ControlPortOverrideOutOfRange_ReturnsError()
     {
         var cap = new BrowserProxyCapability(
@@ -1411,6 +1438,143 @@ public class BrowserProxyCapabilityTests
         var requestUri = handler.LastRequest!.RequestUri!.ToString();
         Assert.Contains("active=true", requestUri);
         Assert.Contains("profile=work", requestUri);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BrowserProxy_ProcessProxyRouting_IsIsolated(bool useDefaultHandler)
+    {
+        var testHost = FindBrowserProxyTestHost();
+        using var directory = new TempDirectory();
+        using var proxy = new TcpListener(IPAddress.Loopback, 0);
+        using var control = new TcpListener(IPAddress.Loopback, 0);
+        proxy.Start();
+        control.Start();
+        int proxyPort = ((IPEndPoint)proxy.LocalEndpoint).Port;
+        int controlPort = ((IPEndPoint)control.LocalEndpoint).Port;
+        int gatewayPort = controlPort - 2;
+        int proxyConnections = 0;
+        int controlConnections = 0;
+        using var stop = new CancellationTokenSource();
+        Task proxyAccepts = Task.Run(async () =>
+        {
+            try
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    using TcpClient accepted = await proxy.AcceptTcpClientAsync(stop.Token);
+                    Interlocked.Increment(ref proxyConnections);
+                    await using NetworkStream stream = accepted.GetStream();
+                    var buffer = new byte[4096];
+                    _ = await stream.ReadAsync(buffer, stop.Token);
+                    await stream.WriteAsync(
+                        "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(),
+                        stop.Token);
+                }
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+            }
+            catch (ObjectDisposedException) when (stop.IsCancellationRequested)
+            {
+            }
+        });
+        Task controlAccept = Task.Run(async () =>
+        {
+            try
+            {
+                using TcpClient accepted = await control.AcceptTcpClientAsync(stop.Token);
+                Interlocked.Increment(ref controlConnections);
+                await using NetworkStream stream = accepted.GetStream();
+                var buffer = new byte[4096];
+                _ = await stream.ReadAsync(buffer, stop.Token);
+                byte[] response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}"u8.ToArray();
+                await stream.WriteAsync(response, stop.Token);
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+            }
+        });
+
+        var start = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        start.ArgumentList.Add(testHost);
+        start.ArgumentList.Add("--browser-proxy");
+        start.ArgumentList.Add(gatewayPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        start.ArgumentList.Add(useDefaultHandler ? "default-handler" : "production");
+        foreach (var variable in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "all_proxy", "no_proxy" })
+            start.Environment.Remove(variable);
+        start.Environment["HTTP_PROXY"] = $"http://127.0.0.1:{proxyPort}";
+        start.Environment["ALL_PROXY"] = $"http://127.0.0.1:{proxyPort}";
+        start.Environment["OPENCLAW_TRAY_DATA_DIR"] = directory.Combine("data");
+        start.Environment["OPENCLAW_TRAY_APPDATA_DIR"] = directory.Combine("roaming");
+        start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = directory.Combine("local");
+        Process? child = null;
+        try
+        {
+            child = Process.Start(start);
+            Assert.NotNull(child);
+            Console.WriteLine(
+                $"proxy-fixture pid={child.Id} start={child.StartTime.ToUniversalTime():O} " +
+                $"exe={start.FileName} args={string.Join(" ", start.ArgumentList)} " +
+                $"controlPort={controlPort} proxyPort={proxyPort} dataRoot={directory.Path}");
+            var standardOutput = child.StandardOutput.ReadToEndAsync();
+            var standardError = child.StandardError.ReadToEndAsync();
+            await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
+            var output = await standardOutput;
+            var error = await standardError;
+            Assert.True(child.ExitCode == (useDefaultHandler ? 1 : 0),
+                $"Proxy fixture exited {child.ExitCode}: {error}\n{output}");
+            Assert.Equal(useDefaultHandler ? 1 : 0, Volatile.Read(ref proxyConnections));
+            Assert.Equal(useDefaultHandler ? 0 : 1, Volatile.Read(ref controlConnections));
+        }
+        finally
+        {
+            try
+            {
+                if (child is not null && !child.HasExited)
+                {
+                    child.Kill(entireProcessTree: true);
+                    await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                }
+            }
+            finally
+            {
+                child?.Dispose();
+                stop.Cancel();
+                try
+                {
+                    await Task.WhenAll(proxyAccepts, controlAccept).WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                finally
+                {
+                    proxy.Stop();
+                    control.Stop();
+                }
+            }
+        }
+    }
+
+    private static string FindBrowserProxyTestHost()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "openclaw-windows-node.slnx")))
+            root = root.Parent;
+        Assert.NotNull(root);
+        var configuration = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration;
+        Assert.False(string.IsNullOrWhiteSpace(configuration));
+        var host = Path.Combine(root.FullName, "tests", "OpenClaw.Shared.TestHost",
+            "bin", configuration, "net10.0", "OpenClaw.Shared.TestHost.dll");
+        Assert.True(File.Exists(host), $"Browser proxy test host was not built: {host}");
+        return host;
     }
 
     private sealed class CapturingHandler : HttpMessageHandler
@@ -3192,8 +3356,8 @@ public class TtsCapabilityTests
     [InlineData(" MiniMax ", "windows", "minimax")]
     [InlineData(null, "elevenlabs", "elevenlabs")]
     [InlineData("   ", "elevenlabs", "elevenlabs")]
-    [InlineData(null, "", "piper")]
-    [InlineData(null, "   ", "piper")]
+    [InlineData(null, "", "kokoro")]
+    [InlineData(null, "   ", "kokoro")]
     public void ResolveProvider_NormalizesRequestedAndConfiguredValues(
         string? requestedProvider,
         string? configuredProvider,
@@ -3382,10 +3546,12 @@ public class TtsCapabilityTests
     [InlineData("minimax", "piper", "minimax,windows", false, "minimax", "minimax", false)]
     // Configured/default preferred provider not ready, Windows available → fall back to Windows.
     [InlineData(null, "piper", "windows", true, "piper", "windows", true)]
+    [InlineData(null, "kokoro", "windows", true, "kokoro", "windows", true)]
     [InlineData(null, "elevenlabs", "windows", true, "elevenlabs", "windows", true)]
     [InlineData(null, "minimax", "windows", true, "minimax", "windows", true)]
     // Explicit provider requests stay strict and do not silently reroute.
     [InlineData("piper", "windows", "windows", false, "piper", "piper", false)]
+    [InlineData("kokoro", "windows", "windows", false, "kokoro", "kokoro", false)]
     [InlineData("elevenlabs", "windows", "windows", false, "elevenlabs", "elevenlabs", false)]
     [InlineData("minimax", "windows", "windows", false, "minimax", "minimax", false)]
     [InlineData("unknown-provider", "windows", "windows", false, "unknown-provider", "unknown-provider", false)]

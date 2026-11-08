@@ -742,9 +742,17 @@ public sealed class SshTunnelService : ISshTunnelManager
         DateTime processStartTimeUtc)
     {
         EnsureCompleteListenerSnapshot(snapshot);
-        var listeners = snapshot.Listeners
-            .Where(listener =>
-                listener.Port == localPort && CanServeLoopback(listener.Address))
+        var onPort = snapshot.Listeners
+            .Where(listener => listener.Port == localPort)
+            .ToArray();
+        if (onPort.Any(listener => IsWildcard(listener.Address)))
+        {
+            throw new InvalidOperationException(
+                $"Local port {localPort} is listening on a wildcard address.");
+        }
+
+        var listeners = onPort
+            .Where(listener => IPAddress.IsLoopback(listener.Address))
             .ToArray();
         if (listeners.Length == 0)
             return false;
@@ -762,6 +770,9 @@ public sealed class SshTunnelService : ISshTunnelManager
 
     private static bool CanServeLoopback(IPAddress address) =>
         IPAddress.IsLoopback(address) ||
+        IsWildcard(address);
+
+    private static bool IsWildcard(IPAddress address) =>
         address.Equals(IPAddress.Any) ||
         address.Equals(IPAddress.IPv6Any);
 

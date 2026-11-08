@@ -4,83 +4,61 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatSurfaceResolverTests : IDisposable
 {
-    private readonly ChatSurfaceOverride _originalHubOverride;
-    private readonly ChatSurfaceOverride _originalTrayOverride;
+    private readonly ChatSurfaceOverride _originalWorkspaceOverride;
 
     public ChatSurfaceResolverTests()
     {
-        _originalHubOverride = DebugChatSurfaceOverrides.HubChat;
-        _originalTrayOverride = DebugChatSurfaceOverrides.TrayChat;
-        DebugChatSurfaceOverrides.HubChat = ChatSurfaceOverride.NoOverride;
-        DebugChatSurfaceOverrides.TrayChat = ChatSurfaceOverride.NoOverride;
+        _originalWorkspaceOverride = DebugChatSurfaceOverrides.WorkspaceChat;
+        DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.NoOverride;
     }
 
     public void Dispose()
     {
-        DebugChatSurfaceOverrides.HubChat = _originalHubOverride;
-        DebugChatSurfaceOverrides.TrayChat = _originalTrayOverride;
+        DebugChatSurfaceOverrides.WorkspaceChat = _originalWorkspaceOverride;
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Resolve_NoOverride_UsesUserLegacySetting(bool useLegacySetting)
+    public void UseLegacyWebChat_NoOverride_UsesUserLegacySetting(bool useLegacySetting)
     {
-        var decision = ChatSurfaceResolver.Resolve(
-            ChatSurfaceTarget.HubChat,
-            useLegacySetting,
-            currentChatUrl: "https://old.example.test?token=old",
-            resolvedChatUrl: "https://new.example.test?token=new");
-
-        Assert.Equal(useLegacySetting, decision.UseLegacyWebChat);
+        Assert.Equal(useLegacySetting, ChatSurfaceResolver.UseLegacyWebChat(useLegacySetting));
     }
 
     [Fact]
-    public void Resolve_ForceLegacyOverride_WinsOverUserSetting()
+    public void UseLegacyWebChat_ForceLegacyOverride_WinsOverUserSetting()
     {
-        DebugChatSurfaceOverrides.TrayChat = ChatSurfaceOverride.ForceLegacy;
-
-        var decision = ChatSurfaceResolver.Resolve(
-            ChatSurfaceTarget.TrayChat,
-            useLegacyWebChatSetting: false,
-            currentChatUrl: null,
-            resolvedChatUrl: "https://gateway.example.test?token=tok");
-
-        Assert.True(decision.UseLegacyWebChat);
+        DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.ForceLegacy;
+        Assert.True(ChatSurfaceResolver.UseLegacyWebChat(false));
     }
 
     [Fact]
-    public void Resolve_ForceNativeOverride_WinsOverUserSetting()
+    public void UseLegacyWebChat_ForceNativeOverride_WinsOverUserSetting()
     {
-        DebugChatSurfaceOverrides.HubChat = ChatSurfaceOverride.ForceNative;
-
-        var decision = ChatSurfaceResolver.Resolve(
-            ChatSurfaceTarget.HubChat,
-            useLegacyWebChatSetting: true,
-            currentChatUrl: null,
-            resolvedChatUrl: "https://gateway.example.test?token=tok");
-
-        Assert.False(decision.UseLegacyWebChat);
+        DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.ForceNative;
+        Assert.False(ChatSurfaceResolver.UseLegacyWebChat(true));
     }
 
     [Fact]
-    public void Resolve_ReportsUrlChangedWithOrdinalComparison()
+    public void WorkspaceOverride_NotifiesOnlyWhenValueChanges()
     {
-        var same = ChatSurfaceResolver.Resolve(
-            ChatSurfaceTarget.HubChat,
-            useLegacyWebChatSetting: true,
-            currentChatUrl: "https://gateway.example.test?token=tok",
-            resolvedChatUrl: "https://gateway.example.test?token=tok");
-
-        var changed = ChatSurfaceResolver.Resolve(
-            ChatSurfaceTarget.HubChat,
-            useLegacyWebChatSetting: true,
-            currentChatUrl: "https://gateway.example.test?token=tok",
-            resolvedChatUrl: "https://gateway.example.test?token=TOK");
-
-        Assert.False(same.ChatUrlChanged);
-        Assert.True(changed.ChatUrlChanged);
-        Assert.Equal("https://gateway.example.test?token=TOK", changed.ChatUrl);
+        var changes = 0;
+        void OnChanged(object? sender, EventArgs args) => changes++;
+        DebugChatSurfaceOverrides.Changed += OnChanged;
+        try
+        {
+            DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.NoOverride;
+            Assert.Equal(0, changes);
+            DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.ForceNative;
+            DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.ForceNative;
+            Assert.Equal(1, changes);
+            DebugChatSurfaceOverrides.WorkspaceChat = ChatSurfaceOverride.ForceLegacy;
+            Assert.Equal(2, changes);
+        }
+        finally
+        {
+            DebugChatSurfaceOverrides.Changed -= OnChanged;
+        }
     }
 
     [Fact]
@@ -89,5 +67,14 @@ public sealed class ChatSurfaceResolverTests : IDisposable
         var url = ChatSurfaceResolver.BuildChatUrl("not-a-url", "tok");
 
         Assert.Null(url);
+    }
+
+    [Theory]
+    [InlineData("ws://127.0.0.1:18789", "http://127.0.0.1:18789/chat?token=tok%20%26%2F")]
+    [InlineData("wss://gateway.example.test", "https://gateway.example.test/chat?token=tok%20%26%2F")]
+    [InlineData("ws://gateway.example.test:18789", null)]
+    public void BuildChatUrl_PreservesTransportSecurityAndTokenEscaping(string gatewayUrl, string? expected)
+    {
+        Assert.Equal(expected, ChatSurfaceResolver.BuildChatUrl(gatewayUrl, "tok &/"));
     }
 }

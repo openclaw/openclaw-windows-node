@@ -177,7 +177,7 @@ public sealed class TrayAppFixture : IAsyncLifetime
         {
             EnableMcpServer = true,
             EnableNodeMode = false,
-            SystemRunSandboxEnabled = false,
+            SystemRunFilesystemScope = SystemRunFilesystemScope.SelectedFolders,
             AutoStart = false,
             GlobalHotkeyEnabled = false,
             ShowNotifications = false,

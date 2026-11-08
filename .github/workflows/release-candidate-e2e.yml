@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       windows_node_workflow_sha:
-        description: Immutable revision of this reusable workflow, bound through GitHub OIDC.
+        description: Immutable revision of this reusable workflow and maintained setup/test harness, bound through GitHub OIDC.
         required: true
         type: string
       windows_node_release_tag:
@@ -66,6 +66,12 @@ jobs:
     name: Setup, connect, and invoke candidate gateway
     runs-on: windows-latest
     timeout-minutes: 55
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      # The caller belongs to another repository. Preserve each exact checkout
+      # instead of allowing GitVersion to normalize it to the caller's ref.
+      GitVersion_NoNormalizeEnabled: 'true'
+      GitVersion_NoFetchEnabled: 'true'
     outputs:
       outcome: ${{ steps.e2e.outputs.outcome }}
     steps:
@@ -181,21 +187,43 @@ jobs:
             throw "windows_node_workflow_sha must equal the immutable revision used to call this reusable workflow."
           }
 
-      - name: Check out Windows node
+      - name: Check out maintained Windows-node harness
+        uses: actions/checkout@v7
+        with:
+          repository: openclaw/openclaw-windows-node
+          ref: ${{ inputs.windows_node_workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind harness checkout to called workflow revision
+        shell: pwsh
+        env:
+          EXPECTED_WINDOWS_NODE_WORKFLOW_SHA: ${{ inputs.windows_node_workflow_sha }}
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:EXPECTED_WINDOWS_NODE_WORKFLOW_SHA) {
+            throw "Windows-node harness checkout revision mismatch."
+          }
+
+      - name: Check out Windows-node main app under test
+        if: inputs.windows_node_source == 'main'
         uses: actions/checkout@v7
         with:
           repository: openclaw/openclaw-windows-node
           ref: ${{ inputs.windows_node_source_sha }}
+          path: app-under-test
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Bind checkout to declared Windows-node source revision
+      - name: Bind app checkout to declared Windows-node source revision
+        if: inputs.windows_node_source == 'main'
+        working-directory: app-under-test
         shell: pwsh
         env:
           EXPECTED_WINDOWS_NODE_SOURCE_SHA: ${{ inputs.windows_node_source_sha }}
         run: |
           $actual = (git rev-parse HEAD).Trim()
-          if ($actual -cne $env:EXPECTED_WINDOWS_NODE_SOURCE_SHA) {
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:EXPECTED_WINDOWS_NODE_SOURCE_SHA) {
             throw "Windows-node checkout revision mismatch: expected $($env:EXPECTED_WINDOWS_NODE_SOURCE_SHA), got $actual."
           }
 
@@ -346,20 +374,28 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore and build E2E surface
+      - name: Restore and build maintained E2E harness
         shell: pwsh
         run: |
-          dotnet restore
-          dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
           dotnet restore tests/OpenClaw.E2ETests -r win-x64
-          dotnet build src/OpenClaw.Shared -c Debug --no-restore
-          dotnet build src/OpenClaw.SetupEngine -c Debug --no-restore
-          dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build declared Windows-node main app
+        if: inputs.windows_node_source == 'main'
+        working-directory: app-under-test
+        shell: pwsh
+        run: |
+          dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve built Windows-node main Tray
         if: inputs.windows_node_source == 'main'
         id: windows_node_main_source
+        working-directory: app-under-test
         shell: pwsh
         run: |
           $trayExecutables = @(Get-ChildItem -LiteralPath "src/OpenClaw.Tray.WinUI/bin/Debug" -Recurse -File -Filter "OpenClaw.Tray.WinUI.exe" |
@@ -384,6 +420,9 @@ jobs:
           OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT: ${{ runner.temp }}\\openclaw-e2e-protocol-mismatch.json
           INPUT_ALLOW_PROTOCOL_MISMATCH: ${{ inputs.allow_protocol_mismatch }}
         run: |
+          # The shared fixture installs the exact candidate and connects the declared
+          # app. Invoke a stable command through the real Gateway; current-only
+          # capabilities, UI features and recovery tests do not define old app compatibility.
           # GitHub-hosted Windows cannot exercise MXC/AppContainer containment.
           # MXC release proof belongs on an MXC-capable self-hosted runner and must reject skips.
           Remove-Item -LiteralPath $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT -Force -ErrorAction SilentlyContinue
@@ -395,54 +434,33 @@ jobs:
             --results-directory TestResults/ReleaseCandidateE2E `
             --logger "trx;LogFileName=OpenClaw.E2ETests.release-candidate.trx" `
             --logger "console;verbosity=detailed" `
-            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests"
+            --filter "FullyQualifiedName=OpenClaw.E2ETests.Setup.SetupAndConnectTests.FullSetup_SafeNodeInvocation_RoutesThroughRealGateway"
           $testExitCode = $LASTEXITCODE
 
           $trxFiles = @(Get-ChildItem TestResults/ReleaseCandidateE2E -File -Filter "*.trx" -ErrorAction SilentlyContinue)
           if ($trxFiles.Count -ne 1) {
             throw "Windows-node E2E must emit exactly one TRX result."
           }
-          [xml]$trx = Get-Content -LiteralPath $trxFiles[0].FullName -Raw
-          $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
-          if ($executed -lt 1) {
-            throw "Windows-node E2E executed zero tests; refusing to record a release-candidate outcome."
+          $outcome = ./scripts/Resolve-ReleaseCandidateE2EOutcome.ps1 `
+            -TestExitCode $testExitCode `
+            -TrxPath $trxFiles[0].FullName `
+            -ProtocolResultPath $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT `
+            -AllowProtocolMismatch ($env:INPUT_ALLOW_PROTOCOL_MISMATCH -ceq "true")
+          "outcome=$outcome" >> $env:GITHUB_OUTPUT
+          "### Windows-node candidate compatibility" >> $env:GITHUB_STEP_SUMMARY
+          ('- Harness: `{0}`' -f (git rev-parse HEAD).Trim()) >> $env:GITHUB_STEP_SUMMARY
+          ('- Outcome: `{0}`' -f $outcome) >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path -LiteralPath $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT) {
+            Copy-Item -LiteralPath $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT -Destination TestResults/ReleaseCandidateE2E/
           }
-
-          if ($testExitCode -eq 0) {
-            "outcome=passed" >> $env:GITHUB_OUTPUT
-          } else {
-            if ($env:INPUT_ALLOW_PROTOCOL_MISMATCH -cne "true") {
-              exit $testExitCode
-            }
-
-            $resultPath = $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT
-            if (-not (Test-Path -LiteralPath $resultPath)) {
-              throw "Windows-node E2E failed without a structured protocol-mismatch result."
-            }
-            $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
-            if ($result.schema_version -ne 1 -or
-                $result.outcome -cne "protocol_mismatch" -or
-                $result.phase -cne "fixture_initialization" -or
-                $result.source -cnotin "app.status.nodeError", "openclaw-tray.log.node_rx_error_code" -or
-                $result.code -cne "PROTOCOL_MISMATCH") {
-              throw "Windows-node E2E failed with an invalid protocol-mismatch result."
-            }
-
-            $outcomes = @($trx.TestRun.Results.UnitTestResult | ForEach-Object outcome)
-            if ($outcomes.Count -eq 0 -or @($outcomes | Where-Object { $_ -ne "Failed" }).Count -ne 0) {
-              throw "Windows-node E2E had outcomes beyond the expected protocol mismatch; refusing to hide unrelated failures."
-            }
-
-            "### Expected Windows-node protocol incompatibility" >> $env:GITHUB_STEP_SUMMARY
-            "The released Windows-node artifact emitted a structured protocol_mismatch result against this gateway candidate." >> $env:GITHUB_STEP_SUMMARY
-            "outcome=protocol_mismatch" >> $env:GITHUB_OUTPUT
-          }
+          # A classified mismatch is successful even though dotnet test exited nonzero.
+          exit 0
 
       - name: Upload candidate E2E evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: windows-node-release-candidate-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          name: windows-node-release-candidate-e2e-${{ inputs.windows_node_source }}-${{ inputs.windows_node_release_tag || inputs.windows_node_source_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             TestResults/ReleaseCandidateE2E/
             TestResults/E2E/

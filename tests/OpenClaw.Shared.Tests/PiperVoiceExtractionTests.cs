@@ -5,6 +5,7 @@ using OpenClaw.Shared.Audio;
 
 namespace OpenClaw.Shared.Tests;
 
+[Collection(BoundedProcessWaitCollection.Name)]
 public sealed class PiperVoiceExtractionTests
 {
     [Fact]

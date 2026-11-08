@@ -182,13 +182,13 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
+[src/OpenClaw.Tray.WinUI/Pages/AboutPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
 [src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
 [src/OpenClaw.Tray.WinUI/Pages/ConfigPage.xaml.cs]
-dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
-
-[src/OpenClaw.Tray.WinUI/Pages/ChannelsPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
 [src/OpenClaw.Tray.WinUI/Pages/ConnectionPage.xaml.cs]
@@ -203,9 +203,9 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Pages/SessionsPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
-[src/OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml.cs]
-dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
-
 # Workspace owns native XAML dialogs independently of its embedded Reactor chat.
 [src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Windows/WorkspaceSessionMenuController.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none

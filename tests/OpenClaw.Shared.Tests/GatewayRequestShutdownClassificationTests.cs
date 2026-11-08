@@ -40,7 +40,7 @@ public sealed class GatewayRequestShutdownClassificationTests
         var elapsed = Stopwatch.StartNew();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => requestTask);
         Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(4),
-            "shutdown must classify immediately instead of waiting out the 5s chat.send budget");
+            "shutdown must classify immediately instead of waiting out the 30s chat.send budget");
     }
 
     [Fact]

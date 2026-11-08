@@ -200,7 +200,7 @@ internal static class ManagedDistroOwnership
         }
     }
 
-    private static bool TryReadMarker(
+    internal static bool TryReadMarker(
         string localDataDir,
         [NotNullWhen(true)] out ManagedDistroMarker? marker)
     {
@@ -236,7 +236,7 @@ internal static class ManagedDistroOwnership
     private static string MarkerPath(string localDataDir) =>
         Path.Combine(localDataDir, MarkerFileName);
 
-    private sealed record ManagedDistroMarker(
+    internal sealed record ManagedDistroMarker(
         int SchemaVersion,
         string DistroName,
         string InstallPath,

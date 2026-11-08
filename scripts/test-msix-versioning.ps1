@@ -247,6 +247,68 @@ try {
         $stored = $msixTestState.tags[$msixTestState.refs[$output[0].reservationRef].object.sha].message | ConvertFrom-Json
         Assert-Equal ($stored | ConvertTo-Json -Compress) ($output[0] | ConvertTo-Json -Compress)
     }
+    Test-Case 'promotion reserves and reuses stable allocation with only the alpha tag present' {
+        $arguments = New-Arguments '2026.9.4'
+        $msixTestState.sourceRefs.Clear()
+        $arguments.PromotionAlphaTag = 'v2026.9.4-alpha.93'
+        Set-SourceTagChain -Ref 'refs/tags/v2026.9.4-alpha.93' -Commit $commit -Depth 2
+        $first = & $entrypoint @arguments
+        $second = & $entrypoint @arguments
+        Assert-Equal $first.sourceVersion '2026.9.4'
+        Assert-Equal $first.sourceRef 'refs/tags/v2026.9.4'
+        Assert-Equal $first.storePackageVersion '2026.9.401.0'
+        Assert-Equal $second.reservationRef $first.reservationRef
+        Assert-Equal $msixTestState.sourceRefs.ContainsKey('refs/tags/v2026.9.4') $false
+        Assert-Equal $msixTestState.refs.Count 1
+        Assert-Equal @($msixTestState.requests | Where-Object { $_.path -ceq 'ref/tags/v2026.9.4' }).Count 0
+        Assert-Equal @($msixTestState.requests | Where-Object method -eq POST).Count 2
+    }
+    foreach ($alpha in @('', 'main', 'v2026.9.4', 'v2026.9.5-alpha.1', 'v2026.9.4-beta.1',
+        'v2026.9.4-alpha.01', "v2026.9.4-alpha.1`n")) {
+        Test-Case "reject invalid promotion alpha '$alpha' before I/O" {
+            $arguments = New-Arguments '2026.9.4'
+            $arguments.PromotionAlphaTag = $alpha
+            Assert-Throws { & $entrypoint @arguments } 'canonical same-base alpha'
+            Assert-Equal $msixTestState.requests.Count 0
+        }
+    }
+    foreach ($change in @('preview', 'prerelease', 'correction', 'fork')) {
+        Test-Case "promotion must be a canonical stable reservation: $change" {
+            $arguments = New-Arguments '2026.9.4'
+            $arguments.PromotionAlphaTag = 'v2026.9.4-alpha.93'
+            switch ($change) {
+                'preview' { $arguments.Reserve = $false }
+                'prerelease' { $arguments.SourceVersion = '2026.9.4-alpha.1'; $arguments.SourceRef = 'refs/tags/v2026.9.4-alpha.1' }
+                'correction' { $arguments.SourceVersion = '2026.9.4-1'; $arguments.SourceRef = 'refs/tags/v2026.9.4-1' }
+                'fork' { $arguments.Repository = 'contributor/openclaw-windows-node' }
+            }
+            Assert-Throws { Resolve-MsixPackageVersion @arguments } 'canonical same-base alpha'
+            Assert-Equal $msixTestState.requests.Count 0
+        }
+    }
+    Test-Case 'promotion alpha must exist and resolve to the exact candidate before writes' {
+        $arguments = New-Arguments '2026.9.4'
+        $msixTestState.sourceRefs.Clear()
+        $arguments.PromotionAlphaTag = 'v2026.9.4-alpha.93'
+        Assert-Throws { Resolve-MsixPackageVersion @arguments } 'HTTP 404'
+        Set-SourceTagChain -Ref 'refs/tags/v2026.9.4-alpha.93' -Commit $otherCommit -Depth 0
+        Assert-Throws { Resolve-MsixPackageVersion @arguments } 'does not resolve'
+        Assert-Equal @($msixTestState.requests | Where-Object method -eq POST).Count 0
+    }
+    Test-Case 'promotion alpha is reverified after an allocation race' {
+        $arguments = New-Arguments '2026.9.4'
+        $msixTestState.sourceRefs.Clear()
+        $arguments.PromotionAlphaTag = 'v2026.9.4-alpha.93'
+        Set-SourceTagChain -Ref 'refs/tags/v2026.9.4-alpha.93' -Commit $commit -Depth 0
+        $msixTestState.onCreateRef = {
+            param($data)
+            Add-Reservation (New-Record 401 '2026.9.4-alpha.94' $otherCommit) | Out-Null
+            $msixTestState.sourceRefs['refs/tags/v2026.9.4-alpha.93'].object.sha = $otherCommit
+        }
+        Assert-Throws { Resolve-MsixPackageVersion @arguments } 'does not resolve'
+        Assert-Equal @($msixTestState.requests | Where-Object { $_.path.StartsWith('ref/tags/') }).Count 2
+        Assert-Equal @($msixTestState.requests | Where-Object { $_.method -eq 'POST' -and $_.path -eq 'refs' }).Count 1
+    }
     Test-Case 'first allocation without a baseline entry starts at patch times 100' {
         Set-Content -LiteralPath $baselinePath '{"schemaVersion":1,"lastAllocated":{}}'
         $arguments = New-Arguments

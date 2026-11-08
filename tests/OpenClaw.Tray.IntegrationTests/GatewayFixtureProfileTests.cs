@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.GatewayFixtureHost;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Tray.IntegrationTests;
 
@@ -52,8 +53,50 @@ public sealed class GatewayFixtureProfileTests
             "NodeOllamaInferenceEnabled", "VoiceTtsEnabled", "UseLegacyWebChat"
         })
             Assert.False(settings.RootElement.GetProperty(disabled).GetBoolean(), disabled);
+        Assert.False(profile.NodeBrowserProxyEnabled);
         Assert.False(File.Exists(Path.Combine(profile.DataDirectory, "device-key-ed25519.json")));
         Assert.Empty(Directory.EnumerateFiles(profile.SetupDirectory));
+    }
+
+    [Fact]
+    public void McpOnlyProfileDoesNotSupplyGatewayCredentialsOrNodeExecution()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "unused-fixture-token", connectGateway: false);
+        var registry = new GatewayRegistry(profile.DataDirectory);
+        registry.Load();
+        var record = Assert.Single(registry.GetAll());
+        Assert.False(profile.ConnectGateway);
+        Assert.False(profile.NodeBrowserProxyEnabled);
+        Assert.Null(record.SharedGatewayToken);
+        Assert.Null(record.BootstrapToken);
+        Assert.False(File.Exists(Path.Combine(profile.DataDirectory, "gateways", record.Id, "device-key-ed25519.json")));
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
+        Assert.False(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(settings.RootElement.GetProperty("EnableManagedLocalGatewayAutoRepair").GetBoolean());
+    }
+
+    [Fact]
+    public void BrowserProxyCannotUseAnMcpOnlyProfile()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new GatewayFixtureProfile(Endpoint, "fixture-token", enableNodeBrowserProxy: true, connectGateway: false));
+    }
+
+    [Fact]
+    public void BrowserProxyProfileKeepsExecutionCapabilitiesOff()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "only-this-fixture", enableNodeBrowserProxy: true);
+        Assert.True(profile.NodeBrowserProxyEnabled);
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.True(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
+        Assert.True(settings.RootElement.GetProperty("NodeBrowserProxyEnabled").GetBoolean());
+        foreach (var disabled in new[]
+        {
+            "NodeSystemRunEnabled", "NodeScreenEnabled", "NodeCameraEnabled", "NodeLocationEnabled", "NodeCanvasEnabled"
+        })
+            Assert.False(settings.RootElement.GetProperty(disabled).GetBoolean(), disabled);
     }
 
     [Fact]
@@ -74,6 +117,67 @@ public sealed class GatewayFixtureProfileTests
         Assert.False(Directory.Exists(firstRoot));
         Assert.True(Directory.Exists(second.DataDirectory));
         Assert.Equal("synthetic sentinel, never a real pairing", File.ReadAllText(sentinelFile));
+    }
+
+    [Fact]
+    public async Task CleanupWaitsForTransientLogSharingLock()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        using var environment = new EnvironmentScope("OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS", "5");
+        using var log = new FileStream(Path.Combine(profile.DataDirectory, "openclaw-tray.log"),
+            FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanup = Task.Run(() =>
+        {
+            started.SetResult();
+            profile.Dispose();
+        });
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.ThrowsAsync<TimeoutException>(() => cleanup.WaitAsync(TimeSpan.FromMilliseconds(100)));
+            Assert.True(Directory.Exists(root));
+            log.Dispose();
+            await cleanup.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            log.Dispose();
+            try { await cleanup; }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CleanupSharingLockDeadlineIsVisibleAndCleanupCanResumeAfterRelease()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        using var environment = new EnvironmentScope("OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS", "0.1");
+        using var log = new FileStream(Path.Combine(profile.DataDirectory, "openclaw-tray.log"),
+            FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+        try
+        {
+            var error = Assert.Throws<TimeoutException>(profile.Dispose);
+            Assert.IsType<IOException>(error.InnerException);
+            Assert.Contains(root, error.Message, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(profile.DataDirectory, "openclaw-tray.log")));
+            log.Dispose();
+            profile.Dispose();
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            log.Dispose();
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -101,20 +205,37 @@ public sealed class GatewayFixtureProfileTests
         Assert.Equal("49233", start.Environment["OPENCLAW_MCP_PORT"]);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_ACCESSIBILITY_TEST_CHAT"));
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FORCE_ONBOARDING"));
+        Assert.Equal(Path.Combine(profile.RunDirectory, "local"), start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+        Assert.Equal(profile.SetupDirectory, GatewayFixtureIsolation.Get(
+            name => start.Environment.TryGetValue(name, out var value) ? value : null).LocalDataDirectory);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FUTURE_UNRECOGNIZED_OVERRIDE"));
         Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR"));
         Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
         Assert.Empty(start.ArgumentList);
     }
 
-    [Fact]
-    public void SetupHandoffIsExplicitAndPassedAsOneOpaqueArgument()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SetupHandoffIsExplicitAndPassedAsOneOpaqueArgument(bool restart)
     {
         using var app = CreateFakeSupportedApp();
         using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
-        var start = profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233, "native:synthetic-handoff");
-        Assert.Equal(new[] { "--post-setup-launch", "native:synthetic-handoff" }, start.ArgumentList);
+        var start = profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233,
+            "native:synthetic-handoff", postSetupRestart: restart);
+        Assert.Equal(restart
+            ? new[] { "--post-setup-restart", "--post-setup-launch", "native:synthetic-handoff" }
+            : new[] { "--post-setup-launch", "native:synthetic-handoff" }, start.ArgumentList);
         Assert.Equal(profile.LocalRoot, start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+    }
+
+    [Fact]
+    public void SetupRestartRequiresAnExplicitHandoff()
+    {
+        using var app = CreateFakeSupportedApp();
+        using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        Assert.Throws<ArgumentException>(() =>
+            profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233, postSetupRestart: true));
     }
 
     [Theory]

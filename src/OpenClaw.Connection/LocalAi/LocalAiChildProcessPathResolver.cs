@@ -1,92 +1,9 @@
-using Microsoft.Win32.SafeHandles;
 using OpenClaw.Shared.IO;
-using System.Runtime.InteropServices;
-using System.Text;
 
 namespace OpenClaw.Connection.LocalAi;
 
-/// <summary>
-/// Resolves an existing Local AI launch path through its open handle so native child
-/// processes receive the physical path behind any MSIX filesystem virtualization.
-/// </summary>
+// Keep the Local AI launch seam while sharing handle-based resolution with diagnostics.
 internal static class LocalAiChildProcessPathResolver
 {
-    private const uint OpenExisting = 3;
-    private const uint FileFlagBackupSemantics = 0x02000000;
-
-    public static string Resolve(string path)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        string fullPath = Path.GetFullPath(path);
-        if (!OperatingSystem.IsWindows())
-            return fullPath;
-
-        using SafeFileHandle handle = Directory.Exists(fullPath)
-            ? CreateFileW(
-                fullPath,
-                0,
-                FileShare.ReadWrite | FileShare.Delete,
-                IntPtr.Zero,
-                OpenExisting,
-                FileFlagBackupSemantics,
-                IntPtr.Zero)
-            : File.OpenHandle(
-                fullPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
-        if (handle.IsInvalid)
-        {
-            throw new IOException(
-                $"The Local AI child-process path could not be opened (Win32 error {Marshal.GetLastWin32Error()}).");
-        }
-
-        int capacity = 512;
-        while (capacity <= 32_768)
-        {
-            var builder = new StringBuilder(capacity);
-            uint length = GetFinalPathNameByHandleW(handle, builder, (uint)builder.Capacity, 0);
-            if (length == 0)
-            {
-                throw new IOException(
-                    $"The Local AI child-process path could not be resolved (Win32 error {Marshal.GetLastWin32Error()}).");
-            }
-
-            if (length < builder.Capacity)
-                return WindowsPathSafety.NormalizePath(NormalizeFinalPath(builder.ToString()));
-
-            capacity = checked((int)length + 1);
-        }
-
-        throw new IOException("The Local AI child-process path exceeded the supported length.");
-    }
-
-    private static string NormalizeFinalPath(string path)
-    {
-        const string extendedPrefix = @"\\?\";
-        const string extendedUncPrefix = @"\\?\UNC\";
-        if (path.StartsWith(extendedUncPrefix, StringComparison.OrdinalIgnoreCase))
-            return @"\\" + path[extendedUncPrefix.Length..];
-
-        return path.StartsWith(extendedPrefix, StringComparison.OrdinalIgnoreCase)
-            ? path[extendedPrefix.Length..]
-            : path;
-    }
-
-    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern SafeFileHandle CreateFileW(
-        string fileName,
-        uint desiredAccess,
-        FileShare shareMode,
-        IntPtr securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        IntPtr templateFile);
-
-    [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern uint GetFinalPathNameByHandleW(
-        SafeFileHandle handle,
-        StringBuilder path,
-        uint pathLength,
-        uint flags);
+    public static string Resolve(string path) => WindowsExistingPathResolver.Resolve(path);
 }

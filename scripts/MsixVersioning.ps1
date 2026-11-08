@@ -354,6 +354,9 @@ function Resolve-MsixPackageVersion {
         still consume their reservation; identical source reruns reuse it.
         Reserve verifies the exact existing source tag resolves to SourceCommit
         before each allocation attempt, peeling at most eight annotated tags.
+        After release-policy validation, PromotionAlphaTag permits a canonical
+        same-base alpha tag to prove that source for a stable allocation before
+        the public stable tag exists. Allocation metadata keeps the stable ref.
         Preview is read-only and returns the next unallocated number, which may
         change on reruns after intervening official reservations.
     #>
@@ -364,6 +367,7 @@ function Resolve-MsixPackageVersion {
         [Parameter(Mandatory)][string]$SourceRef,
         [Parameter(Mandatory)][string]$Repository,
         [switch]$Reserve,
+        [string]$PromotionAlphaTag,
         [string]$GitHubToken = $env:GH_TOKEN,
         [string]$BaselinePath = (Join-Path $PSScriptRoot '..\.github\msix-version-baseline.json')
     )
@@ -374,6 +378,15 @@ function Resolve-MsixPackageVersion {
     if ($Reserve -and $SourceRef -cne "refs/tags/v$SourceVersion") {
         throw 'Reserved sourceRef must exactly match refs/tags/v plus sourceVersion.'
     }
+    $verificationRef = $SourceRef
+    if ($PSBoundParameters.ContainsKey('PromotionAlphaTag')) {
+        $expectedAlpha = '\Av' + [regex]::Escape($app.baseVersion) + '-alpha\.(?:0|[1-9]\d*)\z'
+        if (-not $Reserve -or $Repository -cne 'openclaw/openclaw-windows-node' -or
+            $SourceVersion -cne $app.baseVersion -or $PromotionAlphaTag -cnotmatch $expectedAlpha) {
+            throw 'PromotionAlphaTag requires a canonical same-base alpha for a reserved stable release in the canonical repository.'
+        }
+        $verificationRef = "refs/tags/$PromotionAlphaTag"
+    }
     if ($Reserve -and [string]::IsNullOrWhiteSpace($GitHubToken)) { throw 'A GitHub token is required to reserve an MSIX version.' }
     if ($GitHubToken -match '\p{Cc}') { throw 'GitHub token must not contain control characters.' }
     $baseline = Read-MsixBaseline -Path $BaselinePath -App $app
@@ -382,7 +395,7 @@ function Resolve-MsixPackageVersion {
     # Eight writes maximum. The final read still recognizes a successful competing duplicate run.
     for ($attempt = 0; $attempt -le 8; $attempt++) {
         if ($Reserve) {
-            Assert-MsixSourceTag -Repository $Repository -SourceRef $SourceRef -SourceCommit $SourceCommit -Token $GitHubToken
+            Assert-MsixSourceTag -Repository $Repository -SourceRef $verificationRef -SourceCommit $SourceCommit -Token $GitHubToken
         }
         $refs = @(Get-MsixReservationRefs -Repository $Repository -App $app -Token $GitHubToken | Sort-Object counter)
         if ($null -ne $collisionRef -and @($refs | Where-Object { $_.ref -ceq $collisionRef }).Count -ne 1) {

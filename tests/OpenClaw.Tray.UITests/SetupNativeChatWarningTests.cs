@@ -15,6 +15,47 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class SetupNativeChatWarningTests(UIThreadFixture fixture)
 {
+    [Fact]
+    public async Task NavigationAndTeardownWithoutProductSpeechPreserveSessionSelection()
+    {
+        await fixture.RunOnUIAsync(() =>
+        {
+            Assert.IsType<TestApp>(Application.Current);
+            var page = new ChatPage();
+            fixture.Container.Children.Add(page);
+            try
+            {
+                const string queued = "agent:synthetic:queued";
+                const string selected = "agent:synthetic:selected";
+                string? observedSession = null;
+                string? observedPrevious = null;
+                page.SessionSelected += (session, previous) =>
+                {
+                    observedSession = session;
+                    observedPrevious = previous;
+                };
+
+                page.QueueSession(queued);
+                Assert.Equal(queued, typeof(ChatPage)
+                    .GetField("_pendingSessionKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page));
+                page.OnComposerSessionSelected(selected, queued);
+                Assert.Equal(selected, observedSession);
+                Assert.Equal(queued, observedPrevious);
+
+                // Product speech is optional for these existing page contracts.
+                // CloseSurface must still retire the page under the real TestApp.
+                page.CloseSurface();
+                Assert.False((bool)typeof(ChatPage)
+                    .GetField("_pageActive", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page)!);
+                Assert.False(Assert.IsType<InfoBar>(page.FindName("SpeechStatusBar")).IsOpen);
+            }
+            finally
+            {
+                fixture.Container.Children.Remove(page);
+            }
+        });
+    }
+
     [Theory]
     [InlineData((int)SetupNativeChatWarning.Unavailable, InfoBarSeverity.Warning)]
     [InlineData((int)SetupNativeChatWarning.AuthorityUnconfirmed, InfoBarSeverity.Error)]
@@ -58,6 +99,8 @@ public sealed class SetupNativeChatWarningTests(UIThreadFixture fixture)
             fixture.Container.Children.Add(page);
             // TestApp deliberately has no product services. Seed only the real
             // navigation binding, never an authenticated transport or a bypass.
+            var removed = typeof(ChatPage).GetField("_sessionRemoved", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            removed.SetValue(page, true);
             var binding = (SetupNativeChatBinding)typeof(ChatPage)
                 .GetField("_nativeSetupBinding", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page)!;
             var request = new SetupNativeNavigationRequest(new(
@@ -66,6 +109,7 @@ public sealed class SetupNativeChatWarningTests(UIThreadFixture fixture)
                 new(SetupNativeDestination.Chat, "agent:verified:main")));
             binding.Bind(request);
             page.RetainNativeSetupForDestination(request.WorkspaceDestination!);
+            Assert.False((bool)removed.GetValue(page)!);
             page.ApplyNativeSetupWarning(SetupNativeChatWarning.AuthorityUnconfirmed, "test");
             var bar = Assert.IsType<InfoBar>(page.FindName("NativeSetupError"));
             page.RetainNativeSetupForDestination(request.WorkspaceDestination!);
@@ -106,7 +150,10 @@ public sealed class SetupNativeChatWarningTests(UIThreadFixture fixture)
             binding.Bind(request);
             page.RetainNativeSetupForDestination(request.WorkspaceDestination!);
             page.ApplyNativeSetupWarning(SetupNativeChatWarning.AuthorityUnconfirmed, "test");
+            var removed = typeof(ChatPage).GetField("_sessionRemoved", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            removed.SetValue(page, true);
             page.QueueSession(sessionKey);
+            Assert.Equal(string.IsNullOrEmpty(sessionKey), (bool)removed.GetValue(page)!);
             Assert.Equal(retained, ReferenceEquals(request, binding.Request));
             var bar = Assert.IsType<InfoBar>(page.FindName("NativeSetupError"));
             Assert.Equal(retained, bar.IsOpen);

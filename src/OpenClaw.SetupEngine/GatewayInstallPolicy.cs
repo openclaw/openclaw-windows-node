@@ -146,7 +146,7 @@ public static class GatewayInstallPolicy
 {
     public const string DefaultInstallUrl = "https://openclaw.ai/install-cli.sh";
     public const int ProtocolGeneration = 4;
-    public const string NodeVersion = "24.19.0";
+    public const string NodeVersion = "24.22.1";
     public const string RecommendedTag = "latest";
     public const string FallbackTag = "extended-stable";
 
@@ -191,9 +191,12 @@ public static class GatewayInstallPolicy
         }
 
         var selectedVersion = config.Gateway.Version?.Trim();
-        RequireExactVersion(
-            selectedVersion,
-            "Gateway candidate package validation requires an exact Gateway.Version.");
+        if (!GatewayPackageVersion.IsExact(selectedVersion))
+        {
+            throw Failure(
+                GatewayCompatibilityFailureKind.InvalidPolicy,
+                "Gateway candidate package validation requires an exact Gateway.Version.");
+        }
         config.Gateway.Version = selectedVersion;
         config.Gateway.Selection = null;
         config.Gateway.InstalledVersion = null;

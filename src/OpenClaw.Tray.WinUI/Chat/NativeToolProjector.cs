@@ -267,9 +267,9 @@ internal static class NativeToolProjector
         return SanitizeToolDisplayValue(GetStringProperty(data, "name", "toolName", "title"));
     }
 
-    internal static string ExtractToolResultText(JsonElement data, string fallback)
+    internal static string ExtractToolResultText(JsonElement data, string fallback, string resultProperty = "result")
     {
-        if (data.TryGetProperty("result", out var result))
+        if (data.TryGetProperty(resultProperty, out var result))
         {
             if (result.ValueKind == JsonValueKind.String)
                 return TruncateToolOutput(result.GetString() ?? "");

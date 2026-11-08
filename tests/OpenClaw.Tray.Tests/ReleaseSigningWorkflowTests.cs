@@ -61,7 +61,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("SetupEngine\\OpenClaw.SetupEngine.UI.exe should not be present", verifier);
         Assert.Contains(@"(^|\\)createdump\.exe$", verifier);
         Assert.Contains(@"(^|\\)RestartAgent\.exe$", verifier);
-        Assert.Contains(@"^tools\\mxc\\[^\\]+\\wxc-exec\.exe$", verifier);
+        Assert.Contains(@"^(plm|wxc-wslc-daemon)\.exe$", verifier);
+        Assert.Contains("@(\"plm.exe\", \"wxc-wslc-daemon.exe\")", verifier);
         Assert.Contains("Unknown executable in release payload", verifier);
         Assert.Contains("Unknown OpenClaw binary in release payload", verifier);
         Assert.Contains("$OpenClawSignerSubject", verifier);
@@ -87,8 +88,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("O=Microsoft Corporation", workflow);
         Assert.Contains("-InstallerVCRedistPath vc_redist.x64.exe", workflow);
         Assert.Contains("publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe", workflow);
-        Assert.Contains("/DvcRedist=vc_redist.x64.exe", workflow);
-        Assert.Contains("/DvcRedist=vc_redist.arm64.exe", workflow);
+        Assert.Contains(@"/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.x64.exe", workflow);
+        Assert.Contains(@"/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.arm64.exe", workflow);
         Assert.DoesNotContain("copy vc_redist.x64.exe publish-x64", workflow);
         Assert.DoesNotContain("copy vc_redist.x64.exe publish-arm64", workflow);
         Assert.Contains("OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-arm64.zip", workflow);
@@ -186,7 +187,11 @@ public sealed class ReleaseSigningWorkflowTests
     {
         var start = workflow.IndexOf("    - name: Create Release", StringComparison.Ordinal);
         Assert.True(start >= 0, "Could not find Create Release step.");
-        return workflow[start..];
+        var nextBoundary = System.Text.RegularExpressions.Regex.Match(
+            workflow[(start + 1)..], @"(?m)^(?:    - |  [A-Za-z0-9_-]+:)");
+        return nextBoundary.Success
+            ? workflow[start..(start + 1 + nextBoundary.Index)]
+            : workflow[start..];
     }
 
 }

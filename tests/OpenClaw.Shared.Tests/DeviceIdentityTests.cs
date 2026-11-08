@@ -36,6 +36,32 @@ public class DeviceIdentityIntegrationTests
     }
 
     [IntegrationFact]
+    public void ClearDeviceTokenIfMatches_OnlyRetiresTheExactRejectedToken()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var identity = new DeviceIdentity(dir);
+            identity.Initialize();
+            identity.StoreDeviceToken("rejected-operator-token");
+
+            // A credential another connection refreshed in the meantime must survive.
+            Assert.False(DeviceIdentity.TryClearDeviceTokenForRoleIfMatches(dir, "operator", "some-other-token"));
+            Assert.Equal("rejected-operator-token", DeviceIdentity.TryReadStoredDeviceToken(dir));
+
+            Assert.True(DeviceIdentity.TryClearDeviceTokenForRoleIfMatches(dir, "operator", "rejected-operator-token"));
+            Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(dir));
+            // Clearing a token must never rotate the device identity.
+            var reloaded = new DeviceIdentity(dir);
+            reloaded.Initialize();
+            Assert.Equal(identity.DeviceId, reloaded.DeviceId);
+
+            Assert.False(DeviceIdentity.TryClearDeviceTokenForRoleIfMatches(dir, "operator", "rejected-operator-token"));
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
+    [IntegrationFact]
     public void Initialize_GeneratesNewKeypair()
     {
         var dir = CreateTempDir();

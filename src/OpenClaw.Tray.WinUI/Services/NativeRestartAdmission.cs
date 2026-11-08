@@ -36,6 +36,10 @@ internal static class NativeRestartAdmission
     public static void Notify(string text, string title) =>
         MessageBoxW(IntPtr.Zero, text, title, 0x00000030 | 0x00010000);
 
+    public static bool PromptPreserveGateways(string text, string title) => MessageBoxW(IntPtr.Zero,
+        text + "\n\nPreserve existing Gateways and continue? Companion will forget these managed connections. You can set up or reconnect from Settings.",
+        title, 0x00000004 | 0x00000030 | 0x00000100 | 0x00010000) == 6;
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int MessageBoxW(IntPtr owner, string text, string caption, uint type);
 }

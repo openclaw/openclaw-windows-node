@@ -1,0 +1,107 @@
+name: Windows hardware validation
+
+# Opt-in only. The dedicated branch also allows proving a new workflow before
+# it is merged to main and becomes available in the workflow_dispatch UI.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/hardware-validation]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-hardware-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.repository == 'openclaw/openclaw-windows-node'
+    name: Validate ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: rtx-1
+            architecture: arm64
+            hardware: rtx-n1x-6144
+          - host: rtx-2
+            architecture: arm64
+            hardware: rtx-n1x-5120
+          - host: azure-mxc-1
+            architecture: x64
+            hardware: azure
+    runs-on: [openclaw-managed, windows, '${{ matrix.architecture }}', '${{ matrix.hardware }}']
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      GitVersion_NoNormalizeEnabled: 'true'
+      GitVersion_NoFetchEnabled: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify native host and toolchain
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          "OPENCLAW_TRAY_DATA_DIR=$env:RUNNER_TEMP/hardware-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/tray" >> $env:GITHUB_ENV
+          $actual = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          $process = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
+          if ($process -ne $actual) { throw "Emulated PowerShell ($process) on $actual is not native validation" }
+          if ($actual -ne $env:EXPECTED_ARCHITECTURE) { throw "Expected $env:EXPECTED_ARCHITECTURE, got $actual" }
+          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SHA) { throw 'Checkout differs from the workflow source SHA' }
+          Write-Output "Native architecture: $actual; source: $env:EXPECTED_SHA"
+          dotnet --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Command-normalization tests resolve bash from Git for Windows.
+          $gitBin = Join-Path (Split-Path (Split-Path (Get-Command git.exe).Source)) 'bin'
+          if (-not (Test-Path (Join-Path $gitBin 'bash.exe'))) { throw 'Git Bash is required by shared tests' }
+          $gitBin >> $env:GITHUB_PATH
+          ./scripts/setup-dev.ps1 -CheckOnly -NoTrustRepository
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build repository
+        run: |
+          ./build.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run shared and tray tests
+        run: |
+          foreach ($suite in @('OpenClaw.Shared.Tests', 'OpenClaw.Tray.Tests')) {
+            $project = "./tests/$suite/$suite.csproj"
+            # Build first: --no-restore alone can silently no-op in a fresh checkout.
+            # Helpers expect bin/Debug/<tfm>; retain native RID without an extra path segment.
+            dotnet build $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet test $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false --no-restore --results-directory ./TestResults/Hardware --logger "trx;LogFileName=$suite.trx"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            [xml]$trx = Get-Content "./TestResults/Hardware/$suite.trx" -Raw
+            $counts = $trx.TestRun.ResultSummary.Counters
+            if ([int]$counts.executed -le 0 -or [int]$counts.passed -le 0 -or [int]$counts.failed -ne 0) {
+              throw "$suite did not report a nonempty passing test run"
+            }
+            # VSTest can leave Counters.notExecuted at zero even when results contain skips.
+            $skipped = @($trx.TestRun.Results.UnitTestResult | Where-Object outcome -eq 'NotExecuted').Count
+            "$suite : total=$($counts.total), executed=$($counts.executed), passed=$($counts.passed), failed=$($counts.failed), skipped=$skipped" >> $env:GITHUB_STEP_SUMMARY
+          }
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hardware-tests-${{ matrix.host }}-${{ github.run_attempt }}
+          path: TestResults/Hardware/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Remove isolated test settings
+        if: always()
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "hardware-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }

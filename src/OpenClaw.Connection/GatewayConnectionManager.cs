@@ -219,7 +219,7 @@ public sealed class GatewayConnectionManager :
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
     internal async Task<OpenClawGatewayClient> RequireNativeSetupClientAsync(
-        GatewayRecord expected, CancellationToken ct)
+        GatewayRecord expected, CancellationToken ct, bool allowRuntimeStart = true)
     {
         var client = ConcreteOperatorClient;
         void RequireCurrent()
@@ -234,7 +234,8 @@ public sealed class GatewayConnectionManager :
                 throw new InvalidOperationException("The native Gateway connection is not ready for setup verification.");
         }
         RequireCurrent();
-        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_nativeGatewayRuntime, expected, ct);
+        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_nativeGatewayRuntime, expected, ct,
+            allowStart: allowRuntimeStart);
         RequireCurrent();
         if (!authorization.Allowed)
             throw new InvalidOperationException(authorization.Detail);
@@ -839,11 +840,11 @@ public sealed class GatewayConnectionManager :
 
         var perGatewayIdentityDir = IdentityDirectoryForCredentialSend(record);
 
-        // Same-gateway node reapproval reconnects keep the operator alive so it can
-        // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
+        // Same-gateway node reapproval reconnects keep a live or still-handshaking operator alive
+        // so it can request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
         var preservesOperatorConnection =
             _activeLifecycle != null &&
-            _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+            _stateMachine.Current.OperatorState is RoleConnectionState.Connected or RoleConnectionState.Connecting &&
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);

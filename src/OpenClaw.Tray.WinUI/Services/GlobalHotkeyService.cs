@@ -106,7 +106,8 @@ public class GlobalHotkeyService : IDisposable
     }
 
     private IntPtr _hwnd;
-    private bool _registered;
+    private readonly object _hotkeysLock = new();
+    private HotkeyRegistrationState _hotkeys;
     private bool _disposed;
     private Thread? _messageThread;
     private WndProcDelegate? _wndProcDelegate; // prevent GC collection
@@ -125,7 +126,7 @@ public class GlobalHotkeyService : IDisposable
 
     public bool Register()
     {
-        if (_registered) return true;
+        if (GetHotkeys().AllLive) return true;
 
         try
         {
@@ -148,17 +149,15 @@ public class GlobalHotkeyService : IDisposable
             if (!PostMessage(_hwnd, WM_APP_REGISTER, IntPtr.Zero, IntPtr.Zero))
             {
                 Logger.Warn("Failed to post WM_APP_REGISTER message for hotkey registration");
-                _registered = false;
                 return false;
             }
 
             if (!_opCompleted.Wait(TimeSpan.FromSeconds(2)))
             {
                 Logger.Warn("Timed out waiting for hotkey registration operation to complete");
-                _registered = false;
                 return false;
             }
-            return _registered;
+            return GetHotkeys().AnyLive;
         }
         catch (Exception ex)
         {
@@ -175,6 +174,7 @@ public class GlobalHotkeyService : IDisposable
         // Reset state in case the previous thread died
         _messageThread = null;
         _hwnd = IntPtr.Zero;
+        SetHotkeys(default);
         _windowReady.Reset();
 
         _running = true;
@@ -229,32 +229,36 @@ public class GlobalHotkeyService : IDisposable
         if (msg == WM_APP_REGISTER)
         {
             // Register from the message-loop thread that owns hWnd.
-            // Voice hotkey: Ctrl+Alt+Shift+V
-            _registered = RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
-                MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
-                VK_V);
+            var previous = GetHotkeys();
+            var voiceRegistered = previous.Voice;
+            var settingsRegistered = previous.Settings;
 
-            if (_registered)
+            if (previous.NeedsVoiceRegistration)
             {
-                Logger.Info("Voice hotkey registered: Ctrl+Alt+Shift+V");
-            }
-            else
-            {
-                Logger.Warn("Failed to register voice hotkey Ctrl+Alt+Shift+V");
+                // Voice hotkey: Ctrl+Alt+Shift+V
+                voiceRegistered = RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
+                    MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+                    VK_V);
+                if (voiceRegistered)
+                    Logger.Info("Voice hotkey registered: Ctrl+Alt+Shift+V");
+                else
+                    Logger.Warn("Failed to register voice hotkey Ctrl+Alt+Shift+V");
             }
 
-            // Settings hotkey: Ctrl+Alt+; — opens Companion Settings.
-            // (Win+; is reserved by Windows for the emoji panel.)
-            if (RegisterHotKey(hWnd, HOTKEY_ID_SETTINGS,
-                MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
-                VK_OEM_1))
+            if (previous.NeedsSettingsRegistration)
             {
-                Logger.Info("Settings hotkey registered: Ctrl+Alt+;");
+                // Settings hotkey: Ctrl+Alt+; opens Companion Settings.
+                // Win+; is reserved by Windows for the emoji panel.
+                settingsRegistered = RegisterHotKey(hWnd, HOTKEY_ID_SETTINGS,
+                    MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
+                    VK_OEM_1);
+                if (settingsRegistered)
+                    Logger.Info("Settings hotkey registered: Ctrl+Alt+;");
+                else
+                    Logger.Warn("Failed to register settings hotkey Ctrl+Alt+;");
             }
-            else
-            {
-                Logger.Warn("Failed to register settings hotkey Ctrl+Alt+;");
-            }
+
+            SetHotkeys(new HotkeyRegistrationState(voiceRegistered, settingsRegistered));
 
             _opCompleted.Set();
             return IntPtr.Zero;
@@ -264,13 +268,16 @@ public class GlobalHotkeyService : IDisposable
         {
             try
             {
-                if (_registered)
-                {
-                    UnregisterHotKey(hWnd, HOTKEY_ID_VOICE);
-                    UnregisterHotKey(hWnd, HOTKEY_ID_SETTINGS);
-                    _registered = false;
+                var previous = GetHotkeys();
+                var voiceUnregistered = !previous.Voice ||
+                    TryUnregisterHotkey(hWnd, HOTKEY_ID_VOICE, "voice");
+                var settingsUnregistered = !previous.Settings ||
+                    TryUnregisterHotkey(hWnd, HOTKEY_ID_SETTINGS, "settings");
+                var remaining = previous.AfterUnregister(voiceUnregistered, settingsUnregistered);
+                SetHotkeys(remaining);
+
+                if (previous.AnyLive && !remaining.AnyLive)
                     Logger.Info("Global hotkeys unregistered");
-                }
             }
             catch (Exception ex)
             {
@@ -296,9 +303,31 @@ public class GlobalHotkeyService : IDisposable
         return DefWindowProc(hWnd, msg, wParam, lParam);
     }
 
+    private static bool TryUnregisterHotkey(IntPtr hWnd, int id, string name)
+    {
+        if (UnregisterHotKey(hWnd, id))
+            return true;
+
+        var error = Marshal.GetLastWin32Error();
+        Logger.Warn($"Failed to unregister {name} hotkey (Win32 error {error}: {new Win32Exception(error).Message})");
+        return false;
+    }
+
+    private HotkeyRegistrationState GetHotkeys()
+    {
+        lock (_hotkeysLock)
+            return _hotkeys;
+    }
+
+    private void SetHotkeys(HotkeyRegistrationState hotkeys)
+    {
+        lock (_hotkeysLock)
+            _hotkeys = hotkeys;
+    }
+
     public void Unregister()
     {
-        if (!_registered) return;
+        if (!GetHotkeys().AnyLive) return;
 
         try
         {
@@ -308,14 +337,12 @@ public class GlobalHotkeyService : IDisposable
             if (!PostMessage(_hwnd, WM_APP_UNREGISTER, IntPtr.Zero, IntPtr.Zero))
             {
                 Logger.Warn("Failed to post WM_APP_UNREGISTER message; message loop may have exited");
-                _registered = false;
                 return;
             }
 
             if (!_opCompleted.Wait(TimeSpan.FromSeconds(2)))
             {
                 Logger.Warn("Timed out waiting for hotkey unregistration to complete");
-                _registered = false;
             }
         }
         catch (Exception ex)

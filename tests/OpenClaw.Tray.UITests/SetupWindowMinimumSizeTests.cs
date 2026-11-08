@@ -48,16 +48,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: config,
                     dataDir: temp.Combine("data"), localDataDir: temp.Combine("local"), commandLineArgs: [],
                     startupRegistrationAllowed: false));
-                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
-                var dpi = GetDpiForWindow(hwnd);
-                var initial = SetupWindowSizing.InitialPixels(dpi);
-                const int smCxMaxTrack = 59, smCyMaxTrack = 60;
-                var maxWidth = GetSystemMetricsForDpi(smCxMaxTrack, dpi);
-                var maxHeight = GetSystemMetricsForDpi(smCyMaxTrack, dpi);
-                Assert.True(maxWidth > 0 && maxHeight > 0);
-                output.WriteLine($"initial={window.AppWindow.Size}; requested={initial}; maxTrack={maxWidth}x{maxHeight}");
-                Assert.Equal(Math.Min(initial.Width, maxWidth), window.AppWindow.Size.Width);
-                Assert.Equal(Math.Min(initial.Height, maxHeight), window.AppWindow.Size.Height);
+                AssertInitialWindowSize(window, output);
                 window.Activate();
                 window.AppWindow.Move(new(-32000, -32000));
                 var root = Assert.IsType<Grid>(window.Content);
@@ -72,6 +63,12 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 var frame = Assert.IsType<Frame>(root.FindName("RootFrame"));
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is CompletePage { IsLoaded: true }, "configuration error mounted");
                 var page = Assert.IsType<CompletePage>(frame.Content);
+                // Users must be able to copy failure output (for example npm errors) to report it.
+                var errorText = Assert.IsType<TextBlock>(page.FindName("ErrorText"));
+                Assert.True(errorText.IsTextSelectionEnabled);
+                errorText.SelectAll();
+                Assert.False(string.IsNullOrEmpty(errorText.Text));
+                Assert.Equal(errorText.Text, errorText.SelectedText);
                 root.UpdateLayout();
                 OnboardingNativeProof.AssertFullyVisible(Assert.IsType<Button>(page.FindName("LaunchButton")), root);
                 Assert.True(Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>()).ViewportHeight > 100);
@@ -81,7 +78,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 Assert.True(window.AppWindow.Size.Width > minimum.Width);
                 Assert.True(window.AppWindow.Size.Height > minimum.Height);
                 var size = window.AppWindow.Size;
-                typeof(SetupWindow).GetMethod("ApplyMinimumWindowSize", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null);
+                RefreshMinimumSize(window);
                 Assert.Equal(size, window.AppWindow.Size);
             }
             finally
@@ -90,8 +87,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 {
                     window.Close();
                     await window.CleanupCompleted;
-                    Assert.Null(typeof(SetupWindow).GetField("_minimumSizeRoot", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
-                    typeof(SetupWindow).GetMethod("ApplyMinimumWindowSize", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window, null);
+                    AssertSizingDetached(window);
                 }
                 Application.Current.Resources.MergedDictionaries.Remove(resources);
             }
@@ -185,8 +181,37 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         });
     }
 
+    internal static void AssertInitialWindowSize(Window window, ITestOutputHelper output)
+    {
+        var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var initial = SetupWindowSizing.InitialPixels(dpi);
+        const int smCxMaxTrack = 59, smCyMaxTrack = 60;
+        var maxWidth = GetSystemMetricsForDpi(smCxMaxTrack, dpi);
+        var maxHeight = GetSystemMetricsForDpi(smCyMaxTrack, dpi);
+        Assert.True(maxWidth > 0 && maxHeight > 0);
+        output.WriteLine($"dpi={dpi}; initial={window.AppWindow.Size}; requested={initial}; maxTrack={maxWidth}x{maxHeight}");
+        Assert.Equal(Math.Min(initial.Width, maxWidth), window.AppWindow.Size.Width);
+        Assert.Equal(Math.Min(initial.Height, maxHeight), window.AppWindow.Size.Height);
+    }
+
+    internal static void RefreshMinimumSize(Window window)
+    {
+        var sizing = GetSizing(window);
+        sizing.GetType().GetMethod("ApplyMinimumSize", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(sizing, null);
+    }
+
+    internal static void AssertSizingDetached(Window window)
+    {
+        var sizing = GetSizing(window);
+        Assert.Null(sizing.GetType().GetField("_root", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sizing));
+        RefreshMinimumSize(window);
+    }
+
+    private static object GetSizing(Window window) =>
+        window.GetType().GetField("_windowSizing", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
+
     internal static async Task<(int Width, int Height)> ResizeBelowMinimumAsync(
-        SetupWindow window, UIThreadFixture ui, ITestOutputHelper output, string scene)
+        Window window, UIThreadFixture ui, ITestOutputHelper output, string scene)
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var dpi = GetDpiForWindow(hwnd);
@@ -202,7 +227,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         var work = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         var measurement = new
         {
-            scene, actualDpi = dpi, rasterizationScale = Assert.IsType<Grid>(window.Content).XamlRoot.RasterizationScale,
+            scene, actualDpi = dpi, rasterizationScale = Assert.IsAssignableFrom<FrameworkElement>(window.Content).XamlRoot.RasterizationScale,
             requested = new { width = 240, height = 160 },
             preferredMinimum = new { width = minimum.Width, height = minimum.Height },
             actualWindow = new { width = window.AppWindow.Size.Width, height = window.AppWindow.Size.Height },
@@ -219,10 +244,10 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         return minimum;
     }
 
-    internal static async Task SaveViewportsAsync(SetupWindow window, Page page, UIThreadFixture ui,
+    internal static async Task SaveViewportsAsync(Window window, Page page, UIThreadFixture ui,
         ITestOutputHelper output, string name)
     {
-        var root = Assert.IsType<Grid>(window.Content);
+        var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
         var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
         root.UpdateLayout();
         Assert.True(scroll.ViewportHeight >= 100, $"Scrollable content is a sliver: {scroll.ViewportHeight} DIPs");

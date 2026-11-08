@@ -1,9 +1,0 @@
-{
-  "name": "openclaw-windows-node-mxc",
-  "version": "0.0.0",
-  "private": true,
-  "description": "MXC sandbox dependency used by the OpenClaw tray build to copy wxc-exec.exe into the app output.",
-  "dependencies": {
-    "@microsoft/mxc-sdk": "^0.8.0"
-  }
-}
