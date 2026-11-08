@@ -104,7 +104,8 @@ public sealed class GatewayApprovalScopeConsentTests
 
     private static GatewayPendingApproval Parse(string scope)
     {
-        using var doc = JsonDocument.Parse($$"""{"id":"a","createdAtMs":1,"expiresAtMs":2,"request":{"command":"echo preview","scope":{{scope}}}}""");
+        using var doc = JsonDocument.Parse(
+            """{"id":"a","createdAtMs":1,"expiresAtMs":2,"request":{"command":"echo preview","scope":""" + scope + "}}");
         Assert.True(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, doc.RootElement, out var approval));
         return approval;
     }
