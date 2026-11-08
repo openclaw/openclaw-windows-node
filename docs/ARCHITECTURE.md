@@ -96,6 +96,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
+| Shared page hero rendering and page geometry | `PageHero` in `Presentation/Adapters/PageHero.cs` owns native hero rendering, transitions and reveal/highlight behavior; its existing `OpenClawTray.Presentation` namespace is retained for caller compatibility. `PageResponsiveLayout` owns pure page-host width tiers and content geometry. Native rendering does not belong in the WinUI-free Presentation core | authoritative |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
 | Bounded audio child-process wait and disposal | `BoundedProcessWait` owns the supplied `Process`, including deferred disposal after its kill worker finishes; callers must not dispose it on bounded cancellation return | authoritative |
 | Test env var save/restore | `OpenClaw.TestSupport.EnvironmentScope` | authoritative |

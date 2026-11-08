@@ -61,9 +61,7 @@ internal sealed class ReactorDashboardsRoot : Component<DashboardsRootProps>
         }), state.CopyNoticeRevision, state.Connected);
 
         if (state.Client is not { } client || !state.Connected)
-            return Border(DashboardsStates.Disconnected(state))
-                .Margin(0, state.TopInset, 0, 0)
-                .AutomationId("DashboardsDisconnectedViewport");
+            return Component<ReactorDisconnectedDashboards, DashboardsRootProps>(Props).WithKey("disconnected");
 
         Element content = state.OpenTarget is { } target
             ? Component<ReactorBoardView, BoardViewProps>(new BoardViewProps(state, client, target, state.ConnectionRevision, state.ViewportWidth, state.TopInset))
@@ -96,6 +94,51 @@ internal sealed class ReactorDashboardsRoot : Component<DashboardsRootProps>
             notice.WithKey("copy-notice"),
             announce.Region.LiveRegion(state.CopySucceeded == false ? AutomationLiveSetting.Assertive : AutomationLiveSetting.Polite)
                 .AutomationId("DashboardResultAnnouncements").WithKey("announcements"));
+    }
+}
+
+internal sealed class ReactorDisconnectedDashboards : Component<DashboardsRootProps>
+{
+    public override Element Render()
+    {
+        var state = Props.State;
+        var (measuredWidth, setWidth) = UseState(MinWidth);
+        var width = state.ViewportWidth > 0 ? state.ViewportWidth : measuredWidth;
+        var reducedMotion = UseReducedMotion();
+        var highContrast = UseHighContrast();
+        var notice = InfoBar(LocalizationHelper.GetString("Dashboards_Disconnected_Title"),
+                LocalizationHelper.GetString("Dashboards_Disconnected_Detail"))
+            .Error().IsClosable(false).AutomationId("DashboardsDisconnectedInfo")
+            .Set(info =>
+            {
+                info.ActionButton = state.OpenConnection is not null
+                    ? new Button
+                    {
+                        Content = LocalizationHelper.GetString("Dashboards_Disconnected_Action")
+                    }
+                    : null;
+                if (info.ActionButton is Button button)
+                {
+                    button.Click += (_, _) => state.OpenConnection?.Invoke();
+                    AutomationProperties.SetAutomationId(button, "DashboardsOpenConnection");
+                }
+            });
+        var content = Border(VStack(12,
+                ReactorDashboardGallery.Hero(state, state.AgentId, DashboardGallerySnapshot.Initial, () => { },
+                    width, highContrast, reducedMotion),
+                notice))
+            .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
+            .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
+            .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
+            .HAlign(HorizontalAlignment.Center);
+        return Border(DashboardsStates.VerticalScroll(content))
+            .Margin(0, state.TopInset, 0, 0)
+            .AutomationId("DashboardsDisconnectedViewport")
+            .OnSizeChanged((_, args) =>
+            {
+                if (state.ViewportWidth <= 0 && Snap(args.NewSize.Width) != Snap(measuredWidth))
+                    setWidth(args.NewSize.Width);
+            });
     }
 }
 
@@ -240,32 +283,75 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         void setSort(DashboardGallerySort value) { props.State.GallerySort = value; updateSort(value); }
         void setShown(int value) { props.State.GalleryShown = value; updateShown(value); }
         var (measuredWidth, setWidth) = UseState(MinWidth);
-        var (backdropHeight, setBackdropHeight) = UseState(0d);
         var width = props.ViewportWidth > 0 ? props.ViewportWidth : measuredWidth;
         var model = UseRef<DashboardGalleryModel?>(null);
         var focusRoot = UseRef<FrameworkElement?>(null);
+        var bindReturnFocusRoot = UseRef<Action<FrameworkElement>?>(null);
 
         UseEffect((Func<Action>)(() =>
         {
             var current = true;
-            if (props.State.ReturnFocusPending && snapshot.Status == DashboardLoadStatus.Ready)
+            var queued = false;
+            FrameworkElement? root = null;
+            void QueueReturnFocus()
             {
+                if (!current || queued || !props.State.ReturnFocusPending || root is not { IsLoaded: true })
+                    return;
+                queued = true;
                 props.State.Post(async () =>
                 {
-                    if (!current || !props.State.ReturnFocusPending || focusRoot.Current is not { IsLoaded: true } root)
-                        return;
-                    var elements = Descendants(root).ToArray();
-                    var card = elements.OfType<Button>().FirstOrDefault(button =>
-                        AutomationProperties.GetAutomationId(button) == props.State.ReturnCardId);
-                    if (card is not null && card.Focus(FocusState.Programmatic))
-                        props.State.CompleteGalleryReturn();
-                    else if (elements.FirstOrDefault(element =>
-                        AutomationProperties.GetAutomationId(element) == "DashboardsTitle") is { } heading &&
-                        (await Microsoft.UI.Xaml.Input.FocusManager.TryFocusAsync(heading, FocusState.Programmatic)).Succeeded)
-                        props.State.CompleteGalleryReturn();
+                    try
+                    {
+                        if (!current || !props.State.ReturnFocusPending || root is not { IsLoaded: true })
+                            return;
+                        var elements = Descendants(root).ToArray();
+                        var card = elements.OfType<Button>().FirstOrDefault(button =>
+                            AutomationProperties.GetAutomationId(button) == props.State.ReturnCardId);
+                        if (card is { ActualWidth: > 0, ActualHeight: > 0 } && card.Focus(FocusState.Programmatic))
+                            props.State.CompleteGalleryReturn();
+                        else if (card is null && elements.FirstOrDefault(element =>
+                            AutomationProperties.GetAutomationId(element) == "DashboardsTitle") is { ActualWidth: > 0, ActualHeight: > 0 } heading &&
+                            (await Microsoft.UI.Xaml.Input.FocusManager.TryFocusAsync(heading, FocusState.Programmatic)).Succeeded)
+                            props.State.CompleteGalleryReturn();
+                    }
+                    finally
+                    {
+                        queued = false;
+                    }
                 });
             }
-            return () => current = false;
+            void OnLoaded(object sender, RoutedEventArgs args) => QueueReturnFocus();
+            void OnLayoutUpdated(object? sender, object args) => QueueReturnFocus();
+            void BindRoot(FrameworkElement mountedRoot)
+            {
+                if (!current || ReferenceEquals(root, mountedRoot))
+                    return;
+                if (root is not null)
+                {
+                    root.Loaded -= OnLoaded;
+                    root.LayoutUpdated -= OnLayoutUpdated;
+                }
+                root = mountedRoot;
+                root.Loaded += OnLoaded;
+                root.LayoutUpdated += OnLayoutUpdated;
+                QueueReturnFocus();
+            }
+            if (props.State.ReturnFocusPending && snapshot.Status == DashboardLoadStatus.Ready)
+            {
+                bindReturnFocusRoot.Current = BindRoot;
+                if (focusRoot.Current is { } mountedRoot)
+                    BindRoot(mountedRoot);
+            }
+            return () =>
+            {
+                current = false;
+                bindReturnFocusRoot.Current = null;
+                if (root is not null)
+                {
+                    root.Loaded -= OnLoaded;
+                    root.LayoutUpdated -= OnLayoutUpdated;
+                }
+            };
         }), snapshot, props.State.ReturnFocusPending);
 
         UseEffect((Func<Action>)(() =>
@@ -313,14 +399,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         var refresh = () => { _ = model.Current?.LoadAsync(props.AgentId); };
         var reducedMotion = UseReducedMotion();
         var highContrast = UseHighContrast();
-        var header = Hero(props, snapshot, refresh, width, highContrast)
-            .OnSizeChanged((sender, args) =>
-            {
-                var element = (FrameworkElement)sender;
-                var height = args.NewSize.Height + element.Margin.Top + element.Margin.Bottom + 24;
-                if (Snap(height) != Snap(backdropHeight))
-                    setBackdropHeight(height);
-            });
+        var header = Hero(props.State, props.AgentId, snapshot, refresh, width, highContrast, reducedMotion);
 
         Element body = snapshot.Status switch
         {
@@ -361,17 +440,17 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         }
         children.Add(body.Grid(row: 2));
         var column = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto], children.ToArray()))
-            .Set(control => focusRoot.Current = control)
+            .Set(control =>
+            {
+                focusRoot.Current = control;
+                bindReturnFocusRoot.Current?.Invoke(control);
+            })
             .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
             .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
             .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
             .HAlign(HorizontalAlignment.Center)
             .AutomationId("DashboardsGallery");
         return Grid([GridSize.Star()], [GridSize.Star()],
-                Border(Empty()).Background(Theme.Ref(DashboardHues.Hero))
-                    .Height(backdropHeight + props.TopInset).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
-                    .Set(border => border.IsHitTestVisible = false)
-                    .AccessibilityView(AccessibilityView.Raw).AutomationId("DashboardsBackdrop"),
                 DashboardsStates.VerticalScroll(column)
                     .Margin(0, props.TopInset, 0, 0)
                     .AutomationName(LocalizationHelper.GetString("Dashboards_GalleryLabel"))
@@ -383,40 +462,17 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             });
     }
 
-    private static Element Hero(DashboardGalleryProps props, DashboardGallerySnapshot snapshot, Action refresh, double width, bool highContrast)
+    internal static Element Hero(DashboardsPageState state, string agentId, DashboardGallerySnapshot snapshot, Action refresh, double width, bool highContrast, bool reducedMotion)
     {
         var narrow = TierFor(width) == PageWidthTier.Narrow;
-        var headline = LocalizationHelper.Format("Dashboards_ForAgentFormat", props.State.AgentName(props.AgentId));
-        var subtitle = snapshot.Status is DashboardLoadStatus.Ready || snapshot.HasRows
-            ? snapshot.Rows.Length switch
-            {
-                0 => LocalizationHelper.GetString("Dashboards_Empty_Title"),
-                1 => LocalizationHelper.GetString("Dashboards_CountOne"),
-                _ => LocalizationHelper.Format("Dashboards_CountManyFormat", snapshot.Rows.Length),
-            }
-            : LocalizationHelper.GetString(snapshot.Status switch
-            {
-                DashboardLoadStatus.Loading => "Dashboards_Loading",
-                DashboardLoadStatus.Unavailable => "Dashboards_Unavailable_Title",
-                DashboardLoadStatus.Disconnected => "Dashboards_Disconnected_Title",
-                _ => "Dashboards_LoadError_Title",
-            });
-        var titleStack = VStack(8,
-            DashboardsStates.Eyebrow(highContrast),
-            TextBlock(headline).FontSize(32).SemiBold()
-                .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
-                .ToolTip(headline)
-                .HeadingLevel(AutomationHeadingLevel.Level1)
-                .IsTabStop(true)
-                .AutomationId("DashboardsTitle"),
-            TextBlock(subtitle).FontSize(14)
+        var headline = LocalizationHelper.GetString("Dashboards_Title");
+        var detail = TextBlock(LocalizationHelper.Format("Dashboards_ReadOnlyAgentFormat", state.AgentName(agentId))).FontSize(12)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
                 .TextWrapping(TextWrapping.WrapWholeWords)
-                .MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle)
-                .AutomationId("DashboardsSubtitle"));
+                .AutomationId("DashboardsReaderDetail");
 
         var more = new MenuFlyout();
-        if (props.State.OpenWebDashboards is { } browser)
+        if (state.Connected && state.OpenWebDashboards is { } browser)
         {
             var item = new MenuFlyoutItem { Text = LocalizationHelper.GetString("Dashboards_OpenWebGallery") };
             AutomationProperties.SetAutomationId(item, "DashboardsOpenWebMenu");
@@ -428,7 +484,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                     ? DashboardsStates.IconButton(DashboardsGlyphs.More, LocalizationHelper.GetString("Dashboards_MoreActions"),
                             () => { }, "DashboardsGalleryMore")
                         .Set(button => button.Flyout = more)
-                    : props.State.OpenWebDashboards is { } openWeb
+                    : state.Connected && state.OpenWebDashboards is { } openWeb
                     ? Button(
                             HStack(8,
                                 DashboardsStates.Glyph(DashboardsGlyphs.OpenInBrowser, 14, "TextFillColorPrimaryBrush").VAlign(VerticalAlignment.Center),
@@ -447,36 +503,74 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                         .AutomationName(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))
                         .AutomationId("DashboardsOpenWeb")
                     : Empty(),
-                DashboardsStates.IconButton(DashboardsGlyphs.Refresh, LocalizationHelper.GetString("Dashboards_Refresh"), refresh, "DashboardsRefresh"))
+                state.Connected
+                    ? DashboardsStates.IconButton(DashboardsGlyphs.Refresh, LocalizationHelper.GetString("Dashboards_Refresh"), refresh, "DashboardsRefresh")
+                    : Empty())
             .VAlign(VerticalAlignment.Top)
             .HAlign(narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right)
             .AutomationId("DashboardsMastActions");
 
-        return Border(Grid(
-                    narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
-                    narrow ? [GridSize.Auto, GridSize.Auto, GridSize.Auto] : [GridSize.Auto, GridSize.Auto],
-                    titleStack.Grid(row: 0, column: 0),
-                    AgentPicker(props.State).Margin(0, GapStack, 0, 0).Grid(row: narrow ? 2 : 1, column: 0),
-                    actions.Margin(narrow ? 0 : GapStack, narrow ? GapGroup : 0, 0, 0)
-                        .Grid(row: narrow ? 1 : 0, column: narrow ? 0 : 1)))
-            .Padding(0, 8, 0, 20)
+        return PageHero.Header("DashboardsHero", DashboardsGlyphs.Dashboard, headline, "DashboardsTitle",
+                AgentPicker(state, snapshot, TierFor(width) != PageWidthTier.Wide), detail, actions, narrow, reducedMotion, highContrast)
             .Margin(0, 0, 0, 20);
     }
 
-    private static Element AgentPicker(DashboardsPageState state)
+    private static Element AgentPicker(DashboardsPageState state, DashboardGallerySnapshot snapshot, bool narrow)
     {
-        if (state.AgentIds.Length <= 1)
-            return Empty();
+        var agentNames = state.AgentIds.IsEmpty
+            ? new[] { state.AgentName(state.AgentId) }
+            : state.AgentIds.Select(state.AgentName).ToArray();
         var index = Math.Max(0, state.AgentIds.IndexOf(state.AgentId));
-        return HStack(12, TextBlock(LocalizationHelper.GetString("Dashboards_AgentLabel")).VAlign(VerticalAlignment.Center),
-            ComboBox(state.AgentIds.Select(state.AgentName).ToArray(), index, selected =>
+        var picker = HStack(8,
+            TextBlock(LocalizationHelper.GetString("Dashboards_BoardsFrom"))
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center),
+            ComboBox(agentNames, index, selected =>
             {
                 if (selected >= 0 && selected < state.AgentIds.Length)
                     state.SelectAgent(state.AgentIds[selected]);
             })
             .MinWidth(140)
-            .AutomationName(LocalizationHelper.GetString("Dashboards_AgentLabel"))
+            .MaxWidth(240)
+            .IsEnabled(state.Connected && state.AgentIds.Length > 1)
+            .AutomationName(LocalizationHelper.GetString("Dashboards_BoardsFrom"))
             .AutomationId("DashboardsAgentPicker"));
+        Element latest = Empty();
+        if (DashboardsPresentation.LatestBoard(snapshot.Rows) is { } row)
+        {
+            var title = DashboardsPresentation.RowTitle(row);
+            var updated = DashboardsPresentation.UpdatedText(row, DateTimeOffset.UtcNow);
+            var format = LocalizationHelper.GetString("Dashboards_LatestBoardFormat");
+            var titleOffset = format.IndexOf("{0}", StringComparison.Ordinal);
+            latest = TextBlock(LocalizationHelper.Format("Dashboards_LatestBoardFormat", title, updated))
+                .FontSize(14).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                .TextWrapping(TextWrapping.WrapWholeWords)
+                .Set(text =>
+                {
+                    if (titleOffset < 0)
+                        return;
+                    text.Inlines.Clear();
+                    text.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+                    {
+                        Text = format[..titleOffset].Replace("{1}", updated, StringComparison.Ordinal)
+                    });
+                    var emphasized = (Microsoft.UI.Xaml.Documents.Run)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                        """<Run xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontWeight="SemiBold"/>""");
+                    emphasized.Text = title;
+                    text.Inlines.Add(emphasized);
+                    text.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+                    {
+                        Text = format[(titleOffset + 3)..].Replace("{1}", updated, StringComparison.Ordinal)
+                    });
+                })
+                .AutomationId("DashboardsLatestBoard");
+        }
+        return Grid(narrow ? [GridSize.Star()] : [GridSize.Auto, GridSize.Star()],
+            narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+            picker.Grid(row: 0, column: 0),
+            latest.VAlign(VerticalAlignment.Center)
+                .Margin(narrow ? 0 : GapGroup, narrow ? GapInner : 0, 0, 0)
+                .Grid(row: narrow ? 1 : 0, column: narrow ? 0 : 1))
+            .AutomationId("DashboardsScopeLine");
     }
 
     private static Element Gallery(

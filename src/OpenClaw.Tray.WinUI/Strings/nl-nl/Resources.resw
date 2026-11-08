@@ -8163,6 +8163,15 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agent</value>
   </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>Borden van</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>Nieuwste: {0}, {1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>Borden zijn hier alleen-lezen; vraag {0} om er een te wijzigen.</value>
+  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Sorteren</value>
   </data>

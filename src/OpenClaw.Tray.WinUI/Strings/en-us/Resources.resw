@@ -8229,6 +8229,15 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agent</value>
   </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>Boards from</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>Latest: {0}, {1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>Boards are read-only here; ask {0} to change one.</value>
+  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Sort</value>
   </data>

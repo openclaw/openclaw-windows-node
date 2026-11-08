@@ -8162,6 +8162,15 @@
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>代理程式</value>
   </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>看板來自</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>最新：{0}，{1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>此處的看板為唯讀；如需修改，請讓 {0} 操作。</value>
+  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>排序</value>
   </data>

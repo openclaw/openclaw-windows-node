@@ -8214,6 +8214,15 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agente</value>
   </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>Painéis de</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>Mais recente: {0}, {1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>Os painéis são somente leitura aqui; peça a {0} para alterar um.</value>
+  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Ordenar</value>
   </data>

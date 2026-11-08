@@ -8162,6 +8162,15 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_AgentLabel" xml:space="preserve">
     <value>Agent</value>
   </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>Tableaux de</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>Dernier : {0}, {1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>Les tableaux sont en lecture seule ici ; demandez à {0} d'en modifier un.</value>
+  </data>
   <data name="Dashboards_SortLabel" xml:space="preserve">
     <value>Trier</value>
   </data>

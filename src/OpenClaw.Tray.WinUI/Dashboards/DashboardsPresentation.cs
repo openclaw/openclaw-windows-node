@@ -35,6 +35,13 @@ internal static class DashboardsPresentation
     /// <summary>Largest Unix millisecond value <see cref="DateTimeOffset"/> can represent (year 9999).</summary>
     private static readonly long s_maxUnixMs = DateTimeOffset.MaxValue.ToUnixTimeMilliseconds();
 
+    public static DashboardSessionRow? LatestBoard(ImmutableArray<DashboardSessionRow> rows) => rows.IsDefaultOrEmpty
+        ? null
+        : rows.Where(row => row.UpdatedAtMs is > 0 && row.UpdatedAtMs <= s_maxUnixMs)
+            .OrderByDescending(row => row.UpdatedAtMs)
+            .ThenBy(row => row.Key, StringComparer.Ordinal)
+            .FirstOrDefault();
+
     public static string UpdatedText(DashboardSessionRow row, DateTimeOffset now)
     {
         // A Gateway sending seconds-as-micros or garbage must not break rendering: treat it as unknown.

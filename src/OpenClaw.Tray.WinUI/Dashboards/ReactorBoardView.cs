@@ -38,7 +38,6 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var latestHeights = UseRef(ImmutableDictionary<string, double>.Empty);
         latestHeights.Current = contentHeights;
         var (measuredWidth, setWidth) = UseState(MinWidth);
-        var (backdropHeight, setBackdropHeight) = UseState(0d);
         var width = props.ViewportWidth > 0 ? props.ViewportWidth : measuredWidth;
         var model = UseRef<BoardDocumentModel?>(null);
         var tabStrip = UseRef<SelectorBar?>(null);
@@ -93,14 +92,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         actions.Add(DashboardsStates.IconButton(DashboardsGlyphs.Refresh, LocalizationHelper.GetString("Dashboards_Refresh"), refresh, "DashboardRefresh"));
         if (MoreActions(props) is { } more)
             actions.Add(more);
-        var header = BoardHeader(props, title, reducedMotion, actions.ToArray(), width, highContrast)
-            .OnSizeChanged((sender, args) =>
-            {
-                var element = (FrameworkElement)sender;
-                var height = args.NewSize.Height + element.Margin.Top + element.Margin.Bottom + 24;
-                if (Snap(height) != Snap(backdropHeight))
-                    setBackdropHeight(height);
-            });
+        var header = BoardHeader(props, title, reducedMotion, actions.ToArray(), width, highContrast);
 
         Element body = snapshot.Status switch
         {
@@ -138,10 +130,6 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             .AutomationName(LocalizationHelper.GetString("Dashboards_BoardLabel"))
             .AutomationId("DashboardView");
         return Grid([GridSize.Star()], [GridSize.Star()],
-                Border(Empty()).Background(Theme.Ref(DashboardHues.Hero))
-                    .Height(backdropHeight + props.TopInset).HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Top)
-                    .Set(border => border.IsHitTestVisible = false)
-                    .AccessibilityView(AccessibilityView.Raw).AutomationId("DashboardBackdrop"),
                 DashboardsStates.VerticalScroll(column)
                     .Margin(0, props.TopInset, 0, 0)
                     .AutomationName(LocalizationHelper.GetString("Dashboards_GridLabel"))
@@ -201,20 +189,17 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         if (row is not null)
         {
             var author = DashboardGalleryPolicy.ResolveAuthor(row, props.Target.AgentId ?? props.State.AgentId);
+            var updated = DashboardsPresentation.UpdatedText(row, DateTimeOffset.UtcNow);
             var authorLine = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
                 DashboardsArt.Avatar(author.Initial, DashboardHues.For(author.Id), 18).VAlign(VerticalAlignment.Center),
-                TextBlock(LocalizationHelper.Format("Dashboards_ByAuthorFormat", author.Label)).FontSize(13)
+                TextBlock(LocalizationHelper.Format("Dashboards_ByAuthorFormat", author.Label) + " · " + updated).FontSize(13)
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center)
-                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(author.Label).Margin(GapInner, 0, 0, 0).Grid(column: 1));
-            var updated = DashboardsPresentation.UpdatedText(row, DateTimeOffset.UtcNow);
-            var updateLine = TextBlock(updated).FontSize(13).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(updated)
-                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"));
-            meta = Grid(narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto, GridSize.Auto],
-                    narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
+                    .TextWrapping(TextWrapping.WrapWholeWords).Margin(GapInner, 0, 0, 0).Grid(column: 1))
+                .MaxWidth(ContentWidth(width) / 2);
+            meta = Grid([GridSize.Auto, GridSize.Auto, GridSize.Star()], [GridSize.Auto],
                     authorLine.Grid(row: 0),
-                    updateLine.Margin(narrow ? 0 : GapGroup, narrow ? GapInner : 0, 0, 0)
-                        .Grid(row: narrow ? 1 : 0, column: narrow ? 0 : 1),
-                    row.IsLive && !narrow ? DashboardsArt.LiveBadge(reducedMotion).Margin(GapInner, 0, 0, 0).Grid(column: 2) : Empty())
+                    row.IsLive ? DashboardsArt.LiveBadge(reducedMotion).Margin(GapInner, 0, 0, 0)
+                        .VAlign(VerticalAlignment.Center).Grid(column: 1) : Empty())
                 .AutomationId("DashboardsSubtitle");
         }
         else
@@ -222,23 +207,9 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             meta = Empty();
         }
 
-        return Border(Grid(
-                narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
-                narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
-                VStack(6,
-                        DashboardsStates.Eyebrow(highContrast),
-                        TextBlock(title).FontSize(32).SemiBold()
-                            .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).ToolTip(title)
-                            .TextTrimming(TextTrimming.CharacterEllipsis)
-                            .HeadingLevel(AutomationHeadingLevel.Level1)
-                            .AutomationId("DashboardsTitle"),
-                        meta)
-                    .VAlign(VerticalAlignment.Top)
-                    .Grid(column: 0),
-                HStack(GapInner, actions).VAlign(VerticalAlignment.Top)
-                    .Margin(narrow ? 0 : GapStack, narrow ? GapGroup : 0, 0, 0)
-                    .AutomationId("DashboardMastActions").Grid(row: narrow ? 1 : 0, column: narrow ? 0 : 1)))
-            .Padding(0, 8, 0, 20)
+        return PageHero.Header("DashboardHero", DashboardsGlyphs.Dashboard, title, "DashboardsTitle",
+                meta, null, HStack(GapInner, actions).AutomationId("DashboardMastActions"),
+                narrow, reducedMotion, highContrast)
             .Margin(0, 0, 0, 20);
     }
 
@@ -256,6 +227,8 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
     {
         var board = snapshot.Board!;
         var tabs = board.OrderedTabs;
+        if (tabs.IsEmpty && board.Widgets.IsEmpty)
+            return EmptySection(props, props.State.OpenTitle ?? LocalizationHelper.GetString("Dashboards_BoardLabel"), "DashboardEmpty", reducedMotion);
         var stacked = TierFor(width) == PageWidthTier.Narrow;
         var grids = snapshot.VisitedTabs
             .OrderBy(tab => tab, StringComparer.Ordinal)
@@ -359,16 +332,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var tabTitle = snapshot.Board.OrderedTabs.First(tab => tab.TabId == tabId).Title;
         var emptyId = tabId == snapshot.ActiveTabId ? "DashboardEmpty" : "DashboardEmpty_" + tabId;
         if (widgets.IsEmpty)
-            return Grid([GridSize.Star()], [GridSize.Auto], DashboardsStates.Status(
-                    emptyId, DashboardsGlyphs.Dashboard,
-                    LocalizationHelper.GetString("Dashboards_BoardEmpty_Title"),
-                    LocalizationHelper.GetString("Dashboards_BoardEmpty_Detail"),
-                    props.State.OpenChat is { } openChat
-                        ? Button(LocalizationHelper.GetString("Dashboards_OpenChat"), () => openChat(props.Target.SessionKey)).AccentButton()
-                            .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", tabTitle))
-                            .AutomationId(emptyId + "OpenChat")
-                        : null,
-                    art: DashboardsArt.Mosaic(1.2, reducedMotion)))
+            return Grid([GridSize.Star()], [GridSize.Auto], EmptySection(props, tabTitle, emptyId, reducedMotion))
                 .Set(grid => tabPanels.Current[tabId] = grid)
                 .AutomationName(tabTitle).AutomationId("DashboardTabGrid_" + tabId);
         var byName = widgets.ToDictionary(widget => widget.Name, StringComparer.Ordinal);
@@ -432,4 +396,16 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             .AutomationName(tabTitle)
             .AutomationId("DashboardTabGrid_" + tabId);
     }
+
+    private static Element EmptySection(BoardViewProps props, string title, string automationId, bool reducedMotion) =>
+        DashboardsStates.Status(
+            automationId, DashboardsGlyphs.Dashboard,
+            LocalizationHelper.GetString("Dashboards_BoardEmpty_Title"),
+            LocalizationHelper.GetString("Dashboards_BoardEmpty_Detail"),
+            props.State.OpenChat is { } openChat
+                ? Button(LocalizationHelper.GetString("Dashboards_OpenChat"), () => openChat(props.Target.SessionKey)).AccentButton()
+                    .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", title))
+                    .AutomationId(automationId + "OpenChat")
+                : null,
+            art: DashboardsArt.Mosaic(1.2, reducedMotion));
 }

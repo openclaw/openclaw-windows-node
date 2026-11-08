@@ -36,6 +36,115 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         Assert.Equal(expected, DashboardsPresentation.TitleInitials(title));
 
     [Fact]
+    public void LatestBoard_UsesOnlyValidReportedUpdateTimesIndependentOfGalleryOrder()
+    {
+        var rows = new long?[] { null, long.MaxValue, 3000, 1000, -1, 3000, 0 }
+            .Select((timestamp, index) => new DashboardSessionRow
+            {
+                Session = new SessionInfo { Key = "board-" + index, AgentId = "main" },
+                UpdatedAtMs = timestamp,
+            }).ToImmutableArray();
+        Assert.Equal("board-2", DashboardsPresentation.LatestBoard(rows.Reverse().ToImmutableArray())?.Key);
+        Assert.Null(DashboardsPresentation.LatestBoard(rows.Where(row => row.UpdatedAtMs is null or <= 0 or long.MaxValue).ToImmutableArray()));
+        Assert.Null(DashboardsPresentation.LatestBoard([]));
+        Assert.Null(DashboardsPresentation.LatestBoard(default));
+    }
+
+    public static IEnumerable<object[]> HeroStates()
+    {
+        foreach (var theme in new[] { "Light", "Dark" })
+        foreach (var width in new[] { 1100d, 820d, 600d })
+        foreach (var surface in new[] { "gallery", "board", "disconnected", "empty" })
+            yield return [theme, width, surface];
+    }
+
+    [Theory]
+    [MemberData(nameof(HeroStates))]
+    public async Task HeaderHero_RecordsResponsiveReaderStates(string theme, double width, string surface)
+    {
+        const string key = "agent:main:hero";
+        var row = new DashboardSessionRow
+        {
+            Session = new SessionInfo { Key = key, AgentId = "main", DisplayName = "Quarterly operating review" },
+            CreatedActor = new DashboardActor("fixture-author", "Fixture Author"),
+            UpdatedAtMs = DateTimeOffset.UtcNow.AddMinutes(-2).ToUnixTimeMilliseconds(),
+            LastMessagePreview = "A saved report with the daily figures.",
+            Status = "running"
+        };
+        var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [new BoardTab("main", "Report", 0, "right")],
+            [Plugin("hero-report", "session:report", """{"blocks":[{"type":"text","text":"Daily figures: the saved report remains readable."}]}""") with { TabId = "main" }]))
+        {
+            Gallery = new DashboardSessionPage(surface == "empty" ? [] : [row], false, null, surface == "empty" ? 0 : 1),
+            Kinds = [new PluginWidgetKind("session", "session:report", "Report")]
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+            OpenConnection = () => { },
+            OpenWebDashboards = () => { },
+            OpenChat = _ => { }
+        };
+        state.SetAgents(["main", "research"], "main");
+        state.AgentNames = new Dictionary<string, string> { ["main"] = "Atlas", ["research"] = "Research" };
+        state.SetConnection(client, surface != "disconnected");
+        if (surface == "board")
+            state.Open(new BoardSessionTarget(key, "main"), row.Session.DisplayName, row);
+        await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
+            host =>
+            {
+                AssertNoUnmarkedTextClipping(host);
+                Assert.Equal(surface == "board" ? "Quarterly operating review" : "Dashboards",
+                    ById<TextBlock>(host, "DashboardsTitle").Text);
+                if (surface is "gallery" or "empty")
+                {
+                    Assert.NotNull(ById<Button>(host, width < 720 ? "DashboardsGalleryMore" : "DashboardsOpenWeb"));
+                    Assert.NotNull(ById<Button>(host, "DashboardsRefresh"));
+                    Assert.Equal("Boards from", AutomationProperties.GetName(ById<ComboBox>(host, "DashboardsAgentPicker")));
+                    Assert.Equal("Boards are read-only here; ask Atlas to change one.",
+                        ById<TextBlock>(host, "DashboardsReaderDetail").Text);
+                    var picker = Bounds(ById<ComboBox>(host, "DashboardsAgentPicker"), host);
+                    var detail = Bounds(ById<TextBlock>(host, "DashboardsReaderDetail"), host);
+                    Assert.True(picker.Bottom <= detail.Top, "Agent selection belongs inside the answer line, above the reader guidance.");
+                    Assert.Equal(surface == "gallery", FindDescendants<TextBlock>(host)
+                        .Any(text => AutomationProperties.GetAutomationId(text) == "DashboardsLatestBoard"));
+                    Assert.Equal(0, client.BoardLoads);
+                }
+                if (surface == "board")
+                {
+                    foreach (var actionId in new[] { "DashboardOpenChat", "DashboardRefresh", "DashboardMoreActions" })
+                        Assert.NotNull(ById<Button>(host, actionId));
+                    Assert.Equal(1, client.BoardLoads);
+                    Assert.Contains(FindDescendants<TextBlock>(host), text =>
+                        text.Text == "Daily figures: the saved report remains readable.");
+                }
+                if (surface == "disconnected")
+                {
+                    var info = ById<InfoBar>(host, "DashboardsDisconnectedInfo");
+                    Assert.Equal(InfoBarSeverity.Error, info.Severity);
+                    Assert.False(info.IsClosable);
+                    Assert.Equal("DashboardsOpenConnection",
+                        AutomationProperties.GetAutomationId(Assert.IsType<Button>(info.ActionButton)));
+                    Assert.False(ById<ComboBox>(host, "DashboardsAgentPicker").IsEnabled);
+                    Assert.Equal(0, client.BoardLoads);
+                }
+            },
+            ready: host => FindDescendants<FrameworkElement>(host).Any(element =>
+                    element.ActualHeight > 0 &&
+                    AutomationProperties.GetAutomationId(element) == (surface switch
+                    {
+                        "gallery" => "DashboardsCards",
+                        "board" => "BoardWidget_hero-report",
+                        "empty" => "DashboardsEmpty",
+                        _ => "DashboardsDisconnectedInfo"
+                    })) &&
+                FindDescendants<TextBlock>(host).Any(element => element.ActualHeight > 0 &&
+                    AutomationProperties.GetAutomationId(element) == "DashboardsTitle"),
+            theme: theme, width: width, onViewportChanged: state.SetViewportWidth,
+            capture: $"hero-{width}-{surface}");
+    }
+
+    [Fact]
     public void FreshToday_ExcludesTomorrowAndInvalidTimestamps()
     {
         var now = DateTimeOffset.Now;
@@ -266,7 +375,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     Assert.Equal("Section 7", AutomationProperties.GetName(panel));
                     Assert.Equal("DashboardTabGrid_section-7", AutomationProperties.GetAutomationId(panel));
                     var chat = ById<Button>(host, "DashboardEmptyOpenChat");
-                    Assert.Equal("Open chat for Section 7", AutomationProperties.GetName(chat));
+                    Assert.Equal("Open chat: Section 7", AutomationProperties.GetName(chat));
                     Invoke(chat);
                     Assert.Equal(new[] { session }, chats);
                 });
@@ -491,7 +600,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 var cards = ById<Grid>(host, "DashboardsCards");
                 Assert.InRange(Math.Abs(state.ViewportWidth - width), 0, 1);
                 Assert.Equal(columns, cards.ColumnDefinitions.Count);
-                AssertFullWidthBackdrop(host, "DashboardsBackdrop", "DashboardsGallery", width);
+                AssertHeroColumn(host, "DashboardsHero", "DashboardsGallery", width);
                 var tiles = cards.Children.OfType<FrameworkElement>().ToArray();
                 Assert.Equal(8, tiles.Length);
                 AssertNoOverlap(host, tiles);
@@ -519,7 +628,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             ready: host => FindDescendants<Grid>(host).Any(grid =>
                 AutomationProperties.GetAutomationId(grid) == "DashboardsCards" && grid.ColumnDefinitions.Count == columns) &&
-                BackdropMatchesMast(host, "DashboardsBackdrop", "DashboardsGallery"),
+                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery"),
             width: width, onViewportChanged: state.SetViewportWidth);
 
         state.Open(new BoardSessionTarget(target.Key, "main"), target.Session.DisplayName, target);
@@ -527,7 +636,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             host =>
             {
                 AssertMast(host, "DashboardMastActions");
-                AssertFullWidthBackdrop(host, "DashboardBackdrop", "DashboardView", width);
+                AssertHeroColumn(host, "DashboardHero", "DashboardView", width);
                 var grid = ById<Grid>(host, "DashboardTabGrid_tab-0");
                 var cells = grid.Children.OfType<FrameworkElement>().ToArray();
                 AssertNoOverlap(host, cells);
@@ -537,7 +646,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             ready: host => FindDescendants<Grid>(host).Any(grid =>
                 AutomationProperties.GetAutomationId(grid) == "DashboardTabGrid_tab-0") &&
-                BackdropMatchesMast(host, "DashboardBackdrop", "DashboardView"),
+                HeroMatchesColumn(host, "DashboardHero", "DashboardView"),
             width: width, onViewportChanged: state.SetViewportWidth);
     }
 
@@ -547,7 +656,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ContentInset_MovesOnlyRetainedViewportAndExtendsBackdropWithoutHeaderResize(bool board)
+    public async Task ContentInset_MovesRetainedViewportAndHeroWithoutRemounting(bool board)
     {
         var key = "agent:main:inset";
         var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [], []))
@@ -562,26 +671,26 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         state.SetConnection(client, true);
         if (board)
             state.Open(new BoardSessionTarget(key, "main"), "Saved report");
-        var backdropId = board ? "DashboardBackdrop" : "DashboardsBackdrop";
+        var heroId = board ? "DashboardHero" : "DashboardsHero";
         var columnId = board ? "DashboardView" : "DashboardsGallery";
         var scrollId = board ? "DashboardPageScroll" : "DashboardsGalleryScroll";
         await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             _ => { },
-            ready: host => BackdropMatchesMast(host, backdropId, columnId),
+            ready: host => HeroMatchesColumn(host, heroId, columnId),
             width: 900, onViewportChanged: state.SetViewportWidth,
             afterMounted: async host =>
             {
                 Border? column = null;
-                Border? backdrop = null;
+                Border? hero = null;
                 ScrollViewer? scroll = null;
                 double originalHeight = 0;
                 double headerHeight = 0;
                 await ui.RunOnUIAsync(() =>
                 {
                     column = ById<Border>(host, columnId);
-                    backdrop = ById<Border>(host, backdropId);
+                    hero = ById<Border>(host, heroId);
                     scroll = ById<ScrollViewer>(host, scrollId);
-                    originalHeight = backdrop.ActualHeight;
+                    originalHeight = hero.ActualHeight;
                     headerHeight = Assert.IsType<Grid>(column.Child).RowDefinitions[0].ActualHeight;
                     state.SetTopInset(56);
                 });
@@ -590,8 +699,10 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     await ui.RunOnUIAsync(() => state.SetTopInset(inset));
                     var deadline = DateTime.UtcNow.AddSeconds(10);
                     while (!await ui.RunOnUIAsync(() => Task.FromResult(
-                        Math.Abs(ById<Border>(host, backdropId).ActualHeight - originalHeight - inset) <= 0.5 &&
-                        ById<ScrollViewer>(host, scrollId).Margin.Top == inset)))
+                        Math.Abs(ById<Border>(host, heroId).ActualHeight - originalHeight) <= 0.5 &&
+                        ById<ScrollViewer>(host, scrollId).Margin.Top == inset &&
+                        Math.Abs(Bounds(ById<ScrollViewer>(host, scrollId), host).Top - inset) <= 0.5 &&
+                        Math.Abs(Bounds(ById<Border>(host, heroId), host).Top - inset - ById<Border>(host, columnId).Padding.Top) <= 0.5)))
                     {
                         Assert.True(DateTime.UtcNow < deadline, "Inset-only layout did not settle.");
                         await ui.YieldToRenderAsync();
@@ -599,11 +710,10 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     await ui.RunOnUIAsync(() =>
                     {
                         Assert.Same(column, ById<Border>(host, columnId));
-                        Assert.Same(backdrop, ById<Border>(host, backdropId));
+                        Assert.Same(hero, ById<Border>(host, heroId));
                         Assert.Same(scroll, ById<ScrollViewer>(host, scrollId));
-                        Assert.InRange(Math.Abs(Bounds(backdrop!, host).Top), 0, 0.5);
                         Assert.InRange(Math.Abs(Bounds(scroll!, host).Top - inset), 0, 0.5);
-                        Assert.InRange(Math.Abs(backdrop!.ActualWidth - host.ActualWidth), 0, 0.5);
+                        Assert.InRange(Math.Abs(Bounds(hero!, host).Top - inset - column!.Padding.Top), 0, 0.5);
                         Assert.InRange(Math.Abs(Assert.IsType<Grid>(column!.Child).RowDefinitions[0].ActualHeight - headerHeight), 0, 0.5);
                     });
                 }
@@ -650,36 +760,37 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             });
     }
 
-    private static void AssertFullWidthBackdrop(ReactorHostControl host, string backdropId, string columnId, double width)
+    private static void AssertHeroColumn(ReactorHostControl host, string heroId, string columnId, double width)
     {
-        var backdrop = ById<Border>(host, backdropId);
+        var hero = ById<Border>(host, heroId);
         var column = ById<Border>(host, columnId);
-        var backdropBounds = Bounds(backdrop, host);
+        var heroBounds = Bounds(hero, host);
         var columnBounds = Bounds(column, host);
-        Assert.InRange(Math.Abs(backdropBounds.Left), 0, 0.5);
-        Assert.InRange(Math.Abs(backdrop.ActualWidth - host.ActualWidth), 0, 0.5);
+        Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
+            AutomationProperties.GetAutomationId(element) is "DashboardBackdrop" or "DashboardsBackdrop");
         var expectedPadding = width < 720 ? 20 : 32;
         var expectedContent = Math.Min(1200, width - 2 * expectedPadding);
         Assert.InRange(Math.Abs(column.ActualWidth - column.Padding.Left - column.Padding.Right - expectedContent), 0, 0.5);
         Assert.InRange(Math.Abs((columnBounds.Left + columnBounds.Right) / 2 - host.ActualWidth / 2), 0, 0.5);
-        var contentGrid = Assert.IsType<Grid>(column.Child);
-        Assert.True(backdrop.ActualHeight > 0);
-        Assert.InRange(Math.Abs(backdrop.ActualHeight - contentGrid.RowDefinitions[0].ActualHeight - column.Padding.Top), 0, 0.5);
+        Assert.True(hero.ActualHeight > 0);
+        Assert.InRange(Math.Abs(heroBounds.Left - columnBounds.Left - column.Padding.Left), 0, 0.5);
+        Assert.InRange(Math.Abs(heroBounds.Right - columnBounds.Right + column.Padding.Right), 0, 0.5);
+        Assert.Equal(new Thickness(1), hero.BorderThickness);
     }
 
-    private static bool BackdropMatchesMast(ReactorHostControl host, string backdropId, string columnId)
+    private static bool HeroMatchesColumn(ReactorHostControl host, string heroId, string columnId)
     {
-        var backdrop = FindDescendants<Border>(host).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == backdropId);
+        var hero = FindDescendants<Border>(host).FirstOrDefault(element =>
+            AutomationProperties.GetAutomationId(element) == heroId);
         var column = FindDescendants<Border>(host).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == columnId);
-        return backdrop is not null && column?.Child is Grid grid && backdrop.ActualHeight > 0 &&
-            Math.Abs(backdrop.ActualWidth - host.ActualWidth) <= 0.5 &&
-            Math.Abs(backdrop.ActualHeight - grid.RowDefinitions[0].ActualHeight - column.Padding.Top) <= 0.5;
+        return hero is not null && column is not null && hero.ActualHeight > 0 &&
+            Math.Abs(hero.ActualWidth - column.ActualWidth + column.Padding.Left + column.Padding.Right) <= 0.5;
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task PageScroll_MovesTheMastButNotTheDecorativeViewportBackdrop(bool board)
+    public async Task PageScroll_MovesHeroAndMastTogetherWithoutDecorativeViewportBackdrop(bool board)
     {
         var key = "agent:main:viewport";
         var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [new BoardTab("main", "Report", 0, "right")],
@@ -700,20 +811,19 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         state.SetConnection(client, true);
         if (board)
             state.Open(new BoardSessionTarget(key, "main"), "Saved report");
-        Windows.Foundation.Rect backdropBefore = default;
+        Windows.Foundation.Rect heroBefore = default;
         Windows.Foundation.Rect titleBefore = default;
         await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             host =>
             {
-                var backdrop = ById<Border>(host, board ? "DashboardBackdrop" : "DashboardsBackdrop");
+                var hero = ById<Border>(host, board ? "DashboardHero" : "DashboardsHero");
                 var scroll = ById<ScrollViewer>(host, board ? "DashboardPageScroll" : "DashboardsGalleryScroll");
-                Assert.False(backdrop.IsHitTestVisible);
-                for (DependencyObject? parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(backdrop);
-                    parent is not null && parent != host; parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(parent))
-                    Assert.False(parent is ScrollViewer, "Backdrop must not be inside any page scroller.");
+                Assert.True(hero.IsHitTestVisible);
+                Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
+                    AutomationProperties.GetAutomationId(element) == (board ? "DashboardBackdrop" : "DashboardsBackdrop"));
                 Assert.True(scroll.ScrollableHeight > 120);
             },
-            ready: host => BackdropMatchesMast(host, board ? "DashboardBackdrop" : "DashboardsBackdrop",
+            ready: host => HeroMatchesColumn(host, board ? "DashboardHero" : "DashboardsHero",
                 board ? "DashboardView" : "DashboardsGallery"),
             width: 900, onViewportChanged: state.SetViewportWidth,
             afterMounted: async host =>
@@ -722,7 +832,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     await ui.YieldToRenderAsync();
                 await ui.RunOnUIAsync(() =>
                 {
-                    backdropBefore = Bounds(ById<Border>(host, board ? "DashboardBackdrop" : "DashboardsBackdrop"), host);
+                    heroBefore = Bounds(ById<Border>(host, board ? "DashboardHero" : "DashboardsHero"), host);
                     titleBefore = Bounds(ById<TextBlock>(host, "DashboardsTitle"), host);
                     Assert.True(ById<ScrollViewer>(host, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")
                         .ChangeView(null, 120, null, disableAnimation: true));
@@ -738,9 +848,9 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 {
                     var scroll = ById<ScrollViewer>(host, board ? "DashboardPageScroll" : "DashboardsGalleryScroll");
                     Assert.InRange(scroll.VerticalOffset, 119, 121);
-                    var backdropAfter = Bounds(ById<Border>(host, board ? "DashboardBackdrop" : "DashboardsBackdrop"), host);
+                    var heroAfter = Bounds(ById<Border>(host, board ? "DashboardHero" : "DashboardsHero"), host);
                     var titleAfter = Bounds(ById<TextBlock>(host, "DashboardsTitle"), host);
-                    Assert.Equal(backdropBefore, backdropAfter);
+                    Assert.InRange(heroBefore.Top - heroAfter.Top, 119, 121);
                     Assert.InRange(titleBefore.Top - titleAfter.Top, 119, 121);
                 });
             });
@@ -751,7 +861,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     [InlineData("Light", true)]
     [InlineData("Dark", false)]
     [InlineData("Dark", true)]
-    public async Task BackdropWash_FadesToTransparentBeforeTheBottomForGalleryAndBoard(string theme, bool board)
+    public async Task HeaderHero_ReplacesFullPageBackdropForGalleryAndBoard(string theme, bool board)
     {
         var key = "agent:main:fade";
         var client = new SnapshotBoardClient(new BoardSnapshot(key, 1, [], []))
@@ -769,16 +879,10 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             host =>
             {
-                var backdrop = ById<Border>(host, board ? "DashboardBackdrop" : "DashboardsBackdrop");
-                var gradient = Assert.IsType<Microsoft.UI.Xaml.Media.LinearGradientBrush>(backdrop.Background);
-                Assert.Equal(new Windows.Foundation.Point(0, 0), gradient.StartPoint);
-                Assert.Equal(new Windows.Foundation.Point(0, 1), gradient.EndPoint);
-                Assert.Equal(0, gradient.GradientStops[^1].Color.A);
-                Assert.Equal((double)0.9f, gradient.GradientStops[^1].Offset);
-                AssertFullWidthBackdrop(host, board ? "DashboardBackdrop" : "DashboardsBackdrop",
+                AssertHeroColumn(host, board ? "DashboardHero" : "DashboardsHero",
                     board ? "DashboardView" : "DashboardsGallery", 1400);
             },
-            ready: host => BackdropMatchesMast(host, board ? "DashboardBackdrop" : "DashboardsBackdrop",
+            ready: host => HeroMatchesColumn(host, board ? "DashboardHero" : "DashboardsHero",
                 board ? "DashboardView" : "DashboardsGallery"),
             theme: theme, width: 1400, onViewportChanged: state.SetViewportWidth);
     }
@@ -818,7 +922,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     [InlineData(761)]
     [InlineData(739)]
     [InlineData(937)]
-    public Task MastWebButton_HasNativeBorderAndAlignsWithTheCardColumn(double width) =>
+    public Task HeroWebButton_HasNativeBorderAndAlignsWithTheHeroContent(double width) =>
         WithFreshGalleryAsync(width, host =>
         {
             var button = ById<Button>(host, "DashboardsOpenWeb");
@@ -842,12 +946,12 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             Assert.True(Math.Abs(column.Left - contentLeft) <= 0.5,
                 $"Content left {contentLeft}, column left {column.Left}, gallery padding {gallery.Padding}:\n{string.Join("\n", ancestry)}");
             Assert.InRange(Math.Abs(column.Right - contentRight), 0, 0.5);
-            Assert.InRange(Math.Abs(Bounds(ById<FrameworkElement>(host, "DashboardsMastActions"), host).Right - column.Right), 0, 0.5);
+            AssertHeroActionsRightEdge(host);
             AssertMast(host, "DashboardsMastActions");
             if (width == 739)
             {
                 var title = ById<TextBlock>(host, "DashboardsTitle");
-                Assert.Equal("Dashboards for Fixture Main", title.Text);
+                Assert.Equal("Dashboards", title.Text);
                 Assert.False(title.IsTextTrimmed);
                 Assert.InRange(title.ActualHeight, 0, title.FontSize * 1.8);
             }
@@ -886,13 +990,65 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     Assert.InRange(Math.Abs(column.Left - Bounds(gallery, host).Left - gallery.Padding.Left), 0, 0.5);
                     Assert.InRange(Math.Abs(column.Right - Bounds(gallery, host).Right + gallery.Padding.Right), 0, 0.5);
                     AssertDefaultWebButton(host, ById<Button>(host, "DashboardsOpenWeb"));
-                    Assert.InRange(Math.Abs(Bounds(ById<FrameworkElement>(host, "DashboardsMastActions"), host).Right - column.Right), 0, 0.5);
+                    AssertHeroActionsRightEdge(host);
                 });
             }
         });
 
+    [Fact]
+    public Task HeroResizing_RetainsGalleryFocusScrollAndNativeControls() =>
+        WithFreshGalleryAsync(1100, _ => { }, async host =>
+        {
+            ComboBox? sort = null;
+            ScrollViewer? scroll = null;
+            Border? hero = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                sort = ById<ComboBox>(host, "DashboardsSort");
+                scroll = ById<ScrollViewer>(host, "DashboardsGalleryScroll");
+                hero = ById<Border>(host, "DashboardsHero");
+                Assert.True(sort.Focus(FocusState.Keyboard));
+                host.UpdateLayout();
+                if (Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
+                    WriteMountedGeometry(host, directory, "resize-before-scroll-geometry.json");
+                Assert.True(scroll.ScrollableHeight >= 120,
+                    $"Resize fixture needs 120 DIP of scroll range; extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, range={scroll.ScrollableHeight}.");
+                Assert.True(scroll.ChangeView(null, 120, null, disableAnimation: true));
+            });
+            await WaitForMountedStateAsync(host, mounted =>
+                ById<ScrollViewer>(mounted, "DashboardsGalleryScroll").VerticalOffset is >= 119 and <= 121 &&
+                ReferenceEquals(sort, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(mounted.XamlRoot)));
+            await ui.RunOnUIAsync(() =>
+            {
+                var focusedBounds = Bounds(sort!, host);
+                Assert.InRange(focusedBounds.Top, 0, scroll!.ViewportHeight);
+                Assert.InRange(focusedBounds.Bottom, 0, scroll.ViewportHeight);
+                if (Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
+                    WriteMountedGeometry(host, directory, "resize-established-scroll-geometry.json");
+            });
+            foreach (var width in new[] { 820d, 600d, 1100d })
+            {
+                await ui.RunOnUIAsync(() => host.Width = width);
+                await WaitForMountedStateAsync(host, mounted =>
+                    Math.Abs(mounted.ActualWidth - width) < 0.5 &&
+                    ById<Grid>(mounted, "DashboardsScopeLine").ColumnDefinitions.Count == (width < 1000 ? 1 : 2));
+                await ui.RunOnUIAsync(() =>
+                {
+                    host.UpdateLayout();
+                    Assert.Same(sort, ById<ComboBox>(host, "DashboardsSort"));
+                    Assert.Same(scroll, ById<ScrollViewer>(host, "DashboardsGalleryScroll"));
+                    Assert.Same(hero, ById<Border>(host, "DashboardsHero"));
+                    Assert.Same(sort, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(host.XamlRoot));
+                    Assert.InRange(scroll!.VerticalOffset, 119, 121);
+                    AssertHeroColumn(host, "DashboardsHero", "DashboardsGallery", width);
+                    AssertMast(host, "DashboardsMastActions");
+                    AssertNoUnmarkedTextClipping(host);
+                });
+            }
+        }, viewportHeight: 360, includeFresh: false);
+
     private Task WithFreshGalleryAsync(double width, Action<ReactorHostControl> assert,
-        Func<ReactorHostControl, Task>? afterMounted = null)
+        Func<ReactorHostControl, Task>? afterMounted = null, double? viewportHeight = null, bool includeFresh = true)
     {
         var now = DateTimeOffset.UtcNow;
         var rows = Enumerable.Range(0, 6).Select(index => new DashboardSessionRow
@@ -904,7 +1060,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             CreatedActor = new DashboardActor("author", "Fixture Owner"),
             LastMessagePreview = index == 0 ? "Deploy finished; health is green." : "Store submission pending review.",
-            UpdatedAtMs = (index < 2 ? now.AddMinutes(-index) : now.AddDays(-2)).ToUnixTimeMilliseconds(),
+            UpdatedAtMs = (includeFresh && index < 2 ? now.AddMinutes(-index) : now.AddDays(-2)).ToUnixTimeMilliseconds(),
         }).ToImmutableArray();
         var client = new SnapshotBoardClient(new BoardSnapshot("unused", 1, [], []))
         {
@@ -923,8 +1079,9 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             () => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             assert,
             ready: host => FindDescendants<Button>(host).Any(button =>
-                AutomationProperties.GetAutomationId(button) == "DashboardCardFresh_agent:main:resize:1"),
-            width: width, onViewportChanged: state.SetViewportWidth, afterMounted: afterMounted);
+                AutomationProperties.GetAutomationId(button) == (includeFresh
+                    ? "DashboardCardFresh_agent:main:resize:1" : "DashboardCard_agent:main:resize:1")),
+            width: width, onViewportChanged: state.SetViewportWidth, afterMounted: afterMounted, viewportHeight: viewportHeight);
     }
 
     private static void AssertDefaultWebButton(ReactorHostControl host, Button button)
@@ -985,6 +1142,15 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         AssertNoOverlap(host, [ById<TextBlock>(host, "DashboardsTitle"), actions]);
         Assert.All(buttons.SelectMany(FindDescendants<TextBlock>), text =>
             Assert.True(text.ActualHeight <= text.FontSize * 1.8, "An action label wrapped to another line."));
+    }
+
+    private static void AssertHeroActionsRightEdge(ReactorHostControl host)
+    {
+        var hero = ById<Border>(host, "DashboardsHero");
+        var content = ById<Grid>(host, "DashboardsHeroGrid");
+        var bounds = Bounds(hero, host);
+        var actions = Bounds(ById<FrameworkElement>(host, "DashboardsMastActions"), host);
+        Assert.InRange(Math.Abs(actions.Right - bounds.Right + content.Padding.Right + hero.BorderThickness.Right), 0, 0.5);
     }
 
     private static void AssertNoUnmarkedTextClipping(ReactorHostControl host)
@@ -1099,10 +1265,10 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     }
 
     [Theory]
-    [InlineData(0, "No dashboards yet")]
-    [InlineData(1, "1 dashboard")]
-    [InlineData(6, "6 dashboards")]
-    public async Task GalleryHeader_NamesTheAgentAndKeepsGatewayRowCountSecondary(int count, string expectedCount)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(6)]
+    public async Task GalleryHeader_NamesAgentInPickerWithoutInventingLatestUpdate(int count)
     {
         var client = new SnapshotBoardClient(new BoardSnapshot("unused", 1, [], []))
         {
@@ -1121,13 +1287,18 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         await WithMountedAsync(() => Component<ReactorDashboardGallery, DashboardGalleryProps>(
             new DashboardGalleryProps(state, client, "main", 1)), host =>
             {
-                Assert.Equal("Dashboards for Research team", ById<TextBlock>(host, "DashboardsTitle").Text);
-                Assert.Equal(expectedCount, ById<TextBlock>(host, "DashboardsSubtitle").Text);
+                Assert.Equal("Dashboards", ById<TextBlock>(host, "DashboardsTitle").Text);
+                Assert.Equal("Boards are read-only here; ask Research team to change one.",
+                    ById<TextBlock>(host, "DashboardsReaderDetail").Text);
+                Assert.DoesNotContain(FindDescendants<TextBlock>(host), text =>
+                    AutomationProperties.GetAutomationId(text) == "DashboardsLatestBoard");
                 var picker = ById<ComboBox>(host, "DashboardsAgentPicker");
                 var pickerRow = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(picker);
-                Assert.Contains(FindDescendants<TextBlock>(pickerRow), text => text.Text == "Agent");
-            }, ready: host => FindDescendants<TextBlock>(host).Any(text =>
-                AutomationProperties.GetAutomationId(text) == "DashboardsSubtitle" && text.Text == expectedCount));
+                Assert.Contains(FindDescendants<TextBlock>(pickerRow), text => text.Text == "Boards from");
+                Assert.Equal("Research team", picker.SelectedItem);
+                Assert.Equal(0, client.BoardLoads);
+            }, ready: host => FindDescendants<FrameworkElement>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == (count == 0 ? "DashboardsEmpty" : "DashboardsCards")));
     }
 
     [Theory]
@@ -1166,13 +1337,15 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 "large" => "DashboardsShowMore",
                 _ => "DashboardsEmptyTitle",
             };
+            state.SetConnection(client, true);
             await WithMountedAsync(() => Component<ReactorDashboardGallery, DashboardGalleryProps>(
                 new DashboardGalleryProps(state, client, "main", 1)), host =>
                 {
                     Assert.Contains(FindDescendants<Microsoft.UI.Xaml.FrameworkElement>(host),
                         element => AutomationProperties.GetAutomationId(element) == expected);
                     if (scenario is "error" or "unavailable" or "loading")
-                        Assert.NotEqual("No dashboards yet", ById<TextBlock>(host, "DashboardsSubtitle").Text);
+                        Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
+                            AutomationProperties.GetAutomationId(element) is "DashboardsEmpty" or "DashboardsLatestBoard");
                     if (scenario == "empty")
                     {
                         var empty = ById<FrameworkElement>(host, "DashboardsEmpty");
@@ -1458,11 +1631,34 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
 
     private async Task WithMountedAsync(Func<Element> render, Action<ReactorHostControl> assert, Func<ReactorHostControl, bool>? ready = null,
         string theme = "Light", string? capture = null, double width = 900, Action<double>? onViewportChanged = null,
-        Func<ReactorHostControl, Task>? afterMounted = null, Action? afterMount = null)
+        Func<ReactorHostControl, Task>? afterMounted = null, Action? afterMount = null, double? viewportHeight = null)
     {
         ReactorHostControl? host = null;
         Border? captureFrame = null;
+        Action? restoreCaptureWindow = null;
+        Exception? mountedFailure = null;
         var previousTheme = ElementTheme.Default;
+        var diagnosticStart = System.Diagnostics.Stopwatch.StartNew();
+        var diagnosticStages = new List<object>();
+        var pairedDiagnostic = theme == "Light" && (capture is "hero-600-gallery" or "hero-1100-board") &&
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR"));
+        void RecordStage(string stage)
+        {
+            if (!pairedDiagnostic || host is null ||
+                Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is not { Length: > 0 } directory)
+                return;
+            WriteMountedGeometry(host, directory, $"{theme}-{capture}-{stage}-geometry.json");
+            diagnosticStages.Add(new { stage, elapsedMs = diagnosticStart.Elapsed.TotalMilliseconds });
+            File.WriteAllText(Path.Combine(directory, $"{theme}-{capture}-stages.json"), JsonSerializer.Serialize(new
+            {
+                theme, capture, width, stage, stages = diagnosticStages,
+                observation = "Stage snapshots only. No Loaded/Unloaded subscriptions or animation-completion claim.",
+            }, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+            }));
+        }
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -1471,7 +1667,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 previousTheme = ui.Container.RequestedTheme;
                 var requested = theme == "Dark" ? ElementTheme.Dark : ElementTheme.Light;
                 ui.Container.RequestedTheme = requested;
-                host = new ReactorHostControl { Width = width, Height = capture is null ? 600 : 760, RequestedTheme = requested };
+                host = new ReactorHostControl { Width = width, Height = viewportHeight ?? (capture is null ? 600 : 760), RequestedTheme = requested };
                 host.SizeChanged += (_, args) => onViewportChanged?.Invoke(args.NewSize.Width);
                 host.Mount(_ => render());
                 afterMount?.Invoke();
@@ -1480,6 +1676,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 captureFrame.RequestedTheme = requested;
                 captureFrame.Child = host;
                 ui.Container.Children.Add(captureFrame);
+                RecordStage("assigned");
             });
             // Board views load through the posted dispatcher; let those turns and layout settle.
             for (var turn = 0; turn < 3; turn++)
@@ -1497,13 +1694,25 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             {
                 ui.Container.UpdateLayout();
                 assert(host!);
+                RecordStage("ready");
             });
             if (afterMounted is not null)
                 await afterMounted(host!);
             if (capture is not null && Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
             {
+                if (theme == "Light" && (capture is "hero-600-gallery" or "hero-1100-board"))
+                    await ui.RunOnUIAsync(async () =>
+                    {
+                        restoreCaptureWindow = await MountedControlCapture.ArrangeSceneAsync(
+                            ui.TestWindow, captureFrame!, $"{theme}-{capture}-owned-window");
+                        RecordStage("arranged");
+                    });
+                if (capture.StartsWith("hero-", StringComparison.Ordinal))
+                    await WaitForMountedStateAsync(host!, HeroCaptureIsSettled);
                 await ui.RunOnUIAsync(async () =>
                 {
+                    WriteMountedGeometry(host!, directory, $"{theme}-{capture}-geometry.json");
+                    RecordStage("before-rtb");
                     var bitmap = new RenderTargetBitmap();
                     await bitmap.RenderAsync(captureFrame);
                     var pixels = await bitmap.GetPixelsAsync();
@@ -1516,25 +1725,268 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
                         (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels.ToArray());
                     await encoder.FlushAsync();
+                    RecordStage("after-rtb");
+                    if (theme == "Light" && (capture is "hero-600-gallery" or "hero-1100-board"))
+                    {
+                        RecordStage("before-owned-window");
+                        await MountedControlCapture.OptionalAsync(ui.TestWindow, $"{theme}-{capture}-owned-window");
+                        RecordStage("after-owned-window");
+                    }
                 });
             }
         }
+        catch (Exception failure)
+        {
+            mountedFailure = failure;
+            if (host is not null && Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
+            {
+                var failureId = $"failure-{Guid.NewGuid():N}";
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, $"{failureId}-exception.txt"), failure.ToString());
+                try
+                {
+                    await ui.RunOnUIAsync(() => WriteMountedGeometry(host, directory, $"{failureId}-geometry.json"));
+                }
+                catch (Exception diagnosticFailure)
+                {
+                    File.WriteAllText(Path.Combine(directory, $"{failureId}-diagnostic-exception.txt"), diagnosticFailure.ToString());
+                }
+            }
+            throw;
+        }
         finally
         {
-            await ui.RunOnUIAsync(() =>
+            var cleanupFailures = new List<Exception>();
+            try
             {
-                if (host is not null)
+                await ui.RunOnUIAsync(() =>
+                {
+                    try { RecordStage("cleanup"); }
+                    catch (Exception failure) { cleanupFailures.Add(failure); }
+                });
+            }
+            catch (Exception failure) { cleanupFailures.Add(failure); }
+            try
+            {
+                await ui.RunOnUIAsync(() => restoreCaptureWindow?.Invoke());
+            }
+            catch (Exception failure) { cleanupFailures.Add(failure); }
+            try
+            {
+                await ui.RunOnUIAsync(() =>
                 {
                     ui.Container.Children.Remove(captureFrame);
                     if (captureFrame is not null)
                         captureFrame.Child = null;
-                    host.Dispose();
+                    host?.Dispose();
+                });
+            }
+            catch (Exception failure) { cleanupFailures.Add(failure); }
+            try { await ui.RunOnUIAsync(() => ui.Container.RequestedTheme = previousTheme); }
+            catch (Exception failure) { cleanupFailures.Add(failure); }
+            if (cleanupFailures.Count > 0)
+            {
+                var cleanupFailure = new AggregateException("Mounted fixture cleanup failed.", cleanupFailures);
+                if (Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
+                {
+                    Directory.CreateDirectory(directory);
+                    File.WriteAllText(Path.Combine(directory, $"cleanup-{Guid.NewGuid():N}-exception.txt"), cleanupFailure.ToString());
                 }
-            });
-            await ui.YieldToRenderAsync();
-            await ui.RunOnUIAsync(() => ui.Container.RequestedTheme = previousTheme);
+                if (mountedFailure is null)
+                    throw cleanupFailure;
+            }
         }
     }
+
+    private static bool HeroCaptureIsSettled(ReactorHostControl host)
+    {
+        var hero = FindDescendants<Border>(host).FirstOrDefault(element =>
+            AutomationProperties.GetAutomationId(element) is "DashboardsHero" or "DashboardHero");
+        if (hero is null || !hero.IsLoaded || hero.ActualHeight <= 0)
+            return false;
+        var descendants = FindDescendants<FrameworkElement>(hero).ToArray();
+        var glyph = descendants.FirstOrDefault(element =>
+            AutomationProperties.GetAutomationId(element).EndsWith(":Glyph", StringComparison.Ordinal));
+        var title = descendants.FirstOrDefault(element =>
+            AutomationProperties.GetAutomationId(element) == "DashboardsTitle");
+        if (glyph is null || title is null)
+            return false;
+        var disconnected = FindDescendants<FrameworkElement>(host).Any(element =>
+            AutomationProperties.GetAutomationId(element) == "DashboardsDisconnectedInfo");
+        var requiredActionIds = disconnected ? Array.Empty<string>()
+            : AutomationProperties.GetAutomationId(hero) == "DashboardHero"
+                ? new[] { "DashboardOpenChat", "DashboardRefresh", "DashboardMoreActions" }
+                : new[] { host.ActualWidth < 720 ? "DashboardsGalleryMore" : "DashboardsOpenWeb", "DashboardsRefresh" };
+        var actions = requiredActionIds.Select(id => descendants.FirstOrDefault(element =>
+            AutomationProperties.GetAutomationId(element) == id)).ToArray();
+        if (actions.Any(element => element is null))
+            return false;
+        return new[] { hero, glyph, title }.Concat(actions.OfType<FrameworkElement>())
+            .All(element => element.IsLoaded && element.Visibility == Visibility.Visible &&
+                element.ActualWidth > 0 && element.ActualHeight > 0 && element.Opacity >= 0.99 &&
+                Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element).Opacity >= 0.99) &&
+            descendants.Where(element => (element is Panel or Microsoft.UI.Xaml.Controls.Border) &&
+                    element.Visibility == Visibility.Visible && element.ActualHeight > 0 &&
+                    HasNativeTransition(element) &&
+                    !HasDisabledControlAncestor(element, hero))
+                .All(element => Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element).Opacity >= 0.99);
+    }
+
+    private static bool HasNativeTransition(FrameworkElement element) =>
+        element.Transitions is { Count: > 0 } ||
+        Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element) is Panel { ChildrenTransitions.Count: > 0 };
+
+    private static bool HasDisabledControlAncestor(FrameworkElement element, FrameworkElement root)
+    {
+        for (DependencyObject? current = element; current is not null && current != root;
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+            if (current is Control { IsEnabled: false })
+                return true;
+        return false;
+    }
+
+    private static void WriteMountedGeometry(ReactorHostControl host, string directory, string fileName)
+    {
+        var hero = FindDescendants<Border>(host).FirstOrDefault(element =>
+            AutomationProperties.GetAutomationId(element) is "DashboardsHero" or "DashboardHero");
+        var geometryElements = FindDescendants<FrameworkElement>(host).Prepend(host).ToList();
+        for (var ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(host); ancestor is not null;
+            ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor))
+            if (ancestor is FrameworkElement element)
+                geometryElements.Add(element);
+        var elements = geometryElements.Select(element =>
+        {
+            var sameXamlRoot = host.XamlRoot is not null && ReferenceEquals(element.XamlRoot, host.XamlRoot);
+            var attachedAndLoaded = host.IsLoaded && element.IsLoaded && sameXamlRoot;
+            Microsoft.UI.Composition.Visual? visual = null;
+            string? compositionUnavailable = attachedAndLoaded ? null : "Deferred until attached and loaded.";
+            try
+            {
+                if (attachedAndLoaded)
+                    visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
+            }
+            catch (UnauthorizedAccessException unavailable) when (
+                unavailable.HResult == unchecked((int)0x80070005) &&
+                unavailable.Message.Contains("Scale property in use", StringComparison.Ordinal))
+            {
+                compositionUnavailable = unavailable.Message;
+            }
+            var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+            var scroll = element as ScrollViewer;
+            var grid = element as Grid;
+            return new
+            {
+                type = element.GetType().Name,
+                identity = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element),
+                id = AutomationProperties.GetAutomationId(element),
+                text = (element as TextBlock)?.Text,
+                parentType = parent?.GetType().Name,
+                parentIdentity = parent is null ? (int?)null : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(parent),
+                hasXamlRoot = element.XamlRoot is not null,
+                sameXamlRoot,
+                parentId = parent is DependencyObject dependency ? AutomationProperties.GetAutomationId(dependency) : null,
+                geometryState = !sameXamlRoot ? "Not attached to the host XamlRoot. Geometry deferred." :
+                    !attachedAndLoaded ? "Same XamlRoot, not loaded. Geometry deferred." :
+                    element.ActualWidth <= 0 || element.ActualHeight <= 0 ? "Loaded with zero layout extent." : "Loaded with layout extent.",
+                bounds = attachedAndLoaded ? Bounds(element, host).ToString() : null,
+                heroRelativeBounds = attachedAndLoaded && hero is { IsLoaded: true } &&
+                    ReferenceEquals(hero.XamlRoot, host.XamlRoot) ? Bounds(element, hero).ToString() : null,
+                element.ActualWidth,
+                element.ActualHeight,
+                element.IsLoaded,
+                visibility = element.Visibility.ToString(),
+                element.Opacity,
+                element.IsHitTestVisible,
+                margin = element.Margin.ToString(),
+                nativeClip = attachedAndLoaded ? element.Clip?.Rect.ToString() : null,
+                nativeClipType = element.Clip?.GetType().Name,
+                renderTransformBasis = attachedAndLoaded && element.RenderTransform is { } transform ? new[]
+                {
+                    transform.TransformPoint(new Windows.Foundation.Point(0, 0)).ToString(),
+                    transform.TransformPoint(new Windows.Foundation.Point(1, 0)).ToString(),
+                    transform.TransformPoint(new Windows.Foundation.Point(0, 1)).ToString(),
+                } : null,
+                renderTransformType = element.RenderTransform?.GetType().Name,
+                zIndex = Microsoft.UI.Xaml.Controls.Canvas.GetZIndex(element),
+                background = DescribeBrush(element switch
+                {
+                    Border border => border.Background,
+                    Panel panel => panel.Background,
+                    Control control => control.Background,
+                    _ => null,
+                }),
+                foreground = DescribeBrush(element switch
+                {
+                    TextBlock text => text.Foreground,
+                    Control control => control.Foreground,
+                    _ => null,
+                }),
+                transitions = element.Transitions?.Select(transition => transition.GetType().Name).ToArray(),
+                parentChildrenTransitions = (parent as Panel)?.ChildrenTransitions?.Select(transition => new
+                {
+                    type = transition.GetType().Name,
+                    staggering = transition is Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition entrance
+                        ? (bool?)entrance.IsStaggeringEnabled : null,
+                }).ToArray(),
+                padding = element switch
+                {
+                    Grid padded => padded.Padding.ToString(),
+                    Border padded => padded.Padding.ToString(),
+                    Control padded => padded.Padding.ToString(),
+                    _ => null
+                },
+                gridRow = Microsoft.UI.Xaml.Controls.Grid.GetRow(element),
+                gridColumn = Microsoft.UI.Xaml.Controls.Grid.GetColumn(element),
+                gridRowSpan = Microsoft.UI.Xaml.Controls.Grid.GetRowSpan(element),
+                gridColumnSpan = Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(element),
+                columnCount = grid?.ColumnDefinitions.Count,
+                compositionOpacity = visual?.Opacity,
+                compositionOffset = visual?.Offset.ToString(),
+                compositionScale = visual?.Scale.ToString(),
+                compositionIsVisible = visual?.IsVisible,
+                compositionIdentity = visual is null ? (int?)null : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(visual),
+                compositionParentIdentity = visual?.Parent is { } visualParent
+                    ? (int?)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(visualParent) : null,
+                compositionClipType = visual?.Clip?.GetType().Name,
+                compositionClipUnavailable = visual?.Clip is not null and not Microsoft.UI.Composition.InsetClip
+                    ? "Only public InsetClip extents recorded; other clip geometry unavailable." : null,
+                compositionInsetClip = visual?.Clip is Microsoft.UI.Composition.InsetClip inset
+                    ? new[] { inset.LeftInset, inset.TopInset, inset.RightInset, inset.BottomInset } : null,
+                compositionTransform = visual?.TransformMatrix.ToString(),
+                compositionUnavailable,
+                nativeScale = element.Scale.ToString(),
+                translation = element.Translation.ToString(),
+                scrollOffset = scroll?.VerticalOffset,
+                scrollableHeight = scroll?.ScrollableHeight,
+                extentHeight = scroll?.ExtentHeight,
+                viewportHeight = scroll?.ViewportHeight,
+            };
+        }).ToArray();
+        var focused = host.IsLoaded && host.XamlRoot is { } xamlRoot
+            ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xamlRoot) as DependencyObject : null;
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, fileName), JsonSerializer.Serialize(new
+        {
+            recordedUtc = DateTimeOffset.UtcNow,
+            identityKind = "Managed reference hash, stable while subscribed; not a native COM identity or animation-completion receipt.",
+            animationState = "Public configured transitions only. Running implicit animation progress unavailable.",
+            hostWidth = host.ActualWidth,
+            hostHeight = host.ActualHeight,
+            focusedId = focused is null ? null : AutomationProperties.GetAutomationId(focused),
+            elements
+        }, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        }));
+    }
+
+    private static object? DescribeBrush(Microsoft.UI.Xaml.Media.Brush? brush) => brush is null ? null : new
+    {
+        type = brush.GetType().Name,
+        brush.Opacity,
+        color = (brush as Microsoft.UI.Xaml.Media.SolidColorBrush)?.Color.ToString(),
+    };
 
     private static ResourceDictionary? s_installedResources;
 

@@ -46,18 +46,23 @@ recent board's configured agent before loading that agent's boards. Explicit
 routes and later picker choices win. Agent labels come from `agents.list`;
 missing labels fall back to IDs. The empty gallery's Open chat action opens the
 existing chat entry without prefilled text; it does not invent an agent session.
-The heading names the selected agent ("Dashboards for main", or its configured
-display name). A secondary line reports only the loaded Gateway row count:
-"No dashboards yet", "1 dashboard", or the plural count. Loading, unavailable
-and failed reads do not masquerade as an empty result.
+The shared `PageHero` card names the page. Its answer line contains the
+single-agent picker and the latest board with a valid reported update time,
+independent of search and sort. The caption explains that boards are read-only
+here and names the agent to ask for changes. No summary tiles or decorative
+scope chips are added. Loading, unavailable and failed reads do not masquerade
+as an empty result. The gallery contract does not contain a blocked-content
+field, so cards do not invent a "Content blocked" badge or load boards to infer it.
 
-The board header uses the same subtle system-accent gradient and an icon-only
+The board header uses the same shared hero card with the board name, author
+identity, update time and reported Live tag, including narrow layouts, and an icon-only
 chat, refresh, and More options group. The Workspace Back button
 returns to the gallery, retaining search, sort and the shown card count, and
 restoring focus to the exact originating card (including a Fresh today card).
 If it disappeared, focus falls back to the named gallery heading.
-The gallery is not persisted offline: disconnect replaces it with an explicit
-reconnect message, not cached boards. Board content and ticket/sandbox ownership
+The gallery is not persisted offline: disconnect retains the page hero and
+shows an error InfoBar with Open Connection directly below it, not cached boards.
+Board content and ticket/sandbox ownership
 are unchanged.
 
 Board tabs select named native panels, with automation control relationships.
@@ -73,12 +78,9 @@ The page measures its Reactor host, not the window. The canonical
 999 DIP), or Narrow (below 720 DIP, supported down to a 480-DIP host), including
 snapping of WinUI's fractional boundary measurements. Content is centered,
 capped at 1200 DIP after horizontal padding (32 DIP, or 20 in Narrow).
-The mast's system-accent backdrop is a full-width page-host layer, including
-the centered column's side margins and scrollbar gutter. Its height follows
-the measured mast; the content column remains centered above it. This decorative,
-non-hit-testable layer is outside the page scroller and stays at the viewport top.
-In Light and Dark, the wash fades vertically to transparent before its bottom,
-so the full-width layer has no tinted horizontal edge.
+The system-accent wash is contained inside the shared hero card. There is no
+full-page decorative backdrop. The card, its answer line and the content column
+scroll together; actions reflow below the copy in Narrow.
 The gallery and board use native `ScrollViewer` controls with horizontal
 scrolling disabled. Their content fills the viewport and exposes the native
 ScrollPattern. Each page scrolls its mast, tabs and content together; there is no
@@ -86,10 +88,9 @@ sticky header or scroll-offset compensation.
 
 When narrow full Settings collapses its own rail, the shell supplies a retained
 56-DIP content inset through `ISettingsPageContentInset`. Only the gallery/board
-scroll viewport and disconnected content move down; the page frame, backdrop
-and copy-notice overlay remain at the origin. The backdrop extent adds the
-inset to the measured mast height, including inset-only changes without a
-header resize. Embedded pins also receive the 56-DIP content inset when the
+scroll viewport and disconnected content move down; the page frame and
+copy-notice overlay remain at the origin. The hero moves with the retained
+viewport without changing its height. Embedded pins also receive the 56-DIP content inset when the
 Workspace Chat pane is collapsed, keeping the outer page host at the origin.
 Expanded panes and standalone content-only hosts receive zero inset. Ordinary
 non-opted-in pages retain the outer host margin instead. This allocation never
