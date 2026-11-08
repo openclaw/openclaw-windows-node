@@ -12,6 +12,7 @@
 //   var inbox = InboxProjection.Build(notifications, items);
 
 using OpenClaw.Shared;
+using OpenClaw.Shared.ExecApprovals;
 using System.Text.Json;
 
 namespace OpenClawTray.Presentation;
@@ -87,36 +88,12 @@ internal static class InboxGatewayItems
     }
 
     /// <summary>
-    /// The complete command as it should be displayed for review: nothing is removed or trimmed,
-    /// but control, bidirectional and invisible formatting characters that could hide or reorder
-    /// what runs are replaced with visible <c>\u{XXXX}</c> escapes. Newlines and tabs stay.
+    /// Shared secret-redacted, bounded review text. Ordinary multiline layout is preserved;
+    /// other invisible characters are escaped. Truncation/suppression is explicit, never a raw fallback.
     /// </summary>
-    public static string DisplayCommand(string? command)
-    {
-        if (string.IsNullOrEmpty(command))
-            return "";
-        var builder = new System.Text.StringBuilder(command.Length);
-        // A lone carriage return can overwrite what a terminal shows, so only CRLF counts as a line break.
-        foreach (var rune in command.Replace("\r\n", "\n", StringComparison.Ordinal).EnumerateRunes())
-        {
-            if (rune.Value is '\n' or '\t')
-                builder.Append((char)rune.Value);
-            else if (IsHiddenCharacter(rune))
-                builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\u{{{rune.Value:X4}}}");
-            else
-                builder.Append(rune.ToString());
-        }
-        return builder.ToString();
-    }
-
-    private static bool IsHiddenCharacter(System.Text.Rune rune) =>
-        System.Text.Rune.GetUnicodeCategory(rune) is
-            System.Globalization.UnicodeCategory.Control or
-            System.Globalization.UnicodeCategory.Format or
-            System.Globalization.UnicodeCategory.LineSeparator or
-            System.Globalization.UnicodeCategory.ParagraphSeparator or
-            System.Globalization.UnicodeCategory.Surrogate or
-            System.Globalization.UnicodeCategory.PrivateUse;
+    public static string DisplayCommand(string? command) => string.IsNullOrEmpty(command)
+        ? ""
+        : ExecApprovalCommandDisplaySanitizer.SanitizeCommandForReview(command);
 
     /// <summary>
     /// True when an Inbox row shows the request in full for review. For exec approvals that means
@@ -166,14 +143,34 @@ internal static class InboxGatewayItems
         ArgumentNullException.ThrowIfNull(scope);
         string Format(string key, params object[] args) =>
             string.Format(System.Globalization.CultureInfo.CurrentCulture, getString(key), args);
-        return scope.Kind switch
+        var summary = scope.Kind switch
         {
             GatewayApprovalScopeKind.StandingGrant when scope.ExpiresInDays is { } days =>
-                Format("Inbox_ApprovalScopeStandingGrantDaysFormat", scope.Automation ?? "", days),
-            GatewayApprovalScopeKind.StandingGrant => Format("Inbox_ApprovalScopeStandingGrantFormat", scope.Automation ?? ""),
-            GatewayApprovalScopeKind.MessageSend => Format("Inbox_ApprovalScopeMessageSendFormat", scope.RecipientCount, scope.Target ?? ""),
-            GatewayApprovalScopeKind.Payment => Format("Inbox_ApprovalScopePaymentFormat", scope.Amount ?? "", scope.Currency ?? "", scope.Target ?? ""),
-            _ => Format("Inbox_ApprovalScopeExternalPostFormat", scope.Target ?? ""),
+                Format("Inbox_ApprovalScopeStandingGrantDaysFormat", DisplayCommand(scope.Automation), days),
+            GatewayApprovalScopeKind.StandingGrant => Format("Inbox_ApprovalScopeStandingGrantFormat", DisplayCommand(scope.Automation)),
+            GatewayApprovalScopeKind.MessageSend => Format("Inbox_ApprovalScopeMessageSendFormat", scope.RecipientCount, DisplayCommand(scope.Target)),
+            GatewayApprovalScopeKind.Payment => Format("Inbox_ApprovalScopePaymentFormat", DisplayCommand(scope.Amount), DisplayCommand(scope.Currency), DisplayCommand(scope.Target)),
+            GatewayApprovalScopeKind.ExternalPost => Format("Inbox_ApprovalScopeExternalPostFormat", DisplayCommand(scope.Target)),
+            _ => getString("Inbox_ApprovalUnreviewableCommand"),
+        };
+        if (scope.Kind == GatewayApprovalScopeKind.MessageSend)
+        {
+            if (scope.Recipients is { } recipients)
+            {
+                var listed = recipients.Count == 0 ? getString("Inbox_ApprovalScopeNoRecipientsListed") :
+                    string.Join("\n", recipients.Select(ExecApprovalCommandDisplaySanitizer.SanitizeSingleLineForReview));
+                summary += "\n" + Format("Inbox_ApprovalScopeRecipientsFormat", listed);
+            }
+            if (scope.Audience is not null)
+                summary += "\n" + Format("Inbox_ApprovalScopeAudienceFormat", DisplayCommand(scope.Audience));
+        }
+        // Each field is independently bounded/redacted. Do not truncate the combined disclosure
+        // after the shared permit gate has established that every consent field can be reviewed.
+        return scope.Kind switch
+        {
+            GatewayApprovalScopeKind.StandingGrant => summary + "\n" + Format("Inbox_ApprovalScopeCommandFormat", DisplayCommand(scope.Command)),
+            GatewayApprovalScopeKind.ExternalPost => summary + "\n" + Format("Inbox_ApprovalScopeVisibilityFormat", DisplayCommand(scope.Visibility)),
+            _ => summary,
         };
     }
 
@@ -181,7 +178,7 @@ internal static class InboxGatewayItems
     {
         ArgumentNullException.ThrowIfNull(approval);
         return new($"{IdPrefix}approval:{approval.Id}", InboxGatewayItemKind.Approval,
-            approval.Title ?? approval.Command, FromMs(approval.CreatedAtMs))
+            DisplayCommand(approval.Title ?? approval.Command), FromMs(approval.CreatedAtMs))
         {
             Approval = approval,
             ExpiresAt = expiresAt,

@@ -7876,8 +7876,15 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, totdat dit wordt ingetrokken (herroepbaar)</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, gedurende {1} dagen (herroepbaar)</value></data>
   <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Verzendt naar {0} ontvanger(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>Vermelde ontvangers:
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>Geen vermeld</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>Doelgroep: {0}</value></data>
   <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Betaalt {0} {1} aan {2}</value></data>
   <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Plaatst extern op {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>Opdracht:
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>Zichtbaarheid: {0}</value></data>
   <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Account vraagt aandacht: {0}</value></data>
   <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Aanmelden vereist</value></data>
   <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API-sleutel vraagt aandacht</value></data>

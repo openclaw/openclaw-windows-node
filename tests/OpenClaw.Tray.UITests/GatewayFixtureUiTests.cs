@@ -1186,7 +1186,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
         Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
-        bool connectGateway = true)
+        bool connectGateway = true, TimeSpan? testTimeout = null)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
@@ -1202,7 +1202,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
             // UIA is synchronous and can block inside a hung app. Keep the deadline
             // outside that worker so failure reporting and owned-process cleanup still run.
-            await Task.Run(() => test(run)).WaitAsync(TimeSpan.FromSeconds(150)).ConfigureAwait(false);
+            await Task.Run(() => test(run)).WaitAsync(testTimeout ?? TimeSpan.FromSeconds(150)).ConfigureAwait(false);
             run.EnsureRunning();
             Assert.Empty(run.Gateway.UnexpectedRequests);
             var crashLog = Path.Combine(run.Profile.DataDirectory, "crash.log");

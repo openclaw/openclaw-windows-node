@@ -315,7 +315,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         var state = isExec
             ? command is null ? LocalizationHelper.GetString("Inbox_ApprovalNoCommand") : InboxGatewayItems.CompactCommand(approval.Command)
             : ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(approval.Title ?? approval.Command);
-        var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), approval.Cwd }
+        var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), InboxGatewayItems.DisplayCommand(approval.Cwd) }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
         // Reviewer detail can contain the operation itself, not just explanatory copy.
         // Keep title and detail complete in the existing selectable plain-text surface.
@@ -382,7 +382,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         "gateway" => LocalizationHelper.GetString("Inbox_ApprovalHostGateway"),
         "node" => LocalizationHelper.GetString("Inbox_ApprovalHostDevice"),
         "sandbox" => LocalizationHelper.GetString("Inbox_ApprovalHostSandbox"),
-        _ => host,
+        _ => InboxGatewayItems.DisplayCommand(host),
     };
 
     private static string FormatExpiry(DateTimeOffset expiresAt, DateTimeOffset now) =>

@@ -7875,8 +7875,15 @@
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>“始终允许”会为“{0}”运行此确切命令而不再询问，直到撤销（可撤销）</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>“始终允许”会为“{0}”运行此确切命令而不再询问，持续 {1} 天（可撤销）</value></data>
   <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>通过 {1} 发送给 {0} 位收件人</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>列出的收件人：
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>未列出</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>受众：{0}</value></data>
   <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>向 {2} 支付 {0} {1}</value></data>
   <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>对外发布到 {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>命令：
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>可见性：{0}</value></data>
   <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>帐户需要处理：{0}</value></data>
   <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>需要登录</value></data>
   <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API 密钥需要处理</value></data>
