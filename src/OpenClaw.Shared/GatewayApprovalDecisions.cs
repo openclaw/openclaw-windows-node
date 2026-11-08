@@ -82,7 +82,9 @@ public static class GatewayApprovalDecisions
     {
         ArgumentNullException.ThrowIfNull(approval);
         if (!CanReviewText(approval.WarningText) || !CanReviewText(approval.Title) ||
-            !CanReviewText(approval.Description) || !CanReviewText(approval.Detail))
+            !CanReviewText(approval.Description) || !CanReviewText(approval.Detail) ||
+            !CanReviewDisplayField(approval.Host) || !CanReviewDisplayField(approval.Cwd) ||
+            !CanReviewScope(approval.Scope))
             return false;
         if (approval.Kind != GatewayApprovalKind.Exec && string.IsNullOrWhiteSpace(approval.Title))
             return false;
@@ -91,6 +93,52 @@ public static class GatewayApprovalDecisions
         if (string.IsNullOrWhiteSpace(approval.Command))
             return false;
         var status = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(approval.Command);
+        // Preserve the chat banner's single-line limits as well as the Inbox's review-layout limits.
+        return !status.Truncated && !status.Oversized && !status.UnsafeConcealment &&
+            CanReviewDisplayField(approval.Command);
+    }
+
+    /// <summary>The native chat banner does not render additional scope, directory or warning consent.</summary>
+    public static bool RequiresInboxReview(GatewayPendingApproval approval) =>
+        approval.Scope is not null || !string.IsNullOrWhiteSpace(approval.Cwd) || !string.IsNullOrWhiteSpace(approval.WarningText);
+
+    public static IReadOnlyList<string> EffectiveForChat(GatewayPendingApproval approval) =>
+        RequiresInboxReview(approval) ? Effective(approval).Where(decision => decision == Deny).ToArray() : Effective(approval);
+
+    private static bool CanReviewScope(GatewayApprovalScope? scope)
+    {
+        if (scope is null) return true;
+        if (!CanReviewDisplayField(scope.Automation) || !CanReviewDisplayField(scope.Command) ||
+            !CanReviewDisplayField(scope.Visibility) || !CanReviewDisplayField(scope.Target) ||
+            !CanReviewDisplayField(scope.Amount) || !CanReviewDisplayField(scope.Currency) ||
+            !CanReviewDisplayField(scope.Audience) ||
+            (scope.Recipients is not null && scope.Recipients.Any(recipient => !CanReviewRecipient(recipient))))
+            return false;
+        return scope.Kind switch
+        {
+            GatewayApprovalScopeKind.StandingGrant => !string.IsNullOrWhiteSpace(scope.Automation) &&
+                !string.IsNullOrWhiteSpace(scope.Command),
+            GatewayApprovalScopeKind.MessageSend => !string.IsNullOrWhiteSpace(scope.Target) && scope.HasValidMessageSendDetails,
+            GatewayApprovalScopeKind.Payment => !string.IsNullOrWhiteSpace(scope.Amount) &&
+                !string.IsNullOrWhiteSpace(scope.Currency) && !string.IsNullOrWhiteSpace(scope.Target),
+            GatewayApprovalScopeKind.ExternalPost => !string.IsNullOrWhiteSpace(scope.Target) && (scope.Visibility is "public" or "restricted"),
+            _ => false,
+        };
+    }
+
+    private static bool CanReviewRecipient(string? recipient)
+    {
+        if (!GatewayApprovalScope.IsValidRecipient(recipient)) return false;
+        // Each recipient renders on its own line; escape embedded line/tab controls rather
+        // than letting one recipient impersonate multiple entries in the sample.
+        var status = ExecApprovalCommandDisplaySanitizer.SanitizeSingleLineForReviewWithStatus(recipient!);
+        return !status.Truncated && !status.Oversized && !status.UnsafeConcealment;
+    }
+
+    private static bool CanReviewDisplayField(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return true;
+        var status = ExecApprovalCommandDisplaySanitizer.SanitizeCommandForReviewWithStatus(text);
         return !status.Truncated && !status.Oversized && !status.UnsafeConcealment;
     }
 

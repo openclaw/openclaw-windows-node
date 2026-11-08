@@ -27,6 +27,7 @@ public enum GatewayApprovalScopeKind
     MessageSend,
     Payment,
     ExternalPost,
+    Unreviewable,
 }
 
 /// <summary>What an approval would allow, when the Gateway states it (for example a payment target).</summary>
@@ -40,8 +41,59 @@ public sealed record GatewayApprovalScope(GatewayApprovalScopeKind Kind)
     public int? ExpiresInDays { get; init; }
     public string? Target { get; init; }
     public int RecipientCount { get; init; }
+    internal const int MaxListedRecipients = 5;
+    internal const int MaxRecipientLength = 128;
+    private readonly IReadOnlyList<string>? _recipients;
+    /// <summary>Exact optional recipient sample. Null means absent, not an explicitly empty list.</summary>
+    public IReadOnlyList<string>? Recipients
+    {
+        get => _recipients;
+        init => _recipients = value is null ? null : Array.AsReadOnly(value.ToArray());
+    }
+    /// <summary>Exact internal/external message audience, when supplied by the Gateway.</summary>
+    public string? Audience { get; init; }
     public string? Amount { get; init; }
     public string? Currency { get; init; }
+    // Unsupported wire scope still changes observation identity, but is never displayed or logged.
+    internal string? UnsupportedBinding { get; init; }
+
+    internal bool HasValidMessageSendDetails =>
+        (Audience is null or "internal" or "external") &&
+        (Recipients is null || (Recipients.Count <= MaxListedRecipients && Recipients.All(IsValidRecipient)));
+
+    // JSON Schema string lengths count Unicode code points, not UTF-16 code units.
+    internal static bool IsValidRecipient(string? value) => !string.IsNullOrEmpty(value) &&
+        value.EnumerateRunes().Take(MaxRecipientLength + 1).Count() <= MaxRecipientLength;
+
+    /// <summary>Scope equality is ordinal and structural, including recipient order and absent versus empty.</summary>
+    public bool Equals(GatewayApprovalScope? other) =>
+        other is not null && Kind == other.Kind && Automation == other.Automation &&
+        Command == other.Command && Visibility == other.Visibility && ExpiresInDays == other.ExpiresInDays &&
+        Target == other.Target && RecipientCount == other.RecipientCount && Audience == other.Audience &&
+        Amount == other.Amount && Currency == other.Currency && UnsupportedBinding == other.UnsupportedBinding &&
+        (Recipients is null ? other.Recipients is null :
+            other.Recipients is not null && Recipients.SequenceEqual(other.Recipients, StringComparer.Ordinal));
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Kind);
+        hash.Add(Automation, StringComparer.Ordinal);
+        hash.Add(Command, StringComparer.Ordinal);
+        hash.Add(Visibility, StringComparer.Ordinal);
+        hash.Add(ExpiresInDays);
+        hash.Add(Target, StringComparer.Ordinal);
+        hash.Add(RecipientCount);
+        hash.Add(Recipients is not null);
+        if (Recipients is not null)
+            foreach (var recipient in Recipients)
+                hash.Add(recipient, StringComparer.Ordinal);
+        hash.Add(Audience, StringComparer.Ordinal);
+        hash.Add(Amount, StringComparer.Ordinal);
+        hash.Add(Currency, StringComparer.Ordinal);
+        hash.Add(UnsupportedBinding, StringComparer.Ordinal);
+        return hash.ToHashCode();
+    }
 }
 
 /// <summary>One approval waiting for a decision. Times are Gateway epoch milliseconds.</summary>
@@ -279,41 +331,99 @@ public static class GatewayPendingApprovalParser
 
     private static GatewayApprovalScope? ReadScope(JsonElement request)
     {
-        if (!request.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.Object)
+        if (!request.TryGetProperty("scope", out var scope) || scope.ValueKind == JsonValueKind.Null)
             return null;
+        if (scope.ValueKind == JsonValueKind.Object && ReadKnownScope(scope) is { } parsed &&
+            HasOnlyScopeFields(scope, parsed.Kind))
+            return parsed;
+        // Dropping an unknown/malformed scope would turn it into an apparently unscoped permit.
+        return new(GatewayApprovalScopeKind.Unreviewable)
+        {
+            UnsupportedBinding = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(scope.GetRawText()))),
+        };
+    }
 
-        switch (ReadString(scope, "kind"))
+    private static bool HasOnlyScopeFields(JsonElement scope, GatewayApprovalScopeKind kind)
+    {
+        string[] fields = kind switch
+        {
+            GatewayApprovalScopeKind.StandingGrant => ["kind", "automation", "command", "expiresInDays"],
+            GatewayApprovalScopeKind.MessageSend => ["kind", "target", "recipientCount", "recipients", "audience"],
+            GatewayApprovalScopeKind.Payment => ["kind", "target", "amount", "currency"],
+            GatewayApprovalScopeKind.ExternalPost => ["kind", "target", "visibility"],
+            _ => [],
+        };
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        if (scope.EnumerateObject().Any(field => !fields.Contains(field.Name, StringComparer.Ordinal) || !seen.Add(field.Name)))
+            return false;
+        return !scope.TryGetProperty("expiresInDays", out var days) || days.ValueKind == JsonValueKind.Null ||
+            (days.ValueKind == JsonValueKind.Number && days.TryGetInt32(out _));
+    }
+
+    private static GatewayApprovalScope? ReadKnownScope(JsonElement scope)
+    {
+        switch (scope.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String ? kind.GetString() : null)
         {
             case "standing-grant":
-                return ReadString(scope, "automation") is { } automation && ReadString(scope, "command") is not null
+                return ReadString(scope, "automation") is not null && ReadString(scope, "command") is not null
                     ? new GatewayApprovalScope(GatewayApprovalScopeKind.StandingGrant)
                     {
-                        Automation = automation,
+                        Automation = scope.GetProperty("automation").GetString(),
                         Command = scope.GetProperty("command").GetString(),
                         ExpiresInDays = scope.TryGetProperty("expiresInDays", out var days) && days.ValueKind == JsonValueKind.Number &&
                             days.TryGetInt32(out var value) ? value : null,
                     }
                     : null;
             case "message-send":
-                return ReadString(scope, "target") is { } messageTarget &&
-                    scope.TryGetProperty("recipientCount", out var count) && count.ValueKind == JsonValueKind.Number &&
-                    count.TryGetInt32(out var recipients)
-                    ? new GatewayApprovalScope(GatewayApprovalScopeKind.MessageSend) { Target = messageTarget, RecipientCount = recipients }
-                    : null;
+                return ReadMessageSendScope(scope);
             case "payment":
-                return ReadString(scope, "amount") is { } amount && ReadString(scope, "currency") is { } currency &&
-                    ReadString(scope, "target") is { } payee
-                    ? new GatewayApprovalScope(GatewayApprovalScopeKind.Payment) { Amount = amount, Currency = currency, Target = payee }
+                return ReadString(scope, "amount") is not null && ReadString(scope, "currency") is not null &&
+                    ReadString(scope, "target") is not null
+                    ? new GatewayApprovalScope(GatewayApprovalScopeKind.Payment) { Amount = scope.GetProperty("amount").GetString(), Currency = scope.GetProperty("currency").GetString(), Target = scope.GetProperty("target").GetString() }
                     : null;
             case "external-post":
-                return ReadString(scope, "target") is { } postTarget &&
+                return ReadString(scope, "target") is not null &&
                     ReadString(scope, "visibility") is "public" or "restricted"
                     ? new GatewayApprovalScope(GatewayApprovalScopeKind.ExternalPost)
-                    { Target = postTarget, Visibility = scope.GetProperty("visibility").GetString() }
+                    { Target = scope.GetProperty("target").GetString(), Visibility = scope.GetProperty("visibility").GetString() }
                     : null;
             default:
                 return null;
         }
+    }
+
+    private static GatewayApprovalScope? ReadMessageSendScope(JsonElement scope)
+    {
+        if (ReadString(scope, "target") is null ||
+            !scope.TryGetProperty("recipientCount", out var count) || count.ValueKind != JsonValueKind.Number ||
+            !count.TryGetInt32(out var recipientCount))
+            return null;
+        List<string>? recipients = null;
+        if (scope.TryGetProperty("recipients", out var listed))
+        {
+            if (listed.ValueKind != JsonValueKind.Array || listed.GetArrayLength() > GatewayApprovalScope.MaxListedRecipients)
+                return null;
+            recipients = [];
+            foreach (var item in listed.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String || !GatewayApprovalScope.IsValidRecipient(item.GetString()))
+                    return null;
+                recipients.Add(item.GetString()!);
+            }
+        }
+        string? audience = null;
+        if (scope.TryGetProperty("audience", out var statedAudience))
+        {
+            if (statedAudience.ValueKind != JsonValueKind.String || statedAudience.GetString() is not ("internal" or "external"))
+                return null;
+            audience = statedAudience.GetString();
+        }
+        return new(GatewayApprovalScopeKind.MessageSend)
+        {
+            Target = scope.GetProperty("target").GetString(), RecipientCount = recipientCount,
+            Recipients = recipients, Audience = audience,
+        };
     }
 
     // Null when the request omits allowedDecisions (or sends JSON null); a malformed value states no known decision.

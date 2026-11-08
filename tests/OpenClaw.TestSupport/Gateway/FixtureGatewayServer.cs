@@ -585,9 +585,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     /// <summary>
     /// Publishes a canonical plugin approval for mounted Inbox review, only in CreateApprovalReview.
     /// IDs remain bounded fixture-owned identities; decisions are fixed and no plugin is executed.
+    /// Optional scope is producer data, including explicitly adversarial test inputs, not a
+    /// fixture reviewability decision. Scoped requests include the required plugin description.
     /// </summary>
     public async Task PublishPluginApprovalRequestedAsync(string approvalId, string title, string detail,
-        string? warningText = null, CancellationToken cancellationToken = default)
+        string? warningText = null, CancellationToken cancellationToken = default, JsonElement? scope = null)
     {
         if (!_scenario.ReadMethods.Contains("plugin.approval.resolve", StringComparer.Ordinal))
             throw new InvalidOperationException("Plugin approval publication requires the approval-review fixture.");
@@ -607,17 +609,24 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     throw new InvalidOperationException("The fixture plugin approval is already pending.");
             try
             {
+                var request = new Dictionary<string, object?>
+                {
+                    ["title"] = title, ["detail"] = detail, ["warningText"] = warningText,
+                    ["sessionKey"] = GatewayScenario.MainSessionKey,
+                    ["allowedDecisions"] = new[] { "allow-once", "deny" },
+                };
+                if (scope is { } suppliedScope)
+                {
+                    request["scope"] = suppliedScope;
+                    request["description"] = "Review the complete fixture scope before deciding.";
+                    if (warningText is null) request.Remove("warningText");
+                }
                 await PublishEventAsync(targets, new
                 {
                     type = "event", @event = "plugin.approval.requested",
                     payload = new
                     {
-                        id = approvalId,
-                        request = new
-                        {
-                            title, detail, warningText, sessionKey = GatewayScenario.MainSessionKey,
-                            allowedDecisions = new[] { "allow-once", "deny" },
-                        },
+                        id = approvalId, request,
                         createdAtMs = created.ToUnixTimeMilliseconds(),
                         expiresAtMs = created.Add(DefaultApprovalLifetime).ToUnixTimeMilliseconds(),
                     },

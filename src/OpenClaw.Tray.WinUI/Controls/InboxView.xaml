@@ -120,10 +120,10 @@
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
                                 <TextBlock Text="{Binding ScopeText}" Visibility="{Binding ScopeVisibility}"
-                                           TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                 <TextBlock Text="{Binding WarningText}" Visibility="{Binding WarningVisibility}"
                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                                           TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                 <TextBlock Text="{Binding Details}" Visibility="{Binding DetailsVisibility}"
                                            TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                 <Border Visibility="{Binding CommandVisibility}"
@@ -139,19 +139,23 @@
                                                    TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                     </ScrollViewer>
                                 </Border>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
                                     <TextBlock Text="{Binding Metadata}"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               TextWrapping="WrapWholeWords"
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                                VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding OccurrenceVisibility}"
+                                    <Border Grid.Column="1" Visibility="{Binding OccurrenceVisibility}"
                                             Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
                                             CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding OccurrenceText}"
                                                    Style="{StaticResource CaptionTextBlockStyle}"/>
                                     </Border>
-                                </StackPanel>
+                                </Grid>
                                 <TextBlock Text="{Binding DecisionNoteText}" Visibility="{Binding DecisionNoteVisibility}"
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"

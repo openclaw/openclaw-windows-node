@@ -3847,9 +3847,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // The banner offers exactly what the shared decision owner would send, and none
             // without an explicit approval grant (OperatorApprovalDecisions applies the same rules).
             // An incomplete request is not tracked by the decision owner, so it offers nothing.
-            var offered = GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, payload, out var parsed)
-                ? GatewayApprovalDecisions.Effective(parsed)
-                : [];
+            var parsedApproval = GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Exec, payload, out var parsed);
+            var offered = parsedApproval ? GatewayApprovalDecisions.EffectiveForChat(parsed) : [];
+            flat["requiresInboxReview"] = parsedApproval && GatewayApprovalDecisions.RequiresInboxReview(parsed);
             var array = new JsonArray();
             foreach (var allowed in offered)
                 array.Add(allowed);

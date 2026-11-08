@@ -15,7 +15,6 @@
 //       presenter.Show(plan);
 
 using OpenClaw.Shared;
-using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClawTray.Presentation;
 
@@ -53,8 +52,8 @@ internal sealed record ApprovalToastPlan(
             approval.Kind == GatewayApprovalKind.Exec &&
             !string.IsNullOrWhiteSpace(approval.Command) &&
             GatewayApprovalDecisions.CanReviewInFull(approval) &&
-            ExecApprovalCommandDisplaySanitizer.Sanitize(approval.Command) is var command &&
-            string.Equals(InboxGatewayItems.CompactCommand(command), command, StringComparison.Ordinal);
+            InboxGatewayItems.DisplayCommand(approval.Command) is var command &&
+            string.Equals(InboxGatewayItems.CompactCommand(approval.Command), command, StringComparison.Ordinal);
         return effective
             .Where(decision => decision == GatewayApprovalDecisions.Deny ||
                 (decision == GatewayApprovalDecisions.AllowOnce && canAllow))
@@ -77,12 +76,9 @@ internal sealed record ApprovalToastPlan(
             return null;
 
         var isExec = approval.Kind == GatewayApprovalKind.Exec;
-        var command = isExec && !string.IsNullOrWhiteSpace(approval.Command)
-            ? ExecApprovalCommandDisplaySanitizer.Sanitize(approval.Command)
-            : null;
         var subject = isExec
-            ? command is null ? getString("Inbox_ApprovalNoCommand") : InboxGatewayItems.CompactCommand(command)
-            : approval.Title ?? approval.Command;
+            ? string.IsNullOrWhiteSpace(approval.Command) ? getString("Inbox_ApprovalNoCommand") : InboxGatewayItems.CompactCommand(approval.Command)
+            : InboxGatewayItems.CompactCommand(approval.Title ?? approval.Command);
 
         var buttons = new List<ApprovalToastButton>();
         if (decisions.Contains(GatewayApprovalDecisions.AllowOnce))
