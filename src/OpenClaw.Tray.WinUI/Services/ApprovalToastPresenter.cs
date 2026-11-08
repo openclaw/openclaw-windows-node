@@ -109,7 +109,7 @@ internal sealed class ApprovalToastPresenter : IDisposable
             return;
         foreach (var (approvalId, tag) in _shownTags.ToList())
         {
-            if (_source.TryGetPendingApproval(approvalId, out _))
+            if (_source.TryGetPendingApproval(approvalId, out _) && !_decisions.IsUncertain(approvalId))
                 continue;
             _shownTags.Remove(approvalId);
             _decisions.RevokeToastTokens(approvalId);

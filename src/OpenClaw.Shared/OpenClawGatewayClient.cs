@@ -809,10 +809,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// throws <see cref="GatewayApprovalStaleException"/> when the Gateway reports the approval was
     /// already decided, expired or unknown. Other failures follow <see cref="ResolveExecApprovalAsync"/>.
     /// </summary>
-    public Task ResolveApprovalAsync(GatewayApprovalKind kind, string approvalId, string decision, long connectionEpoch) =>
-        ResolveApprovalCoreAsync(kind, approvalId, decision, connectionEpoch);
+    public Task ResolveApprovalAsync(GatewayApprovalKind kind, string approvalId, string decision, long connectionEpoch,
+        Action? validateBeforeSend = null) =>
+        ResolveApprovalCoreAsync(kind, approvalId, decision, connectionEpoch, validateBeforeSend);
 
-    private async Task ResolveApprovalCoreAsync(GatewayApprovalKind kind, string approvalId, string decision, long? expectedConnectionEpoch)
+    private async Task ResolveApprovalCoreAsync(GatewayApprovalKind kind, string approvalId, string decision, long? expectedConnectionEpoch,
+        Action? validateBeforeSend = null)
     {
         if (string.IsNullOrWhiteSpace(approvalId))
             throw new ArgumentException("approvalId is required", nameof(approvalId));
@@ -843,10 +845,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // preserve the approval UI and surface a retryable error.
         try
         {
-            var sent = await SendRawAsync(
-                    SerializeRequest(requestId, method, parameters),
-                    connectionGeneration,
-                    CancellationToken)
+            var frame = SerializeRequest(requestId, method, parameters);
+            var sent = await (validateBeforeSend is null
+                ? SendRawAsync(frame, connectionGeneration, CancellationToken)
+                : SendRawWithAdmissionAsync(frame, connectionGeneration, CancellationToken, validateBeforeSend))
                 .ConfigureAwait(false);
             if (!sent)
                 throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");

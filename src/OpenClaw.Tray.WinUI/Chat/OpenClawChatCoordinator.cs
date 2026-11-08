@@ -145,6 +145,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
     /// (<see cref="OperatorApprovalDecisions"/>). Set before an operator client is attached.
     /// </summary>
     internal Func<IOperatorGatewayClient, string, string?, string, Task>? ResolveExecApproval { get; set; }
+    internal Func<string, bool>? IsApprovalDecisionUncertain { get; set; }
 
     public void SetOperatorClient(OpenClawGatewayClient? client)
     {
@@ -167,7 +168,8 @@ public sealed class OpenClawChatCoordinator : IDisposable
         }
 
         var newProvider = new OpenClawChatDataProvider(
-            new GatewayClientChatBridge(client, resolveExecApproval: ResolveExecApproval), _post);
+            new GatewayClientChatBridge(client, resolveExecApproval: ResolveExecApproval), _post)
+        { IsApprovalDecisionUncertain = IsApprovalDecisionUncertain };
         lock (_gate)
         {
             if (_disposed)

@@ -146,6 +146,57 @@ public class GatewayPendingApprovalTests
     }
 
     [Fact]
+    public void RequestIdentity_ComparesDecisionContentsAndPreservesTheirSpecifiedState()
+    {
+        var implicitDecisions = new GatewayPendingApproval("a", GatewayApprovalKind.Exec, "echo hi", 1, 2);
+        var explicitEmpty = implicitDecisions with { AllowedDecisions = [] };
+        var first = implicitDecisions with { AllowedDecisions = ["allow-once", "deny"] };
+        var same = implicitDecisions with { AllowedDecisions = new[] { "allow-once", "deny" } };
+
+        Assert.True(first.HasSameContentAs(same));
+        Assert.False(implicitDecisions.HasSameContentAs(explicitEmpty));
+        Assert.False(first.HasSameContentAs(same with { AllowedDecisions = ["deny"] }));
+        Assert.False(first.HasSameContentAs(same with { Detail = "Different reviewed operation" }));
+        Assert.False(first.HasSameContentAs(same with { Cwd = "other-directory" }));
+        Assert.False(first.HasSameContentAs(same with { WarningText = "Different warning" }));
+    }
+
+    [Fact]
+    public void PluginReviewerDetail_SurvivesBothEventParsingAndListHydration()
+    {
+        const string detail = "  UPDATE projects SET archived = 1;\n-- Review the complete query.\n";
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            id = "plugin-detail",
+            request = new { title = "Run query", description = "Execute the requested SQL", detail },
+            createdAtMs = 1,
+            expiresAtMs = 2,
+        });
+
+        Assert.True(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Plugin, payload, out var fromEvent));
+        var fromList = Assert.Single(GatewayPendingApprovalParser.ParseList(
+            GatewayApprovalKind.Plugin, JsonSerializer.SerializeToElement(new { approvals = new[] { payload } })));
+
+        Assert.Equal(detail, fromEvent.Detail);
+        Assert.Equal(detail, fromList.Detail);
+        Assert.Equal("Execute the requested SQL", fromEvent.Description);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("true")]
+    public void PluginReviewerDetail_RejectsUnsupportedShapesInsteadOfDroppingThem(string detail)
+    {
+        using var payload = JsonDocument.Parse($$"""
+            { "id": "p", "request": { "title": "Run query", "detail": {{detail}} }, "createdAtMs": 1, "expiresAtMs": 2 }
+            """);
+
+        Assert.False(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Plugin, payload.RootElement, out _));
+    }
+
+    [Fact]
     public void ParseList_SkipsInvalidEntries()
     {
         using var doc = JsonDocument.Parse($"[{ExecPayload}, {{ \"id\": \"broken\" }}]");
@@ -205,6 +256,54 @@ public class GatewayPendingApprovalTests
 
         Assert.Null(chat);
     }
+
+    [Theory]
+    [InlineData("proposalHash")]
+    [InlineData("scope-command")]
+    [InlineData("scope-visibility")]
+    public void ConsentIdentity_RetainsExactWireFieldsAcrossEventsAndLists(string field)
+    {
+        var kind = field == "proposalHash" ? GatewayApprovalKind.SystemAgent : GatewayApprovalKind.Exec;
+        var originalPayload = ConsentIdentityPayload(field, changed: false);
+        var changedPayload = ConsentIdentityPayload(field, changed: true);
+        Assert.True(GatewayPendingApprovalParser.TryParse(kind, originalPayload, out var original));
+        Assert.True(GatewayPendingApprovalParser.TryParse(kind, changedPayload, out var changed));
+        var listed = Assert.Single(GatewayPendingApprovalParser.ParseList(kind,
+            JsonSerializer.SerializeToElement(new[] { changedPayload })));
+
+        Assert.False(original.HasSameContentAs(changed));
+        Assert.True(changed.HasSameContentAs(listed));
+        switch (field)
+        {
+            case "proposalHash":
+                Assert.Equal(new string('a', 64), original.ProposalHash);
+                Assert.Equal(new string('b', 64), listed.ProposalHash);
+                break;
+            case "scope-command":
+                Assert.Equal("echo scoped", original.Scope!.Command);
+                Assert.Equal("  echo scoped\n", listed.Scope!.Command);
+                break;
+            default:
+                Assert.Equal("restricted", original.Scope!.Visibility);
+                Assert.Equal("public", listed.Scope!.Visibility);
+                break;
+        }
+    }
+
+    private static JsonElement ConsentIdentityPayload(string field, bool changed) =>
+        JsonSerializer.SerializeToElement(new
+        {
+            id = "consent-identity", createdAtMs = 1, expiresAtMs = 60001,
+            request = new
+            {
+                command = "echo display", title = "Review operation", description = "Review the proposed operation",
+                proposalHash = new string(field == "proposalHash" && changed ? 'b' : 'a', 64),
+                allowedDecisions = new[] { "allow-once", "deny" },
+                scope = field == "scope-command"
+                    ? (object)new { kind = "standing-grant", automation = "fixture", command = changed ? "  echo scoped\n" : "echo scoped" }
+                    : new { kind = "external-post", target = "fixture target", visibility = field == "scope-visibility" && changed ? "public" : "restricted" },
+            },
+        });
 
     private static OpenClawGatewayClient NewClient() =>
         new("ws://localhost:18789", "test-token", new TestLogger());

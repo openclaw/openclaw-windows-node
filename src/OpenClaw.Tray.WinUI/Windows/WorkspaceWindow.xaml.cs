@@ -1160,6 +1160,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private InboxViewCommands InboxCommands(Action? openPage) => new(
         OpenInboxRoute,
         () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
+        () => ((IAppCommands)CurrentApp).OpenDashboard(),
         openPage,
         AskOpenClaw);
 

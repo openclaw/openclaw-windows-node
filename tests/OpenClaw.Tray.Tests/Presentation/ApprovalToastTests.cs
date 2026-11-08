@@ -19,15 +19,12 @@ public sealed class ApprovalToastTests
     [Fact]
     public void Plan_ShortCommand_OffersAllowOnceDenyAndReviewWithoutCommandTextInArguments()
     {
-        var approval = OperatorApprovalDecisionsTests.Approval("a1") with
-        {
-            Scope = new GatewayApprovalScope(GatewayApprovalScopeKind.Payment) { Amount = "612", Currency = "USD", Target = "TAP" },
-        };
+        var approval = OperatorApprovalDecisionsTests.Approval("a1");
 
         var plan = ApprovalToastPlan.Build(approval, "TOKEN", Key, hostConfirmedLocal: true, Deadline)!;
 
         Assert.Equal(["Inbox_ApprovalAllowOnce", "Inbox_ApprovalDeny", "Toast_ApprovalReview"], plan.Buttons.Select(button => button.Label));
-        Assert.Equal(["echo hi", "Toast_ApprovalRunsOnThisComputer", "Inbox_ApprovalScopePaymentFormat"], plan.Lines);
+        Assert.Equal(["echo hi", "Toast_ApprovalRunsOnThisComputer"], plan.Lines);
         var arguments = plan.Buttons.SelectMany(button => button.Arguments).Concat(plan.LaunchArguments).ToList();
         Assert.All(arguments, pair => Assert.Contains(pair.Key, SafeArgumentKeys));
         Assert.DoesNotContain(arguments, pair => pair.Value.Contains("echo", StringComparison.Ordinal));
@@ -36,6 +33,23 @@ public sealed class ApprovalToastTests
             new Dictionary<string, string> { ["action"] = "approval_decision", ["approvalId"] = "a1", ["decision"] = "deny", ["token"] = "TOKEN" },
             plan.Buttons[1].Arguments);
         Assert.Equal("open_inbox", plan.LaunchArguments["action"]);
+    }
+
+    [Fact]
+    public void Plan_ScopeOrWorkingDirectory_RequiresFullInboxReview()
+    {
+        var plain = OperatorApprovalDecisionsTests.Approval("a1");
+        var scoped = plain with
+        {
+            Scope = new GatewayApprovalScope(GatewayApprovalScopeKind.Payment) { Amount = "612", Currency = "USD", Target = "TAP" },
+        };
+        foreach (var approval in new[] { scoped, plain with { Cwd = @"C:\work" }, plain with { Cwd = @"D:\production" } })
+        {
+            var plan = ApprovalToastPlan.Build(approval, "TOKEN", Key, hostConfirmedLocal: true, Deadline)!;
+            Assert.Equal(["deny"], ApprovalToastPlan.Decisions(approval, hostConfirmedLocal: true));
+            Assert.Equal(["Inbox_ApprovalDeny", "Toast_ApprovalReview"], plan.Buttons.Select(button => button.Label));
+            Assert.True(plan.Lines.Count <= 2);
+        }
     }
 
     [Theory]
@@ -160,6 +174,26 @@ public sealed class ApprovalToastTests
 
         Assert.Contains("exec.approval.list", harness.Gateway.Requests);
         Assert.Empty(harness.Shown);
+    }
+
+    [Fact]
+    public async Task Presenter_WithdrawsUncertainToastAndDoesNotReissueOnReplay()
+    {
+        var harness = Create();
+        var approval = OperatorApprovalDecisionsTests.Approval("a1");
+        harness.Gateway.Raise("PendingApprovalRequested", approval);
+        var (plan, tag, group) = Assert.Single(harness.Shown);
+        var deny = plan.Buttons.Single(button => button.Label == "Inbox_ApprovalDeny").Arguments;
+        harness.Gateway.ResolveResult = () => Task.FromException(new TimeoutException());
+
+        Assert.Equal(ApprovalDecisionOutcome.Uncertain, await harness.Decisions.DecideFromToastAsync(
+            "a1", "deny", deny["token"]));
+        Assert.Equal([(tag, group)], harness.Withdrawn);
+        harness.Gateway.Raise("PendingApprovalRequested", approval);
+        Assert.Single(harness.Shown);
+        Assert.Equal(ApprovalDecisionOutcome.NotPending, await harness.Decisions.DecideFromToastAsync(
+            "a1", "deny", deny["token"]));
+        Assert.Single(harness.Gateway.Resolves);
     }
 
     private Harness Create(bool foreground = false, bool enabled = true, IReadOnlyList<string>? scopes = null, bool hostLocal = true)

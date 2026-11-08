@@ -54,6 +54,21 @@ internal sealed class ToastService : IToastNotificationPublisher
         if (GatewayFixtureIsolation.IsEnabled || AppIdentity.IsIsolated || plan.ExpiresAt <= DateTimeOffset.UtcNow)
             return false;
 
+        var builder = CreateApprovalContent(plan);
+        ApplySound(builder);
+        builder.Show(toast =>
+        {
+            toast.Tag = tag;
+            toast.Group = group;
+            toast.ExpirationTime = plan.ExpiresAt;
+        });
+        return true;
+    }
+
+    /// <summary>Materializes the approval plan through the shipping toast toolkit before delivery.</summary>
+    internal static ToastContentBuilder CreateApprovalContent(ApprovalToastPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
         var builder = new ToastContentBuilder().AddText(plan.Title);
         foreach (var line in plan.Lines)
             builder.AddText(line);
@@ -66,14 +81,7 @@ internal sealed class ToastService : IToastNotificationPublisher
                 button.AddArgument(key, value);
             builder.AddButton(button);
         }
-        ApplySound(builder);
-        builder.Show(toast =>
-        {
-            toast.Tag = tag;
-            toast.Group = group;
-            toast.ExpirationTime = plan.ExpiresAt;
-        });
-        return true;
+        return builder;
     }
 
     /// <summary>Removes a toast shown by <see cref="ShowWithdrawableToast"/> from the screen and Action Center.</summary>

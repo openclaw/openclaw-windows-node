@@ -51,6 +51,44 @@ public class GatewayApprovalDecisionsTests
     }
 
     [Theory]
+    [InlineData(16 * 1024 + 1)]
+    [InlineData(256 * 1024 + 1)]
+    public void Effective_IncompleteWarningOffersOnlyDeny(int length)
+    {
+        var approval = Exec("echo hi") with { WarningText = new string('x', length) };
+
+        Assert.False(GatewayApprovalDecisions.CanReviewInFull(approval));
+        Assert.Equal(["deny"], GatewayApprovalDecisions.Effective(approval));
+    }
+
+    [Fact]
+    public void Effective_ConcealedWarningOffersOnlyDeny()
+    {
+        var approval = Exec("echo hi") with { WarningText = "Authorization: Bearer private-operation-data" };
+
+        Assert.False(GatewayApprovalDecisions.CanReviewInFull(approval));
+        Assert.Equal(["deny"], GatewayApprovalDecisions.Effective(approval));
+    }
+
+    [Theory]
+    [InlineData("title")]
+    [InlineData("description")]
+    [InlineData("detail")]
+    public void Effective_IncompletePluginDisclosureOffersOnlyDeny(string field)
+    {
+        var text = new string('x', 16 * 1024 + 1);
+        var approval = new GatewayPendingApproval("p", GatewayApprovalKind.Plugin, "Publish", 1, 2)
+        {
+            Title = field == "title" ? text : "Publish",
+            Description = field == "description" ? text : null,
+            Detail = field == "detail" ? text : null,
+        };
+
+        Assert.False(GatewayApprovalDecisions.CanReviewInFull(approval));
+        Assert.Equal(["deny"], GatewayApprovalDecisions.Effective(approval));
+    }
+
+    [Theory]
     [InlineData("""["allow-session"]""")]
     [InlineData("\"deny\"")]
     [InlineData("{}")]

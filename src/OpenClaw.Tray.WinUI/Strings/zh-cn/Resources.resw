@@ -7891,12 +7891,13 @@
   <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>你需要批准权限才能批准。</value></data>
   <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>未包含命令</value></data>
   <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>此批准未包含命令，因此只能拒绝。</value></data>
-  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>此命令无法完整显示，因此只能拒绝。</value></data>
-  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>你的决定未发送。请重试。</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>此批准无法完整显示，因此只能拒绝。</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>无法确认你的决定。请先检查其状态，再重试。</value></data>
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>此批准已不再等待决定。</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>此批准不提供该决定。</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>查看</value></data>
   <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>你需要批准权限才能批准。</value></data>
   <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>无法在此应用中处理此请求。</value></data>
   <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>在此电脑上运行</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>无法确认该决定。在结果明确之前，将阻止发送其他决定。</value></data>
 </root>

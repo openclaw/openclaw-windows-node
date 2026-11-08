@@ -941,6 +941,75 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task ApprovalReviewFixture_UsesCanonicalEventsAndAnExplicitNarrowGrant()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateApprovalReview(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var observed = new TaskCompletionSource<GatewayPendingApproval>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connected.Client.PendingApprovalRequested += (_, approval) => observed.TrySetResult(approval);
+
+        await server.PublishExecApprovalRequestedAsync(
+            GatewayScenario.MainSessionKey, "fixture-canonical-approval", "echo fixture");
+        var pending = await observed.Task.WaitAsync(Deadline);
+
+        Assert.Equal(["operator.read", "operator.approvals"], connected.Client.GrantedOperatorScopes);
+        Assert.Equal("fixture-canonical-approval", pending.Id);
+        Assert.Equal("echo fixture", pending.Command);
+        Assert.Equal(GatewayScenario.MainSessionKey, pending.SessionKey);
+        Assert.True(pending.ExpiresAtMs > pending.CreatedAtMs);
+        await connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, pending.Id, "deny",
+            connected.Client.SessionMutationConnectionEpoch!.Value);
+        Assert.Equal("ok", (await server.WaitForCompletedRequestAsync("exec.approval.resolve")).Outcome);
+    }
+
+    [Fact]
+    public async Task RealClient_QueuedApprovalRechecksAdmissionBeforeAnyResolveFrame()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested", approvalId = "fixture-queued-approval", command = "echo fixture",
+        });
+        var epoch = connected.Client.SessionMutationConnectionEpoch;
+        Assert.True(epoch.HasValue);
+        var sendLock = (SemaphoreSlim)typeof(WebSocketClientBase)
+            .GetField("_sendLock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(connected.Client)!;
+        using var deadline = new CancellationTokenSource(Deadline);
+        await sendLock.WaitAsync(deadline.Token);
+        var admitted = true;
+        var admissions = 0;
+        Task sending;
+        try
+        {
+            sending = connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-queued-approval", "deny", epoch!.Value, () =>
+            {
+                admissions++;
+                if (!admitted) throw new InvalidOperationException("Fixture approval authority was withdrawn.");
+            });
+            Assert.False(sending.IsCompleted);
+            Assert.Equal(0, admissions);
+            admitted = false;
+        }
+        finally
+        {
+            sendLock.Release();
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sending.WaitAsync(Deadline));
+        Assert.Equal(1, admissions);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "exec.approval.resolve");
+        // The denied queue entry did not consume the approval or close the shared transport.
+        await connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-queued-approval", "deny", epoch!.Value);
+        var sent = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
+        Assert.Equal("ok", sent.Outcome);
+        Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
+    }
+
+    [Fact]
     public async Task RealClient_ApprovalResolveInvalidDecisionDoesNotConsumeIssuedId()
     {
         var token = CreateToken();

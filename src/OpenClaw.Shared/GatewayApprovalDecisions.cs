@@ -75,17 +75,30 @@ public static class GatewayApprovalDecisions
     }
 
     /// <summary>
-    /// False when an exec command is missing or cannot be displayed exactly as it would run,
+    /// False when the command or required reviewer text cannot be displayed completely,
     /// so a person could not review what they are allowing.
     /// </summary>
     public static bool CanReviewInFull(GatewayPendingApproval approval)
     {
         ArgumentNullException.ThrowIfNull(approval);
-        if (approval.Kind != GatewayApprovalKind.Exec)
+        if (!CanReviewText(approval.WarningText) || !CanReviewText(approval.Title) ||
+            !CanReviewText(approval.Description) || !CanReviewText(approval.Detail))
+            return false;
+        if (approval.Kind != GatewayApprovalKind.Exec && string.IsNullOrWhiteSpace(approval.Title))
+            return false;
+        if (approval.Kind == GatewayApprovalKind.Plugin)
             return true;
         if (string.IsNullOrWhiteSpace(approval.Command))
             return false;
         var status = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(approval.Command);
+        return !status.Truncated && !status.Oversized && !status.UnsafeConcealment;
+    }
+
+    private static bool CanReviewText(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return true;
+        var status = ExecApprovalCommandDisplaySanitizer.SanitizeWarningTextWithStatus(text);
         return !status.Truncated && !status.Oversized && !status.UnsafeConcealment;
     }
 

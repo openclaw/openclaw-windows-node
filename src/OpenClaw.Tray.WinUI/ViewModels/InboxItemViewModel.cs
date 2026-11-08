@@ -45,6 +45,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     public string CreatedText { get; private set; } = "";
     public string? ActionLabel { get; private set; }
     public string? ActionRoute { get; private set; }
+    public bool SecondaryOpensDashboard { get; private set; }
     public Visibility ActionVisibility { get; private set; }
     /// <summary>Prompt sent to OpenClaw by "Ask OpenClaw" to explain a failure; null when not offered.</summary>
     public string? AskQuestion { get; private set; }
@@ -100,7 +101,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Retry message after a decision could not be sent; empty when none.</summary>
+    /// <summary>Outcome message after a decision could not be confirmed; empty when none.</summary>
     public string DecisionErrorText
     {
         get => _decisionError;
@@ -135,6 +136,15 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         var item = new InboxItemViewModel(entry.Id);
         item.Apply(entry, now, raise: false);
         return item;
+    }
+
+    /// <summary>Dispatches a row action without interpreting Gateway text as a URL or native route.</summary>
+    public void OpenSecondaryAction(Action<string> openRoute, Action openDashboard)
+    {
+        if (SecondaryOpensDashboard)
+            openDashboard();
+        else if (!string.IsNullOrWhiteSpace(SecondaryActionRoute))
+            openRoute(SecondaryActionRoute);
     }
 
     /// <summary>Copies a newer projection of the same entry, raising change notifications.</summary>
@@ -198,7 +208,9 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         AskVisibility = Show(content.AskQuestion is not null);
         SecondaryActionLabel = content.SecondaryLabel;
         SecondaryActionRoute = content.SecondaryRoute;
-        SecondaryActionVisibility = Show(content.SecondaryLabel is not null && content.SecondaryRoute is not null);
+        SecondaryOpensDashboard = content.SecondaryOpensDashboard;
+        SecondaryActionVisibility = Show(content.SecondaryLabel is not null &&
+            (SecondaryOpensDashboard || content.SecondaryRoute is not null));
         CommandText = content.Command ?? "";
         CommandVisibility = Show(content.Command is not null);
         ScopeText = content.Scope ?? "";
@@ -225,7 +237,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         DenyAutomationName = DecisionAutomationName("Inbox_ApprovalDeny", state);
         PermissionVisibility = Show(content.Decisions is not null && !content.CanDecide);
         DecisionNoteText = content.DecisionNote ?? "";
-        DecisionNoteVisibility = Show(content.CanDecide && content.DecisionNote is not null);
+        DecisionNoteVisibility = Show((content.CanDecide || content.Uncertain) && content.DecisionNote is not null);
 
         if (raise)
             OnPropertyChanged(string.Empty);
@@ -235,6 +247,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     {
         public string? ActionLabel { get; init; }
         public string? ActionRoute { get; init; }
+        public bool SecondaryOpensDashboard { get; init; }
         public string? AskQuestion { get; init; }
         public string? SecondaryLabel { get; init; }
         public string? SecondaryRoute { get; init; }
@@ -248,6 +261,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         public IReadOnlyList<string>? Decisions { get; init; }
         public bool CanDecide { get; init; }
         public string? DecisionNote { get; init; }
+        public bool Uncertain { get; init; }
     }
 
     private static RowContent FromNotification(AppNotification notification) =>
@@ -267,7 +281,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     // Gateway text (commands, titles, errors) is shown as plain, selectable text only.
     private static RowContent FromGatewayItem(InboxGatewayItem item) => item.Kind switch
     {
-        InboxGatewayItemKind.Approval when item.Approval is { } approval => FromApproval(approval, item.ExpiresAt, item.CanDecide),
+        InboxGatewayItemKind.Approval when item.Approval is { } approval => FromApproval(approval, item.ExpiresAt, item.CanDecide, item.DecisionUncertain),
         InboxGatewayItemKind.AutomationFailed => new(item.Label, LocalizationHelper.GetString("Inbox_AutomationFailed"), item.Detail ?? "", "")
         {
             AskQuestion = LocalizationHelper.Format("Inbox_AskAutomationFailedFormat", item.Label),
@@ -285,7 +299,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         _ => new(item.Label, "", "", ""),
     };
 
-    private static RowContent FromApproval(GatewayPendingApproval approval, DateTimeOffset? expiresAt, bool canDecide)
+    private static RowContent FromApproval(GatewayPendingApproval approval, DateTimeOffset? expiresAt, bool canDecide, bool uncertain)
     {
         var title = LocalizationHelper.GetString(approval.Kind switch
         {
@@ -300,13 +314,20 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             : InboxGatewayItems.DisplayCommand(approval.Command);
         var state = isExec
             ? command is null ? LocalizationHelper.GetString("Inbox_ApprovalNoCommand") : InboxGatewayItems.CompactCommand(approval.Command)
-            : approval.Title ?? approval.Command;
+            : ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(approval.Title ?? approval.Command);
         var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), approval.Cwd }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
-        return new(title, state, approval.Description ?? "", metadata)
+        // Reviewer detail can contain the operation itself, not just explanatory copy.
+        // Keep title and detail complete in the existing selectable plain-text surface.
+        var details = string.Join("\n\n", new[] { isExec ? null : approval.Title, approval.Description, approval.Detail }
+            .OfType<string>()
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(ExecApprovalCommandDisplaySanitizer.SanitizeWarningText));
+        return new(title, state, details, metadata)
         {
-            SecondaryLabel = LocalizationHelper.GetString("Inbox_OpenChat"),
-            SecondaryRoute = string.IsNullOrWhiteSpace(approval.SessionKey)
+            SecondaryLabel = LocalizationHelper.GetString(isExec ? "Inbox_OpenChat" : "Menu_OpenDashboard"),
+            SecondaryOpensDashboard = !isExec,
+            SecondaryRoute = !isExec ? null : string.IsNullOrWhiteSpace(approval.SessionKey)
                 ? "chat"
                 : AppNotificationActionRoutes.Chat(approval.SessionKey),
             Command = command,
@@ -315,11 +336,13 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
                 ? null
                 : ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(approval.WarningText),
             ExpiresAt = expiresAt,
-            Decisions = InboxGatewayItems.InboxDecisions(approval),
+            Decisions = uncertain ? [] : InboxGatewayItems.InboxDecisions(approval),
+            Uncertain = uncertain,
             CanDecide = canDecide,
-            DecisionNote = InboxGatewayItems.ShowsWholeCommandForReview(approval)
+            DecisionNote = uncertain ? LocalizationHelper.GetString("Inbox_ApprovalDecisionUncertain")
+                : InboxGatewayItems.ShowsWholeCommandForReview(approval)
                 ? null
-                : LocalizationHelper.GetString(command is null ? "Inbox_ApprovalMissingCommand" : "Inbox_ApprovalUnreviewableCommand"),
+                : LocalizationHelper.GetString(isExec && command is null ? "Inbox_ApprovalMissingCommand" : "Inbox_ApprovalUnreviewableCommand"),
         };
     }
 
