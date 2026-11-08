@@ -504,8 +504,9 @@ public sealed partial class GatewayFixtureUiTests
                 RecordTransientPeers(run, "remove-dialog-open");
                 Assert.Empty(VisibleMenuPeers(run));
                 var removeBody = await WaitForElementByIdAsync(run, "AutomationConfirmationBody", "removal destination text");
+                var removeText = (TextPattern)removeBody.GetCurrentPattern(TextPattern.Pattern);
                 Assert.Equal($"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone.",
-                    removeBody.Current.Name);
+                    removeText.DocumentRange.GetText(-1).TrimEnd('\r', '\n'));
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
                 var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
@@ -1058,6 +1059,26 @@ public sealed partial class GatewayFixtureUiTests
         var page = await WaitForPageScrollPeerAsync(run);
         var target = await WaitForElementByIdAsync(run, id, $"automation target {id}");
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
+        bool HasGeometry() => OwnedWindowCapture.WithPhysicalCoordinates(() =>
+            FindById(run, id) is { } current && current.Current.BoundingRectangle is { Width: > 0, Height: > 0 });
+        if (!HasGeometry())
+        {
+            // WinUI can expose an offscreen peer with an empty bounding rectangle.
+            // Page through the owned ScrollPattern until it is measurable, rather than
+            // inventing coordinates or treating a peer lookup as visible proof.
+            await ScrollAutomationsToTopAsync(run);
+            while (!HasGeometry())
+            {
+                var before = scroll.Current;
+                Assert.True(before.VerticallyScrollable && before.VerticalScrollPercent < 100,
+                    $"No geometry for {id} after reaching the end of the page.");
+                scroll.Scroll(ScrollAmount.NoAmount, ScrollAmount.LargeIncrement);
+                await WaitUiAsync(run, () => HasGeometry() ||
+                    scroll.Current.VerticalScrollPercent > before.VerticalScrollPercent,
+                    $"page scroll advances toward {id}");
+            }
+        }
+        target = await WaitForElementByIdAsync(run, id, $"measurable automation target {id}");
         OwnedWindowCapture.WithPhysicalCoordinates(() =>
         {
             var viewport = page.Current.BoundingRectangle;
