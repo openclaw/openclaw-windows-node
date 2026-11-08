@@ -36,7 +36,8 @@
             </Button>
         </Grid>
 
-        <SelectorBar x:Name="TabsBar" x:Uid="Inbox_Tabs" Grid.Row="1"
+        <!-- The negative top margin cancels the row spacing so the tabs sit directly under the title. -->
+        <SelectorBar x:Name="TabsBar" x:Uid="Inbox_Tabs" Grid.Row="1" Margin="-4,-12,0,-4" Padding="0"
                      AutomationProperties.AutomationId="WorkspaceNotificationsTabs"
                      SelectionChanged="OnTabSelectionChanged">
             <SelectorBarItem x:Name="AllTab" Tag="All" IsSelected="True"
