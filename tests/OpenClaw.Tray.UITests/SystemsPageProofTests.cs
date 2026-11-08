@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Reactor.Hosting;
@@ -18,6 +20,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Systems;
 using OpenClaw.TestSupport;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Systems;
 using Windows.Foundation;
 using Xunit.Abstractions;
@@ -28,6 +31,284 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData(false, "clean")]
+    [InlineData(true, "clean")]
+    [InlineData(false, "issues")]
+    [InlineData(true, "issues")]
+    [InlineData(false, "empty")]
+    [InlineData(true, "empty")]
+    [InlineData(false, "disconnected")]
+    [InlineData(true, "disconnected")]
+    public async Task Hero_StateMatrixRetainsFocusAndGeometryAcrossMountedWidths(bool dark, string scenario)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var empty = scenario == "empty";
+        var issues = scenario == "issues";
+        GatewayNodeInfo[] nodes = empty ? [] : Enumerable.Range(1, 10).Select(index => new GatewayNodeInfo
+        {
+            NodeId = $"hero-{index}",
+            DisplayName = $"Fixture machine {index}",
+            Platform = "win32",
+            IsOnline = !(issues || scenario == "disconnected") || index != 2,
+        }).ToArray();
+        var inventory = new SystemsInventorySnapshot
+        {
+            Nodes = nodes,
+            Environments = nodes.Select(node => new SystemEnvironment
+            {
+                Id = "node:" + node.NodeId, Type = "node", Label = node.DisplayName, Platform = node.Platform,
+                Status = node.IsOnline ? SystemStatus.Online : SystemStatus.Offline,
+                LastDisconnectedAt = node.IsOnline ? null : now.AddMinutes(-15),
+                LastSeenAt = now,
+            }).ToArray(),
+        };
+        await WithPageAsync(650, controller => controller.UpdateInputs(Inputs() with
+        {
+            GatewayName = "Fixture home",
+            LocalNodeId = empty ? null : "hero-1",
+            PendingApprovals = issues ? [PendingApproval.FromNode(new PairingRequest
+                { RequestId = "hero-join", NodeId = "joining", DisplayName = "Fixture joining PC" })] : [],
+        }), async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
+        {
+            await TestSupport.WaitForRenderedConditionAsync(() => controller.State.HasLoaded,
+                "external fixture inventory loaded before state capture");
+            if (scenario == "disconnected")
+            {
+                controller.UpdateInputs(Inputs() with { Connected = false, GatewayName = "Fixture home", LocalNodeId = "hero-1" });
+                await TestSupport.WaitForRenderedConditionAsync(() => TryFind<FrameworkElement>(surface,
+                    "SystemsDisconnectedBanner") is { ActualHeight: > 0 }, "retained inventory has explicit disconnect feedback");
+            }
+            var scroll = Find<ScrollViewer>(surface, "SystemsPageScroll");
+            var focusTarget = empty || scenario == "disconnected"
+                ? Find<Button>(surface, "SystemsAddSystem")
+                : Find<Button>(surface, "SystemsRefreshButton");
+            Assert.True(focusTarget.Focus(FocusState.Programmatic));
+            var initialAddButton = Find<Button>(surface, "SystemsAddSystem");
+            var initialActionHost = Find<FrameworkElement>(surface, "SystemsMastActions");
+            var initialActionGrid = Assert.IsType<Grid>(VisualTreeHelper.GetParent(initialActionHost));
+            var initialHeroGrid = Find<Grid>(surface, "SystemsHeroGrid");
+            Assert.Same(initialActionHost, VisualTreeHelper.GetParent(initialAddButton));
+            Assert.Same(initialHeroGrid, VisualTreeHelper.GetParent(initialActionGrid));
+            Assert.Same(focusTarget, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot));
+            RecordHeroResizeDiagnostics(surface, initialAddButton, focusTarget, scenario, dark, -1, surface.Width, "mounted");
+            var initialOfflineBadge = issues || scenario == "disconnected"
+                ? Find<FrameworkElement>(surface, "SystemsBadge_node:hero-2_0") : null;
+            var initialBadgeHost = initialOfflineBadge is null ? null
+                : VisualTreeHelper.GetParent(initialOfflineBadge);
+            var initialBadgeHostParent = initialBadgeHost is null ? null
+                : VisualTreeHelper.GetParent(initialBadgeHost);
+            if (initialOfflineBadge is not null)
+            {
+                Assert.IsType<Microsoft.UI.Reactor.Layout.FlexPanel>(initialBadgeHost);
+                Assert.IsType<StackPanel>(initialBadgeHostParent);
+            }
+            var resizeStep = 0;
+            foreach (var width in new[] { 1100d, 760d, 560d, 480d, 760d, 1100d })
+            {
+                RecordHeroResizeDiagnostics(surface, initialAddButton, focusTarget, scenario, dark, resizeStep, width, "before");
+                surface.Width = width;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    Math.Abs(Find<FrameworkElement>(surface, "SystemsPageRoot").ActualWidth - width) <= .5 &&
+                    Math.Abs(Find<FrameworkElement>(surface, "SystemsContentColumn").ActualWidth -
+                        PageResponsiveLayout.ContentWidth(width)) <= .5,
+                    "retained mounted Systems viewport resized");
+                RecordHeroResizeDiagnostics(surface, initialAddButton, focusTarget, scenario, dark, resizeStep, width, "after");
+                Assert.Same(initialAddButton, Find<Button>(surface, "SystemsAddSystem"));
+                Assert.Same(initialActionHost, Find<FrameworkElement>(surface, "SystemsMastActions"));
+                Assert.Same(initialActionHost, VisualTreeHelper.GetParent(initialAddButton));
+                Assert.Same(initialActionGrid, VisualTreeHelper.GetParent(initialActionHost));
+                Assert.Same(initialHeroGrid, Find<Grid>(surface, "SystemsHeroGrid"));
+                Assert.Same(initialHeroGrid, VisualTreeHelper.GetParent(initialActionGrid));
+                Assert.True(initialAddButton.IsLoaded);
+                Assert.True(initialActionHost.IsLoaded);
+                if (initialOfflineBadge is not null)
+                {
+                    var badge = Find<FrameworkElement>(surface, "SystemsBadge_node:hero-2_0");
+                    Assert.Same(initialOfflineBadge, badge);
+                    Assert.Same(initialBadgeHost, VisualTreeHelper.GetParent(badge));
+                    Assert.Same(initialBadgeHostParent, VisualTreeHelper.GetParent(initialBadgeHost!));
+                    Assert.True(badge.IsLoaded);
+                    Assert.Equal(Visibility.Visible, badge.Visibility);
+                    var item = Find<FrameworkElement>(surface, "SystemsItem_node:hero-2");
+                    var subtitle = Find<TextBlock>(surface, "SystemsSubtitle_node:hero-2");
+                    Assert.True(Bounds(badge, item).Top >= Bounds(subtitle, item).Bottom);
+                }
+                var content = Find<FrameworkElement>(surface, "SystemsContentColumn");
+                var hero = Find<FrameworkElement>(surface, "SystemsHero");
+                var summary = Find<Grid>(surface, "SystemsSummary");
+                Assert.Equal(2, summary.ColumnDefinitions.Count);
+                AssertSiblingsDoNotOverlap(summary);
+                foreach (var id in new[] { "SystemsHero", "SystemsSummary", "SystemsMastOpenWeb", "SystemsAddSystem" })
+                {
+                    var bounds = Bounds(Find<FrameworkElement>(surface, id), content);
+                    Assert.InRange(bounds.Left, -.5, content.ActualWidth);
+                    Assert.InRange(bounds.Right, 0, content.ActualWidth + .5);
+                }
+                Assert.True(Bounds(summary, content).Top >= Bounds(hero, content).Bottom);
+                Assert.Equal(0, scroll.ScrollableWidth);
+                Assert.NotEqual(FocusState.Unfocused, focusTarget.FocusState);
+                Assert.Same(focusTarget, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot));
+                var animationsEnabled = new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+                foreach (var element in new[] { hero, (FrameworkElement)summary })
+                {
+                    if (!animationsEnabled)
+                        Assert.Empty(element.Transitions);
+                    else
+                    {
+                        Assert.Contains(element.Transitions, transition =>
+                            transition is Microsoft.UI.Xaml.Media.Animation.RepositionThemeTransition);
+                    }
+                }
+                if (animationsEnabled)
+                {
+                    Assert.Contains(summary.ChildrenTransitions, transition =>
+                        transition is Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition { IsStaggeringEnabled: true });
+                    Assert.Contains(summary.ChildrenTransitions, transition =>
+                        transition is Microsoft.UI.Xaml.Media.Animation.AddDeleteThemeTransition);
+                }
+                else
+                    Assert.Empty(summary.ChildrenTransitions);
+                foreach (var badge in TestSupport.FindDescendants<Border>(surface).Where(element =>
+                    AutomationProperties.GetAutomationId(element).StartsWith("SystemsBadge_", StringComparison.Ordinal)))
+                {
+                    foreach (var text in TestSupport.FindDescendants<TextBlock>(badge))
+                        Assert.Equal(TextTrimming.None, text.TextTrimming);
+                    Assert.True(badge.ActualWidth > 0);
+                }
+                if (empty)
+                {
+                    Assert.NotNull(Find<FrameworkElement>(surface, "SystemsEmpty"));
+                    Assert.DoesNotContain(AutomationIds(surface), id => id.StartsWith("SystemsRow_", StringComparison.Ordinal));
+                    Assert.Contains("0 of 0", string.Join(" ", TestSupport.FindDescendants<TextBlock>(
+                        Find<FrameworkElement>(surface, "SystemsOnlineTile")).Select(text => text.Text)), StringComparison.Ordinal);
+                    Assert.False(Find<Button>(surface, "SystemsIssuesTile").IsEnabled);
+                }
+                if (scenario == "disconnected")
+                {
+                    Assert.Equal(SystemsText.S("Hero_LastReportedOnline"),
+                        Assert.Single(TestSupport.FindDescendants<TextBlock>(
+                            Find<FrameworkElement>(surface, "SystemsOnlineTile")),
+                            text => text.Text == SystemsText.S("Hero_LastReportedOnline")).Text);
+                    Assert.Contains("Fixture home", Find<TextBlock>(surface, "SystemsMastSubtitle").Text, StringComparison.Ordinal);
+                    Assert.Single(TestSupport.FindDescendants<TextBlock>(
+                        Find<FrameworkElement>(surface, "SystemsMeta_node:hero-1")),
+                        text => text.Text == SystemsText.S("LastKnownOnline"));
+                    Assert.False(Find<Button>(surface, "SystemsRefreshButton").IsEnabled);
+                    Assert.NotNull(Find<FrameworkElement>(surface, "SystemsDisconnectedBanner"));
+                    Assert.Contains(SystemsText.S("LastKnownOffline"), string.Join(" ",
+                        TestSupport.FindDescendants<TextBlock>(Find<FrameworkElement>(surface, "SystemsBadge_node:hero-2_0"))
+                            .Select(text => text.Text)), StringComparison.Ordinal);
+                }
+                Assert.DoesNotContain(AutomationIds(surface), id => id is "SystemsNeedsYou" or "SystemsIssuesView");
+                await MountedControlCapture.OptionalAsync(ui.TestWindow,
+                    $"systems-hero-{scenario}-{(dark ? "dark" : "light")}-{resizeStep++}-{width}");
+            }
+            if (!empty)
+            {
+                scroll.ChangeView(null, 64, null, disableAnimation: true);
+                await TestSupport.WaitForRenderedConditionAsync(() => Math.Abs(scroll.VerticalOffset - 64) <= .5,
+                    "inventory has a known retained scroll offset");
+                surface.Width = 560;
+                await TestSupport.WaitForRenderedConditionAsync(() => Math.Abs(
+                    Find<FrameworkElement>(surface, "SystemsPageRoot").ActualWidth - 560) <= .5,
+                    "resize with an existing inventory offset");
+                Assert.InRange(Math.Abs(scroll.VerticalOffset - 64), 0, .5);
+            }
+            if (issues)
+            {
+                var issueTile = Find<Button>(surface, "SystemsIssuesTile");
+                Assert.Equal(SystemsText.F("Hero_ShowIssues", "2"), AutomationProperties.GetName(issueTile));
+                controller.UpdateInputs(Inputs() with { GatewayName = "Fixture home", LocalNodeId = "hero-1" });
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    TryFind<FrameworkElement>(surface, "SystemsPairingRows") is null &&
+                    AutomationProperties.GetName(Find<Button>(surface, "SystemsIssuesTile")) ==
+                        SystemsText.F("Hero_ShowIssues", "1"),
+                    "resolved request removes its real row while the offline machine remains badged");
+                Assert.NotNull(Find<FrameworkElement>(surface, "SystemsBadge_node:hero-2_0"));
+                Assert.Same(issueTile, Find<Button>(surface, "SystemsIssuesTile"));
+                await MountedControlCapture.OptionalAsync(ui.TestWindow,
+                    $"systems-hero-issues-{(dark ? "dark" : "light")}-pairing-resolved");
+            }
+            output.WriteLine($"{scenario}, {(dark ? "Dark" : "Light")}: live mounted 1100/760/560/480/760/1100; " +
+                "synthetic external inventory, retained focus/scroll, no production minimum change.");
+        }), inventory: inventory, width: 1100, theme: dark ? ElementTheme.Dark : ElementTheme.Light, fitNativeViewport: true);
+    }
+
+    private void RecordHeroResizeDiagnostics(FrameworkElement surface, Button initialAddButton, Button focusTarget,
+        string scenario, bool dark, int step, double width, string phase)
+    {
+        object Describe(FrameworkElement element)
+        {
+            var parents = new List<object>();
+            for (var parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            {
+                parents.Add(new
+                {
+                    type = parent.GetType().FullName,
+                    runtimeIdentity = RuntimeHelpers.GetHashCode(parent),
+                    automationId = AutomationProperties.GetAutomationId(parent),
+                });
+            }
+            return new
+            {
+                type = element.GetType().FullName,
+                runtimeIdentity = RuntimeHelpers.GetHashCode(element),
+                automationId = AutomationProperties.GetAutomationId(element),
+                loaded = element.IsLoaded,
+                visibility = element.Visibility.ToString(),
+                width = element.ActualWidth,
+                height = element.ActualHeight,
+                focus = (element as Control)?.FocusState.ToString(),
+                parents,
+            };
+        }
+
+        var candidates = TestSupport.FindDescendants<Button>(surface)
+            .Where(element => AutomationProperties.GetAutomationId(element) == "SystemsAddSystem").ToArray();
+        var banners = TestSupport.FindDescendants<FrameworkElement>(surface)
+            .Where(element => AutomationProperties.GetAutomationId(element) == "SystemsDisconnectedBanner").ToArray();
+        var offlineBadges = TestSupport.FindDescendants<FrameworkElement>(surface)
+            .Where(element => AutomationProperties.GetAutomationId(element) == "SystemsBadge_node:hero-2_0").ToArray();
+        var focusedElement = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot);
+        var diagnostic = new
+        {
+            test = nameof(Hero_StateMatrixRetainsFocusAndGeometryAcrossMountedWidths),
+            scenario,
+            dark,
+            step,
+            targetWidth = width,
+            phase,
+            capturedUtc = DateTimeOffset.UtcNow,
+            source = Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_HEAD"),
+            originalAddButton = Describe(initialAddButton),
+            focusTarget = Describe(focusTarget),
+            actualFocusedElement = focusedElement is FrameworkElement focused ? Describe(focused)
+                : focusedElement is null ? null : new
+                {
+                    type = focusedElement.GetType().FullName,
+                    runtimeIdentity = RuntimeHelpers.GetHashCode(focusedElement),
+                    automationId = focusedElement is DependencyObject dependency
+                        ? AutomationProperties.GetAutomationId(dependency) : null,
+                },
+            addButtons = candidates.Select(element => new
+            {
+                sameAsOriginal = ReferenceEquals(element, initialAddButton),
+                native = Describe(element),
+            }).ToArray(),
+            disconnectedBanners = banners.Select(Describe).ToArray(),
+            offlineBadges = offlineBadges.Select(Describe).ToArray(),
+        };
+        var json = JsonSerializer.Serialize(diagnostic, new JsonSerializerOptions { WriteIndented = true });
+        output.WriteLine(json);
+        var directory = Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR");
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory,
+                $"systems-hero-{scenario}-{(dark ? "dark" : "light")}-{step}-{width}-{phase}.diagnostics.json"), json);
+        }
+    }
 
     [Fact]
     public async Task UnknownCapabilities_UseSentenceCaseLabelsInsteadOfRawIds()
@@ -107,7 +388,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task NeedsYouOverflow_OpensAllIssuesAndKeepsFullInventoryOutsideIssues()
+    public async Task HeroIssues_JumpsToBadgedPairingWithoutHidingInventory()
     {
         var environments = new[]
         {
@@ -138,42 +419,30 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         }), async (surface, _, _) => await ui.RunOnUIAsync(async () =>
         {
             await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<Border>(surface, "SystemsNeedsYouCount")?.Child is TextBlock { Text: "4" },
-                "all four actionable problems rendered");
+                () => TryFind<Button>(surface, "SystemsIssuesTile") is { IsEnabled: true },
+                "issues summary and row-level problems rendered");
             Assert.Equal(SystemsText.F("DevicesAndGatewayCount", "4"),
                 Find<TextBlock>(surface, "SystemsDevicesAndGatewayHeading").Text);
-            Assert.Equal("4", Assert.IsType<TextBlock>(Find<Border>(surface, "SystemsNeedsYouCount").Child).Text);
-            Assert.Equal(2, TestSupport.FindDescendants<Border>(surface).Count(element =>
-                AutomationProperties.GetAutomationId(element).StartsWith("SystemsAttention_", StringComparison.Ordinal)));
-            var offlineCard = Find<Border>(surface, "SystemsAttention_offline-node:offline");
-            Assert.InRange(Find<Border>(offlineCard, "SystemsAttentionStripe").ActualWidth, 3.5, 4.5);
-            Assert.Contains(TestSupport.FindDescendants<TextBlock>(Find<Border>(surface, "SystemsNeedsYouMore")),
-                text => text.Text == SystemsText.F("NeedsYou_More", "2"));
+            Assert.Equal(SystemsText.F("Hero_ShowIssues", "4"),
+                AutomationProperties.GetName(Find<Button>(surface, "SystemsIssuesTile")));
+            Assert.NotNull(Find<FrameworkElement>(surface, "SystemsBadge_node:offline_0"));
+            Assert.NotNull(Find<FrameworkElement>(surface, "SystemsBadge_node:update_0"));
+            Assert.NotNull(Find<FrameworkElement>(surface, "SystemsBadge_node:permission_0"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsWorkersGroup"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsConnectedAppsGroup"));
-            Invoke(Find<Button>(surface, "SystemsNeedsYouMore_Action"));
+            Invoke(Find<Button>(surface, "SystemsIssuesTile"));
             await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<FrameworkElement>(surface, "SystemsIssuesView") is not null,
-                "overflow opens the issues page");
-            var issueHeading = Find<FrameworkElement>(surface, "SystemsIssuesHeading");
-            Assert.Contains(TestSupport.FindDescendants<TextBlock>(issueHeading), text => text.Text == SystemsText.S("Issues"));
-            Assert.Contains(TestSupport.FindDescendants<TextBlock>(issueHeading), text => text.Text == "4");
-            Assert.Equal(4, TestSupport.FindDescendants<Border>(surface).Count(element =>
-                AutomationProperties.GetAutomationId(element).StartsWith("SystemsIssue_", StringComparison.Ordinal)));
-            Assert.NotNull(Find<HyperlinkButton>(surface, "SystemsIssuesBack"));
-            Assert.DoesNotContain(AutomationIds(surface), id => id == "SystemsNeedsYou");
-            Assert.DoesNotContain(AutomationIds(surface), id =>
-                id is "SystemsWorkersGroup" or "SystemsConnectedAppsGroup");
-            Invoke(Find<HyperlinkButton>(surface, "SystemsIssuesBack"));
-            await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<FrameworkElement>(surface, "SystemsDevicesAndGatewayHeading") is not null,
-                "All devices returns to the complete inventory");
+                () => Find<Button>(surface, "SystemsPairing_NodePair:join").FocusState != FocusState.Unfocused,
+                "issues summary focuses the first badged pairing row");
+            Assert.DoesNotContain(AutomationIds(surface), id => id is "SystemsNeedsYou" or "SystemsIssuesView");
+            Assert.NotNull(Find<FrameworkElement>(surface, "SystemsWorkersGroup"));
+            Assert.NotNull(Find<FrameworkElement>(surface, "SystemsConnectedAppsGroup"));
             Assert.Equal(6, AutomationIds(surface).Count(id => id.StartsWith("SystemsRow_", StringComparison.Ordinal)));
-        }), inventory: inventory, width: 400);
+        }), inventory: inventory, width: 480, fitNativeViewport: true);
     }
 
     [Fact]
-    public async Task PendingApprovalWithMatchingInventoryRow_ShowsOneAttentionItem()
+    public async Task PendingApprovalWithMatchingInventoryRow_PreservesRequestAndAuthoritativeMachine()
     {
         var pendingNode = new GatewayNodeInfo
         {
@@ -201,12 +470,13 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         }), async (surface, _, _) => await ui.RunOnUIAsync(async () =>
         {
             await TestSupport.WaitForRenderedConditionAsync(
-                () => TestSupport.FindDescendants<Border>(surface).Count(card =>
-                    AutomationProperties.GetAutomationId(card).StartsWith("SystemsAttention_pairing-", StringComparison.Ordinal)) == 1,
-                "matching row and pairing approval produce one attention card");
-            Assert.Equal("1", Assert.IsType<TextBlock>(Find<Border>(surface, "SystemsNeedsYouCount").Child).Text);
-            Assert.Single(TestSupport.FindDescendants<Border>(surface), card =>
-                AutomationProperties.GetAutomationId(card).StartsWith("SystemsAttention_pairing-", StringComparison.Ordinal));
+                () => TryFind<Button>(surface, "SystemsPairing_NodePair:pending-request") is not null,
+                "one pending request remains separate from its authoritative machine");
+            Assert.Single(TestSupport.FindDescendants<Button>(surface), card =>
+                AutomationProperties.GetAutomationId(card).StartsWith("SystemsPairing_", StringComparison.Ordinal));
+            Assert.NotNull(Find<Expander>(surface, "SystemsRow_node:pending-device"));
+            Assert.Contains(SystemsText.S("Badge_Approval"),
+                AutomationProperties.GetName(Find<Expander>(surface, "SystemsRow_node:pending-device")));
         }), inventory: inventory);
     }
 
@@ -242,7 +512,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task LocalPermissionAttention_OpensPermissionsEvenWhenDisconnected(bool connected)
+    public async Task LocalPermissionBadge_OpensPermissionsEvenWhenDisconnected(bool connected)
     {
         var node = new GatewayNodeInfo
         {
@@ -257,10 +527,11 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             await TestSupport.WaitForRenderedConditionAsync(() => controller.State.HasLoaded,
                 "node permissions have loaded");
             controller.UpdateInputs(Inputs() with { LocalNodeId = "studio", Connected = connected });
+            controller.Select("node:studio");
             await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<Button>(surface, "SystemsAttention_permission-node:studio-camera_Action") is not null,
-                "local permission attention remains available");
-            var action = Find<Button>(surface, "SystemsAttention_permission-node:studio-camera_Action");
+                () => TryFind<HyperlinkButton>(surface, "SystemsIssueAction_node:studio_0") is not null,
+                "local permission action remains available in its own row");
+            var action = Find<HyperlinkButton>(surface, "SystemsIssueAction_node:studio_0");
             Assert.True(action.IsEnabled);
             Invoke(action);
             Assert.Equal(["permissions"], navigated);
@@ -306,11 +577,11 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             controller.Select("node:studio");
             controller.UpdateInputs(Inputs() with { Connected = false });
             await TestSupport.WaitForRenderedConditionAsync(
-                () => AutomationProperties.GetName(Find<Expander>(surface, "SystemsRow_node:studio")) ==
-                    "Studio, " + SystemsText.S("LastKnownOnline"),
+                () => AutomationProperties.GetName(Find<Expander>(surface, "SystemsRow_node:studio"))
+                    .Contains(SystemsText.S("LastKnownOnline"), StringComparison.Ordinal),
                 "disconnected inventory is relabeled as last known");
             var row = Find<Expander>(surface, "SystemsRow_node:studio");
-            Assert.Equal("Studio, " + SystemsText.S("LastKnownOnline"), AutomationProperties.GetName(row));
+            Assert.Contains(SystemsText.S("LastKnownOnline"), AutomationProperties.GetName(row), StringComparison.Ordinal);
             await TestSupport.WaitForRenderedConditionAsync(
                 () => TryFind<FrameworkElement>(surface, "SystemsManageRequiresPairing") is not null,
                 "unavailable node actions include their reason");
@@ -321,20 +592,19 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 TestSupport.FindDescendants<TextBlock>(surface).Count(text =>
                     text.Text == SystemsText.S("Disconnected_Message")) == 1,
                 "one disconnected explanation is rendered in the recovery banner");
-            Assert.Null(TryFind<TextBlock>(surface, "SystemsMastSubtitle"));
+            Assert.NotNull(TryFind<TextBlock>(surface, "SystemsMastSubtitle"));
             Assert.DoesNotContain(AutomationIds(surface), id => id == "SystemsAttention_connection");
             Assert.Single(TestSupport.FindDescendants<TextBlock>(Find<FrameworkElement>(row, "SystemsMeta_node:studio")),
                 text => text.Text == SystemsText.S("LastKnownOnline"));
-            var show = Find<Button>(surface, "SystemsAttention_permission-node:studio-camera_Action");
-            Assert.False(show.IsEnabled);
-            Assert.Equal(SystemsText.S("ConnectionRequired"), AutomationProperties.GetHelpText(show));
-            Assert.Equal(SystemsText.S("ConnectionRequired"), ToolTipService.GetToolTip(show));
+            var show = Find<HyperlinkButton>(surface, "SystemsIssueAction_node:studio_0");
+            Assert.True(show.IsEnabled);
+            Assert.Equal(SystemsText.S("OpenWeb"), AutomationProperties.GetName(show));
         }), new GatewayNodeInfo { NodeId = "studio", DisplayName = "Studio", IsOnline = true,
             Permissions = new() { ["camera"] = false } });
     }
 
     [Fact]
-    public async Task IssuesView_ShowsEmptyStateWhenAttentionResolves()
+    public async Task IssuesTile_DisablesWhenPendingRequestsResolve()
     {
         await WithPageAsync(900, controller => controller.UpdateInputs(Inputs() with
         {
@@ -343,24 +613,22 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         }), async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
         {
             await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<FrameworkElement>(surface, "SystemsNeedsYouMore") is not null,
-                "attention overflow card rendered");
-            Invoke(Find<Button>(surface, "SystemsNeedsYouMore_Action"));
-            await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<FrameworkElement>(surface, "SystemsIssuesView") is not null,
-                "Issues view opened");
+                () => TryFind<Button>(surface, "SystemsIssuesTile") is { IsEnabled: true },
+                "pending requests enable the issues summary");
 
             controller.UpdateInputs(Inputs());
             await TestSupport.WaitForRenderedConditionAsync(
-                () => TryFind<TextBlock>(surface, "SystemsIssuesEmpty") is not null,
-                "resolved attention shows the empty Issues state");
-            Assert.Equal(SystemsText.S("NothingNeedsYou"), Find<TextBlock>(surface, "SystemsIssuesEmpty").Text);
-            Assert.DoesNotContain(AutomationIds(surface), id => id == "SystemsNeedsYou");
+                () => TryFind<Button>(surface, "SystemsIssuesTile") is { IsEnabled: false } &&
+                    TryFind<FrameworkElement>(surface, "SystemsPairingRows") is null,
+                "resolved requests remove their rows and disable the jump");
+            Assert.Equal(SystemsText.F("Hero_ShowIssues", "0"),
+                AutomationProperties.GetName(Find<Button>(surface, "SystemsIssuesTile")));
+            Assert.DoesNotContain(AutomationIds(surface), id => id is "SystemsNeedsYou" or "SystemsIssuesView");
         }));
     }
 
     [Fact]
-    public async Task PendingPairingAttentionCard_WrapsCopyWithinNarrowRoute()
+    public async Task PendingPairingRow_WrapsGuidanceAndKeepsItsBadgeWithinNarrowRoute()
     {
         const string deviceName = "Studio node awaiting approval from the remote Gateway";
         var expectedMessage = SystemsText.S("Pairing_Message");
@@ -372,23 +640,23 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         {
             await TestSupport.WaitForRenderedConditionAsync(
                 () => TestSupport.FindDescendants<FrameworkElement>(surface).Any(element =>
-                    AutomationProperties.GetAutomationId(element).StartsWith("SystemsAttention_pairing-", StringComparison.Ordinal)),
-                "pairing attention card rendered at the narrow route width");
-            var card = Assert.Single(TestSupport.FindDescendants<Border>(surface),
-                element => AutomationProperties.GetAutomationId(element).StartsWith("SystemsAttention_pairing-", StringComparison.Ordinal));
-            var message = Assert.Single(TestSupport.FindDescendants<TextBlock>(card), text => text.Text == expectedMessage);
+                    AutomationProperties.GetAutomationId(element).StartsWith("SystemsPairing_", StringComparison.Ordinal)),
+                "pending pairing row rendered at the narrow route width");
+            var card = Find<Button>(surface, "SystemsPairing_NodePair:join");
+            var message = Assert.Single(TestSupport.FindDescendants<TextBlock>(card), text =>
+                text.Text.Contains(expectedMessage, StringComparison.Ordinal));
             Assert.Single(TestSupport.FindDescendants<TextBlock>(card),
-                text => text.Text == SystemsText.F("Pairing_NamedTitle", deviceName));
+                text => text.Text == deviceName);
             Assert.DoesNotContain(TestSupport.FindDescendants<TextBlock>(card),
                 text => text.Text == expectedMessage + " " + deviceName);
-            var action = Assert.Single(TestSupport.FindDescendants<Button>(card),
-                button => AutomationProperties.GetAutomationId(button).EndsWith("_Action", StringComparison.Ordinal));
+            var action = Assert.Single(TestSupport.FindDescendants<TextBlock>(card),
+                text => text.Text == SystemsText.S("Pairing_Review"));
             var cardBounds = Bounds(card, surface);
             var messageBounds = Bounds(message, surface);
             var actionBounds = Bounds(action, surface);
 
             Assert.True(cardBounds.Left >= 0 && cardBounds.Right <= surface.ActualWidth,
-                "The attention card stays within the allocated route width.");
+                "The pairing row stays within the allocated route width.");
             Assert.True(message.ActualHeight > SingleLineHeight(message) + 1,
                 "Long pairing guidance should wrap instead of keeping a fixed-width warning row.");
             Assert.True(messageBounds.Left >= cardBounds.Left && messageBounds.Right <= cardBounds.Right);
@@ -441,7 +709,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     [Theory]
     [InlineData(1400)]
     [InlineData(1000)]
-    public async Task Backdrop_StaysAtViewportTopWhileMastScrolls(double width)
+    public async Task Hero_ScrollsWithInventoryWithoutAFullPageBackdrop(double width)
     {
         var inventory = new SystemsInventorySnapshot
         {
@@ -453,56 +721,41 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             var root = Find<Grid>(surface, "SystemsPageRoot");
             var scroll = Find<ScrollViewer>(root, "SystemsPageScroll");
             await TestSupport.WaitForRenderedConditionAsync(() => scroll.ScrollableHeight > 200 &&
-                Find<Border>(root, "SystemsPageBackdrop").ActualHeight > 32 &&
-                Math.Abs(Find<Border>(root, "SystemsPageBackdrop").ActualHeight -
-                    (Find<FrameworkElement>(root, "SystemsMastGrid").ActualHeight + 32)) <= .5,
-                "viewport backdrop and scroll extent laid out");
+                Find<Border>(root, "SystemsHero").ActualHeight > 32,
+                "hero and scroll extent laid out");
             scroll.ChangeView(null, 0, null, true);
             await TestSupport.WaitForRenderedConditionAsync(() => scroll.VerticalOffset == 0 &&
                 Find<TextBlock>(root, "SystemsPageMarker").ActualWidth > 0, "Systems at scroll top");
             // Host and mast size effects can remount descendants. Resolve the current
             // title after those renders instead of holding a displaced pooled TextBlock.
             var mastBefore = Find<TextBlock>(root, "SystemsPageMarker").TransformToVisual(root).TransformPoint(new Point()).Y;
-            var backdrop = Find<Border>(root, "SystemsPageBackdrop");
-            var before = backdrop.TransformToVisual(root).TransformPoint(new Point());
-            var height = backdrop.ActualHeight;
-            Assert.Contains(backdrop, root.Children);
-            Assert.DoesNotContain(backdrop, TestSupport.FindDescendants<Border>(scroll));
+            var hero = Find<Border>(root, "SystemsHero");
+            Assert.DoesNotContain(AutomationIds(root), id => id == "SystemsPageBackdrop");
+            Assert.Contains(hero, TestSupport.FindDescendants<Border>(scroll));
             Assert.Contains(TestSupport.FindDescendants<TextBlock>(scroll),
                 text => AutomationProperties.GetAutomationId(text) == "SystemsPageMarker");
-            Assert.False(backdrop.IsHitTestVisible);
-            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(backdrop));
-            Assert.InRange(Math.Abs(before.X) + Math.Abs(before.Y), 0, .5);
-            Assert.InRange(Math.Abs(backdrop.ActualWidth - root.ActualWidth), 0, .5);
+            var wash = Find<Border>(hero, "PageHeroAccentWash");
+            Assert.False(wash.IsHitTestVisible);
+            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(wash));
             scroll.ChangeView(null, 200, null, true);
             await TestSupport.WaitForRenderedConditionAsync(() => scroll.VerticalOffset >= 199 &&
                 Find<TextBlock>(root, "SystemsPageMarker").TransformToVisual(root).TransformPoint(new Point()).Y < mastBefore - 150,
-                "ordinary content scrolled independently of viewport backdrop");
-            backdrop = Find<Border>(root, "SystemsPageBackdrop");
-            var after = backdrop.TransformToVisual(root).TransformPoint(new Point());
-            Assert.InRange(Math.Abs(after.X - before.X) + Math.Abs(after.Y - before.Y), 0, .5);
-            Assert.InRange(Math.Abs(backdrop.ActualHeight - height), 0, .5);
+                "hero moves with the ordinary inventory scroll");
         }), width: width, fitNativeViewport: true, inventory: inventory);
     }
 
     [Fact]
-    public async Task Eyebrow_UsesDecorativeSidebarArtworkAndSharedTitleStyle()
+    public async Task Hero_UsesSharedTitleAndDecorativeFluentGlyph()
     {
         await WithPageAsync(900, _ => { }, async (surface, _, _) => await ui.RunOnUIAsync(async () =>
         {
-            var row = Find<StackPanel>(surface, "SystemsEyebrow");
-            await TestSupport.WaitForRenderedConditionAsync(() => row.ActualHeight > 0, "Systems eyebrow laid out");
-            Assert.Equal(Orientation.Horizontal, row.Orientation);
-            Assert.Equal(OpenClawTray.Presentation.PageResponsiveLayout.GapInner, row.Spacing);
-            var image = Assert.Single(TestSupport.FindDescendants<Image>(row));
-            Assert.Equal(20, image.Width);
-            Assert.Equal(20, image.Height);
-            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(image));
-            var source = Assert.IsType<Microsoft.UI.Xaml.Media.Imaging.SvgImageSource>(image.Source);
-            Assert.Equal("ms-appx:///Assets/SidebarIcons/Instances.svg", source.UriSource.AbsoluteUri);
-            var title = Find<TextBlock>(row, "SystemsEyebrowTitle");
+            var hero = Find<Border>(surface, "SystemsHero");
+            await TestSupport.WaitForRenderedConditionAsync(() => hero.ActualHeight > 0, "Systems hero laid out");
+            var glyph = Assert.Single(TestSupport.FindDescendants<TextBlock>(hero), text => text.Text == "\uE977");
+            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(glyph));
+            var title = Find<TextBlock>(hero, "SystemsPageMarker");
             Assert.Equal(SystemsText.S("Title"), title.Text);
-            Assert.Equal(14, title.FontSize);
+            Assert.Equal(28, title.FontSize);
             Assert.Equal(Microsoft.UI.Text.FontWeights.SemiBold, title.FontWeight);
             Assert.NotNull(title.Foreground);
             Assert.Equal(AutomationHeadingLevel.Level1,
@@ -511,13 +764,13 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Theory]
-    [InlineData(1400, 3, 4, 2)]
-    [InlineData(1000, 3, 2, 2)]
-    [InlineData(999, 1, 5, 1)]
-    [InlineData(760, 1, 3, 1)]
-    [InlineData(520, 1, 2, 1)]
+    [InlineData(1400, 3, 4)]
+    [InlineData(1000, 3, 2)]
+    [InlineData(999, 1, 5)]
+    [InlineData(760, 1, 3)]
+    [InlineData(520, 1, 2)]
     public async Task ResizedHost_KeepsActionsRowsAndResourceTilesInTheirLanes(
-        double width, int detailColumns, int statColumns, int attentionColumns)
+        double width, int detailColumns, int statColumns)
     {
         var now = DateTimeOffset.UtcNow;
         const string longName = "Atelier de développement international - infrastructure et automatisation";
@@ -568,11 +821,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.InRange(Math.Abs(width - root.ActualWidth), 0, .5);
                 var content = Find<FrameworkElement>(surface, "SystemsContentColumn");
                 Assert.InRange(content.ActualWidth, 1, OpenClawTray.Presentation.PageResponsiveLayout.ContentWidth(root.ActualWidth) + .5);
-                var backdrop = Find<Border>(surface, "SystemsPageBackdrop");
-                await TestSupport.WaitForRenderedConditionAsync(() => Math.Abs(backdrop.ActualWidth - root.ActualWidth) <= .5,
-                    "full-host backdrop reconciled independently of centered content");
-                Assert.InRange(Math.Abs(backdrop.TransformToVisual(root).TransformPoint(new Point()).X), 0, .5);
-                Assert.InRange(Math.Abs(backdrop.ActualWidth - root.ActualWidth), 0, .5);
+                Assert.DoesNotContain(AutomationIds(surface), id => id == "SystemsPageBackdrop");
                 Assert.InRange(Math.Abs(content.ActualWidth - OpenClawTray.Presentation.PageResponsiveLayout.ContentWidth(root.ActualWidth)), 0, .5);
                 Assert.InRange(Math.Abs(content.TransformToVisual(root).TransformPoint(new Point()).X -
                     (root.ActualWidth - content.ActualWidth) / 2), 0, .5);
@@ -603,30 +852,20 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.Equal(isTrailingSingle ? statColumns * 2 - 1 : 1,
                         Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(tile));
                 }
-                var attention = Find<StackPanel>(surface, "SystemsAttentionRows");
-                var heading = Assert.Single(TestSupport.FindDescendants<TextBlock>(Find<FrameworkElement>(surface, "SystemsNeedsYou")),
-                    text => text.Text == SystemsText.S("NeedsYou"));
-                foreach (var grid in attention.Children.OfType<Grid>())
-                {
-                    Assert.Equal(attentionColumns * 2 - 1, grid.ColumnDefinitions.Count);
-                    AssertSiblingsDoNotOverlap(grid);
-                    var firstCard = Assert.IsAssignableFrom<FrameworkElement>(grid.Children[0]);
-                    Assert.InRange(Math.Abs(firstCard.TransformToVisual(content).TransformPoint(new Point()).X -
-                        heading.TransformToVisual(content).TransformPoint(new Point()).X), 0, 1);
-                    if (attentionColumns == 1)
-                        Assert.InRange(Math.Abs(firstCard.ActualWidth - content.ActualWidth), 0, 1);
-                }
-                var mast = Find<StackPanel>(surface, "SystemsMastActions");
-                AssertSiblingsDoNotOverlap(Find<Panel>(surface, "SystemsMastGrid"));
-                Assert.Equal(Orientation.Horizontal, mast.Orientation);
+                var summary = Find<Grid>(surface, "SystemsSummary");
+                Assert.Equal(2, summary.ColumnDefinitions.Count);
+                AssertSiblingsDoNotOverlap(summary);
+                Assert.DoesNotContain(AutomationIds(surface), id => id is "SystemsNeedsYou" or "SystemsIssuesView");
+                var mast = Find<Panel>(surface, "SystemsMastActions");
                 AssertSiblingsDoNotOverlap(mast);
-                Assert.InRange(mast.ActualHeight, 1, 48);
-                var mastActions = mast.Children.OfType<Control>().ToArray();
-                Assert.Equal(3, mastActions.Length);
+                Assert.InRange(mast.ActualHeight, 1, 96);
+                var mastActions = TestSupport.FindDescendants<Button>(mast)
+                    .Where(button => AutomationProperties.GetAutomationId(button) is "SystemsMastOpenWeb" or "SystemsAddSystem").ToArray();
+                Assert.Equal(2, mastActions.Length);
                 foreach (var action in mastActions)
                 {
                     var actionBounds = Bounds(action, mast);
-                    Assert.InRange(Math.Abs(actionBounds.Top + actionBounds.Height / 2 - mast.ActualHeight / 2), 0, 1);
+                    Assert.InRange(actionBounds.Top, 0, mast.ActualHeight);
                     if (action is not Button { Content: StackPanel label })
                         continue;
                     var glyph = Assert.IsType<TextBlock>(label.Children[0]);
@@ -838,7 +1077,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task MastAndAttention_UseReportedStateAndResponsiveNativeLayout()
+    public async Task HeroAndRowBadges_UseReportedStateAndResponsiveNativeLayout()
     {
         var now = DateTimeOffset.UtcNow;
         var nodes = Enumerable.Range(1, 3).Select(index => new GatewayNodeInfo
@@ -864,10 +1103,11 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             }), async (surface, controller, navigated) => await ui.RunOnUIAsync(async () =>
             {
                 var headline = Find<TextBlock>(surface, "SystemsPageMarker");
-                Assert.Equal("Three of four systems are online", headline.Text);
+                Assert.Equal(SystemsText.S("Title"), headline.Text);
                 var sub = Find<TextBlock>(surface, "SystemsMastSubtitle");
-                Assert.Contains("This PC is connected as a node.", sub.Text, StringComparison.Ordinal);
-                Assert.Contains("Machine 3 was last seen 2 h ago.", sub.Text, StringComparison.Ordinal);
+                Assert.Contains("connected to Home as a node", sub.Text, StringComparison.Ordinal);
+                Assert.Contains("3 of 4", string.Join(" ", TestSupport.FindDescendants<TextBlock>(
+                    Find<FrameworkElement>(surface, "SystemsOnlineTile")).Select(text => text.Text)), StringComparison.Ordinal);
                 var add = Find<Button>(surface, "SystemsAddSystem");
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                 {
@@ -882,33 +1122,28 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.InRange(addBounds.Top, titleBounds.Top - 40, titleBounds.Bottom);
                 else
                     Assert.True(addBounds.Top > titleBounds.Bottom);
-                var pairing = Assert.Single(TestSupport.FindDescendants<Border>(surface), card =>
-                    AutomationProperties.GetAutomationId(card).StartsWith("SystemsAttention_pairing-", StringComparison.Ordinal));
-                var offline = Find<Border>(surface, "SystemsAttention_offline-node:machine-3");
+                var pairing = Assert.Single(TestSupport.FindDescendants<Button>(surface), card =>
+                    AutomationProperties.GetAutomationId(card).StartsWith("SystemsPairing_", StringComparison.Ordinal));
+                var offline = Find<Expander>(surface, "SystemsRow_node:machine-3");
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                 {
                     var pairingPosition = pairing.TransformToVisual(surface).TransformPoint(new Point());
                     var offlinePosition = offline.TransformToVisual(surface).TransformPoint(new Point());
                     return pairing.ActualWidth > 0 && offline.ActualWidth > 0 &&
-                        (width >= 1000
-                            ? Math.Abs(pairingPosition.Y - offlinePosition.Y) <= 1 &&
-                                offlinePosition.X > pairingPosition.X + pairing.ActualWidth
-                            : offlinePosition.Y > pairingPosition.Y);
-                }, "attention cards settle into their measured responsive rows");
+                        offlinePosition.Y > pairingPosition.Y + pairing.ActualHeight;
+                }, "pending pairing precedes the badged machine inventory at every width");
                 var p = pairing.TransformToVisual(surface).TransformPoint(new Point());
                 var o = offline.TransformToVisual(surface).TransformPoint(new Point());
-                if (width >= 1000)
-                {
-                    Assert.InRange(Math.Abs(p.Y - o.Y), 0, 1);
-                    Assert.True(o.X > p.X + pairing.ActualWidth);
-                }
-                else
-                    Assert.True(o.Y > p.Y);
-                Invoke(Find<Button>(offline, "SystemsAttention_offline-node:machine-3_Action"));
+                Assert.True(o.Y > p.Y + pairing.ActualHeight);
+                offline.IsExpanded = true;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    TryFind<HyperlinkButton>(offline, "SystemsIssueAction_node:machine-3_0") is { IsLoaded: true },
+                    "offline row owns its recovery action");
+                Invoke(Find<HyperlinkButton>(offline, "SystemsIssueAction_node:machine-3_0"));
                 Assert.Equal(["connection"], navigated);
                 controller.UpdateInputs(Inputs() with { LocalNodeId = "not-reported" });
                 await TestSupport.WaitForRenderedConditionAsync(() =>
-                    !Find<TextBlock>(surface, "SystemsMastSubtitle").Text.Contains("This PC is connected as a node.", StringComparison.Ordinal),
+                    !Find<TextBlock>(surface, "SystemsMastSubtitle").Text.Contains("connected to Home as a node", StringComparison.Ordinal),
                     "An identity without a reported live node does not claim node connectivity");
                 controller.Select("node:machine-1");
                 await TestSupport.WaitForRenderedConditionAsync(() => TestSupport.FindDescendants<FrameworkElement>(surface)
@@ -985,17 +1220,17 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 Assert.True(controller.State.OwnNodePending);
                 Assert.Empty(controller.State.PendingApprovals);
-                var card = Find<Border>(surface, "SystemsAttention_own-pairing");
+                var card = Find<Button>(surface, "SystemsPairing_NodePair:own-full-id");
                 Assert.True(card.ActualHeight > 0);
                 Assert.Contains(TestSupport.FindDescendants<TextBlock>(card),
-                    text => text.Text == SystemsText.S("Pairing_OwnNodeMessage"));
+                    text => text.Text.Contains(SystemsText.S("Pairing_Message"), StringComparison.Ordinal));
                 Assert.DoesNotContain(TestSupport.FindDescendants<Button>(card),
                     button => AutomationProperties.GetAutomationId(button).StartsWith("SystemsPairApprove_", StringComparison.Ordinal));
-                var review = Find<Button>(card, "SystemsAttention_own-pairing_Action");
+                var review = card;
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(review);
                 Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke)).Invoke();
                 Assert.Equal(["connection"], navigated);
-                output.WriteLine("Own-node-only pairing: attention card and Connection action are visible; no approve prompt.");
+                output.WriteLine("Own-node-only pairing: request row opens Connection; no approve prompt.");
             });
         });
     }
@@ -1048,17 +1283,15 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 { RequestId = "reviewed", NodeId = "other", DisplayName = displayName })],
         }), async (surface, _, navigated) => await ui.RunOnUIAsync(() =>
         {
-            var card = Assert.Single(TestSupport.FindDescendants<Border>(surface), element =>
-                AutomationProperties.GetAutomationId(element).StartsWith("SystemsAttention_pairing-", StringComparison.Ordinal));
+            var card = Find<Button>(surface, "SystemsPairing_NodePair:reviewed");
             Assert.Contains(TestSupport.FindDescendants<TextBlock>(card),
                 text => text.Text == (displayName is null ? SystemsText.S("Pairing_TitleOne")
-                    : SystemsText.F("Pairing_NamedTitle", displayName)));
+                    : displayName));
             // The Connection page owns approve and reject, so Systems offers no decision of its own.
-            var review = Assert.Single(TestSupport.FindDescendants<Button>(card));
-            Assert.EndsWith("_Action", AutomationProperties.GetAutomationId(review), StringComparison.Ordinal);
-            Invoke(review);
+            Assert.Contains(SystemsText.S("Badge_Join"), AutomationProperties.GetName(card), StringComparison.Ordinal);
+            Invoke(card);
             Assert.Equal(["connection"], navigated);
-            output.WriteLine("Pending approval: Needs you card routes to Connection; no inline approve or reject.");
+            output.WriteLine("Pending approval: request row routes to Connection; no inline approve or reject.");
         }));
     }
 
@@ -1094,82 +1327,39 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     [Theory]
     [InlineData(740)]
     [InlineData(560)]
-    public async Task OpenWeb_BelowTheWideTierIsOneOverflowMenuItem(double width)
+    public async Task OpenWeb_BelowTheWideTierIsOneVisibleDirectAction(double width)
     {
         var opened = new List<string?>();
         await WithPageAsync(900, controller => controller.Select("node:studio"),
             async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
             {
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => WebHandoffs(surface) == "SystemsMastOverflow" && controller.State.HasWebSystemsPage,
-                    "single mast overflow Open in web menu",
+                    () => WebHandoffs(surface) == "SystemsMastOpenWeb" && controller.State.HasWebSystemsPage,
+                    "single direct Open in web action",
                     () => $"handoffs=[{WebHandoffs(surface)}] modern={controller.State.HasWebSystemsPage}");
-                var overflow = Find<Button>(surface, "SystemsMastOverflow");
+                var action = Find<Button>(surface, "SystemsMastOpenWeb");
                 var scroll = Find<ScrollViewer>(surface, "SystemsPageScroll");
                 scroll.ChangeView(null, 0, null, disableAnimation: true);
-                await TestSupport.WaitForRenderedConditionAsync(() => overflow.IsLoaded &&
-                    Bounds(overflow, surface).Top >= Bounds(scroll, surface).Top &&
-                    Bounds(overflow, surface).Bottom <= Bounds(scroll, surface).Bottom &&
-                    overflow.ActualWidth > 0 && overflow.ActualHeight > 0,
-                    "native overflow anchor is loaded and visible in the scroll viewport",
-                    () => $"anchor={Bounds(overflow, surface)}, viewport={Bounds(scroll, surface)}, loaded={overflow.IsLoaded}");
-                Assert.Equal(SystemsText.S("OpenWeb"), AutomationProperties.GetName(overflow));
-                var flyout = Assert.IsAssignableFrom<Microsoft.UI.Xaml.Controls.MenuFlyout>(overflow.Flyout);
-                var item = Assert.IsAssignableFrom<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>(Assert.Single(flyout.Items));
-                Assert.Equal(SystemsText.S("OpenWeb"), item.Text);
-                var observedFrames = 0;
-                void FrameObserved(object? sender, object args) => observedFrames++;
-                string MenuDiagnostics()
-                {
-                    var currentAnchor = TryFind<Button>(surface, "SystemsMastOverflow");
-                    var currentFlyout = currentAnchor?.Flyout as Microsoft.UI.Xaml.Controls.MenuFlyout;
-                    var currentItem = currentFlyout?.Items.OfType<Microsoft.UI.Xaml.Controls.MenuFlyoutItem>().FirstOrDefault();
-                    static string Identity(object? value) => value is null ? "<null>"
-                        : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value).ToString("X");
-                    var window = ui.TestWindow.AppWindow;
-                    return $"capturedAnchor={Identity(overflow)}, currentAnchor={Identity(currentAnchor)}, " +
-                        $"sameAnchor={ReferenceEquals(overflow, currentAnchor)}, " +
-                        $"capturedFlyout={Identity(flyout)}, currentFlyout={Identity(currentFlyout)}, " +
-                        $"sameFlyout={ReferenceEquals(flyout, currentFlyout)}, " +
-                        $"capturedItem={Identity(item)}, currentItem={Identity(currentItem)}, " +
-                        $"sameItem={ReferenceEquals(item, currentItem)}, capturedOpen={flyout.IsOpen}, " +
-                        $"currentOpen={currentFlyout?.IsOpen}, capturedItemLoaded={item.IsLoaded}, " +
-                        $"currentItemLoaded={currentItem?.IsLoaded}, currentItems={currentFlyout?.Items.Count}, " +
-                        $"capturedAnchorLoaded={overflow.IsLoaded}, currentAnchorLoaded={currentAnchor?.IsLoaded}, " +
-                        $"anchor={Bounds(overflow, surface)}, viewport={Bounds(scroll, surface)}, " +
-                        $"windowPosition={window.Position}, windowSize={window.Size}, presenter={window.Presenter.Kind}, " +
-                        $"rasterizationScale={surface.XamlRoot.RasterizationScale}, observedCompositionFrames={observedFrames} " +
-                        "(composition frames, not a Reactor render generation)";
-                }
-                CompositionTarget.Rendering += FrameObserved;
-                try
-                {
-                    flyout.ShowAt(overflow);
-                    await TestSupport.WaitForRenderedConditionAsync(() => flyout.IsOpen && item.IsLoaded,
-                        "overflow menu opened",
-                        MenuDiagnostics);
-                    Invoke(item);
-                    Assert.Equal(new string?[] { "systems" }, opened);
-                    await TestSupport.WaitForRenderedConditionAsync(() => !flyout.IsOpen,
-                        "overflow menu closed after its item ran");
-                }
-                finally
-                {
-                    try { output.WriteLine(MenuDiagnostics()); }
-                    finally
-                    {
-                        CompositionTarget.Rendering -= FrameObserved;
-                        flyout.Hide();
-                    }
-                }
-                output.WriteLine($"Open in web at {width} DIP: one overflow item opened [{string.Join(", ", opened.Select(path => path ?? "<root>"))}].");
+                await TestSupport.WaitForRenderedConditionAsync(() => action.IsLoaded &&
+                    Bounds(action, surface).Top >= Bounds(scroll, surface).Top &&
+                    Bounds(action, surface).Bottom <= Bounds(scroll, surface).Bottom &&
+                    Bounds(action, surface).Left >= Bounds(scroll, surface).Left &&
+                    Bounds(action, surface).Right <= Bounds(scroll, surface).Right &&
+                    action.ActualWidth > 0 && action.ActualHeight > 0,
+                    "direct action is loaded and entirely visible in the scroll viewport",
+                    () => $"action={Bounds(action, surface)}, viewport={Bounds(scroll, surface)}, loaded={action.IsLoaded}");
+                Assert.Equal(SystemsText.S("OpenWeb"), AutomationProperties.GetName(action));
+                Assert.Null(action.Flyout);
+                Invoke(action);
+                Assert.Equal(new string?[] { "systems" }, opened);
+                output.WriteLine($"Open in web at {width} DIP: one visible direct action opened systems. This does not reprove the retired overflow popup.");
             }), openWeb: opened.Add, width: width, fitNativeViewport: true);
     }
 
     [Theory]
     [InlineData(1100, "SystemsMastOpenWeb")]
-    [InlineData(740, "SystemsMastOverflow")]
-    [InlineData(560, "SystemsMastOverflow")]
+    [InlineData(740, "SystemsMastOpenWeb")]
+    [InlineData(560, "SystemsMastOpenWeb")]
     public async Task SelectedMachine_HasNoBackups(double width, string expectedHandoff)
     {
         await WithPageAsync(900, controller => controller.Select("node:studio"),
@@ -1584,7 +1774,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task ShellInset_UpdatesRetainedScrollAtConstantWidthWithoutMovingBackdropOrRoot()
+    public async Task ShellInset_UpdatesRetainedScrollAtConstantWidthWithoutMovingRoot()
     {
         var viewport = new SystemsViewport();
         viewport.ApplyTopInset(56);
@@ -1592,24 +1782,19 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         {
             var root = Find<Grid>(surface, "SystemsPageRoot");
             var scroll = Find<ScrollViewer>(surface, "SystemsPageScroll");
-            var backdrop = Find<Border>(surface, "SystemsPageBackdrop");
-            await TestSupport.WaitForRenderedConditionAsync(() => scroll.Margin.Top == 56 &&
-                Math.Abs(backdrop.Height - (Find<FrameworkElement>(surface, "SystemsMastGrid").ActualHeight + 88)) < 0.5,
+            await TestSupport.WaitForRenderedConditionAsync(() => scroll.Margin.Top == 56,
                 "pre-mounted Systems inset retained");
             Assert.Equal(new Thickness(0), root.Margin);
-            Assert.Equal(new Thickness(0), backdrop.Margin);
+            Assert.DoesNotContain(AutomationIds(surface), id => id == "SystemsPageBackdrop");
             viewport.ApplyTopInset(0);
-            await TestSupport.WaitForRenderedConditionAsync(() => scroll.Margin.Top == 0 &&
-                Math.Abs(backdrop.Height - (Find<FrameworkElement>(surface, "SystemsMastGrid").ActualHeight + 32)) < 0.5,
+            await TestSupport.WaitForRenderedConditionAsync(() => scroll.Margin.Top == 0,
                 "Systems inset zero reset");
             Assert.Same(root, Find<Grid>(surface, "SystemsPageRoot"));
             Assert.Same(scroll, Find<ScrollViewer>(surface, "SystemsPageScroll"));
-            Assert.Same(backdrop, Find<Border>(surface, "SystemsPageBackdrop"));
             viewport.ApplyTopInset(56);
             await TestSupport.WaitForRenderedConditionAsync(() => scroll.Margin.Top == 56,
                 "inset-only update at constant width");
             Assert.Equal(new Thickness(0), root.Margin);
-            Assert.Equal(new Thickness(0), backdrop.Margin);
         }), viewport: viewport);
     }
 

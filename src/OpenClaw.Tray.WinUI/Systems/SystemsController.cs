@@ -24,6 +24,7 @@ internal sealed record SystemsInputs
     public string? LocalHost { get; init; }
     /// <summary>The active Gateway record; a change means a different Gateway, not a reconnect.</summary>
     public string? GatewayId { get; init; }
+    public string? GatewayName { get; init; }
 }
 
 /// <summary>Immutable snapshot rendered by the Reactor Systems page.</summary>
@@ -51,6 +52,7 @@ internal sealed record SystemsViewState
     /// </summary>
     public bool HasWebSystemsPage { get; init; }
     public string? LocalNodeId { get; init; }
+    public string? GatewayName { get; init; }
     public DateTimeOffset? LastRefreshedAt { get; init; }
     /// <summary>
     /// Changes whenever the connection drops, returns or moves to another Gateway. Confirmation
@@ -192,6 +194,7 @@ internal sealed class SystemsController : IDisposable
                 !string.IsNullOrWhiteSpace(request.NodeId) &&
                 inputs.OwnNodeIds.Contains(request.NodeId, StringComparer.OrdinalIgnoreCase)) == true,
             LocalNodeId = inputs.LocalNodeId,
+            GatewayName = inputs.GatewayName,
             Loading = inputs.Connected && next.Loading,
             Rows = Project(),
         });

@@ -8587,4 +8587,20 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Capability_Files" xml:space="preserve"><value>Files</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>This PC is connected to {0} as a node.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>This PC is waiting for approval on {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>This PC is not reported as a connected node on {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>Can't reach {0}. Other systems show what was last reported at {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>Can't reach {0}. No system report is available.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} of {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Last reported online</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Issues: {0}. Show the first system that needs attention.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Systems summary</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Needs approval</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Needs re-approval</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Update required</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Needs Windows permission</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Reported error</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Wants to join</value></data>
 </root>

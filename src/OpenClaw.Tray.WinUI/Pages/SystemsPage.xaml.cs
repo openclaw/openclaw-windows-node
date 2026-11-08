@@ -215,6 +215,7 @@ public sealed partial class SystemsPage : Page, IDisposable, Presentation.ISetti
         {
             Connected = connected,
             GatewayId = gatewayId,
+            GatewayName = CurrentApp.Registry?.GetActive()?.FriendlyName,
             Scopes = client?.GrantedOperatorScopes ?? Array.Empty<string>(),
             Presence = _appState?.Presence ?? Array.Empty<PresenceEntry>(),
             Sessions = _appState?.Sessions ?? Array.Empty<SessionInfo>(),

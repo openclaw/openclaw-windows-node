@@ -8520,4 +8520,20 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Systems_Capability_Files" xml:space="preserve"><value>Fichiers</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Développer la navigation</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Réduire la navigation</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>Ce PC est connecté à {0} en tant que nœud.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>Ce PC attend une approbation sur {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>Ce PC n'est pas signalé comme nœud connecté sur {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>{0} est inaccessible. Les autres systèmes affichent les dernières données signalées à {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>{0} est inaccessible. Aucun rapport système n'est disponible.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} sur {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Dernier état en ligne signalé</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Problèmes : {0}. Afficher le premier système nécessitant une intervention.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Résumé des systèmes</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Approbation requise</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Nouvelle approbation requise</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Hors ligne depuis {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Mise à jour requise</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Autorisation Windows requise</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Erreur signalée</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Souhaite rejoindre</value></data>
 </root>

@@ -8572,4 +8572,20 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Systems_Capability_Files" xml:space="preserve"><value>Arquivos</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Expandir navegação</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Recolher navegação</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>Este PC está conectado a {0} como nó.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>Este PC aguarda aprovação em {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>Este PC não foi informado como nó conectado em {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>Não foi possível acessar {0}. Outros sistemas mostram os últimos dados informados em {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>Não foi possível acessar {0}. Nenhum relatório de sistema está disponível.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} de {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Último estado online informado</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Problemas: {0}. Mostrar o primeiro sistema que precisa de atenção.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Resumo dos sistemas</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Precisa de aprovação</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Precisa de nova aprovação</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline há {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Atualização necessária</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Precisa de permissão do Windows</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Erro informado</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Quer ingressar</value></data>
 </root>

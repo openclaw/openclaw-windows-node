@@ -11,6 +11,33 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task SystemsHero_EmptyFixtureHasHonestCountsInLightAndDark()
+    {
+        foreach (var theme in new[] { "Light", "Dark" })
+        {
+            await WithAppAsync(async run =>
+            {
+                await run.InvokeAsync("app.navigate", new { page = "systems" });
+                await WaitUiAsync(run, () => FindById(run, "SystemsEmpty") is { Current.IsOffscreen: false } &&
+                    FindById(run, "SystemsOnlineTile") is { Current.IsOffscreen: false } &&
+                    FindById(run, "SystemsIssuesTile") is { Current.IsOffscreen: false, Current.IsEnabled: false },
+                    "reported empty inventory renders an honest zero and disabled issue action");
+                Assert.Null(FindById(run, "SystemsPairingRows"));
+                Assert.Null(FindById(run, "SystemsIssuesView"));
+                Assert.Null(FindById(run, "SystemsBackups"));
+                var tile = FindById(run, "SystemsOnlineTile")!;
+                Assert.Contains(tile.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>(),
+                    element => element.Current.Name == "0 of 0");
+                var window = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageMarker")) is not null);
+                OwnedWindowCapture.Save(run, window, $"{theme}-systems-hero-empty.png",
+                    FindById(run, "SystemsEmpty")!, tile);
+            }, scenario: GatewayScenario.CreateSystems(empty: true), appTheme: theme);
+        }
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task SystemsPage_OmitsConnectionMapInLightAndDark()
     {
         var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
@@ -80,7 +107,7 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task SystemsViewportBackdrop_TopAndScrolled()
+    public async Task SystemsHero_TopAndScrolled()
     {
         var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the current build.");
@@ -106,15 +133,15 @@ public sealed partial class GatewayFixtureUiTests
         await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "viewport-proof.json"),
             JsonSerializer.Serialize(new { run.AppProcessId, verticalScrollPercent = pattern.Current.VerticalScrollPercent,
                 viewportBounds = before, mastIsOffscreen = true,
-                qualification = "Real isolated app, synthetic Gateway. Mounted geometry independently proves fixed backdrop position." },
+                qualification = "Real isolated app, synthetic Gateway. Hero scrolls with inventory; viewport remains fixed." },
                 new JsonSerializerOptions { WriteIndented = true }));
         await run.WriteReportAsync("passed");
-        output.WriteLine($"Viewport backdrop proof: {run.ArtifactsDirectory}");
+        output.WriteLine($"Hero scroll proof: {run.ArtifactsDirectory}");
     }
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task SystemsEyebrow_LightFixtureCapture()
+    public async Task SystemsHero_LightFixtureCapture()
     {
         var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the current build.");
@@ -123,18 +150,17 @@ public sealed partial class GatewayFixtureUiTests
             scenario: GatewayScenario.CreateSystems(empty: false), appTheme: "Light");
         await run.InvokeAsync("app.navigate", new { page = "systems" });
         await WaitUiAsync(run, () => FindById(run, "SystemsDevicesAndGatewayHeading") is not null &&
-            FindById(run, "SystemsEyebrowTitle") is { Current.IsOffscreen: false }, "loaded Systems eyebrow");
+            FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false }, "loaded Systems hero");
         var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageMarker")) is not null);
-        OwnedWindowCapture.Save(run, window, "Light-systems-eyebrow.png",
-            FindById(run, "SystemsEyebrowTitle")!, FindById(run, "SystemsPageMarker")!);
+        OwnedWindowCapture.Save(run, window, "Light-systems-hero.png", FindById(run, "SystemsPageMarker")!);
         await run.WriteReportAsync("passed");
-        output.WriteLine($"Systems eyebrow screenshot: {run.ArtifactsDirectory}\\Light-systems-eyebrow.png");
+        output.WriteLine($"Systems hero screenshot: {run.ArtifactsDirectory}\\Light-systems-hero.png");
     }
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task SystemsBackdrop_FullHostLightAndDark()
+    public async Task SystemsHero_FullHostLightAndDark()
     {
         var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshness-verified build.");
@@ -144,7 +170,7 @@ public sealed partial class GatewayFixtureUiTests
                 Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
                 scenario: GatewayScenario.CreateSystems(empty: false), appTheme: theme);
             await run.InvokeAsync("app.navigate", new { page = "systems" });
-            await WaitUiAsync(run, () => FindById(run, "SystemsDevicesAndGatewayHeading") is not null, "loaded Systems backdrop");
+            await WaitUiAsync(run, () => FindById(run, "SystemsDevicesAndGatewayHeading") is not null, "loaded Systems hero");
             var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageMarker")) is not null);
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
@@ -158,7 +184,7 @@ public sealed partial class GatewayFixtureUiTests
                 "normal owned window and current Systems scroll viewport");
             var chrome = window.Current.BoundingRectangle.Width - FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
             var records = new List<object>();
-            foreach (var request in theme == "Light" ? new[] { 1400, 520 } : new[] { 1400 })
+            foreach (var request in new[] { 1400, 760 })
             {
                 var target = Math.Min(work.Width, request == 520 ? 1000 * scale : request * scale + chrome);
                 var height = Math.Min(work.Height, window.Current.BoundingRectangle.Height);
@@ -171,28 +197,28 @@ public sealed partial class GatewayFixtureUiTests
                     lastWidth = width;
                     return stable && Math.Abs(window.Current.BoundingRectangle.Width - target) <= 2 &&
                         OpenClawTray.Presentation.PageResponsiveLayout.TierFor(width) ==
-                        (request == 520 ? OpenClawTray.Presentation.PageWidthTier.Medium : OpenClawTray.Presentation.PageWidthTier.Wide);
-                }, "native backdrop width settled");
+                        (request == 760 ? OpenClawTray.Presentation.PageWidthTier.Medium : OpenClawTray.Presentation.PageWidthTier.Wide);
+                }, "native hero width settled");
                 var scroll = FindById(run, "SystemsPageScroll")!;
                 if (scroll.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
                     ((ScrollPattern)pattern).SetScrollPercent(ScrollPattern.NoScroll, 0);
-                await WaitUiAsync(run, () => FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false }, "backdrop mast visible");
+                await WaitUiAsync(run, () => FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false }, "hero mast visible");
                 Assert.True(SystemsGetWindowRect(hwnd, out var rect));
                 Assert.InRange(Math.Abs(rect.Right - rect.Left - target), 0, 2);
                 var hostWidth = scroll.Current.BoundingRectangle.Width / scale;
-                var name = $"{theme}-backdrop-{request}-host-{Math.Round(hostWidth)}.png";
+                var name = $"{theme}-hero-{request}-host-{Math.Round(hostWidth)}.png";
                 OwnedWindowCapture.Save(run, window, name, FindById(run, "SystemsPageMarker")!);
                 records.Add(new { theme, requestedHost = request, measuredHostDip = hostWidth,
                     contentDip = FindById(run, "SystemsContentColumn")?.Current.BoundingRectangle.Width / scale,
                     tier = OpenClawTray.Presentation.PageResponsiveLayout.TierFor(hostWidth).ToString(),
                     windowPx = new { rect.Left, rect.Top, rect.Right, rect.Bottom }, scale, image = name,
                     sha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(run.ArtifactsDirectory, name)))),
-                    qualification = request == 520 ? "Shipped shell minimum, not a 520 DIP page host." : "Full host backdrop behind centered content." });
-                await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "backdrop-manifest.json"),
+                    qualification = "Native owned shell. Narrow widths use the separate mounted viewport route." });
+                await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "hero-manifest.json"),
                     JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
             }
             await run.WriteReportAsync("passed");
-            output.WriteLine($"{theme} backdrop: {run.ArtifactsDirectory}");
+            output.WriteLine($"{theme} hero: {run.ArtifactsDirectory}");
         }
     }
 
@@ -550,15 +576,19 @@ public sealed partial class GatewayFixtureUiTests
                 "both expanded machine rows occupy the viewport");
             await Capture("two-open-rows", FindById(run, "SystemsSelectedName")!);
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
-            await WaitUiAsync(run, () => FindById(run, "SystemsNeedsYouMore_Action") is { Current.IsOffscreen: false },
-                "overflow entry to the complete Issues view");
-            Invoke(FindById(run, "SystemsNeedsYouMore_Action")!);
-            await WaitUiAsync(run, () => FindById(run, "SystemsIssuesBack") is { Current.IsOffscreen: false },
-                "Issues view with All devices return");
-            await Capture("all-issues", FindById(run, "SystemsIssuesBack")!);
-            Invoke(FindById(run, "SystemsIssuesBack")!);
+            await WaitUiAsync(run, () => FindById(run, "SystemsIssuesTile") is { Current.IsOffscreen: false, Current.IsEnabled: true },
+                "Issues tile retains access to badged rows");
+            Invoke(FindById(run, "SystemsIssuesTile")!);
+            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants, Condition.TrueCondition)
+                .Cast<AutomationElement>().Any(element =>
+                    element.Current.AutomationId.StartsWith("SystemsPairing_", StringComparison.Ordinal) &&
+                    !element.Current.IsOffscreen), "Issues jump reveals the pending pairing row");
+            Assert.Null(FindById(run, "SystemsIssuesView"));
+            Assert.NotNull(FindById(run, "SystemsRow_node:fixture-studio"));
+            await Capture("issues-jump-in-full-inventory");
+            statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
             await WaitUiAsync(run, () => FindById(run, "SystemsRefreshButton") is { Current.IsOffscreen: false },
-                "daily inventory returned from Issues");
+                "inventory refresh remains reachable after Issues jump");
             run.Gateway.SetSystemsInventoryUnavailable(true);
             Invoke(FindById(run, "SystemsRefreshButton")!);
             await WaitUiAsync(run, () => FindById(run, "SystemsRetry") is { Current.IsOffscreen: false } &&

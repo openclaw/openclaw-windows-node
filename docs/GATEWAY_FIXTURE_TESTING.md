@@ -318,11 +318,13 @@ expand it inline; other rows can remain expanded independently.
 `systems:<id>` still opens exactly that row, and an unavailable id keeps its
 missing-selection explanation. "Devices and Gateway" always shows the full
 inventory in online-first order, with no search, status filter or sort controls.
-Needs you shows up to two attention cards; Review all issues opens the Issues
-view, whose All devices action returns to the inventory. Workers and Connected
-apps appear as separate groups whenever their inventory has rows. Pairing
-actions route to Connection, not inline approval. Presence does not create
-machine rows or connection topology.
+The shared hero reports this PC's observed Gateway attachment. Online and Issues
+are its only summary tiles; backup reads and badges remain closed. Pending pairing
+requests appear first as separate Wants to join rows. Other attention badges stay
+on their actual machine/worker rows. Issues reveals the first badged row without
+hiding the inventory; there is no separate Issues view. Workers and Connected
+apps retain their groups. Pairing review routes to Connection, not inline approval.
+Presence does not create machine rows or connection topology.
 
 For native mounted-control proof on an authorized desktop, use the host's RID
 (`win-arm64` on native ARM64):
@@ -335,9 +337,9 @@ dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
 
 This covers inline row invocation, the minimum-height scroll, pending recovery,
 read-only access, resource disclosure, management confirmation epochs, the single
-page-level Open in web action, Needs you overflow into Issues, independent
+page-level direct Open in web action, Issues jump without hidden inventory, independent
 expanders and narrow recovery-action layout, and the Capabilities column width
-and gap. It is not screenshot proof. Capture the mast, attention cards and
+and gap. It is not screenshot proof. Capture the hero, row badges and
 expanded row in light, dark and narrow layouts from the current fixture build. Verify
 the native CommandBar overflow and keyboard focus, collapsed Diagnostics,
 separate CPU count/load and the icon-only chat action. The fixture cannot prove
@@ -355,9 +357,13 @@ theme brushes; do not treat them as equivalent native screenshot evidence.
 `SystemsPage_OmitsConnectionMapInLightAndDark` verifies that the fixture-mounted
 page has no connection-map elements in either theme. `SystemsInventory_ExistingSeparatedCards`
 captures separated inventory rows, then scrolls the expanded Gateway's related
-sessions and Diagnostics into view before capture. `SystemsViewportBackdrop_TopAndScrolled` captures
-the fixed viewport backdrop before and after scrolling. Run these cases against
-current Debug and non-Dev Release builds; fixture captures remain synthetic proof.
+sessions and Diagnostics into view before capture. `SystemsHero_TopAndScrolled`
+captures the scrolling hero with an unchanged scroll viewport.
+`SystemsHero_FullHostLightAndDark` captures wide and medium native shell widths
+in both themes. Widths below 720 use the existing mounted viewport route without
+lowering the production 800-DIP minimum. These renamed hero cases are source-only
+until their granted lane executes; earlier backdrop screenshots do not prove the
+new header. Fixture captures remain synthetic proof.
 
 Add a system opens three instructions and forwards to Connection. Forget names
 the node, displays only reported platform, last-seen and approval facts, and

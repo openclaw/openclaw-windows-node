@@ -21,22 +21,23 @@ public sealed class SystemsLayoutTests
     }
 
     [Theory]
-    [InlineData(1400, false, false, 2, 4)]
-    [InlineData(1000, false, false, 2, 3)]
-    [InlineData(999.99994, false, false, 2, 3)]
-    [InlineData(999, true, false, 1, 5)]
-    [InlineData(760, true, false, 1, 3)]
-    [InlineData(720, true, false, 1, 3)]
-    [InlineData(719, true, true, 1, 3)]
-    [InlineData(520, true, true, 1, 2)]
-    [InlineData(480, true, true, 1, 2)]
+    [InlineData(1400, false, false, 4)]
+    [InlineData(1000, false, false, 3)]
+    [InlineData(999.99994, false, false, 3)]
+    [InlineData(999, true, false, 5)]
+    [InlineData(760, true, false, 3)]
+    [InlineData(720, true, false, 3)]
+    [InlineData(719, true, true, 3)]
+    [InlineData(520, true, true, 2)]
+    [InlineData(480, true, true, 2)]
     public void HostWidth_SelectsSharedTiersAndTilesWithoutViolatingMinimums(
-        double width, bool stacked, bool compact, int attention, int stats)
+        double width, bool stacked, bool compact, int stats)
     {
         var layout = SystemsLayout.For(width, 900);
         Assert.Equal(stacked, layout.Stacked);
         Assert.Equal(compact, layout.CompactHeader);
-        Assert.Equal(attention, layout.AttentionColumns);
+        Assert.Equal(PageResponsiveLayout.ContentWidth(width), layout.ContentWidth);
+        Assert.Equal(width, layout.HostWidth);
         Assert.Equal(stats, layout.StatColumns);
     }
 
@@ -67,7 +68,9 @@ public sealed class SystemsLayoutTests
         Assert.True(stacked.Stacked);
         Assert.Equal(2, stacked.StatColumns);
         Assert.Equal(2, SystemsLayout.For(440, 900).StatColumns);
-        Assert.Equal(SystemsLayout.For(560, 900), SystemsLayout.For(561, 900));
+        Assert.Equal(SystemsLayout.For(560, 900).StatColumns, SystemsLayout.For(561, 900).StatColumns);
+        Assert.Equal(520, SystemsLayout.For(560, 900).ContentWidth);
+        Assert.Equal(521, SystemsLayout.For(561, 900).ContentWidth);
     }
 
     [Fact]

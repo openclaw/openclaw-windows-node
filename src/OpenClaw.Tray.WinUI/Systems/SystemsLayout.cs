@@ -5,8 +5,8 @@ using OpenClawTray.Presentation;
 namespace OpenClawTray.Systems;
 
 /// <summary>
-/// Size-driven layout for the Systems page. Breakpoints are discrete, so resizing re-renders only
-/// when the layout actually changes. Sizes are the page root's, including padding.
+/// Size-driven layout for the Systems page. Tiers govern detail stacking; measured content width
+/// governs the shared hero tiles. Sizes are the page root's, including padding.
 /// </summary>
 internal readonly record struct SystemsLayout(bool Stacked, int StatColumns)
 {
@@ -18,9 +18,10 @@ internal readonly record struct SystemsLayout(bool Stacked, int StatColumns)
     private const double InlineDetailsChrome = 34;
     public static readonly SystemsLayout Default = For(0, 0);
     public bool CompactHeader { get; init; }
-    public int AttentionColumns { get; init; }
     public PageWidthTier Tier { get; init; }
     public double PagePadding => PageResponsiveLayout.HorizontalPadding(Tier);
+    public double ContentWidth { get; init; }
+    public double HostWidth { get; init; }
 
     public static SystemsLayout For(double width, double height)
     {
@@ -34,7 +35,8 @@ internal readonly record struct SystemsLayout(bool Stacked, int StatColumns)
         {
             Tier = tier,
             CompactHeader = tier == PageWidthTier.Narrow,
-            AttentionColumns = tier == PageWidthTier.Wide ? 2 : 1,
+            ContentWidth = available,
+            HostWidth = width,
         };
     }
 }

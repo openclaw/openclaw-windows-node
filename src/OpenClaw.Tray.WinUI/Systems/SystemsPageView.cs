@@ -59,17 +59,13 @@ internal sealed record SystemsPageProps(SystemsController Controller, SystemsPag
 {
     public SystemsViewport Viewport { get; init; } = new();
 }
-internal sealed record SystemsAttentionItem(
+internal sealed record SystemsRowIssue(
     string Key,
-    string Title,
+    string Label,
     string Message,
     string Action,
     Action Invoke,
-    SystemsHue Hue,
-    bool Enabled = true,
-    string? DisabledReason = null,
-    string? SecondaryAction = null,
-    Action? InvokeSecondary = null);
+    SystemsHue Hue);
 
 /// <summary>A themed foreground brush and its translucent tint, from Themes/SystemsResources.xaml.</summary>
 internal readonly record struct SystemsHue(string Brush, string Tint)
@@ -149,9 +145,18 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             currentExpandedRows.Current = next;
             setExpandedRows(next);
         }
-        var (issuesView, setIssuesView) = UseState(false, threadSafe: true);
+        var rowControls = UseRef(new Dictionary<string, Control>(StringComparer.Ordinal));
         var highContrast = UseHighContrast();
-        var (mastHeight, setMastHeight) = UseState(0d, threadSafe: true);
+        var uiSettings = UseMemo(() => new global::Windows.UI.ViewManagement.UISettings(), []);
+        var (reducedMotion, setReducedMotion) = UseState(!uiSettings.AnimationsEnabled, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            void Changed(global::Windows.UI.ViewManagement.UISettings sender, object args) =>
+                setReducedMotion(!sender.AnimationsEnabled);
+            uiSettings.AnimationsEnabledChanged += Changed;
+            setReducedMotion(!uiSettings.AnimationsEnabled);
+            return () => uiSettings.AnimationsEnabledChanged -= Changed;
+        }), uiSettings);
         var (feedback, setFeedback) = UseState<string?>(null, threadSafe: true);
         var announce = this.UseAnnounce();
         UseEffect((Func<Action>)(() =>
@@ -191,22 +196,25 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             return () => { };
         }), selectionKey);
         var now = DateTimeOffset.UtcNow;
-        var attentionItems = AttentionItems(state, actions, now, id =>
+        var currentRows = state.Rows.Select(row => row.Id).Concat(PairingRows(state).Select(request => request.Key))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var key in rowControls.Current.Keys.Where(key => !currentRows.Contains(key)).ToArray())
+            rowControls.Current.Remove(key);
+        void JumpToIssue()
         {
-            setIssuesView(false);
-            controller.Select(id);
-        });
+            var first = PairingRows(state).FirstOrDefault()?.Key ??
+                SystemsProjection.OrderForInventory(state.Rows, DisplayName, state.Connected)
+                    .FirstOrDefault(row => RowIssues(row, state, actions, now).Count > 0)?.Id;
+            if (first is not null && rowControls.Current.TryGetValue(first, out var target) && target.IsLoaded)
+            {
+                PageHero.RevealAndHighlight(target, reducedMotion);
+            }
+        }
         return Grid([GridSize.Star()], [GridSize.Star()],
-                Border(null).Background(Theme.Ref("SystemsHeroBrush"))
-                    .Height(mastHeight + 32 + topInset).VAlign(VerticalAlignment.Top)
-                    .IsHitTestVisible(false).AccessibilityHidden()
-                    .AutomationId("SystemsPageBackdrop").WithKey("backdrop"),
                 (ScrollViewer(Grid([GridSize.Star()], [GridSize.Auto], VStack(24,
-                    Header(state, controller, actions, layout, setDialog, highContrast)
-                        .OnSizeChanged((_, args) => setMastHeight(args.NewSize.Height)),
+                    Header(state, actions, layout, setDialog, highContrast, reducedMotion, JumpToIssue),
                     Banners(state, controller, actions, layout),
-                    state.CanRead && !issuesView ? NeedsYou(attentionItems, layout, () => setIssuesView(true)) : Empty(),
-                    Body(state, actions, setDialog, now, layout, expandedRows,
+                    Body(state, controller, actions, setDialog, now, layout, expandedRows,
                         (id, expanded) =>
                         {
                             var next = new HashSet<string>(currentExpandedRows.Current, StringComparer.Ordinal);
@@ -222,10 +230,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                                     controller.ToggleSelection(id);
                             }
                             PublishExpandedRows(next);
-                        }, attentionItems, issuesView, () =>
-                        {
-                            setIssuesView(false);
-                        }))
+                        }, rowControls.Current))
                     .MaxWidth(PageResponsiveLayout.ContentMaxWidth)
                     .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsContentColumn")
                     .Margin(layout.PagePadding, 20, layout.PagePadding, 32)))
@@ -256,11 +261,10 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
 
     // ── Header and banners ─────────────────────────────────────────────
 
-    private static Element Header(SystemsViewState state, SystemsController controller, SystemsPageActions actions, SystemsLayout layout,
-        Action<SystemsDialog?> open, bool highContrast)
+    private static Element RefreshButton(SystemsViewState state, SystemsController controller)
     {
         var refreshing = state.Loading;
-        var refresh = Button(
+        return Button(
                     refreshing
                         ? ProgressRing().IsActive(true).Size(16, 16).AccessibilityView(AccessibilityView.Raw)
                         : Glyph("\uE72C", 16),
@@ -271,68 +275,66 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .AutomationName(S("Refresh_Name"))
             .ToolTip(S("Refresh_Name"))
             .AutomationId("SystemsRefreshButton");
+    }
 
+    private static Element Header(SystemsViewState state, SystemsPageActions actions, SystemsLayout layout,
+        Action<SystemsDialog?> open, bool highContrast, bool reducedMotion, Action jumpToIssue)
+    {
         var machines = state.Rows.Where(row => row.Kind is SystemKind.Host or SystemKind.Node).ToArray();
-        var online = machines.Count(row => EffectiveStatus(row, state.Connected) == SystemStatus.Online);
-        var gatewayName = state.Rows.FirstOrDefault(row => row.Id == SystemsProjection.GatewayId) is { } host
-            ? DisplayName(host) : S("Kind_Host");
-        var headline = !state.Connected ? F("Mast_Unreachable", gatewayName)
-            : !state.HasLoaded || !state.CanRead ? S("Title")
-            : machines.Length == 2 && online == 2 && machines.Any(row => row.IsThisDevice) &&
-              machines.Any(row => row.Id == SystemsProjection.GatewayId) ? S("Mast_JustUs")
-            : machines.Length > 0 && online == machines.Length ? F("Mast_AllOnline", NumberWord(machines.Length))
-            : F("Mast_Online", NumberWord(online), NumberWord(machines.Length));
-        if (headline.Length > 0)
-            headline = char.ToUpper(headline[0], System.Globalization.CultureInfo.CurrentCulture) + headline[1..];
-        var subtitles = new List<string>();
-        if (state.Connected && state.HasLoaded && state.CanRead)
-        {
-            if (machines.Any(row => row.IsThisDevice && row.IsOnline && row.Node?.IsOnline == true && !state.OwnNodePending &&
-                    row.Node.ApprovalState is not (GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval)))
-                subtitles.Add(S("Mast_ThisNodeConnected"));
-            var offline = machines.FirstOrDefault(row => row.Status == SystemStatus.Offline);
-            if (offline is not null)
-                subtitles.Add(offline.Environment?.LastSeenAt is { } seen
-                    ? F("Mast_NodeOfflineSince", DisplayName(offline), CompactAge(seen, DateTimeOffset.UtcNow - state.GatewayClockOffset))
-                    : F("Mast_NodeOffline", DisplayName(offline)));
-            if (state.PendingPairingCount > 0)
-                subtitles.Add(F("Mast_Pending", Count(state.PendingPairingCount)));
-            if (subtitles.Count == 0)
-                subtitles.Add(F("Mast_ConnectedTo", gatewayName));
-        }
-        var text = VStack(8,
-                    HStack(PageResponsiveLayout.GapInner,
-                        highContrast
-                            ? Glyph("\uE977", 20).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).Size(20, 20)
-                                .AccessibilityHidden()
-                            : Image("ms-appx:///Assets/SidebarIcons/Instances.svg").Size(20, 20).AccessibilityHidden(),
-                        TextBlock(S("Title")).FontSize(14).FontWeight(FontWeights.SemiBold)
-                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center)
-                            .AutomationId("SystemsEyebrowTitle"))
-                        .AutomationId("SystemsEyebrow"),
-                    TextBlock(headline).FontSize(28).FontWeight(FontWeights.SemiBold)
-                        .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(headline)
-                        .HeadingLevel(AutomationHeadingLevel.Level1)
-                        .AutomationId("SystemsPageMarker"),
-                    subtitles.Count == 0 ? Empty() : TextBlock(string.Join(" ", subtitles)).TextWrapping(TextWrapping.WrapWholeWords).AutomationId("SystemsMastSubtitle")
-                        .Foreground(Theme.Ref("TextFillColorSecondaryBrush")));
-        // Secondary actions use an overflow menu at constrained widths; actions never wrap.
-        var web = layout.Tier == PageWidthTier.Wide ? OpenWebButton(state, actions, "SystemsMastOpenWeb")
-            : Button(Glyph("\uE712", 16))
-                .WithFlyout(MenuItems(MenuItem(S("OpenWeb"), () => actions.OpenWeb(WebDestination(state)))))
-                .VAlign(VerticalAlignment.Center)
-                .AutomationName(S("OpenWeb")).AutomationId("SystemsMastOverflow");
-        var buttons = HStack(8, web,
+        var now = DateTimeOffset.UtcNow;
+        var online = machines.Count(row => row.Status == SystemStatus.Online);
+        var issues = PairingRows(state).Count + state.Rows.Count(row => RowIssues(row, state, actions, now).Count > 0);
+        var gatewayName = state.GatewayName ?? (state.Rows.FirstOrDefault(row => row.Id == SystemsProjection.GatewayId) is { } host
+            ? DisplayName(host) : S("Kind_Host"));
+        var ownNodeOnline = machines.Any(row => row.IsThisDevice && row.Node is
+            { IsOnline: true, ApprovalState: not (GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval) });
+        var lineKey = !state.Connected ? state.LastRefreshedAt.HasValue ? "Hero_Disconnected" : "Hero_DisconnectedNoReport"
+            : state.OwnNodePending ? "Hero_NodePending" : ownNodeOnline ? "Hero_NodeConnected" : "Hero_NodeNotReported";
+        var line = F(lineKey, gatewayName, state.LastRefreshedAt is { } refreshed ? FormatDateTime(refreshed) : null);
+        var answer = TextBlock(line).FontSize(14).TextWrapping(TextWrapping.WrapWholeWords)
+            .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).AutomationId("SystemsMastSubtitle")
+            .Set(native =>
+            {
+                var nameAt = line.IndexOf(gatewayName, StringComparison.Ordinal);
+                native.Inlines.Clear();
+                if (nameAt < 0)
+                    native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line });
+                else
+                {
+                    native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line[..nameAt] });
+                    native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+                    {
+                        Text = gatewayName, FontWeight = FontWeights.SemiBold,
+                        Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                            OpenClawTray.FunctionalUI.Core.Theme.ResolveColor("TextFillColorPrimary", native.ActualTheme)),
+                    });
+                    native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line[(nameAt + gatewayName.Length)..] });
+                }
+            });
+        var buttons = WrapRow(8, OpenWebButton(state, actions, "SystemsMastOpenWeb"),
             Button(HStack(8, Glyph("\uE710", 14).VAlign(VerticalAlignment.Center),
                     TextBlock(S("AddSystem")).TextWrapping(TextWrapping.NoWrap).VAlign(VerticalAlignment.Center)),
                 () => open(new AddSystemDialog()))
                 .AccentButton().VAlign(VerticalAlignment.Center)
-                .AutomationName(S("AddSystem")).AutomationId("SystemsAddSystem"), refresh)
+                .AutomationName(S("AddSystem")).AutomationId("SystemsAddSystem"))
             .AutomationId("SystemsMastActions");
-        Element content = layout.CompactHeader ? VStack(16, text, buttons)
-            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                text.Grid(column: 0), buttons.Margin(20, 0, 0, 0).VAlign(VerticalAlignment.Top).Grid(column: 1));
-        return content.Padding(0, 8, 0, 12).AutomationId("SystemsMastGrid");
+        var tiles = PageHero.SummaryTiles("SystemsSummary", S("Title"),
+            [
+                new PageHeroTile(S(state.Connected ? "Status_Online" : "Hero_LastReportedOnline"),
+                    state.HasLoaded && state.CanRead ? F("Hero_OnlineCount", Count(online), Count(machines.Length)) : S("Status_Unknown"),
+                    "\uE73E", "SystemsOnlineTile",
+                    !state.Connected || !state.HasLoaded || machines.Length == 0 ? PageHeroTone.Neutral
+                        : online == machines.Length ? PageHeroTone.Success : PageHeroTone.Caution, StatusDot: true),
+                new PageHeroTile(S("Issues"), state.CanRead && (state.HasLoaded || issues > 0) ? Count(issues) : S("Status_Unknown"),
+                    "\uE7BA", "SystemsIssuesTile",
+                    state.CanRead && issues > 0 ? PageHeroTone.Critical : PageHeroTone.Neutral,
+                    OnInvoked: jumpToIssue, AutomationName: F("Hero_ShowIssues", Count(issues)),
+                    IsEnabled: state.CanRead && issues > 0),
+            ], layout.HostWidth, reducedMotion, highContrast)
+            .AutomationName(S("Hero_Summary"));
+        return VStack(12, PageHero.Header("SystemsHero", "\uE977", S("Title"), "SystemsPageMarker",
+            answer, null, buttons, layout.CompactHeader, reducedMotion, highContrast), tiles)
+            .AutomationId("SystemsMastGrid");
     }
 
     private static string Count(int value) => value.ToString(System.Globalization.CultureInfo.CurrentCulture);
@@ -343,7 +345,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         var banners = new List<Element>();
         if (!state.Connected)
         {
-            banners.Add(InfoBar(S("Disconnected_Title"), S("Disconnected_Message")).Warning().IsClosable(false)
+            banners.Add(InfoBar(S("Disconnected_Title"), S("Disconnected_Message")).Error().IsClosable(false)
                 .Content(Button(S("OpenConnection"), () => actions.Navigate("connection"))
                     .AutomationName(S("OpenConnection")).AutomationId("SystemsDisconnectedConnection").Margin(0, 0, 0, 8))
                 .AutomationId("SystemsDisconnectedBanner").WithKey("disconnected"));
@@ -385,187 +387,128 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         return banners.Count == 0 ? Empty() : VStack(8, banners.ToArray()).Margin(0, 0, 0, 12);
     }
 
-    private static Element NeedsYou(IReadOnlyList<SystemsAttentionItem> items, SystemsLayout layout, Action reviewAll)
+    private static IReadOnlyList<PendingApproval> PairingRows(SystemsViewState state)
     {
-        if (items.Count == 0)
-            return Empty();
-        var cards = items.Take(2).Select(item => AttentionCard(item.Title, item.Message, item.Action, item.Invoke,
-            item.Hue, "SystemsAttention_" + item.Key, enabled: item.Enabled, disabledReason: item.DisabledReason,
-            secondary: item.SecondaryAction, onSecondary: item.InvokeSecondary).WithKey(item.Key)).ToList();
-        var more = items.Count - cards.Count;
-        if (more > 0)
+        var requests = state.PendingApprovals.DistinctBy(approval => approval.Key).ToList();
+        if (state.OwnNodePending && !requests.Any(approval => approval.Kind == PairingApprovalKind.NodePair &&
+                string.Equals(approval.DeviceId, state.LocalNodeId, StringComparison.OrdinalIgnoreCase)))
         {
-            cards.Add(AttentionCard(F("NeedsYou_More", Count(more)), S("NeedsYou_ReviewEveryIssue"),
-                S("NeedsYou_ReviewAllIssues"), reviewAll, SystemsHue.Caution, "SystemsNeedsYouMore", accent: true)
-                .WithKey("more"));
+            requests.Insert(0, new PendingApproval
+            {
+                Kind = PairingApprovalKind.NodePair, DeviceId = state.LocalNodeId ?? "",
+                DisplayName = S("ThisDevice"), Role = "node",
+            });
         }
-        return VStack(12,
-            HStack(8, TextBlock(S("NeedsYou")).FontSize(18).FontWeight(FontWeights.SemiBold)
-                    .HeadingLevel(AutomationHeadingLevel.Level2),
-                Border(TextBlock(Count(items.Count)).FontSize(12).FontWeight(FontWeights.SemiBold)
-                    .Foreground(Theme.Ref("SystemFillColorCriticalBrush")))
-                    .Padding(8, 2).CornerRadius(10).Background(Theme.Ref("SystemsCriticalTintBrush"))
-                    .VAlign(VerticalAlignment.Center).AutomationId("SystemsNeedsYouCount")),
-            Rows(cards.Select(card => card.HAlign(HorizontalAlignment.Stretch)).ToArray(), layout.AttentionColumns)
-                .AutomationId("SystemsAttentionRows")).AutomationId("SystemsNeedsYou");
+        return requests;
     }
 
-    private static Element Issues(IReadOnlyList<SystemsAttentionItem> items, Action showAllDevices)
-    {
-        var heading = HStack(8,
-                TextBlock(S("Issues")).FontSize(18).FontWeight(FontWeights.SemiBold)
-                    .HeadingLevel(AutomationHeadingLevel.Level2),
-                Border(TextBlock(Count(items.Count)).FontSize(12).FontWeight(FontWeights.SemiBold)
-                        .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
-                    .Padding(8, 2).CornerRadius(10).Background(Theme.Ref("ControlAltFillColorSecondaryBrush"))
-                    .VAlign(VerticalAlignment.Center))
-            .AutomationId("SystemsIssuesHeading");
-        var back = HyperlinkButton(S("AllDevices"), onClick: showAllDevices)
-            .AutomationName(S("AllDevices")).AutomationId("SystemsIssuesBack");
-        if (items.Count == 0)
-            return VStack(16, heading, back,
-                TextBlock(S("NothingNeedsYou")).TextWrapping(TextWrapping.WrapWholeWords)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).AutomationId("SystemsIssuesEmpty"))
-                .AutomationId("SystemsIssuesView");
-        var cards = items.Select(item => AttentionCard(item.Title, item.Message, item.Action, item.Invoke,
-                item.Hue, "SystemsIssue_" + item.Key, enabled: item.Enabled, disabledReason: item.DisabledReason,
-                secondary: item.SecondaryAction, onSecondary: item.InvokeSecondary).WithKey(item.Key))
-            .ToArray();
-        return VStack(16, heading, back,
-                Rows(cards.Select(card => card.HAlign(HorizontalAlignment.Stretch)).ToArray(), 2)
-                    .AutomationId("SystemsIssuesRows"))
-            .AutomationId("SystemsIssuesView");
-    }
+    private static Element IssueBadge(string automationId, string label, string message, SystemsHue hue) =>
+        PageHero.AttentionBadge(automationId, label, message,
+            hue == SystemsHue.Accent ? "\uE916" : hue == SystemsHue.Critical ? "\uE783" : "\uE7BA",
+            hue == SystemsHue.Accent ? PageHeroTone.Accent
+                : hue == SystemsHue.Critical ? PageHeroTone.Critical : PageHeroTone.Caution,
+            !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
 
-    private static IReadOnlyList<SystemsAttentionItem> AttentionItems(
-        SystemsViewState state, SystemsPageActions actions, DateTimeOffset now, Action<string> showSystem)
+    private static IReadOnlyList<SystemsRowIssue> RowIssues(
+        SystemRow row, SystemsViewState state, SystemsPageActions actions, DateTimeOffset now)
     {
-        var items = new List<SystemsAttentionItem>();
-        if (state.OwnNodePending)
+        var items = new List<SystemsRowIssue>();
+        if (row.Kind == SystemKind.Client)
+            return items;
+        var approval = row.Node?.ApprovalState;
+        if (row.IsThisDevice && state.OwnNodePending ||
+            approval is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval)
         {
-            items.Add(new SystemsAttentionItem("own-pairing", S("Pairing_TitleOne"), S("Pairing_OwnNodeMessage"),
-                S("Pairing_Review"), () => actions.Navigate("connection"), SystemsHue.Caution));
+            items.Add(new SystemsRowIssue("approval", S(approval == GatewayNodeApprovalState.PendingReapproval
+                    ? "Badge_Reapproval" : "Badge_Approval"), S("AwaitingApproval"),
+                S("Pairing_Review"), () => actions.Navigate("connection"), SystemsHue.Accent));
         }
-        foreach (var approval in state.PendingApprovals)
-        {
-            if (state.OwnNodePending && approval.Kind == PairingApprovalKind.NodePair &&
-                string.Equals(approval.DeviceId, state.LocalNodeId, StringComparison.OrdinalIgnoreCase))
-                continue;
-            var enabled = state.Connected && state.CanManageNodes && approval.IsActionable;
-            var reason = !state.Connected ? S("ConnectionRequired")
-                : !state.CanManageNodes ? S("Manage_PairingRequired")
-                : !approval.IsActionable ? S("Pairing_Unavailable")
-                : null;
-            var matchingApprovalRow = state.Rows.FirstOrDefault(row => row.Node is { } node &&
-                string.Equals(node.NodeId, approval.DeviceId, StringComparison.OrdinalIgnoreCase));
-            var reapproval = matchingApprovalRow?.Node?.ApprovalState == GatewayNodeApprovalState.PendingReapproval;
-            var message = reapproval ? S("AwaitingApproval") : S("Pairing_Message");
-            items.Add(new SystemsAttentionItem("pairing-" + approval.Key,
-                reapproval ? S("AwaitingApproval")
-                    : string.IsNullOrWhiteSpace(approval.DisplayName) ? S("Pairing_TitleOne")
-                    : F("Pairing_NamedTitle", approval.DisplayName), message,
-                S("Pairing_Review"), () => actions.Navigate("connection"), SystemsHue.Caution,
-                enabled, reason));
-        }
-
-        foreach (var row in state.Rows.Where(row => row.Kind != SystemKind.Client))
+        if (row.Status == SystemStatus.Offline)
         {
             var nowForGateway = now - state.GatewayClockOffset;
-            var issue = IssueLine(row, state, nowForGateway);
-            var approval = row.Node?.ApprovalState;
-            if (approval is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval &&
-                !state.PendingApprovals.Any(item => string.Equals(item.DeviceId, row.Node?.NodeId, StringComparison.OrdinalIgnoreCase)))
-            {
-                var reapproval = approval == GatewayNodeApprovalState.PendingReapproval;
-                items.Add(new SystemsAttentionItem("approval-" + row.Id,
-                    reapproval ? S("AwaitingApproval") : F("Pairing_NamedTitle", DisplayName(row)),
-                    issue ?? S("Pairing_Message"), S("Pairing_Review"),
-                    () => actions.Navigate("connection"), SystemsHue.Caution));
-            }
-            if (state.Connected && row.Status == SystemStatus.Offline)
-            {
-                items.Add(new SystemsAttentionItem("offline-" + row.Id,
-                    F("Attention_OfflineTitle", DisplayName(row)),
-                    F("Attention_OfflineMessage", issue ?? S("Status_Unknown")),
-                    S("HowToReconnect"), () => actions.Navigate("connection"), SystemsHue.Critical,
-                    SecondaryAction: S("ShowSystem"), InvokeSecondary: () => showSystem(row.Id)));
-            }
-            if (row.Environment?.Issues.Any(value => value.Code == "update-required") == true)
-            {
-                items.Add(new SystemsAttentionItem("update-" + row.Id, DisplayName(row), S("Issue_UpdateRequired"),
-                    S("CopyUpdate"), () => actions.CopyText("openclaw update"), SystemsHue.Caution));
-            }
-            if (row.Node?.Permissions is { } permissions)
-            {
-                foreach (var permission in permissions.Where(permission => !permission.Value))
-                {
-                    var isLocal = row.IsThisDevice;
-                    items.Add(new SystemsAttentionItem("permission-" + row.Id + "-" + permission.Key,
-                        F("PermissionAttention_Title", DisplayName(row)),
-                        F("Capability_Disabled", CapabilityLabel(permission.Key)),
-                        isLocal ? S("ManagePermissions") : S("ShowSystem"),
-                        isLocal ? () => actions.Navigate("permissions") : () => showSystem(row.Id),
-                        SystemsHue.Caution,
-                        isLocal || state.Connected,
-                        !isLocal && !state.Connected ? S("ConnectionRequired") : null));
-                }
-            }
-            if (row.Environment?.Worker is { Error: { Length: > 0 } workerError })
-            {
-                items.Add(new SystemsAttentionItem("worker-" + row.Id, F("WorkerError_Title", DisplayName(row)),
-                    workerError, S("ShowSystem"), () => showSystem(row.Id), SystemsHue.Critical));
-            }
-            else if (row.Status == SystemStatus.Error)
-            {
-                items.Add(new SystemsAttentionItem("error-" + row.Id, F("Attention_ErrorTitle", DisplayName(row)),
-                    issue ?? S("Status_Unknown"), S("ShowSystem"), () => showSystem(row.Id), SystemsHue.Critical));
-            }
+            var disconnectedAt = row.Environment?.LastDisconnectedAt;
+            items.Add(new SystemsRowIssue("offline", !state.Connected ? S("LastKnownOffline")
+                    : disconnectedAt is { } time && time <= nowForGateway
+                    ? F("Badge_OfflineAge", CompactAge(time, nowForGateway)) : S("Status_Offline"),
+                IssueLine(row, state, nowForGateway) ?? S("Offline_Title"), S("HowToReconnect"),
+                () => actions.Navigate("connection"), SystemsHue.Critical));
+        }
+        if (row.Environment?.Issues.Any(value => value.Code == "update-required") == true)
+        {
+            items.Add(new SystemsRowIssue("update", S("Badge_Update"), S("Issue_UpdateRequired"),
+                S("CopyUpdate"), () => actions.CopyText("openclaw update"), SystemsHue.Caution));
+        }
+        if (row.Node?.Permissions is { } permissions && permissions.Any(permission => !permission.Value))
+        {
+            items.Add(new SystemsRowIssue("permissions", S(row.Platform is "win32" or "windows"
+                    ? "Badge_Permission" : "Capability_TurnedOff"),
+                string.Join(", ", permissions.Where(permission => !permission.Value)
+                    .Select(permission => F("Capability_Disabled", CapabilityLabel(permission.Key)))),
+                row.IsThisDevice ? S("ManagePermissions") : S("OpenWeb"),
+                row.IsThisDevice ? () => actions.Navigate("permissions")
+                    : () => actions.OpenWeb(WebDestination(state)), SystemsHue.Caution));
+        }
+        if (row.Environment?.Worker is { Error.Length: > 0 } || row.Status == SystemStatus.Error)
+        {
+            items.Add(new SystemsRowIssue("error", S("Badge_WorkerError"),
+                row.Environment?.Worker?.Error ?? IssueLine(row, state, now - state.GatewayClockOffset) ?? S("Status_Error"),
+                S("OpenWeb"), () => actions.OpenWeb(WebDestination(state)), SystemsHue.Critical));
         }
         return items;
     }
 
-    private static Element AttentionCard(string title, string message, string action, Action onClick, SystemsHue hue, string id,
-        bool accent = false, string? actionId = null, string? secondary = null, Action? onSecondary = null,
-        bool enabled = true, string? disabledReason = null) =>
-        Card(Grid([GridSize.Px(4), GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-            Border(null).Background(Theme.Ref(hue.Brush)).AccessibilityView(AccessibilityView.Raw)
-                .AutomationId("SystemsAttentionStripe").Grid(column: 0),
-            GlyphChip("\uE7BA", hue, 32, 16).CornerRadius(16).Margin(12, 16, 0, 0)
-                .VAlign(VerticalAlignment.Top).Grid(column: 1),
-            VStack(4, TextBlock(title).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords),
-                Note(message),
-                WrapRow(8, HStack(8,
-                    (accent ? Button(TextBlock(action).TextWrapping(TextWrapping.NoWrap), onClick).AccentButton() : Button(TextBlock(action).TextWrapping(TextWrapping.NoWrap), onClick))
-                        .AutomationName(action).AutomationId(actionId ?? id + "_Action")
-                        .IsEnabled(enabled).HelpText(disabledReason ?? "").ToolTip(disabledReason ?? ""),
-                    secondary is null || onSecondary is null ? Empty() : HyperlinkButton(secondary, onClick: onSecondary).AutomationName(secondary))
-                    .AutomationId(id + "_Actions")))
-                .Padding(16).Grid(column: 2))).AutomationId(id);
-
     // ── Body ───────────────────────────────────────────────────────────
 
-    private static Element Body(SystemsViewState state, SystemsPageActions actions,
+    private static Element PairingRow(PendingApproval request, SystemsViewState state,
+        SystemsPageActions actions, SystemsLayout layout, Dictionary<string, Control> rowControls)
+    {
+        var name = string.IsNullOrWhiteSpace(request.DisplayName) ? S("Pairing_TitleOne") : request.DisplayName;
+        var reason = !state.Connected ? S("ConnectionRequired")
+            : !state.CanManageNodes ? S("Manage_PairingRequired")
+            : !request.IsActionable ? S("Pairing_Unavailable") : "";
+        var review = TextBlock(S("Pairing_Review")).VAlign(VerticalAlignment.Center);
+        var title = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            TextBlock(name).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
+                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(name).Grid(column: 0),
+            IssueBadge("SystemsPairingBadge_" + request.Key, S("Badge_Join"), S("Pairing_Message"), SystemsHue.Accent)
+                .Margin(8, 0, 0, 0).Grid(column: 1));
+        var content = VStack(4, title,
+            Note(Join(request.Platform, S("Pairing_Message"), reason) ?? S("Pairing_Message")));
+        Element header = layout.CompactHeader
+            ? VStack(8, content, review.HAlign(HorizontalAlignment.Left))
+            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                content.Grid(column: 0), review.Margin(16, 0, 0, 0).Grid(column: 1));
+        // Review only opens Connection. It does not approve or require a decision id.
+        return Button(header, () => actions.Navigate("connection")).Padding(12)
+            .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .BorderThickness(1).CornerRadius(8)
+            .AutomationName(name + ", " + S("Badge_Join") + ", " + S("Pairing_Review"))
+            .HelpText(reason)
+            .AutomationId("SystemsPairing_" + request.Key)
+            .Set(control => rowControls[request.Key] = control).WithKey("pairing:" + request.Key);
+    }
+
+    private static Element Body(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
         Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout,
         IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded,
-        IReadOnlyList<SystemsAttentionItem> attentionItems, bool issuesView, Action showAllDevices)
+        Dictionary<string, Control> rowControls)
     {
         if (!state.CanRead)
             return Card(VStack(8, TextBlock(S("ReadAccess_Title")).FontSize(20), Note(S("ReadAccess_Message"))))
                 .Padding(24).AutomationId("SystemsReadAccessPanel");
-        if (issuesView)
-            return Issues(attentionItems, showAllDevices);
         return VStack(16,
             state.SelectionMissing
                 ? Placeholder("\uE7BA", SystemsHue.Caution, S("Missing_Title"), S("Missing_Hint"), "SystemsSelectionMissing")
                 : Empty(),
-            Inventory(state, actions, open, now, layout, expandedRows, toggleExpanded));
+            Inventory(state, controller, actions, open, now, layout, expandedRows, toggleExpanded, rowControls));
     }
 
-    private static Element Inventory(SystemsViewState state, SystemsPageActions actions,
+    private static Element Inventory(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
         Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout,
-        IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded)
+        IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded, Dictionary<string, Control> rowControls)
     {
         var visible = SystemsProjection.OrderForInventory(state.Rows, DisplayName, state.Connected);
+        var requests = PairingRows(state);
 
         Element list;
         if (!state.HasLoaded && state.Loading)
@@ -578,7 +521,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         }
         else if (!state.HasLoaded && state.InventoryError is not null)
             list = Empty();
-        else if (visible.Count == 0)
+        else if (visible.Count == 0 && requests.Count == 0)
         {
             list = VStack(8,
                     Glyph("\uE977", 32).HAlign(HorizontalAlignment.Center)
@@ -591,27 +534,33 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         else
         {
             var groups = new List<Element>();
+            if (requests.Count > 0)
+                groups.Add(PageHero.WithMotion(VStack(PageResponsiveLayout.GapInner, requests.Select(request =>
+                    PairingRow(request, state, actions, layout, rowControls).WithKey("pairing:" + request.Key)).ToArray())
+                    .AutomationId("SystemsPairingRows"),
+                    !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled));
             var devices = visible.Where(row => row.Kind is SystemKind.Host or SystemKind.Node).ToArray();
             if (devices.Length > 0)
                 groups.Add(InventoryGroup(S("DevicesAndGateway"), SystemKind.Host, devices,
-                    state, actions, open, now, layout, expandedRows, toggleExpanded, "SystemsDevicesGroup"));
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, "SystemsDevicesGroup"));
             var workers = visible.Where(row => row.Kind == SystemKind.Worker).ToArray();
             var clients = visible.Where(row => row.Kind == SystemKind.Client).ToArray();
             if (workers.Length > 0)
                 groups.Add(InventoryGroup(S("Group_Workers"), SystemKind.Worker, workers,
-                    state, actions, open, now, layout, expandedRows, toggleExpanded, "SystemsWorkersGroup", true));
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, "SystemsWorkersGroup", true));
             if (clients.Length > 0)
                 groups.Add(InventoryGroup(S("ConnectedApps"), SystemKind.Client, clients,
-                    state, actions, open, now, layout, expandedRows, toggleExpanded, "SystemsConnectedAppsGroup", true));
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, "SystemsConnectedAppsGroup", true));
             list = VStack(12, groups.ToArray());
         }
 
-        return VStack(12,
+        return VStack(12, Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 TextBlock(F("DevicesAndGatewayCount",
                         Count(visible.Count(row => row.Kind is SystemKind.Host or SystemKind.Node))))
                     .FontSize(18).FontWeight(FontWeights.SemiBold)
                     .HeadingLevel(AutomationHeadingLevel.Level2)
-                    .AutomationId("SystemsDevicesAndGatewayHeading"),
+                    .AutomationId("SystemsDevicesAndGatewayHeading").Grid(column: 0),
+                RefreshButton(state, controller).Grid(column: 1)),
                 list)
             .AutomationName(S("Inventory"))
             .AutomationId("SystemsInventory");
@@ -620,18 +569,21 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
     private static Element InventoryGroup(string title, SystemKind kind, IReadOnlyList<SystemRow> rows,
         SystemsViewState state, SystemsPageActions actions, Action<SystemsDialog?> open,
         DateTimeOffset now, SystemsLayout layout, IReadOnlySet<string> expandedRows,
-        Action<string, bool> toggleExpanded, string automationId, bool showHeading = false)
+        Action<string, bool> toggleExpanded, Dictionary<string, Control> rowControls, string automationId, bool showHeading = false)
     {
         var heading = $"{title} ({Count(rows.Count)})";
-        var content = VStack(PageResponsiveLayout.GapInner, rows.Select(row =>
+        var content = PageHero.WithMotion(VStack(PageResponsiveLayout.GapInner, rows.Select(row =>
                 Expander("", Details(row, state, actions, open, now, layout).Padding(16, 0, 16, 16),
                         expandedRows.Contains(row.Id), expanded => toggleExpanded(row.Id, expanded))
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
                     .BorderThickness(1).CornerRadius(8)
-                    .HeaderTemplate(InventoryItem(row, state, layout))
-                    .AutomationName(DisplayName(row) + ", " + StatusLabel(row, state))
+                    .HeaderTemplate(InventoryItem(row, state, actions, layout))
+                    .AutomationName(Join(DisplayName(row), StatusLabel(row, state),
+                        string.Join(", ", RowIssues(row, state, actions, now).Select(issue => issue.Label))) ?? DisplayName(row))
+                    .Set(control => rowControls[row.Id] = control)
                     .HelpText(S(expandedRows.Contains(row.Id) ? "CollapseSystem" : "ExpandSystem"))
-                    .AutomationId("SystemsRow_" + row.Id).WithKey(row.Id)).ToArray())
+                    .AutomationId("SystemsRow_" + row.Id).WithKey(row.Id)).ToArray()),
+                !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
             .AutomationName(heading)
             .AutomationId(automationId);
         if (!showHeading)
@@ -647,12 +599,16 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             content);
     }
 
-    private static Element InventoryItem(SystemRow row, SystemsViewState state, SystemsLayout layout)
+    private static Element InventoryItem(SystemRow row, SystemsViewState state, SystemsPageActions actions, SystemsLayout layout)
     {
         var name = DisplayName(row);
         var status = EffectiveStatus(row, state.Connected);
         var secondary = Join(Kind(row), row.Platform);
         var badges = new List<Element>();
+        var issues = RowIssues(row, state, actions, DateTimeOffset.UtcNow);
+        badges.AddRange(issues.Select((issue, index) =>
+            IssueBadge("SystemsBadge_" + row.Id + "_" + index, issue.Label, issue.Message, issue.Hue)
+                .WithKey(row.Id + ":" + issue.Key)));
         if (row.IsThisDevice && !layout.CompactHeader)
             badges.Add(Tag(S("ThisDevice")));
         var statusLabel = StatusLabel(row, state);
@@ -677,7 +633,15 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                         .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(secondary ?? "")
                         .AutomationId("SystemsSubtitle_" + row.Id)
                         .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-                    HStack(6, badges.ToArray())).VAlign(VerticalAlignment.Center).Grid(column: 1),
+                    (FlexRow(badges.ToArray()) with
+                    {
+                        Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
+                        ColumnGap = 6,
+                        RowGap = 4,
+                        AlignItems = Microsoft.UI.Reactor.Layout.FlexAlign.Center,
+                    })
+                        .Margin(0, badges.Count > 0 ? 4 : 0, 0, 0)
+                        .WithKey("SystemsRowBadges-" + row.Id)).VAlign(VerticalAlignment.Center).Grid(column: 1),
                 meta.VAlign(VerticalAlignment.Center).Margin(layout.CompactHeader ? 0 : 12, layout.CompactHeader ? 8 : 0, 0, 0)
                     .Grid(row: layout.CompactHeader ? 1 : 0, column: layout.CompactHeader ? 1 : 2))
             .Padding(12)
@@ -727,14 +691,14 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         if (row.Kind == SystemKind.Client)
             return MachineDetails(row, state, actions, gatewayNow).AutomationId("SystemsPresenceDetails");
         var sections = new List<Element> { DetailsHeader(row, state, actions, open).WithKey("header") };
-        var status = EffectiveStatus(row, state.Connected);
-        if (IssueLine(row, state, gatewayNow) is { } issue &&
-            (status != SystemStatus.Online || row.Node?.ApprovalState is GatewayNodeApprovalState.PendingApproval or GatewayNodeApprovalState.PendingReapproval ||
-             row.IsThisDevice && state.OwnNodePending || row.Environment?.Issues.Any(value => value.Code == "update-required") == true))
-        {
-            sections.Add(InfoBar(Status(status), issue).Warning().IsClosable(false)
-                .AutomationId("SystemsOfflineNote").WithKey("offline"));
-        }
+        var issues = RowIssues(row, state, actions, now);
+        if (issues.Count > 0)
+            sections.Add(VStack(8, issues.Select((issue, index) =>
+                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                    Note(issue.Message).Grid(column: 0),
+                    HyperlinkButton(issue.Action, onClick: issue.Invoke).AutomationName(issue.Action)
+                        .AutomationId("SystemsIssueAction_" + row.Id + "_" + index)
+                        .Margin(12, 0, 0, 0).Grid(column: 1)).WithKey(issue.Key)).ToArray()).WithKey("issues"));
         var right = new List<Element> { Statistics(row, state, now, layout).WithKey("stats") };
         if (DesktopPresentation.Resolve(row, state.Connected) is { } desktop)
             right.Add(Desktop(row, desktop).WithKey("desktop"));

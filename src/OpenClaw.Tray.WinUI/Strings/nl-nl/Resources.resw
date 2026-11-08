@@ -8521,4 +8521,20 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_Capability_Files" xml:space="preserve"><value>Bestanden</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Navigatie uitklappen</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Navigatie inklappen</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>Deze pc is als node verbonden met {0}.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>Deze pc wacht op goedkeuring bij {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>Deze pc is niet gemeld als verbonden node bij {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>{0} is niet bereikbaar. Andere systemen tonen de laatst gemelde gegevens van {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>{0} is niet bereikbaar. Er is geen systeemrapport beschikbaar.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Laatst gemeld als online</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Problemen: {0}. Toon het eerste systeem dat aandacht nodig heeft.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Systeemoverzicht</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Goedkeuring nodig</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Opnieuw goedkeuren</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline sinds {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Update vereist</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Windows-toestemming nodig</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Fout gemeld</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Wil deelnemen</value></data>
 </root>

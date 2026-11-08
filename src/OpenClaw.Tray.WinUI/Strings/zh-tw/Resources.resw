@@ -8520,4 +8520,20 @@
   <data name="Systems_Capability_Files" xml:space="preserve"><value>檔案</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>展開導覽</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>摺疊導覽</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>此電腦已作為節點連線至 {0}。</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>此電腦正在等待 {0} 的核准。</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>{0} 未回報此電腦為已連線的節點。</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>無法存取 {0}。其他系統顯示的是 {1} 最後回報的資料。</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>無法存取 {0}。沒有可用的系統報告。</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} / {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>最後回報的上線狀態</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>問題：{0}。顯示第一個需要處理的系統。</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>系統摘要</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>需要核准</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>需要重新核准</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>已離線 {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>需要更新</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>需要 Windows 權限</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>已回報錯誤</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>請求加入</value></data>
 </root>

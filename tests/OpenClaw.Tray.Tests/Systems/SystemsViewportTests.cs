@@ -34,7 +34,8 @@ public sealed class SystemsViewportTests
         Assert.Contains("viewport.Changed += changed;", view);
         Assert.Contains("setTopInset(viewport.TopInset);", view);
         Assert.Contains("viewport.Changed -= changed", view);
-        Assert.Contains(".Height(mastHeight + 32 + topInset).VAlign(VerticalAlignment.Top)", view);
+        Assert.DoesNotContain("SystemsPageBackdrop", view);
+        Assert.Single(view.Split(".Margin(0, topInset, 0, 0)", StringSplitOptions.None).Skip(1));
         Assert.Contains(".Margin(0, topInset, 0, 0)\n", view.Replace("\r\n", "\n"));
         Assert.Contains(".AutomationId(\"SystemsPageScroll\").WithKey(\"scroll\")", view);
         Assert.DoesNotContain("ReactorHost.Margin", page);
