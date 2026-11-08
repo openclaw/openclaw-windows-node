@@ -27,6 +27,9 @@ internal sealed class InboxGatewaySource : IDisposable
     private const string CronListMethod = "cron.list";
     private const string ApprovalsScope = "operator.approvals";
     private const string AdminScope = "operator.admin";
+    // Retain observations for the whole connection without unbounded growth. At capacity,
+    // stop admitting unknown IDs rather than evicting a terminal ID and resurrecting a replay.
+    private const int ApprovalObservationLimit = 4096;
     private static readonly TimeSpan IdleRefreshInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ModelAuthRefreshInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ModelAuthRetryDelay = TimeSpan.FromMinutes(1);
@@ -40,13 +43,15 @@ internal sealed class InboxGatewaySource : IDisposable
     private readonly Timer? _timer;
     // Each pending approval keeps the local deadline fixed when it first arrived.
     private readonly Dictionary<string, (GatewayPendingApproval Approval, DateTimeOffset Deadline)> _approvals = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _resolvedApprovalIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (DateTimeOffset Deadline, bool Terminal)> _approvalObservations = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dismissedIds = new(StringComparer.Ordinal);
     private IOperatorGatewayClient? _client;
     private int _generation;
     // Advances on every load, disconnect and client swap; late replies from an older epoch are dropped.
     private int _epoch;
     private JsonElement? _cronList;
+    private int _cronRefresh;
+    private bool _approvalLimitReported;
     private bool? _schedulerEnabled;
     private JsonElement? _modelAuthStatus;
     private DateTimeOffset _modelAuthRefreshAt = DateTimeOffset.MinValue;
@@ -166,28 +171,20 @@ internal sealed class InboxGatewaySource : IDisposable
 
     private void OnApprovalRequested(object? sender, GatewayPendingApproval approval) => Post(sender, _ =>
     {
-        if (_resolvedApprovalIds.Contains(approval.Id))
-            return;
         Track(approval);
         Recompute();
     });
 
     private void OnApprovalResolved(object? sender, string id) => Post(sender, _ =>
     {
-        _resolvedApprovalIds.Add(id);
-        if (_approvals.Remove(id))
-            Recompute();
+        RetireApproval(id);
+        Recompute();
     });
 
-    private void OnCronListUpdated(object? sender, JsonElement payload)
-    {
-        var list = payload.Clone();
-        Post(sender, _ =>
-        {
-            _cronList = list;
-            Recompute();
-        });
-    }
+    // Legacy cron.list events can contain only the first page. Treat them as invalidations,
+    // never as inventories: partial data must not remove rows or forget dismissals.
+    private void OnCronListUpdated(object? sender, JsonElement payload) =>
+        Post(sender, client => _ = LoadCronAsync(client, _epoch));
 
     private void OnCronStatusUpdated(object? sender, JsonElement payload)
     {
@@ -208,7 +205,7 @@ internal sealed class InboxGatewaySource : IDisposable
         var epoch = ++_epoch;
         if (Supports(client, CronListMethod))
         {
-            Run(client.RequestCronListAsync, CronListMethod);
+            _ = LoadCronAsync(client, epoch);
             Run(client.RequestCronStatusAsync, "cron.status");
         }
         if (HasScope(client, ApprovalsScope))
@@ -217,6 +214,40 @@ internal sealed class InboxGatewaySource : IDisposable
                 _ = HydrateApprovalsAsync(client, epoch, kind);
         }
         _ = LoadModelAuthAsync(client, epoch);
+    }
+
+    private async Task LoadCronAsync(IOperatorGatewayClient client, int epoch)
+    {
+        if (!Supports(client, CronListMethod))
+            return;
+        var refresh = ++_cronRefresh;
+        JsonElement inventory;
+        try
+        {
+            // Same operator client and shared pagination owner as search. Search may return
+            // a bounded partial result; the Inbox requires a complete snapshot before publishing.
+            inventory = await client.ReadSearchCatalogAsync(
+                CronListMethod, new { includeDisabled = true }, CancellationToken.None).ConfigureAwait(false);
+            if (inventory.ValueKind != JsonValueKind.Object ||
+                !inventory.TryGetProperty("jobs", out var jobs) || jobs.ValueKind != JsonValueKind.Array ||
+                (inventory.TryGetProperty("hasMore", out var more) && more.ValueKind != JsonValueKind.False) ||
+                (inventory.TryGetProperty("total", out var total) &&
+                    (total.ValueKind != JsonValueKind.Number || !total.TryGetInt32(out var count) || count != jobs.GetArrayLength())))
+                throw new InvalidDataException("Incomplete automation inventory.");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Inbox] {CronListMethod} failed: {ex.GetType().Name}");
+            return;
+        }
+
+        Post(client, _ =>
+        {
+            if (epoch != _epoch || refresh != _cronRefresh)
+                return;
+            _cronList = inventory;
+            Recompute();
+        });
     }
 
     private async Task HydrateApprovalsAsync(IOperatorGatewayClient client, int epoch, GatewayApprovalKind kind)
@@ -245,8 +276,8 @@ internal sealed class InboxGatewaySource : IDisposable
             var listedIds = listed.Select(approval => approval.Id).ToHashSet(StringComparer.Ordinal);
             // Known before the read and absent from it: decided or expired elsewhere.
             foreach (var id in known.Where(id => !listedIds.Contains(id)))
-                _approvals.Remove(id);
-            foreach (var approval in listed.Where(approval => !_resolvedApprovalIds.Contains(approval.Id)))
+                RetireApproval(id);
+            foreach (var approval in listed)
                 Track(approval);
             Recompute();
         });
@@ -294,17 +325,45 @@ internal sealed class InboxGatewaySource : IDisposable
     // A repeated request (event replay or list hydration) keeps its original deadline.
     private void Track(GatewayPendingApproval approval)
     {
-        var deadline = _approvals.TryGetValue(approval.Id, out var existing)
-            ? existing.Deadline
-            : InboxGatewayItems.LocalDeadline(approval, _clock());
-        _approvals[approval.Id] = (approval, deadline);
+        if (!_approvalObservations.TryGetValue(approval.Id, out var observation))
+        {
+            if (_approvalObservations.Count >= ApprovalObservationLimit)
+            {
+                if (!_approvalLimitReported)
+                {
+                    _approvalLimitReported = true;
+                    Logger.Warn("[Inbox] Approval observation limit reached; new identities are hidden until reconnect.");
+                }
+                return;
+            }
+            observation = (InboxGatewayItems.LocalDeadline(approval, _clock()), false);
+            _approvalObservations.Add(approval.Id, observation);
+        }
+        if (observation.Terminal)
+            return;
+        if (observation.Deadline <= _clock())
+        {
+            RetireApproval(approval.Id);
+            return;
+        }
+        _approvals[approval.Id] = (approval, observation.Deadline);
+    }
+
+    private void RetireApproval(string id)
+    {
+        _approvals.Remove(id);
+        if (_approvalObservations.TryGetValue(id, out var observed))
+            _approvalObservations[id] = (observed.Deadline, true);
+        else if (_approvalObservations.Count < ApprovalObservationLimit)
+            _approvalObservations.Add(id, (_clock(), true));
     }
 
     private void ClearConnectionState()
     {
         _epoch++;
         _approvals.Clear();
-        _resolvedApprovalIds.Clear();
+        _approvalObservations.Clear();
+        _approvalLimitReported = false;
         _cronList = null;
         _schedulerEnabled = null;
         _modelAuthStatus = null;
@@ -316,7 +375,7 @@ internal sealed class InboxGatewaySource : IDisposable
         var now = _clock();
         var nowMs = now.ToUnixTimeMilliseconds();
         foreach (var expired in _approvals.Where(pair => pair.Value.Deadline <= now).Select(pair => pair.Key).ToList())
-            _approvals.Remove(expired);
+            RetireApproval(expired);
 
         var facts = _approvals.Values
             .Select(entry => InboxGatewayItems.FromApproval(entry.Approval, entry.Deadline))

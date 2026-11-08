@@ -154,6 +154,11 @@ public sealed partial class WorkspacePaneFooter : UserControl
             () =>
             {
                 NotificationsFlyout.Hide();
+                commands.OpenDashboard();
+            },
+            () =>
+            {
+                NotificationsFlyout.Hide();
                 commands.OpenPage?.Invoke();
             },
             commands.AskOpenClaw is { } ask

@@ -39,6 +39,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     public string CreatedText { get; private set; } = "";
     public string? ActionLabel { get; private set; }
     public string? ActionRoute { get; private set; }
+    public bool OpensDashboard { get; private set; }
     public Visibility ActionVisibility { get; private set; }
     /// <summary>Prompt sent to OpenClaw by "Ask OpenClaw" to explain a failure; null when not offered.</summary>
     public string? AskQuestion { get; private set; }
@@ -82,6 +83,15 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         var item = new InboxItemViewModel(entry.Id);
         item.Apply(entry, now, raise: false);
         return item;
+    }
+
+    /// <summary>Dispatches a row action without interpreting Gateway text as a URL or native route.</summary>
+    public void OpenAction(Action<string> openRoute, Action openDashboard)
+    {
+        if (OpensDashboard)
+            openDashboard();
+        else if (!string.IsNullOrWhiteSpace(ActionRoute))
+            openRoute(ActionRoute);
     }
 
     /// <summary>Copies a newer projection of the same entry, raising change notifications.</summary>
@@ -132,7 +142,9 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         Metadata = content.Metadata;
         AgeText = FormatAge(InboxProjection.Age(entry.CreatedAt, now), entry.CreatedAt);
         CreatedText = entry.CreatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-        var hasAction = !string.IsNullOrWhiteSpace(content.ActionLabel) && !string.IsNullOrWhiteSpace(content.ActionRoute);
+        OpensDashboard = content.OpensDashboard;
+        var hasAction = !string.IsNullOrWhiteSpace(content.ActionLabel) &&
+            (OpensDashboard || !string.IsNullOrWhiteSpace(content.ActionRoute));
         ActionLabel = hasAction ? content.ActionLabel : null;
         ActionRoute = hasAction ? content.ActionRoute : null;
         ActionVisibility = Show(hasAction);
@@ -165,6 +177,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     {
         public string? ActionLabel { get; init; }
         public string? ActionRoute { get; init; }
+        public bool OpensDashboard { get; init; }
         public string? AskQuestion { get; init; }
         public string? SecondaryLabel { get; init; }
         public string? SecondaryRoute { get; init; }
@@ -220,13 +233,23 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             _ => "Inbox_ApprovalTitle",
         });
         var isExec = approval.Kind == GatewayApprovalKind.Exec;
-        var state = isExec ? InboxGatewayItems.CompactCommand(approval.Command) : approval.Title ?? approval.Command;
+        var fullTitle = InboxGatewayItems.DisplayCommand(approval.Title ?? approval.Command);
+        var state = isExec ? InboxGatewayItems.CompactCommand(approval.Command) : fullTitle;
+        // The collapsed state is ellipsized. Keep the entire non-exec title in the expanded
+        // plain-text detail even when the optional description is missing.
+        var details = isExec ? "" : string.Join("\n\n", new[]
+        {
+            fullTitle, InboxGatewayItems.DisplayCommand(approval.Description),
+        }.Where(text => !string.IsNullOrWhiteSpace(text)));
         var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), approval.Cwd }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
-        return new(title, state, approval.Description ?? "", metadata)
+        return new(title, state, details, metadata)
         {
-            ActionLabel = LocalizationHelper.GetString("Inbox_OpenChat"),
-            ActionRoute = string.IsNullOrWhiteSpace(approval.SessionKey)
+            ActionLabel = LocalizationHelper.GetString(isExec ? "Inbox_OpenChat" : "Menu_OpenDashboard"),
+            // Native chat translates only exec approvals. Non-exec requests use the existing
+            // Dashboard launcher at its home, never a URL/session/route from the request.
+            OpensDashboard = !isExec,
+            ActionRoute = !isExec ? null : string.IsNullOrWhiteSpace(approval.SessionKey)
                 ? "chat"
                 : AppNotificationActionRoutes.Chat(approval.SessionKey),
             // The full command, never trimmed, so what is reviewed is what would run.

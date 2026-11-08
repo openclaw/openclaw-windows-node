@@ -700,6 +700,15 @@ public sealed class DiagnosticsPageContractTests
         Assert.Equal("True", (string?)command.Attribute("IsTextSelectionEnabled"));
         Assert.Equal("ScrollViewer", command.Parent!.Name.LocalName);
 
+        // Non-exec approval titles are repeated in Details because State is ellipsized.
+        // Details must remain selectable plain text with no hidden tail or line cap.
+        var details = xaml.Descendants().Single(element =>
+            element.Name.LocalName == "TextBlock" && (string?)element.Attribute("Text") == "{Binding Details}");
+        Assert.Null(details.Attribute("MaxLines"));
+        Assert.Null(details.Attribute("TextTrimming"));
+        Assert.Equal("Wrap", (string?)details.Attribute("TextWrapping"));
+        Assert.Equal("True", (string?)details.Attribute("IsTextSelectionEnabled"));
+
         // The App owns the single Inbox feed; a window-created fallback would leak its subscription.
         Assert.DoesNotContain("new InboxFeed(", Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
     }
@@ -730,6 +739,24 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("_inbox.Changed -= OnNotificationsChanged;", workspace);
         Assert.Contains("footer.Close();", workspace);
         Assert.Contains("NotificationContent.Unbind();", footer);
+    }
+
+    [Fact]
+    public void InboxClock_RefreshesRowsOnlyWhileTheHostIsBound()
+    {
+        // WinUI-only lifecycle guard. Retire when mounted Inbox clock tests cover
+        // ticking, empty tabs and close/reopen through both hosting surfaces.
+        var view = Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs");
+        var row = Read("src", "OpenClaw.Tray.WinUI", "ViewModels", "InboxItemViewModel.cs");
+        Assert.Contains("_clock.IsRepeating = true;", view);
+        Assert.Contains("_clock.Tick += (_, _) => RefreshClock();", view);
+        Assert.Matches(@"internal void Unbind\(\)\s*\{\s*_clock.Stop\(\);", view);
+        Assert.Matches(@"if \((?:_service|_feed) is null \|\| _items.Count == 0\)\s*\{\s*_clock.Stop\(\);", view);
+        Assert.Matches(@"CountText.Text = [^;]+;\s*UpdateClock\(\);", view);
+        Assert.Contains("if (!_clock.IsRunning)", view);
+        Assert.Contains("_clock.Start();", view);
+        Assert.Contains("item.RefreshClock(now);", view);
+        Assert.Contains("OnPropertyChanged(nameof(AgeText));", row);
     }
 
     [Fact]

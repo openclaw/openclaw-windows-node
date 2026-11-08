@@ -6,6 +6,7 @@
 // Usage:
 //   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
 //       OpenRoute: route => window.OpenNotificationRoute(route),
+//       OpenDashboard: () => appCommands.OpenDashboard(),
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
 //       OpenPage: () => window.ShowInboxPage(),
 //       AskOpenClaw: question => window.AskOpenClaw(question)));
@@ -31,6 +32,7 @@ namespace OpenClawTray.Controls;
 internal sealed record InboxViewCommands(
     Action<string> OpenRoute,
     Action OpenSettings,
+    Action OpenDashboard,
     Action? OpenPage = null,
     Action<string>? AskOpenClaw = null);
 
@@ -48,11 +50,11 @@ public sealed partial class InboxView : UserControl
 
     public InboxView()
     {
-        InitializeComponent();
-        ItemsList.ItemsSource = _items;
         _clock = DispatcherQueue.CreateTimer();
         _clock.IsRepeating = true;
         _clock.Tick += (_, _) => RefreshClock();
+        InitializeComponent();
+        ItemsList.ItemsSource = _items;
         // Hosts own the binding lifetime (flyout Closed, page Unloaded). Unbinding here would let a
         // late Unloaded from a quick close and reopen disconnect the freshly opened Inbox.
     }
@@ -220,12 +222,11 @@ public sealed partial class InboxView : UserControl
     private void OnActionClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: InboxItemViewModel item } ||
-            string.IsNullOrWhiteSpace(item.ActionRoute) ||
             _commands is not { } commands)
             return;
 
         var feed = _feed;
-        commands.OpenRoute(item.ActionRoute);
+        item.OpenAction(commands.OpenRoute, commands.OpenDashboard);
         // Opening the conversation is what a mention asks for; other entries stay until resolved.
         if (item.Kind == InboxEntryKind.Mention)
             feed?.Dismiss(item.Id);
