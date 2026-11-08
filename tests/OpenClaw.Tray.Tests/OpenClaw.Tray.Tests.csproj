@@ -50,6 +50,10 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatQuestionCoordinator.cs" Link="Chat\ChatQuestionCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatQuestionDraft.cs" Link="Chat\ChatQuestionDraft.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatRunProgressPresentation.cs" Link="Chat\ChatRunProgressPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatReasoningPresentation.cs" Link="Chat\ChatReasoningPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTranscriptSearch.cs" Link="Chat\ChatTranscriptSearch.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolOutputRecovery.cs" Link="Chat\ChatToolOutputRecovery.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolDetailsProfile.cs" Link="Chat\ChatToolDetailsProfile.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatWorkingClawMotion.cs" Link="Chat\ChatWorkingClawMotion.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\AssistantFileDownloadLauncher.cs" Link="Chat\AssistantFileDownloadLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />

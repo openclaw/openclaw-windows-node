@@ -83,6 +83,7 @@ static class FluentIconCatalog
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string ChevronDown = "\uE70D";    // ChevronDown
+    public const string BulletedList = "\uE8FD";   // BulletedList, chat tool activity summary row
     public const string Stop = "\uE71A";           // Stop
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
     public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker

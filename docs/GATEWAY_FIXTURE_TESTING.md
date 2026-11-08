@@ -580,7 +580,8 @@ the message or idempotency key.
 | `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
 | `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
 | `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
-| `agent-activity` | Job activity, command item/output and patch item/summary events. All operations are inert |
+| `agent-activity` | Job activity, then `exec` and `apply_patch` activity items, each paired with correlated tool start/result events and transcript entries. All operations are inert |
+| `nested-tools` | A wrapper `exec` call with nested `read` and failed `exec` calls that carry `parentToolCallId` in tool events and transcript entries, and a reply with a Markdown link, a bare URL and inline code. All operations are inert |
 | `question-choice`, `question-text`, `question-multi` | A pending question blocks that run until a valid answer, cancellation, expiry or Stop |
 | `approval`, `approval-deny-only` | Top-level exec approval events, validated one-shot decisions, then continuation without command execution |
 | `slow` | Repeated startup status frames before the answer |

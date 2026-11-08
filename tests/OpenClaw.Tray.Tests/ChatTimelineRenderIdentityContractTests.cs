@@ -151,8 +151,12 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}", renderer);
         Assert.DoesNotContain("entry.ToolArgs.ToJsonString", renderer);
         Assert.DoesNotContain("{entry.ToolResult}", renderer);
-        Assert.DoesNotContain("ToolRunId", renderer);
-        Assert.DoesNotContain("ToolLegacyTurn", renderer);
+        foreach (System.Text.RegularExpressions.Match key in
+            System.Text.RegularExpressions.Regex.Matches(renderer, @"\.WithKey\([^\r\n]+"))
+        {
+            Assert.DoesNotContain("ToolRunId", key.Value);
+            Assert.DoesNotContain("ToolLegacyTurn", key.Value);
+        }
     }
 
     private static string Read(params string[] parts)

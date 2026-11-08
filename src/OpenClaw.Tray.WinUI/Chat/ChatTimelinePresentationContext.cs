@@ -10,7 +10,7 @@ public sealed record ChatTimelinePresentationContext(
     string? SessionId,
     IReadOnlyList<ChatTimelineItem> Entries,
     bool HasMoreHistory,
-    Action? OnLoadMoreHistory,
+    Func<Task>? OnLoadMoreHistory,
     IReadOnlyDictionary<string, ChatEntryMetadata>? EntryMetadata = null,
     long TimelineGeneration = 0,
     string UserSenderLabel = "OpenClaw Windows Tray",
@@ -30,4 +30,18 @@ public sealed record ChatTimelinePresentationContext(
     Action<string>? OnCancelQueuedMessage = null,
     ChatRunProgressPresentation? RunProgress = null,
     Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
-        DownloadAssistantFileAsync = null);
+        DownloadAssistantFileAsync = null,
+    ChatThread? Session = null,
+    bool ShowReasoning = false,
+    bool ShowReasoningPreview = false,
+    ChatReasoningStream? ReasoningStream = null,
+    long HistoryRevision = 0,
+    long? ToolOutputConnectionEpoch = null,
+    Func<ChatToolOutputRequest, CancellationToken, Task<ChatToolOutputResult>>? LoadToolOutputAsync = null,
+    ChatToolDetailsProfileState ToolDetailsProfileState = default,
+    Func<ChatToolDetailsProfileState>? ReadToolDetailsProfileState = null,
+    string? SearchQuery = null,
+    IReadOnlyList<ChatThread>? ChildThreads = null,
+    SessionProviderReviewInfo? ProviderReview = null,
+    bool LoadingOlderHistory = false,
+    ChatToolActivityExpansionState? ToolExpansionState = null);

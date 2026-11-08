@@ -22,16 +22,23 @@ The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
 leave prose centered. Accessible sender and footer identity remain.
 
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
-112-pixel minimum height. Message and code surfaces use 12-pixel corners.
+96-pixel minimum height. Its vertical padding is 8 pixels and the editor-to-toolbar
+gap is 4 pixels. The editor retains its 44-pixel minimum height and grows with
+multiline input; action targets and text sizes are unchanged. Message and code
+surfaces use 12-pixel corners.
 These are chat surface tokens, not replacements for standard control radii.
 General layout spacing is on the 4-pixel grid. The question dock preserves the
 upstream 7/9/11/14-pixel option gaps, insets and typography instead.
 
 Prose uses native body type at 14 pixels with 21-pixel line height. Headings
 use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks use one uniform
-16-pixel gap (the native 4-pixel-grid approximation of Web's 14 pixels), with
+8-pixel gap, with
 zero extra top/bottom block margins. List and quote interiors are unchanged.
-Text/media stacks use that same gap. The transcript has a 16-pixel lead-in. Comparisons
+Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
+Assistant turns use 4-pixel outer spacing without extra body padding. User
+bubbles, thinking blocks and tool details use 12-pixel horizontal and 8-pixel
+vertical insets. Related labels, details and action footers use one 4-pixel gap
+rather than accumulating stack spacing and margins. Comparisons
 normalize the released web header separately rather than adding fake app chrome.
 Code remains literal and selectable, with native horizontal and vertical
 scrolling rather than truncation. Its header exposes the supplied language and
@@ -93,11 +100,188 @@ use the card fill above that content layer.
 
 ## Controls and states
 
-Initial transcript tail navigation retains its native layout gate. A viewport
-resize can arm one additional discrete tail request if realizing variable-height
+Tool disclosures use compact native Expander headers with a single-line,
+ellipsized command, path, query or supplied description. Non-success states
+remain visible; accessible names retain the tool and status. Accessible help
+retains the bounded preview; rows have no hover tooltip, as on the web.
+Expanded details keep the successful completion
+label visible and retain multiline commands,
+redacted structured arguments and literal output independently of that preview.
+Input envelopes retain the existing 64K character budget, individual strings
+use the shared safe-display bound, and output uses the 256KiB chat-entry budget.
+An oversized input is explicitly unavailable, not silently empty. This is not
+unbounded raw-payload disclosure or full-output retrieval beyond those limits.
+`filePath` and `notebook_path` retain their live/history aliases. Input and
+output have separate stable identities so late input does not replace an
+already-open output control.
+
+Native disclosure headers and action targets keep their existing sizing; compact
+spacing does not clip header content or shrink hit targets. Provider review and
+child-agent details share a scrolling region capped at 160 pixels, leaving more
+room for the conversation while keeping all supplied details accessible.
+
+Gateway-truncated tool results keep their typed truncation flag and canonical
+saved result-message/session/call identity, separately from invocation input.
+An expanded disclosure offers **Show full output** only when a read can be
+scoped. This explicit action uses the existing authenticated `chat.message.get`
+contract, not another tool invocation or chat send. Opening or rendering a row
+does not fetch. The loader rechecks connection, session, reset, history revision
+and exact result identity before dispatch and after completion. Collapse,
+cancel, disposal and scope replacement retire the view's pending result.
+Input and output controls retain their existing keys during hydration.
+
+The shared `ChatToolDetailsProfile` reader guard defaults to unknown/unavailable.
+It reuses the authenticated, epoch-bound `users.self` read and existing identity
+parser without loading avatars or exposing profile IDs. Every verification
+first advances an opaque revision and disables reads; only the same canonical
+profile can become available again at that new revision. A different profile
+retires details until a new connection. Unknown identity and failed verification
+deny reads. Recovery compares the captured profile snapshot before dispatch and
+completion, and includes it in cache identity. Thus a same-profile name edit can
+recover without accepting a previous revision's cached or pending output.
+After reconnect, saved-result reads also wait for history committed on the
+current connection; rebinding an old cached row to a new epoch is not admission.
+
+Recovery stays within the 256KiB UTF-8 display budget and requests at most
+262,144 characters from the Gateway. A server-retained cap or local UTF-8 cap
+remains explicitly **limited**, never complete. Unsupported Gateway versions,
+missing or invisible results, oversized responses, mismatched identities and
+transport failures have separate visible outcomes. Retry is an explicit action.
+The panel can reuse `LoadToolOutputAsync` and `ChatToolOutputOperation`; it must
+not add another fetch or renderer. These rules follow the
+[pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
+
+Consecutive tool groups stay within the exact run identity and legacy turn.
+Every consecutive tool span, including a single call, renders as one collapsed
+summary row that counts operations per category in web order, for example
+`3 commands · 2 reads · 1 other operation`. Failed and interrupted steps stay
+inside their group, where the step row shows an inline red `failed` instead of
+a trailing status. Calls with provider reviews or input still being prepared
+keep their standalone disclosure so the review and live diff stay visible.
+Each row shows its category glyph; hovering or focusing the row header swaps
+that glyph for an expand chevron, and the built-in Expander chevron is hidden.
+Row headers stay borderless in every state (rest, hover, pressed, disabled),
+like the web's inline disclosure.
+A call the Gateway records as wrapping others (`parentToolCallId`, same run)
+lists its nested calls first when expanded, then its own input behind a
+collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
+are never inferred; ambiguous identities and cycles stay top-level. Group
+counts include nested calls but not their wrapper. Each layer keeps its own
+expansion key, so opening a group never opens its first row.
+The last transcript row keeps a 24-pixel bottom inset above the composer.
+Existing chronological messages, reasoning,
+partial-output updates, collapsed-by-default disclosures and explicit group
+expansion are unchanged. This is a focused adaptation of the default web tool
+row at `b896457970bfa1b2cef23ea16f3731ba73436b0c`, not full transcript parity.
+Dashboard sessions (`agent:<agent>:dashboard:<id>`, exactly four segments)
+collect completed tools, commentary, and reasoning in a collapsed **Worked**
+disclosure above preserved answers. The header reads **Worked for X** (or
+**Worked**); expanded, it appends the tool-call count (`Worked for 4s · 3 tool
+calls`) above a divider. Its body reuses the transcript rows, so tools appear as
+their own collapsed group summaries between commentary and reasoning.
+The policy follows the
+[pinned web turn presentation](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat/chat-turn-presentation.ts).
+It is a projection of the native transcript, not a rewritten transcript or a
+WebView. Other session types retain their chronological presentation.
+
+The Shared parser retains supplied message and text-signature phases, execution
+identity, turn and steer boundaries, forwarding provenance, and automation
+identity. Mixed phases remain separate through history replay and live snapshot
+reconciliation. Unknown phases remain unknown. For unphased providers only,
+the last eligible visible reply is the presentation fallback; this never writes
+a phase or execution identity and is never used for send admission.
+
+Live and steered turns stay unfolded. Independent messages and structural rows
+bound reordering. Explicit answers, earlier other-run replies, and media remain
+visible; trailing failed work stays outside the disclosure. Tool-only turns
+retain their result rows. The disclosure key uses the terminal answer, session,
+and generation, so older-history prepends do not reset explicit expansion.
+Existing native tool controls, literal details, accents, and backplates are reused.
+
+Newly completed work settles with a 200-millisecond fade, and a changing live
+tool headline enters over 160 milliseconds. Reactor owns these enter-only
+animations; no transcript dimensions, scroll position or focus are animated.
+Initial/loading history, history revisions, session changes and generation
+resets do not replay completed-work entrances. A stable tool identity prevents
+partial-output updates from restarting its headline animation.
+Reactor's live reduced-motion hook disables both effects. Stock WinUI disclosure
+motion and the existing working-claw animation remain their respective owners.
+
+Confirmed `sessions_yield` and asynchronous `github_publish` receipts create
+handoff boundaries using the existing tool/run correlation. They do not become
+completed-work rollups after resuming. Yield calls show only the public
+acknowledgment, never private continuation input; failed, pending, malformed or
+mismatched receipts cannot establish a handoff. Typed receipt facts are read
+before display truncation, not recovered from rendered JSON.
+
+Native chat has no bubble-mode setting. Its loaded-transcript search disables
+completed-work rollups while showing matching message, command and output snippets.
+Hidden reasoning and private continuation inputs are not searched. The non-bubble
+default maps to the web default, with both gates retained at the pure projection
+seam. Global search is not a transcript search gate. **Worked for** uses the
+Gateway's finite nonnegative `runtimeMs` only when the session and terminal
+`lastRunId` match the reply that owns the disclosure. Missing or unmatched
+facts and work without one owning reply stay untimed; message timestamps never
+fabricate a duration. Unsigned stream replacements clear stale block signatures,
+and matching cumulative text prefixes reconcile within their causal/run boundary.
+Conflicting unidentified text remains visible rather than being guessed away. Pixel-level parity
+requires current-build visible proof in addition to the offscreen control tests.
+
+Supplied assistant `thinking` blocks render as inline native Markdown, not as
+an extra closed disclosure. Session `reasoningLevel` falls back to
+`reasoningDefault`: `on` shows saved reasoning and live previews; `stream`
+shows previews only; other or absent values hide both. The client default
+corresponds to web's enabled Show thinking preference. Settings > **Show
+thinking** (`ShowChatThinking`, default on) mirrors web's toggle: turning it
+off hides saved reasoning and live previews, but not the run-progress
+"Thinking" status. Encrypted/redacted blocks are not
+reconstructed. Live `thinking` events require supplied item/run identities and
+cumulative text. Exact non-imported publication acknowledges a persisted
+receipt; stream mode retains that preview until the run ends. Only the latest
+nonempty, receipt-free occurrence can transfer to its matching final reply,
+and existing saved thinking wins. Empty tails, resets and terminal outcomes
+cannot revive an earlier thought. These rules follow the
+[pinned reasoning owner](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat/chat-reasoning.ts),
+not assumptions about older installed web builds.
+
+Explicit commentary does not receive a final-answer footer. Waiting,
+compaction and retry labels remain visibly present beside elapsed time rather
+than existing only in accessibility text. A `run_status` retry with a valid
+`retryAt` counts down ("Retrying in Ns") on the existing one-second progress
+timer, then falls back to the plain retry label; text, tool or turn events clear
+it. While a current-run reasoning stream exists and no reply text has arrived,
+progress reads "Thinking" instead of "Working". These changes do not alter send
+admission, terminal-run classification or the panel's typed detail action.
+
+While history loads, the transcript shows a skeleton
+(`ChatTimelineLoadingSkeleton`) whose opacity pulse is disabled by reduced
+motion and high contrast. When history fails after its bounded retries on a
+connected Gateway, an empty transcript shows `ChatHistoryUnavailable` and a
+nonempty one shows a `ChatHistoryFailedStatus` banner, each with an explicit
+`ChatHistoryRetry` action. A failed thread is not reloaded implicitly on each
+render; Retry, reconnect or a committed reload clears it.
+
+If `chat.history` reports an `inFlightRun` for a session whose `sessionInfo`
+says the run is still active, opening that session adopts it like web's
+`applyHistoryRun`: the working state starts at the supplied `startedAt`, the
+retained matching run events replay through the live event path, and the
+buffered text becomes the streaming tail. Stop aborts that run. A live run,
+pending abort, reset or terminal outcome already known to this client wins, and
+the run's later live lifecycle end settles it.
+
+Initial transcript tail navigation retains its native layout gate. Entering a
+transcript control through keyboard focus cancels pending automatic
+navigation just as pointer and keyboard input do. Focus at the tail can retain
+follow mode; moving away stops it. No renderer performs its own scroll loop.
+An explicit jump in an already laid-out view drains pending layout work before
+dispatch instead of waiting for a future layout-change event.
+Programmatic realization focus does not cancel navigation.
+A viewport resize can arm one additional discrete tail request if realizing variable-height
 rows moves the extent away from a followed tail. This correction waits for
-layout, a rendering boundary, and an idle scroll view. Resizing does not itself
-start a bring, and this is not a continuous extent-follow loop. A correction does
+layout, a rendering boundary, and an idle scroll view. It adjusts the offset to
+the current extent without synchronously realizing another item. Initial,
+new-message and explicit jump navigation retain index-based brings.
+Resizing does not itself start a bring, and this is not a continuous extent-follow loop. A correction does
 not start while initial positioning is still pending, so it cannot impose its
 follow requirement on that initial request. A reader who has scrolled up is not
 pulled back down. Pointer, keyboard, touch, and scrollbar interaction cancel
@@ -111,7 +295,14 @@ It schedules retries after the rendering callback returns and fences them agains
 cancellation or replacement. If rows or the native scroll view disappear during
 initial positioning, it rearms when they return. Normal follow cannot interrupt
 initial positioning.
-Native bottom anchoring and the existing follow threshold are unchanged.
+Native bottom anchoring and the existing follow threshold are unchanged, except
+while a reader toggles a disclosure header by pointer, Enter or Space: the
+transcript then anchors to the top, so the header stays put and its details
+grow downward, as on the web. Any other reader input or programmatic tail scroll
+restores bottom anchoring.
+Actual tail visibility is tracked separately from follow eligibility. The
+**Jump to latest** button stays mounted as an overlay, so showing it does not
+shrink the transcript viewport or move the composer.
 
 Pending agent questions replace the writing surface visually, not structurally.
 The same mounted composer and unsent draft return when the question is collapsed
@@ -428,5 +619,26 @@ Message-copy IDs remain based on the existing row identity.
 
 Attachment, queue, recording, loading, thinking and error presentations use the
 same resources and bounded layouts. Markdown sanitization, disabled HTML,
-blocked link navigation, inert images, list measurement, timeline keys and
-scroll-follow remain with their existing owners.
+inert images, list measurement, timeline keys and scroll-follow remain with
+their existing owners.
+
+Assistant links follow the web chat's anchor policy: Markdown links, bare
+`http(s)://` and `www.` URLs become native WinUI hyperlinks in the Windows
+accent color without an underline, and open in the default browser. Inline
+code keeps its monospace run and gets a subtle `ControlFillColorSecondaryBrush`
+background through a text highlighter (high contrast keeps system styling).
+A rounded, bordered chip like the web needs a Reactor inline-code hook. Only
+absolute http/https destinations survive sanitization (Reactor additionally
+admits only http/https/mailto); any other scheme, relative path or image stays
+inert text. Expanded tool details follow the web tool card: input, output and
+error sections with small-caps labels sit in one thin-bordered, transparent
+card, and a settled call shows its outcome (**Completed** or **failed**)
+right-aligned under a divider. Tool rows have no hover tooltip. While work is
+active, the running tool title, running group headline, streaming **Thinking**
+label and run-progress text use the web's `text-shimmer`: a brighter band sweeps
+across the secondary text every 2.2 seconds. Windows animation off or high
+contrast keeps static text, matching the web's reduced-motion and forced-colors
+gates. The web's GitHub mark
+and issue/pull-request chips need a custom link renderer, which the consumed
+Reactor `0.1.0-preview.16` declares but does not call (`LinkBuilder` is honored
+from `0.1.0-preview.17`); they remain a follow-up for that upgrade.

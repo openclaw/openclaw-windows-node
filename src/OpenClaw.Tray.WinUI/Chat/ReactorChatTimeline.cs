@@ -25,8 +25,12 @@ public enum ReactorChatTimelineMode
     Timeline,
     Loading,
     Empty,
+    /// <summary>History retries are exhausted and no transcript is cached.</summary>
+    HistoryUnavailable,
 }
 
+/// <param name="HistoryFailed">History retries are exhausted; with a cached transcript this shows an inline Retry status.</param>
+/// <param name="OnRetryHistory">Starts a user-initiated history reload.</param>
 public sealed record ReactorChatTimelineProps(
     ReactorChatTimelineMode Mode,
     ChatTimelinePresentationContext Timeline,
@@ -34,7 +38,9 @@ public sealed record ReactorChatTimelineProps(
     Action<string>? OnOpenCheckpoints = null,
     long HistoryRevision = 0,
     double ViewportWidth = 800,
-    Func<string, bool>? TryCopyText = null);
+    Func<string, bool>? TryCopyText = null,
+    bool HistoryFailed = false,
+    Action? OnRetryHistory = null);
 
 public sealed record ReactorChatIdentity(
     string? DisplayName = null,
@@ -55,10 +61,62 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var (focusedRowKey, setFocusedRowKey) = UseState<string?>(null);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (navigationVisible, setNavigationVisible) = UseState(false);
+        var (searchOpen, setSearchOpen) = UseState(false);
+        var (searchQuery, setSearchQuery) = UseState("");
+        var (atTail, setAtTail) = UseState(true);
+        var (jumpRevision, setJumpRevision) = UseState(0);
+        var (loadingOlder, setLoadingOlder) = UseState(false, threadSafe: true);
+        var olderOperation = UseRef(0);
+        var olderLoadingScope = UseRef<string?>(null);
+        var lastReadTail = UseRef<IReadOnlyList<ChatTimelineItem>?>(null);
+        var searchScope = UseRef<string?>(null);
+        var currentScope = $"{props.Timeline.SessionId}|{props.Timeline.TimelineGeneration}";
+        if (searchScope.Current != currentScope)
+        {
+            searchScope.Current = currentScope;
+            setSearchQuery("");
+            setSearchOpen(false);
+            setAtTail(true);
+            setLoadingOlder(false);
+            olderOperation.Current++;
+            olderLoadingScope.Current = null;
+            loadingOlder = false;
+            searchQuery = "";
+            searchOpen = false;
+        }
+        var searchActive = searchOpen && !string.IsNullOrWhiteSpace(searchQuery);
+        props = props with { Timeline = props.Timeline with { SearchQuery = searchActive ? searchQuery : null } };
         var speechOperation = UseRef(0);
         var mounted = UseRef(true);
         var toolActivityExpansionState = UseRef<ChatToolActivityExpansionState>(new());
+        var toolActivityMotionState = UseRef<ChatToolActivityMotionState>(new());
         var annotatedScrollBarRef = this.UseElementRef<WinUIAnnotatedScrollBar>();
+        // Web's history skeleton is static under reduced motion or forced colors.
+        var animateLoading = !UseReducedMotion() && UseColorScheme() != ColorScheme.HighContrast;
+        var loadOlder = props.Timeline.OnLoadMoreHistory;
+        async Task LoadOlderAsync()
+        {
+            if (loadOlder is null || olderLoadingScope.Current == currentScope)
+                return;
+            var operation = ++olderOperation.Current;
+            olderLoadingScope.Current = currentScope;
+            setLoadingOlder(true);
+            try { await loadOlder(); }
+            finally
+            {
+                if (mounted.Current && olderOperation.Current == operation)
+                {
+                    olderLoadingScope.Current = null;
+                    setLoadingOlder(false);
+                }
+            }
+        }
+        props = props with { Timeline = props.Timeline with
+        {
+            LoadingOlderHistory = loadingOlder,
+            OnLoadMoreHistory = LoadOlderAsync,
+            ToolExpansionState = toolActivityExpansionState.Current,
+        } };
 
         UseEffect((Func<Action>)(() =>
         {
@@ -105,9 +163,18 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         var rows = BuildRows(props with { ViewportWidth = viewportWidth });
+        var enteringWorkKeys = toolActivityMotionState.Current.Update(
+            rows.Where(row => row.Activity?.IsCompletedWork == true).Select(row => row.Key),
+            props.Timeline.SessionId,
+            props.Timeline.TimelineGeneration,
+            props.HistoryRevision,
+            historyReady: props.Mode == ReactorChatTimelineMode.Timeline);
         var initialTailRequestKey =
-            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
+            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}|{jumpRevision}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
+        var contentRevision = props.Timeline.Entries;
+        if (atTail)
+            lastReadTail.Current = contentRevision;
         void SetEntryHovered(string entryId, bool isHovered)
         {
             if (isHovered)
@@ -125,17 +192,32 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             rows,
             static row => row.Key,
             (row, _) => ItemContainer(
-                    Border(BuildRow(
+                    Border(VStack(4,
+                        searchActive && row.Entry is { } match
+                            ? TextBlock(ChatTranscriptSearch.Match(match, searchQuery) ?? "")
+                                .TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true)
+                                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                                .AutomationId("ChatSearchMatch")
+                            : Empty(),
+                        BuildRow(
                             row,
                             speakingEntryId,
                             hoveredEntryId,
                             string.Equals(focusedRowKey, row.Key, StringComparison.Ordinal),
                             ToggleSpeechAsync,
                             SetEntryHovered,
-                            toolActivityExpansionState.Current))
+                            toolActivityExpansionState.Current,
+                            enteringWorkKeys.Contains(row.Key),
+                            animateLoading)))
                         .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
                         .MaxWidth(ChatVisuals.ReadingWidth - 2 * ChatVisuals.ProseInset + 2 * AvatarGutter(row))
-                        .Margin(ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset - AvatarGutter(row), 0)
+                        .Margin(
+                            ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset - AvatarGutter(row),
+                            0,
+                            ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset - AvatarGutter(row),
+                            string.Equals(row.Key, rows[^1].Key, StringComparison.Ordinal)
+                                ? ChatVisuals.TranscriptBottomInset
+                                : 0)
                         .OnPointerEntered((_, _) => SetEntryHovered(HoverKey(row), true))
                         .OnPointerExited((_, _) => SetEntryHovered(HoverKey(row), false))
                         .OnGotFocus((_, _) => setFocusedRowKey(row.Key))
@@ -168,15 +250,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
         return Grid(
             [GridSize.Star()],
-            [GridSize.Star()],
-            itemsView
+            [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
+            (searchActive ? itemsView.WithKey("search-results") : itemsView
                 .BindVerticalScrollController(
                     annotatedScrollBarRef,
                     rows.Count - 1,
                     rows.Count,
+                    jumpRevision,
                     initialTailRequestKey,
-                    displayedTailKey)
-                .Grid(column: 0)
+                    displayedTailKey,
+                    setAtTail))
+                .Grid(row: 2, column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
                 .AutomationName("Chat messages")
                 .HAlign(HorizontalAlignment.Stretch)
@@ -188,9 +272,61 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .Opacity(navigationVisible ? 1 : 0)
                 .OnGotFocus((_, _) => setNavigationVisible(true))
                 .OnLostFocus((_, _) => setNavigationVisible(false))
-                .Grid(column: 0)
+                .Grid(row: 2, column: 0)
                 .HAlign(HorizontalAlignment.Right)
-                .AutomationName("Chat message navigation"))
+                .AutomationName("Chat message navigation"),
+            (props.HistoryFailed && props.Mode == ReactorChatTimelineMode.Timeline
+                    ? BuildHistoryFailedBanner(props, viewportWidth)
+                    : Empty())
+                .Grid(row: 1, column: 0),
+            (props.Mode == ReactorChatTimelineMode.Timeline
+                ? searchOpen
+                    ? VStack(4,
+                        Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                            TextBox(searchQuery, setSearchQuery, LocalizedOrDefault("Chat_Search_Placeholder", "Search this conversation"))
+                                .MaxLength(256).AutomationId("ChatTranscriptSearch")
+                                .AutomationName(LocalizedOrDefault("Chat_Search_Placeholder", "Search this conversation"))
+                                .Grid(column: 0),
+                            Button(LocalizedOrDefault("Chat_Search_Close", "Close search"), () =>
+                            {
+                                setSearchOpen(false);
+                                setSearchQuery("");
+                            }).Grid(column: 1).Margin(8, 0, 0, 0).AutomationId("ChatSearchClose")
+                                .AutomationName(LocalizedOrDefault("Chat_Search_Close", "Close search"))),
+                        TextBlock(string.Format(LocalizedOrDefault("Chat_Search_Count", "{0} matching messages in loaded history"),
+                                rows.Count(row => row.Entry is not null)))
+                            .TextWrapping(TextWrapping.Wrap).FontSize(12).AutomationId("ChatSearchCount"))
+                    : Button(LocalizedOrDefault("Chat_Search_Open", "Find in conversation"), () => setSearchOpen(true))
+                        .HAlign(HorizontalAlignment.Right).AutomationId("ChatSearchOpen")
+                        .AutomationName(LocalizedOrDefault("Chat_Search_Open", "Find in conversation"))
+                : Empty())
+                .Margin(ChatVisuals.Gutter(viewportWidth), 0).Grid(row: 0, column: 0),
+            Button(contentRevision != lastReadTail.Current
+                        ? LocalizedOrDefault("Chat_NewMessages", "New messages. Jump to latest")
+                        : LocalizedOrDefault("Chat_JumpLatest", "Jump to latest"),
+                    () => setJumpRevision(jumpRevision + 1))
+                    .HAlign(HorizontalAlignment.Center).AutomationId("ChatJumpLatest")
+                    .AutomationName(contentRevision != lastReadTail.Current
+                        ? LocalizedOrDefault("Chat_NewMessages", "New messages. Jump to latest")
+                        : LocalizedOrDefault("Chat_JumpLatest", "Jump to latest"))
+                    .IsVisible(!atTail && !searchActive)
+                    .VAlign(VerticalAlignment.Bottom).Margin(0, 0, 0, ChatVisuals.BlockGap)
+                    .Grid(row: 2, column: 0),
+            ScrollViewer(VStack(4,
+                props.Timeline.ProviderReview is { } providerReview
+                    ? Expander(LocalizedOrDefault("Chat_Review_Required", "Provider review required"),
+                        TextBlock(string.Join("\n\n",
+                            new[] { providerReview.Explanation, providerReview.ContinuationMessage,
+                                LocalizedOrDefault("Chat_Review_Web", "Review this request in web chat before continuing.") }
+                                .Where(value => !string.IsNullOrEmpty(value))))
+                            .TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true))
+                        .HAlign(HorizontalAlignment.Stretch).AutomationId("ChatProviderReview")
+                        .AutomationName(LocalizedOrDefault("Chat_Review_Required", "Provider review required"))
+                    : Empty(),
+                Component<ReactorChildActivity, ReactorChildActivityProps>(new(props.Timeline.ChildThreads ?? []))))
+                .MaxHeight(ChatVisuals.ActivityDetailsMaxHeight)
+                .AutomationId("ChatActivityDetails")
+                .Margin(ChatVisuals.Gutter(viewportWidth), 0).Grid(row: 3, column: 0))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
             .OnPointerEntered((_, _) => setNavigationVisible(true))
@@ -222,6 +358,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (props.Mode == ReactorChatTimelineMode.Loading)
             return [ReactorTimelineRow.Loading(props)];
 
+        if (props.Mode == ReactorChatTimelineMode.HistoryUnavailable)
+            return [ReactorTimelineRow.HistoryUnavailable(props)];
+
         if (props.Mode == ReactorChatTimelineMode.Empty)
             return [];
 
@@ -229,7 +368,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (props.Timeline.HasMoreHistory)
             rows.Add(ReactorTimelineRow.LoadEarlier(props));
 
-        var chronologicalEntries = props.Timeline.Entries;
+        var chronologicalEntries = ChatReasoningPresentation.Project(
+            props.Timeline.Entries, props.Timeline.ReasoningStream,
+            props.Timeline.ShowReasoning, props.Timeline.ShowReasoningPreview, props.Timeline.EntryMetadata);
+        if (props.Timeline.SearchQuery is { Length: > 0 } query)
+        {
+            chronologicalEntries = chronologicalEntries
+                .Where(entry => (props.Timeline.ShowToolCalls || entry.Kind != ChatTimelineItemKind.ToolCall)
+                    && ChatTranscriptSearch.Match(entry, query) is not null).ToArray();
+        }
         var assistantRunPositions = ChatTimelineAssistantRuns.Describe(chronologicalEntries);
         var assistantRunsByEntryId = new Dictionary<string, ChatAssistantRunPosition>(
             chronologicalEntries.Count,
@@ -240,11 +387,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .LastOrDefault(static entry => entry.Kind == ChatTimelineItemKind.Assistant)
             ?.Id;
 
-        var projectedRows = ChatToolActivityPresentation.Project(
+        var projectedRows = props.Timeline.SearchQuery is { Length: > 0 }
+            ? chronologicalEntries.Select(entry => new ChatToolActivityRow(
+                RowKey(props.Timeline, entry), entry, [], null)).ToArray()
+            : ChatToolActivityPresentation.Project(
             chronologicalEntries,
             props.Timeline.SessionId,
             props.Timeline.TimelineGeneration,
-            props.Timeline.ShowToolCalls);
+            metadata: props.Timeline.EntryMetadata,
+            runWorking: props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is not null,
+            session: props.Timeline.Session,
+            showToolCalls: props.Timeline.ShowToolCalls);
         foreach (var projectedRow in projectedRows)
         {
             if (projectedRow.IsActivityGroup)
@@ -280,16 +433,23 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         bool isFocused,
         Func<ChatTimelineItem, Task> toggleSpeechAsync,
         Action<string, bool> setEntryHovered,
-        ChatToolActivityExpansionState toolActivityExpansionState) => row.Kind switch
+        ChatToolActivityExpansionState toolActivityExpansionState,
+        bool animateWorkEntrance,
+        bool animateLoading) => row.Kind switch
     {
-        ReactorTimelineRowKind.Loading => BuildLoading(row),
+        ReactorTimelineRowKind.Loading => BuildLoading(row, animateLoading),
+        ReactorTimelineRowKind.HistoryUnavailable => BuildHistoryUnavailable(row),
         ReactorTimelineRowKind.LoadEarlier => BuildLoadEarlier(row),
         ReactorTimelineRowKind.Thinking => BuildThinking(row),
         ReactorTimelineRowKind.Activity when row.Activity is { } activity =>
             ToolCallCardRenderer.BuildActivity(
                 row.Props.Timeline,
                 activity,
-                toolActivityExpansionState),
+                toolActivityExpansionState,
+                entry => BuildEntry(
+                    ReactorTimelineRow.FromEntry(row.Props, entry, false, default),
+                    entry, speakingEntryId, hoveredEntryId, isFocused, toggleSpeechAsync, setEntryHovered),
+                animateEntrance: animateWorkEntrance),
         _ when row.Entry is { } entry => BuildEntry(
             row,
             entry,
@@ -301,7 +461,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         _ => Empty(),
     };
 
-    private static Element BuildLoading(ReactorTimelineRow row)
+    private static Element BuildLoading(ReactorTimelineRow row, bool animate)
     {
         var available = Math.Max(32, ChatVisuals.ProseWidth(row.Props.ViewportWidth));
         var placeholders = new[] { 260d, 180d, 320d, 140d }
@@ -319,18 +479,136 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         return VStack(12,
                 Text(LocalizedOrDefault("Chat_Timeline_Loading", "Loading messages..."), 12,
                     FontWeights.Normal, "ChatSecondaryTextBrush"),
-                VStack(12, placeholders))
+                VStack(12, placeholders)
+                    .AutomationId("ChatTimelineLoadingSkeleton")
+                    .OnMount(element =>
+                    {
+                        if (animate)
+                            StartLoadingPulse(element);
+                    })
+                    .OnUnmount(StopLoadingPulse))
             .Margin(0, 32)
             .HAlign(HorizontalAlignment.Stretch)
             .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
     }
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<FrameworkElement,
+        Microsoft.UI.Xaml.Media.Animation.Storyboard> s_loadingPulses = new();
+
+    // Web's history skeleton shimmers on a 2 s ease-in-out loop; mirror it with an opacity pulse.
+    private static void StartLoadingPulse(FrameworkElement element)
+    {
+        StopLoadingPulse(element);
+        var pulse = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = 1,
+            To = .45,
+            Duration = TimeSpan.FromSeconds(1),
+            AutoReverse = true,
+            RepeatBehavior = Microsoft.UI.Xaml.Media.Animation.RepeatBehavior.Forever,
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.SineEase
+            {
+                EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseInOut,
+            },
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(pulse, element);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(pulse, "Opacity");
+        var storyboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        storyboard.Children.Add(pulse);
+        s_loadingPulses.AddOrUpdate(element, storyboard);
+        element.Unloaded -= OnLoadingPulseUnloaded;
+        element.Unloaded += OnLoadingPulseUnloaded;
+        storyboard.Begin();
+    }
+
+    private static void OnLoadingPulseUnloaded(object sender, RoutedEventArgs args)
+    {
+        if (sender is FrameworkElement element)
+            StopLoadingPulse(element);
+    }
+
+    private static void StopLoadingPulse(FrameworkElement element)
+    {
+        if (!s_loadingPulses.TryGetValue(element, out var storyboard))
+            return;
+        storyboard.Stop();
+        s_loadingPulses.Remove(element);
+        element.Unloaded -= OnLoadingPulseUnloaded;
+        element.Opacity = 1;
+    }
+
+    private static Element HistoryRetryButton(ReactorChatTimelineProps props)
+    {
+        var label = LocalizedOrDefault("Chat_History_Retry", "Retry");
+        return Button(HStack(8,
+                TextBlock(FluentIconCatalog.Refresh)
+                    .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                    .FontSize(14)
+                    .VAlign(VerticalAlignment.Center)
+                    .AccessibilityView(AccessibilityView.Raw),
+                TextBlock(label).VAlign(VerticalAlignment.Center)),
+                () => props.OnRetryHistory?.Invoke())
+            .IsEnabled(props.OnRetryHistory is not null)
+            .AutomationName(label)
+            .AutomationId("ChatHistoryRetry");
+    }
+
+    // Web chat-conversation-history-error.tsx: full stage when nothing is cached.
+    private static Element BuildHistoryUnavailable(ReactorTimelineRow row)
+    {
+        var title = LocalizedOrDefault("Chat_History_UnavailableTitle", "Couldn't load this conversation");
+        return VStack(12,
+                TextBlock(FluentIconCatalog.StatusWarn)
+                    .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                    .FontSize(32)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+                    .HAlign(HorizontalAlignment.Center)
+                    .AccessibilityView(AccessibilityView.Raw),
+                Text(title, 20, FontWeights.SemiBold)
+                    .HAlign(HorizontalAlignment.Center)
+                    .TextAlignment(TextAlignment.Center)
+                    .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2),
+                Text(LocalizedOrDefault("Chat_History_UnavailableBody", "Try again to load its messages."),
+                        14, FontWeights.Normal, "TextFillColorSecondaryBrush")
+                    .HAlign(HorizontalAlignment.Center)
+                    .TextAlignment(TextAlignment.Center),
+                HistoryRetryButton(row.Props).HAlign(HorizontalAlignment.Center))
+            .Margin(0, 48)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationId("ChatHistoryUnavailable")
+            .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Assertive);
+    }
+
+    // Web's inline failure keeps the cached transcript and adds a polite status with Retry.
+    private static Element BuildHistoryFailedBanner(ReactorChatTimelineProps props, double viewportWidth) =>
+        Border(HStack(12,
+                Text(LocalizedOrDefault("Chat_History_UnavailableTitle", "Couldn't load this conversation"),
+                        13, FontWeights.Normal, "TextFillColorSecondaryBrush")
+                    .VAlign(VerticalAlignment.Center),
+                HistoryRetryButton(props)))
+            .Padding(12, 8)
+            .Margin(ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset, 8)
+            .MaxWidth(ChatVisuals.ReadingWidth)
+            .CornerRadius(8)
+            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationId("ChatHistoryFailedStatus")
+            .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+
     private static Element BuildLoadEarlier(ReactorTimelineRow row)
     {
-        var label = LocalizedOrDefault("Chat_Timeline_LoadEarlier", "Load earlier messages");
-        return Button(label, () => row.Props.Timeline.OnLoadMoreHistory?.Invoke())
+        var label = row.Props.Timeline.LoadingOlderHistory
+            ? LocalizedOrDefault("Chat_Timeline_Loading", "Loading messages...")
+            : LocalizedOrDefault("Chat_Timeline_LoadEarlier", "Load earlier messages");
+        return Button(label, async () =>
+            {
+                if (row.Props.Timeline.OnLoadMoreHistory is { } load)
+                    await load();
+            })
+            .IsEnabled(!row.Props.Timeline.LoadingOlderHistory)
             .Margin(0, 8)
             .HAlign(HorizontalAlignment.Center)
+            .AutomationId("ChatLoadEarlier")
             .AutomationName(label);
     }
 
@@ -345,6 +623,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 FontWeights.Normal,
                 "TextFillColorSecondaryBrush")
             .FontStyle(global::Windows.UI.Text.FontStyle.Italic)
+            .Set(text => ChatVisuals.TextShimmer(text, true))
             .Margin(0, 12);
     }
 
@@ -413,11 +692,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .BorderThickness(queuedMessage is null ? 0 : 1)
             .CornerRadius(ChatVisuals.SurfaceRadius)
-            .Padding(16, 12)
+            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
 
         return VStack(
+                0,
                 bubble,
                 failed && !string.IsNullOrWhiteSpace(queuedMessage?.ErrorText)
                     ? TextBlock(queuedMessage.ErrorText)
@@ -446,9 +726,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Opacity(showFooter ? 1 : 0)
                     .Set(panel => panel.IsHitTestVisible = showFooter)
                     .AutomationId(queuedMessage is null ? string.Empty : $"ChatQueuedMessageFooter_{queuedMessage.Id}")
-                    .Margin(16, queuedMessage is null ? 2 : 4, 4, 0)
+                    .Margin(16, ChatVisuals.CompactGap, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
-            .Margin(32, 8, 0, row.Props.ViewportWidth < ChatVisuals.FooterBreakpoint ? 4 : 8)
+            .Margin(32, ChatVisuals.CompactGap, 0, ChatVisuals.CompactGap)
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationName(accessibleText)
             .AutomationId(queuedMessage is null ? string.Empty : $"ChatQueuedMessage_{queuedMessage.Id}")
@@ -521,10 +801,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             content.Add(BuildSafeMarkdown(string.Empty));
 
         var bubble = Border(VStack(ChatVisuals.BlockGap, content.ToArray()))
-            .Padding(0, 4)
+            .Padding(0)
             .HAlign(HorizontalAlignment.Stretch);
 
-        var turnInset = row.Props.ViewportWidth < ChatVisuals.FooterBreakpoint ? 8 : 12;
+        var turnInset = ChatVisuals.TurnGap;
         return Grid(
                 [GridSize.Auto, GridSize.Star(), GridSize.Auto],
                 [GridSize.Auto],
@@ -534,7 +814,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 VStack(
                         4,
                         bubble,
-                        BuildAssistantFooter(
+                        (entry.Presentation ?? metadata?.Presentation)?.Phase == "commentary" ? Empty() : BuildAssistantFooter(
                             row,
                             entry,
                             isSpeaking,
@@ -603,6 +883,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .AutomationName(identity?.DisplayName ?? "Assistant");
     }
 
+    // Links follow the web chat: http/https anchors (including bare and www.
+    // URLs) are real WinUI hyperlinks in the Windows accent color, without an
+    // underline, that open in the default browser. Reactor admits only http/https/mailto; any other
+    // scheme renders as plain label text. Images and raw HTML stay inert.
     internal static Element BuildSafeMarkdown(string? text, Func<string, bool>? tryCopy = null)
     {
         var options = new MarkdownOptions
@@ -610,14 +894,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             Heading = ChatMarkdownPresentation.Heading,
             Paragraph = ChatMarkdownPresentation.Paragraph,
             CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
-            ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml,
+            CodeFontFamily = ChatVisuals.CodeFontFamily,
+            ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml |
+                MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks,
             Image = (alt, _) => Text(
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
                     14,
                     FontWeights.Normal,
                     "TextFillColorPrimaryBrush")
                 .IsTextSelectionEnabled(true),
-            LinkBuilder = (children, _) => HStack(children),
             HtmlBlock = raw => Text(
                     ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw),
                     14,
@@ -626,8 +911,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .IsTextSelectionEnabled(true),
         };
 
-        return ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Advanced.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options));
+        return ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(
+            Microsoft.UI.Reactor.Advanced.Factories.Markdown(
+                ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true), options)));
     }
 
     private static Element BuildAssistantFooter(
@@ -672,7 +958,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Grid(column: 0),
                 HStack(4, children.ToArray()).Margin(8, 0, 0, 0)
                     .HAlign(HorizontalAlignment.Left).Grid(column: 1))
-            .Margin(0, 4, 0, 0)
             .HAlign(HorizontalAlignment.Stretch);
     }
 
@@ -868,18 +1153,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildReasoning(ChatTimelineItem entry)
     {
-        var content = Text(
-                entry.Text ?? string.Empty,
-                12,
-                FontWeights.Normal,
-                "TextFillColorSecondaryBrush")
-            .IsTextSelectionEnabled(true);
-        return Expander(
-                LocalizedOrDefault("Chat_Reasoning_ThinkingHeader", "Thinking"),
-                content)
+        return Border(VStack(ChatVisuals.CompactGap,
+                Text(LocalizedOrDefault("Chat_Run_Thinking", "Thinking"),
+                    12, FontWeights.Normal, "TextFillColorSecondaryBrush")
+                    .FontStyle(global::Windows.UI.Text.FontStyle.Italic)
+                    .Set(text => ChatVisuals.TextShimmer(text, entry.IsStreaming)),
+                BuildSafeMarkdown(entry.Text)))
             .HAlign(HorizontalAlignment.Stretch)
-            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .Margin(0, ChatVisuals.BlockGap / 2);
+            .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
+            .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
+            .BorderThickness(1)
+            .CornerRadius(8)
+            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
+            .Margin(0, ChatVisuals.CompactGap);
     }
 
     private static Element BuildPermission(ReactorTimelineRow row, ChatTimelineItem entry)
@@ -1224,6 +1510,9 @@ internal sealed record ReactorTimelineRow(
     public static ReactorTimelineRow Loading(ReactorChatTimelineProps props) =>
         new("timeline:loading", ReactorTimelineRowKind.Loading, props, null);
 
+    public static ReactorTimelineRow HistoryUnavailable(ReactorChatTimelineProps props) =>
+        new("timeline:history-unavailable", ReactorTimelineRowKind.HistoryUnavailable, props, null);
+
 }
 
 internal enum ReactorTimelineRowKind
@@ -1233,6 +1522,7 @@ internal enum ReactorTimelineRowKind
     Thinking,
     LoadEarlier,
     Loading,
+    HistoryUnavailable,
 }
 
 internal readonly record struct ChatAssistantRunPosition(bool IsStart, bool IsEnd);

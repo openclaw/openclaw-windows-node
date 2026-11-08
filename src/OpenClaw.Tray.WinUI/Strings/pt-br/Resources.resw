@@ -3032,27 +3032,26 @@ Use uma destas opções:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Ferramenta · {0}</value>
   </data>
-  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>Executou {0} comando</value></data>
-  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>Executou {0} comandos</value></data>
-  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>leu {0} arquivo</value></data>
-  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>leu {0} arquivos</value></data>
-  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>editou {0} arquivo</value></data>
-  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>editou {0} arquivos</value></data>
-  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>escreveu {0} arquivo</value></data>
-  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>escreveu {0} arquivos</value></data>
-  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>executou {0} busca</value></data>
-  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>executou {0} buscas</value></data>
-  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>buscou {0} página</value></data>
-  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>buscou {0} páginas</value></data>
-  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>usou {0} ferramenta</value></data>
-  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>usou {0} ferramentas</value></data>
-  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>usou {1}</value></data>
-  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>usou {1} {0} vezes</value></data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} comando</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} comandos</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} leitura</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} leituras</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} edição</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} edições</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} gravação</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} gravações</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} pesquisa</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} pesquisas</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} requisição</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} requisições</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} outra operação</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} outras operações</value></data>
   <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>Executando {0}</value></data>
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Concluído</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Expandido</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Recolhido</value></data>
   <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Atividade: {0}. {1} ferramentas. {2}.</value></data>
+  <data name="Chat_Activity_AutomationFormatOne" xml:space="preserve"><value>Atividade: {0}. {1} ferramenta. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Pensando</value>
   </data>
@@ -4927,6 +4926,12 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
     <value>Mostra detalhes de chamadas de ferramentas e uso de tokens diretamente na conversa.</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Header.Text" xml:space="preserve">
+    <value>Mostrar raciocínio</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
+    <value>Mostrar o raciocínio fornecido pelo assistente na conversa.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacidade</value>
@@ -8182,6 +8187,10 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>Compactando contexto</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Tentando novamente após compactar o contexto</value></data>
   <data name="Chat_Run_Retry" xml:space="preserve"><value>Repetindo a solicitação ao modelo</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Tentando novamente em {0}s</value></data>
+  <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>Não foi possível carregar esta conversa</value></data>
+  <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>Tente novamente para carregar as mensagens.</value></data>
+  <data name="Chat_History_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Chat_Run_Thinking" xml:space="preserve"><value>Pensando</value></data>
   <data name="Chat_Run_Responding" xml:space="preserve"><value>Respondendo</value></data>
   <data name="Chat_Run_Working" xml:space="preserve"><value>Trabalhando</value></data>
@@ -8308,4 +8317,55 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
+  <data name="Chat_Activity_Worked" xml:space="preserve">
+    <value>Trabalho realizado</value>
+  </data>
+  <data name="Chat_Activity_WorkedFor" xml:space="preserve">
+    <value>Trabalhou por {0}</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsOne" xml:space="preserve">
+    <value>{0} chamada de ferramenta</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsMany" xml:space="preserve">
+    <value>{0} chamadas de ferramenta</value>
+  </data>
+  <data name="Chat_Tool_InputTooLarge" xml:space="preserve">
+    <value>A entrada da ferramenta excede o limite seguro de exibição.</value>
+  </data>
+  <data name="Chat_ToolRecovery_Preview" xml:space="preserve"><value>Esta é uma prévia truncada.</value></data>
+  <data name="Chat_ToolRecovery_Loading" xml:space="preserve"><value>Carregando a saída completa...</value></data>
+  <data name="Chat_ToolRecovery_Loaded" xml:space="preserve"><value>Saída completa carregada.</value></data>
+  <data name="Chat_ToolRecovery_Limited" xml:space="preserve"><value>A saída permanece truncada no limite seguro de exibição.</value></data>
+  <data name="Chat_ToolRecovery_Unsupported" xml:space="preserve"><value>Este Gateway não permite recuperar a saída completa.</value></data>
+  <data name="Chat_ToolRecovery_NotFound" xml:space="preserve"><value>Este resultado salvo da ferramenta não está mais disponível.</value></data>
+  <data name="Chat_ToolRecovery_NotVisible" xml:space="preserve"><value>Este resultado da ferramenta não está visível para esta conexão.</value></data>
+  <data name="Chat_ToolRecovery_Oversized" xml:space="preserve"><value>Este resultado excede o limite de resposta do Gateway.</value></data>
+  <data name="Chat_ToolRecovery_Stale" xml:space="preserve"><value>A conversa mudou. Reabra os detalhes da ferramenta.</value></data>
+  <data name="Chat_ToolRecovery_Mismatched" xml:space="preserve"><value>O resultado recebido não corresponde a esta chamada de ferramenta.</value></data>
+  <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Não foi possível carregar a saída completa.</value></data>
+  <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>A saída completa requer a identidade do resultado salvo e uma conta atual verificada.</value></data>
+  <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Mostrar saída completa</value></data>
+  <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
+  <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="Chat_Search_Placeholder" xml:space="preserve"><value>Pesquisar nesta conversa</value></data>
+  <data name="Chat_Search_Open" xml:space="preserve"><value>Localizar na conversa</value></data>
+  <data name="Chat_Search_Close" xml:space="preserve"><value>Fechar pesquisa</value></data>
+  <data name="Chat_Search_Count" xml:space="preserve"><value>{0} mensagens correspondentes no histórico carregado</value></data>
+  <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>
+  <data name="Chat_JumpLatest" xml:space="preserve"><value>Ir para as mais recentes</value></data>
+  <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagentes, {1} trabalhando, {2} precisam de atenção</value></data>
+  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inativo</value></data>
+  <data name="Chat_Run_Subagents" xml:space="preserve"><value>Aguardando subagentes</value></data>
+  <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparando entrada</value></data>
+  <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>falhou</value></data>
+  <data name="Chat_Tool_Completed" xml:space="preserve"><value>Concluído</value></data>
+  <data name="Chat_Review_Required" xml:space="preserve"><value>Revisão do provedor necessária</value></data>
+  <data name="Chat_Review_Warning" xml:space="preserve"><value>Aviso de revisão do provedor</value></data>
+  <data name="Chat_Review_Working" xml:space="preserve"><value>Revisão do provedor em andamento</value></data>
+  <data name="Chat_Review_Approved" xml:space="preserve"><value>Revisão do provedor aprovada</value></data>
+  <data name="Chat_Review_Denied" xml:space="preserve"><value>O provedor não aprovou a solicitação</value></data>
+  <data name="Chat_History_CursorStalled" xml:space="preserve"><value>O histórico anterior não avançou. Tente novamente após recarregar a conversa.</value></data>
+  <data name="Chat_Review_Web" xml:space="preserve"><value>Revise esta solicitação no chat da web antes de continuar.</value></data>
+  <data name="Chat_Review_TimedOut" xml:space="preserve"><value>A revisão do provedor expirou</value></data>
+  <data name="Chat_Review_Aborted" xml:space="preserve"><value>Revisão do provedor cancelada</value></data>
 </root>

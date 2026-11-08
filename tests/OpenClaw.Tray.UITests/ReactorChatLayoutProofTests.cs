@@ -29,7 +29,7 @@ using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
-public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
+public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 {
     private Window? _captureWindow;
     private const string Draft = "Turn this into a schedule for tomorrow.";
@@ -1341,6 +1341,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                         $"User top={Bounds(userBubble, surface).Top}; offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; extent={scroll.ExtentHeight}");
                 }
                 Assert.Equal(ChatVisuals.SurfaceRadius, userBubble.CornerRadius.TopLeft);
+                Assert.Equal(new Thickness(12, 8, 12, 8), userBubble.Padding);
                 Assert.IsType<SolidColorBrush>(userText.Foreground);
 
                 var assistantText = FindDescendants<RichTextBlock>(host)
@@ -1350,9 +1351,13 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var assistantSurface = Ancestors(assistantText).OfType<Border>().First();
                 Assert.Null(assistantSurface.Background);
                 Assert.Equal(new Thickness(0), assistantSurface.BorderThickness);
-                Assert.Equal(new Thickness(0, 4, 0, 4), assistantSurface.Padding);
+                Assert.Equal(new Thickness(0), assistantSurface.Padding);
 
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
+                Assert.Equal(96, composer.MinHeight);
+                Assert.Equal(new Thickness(16, 8, 16, 8), Assert.IsType<StackPanel>(composer.Child).Padding);
+                Assert.Equal(4, Assert.IsType<StackPanel>(composer.Child).Spacing);
+                Assert.InRange(composer.ActualHeight, 96, 112);
                 Assert.InRange(composer.ActualWidth, 1, 768);
                 AssertCentered(surface, composer, assistantSurface);
                 var userRight = Bounds(userBubble, surface).Right;
@@ -2634,7 +2639,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var nested = VStack(2, TextBlock("Nested list content").Margin(8)).Margin(3, 7, 5, 9);
                 var before = VStack(8, TextBlock("Before").Margin(0, 8), nested);
                 var normalized = Assert.IsType<StackElement>(ChatMarkdownPresentation.MessageBlocks(before));
-                Assert.Equal(ChatVisuals.BlockGap, normalized.Spacing);
+                Assert.Equal(12, normalized.Spacing);
                 Assert.Equal(new Thickness(3, 0, 5, 0), normalized.Children[1].Modifiers?.Margin);
                 Assert.Same(nested.Children, Assert.IsType<StackElement>(normalized.Children[1]).Children);
                 Assert.Equal(new Thickness(8), nested.Children[0].Modifiers?.Margin);
@@ -2654,7 +2659,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 });
                 for (var index = 1; index < blocks.Length; index++)
                     Assert.InRange(Bounds(blocks[index], surface).Top - Bounds(blocks[index - 1], surface).Bottom,
-                        ChatVisuals.BlockGap - 1, ChatVisuals.BlockGap + 1);
+                        11, 13);
             });
         });
     }
@@ -2710,7 +2715,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         bool initialThreadIsExplicitSelection = true,
         SettingsManager? sandboxSettings = null,
         Action? onSandboxSettings = null,
-        SandboxStatusStore? sandboxStatus = null)
+        SandboxStatusStore? sandboxStatus = null,
+        IChatDataProvider? renderProvider = null)
     {
         await ui.ResetContainerAsync();
         using var settingsDirectory = new TempDirectory();
@@ -2734,7 +2740,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Application.Current.UnhandledException += reportException;
                 session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore,
                     sandboxStatus ?? new SandboxStatusStore()).Create(
-                    provider,
+                    renderProvider ?? provider,
                     new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), _ => { },
                         SessionSelected: (key, _) => onSessionSelected?.Invoke(key),
                         SandboxSettingsNavigation: onSandboxSettings ?? (() => { })),
@@ -2756,7 +2762,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     session.ViewModel.SetDraft(string.Join("\n", Enumerable.Repeat(Draft, 8)));
                 host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
-                    new(provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
+                    new(renderProvider ?? provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
                         InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection)));
                 surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
@@ -2892,6 +2898,22 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") != "1"
             || Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR") is not { Length: > 0 } directory)
             return;
+        var resized = await ui.RunOnUIAsync(() =>
+        {
+            var window = Assert.IsType<Window>(_captureWindow);
+            var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+            var scale = root.XamlRoot.RasterizationScale;
+            var width = (int)Math.Ceiling(root.ActualWidth * scale);
+            var height = (int)Math.Ceiling(root.ActualHeight * scale);
+            var client = window.AppWindow.ClientSize;
+            if (client.Width >= width && client.Height >= height)
+                return Task.FromResult(false);
+            // RenderTargetBitmap still clips descendants outside the host client area.
+            window.AppWindow.ResizeClient(new(Math.Max(client.Width, width), Math.Max(client.Height, height)));
+            return Task.FromResult(true);
+        });
+        if (resized)
+            await SettleAsync();
         var target = Path.Combine(directory, name);
         if (Environment.GetEnvironmentVariable("OPENCLAW_NATIVE_COMPOSITOR_CAPTURE") == "1")
         {

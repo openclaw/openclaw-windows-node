@@ -32,7 +32,9 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         }), progress.Active, progress.StartedAt);
         var elapsed = ChatRunProgressProjection.Elapsed(progress.StartedAt,
             progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
-        var label = LocalizedLabel(progress.Label);
+        var label = progress.Label == ChatRunProgressProjection.RetryLabel
+            ? ChatRunProgressProjection.RetryLabelText(progress, now, ReactorQuestionPanel.L)
+            : LocalizedLabel(progress.Label);
         var text = elapsed.Length > 0 ? $"{label} ({elapsed})" : label;
         var visibleText = elapsed;
         if (progress.OutputTokens is { } tokens)
@@ -43,6 +45,9 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         }
         if (visibleText.Length == 0)
             visibleText = label;
+        if (progress.Waiting || progress.Label is "Compacting context" or
+            "Retrying after context compaction" or "Retrying the model request")
+            visibleText = text;
         return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
             Grid([GridSize.Star()], [GridSize.Star()],
                 NativeWorkingClawElement.NativeWorkingClaw()
@@ -50,7 +55,12 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
                     .Size(18, 18))
                 .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
                 .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatRunProgressClaw"),
-            TextBlock(visibleText).FontSize(12).Set(ChatVisuals.StyleSecondaryText)
+            TextBlock(visibleText).FontSize(12)
+                .Set(text =>
+                {
+                    ChatVisuals.StyleSecondaryText(text);
+                    ChatVisuals.TextShimmer(text, progress.Active && !progress.Waiting);
+                })
                 .Grid(column: 1).Margin(8, 0, 0, 0)
                 .VAlign(VerticalAlignment.Center).AutomationName(text)
                 .TextWrapping(TextWrapping.Wrap).AutomationId("ChatRunProgressText"))
@@ -103,6 +113,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             "Finished" => "Finished",
             "Waiting for approval" => "Approval",
             "Waiting for your answer" => "Answer",
+            "Waiting for subagents" => "Subagents",
             "Compacting context" => "Compacting",
             "Retrying after context compaction" => "CompactionRetry",
             "Retrying the model request" => "Retry",

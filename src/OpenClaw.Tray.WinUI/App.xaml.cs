@@ -700,6 +700,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Seed chat tool-call visibility from persisted settings so the timeline
         // honors the Settings > Chat "Show tool calls and usage" toggle on launch.
         OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(_settings.ShowChatToolCalls);
+        OpenClawTray.Chat.OpenClawReactorChatRoot.SetThinkingVisible(_settings.ShowChatThinking);
         _settingsChangeCoordinator = CreateSettingsChangeCoordinator(_settings.ToSettingsData());
         _openTelemetryConnection = new OpenTelemetryEndpointConnection();
         await _openTelemetryConnection.ApplyAsync(

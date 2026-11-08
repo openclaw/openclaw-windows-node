@@ -74,6 +74,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("annotatedScrollBarRef,", timeline);
         Assert.Contains("rows.Count - 1", timeline);
         Assert.Contains("rows.Count,", timeline);
+        Assert.Contains("jumpRevision,", timeline);
         Assert.Contains("initialTailRequestKey", timeline);
         Assert.Contains("var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null", timeline);
         Assert.DoesNotContain("ItemsRepeater(", timeline);
@@ -90,8 +91,11 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorItemsViewScrollController.cs"));
 
-        Assert.Contains("context.BindFor(itemsView, element).Reference", binding);
+        Assert.Contains("context.BindFor(itemsView, element)", binding);
+        Assert.Contains("binding.Reference(", binding);
         Assert.Contains("VerticalScrollController = scrollBar?.ScrollController", binding);
+        Assert.Contains("explicitJump: false", binding);
+        Assert.Contains("oldElement.JumpRevision != newElement.JumpRevision", binding);
         Assert.DoesNotContain(".Current", binding);
     }
 
@@ -126,7 +130,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
-        Assert.DoesNotContain("ScrollTo(", binding);
         Assert.DoesNotContain("DispatcherTimer", binding);
         Assert.DoesNotContain("TextLength != current.TextLength", binding);
         Assert.DoesNotContain("ReactorStreamingTailState", binding);
@@ -138,6 +141,14 @@ public sealed class ChatTimelinePresentationTests
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
+        Assert.DoesNotContain("ScrollTo(", viewChanged);
+
+        var bringStart = binding.IndexOf("private bool StartTailRequest", StringComparison.Ordinal);
+        var bringEnd = binding.IndexOf("private object? GetRequestItem", bringStart, StringComparison.Ordinal);
+        var bring = binding[bringStart..bringEnd];
+        Assert.Contains("if (scrollToBottom)", bring);
+        Assert.Contains("scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight", bring);
+        Assert.Contains("itemsView.StartBringItemIntoView(", bring);
 
         var completedStart = binding.IndexOf("private void OnScrollCompleted", StringComparison.Ordinal);
         var stateChangedStart = binding.IndexOf("private void OnScrollStateChanged", completedStart, StringComparison.Ordinal);
@@ -160,7 +171,7 @@ public sealed class ChatTimelinePresentationTests
 
         var requestStart = binding.IndexOf("public void Request(", StringComparison.Ordinal);
         var updateStart = binding.IndexOf("public void UpdateTail(", requestStart, StringComparison.Ordinal);
-        Assert.Contains("AwaitLayout();", binding[requestStart..updateStart]);
+        Assert.Contains("AwaitLayout(renderAfterLayout: explicitJump)", binding[requestStart..updateStart]);
 
         var loadStart = binding.IndexOf("private void OnLoaded(", StringComparison.Ordinal);
         var attachStart = binding.IndexOf("private void AttachScrollView(", loadStart, StringComparison.Ordinal);
@@ -172,7 +183,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("DetachLayout();", initialPositioning);
         Assert.Contains("AttachScrollView();", initialPositioning);
         Assert.Contains("initialRequest.TryResolve(", initialPositioning);
-        Assert.Contains("StartTailRequest(request)", initialPositioning);
+        Assert.Contains("StartTailRequest(request, scrollToBottom)", initialPositioning);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", initialPositioning);
         Assert.Contains("new InitialTailNavigationRequest(_version)", initialPositioning);
         Assert.Contains("!itemsView.IsLoaded || initialRequest.Version != _version", initialPositioning);
@@ -590,7 +601,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("CompositionTarget.Rendering += _confirming", confirm);
         Assert.Contains("case InitialTailLanding.Landed:", confirm);
         Assert.Contains("QueueInitialTailRetry(version, generation)", confirm);
-        Assert.Contains("StartTailRequest(request)", confirm);
+        Assert.Contains("StartTailRequest(request, scrollToBottom)", confirm);
 
         var detachLayoutStart = binding.IndexOf("private void DetachLayout(", StringComparison.Ordinal);
         var detachRenderingStart = binding.IndexOf("private void DetachRendering(", detachLayoutStart, StringComparison.Ordinal);
@@ -605,7 +616,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.True(lateRows > 0);
         Assert.True(lateRows < update.IndexOf("QueueTailRequest(", StringComparison.Ordinal));
         Assert.Contains("_awaitingInitialRows = false;", update[lateRows..]);
-        Assert.Contains("AwaitLayout();", update[lateRows..]);
+        Assert.Contains("AwaitLayout(renderAfterLayout: _explicitJumpPending)", update[lateRows..]);
 
         var cancelStart = binding.IndexOf("private void CancelPendingNavigation", StringComparison.Ordinal);
         var cancelEnd = binding.IndexOf("private void OnViewChanged", cancelStart, StringComparison.Ordinal);
@@ -631,7 +642,7 @@ public sealed class ChatTimelinePresentationTests
         var completeStart = binding.IndexOf("private void CompleteInitialLanding(", retryStart, StringComparison.Ordinal);
         Assert.True(retryStart > handlerEnd && completeStart > retryStart);
         var retry = binding[retryStart..completeStart];
-        var bring = retry.IndexOf("StartTailRequest(request)", StringComparison.Ordinal);
+        var bring = retry.IndexOf("StartTailRequest(request, _explicitJumpPending)", StringComparison.Ordinal);
         Assert.True(bring > 0);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", retry[..bring]);
         Assert.Contains("IsInitialConfirmationCurrent(version, generation)", retry[..bring]);
@@ -682,7 +693,7 @@ public sealed class ChatTimelinePresentationTests
         var handler = binding[handlerStart..handlerEnd];
         Assert.Contains("!ReferenceEquals(scrollView, itemsView.ScrollView)", handler);
         Assert.Contains("_confirmation.Invalidate();", handler);
-        Assert.Contains("AwaitLayout();", handler);
+        Assert.Contains("AwaitLayout(renderAfterLayout: _explicitJumpPending)", handler);
     }
 
     [Fact]
@@ -747,6 +758,128 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorTimeline_ReaderToggledDisclosureGrowsDownwardThenRestoresTailAnchor()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        string Slice(string start, string end)
+        {
+            var from = binding.IndexOf(start, StringComparison.Ordinal);
+            var to = binding.IndexOf(end, from, StringComparison.Ordinal);
+            Assert.True(from >= 0 && to > from, $"Missing {start}..{end}");
+            return binding[from..to];
+        }
+
+        Assert.Contains("itemsView.AddHandler(UIElement.PointerPressedEvent, _readerPointerPressed, true)", binding);
+        Assert.Contains("itemsView.RemoveHandler(UIElement.PointerPressedEvent, _readerPointerPressed)", binding);
+        Assert.Contains("global::Windows.System.VirtualKey.Enter or global::Windows.System.VirtualKey.Space", binding);
+
+        // Only the Expander's own header toggle switches to top anchoring, after the
+        // ordinary reader-input cancellation has run.
+        var input = Slice("private void OnReaderInput", "private bool IsDisclosureHeader");
+        Assert.True(input.IndexOf("CancelPendingNavigation();", StringComparison.Ordinal)
+            < input.IndexOf("scrollView.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
+        Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
+
+        // Any other reader input and every programmatic tail scroll returns to bottom anchoring.
+        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
+        Assert.Contains("RestoreTailAnchor();", Slice("private void CancelPendingNavigation", "_version++"));
+        Assert.Contains("RestoreTailAnchor();", Slice("private bool StartTailRequest", "private object? GetRequestItem"));
+        Assert.Contains("RestoreTailAnchor();", Slice("// Reflow needs an offset correction", "scrollView.ScrollTo("));
+        Assert.Contains("_disclosureAnchored = false;", Slice("private void DetachScrollView", "public void Dispose"));
+    }
+
+    [Fact]
+    public void ToolRowExpanders_StayBorderlessInEveryHeaderState()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var visuals = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Chat", "ChatVisuals.cs"));
+        var resourcesStart = visuals.IndexOf("internal static void ToolRowExpanderResources", StringComparison.Ordinal);
+        var resources = visuals[resourcesStart..visuals.IndexOf("internal static void StylePicker", resourcesStart, StringComparison.Ordinal)];
+        foreach (var key in new[]
+                 {
+                     "ExpanderHeaderBorderBrush", "ExpanderHeaderBorderPointerOverBrush",
+                     "ExpanderHeaderBorderPressedBrush", "ExpanderHeaderDisabledBorderBrush",
+                 })
+        {
+            Assert.Contains($"\"{key}\"", resources);
+        }
+
+        // The content border is a TemplateBinding to Expander.BorderBrush, not a theme key.
+        var renderer = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs"));
+        Assert.Equal(2, CountOccurrences(
+            renderer,
+            ".BorderBrush(Theme.Ref(\"SubtleFillColorTransparentBrush\"))\n            .Resources(ChatVisuals.ToolRowExpanderResources)"));
+        // Expanded details have no card fill; nested calls hang off a thin guide line.
+        Assert.Equal(2, CountOccurrences(
+            renderer,
+            ".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))\n            .BorderBrush(Theme.Ref(\"SubtleFillColorTransparentBrush\"))"));
+        Assert.Equal(1, CountOccurrences(
+            renderer,
+            ".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))\n                .BorderBrush(Theme.Ref(\"SubtleFillColorTransparentBrush\"))"));
+        Assert.Contains("WithKey(\"nested-guide\")", renderer);
+        // Rows start on the prose edge: every tool Expander drops the built-in header inset.
+        Assert.Equal(3, CountOccurrences(renderer, "ChatVisuals.FlushToolRowExpander"));
+        Assert.Contains("expander.Resources[\"ExpanderHeaderPadding\"] = new Thickness(0);", visuals);
+        Assert.Contains("Border(Empty()).Width(1).Margin(7, 0, 16, 0)", renderer);
+
+        // Web tool card: transparent sections inside one thin-bordered, transparent
+        // card with the settled outcome ("Completed"/"failed") under a divider.
+        var detailStart = renderer.IndexOf("private static Element BuildDetailSection", StringComparison.Ordinal);
+        var detail = renderer[detailStart..renderer.IndexOf("private static string FormatToolDisplayArgs", detailStart, StringComparison.Ordinal)];
+        Assert.DoesNotContain(".BorderThickness(", detail);
+        Assert.DoesNotContain(".Background(", detail);
+        Assert.Contains(".AutomationName(label)", detail);
+        var cardStart = renderer.IndexOf("var outcome = entry.ToolResult switch", StringComparison.Ordinal);
+        var card = renderer[cardStart..renderer.IndexOf(".WithKey(\"details-card\")", cardStart, StringComparison.Ordinal)];
+        Assert.Contains("\"Chat_Tool_Completed\", \"Completed\"", card);
+        Assert.Contains("\"Chat_Tool_FailedInline\", \"failed\"", card);
+        Assert.Contains(".HAlign(HorizontalAlignment.Right)", card);
+        Assert.Contains(".BorderThickness(1)", card);
+        Assert.Contains(".BorderBrush(Theme.Ref(\"ChatStrokeBrush\"))", card);
+        Assert.Contains(".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))", card);
+        Assert.DoesNotContain(".ToolTip(", renderer);
+    }
+
+    [Fact]
+    public void ActiveWorkLabels_UseTheWebTextShimmerOnlyWhileRunning()
+    {
+        var chat = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat");
+        var visuals = File.ReadAllText(Path.Combine(chat, "ChatVisuals.cs"));
+        var shimmerStart = visuals.IndexOf("internal static void TextShimmer", StringComparison.Ordinal);
+        var shimmer = visuals[shimmerStart..visuals.IndexOf("private static void OnShimmerUnloaded", shimmerStart, StringComparison.Ordinal)];
+        // Windows animation preference and high contrast keep static text, like the web's media gates.
+        Assert.Contains("UISettings().AnimationsEnabled", shimmer);
+        Assert.Contains("AccessibilitySettings().HighContrast", shimmer);
+        Assert.Contains("RepeatBehavior.Forever", shimmer);
+        Assert.Contains("TimeSpan.FromMilliseconds(2200)", shimmer);
+        Assert.Contains("text.Unloaded += OnShimmerUnloaded", shimmer);
+
+        var renderer = File.ReadAllText(Path.Combine(chat, "ToolCallCardRenderer.cs"));
+        Assert.Contains("ChatVisuals.TextShimmer(text, entry.ToolResult is null or ChatToolCallStatus.InProgress)", renderer);
+        Assert.Contains("ChatVisuals.TextShimmer(text, summary.IsRunning)", renderer);
+        var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
+        Assert.Contains("ChatVisuals.TextShimmer(text, progress.Active && !progress.Waiting)", progress);
+        var timeline = File.ReadAllText(Path.Combine(chat, "ReactorChatTimeline.cs"));
+        Assert.Contains("ChatVisuals.TextShimmer(text, entry.IsStreaming)", timeline);
+    }
+
+    private static int CountOccurrences(string text, string normalizedValue)
+    {
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var count = 0;
+        for (var index = normalized.IndexOf(normalizedValue, StringComparison.Ordinal);
+             index >= 0;
+             index = normalized.IndexOf(normalizedValue, index + normalizedValue.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [Fact]
     public void ReactorTimeline_ReflowDispatchRechecksFollowEligibility()
     {
         var binding = File.ReadAllText(Path.Combine(
@@ -755,11 +888,14 @@ public sealed class ChatTimelinePresentationTests
         var dispatchStart = binding.IndexOf("private void DispatchTailRequest", StringComparison.Ordinal);
         var attachStart = binding.IndexOf("private void AttachScrollView", dispatchStart, StringComparison.Ordinal);
         var dispatch = binding[dispatchStart..attachStart];
-        var bringStart = dispatch.IndexOf("StartTailRequest(request)", StringComparison.Ordinal);
-
-        Assert.True(bringStart > 0);
-        Assert.Contains("TailNavigationPolicy.CanDispatch(renderAfterLayout, _following)", dispatch[..bringStart]);
-        Assert.Contains("TryConsume(_following, IsNearBottom(sender), _initialPending)", binding);
+        Assert.Contains("TailNavigationPolicy.CanDispatch(renderAfterLayout, _following)", dispatch);
+        Assert.Contains("if (_explicitJumpPending)", dispatch);
+        Assert.Contains("ConfirmInitialLanding(initialRequest.Version, request, scrollToBottom: true)", dispatch);
+        var confirmationStart = dispatch.IndexOf("private void ConfirmInitialLanding", StringComparison.Ordinal);
+        Assert.DoesNotContain("StartTailRequest(", dispatch[..confirmationStart]);
+        Assert.Contains("scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight", dispatch[..confirmationStart]);
+        Assert.Contains("var atBottom = IsAtBottom(scrollView);", binding);
+        Assert.Contains("TryConsume(_following, atBottom, _initialPending)", binding);
 
         var cancelStart = binding.IndexOf("private void CancelPendingNavigation", StringComparison.Ordinal);
         var cancelEnd = binding.IndexOf("private void OnViewChanged", cancelStart, StringComparison.Ordinal);
@@ -1182,11 +1318,22 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorChatTimeline.cs"));
 
-        Assert.Contains("var chronologicalEntries = props.Timeline.Entries;", timeline);
+        Assert.Contains("var chronologicalEntries = ChatReasoningPresentation.Project(", timeline);
+        Assert.Contains("props.Timeline.Entries, props.Timeline.ReasoningStream", timeline);
         Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
         Assert.Contains("ChatTimelineAssistantRuns.Describe(chronologicalEntries)", timeline);
         Assert.DoesNotContain("OrderEntriesForPresentation", timeline);
         Assert.Contains("includeMetadata: row.IsAssistantRunEnd", timeline);
+    }
+
+    [Fact]
+    public void ReactorTimeline_RealizationFocusCannotCancelPendingTailNavigation()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        Assert.Contains("itemsView.GotFocus += OnReaderFocus;", source);
+        Assert.Contains("itemsView.GotFocus -= OnReaderFocus;", source);
+        Assert.Contains("if (args.OriginalSource is Control { FocusState: FocusState.Keyboard })", source);
     }
 
     [Fact]
@@ -1220,7 +1367,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
-        Assert.Contains(".Padding(18, 8, 18, 10)", renderer);
+        Assert.Contains(".Padding(12, 10)", renderer);
         Assert.Contains("var body = RichTextBlock(content)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);
@@ -1230,13 +1377,11 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatToolActivity_", renderer);
         Assert.Contains("ChatToolCall_", renderer);
         Assert.Contains("internal sealed class ToolActivityCard : Component<ToolActivityCardProps>", renderer);
-        Assert.Contains("Element details = isExpanded", renderer);
+        Assert.Contains("Element details = !isExpanded", renderer);
         Assert.Contains("? VStack(", renderer);
-        Assert.Contains(".MinHeight(28)", renderer);
         Assert.Contains(".FontSize(12)", renderer);
         Assert.Contains(".BorderThickness(0)", renderer);
-        Assert.Contains(".Margin(0, isNested ? 0 : 8)", renderer);
-        Assert.Contains("? \"SubtleFillColorTransparentBrush\"", renderer);
+        Assert.Contains(".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))", renderer);
         Assert.Contains(": Empty();", renderer);
         Assert.DoesNotContain("activity.Tools.Select(BuildStandalone)", renderer);
     }

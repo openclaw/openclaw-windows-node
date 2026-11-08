@@ -57,6 +57,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _cameraRecordingConsentGiven;
     private bool _locationConsentGiven;
     private bool _showChatToolCalls;
+    private bool _showChatThinking = true;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
     {
@@ -242,6 +243,22 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
+    /// <summary>
+    /// "Show thinking" persists the setting. App's settings-save path applies it
+    /// to every live Reactor chat host.
+    /// </summary>
+    public bool ShowChatThinking
+    {
+        get => _showChatThinking;
+        set
+        {
+            if (SetField(ref _showChatThinking, value) && !_loading)
+            {
+                Persist(e => e.ShowChatThinking = value);
+            }
+        }
+    }
+
     public void Activate(object? parameter)
     {
         IsActive = true;
@@ -348,6 +365,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _cameraRecordingConsentGiven, s.CameraRecordingConsentGiven, nameof(CameraRecordingConsentGiven));
             SetField(ref _locationConsentGiven, s.LocationConsentGiven, nameof(LocationConsentGiven));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
+            SetField(ref _showChatThinking, s.ShowChatThinking, nameof(ShowChatThinking));
         }
         finally
         {
