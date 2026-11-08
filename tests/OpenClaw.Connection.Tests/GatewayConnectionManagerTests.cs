@@ -12,6 +12,91 @@ namespace OpenClaw.Connection.Tests;
 
 public class GatewayConnectionManagerTests : IDisposable
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ScheduledOperatorReconnect_QueuedBehindDisconnect_DoesNotReviveGateway(
+        bool postBootstrap,
+        bool snapshotDisconnect)
+    {
+        SetupGateway("gw-queued", "wss://queued.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask);
+        await manager.ConnectAsync("gw-queued");
+        var attempt = ((INodeLifecycleSource)manager).CaptureGatewayAttempt();
+        var snapshot = manager.CurrentSnapshot;
+        var semaphore = Assert.IsType<SemaphoreSlim>(
+            typeof(GatewayConnectionManager).GetField(
+                "_transitionSemaphore",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)!.GetValue(manager));
+
+        await semaphore.WaitAsync();
+        Task disconnect;
+        Task reconnect;
+        try
+        {
+            disconnect = snapshotDisconnect
+                ? manager.DisconnectIfCurrentAsync(snapshot)
+                : manager.DisconnectAsync();
+            reconnect = InvokeScheduledOperatorReconnect(manager, attempt, postBootstrap);
+            Assert.False(disconnect.IsCompleted);
+            Assert.False(reconnect.IsCompleted);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+
+        await Task.WhenAll(disconnect, reconnect).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Single(_factory.CreatedClients);
+        Assert.Null(manager.OperatorClient);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal("gw-queued", _registry.ActiveGatewayId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScheduledOperatorReconnect_CurrentAttempt_ReconnectsWithoutDeadlock(bool postBootstrap)
+    {
+        SetupGateway("gw-current", "wss://current.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask);
+        await manager.ConnectAsync("gw-current");
+
+        await InvokeScheduledOperatorReconnect(
+            manager,
+            ((INodeLifecycleSource)manager).CaptureGatewayAttempt(),
+            postBootstrap).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(2, _factory.CreatedClients.Count);
+        Assert.NotNull(manager.OperatorClient);
+        Assert.Equal("gw-current", _registry.ActiveGatewayId);
+    }
+
+    private static Task InvokeScheduledOperatorReconnect(
+        GatewayConnectionManager manager,
+        GatewayAttemptStamp attempt,
+        bool postBootstrap)
+    {
+        var method = typeof(GatewayConnectionManager).GetMethod(
+            "ScheduleOperatorReconnectAsync",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!;
+        return (Task)method.Invoke(manager,
+            [new OperatorReconnectRequest(attempt, postBootstrap
+                ? OperatorReconnectReason.PostBootstrapHandoff
+                : OperatorReconnectReason.OperatorTokenMismatch)])!;
+    }
+
     [Fact]
     public async Task RegistrySettlementCannotDisconnectANewerConnectionSnapshot()
     {
