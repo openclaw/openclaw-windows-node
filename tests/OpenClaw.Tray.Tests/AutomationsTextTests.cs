@@ -316,7 +316,7 @@ public sealed class AutomationsTextTests
         var dir = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Automations");
         var page = File.ReadAllText(Path.Combine(dir, "AutomationsRoot.cs"));
         var layout = page[page.IndexOf("return Grid([GridSize.Star()], [GridSize.Star()],", StringComparison.Ordinal)..];
-        var backdrop = layout.IndexOf("PageBackdrop(bandHeight)", StringComparison.Ordinal);
+        var backdrop = layout.IndexOf("PageBackdrop(bandHeight + topInset)", StringComparison.Ordinal);
         Assert.InRange(backdrop, 0, layout.IndexOf("ScrollView(", StringComparison.Ordinal));
 
         // The wash brush has a single owner, so no scrolling element can paint it again.
