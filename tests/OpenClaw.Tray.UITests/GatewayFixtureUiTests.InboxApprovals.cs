@@ -167,14 +167,17 @@ public sealed partial class GatewayFixtureUiTests
         var document = textPattern.DocumentRange;
         var documentText = document.GetText(-1);
         Assert.Equal(disclosure, documentText.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\r', '\n'));
-        var start = documentText.IndexOf(suffix, StringComparison.Ordinal);
-        Assert.True(start >= 0);
-        var range = document.Clone();
+        Assert.False(string.IsNullOrEmpty(suffix));
+        Assert.Contains(suffix, documentText, StringComparison.Ordinal);
+        // DocumentRange can begin at structural positions before its first text character.
+        // Native exact-text lookup locates the content itself without treating UTF-16 offsets
+        // or zero character movement as provider endpoint positions.
+        var range = document.FindText(suffix, 0, 0);
+        Assert.NotNull(range);
         const ComUia.TextPatternRangeEndpoint first = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start;
         const ComUia.TextPatternRangeEndpoint last = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_End;
-        range.MoveEndpointByRange(last, document, first);
-        Assert.Equal(start, range.MoveEndpointByUnit(first, ComUia.TextUnit.TextUnit_Character, start));
-        Assert.Equal(suffix.Length, range.MoveEndpointByUnit(last, ComUia.TextUnit.TextUnit_Character, suffix.Length));
+        Assert.True(range.CompareEndpoints(first, document, first) >= 0);
+        Assert.True(range.CompareEndpoints(last, document, last) <= 0);
         Assert.Equal(suffix, range.GetText(-1));
         range.Select();
         await WaitUiAsync(run, () =>
