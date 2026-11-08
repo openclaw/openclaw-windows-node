@@ -7852,8 +7852,6 @@
   <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} 项待处理</value></data>
   <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>免打扰</value></data>
   <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>免打扰</value></data>
-  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>审批请求始终会送达</value></data>
-  <data name="Inbox_DoNotDisturbApprovalsNote.Text" xml:space="preserve"><value>审批请求始终会送达</value></data>
   <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>免打扰已开启。{0}</value></data>
   <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>此电脑</value></data>
   <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>隐私</value></data>

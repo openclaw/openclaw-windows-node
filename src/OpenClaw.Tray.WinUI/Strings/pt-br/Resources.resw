@@ -7905,8 +7905,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Inbox_CountFormat" xml:space="preserve"><value>Pendentes: {0}</value></data>
   <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>Não incomodar</value></data>
   <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Não incomodar</value></data>
-  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Aprovações sempre chegam</value></data>
-  <data name="Inbox_DoNotDisturbApprovalsNote.Text" xml:space="preserve"><value>Aprovações sempre chegam</value></data>
   <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>Não incomodar está ativado. {0}</value></data>
   <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>Este PC</value></data>
   <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>Privacidade</value></data>
