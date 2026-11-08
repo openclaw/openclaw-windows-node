@@ -709,6 +709,23 @@ public sealed class DiagnosticsPageContractTests
         Assert.Equal("Wrap", (string?)details.Attribute("TextWrapping"));
         Assert.Equal("True", (string?)details.Attribute("IsTextSelectionEnabled"));
 
+        // Consent metadata is full selectable plain text, including unbroken scope commands.
+        foreach (var field in new[] { "ScopeText", "WarningText", "Metadata" })
+        {
+            var text = xaml.Descendants().Single(element => element.Name.LocalName == "TextBlock" &&
+                (string?)element.Attribute("Text") == "{Binding " + field + "}");
+            Assert.Null(text.Attribute("MaxLines"));
+            Assert.Null(text.Attribute("TextTrimming"));
+            Assert.Equal("Wrap", (string?)text.Attribute("TextWrapping"));
+            Assert.Equal("True", (string?)text.Attribute("IsTextSelectionEnabled"));
+        }
+
+        var metadata = xaml.Descendants().Single(element => element.Name.LocalName == "TextBlock" &&
+            (string?)element.Attribute("Text") == "{Binding Metadata}");
+        Assert.Equal("Grid", metadata.Parent!.Name.LocalName);
+        Assert.Equal("*", (string?)metadata.Parent.Descendants().First(element =>
+            element.Name.LocalName == "ColumnDefinition").Attribute("Width"));
+
         // The App owns the single Inbox feed; a window-created fallback would leak its subscription.
         Assert.DoesNotContain("new InboxFeed(", Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
     }

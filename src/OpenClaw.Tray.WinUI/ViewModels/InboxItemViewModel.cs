@@ -241,7 +241,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         {
             fullTitle, InboxGatewayItems.DisplayCommand(approval.Description),
         }.Where(text => !string.IsNullOrWhiteSpace(text)));
-        var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), approval.Cwd }
+        var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), InboxGatewayItems.DisplayCommand(approval.Cwd) }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
         return new(title, state, details, metadata)
         {
@@ -255,7 +255,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             // The full command, never trimmed, so what is reviewed is what would run.
             Command = approval.Kind == GatewayApprovalKind.Plugin ? null : InboxGatewayItems.DisplayCommand(approval.Command),
             Scope = approval.Scope is { } scope ? ScopeLabel(scope) : null,
-            Warning = approval.WarningText,
+            Warning = string.IsNullOrWhiteSpace(approval.WarningText) ? null : InboxGatewayItems.DisplayCommand(approval.WarningText),
             ExpiresAt = expiresAt,
         };
     }
@@ -285,14 +285,14 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     private static string ScopeLabel(GatewayApprovalScope scope) => scope.Kind switch
     {
         GatewayApprovalScopeKind.StandingGrant when scope.ExpiresInDays is { } days =>
-            LocalizationHelper.Format("Inbox_ApprovalScopeStandingGrantDaysFormat", scope.Automation ?? "", days),
+            LocalizationHelper.Format("Inbox_ApprovalScopeStandingGrantDaysFormat", InboxGatewayItems.DisplayCommand(scope.Automation), days),
         GatewayApprovalScopeKind.StandingGrant =>
-            LocalizationHelper.Format("Inbox_ApprovalScopeStandingGrantFormat", scope.Automation ?? ""),
+            LocalizationHelper.Format("Inbox_ApprovalScopeStandingGrantFormat", InboxGatewayItems.DisplayCommand(scope.Automation)),
         GatewayApprovalScopeKind.MessageSend =>
-            LocalizationHelper.Format("Inbox_ApprovalScopeMessageSendFormat", scope.RecipientCount, scope.Target ?? ""),
+            LocalizationHelper.Format("Inbox_ApprovalScopeMessageSendFormat", scope.RecipientCount, InboxGatewayItems.DisplayCommand(scope.Target)),
         GatewayApprovalScopeKind.Payment =>
-            LocalizationHelper.Format("Inbox_ApprovalScopePaymentFormat", scope.Amount ?? "", scope.Currency ?? "", scope.Target ?? ""),
-        _ => LocalizationHelper.Format("Inbox_ApprovalScopeExternalPostFormat", scope.Target ?? ""),
+            LocalizationHelper.Format("Inbox_ApprovalScopePaymentFormat", InboxGatewayItems.DisplayCommand(scope.Amount), InboxGatewayItems.DisplayCommand(scope.Currency), InboxGatewayItems.DisplayCommand(scope.Target)),
+        _ => LocalizationHelper.Format("Inbox_ApprovalScopeExternalPostFormat", InboxGatewayItems.DisplayCommand(scope.Target)),
     };
 
     private static string? HostLabel(string? host) => host switch
@@ -301,7 +301,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         "gateway" => LocalizationHelper.GetString("Inbox_ApprovalHostGateway"),
         "node" => LocalizationHelper.GetString("Inbox_ApprovalHostDevice"),
         "sandbox" => LocalizationHelper.GetString("Inbox_ApprovalHostSandbox"),
-        _ => host,
+        _ => InboxGatewayItems.DisplayCommand(host),
     };
 
     private static string FormatExpiry(DateTimeOffset expiresAt, DateTimeOffset now) =>

@@ -12,6 +12,7 @@
 //   var inbox = InboxProjection.Build(notifications, items);
 
 using OpenClaw.Shared;
+using OpenClaw.Shared.ExecApprovals;
 using System.Text.Json;
 
 namespace OpenClawTray.Presentation;
@@ -81,36 +82,12 @@ internal static class InboxGatewayItems
     }
 
     /// <summary>
-    /// The complete command as it should be displayed for review: nothing is removed or trimmed,
-    /// but control, bidirectional and invisible formatting characters that could hide or reorder
-    /// what runs are replaced with visible <c>\u{XXXX}</c> escapes. Newlines and tabs stay.
+    /// Shared secret-redacted, bounded review text. Ordinary multiline layout is preserved;
+    /// other invisible characters are escaped. Truncation/suppression is explicit, never a raw fallback.
     /// </summary>
-    public static string DisplayCommand(string? command)
-    {
-        if (string.IsNullOrEmpty(command))
-            return "";
-        var builder = new System.Text.StringBuilder(command.Length);
-        // A lone carriage return can overwrite what a terminal shows, so only CRLF counts as a line break.
-        foreach (var rune in command.Replace("\r\n", "\n", StringComparison.Ordinal).EnumerateRunes())
-        {
-            if (rune.Value is '\n' or '\t')
-                builder.Append((char)rune.Value);
-            else if (IsHiddenCharacter(rune))
-                builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\u{{{rune.Value:X4}}}");
-            else
-                builder.Append(rune.ToString());
-        }
-        return builder.ToString();
-    }
-
-    private static bool IsHiddenCharacter(System.Text.Rune rune) =>
-        System.Text.Rune.GetUnicodeCategory(rune) is
-            System.Globalization.UnicodeCategory.Control or
-            System.Globalization.UnicodeCategory.Format or
-            System.Globalization.UnicodeCategory.LineSeparator or
-            System.Globalization.UnicodeCategory.ParagraphSeparator or
-            System.Globalization.UnicodeCategory.Surrogate or
-            System.Globalization.UnicodeCategory.PrivateUse;
+    public static string DisplayCommand(string? command) => string.IsNullOrEmpty(command)
+        ? ""
+        : ExecApprovalCommandDisplaySanitizer.SanitizeCommandForReview(command);
 
     /// <summary>Remaining approval time as minutes:seconds ("4:52"), or null once expired.</summary>
     public static string? FormatCountdown(long expiresAtMs, long nowMs)
@@ -125,7 +102,7 @@ internal static class InboxGatewayItems
     {
         ArgumentNullException.ThrowIfNull(approval);
         return new($"{IdPrefix}approval:{approval.Id}", InboxGatewayItemKind.Approval,
-            approval.Title ?? approval.Command, FromMs(approval.CreatedAtMs))
+            DisplayCommand(approval.Title ?? approval.Command), FromMs(approval.CreatedAtMs))
         {
             Approval = approval,
             ExpiresAt = expiresAt,
