@@ -33,6 +33,10 @@ public enum GatewayApprovalScopeKind
 public sealed record GatewayApprovalScope(GatewayApprovalScopeKind Kind)
 {
     public string? Automation { get; init; }
+    /// <summary>Exact command bound by a standing grant, distinct from the displayed command.</summary>
+    public string? Command { get; init; }
+    /// <summary>Publication audience stated by an external-post scope.</summary>
+    public string? Visibility { get; init; }
     public int? ExpiresInDays { get; init; }
     public string? Target { get; init; }
     public int RecipientCount { get; init; }
@@ -51,6 +55,10 @@ public sealed record GatewayPendingApproval(
     /// <summary>Plugin or system-agent request title; null for exec approvals.</summary>
     public string? Title { get; init; }
     public string? Description { get; init; }
+    /// <summary>Full reviewer-only detail supplied by a plugin, such as the SQL being authorized.</summary>
+    public string? Detail { get; init; }
+    /// <summary>Opaque system-agent proposal binding. Retained for observation identity, not display.</summary>
+    public string? ProposalHash { get; init; }
     public string? WarningText { get; init; }
     public GatewayApprovalScope? Scope { get; init; }
     public string? Cwd { get; init; }
@@ -67,6 +75,19 @@ public sealed record GatewayPendingApproval(
     /// only those decisions are offered instead of the defaults.
     /// </summary>
     public bool AllowedDecisionsSpecified => _allowedDecisions is not null;
+
+    /// <summary>Compares every observed request field, including the explicit decision sequence.</summary>
+    public bool HasSameContentAs(GatewayPendingApproval? other) =>
+        other is not null &&
+        Id == other.Id && Kind == other.Kind && Command == other.Command &&
+        CreatedAtMs == other.CreatedAtMs && ExpiresAtMs == other.ExpiresAtMs &&
+        Title == other.Title && Description == other.Description && Detail == other.Detail &&
+        ProposalHash == other.ProposalHash &&
+        WarningText == other.WarningText && Scope == other.Scope &&
+        Cwd == other.Cwd && Host == other.Host && SessionKey == other.SessionKey &&
+        AgentId == other.AgentId && Ask == other.Ask &&
+        AllowedDecisionsSpecified == other.AllowedDecisionsSpecified &&
+        AllowedDecisions.SequenceEqual(other.AllowedDecisions, StringComparer.Ordinal);
 }
 
 /// <summary>
@@ -157,6 +178,11 @@ public static class GatewayPendingApprovalParser
             !GatewayUnixTime.IsValid(createdAtMs) || !GatewayUnixTime.IsValid(expiresAtMs))
             return false;
 
+        var detail = default(JsonElement);
+        if (kind == GatewayApprovalKind.Plugin && request.TryGetProperty("detail", out detail) &&
+            detail.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+            return false;
+
         var title = ReadString(request, "title");
         string? command;
         IReadOnlyList<string>? decisions = ReadDecisions(request);
@@ -187,6 +213,8 @@ public static class GatewayPendingApprovalParser
         {
             Title = title,
             Description = kind == GatewayApprovalKind.Exec ? null : ReadString(request, "description"),
+            Detail = detail.ValueKind == JsonValueKind.String ? detail.GetString() : null,
+            ProposalHash = kind == GatewayApprovalKind.SystemAgent ? request.GetProperty("proposalHash").GetString() : null,
             WarningText = ReadString(request, "warningText"),
             Scope = ReadScope(request),
             Cwd = ReadString(request, "cwd"),
@@ -221,6 +249,34 @@ public static class GatewayPendingApprovalParser
         return approvals;
     }
 
+    /// <summary>
+    /// Reads a complete pending inventory for decision reconciliation. Unlike tolerant ParseList,
+    /// malformed rows, duplicate IDs and unknown envelope metadata cannot prove absence.
+    /// </summary>
+    public static bool TryParseCompleteList(GatewayApprovalKind kind, JsonElement reply,
+        out IReadOnlyList<GatewayPendingApproval> approvals)
+    {
+        approvals = [];
+        var rows = reply;
+        if (reply.ValueKind == JsonValueKind.Object)
+        {
+            if (reply.EnumerateObject().Count() != 1 || !reply.TryGetProperty("approvals", out rows))
+                return false;
+        }
+        if (rows.ValueKind != JsonValueKind.Array)
+            return false;
+        var parsed = new List<GatewayPendingApproval>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (!TryParse(kind, row, out var approval) || !ids.Add(approval.Id))
+                return false;
+            parsed.Add(approval);
+        }
+        approvals = parsed;
+        return true;
+    }
+
     private static GatewayApprovalScope? ReadScope(JsonElement request)
     {
         if (!request.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.Object)
@@ -233,6 +289,7 @@ public static class GatewayPendingApprovalParser
                     ? new GatewayApprovalScope(GatewayApprovalScopeKind.StandingGrant)
                     {
                         Automation = automation,
+                        Command = scope.GetProperty("command").GetString(),
                         ExpiresInDays = scope.TryGetProperty("expiresInDays", out var days) && days.ValueKind == JsonValueKind.Number &&
                             days.TryGetInt32(out var value) ? value : null,
                     }
@@ -251,7 +308,8 @@ public static class GatewayPendingApprovalParser
             case "external-post":
                 return ReadString(scope, "target") is { } postTarget &&
                     ReadString(scope, "visibility") is "public" or "restricted"
-                    ? new GatewayApprovalScope(GatewayApprovalScopeKind.ExternalPost) { Target = postTarget }
+                    ? new GatewayApprovalScope(GatewayApprovalScopeKind.ExternalPost)
+                    { Target = postTarget, Visibility = scope.GetProperty("visibility").GetString() }
                     : null;
             default:
                 return null;

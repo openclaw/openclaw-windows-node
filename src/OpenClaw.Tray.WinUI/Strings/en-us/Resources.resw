@@ -7972,12 +7972,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>You need approval access to approve.</value></data>
   <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>No command included</value></data>
   <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>No command was included with this approval, so only Deny is available.</value></data>
-  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>This command can't be shown in full, so only Deny is available.</value></data>
-  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Your decision wasn't sent. Try again.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>This approval can't be shown in full, so only Deny is available.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Your decision could not be confirmed. Check its status before trying again.</value></data>
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>This approval is no longer waiting for a decision.</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>That decision isn't available for this approval.</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>Review</value></data>
   <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>You need approval access to approve.</value></data>
   <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>This request can't be decided from this app.</value></data>
   <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>Runs on this computer</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>The decision could not be confirmed. Further decisions are blocked while its outcome is unknown.</value></data>
 </root>

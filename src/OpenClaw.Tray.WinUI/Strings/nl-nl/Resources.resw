@@ -7905,12 +7905,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>Je hebt goedkeuringstoegang nodig om goed te keuren.</value></data>
   <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>Geen opdracht meegestuurd</value></data>
   <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>Er is geen opdracht bij deze goedkeuring meegestuurd, dus alleen Weigeren is beschikbaar.</value></data>
-  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Deze opdracht kan niet volledig worden weergegeven, dus alleen Weigeren is beschikbaar.</value></data>
-  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Je beslissing is niet verzonden. Probeer het opnieuw.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Deze goedkeuring kan niet volledig worden weergegeven, dus alleen Weigeren is beschikbaar.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Je beslissing kon niet worden bevestigd. Controleer de status voordat je het opnieuw probeert.</value></data>
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Deze goedkeuring wacht niet meer op een beslissing.</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Die beslissing is niet beschikbaar voor deze goedkeuring.</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>Bekijken</value></data>
   <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>Je hebt goedkeuringstoegang nodig om goed te keuren.</value></data>
   <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>Over dit verzoek kan niet vanuit deze app worden beslist.</value></data>
   <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>Wordt uitgevoerd op deze computer</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>De beslissing kon niet worden bevestigd. Verdere beslissingen zijn geblokkeerd zolang de uitkomst onbekend is.</value></data>
 </root>

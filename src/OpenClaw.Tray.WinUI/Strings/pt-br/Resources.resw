@@ -7957,12 +7957,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>Você precisa de acesso de aprovação para aprovar.</value></data>
   <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>Nenhum comando incluído</value></data>
   <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>Nenhum comando foi incluído nesta aprovação, então apenas Negar está disponível.</value></data>
-  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Este comando não pode ser exibido por completo, então apenas Negar está disponível.</value></data>
-  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Sua decisão não foi enviada. Tente novamente.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Esta aprovação não pode ser exibida por completo, então apenas Negar está disponível.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Não foi possível confirmar sua decisão. Verifique o status antes de tentar novamente.</value></data>
   <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Esta aprovação não está mais aguardando uma decisão.</value></data>
   <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Essa decisão não está disponível para esta aprovação.</value></data>
   <data name="Toast_ApprovalReview" xml:space="preserve"><value>Revisar</value></data>
   <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>Você precisa de acesso de aprovação para aprovar.</value></data>
   <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>Esta solicitação não pode ser decidida neste aplicativo.</value></data>
   <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>É executado neste computador</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>Não foi possível confirmar a decisão. Outras decisões ficam bloqueadas enquanto o resultado for desconhecido.</value></data>
 </root>

@@ -42,12 +42,17 @@ public static class ExecApprovalCommandDisplaySanitizer
             result.UnsafeConcealment);
     }
 
-    public static string SanitizeWarningText(string text)
+    public static string SanitizeWarningText(string text) => SanitizeWarningTextWithStatus(text).Text;
+
+    /// <summary>Preserves multiline review text and reports whether any required content was concealed or lost.</summary>
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeWarningTextWithStatus(string text)
     {
-        return SanitizeInternal(
+        var result = SanitizeInternal(
             NormalizeDisplayLineBreaks(text),
             preserveLineBreaks: true,
-            oversizedMarker: WarningOversizedMarker).Text;
+            oversizedMarker: WarningOversizedMarker);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
     private static SanitizedDisplayText SanitizeInternal(

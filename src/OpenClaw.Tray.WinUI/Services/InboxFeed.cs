@@ -91,7 +91,7 @@ internal sealed class InboxFeed
     /// <summary>Sends an approval decision for an Inbox row through the shared decision owner. UI thread.</summary>
     public Task<ApprovalDecisionOutcome> DecideApprovalAsync(InboxGatewayItem item, string decision) =>
         _decisions is not null && item.Approval is { } approval
-            ? _decisions.DecideAsync(approval.Id, decision)
+            ? _decisions.DecideAsync(approval.Id, decision, item.ApprovalObservation)
             : Task.FromResult(ApprovalDecisionOutcome.NotPending);
 
     public void Dismiss(string id)

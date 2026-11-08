@@ -44,7 +44,11 @@ internal sealed record ApprovalToastPlan(
     {
         ArgumentNullException.ThrowIfNull(approval);
         var effective = GatewayApprovalDecisions.Effective(approval);
+        // A toast has room for the command and host, not additional consent context.
+        // Keep scoped or directory-bound operations on the full Inbox review surface.
         var canAllow = hostConfirmedLocal &&
+            approval.Scope is null &&
+            string.IsNullOrWhiteSpace(approval.Cwd) &&
             string.IsNullOrWhiteSpace(approval.WarningText) &&
             approval.Kind == GatewayApprovalKind.Exec &&
             !string.IsNullOrWhiteSpace(approval.Command) &&

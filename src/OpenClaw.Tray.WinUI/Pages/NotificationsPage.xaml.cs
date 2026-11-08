@@ -34,6 +34,7 @@ public sealed partial class NotificationsPage : Page
         Inbox.Initialize(inbox, commands ?? new InboxViewCommands(
             OpenAppRoute,
             () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings),
+            () => ((IAppCommands)CurrentApp).OpenDashboard(),
             AskOpenClaw: AskOpenClaw));
     }
 

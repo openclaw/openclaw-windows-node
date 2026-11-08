@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Shared;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -266,8 +267,10 @@ public sealed class InboxGatewayItemsTests
         Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = new string('x', 300 * 1024) }));
         Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = "rm\u2007-rf /" }));
         Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = "" }));
+        var plugin = Approval("a", NowMs, kind: GatewayApprovalKind.Plugin) with { Command = "" };
+        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(plugin));
         Assert.Equal(["allow-once", "allow-always", "deny"],
-            InboxGatewayItems.InboxDecisions(Approval("a", NowMs, kind: GatewayApprovalKind.Plugin) with { Command = "" }));
+            InboxGatewayItems.InboxDecisions(plugin with { Title = "Publish the reviewed draft" }));
     }
 
     internal static GatewayPendingApproval Approval(string id, long createdAtMs, long? expiresAtMs = null, GatewayApprovalKind kind = GatewayApprovalKind.Exec) =>
@@ -349,7 +352,7 @@ public sealed class InboxGatewaySourceTests
     {
         var (source, gateway) = Attach();
         gateway.Raise("PendingApprovalRequested", InboxGatewayItemsTests.Approval("a1", Ms(Start)));
-        gateway.Raise("CronListUpdated", FailedCron("job"));
+        gateway.SetCron(FailedCron("job"));
         Assert.Equal(2, source.Items.Count);
 
         gateway.Raise("StatusChanged", ConnectionStatus.Disconnected);
@@ -372,7 +375,8 @@ public sealed class InboxGatewaySourceTests
         Assert.Equal(["gateway:approval:listed"], source.Items.Select(item => item.Id));
         Assert.Contains("exec.approval.list", gateway.Requests);
         Assert.Contains("models.authStatus", gateway.Requests);
-        Assert.Contains("RequestCronListAsync", gateway.Requests);
+        Assert.Contains("cron.list", gateway.Requests);
+        Assert.DoesNotContain("RequestCronListAsync", gateway.Requests);
     }
 
     [Fact]
@@ -389,13 +393,13 @@ public sealed class InboxGatewaySourceTests
     public void Dismiss_HidesAFailureUntilItRecurs()
     {
         var (source, gateway) = Attach();
-        gateway.Raise("CronListUpdated", FailedCron("job"));
+        gateway.SetCron(FailedCron("job"));
 
         source.Dismiss("gateway:cronFailed:job");
         Assert.Empty(source.Items);
 
-        gateway.Raise("CronListUpdated", JsonSerializer.SerializeToElement(new { jobs = Array.Empty<object>() }));
-        gateway.Raise("CronListUpdated", FailedCron("job"));
+        gateway.SetCron(JsonSerializer.SerializeToElement(new { jobs = Array.Empty<object>() }));
+        gateway.SetCron(FailedCron("job"));
 
         Assert.Equal(["gateway:cronFailed:job"], source.Items.Select(item => item.Id));
     }
@@ -469,12 +473,12 @@ public sealed class InboxGatewaySourceTests
     public void Dismissals_DoNotCarryOverToAnotherGateway()
     {
         var (source, gateway) = Attach();
-        gateway.Raise("CronListUpdated", FailedCron("job"));
+        gateway.SetCron(FailedCron("job"));
         source.Dismiss("gateway:cronFailed:job");
 
         var replacement = FakeGateway.Create();
         source.AttachClient((IOperatorGatewayClient)replacement);
-        replacement.Raise("CronListUpdated", FailedCron("job"));
+        replacement.SetCron(FailedCron("job"));
 
         Assert.Equal(["gateway:cronFailed:job"], source.Items.Select(item => item.Id));
     }
@@ -483,7 +487,7 @@ public sealed class InboxGatewaySourceTests
     public void Feed_RoutesDismissalsToTheOwningSource()
     {
         var (source, gateway) = Attach();
-        gateway.Raise("CronListUpdated", FailedCron("job"));
+        gateway.SetCron(FailedCron("job"));
         var notifications = new AppNotificationService();
         notifications.Show(new AppNotification
         {
@@ -497,6 +501,197 @@ public sealed class InboxGatewaySourceTests
 
         Assert.Empty(feed.Snapshot.Entries);
     }
+
+    [Fact]
+    public void CronInventory_PublishesAllPagesOnlyAfterTheFinalPage()
+    {
+        var (source, gateway) = Attach();
+        gateway.SetCron(FailedCron("previous"));
+        var changes = 0;
+        source.Changed += (_, _) => changes++;
+        var offsets = new List<int>();
+        gateway.CatalogPage = args =>
+        {
+            var offset = args["offset"]!.GetValue<int>();
+            offsets.Add(offset);
+            Assert.True(args["includeDisabled"]!.GetValue<bool>());
+            Assert.Equal(["gateway:cronFailed:previous"], source.Items.Select(item => item.Id));
+            Assert.Equal(0, changes);
+            return Task.FromResult(offset == 0
+                ? CronPage(["first"], "snapshot", true, 1, 2)
+                : CronPage(["second"], "snapshot", false, 2, 2));
+        };
+
+        // The legacy event carries only a page, not the full inventory.
+        gateway.Raise("CronListUpdated", CronPage(["first"], "snapshot", true, 1, 2));
+
+        Assert.Equal([0, 1], offsets);
+        Assert.Equal(["gateway:cronFailed:first", "gateway:cronFailed:second"], source.Items.Select(item => item.Id));
+        Assert.Equal(1, changes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CronInventory_PartialFailureOrRevisionChurnPreservesRowsAndDismissals(bool revisionChurn)
+    {
+        var (source, gateway) = Attach();
+        var previous = CronPage(["visible", "dismissed"], "old", false, 2, 2);
+        gateway.SetCron(previous);
+        source.Dismiss("gateway:cronFailed:dismissed");
+        var changes = 0;
+        source.Changed += (_, _) => changes++;
+        gateway.CatalogPage = args => args["offset"]!.GetValue<int>() == 0
+            ? Task.FromResult(CronPage(["new-first"], "new", true, 1, 2))
+            : revisionChurn
+                ? Task.FromResult(CronPage(["new-second"], "changed", false, 2, 2))
+                : Task.FromException<JsonElement>(new IOException("Synthetic page failure"));
+
+        gateway.Raise("CronListUpdated", JsonSerializer.SerializeToElement(new { jobs = Array.Empty<object>() }));
+        Assert.Equal(["gateway:cronFailed:visible"], source.Items.Select(item => item.Id));
+        Assert.Equal(0, changes);
+
+        gateway.CatalogPage = null;
+        gateway.SetCron(previous);
+        Assert.Equal(["gateway:cronFailed:visible"], source.Items.Select(item => item.Id));
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public void CronInventory_OlderOverlappingReadCannotReplaceNewerInventory()
+    {
+        var (source, gateway) = Attach();
+        gateway.CatalogPage = _ =>
+        {
+            // A newer invalidation finishes before the older read returns.
+            gateway.CatalogPage = null;
+            gateway.SetCron(FailedCron("newer"));
+            return Task.FromResult(FailedCron("older"));
+        };
+
+        gateway.Raise("CronListUpdated", FailedCron("older"));
+
+        Assert.Equal(["gateway:cronFailed:newer"], source.Items.Select(item => item.Id));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CronInventory_ReadFromBeforeDisconnectOrClientReplacementCannotPublish(bool replace)
+    {
+        var (source, gateway) = Attach();
+        gateway.CatalogPage = _ =>
+        {
+            if (replace)
+                source.AttachClient((IOperatorGatewayClient)FakeGateway.Create());
+            else
+                gateway.Raise("StatusChanged", ConnectionStatus.Disconnected);
+            return Task.FromResult(FailedCron("old-connection"));
+        };
+
+        gateway.Raise("CronListUpdated", FailedCron("old-connection"));
+
+        Assert.Empty(source.Items);
+    }
+
+    [Fact]
+    public void CronInventory_SearchEntryLimitIsNotACompleteEmptyOrPartialInventory()
+    {
+        var (source, gateway) = Attach();
+        gateway.SetCron(FailedCron("previous"));
+        // Search intentionally bounds catalogs to 5000 entries; Inbox must reject its partial result.
+        gateway.CatalogPage = _ => Task.FromResult(CronPage(
+            Enumerable.Range(0, 5001).Select(i => $"job-{i}").ToArray(), "large", false, 5001, 5001));
+
+        gateway.Raise("CronListUpdated", FailedCron("partial"));
+
+        Assert.Equal(["gateway:cronFailed:previous"], source.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public void ExpiryDuringHydration_DoesNotResurrectFromLateSnapshotOrReplay()
+    {
+        var (source, gateway) = Attach();
+        var approval = InboxGatewayItemsTests.Approval("expiring", Ms(Start), Ms(Start) + 5_000);
+        gateway.Raise("PendingApprovalRequested", approval);
+        gateway.Reads["exec.approval.list"] = () =>
+        {
+            _now = Start.AddSeconds(6);
+            source.Tick();
+            Assert.Empty(source.Items);
+            return Task.FromResult(ApprovalList("expiring", 5_000));
+        };
+
+        gateway.Raise("StatusChanged", ConnectionStatus.Connected);
+        Assert.Empty(source.Items);
+        gateway.Raise("PendingApprovalRequested", approval);
+        Assert.Empty(source.Items);
+    }
+
+    [Fact]
+    public void ResolveDuringHydration_DoesNotResurrectFromLateSnapshotOrReplay()
+    {
+        var (source, gateway) = Attach();
+        var approval = InboxGatewayItemsTests.Approval("resolved", Ms(Start));
+        gateway.Reads["exec.approval.list"] = () =>
+        {
+            // A terminal can arrive before the first requested observation.
+            gateway.Raise("PendingApprovalResolved", "resolved");
+            return Task.FromResult(ApprovalList("resolved", 60_000));
+        };
+
+        gateway.Raise("StatusChanged", ConnectionStatus.Connected);
+        gateway.Raise("PendingApprovalRequested", approval);
+        Assert.Empty(source.Items);
+    }
+
+    [Fact]
+    public void ApprovalMissingFromHydration_RemainsTerminalUntilReconnect()
+    {
+        var (source, gateway) = Attach();
+        var approval = InboxGatewayItemsTests.Approval("gone", Ms(Start));
+        gateway.Raise("PendingApprovalRequested", approval);
+        gateway.Replies["exec.approval.list"] = JsonSerializer.SerializeToElement(Array.Empty<object>());
+        gateway.Raise("StatusChanged", ConnectionStatus.Connected);
+        gateway.Raise("PendingApprovalRequested", approval);
+        Assert.Empty(source.Items);
+
+        gateway.Raise("StatusChanged", ConnectionStatus.Disconnected);
+        gateway.Replies["exec.approval.list"] = ApprovalList("gone", 60_000);
+        _now = Start.AddMinutes(1);
+        gateway.Raise("StatusChanged", ConnectionStatus.Connected);
+        Assert.Equal(Start.AddMinutes(2), Assert.Single(source.Items).ExpiresAt);
+    }
+
+    [Fact]
+    public void BoundedApprovalRetention_DoesNotEvictTerminalsToAdmitReplays()
+    {
+        var (source, gateway) = Attach();
+        for (var i = 0; i < 5000; i++)
+            gateway.Raise("PendingApprovalResolved", $"resolved-{i}");
+
+        gateway.Raise("PendingApprovalRequested", InboxGatewayItemsTests.Approval("resolved-0", Ms(Start)));
+        gateway.Raise("PendingApprovalRequested", InboxGatewayItemsTests.Approval("resolved-4999", Ms(Start)));
+        gateway.Raise("PendingApprovalRequested", InboxGatewayItemsTests.Approval("unknown-after-capacity", Ms(Start)));
+        Assert.Empty(source.Items);
+
+        gateway.Raise("StatusChanged", ConnectionStatus.Disconnected);
+        gateway.Raise("StatusChanged", ConnectionStatus.Connected);
+        gateway.Raise("PendingApprovalRequested", InboxGatewayItemsTests.Approval("fresh-connection", Ms(Start)));
+        Assert.Equal("gateway:approval:fresh-connection", Assert.Single(source.Items).Id);
+    }
+
+    private static JsonElement ApprovalList(string id, long lifetime) => JsonSerializer.SerializeToElement(new[]
+    {
+        new { id, request = new { command = "dir" }, createdAtMs = Ms(Start), expiresAtMs = Ms(Start) + lifetime },
+    });
+
+    private static JsonElement CronPage(string[] ids, string revision, bool hasMore, int nextOffset, int total) =>
+        JsonSerializer.SerializeToElement(new
+        {
+            jobs = ids.Select(id => new { id, enabled = true, state = new { lastRunStatus = "error", lastRunAtMs = Ms(Start) } }),
+            snapshotRevision = revision, hasMore, nextOffset, total,
+        });
 
     private (InboxGatewaySource Source, FakeGateway Gateway) Attach(IReadOnlyList<string>? scopes = null)
     {
@@ -520,12 +715,24 @@ public sealed class InboxGatewaySourceTests
         private readonly Dictionary<string, Delegate?> _handlers = new(StringComparer.Ordinal);
 
         public IReadOnlyList<string> Scopes = [];
+        public IReadOnlyList<string> Methods = [];
+        public List<(string Method, long Epoch)> ConnectionReads = [];
+        public Func<string, long, Task<JsonElement>>? ConnectionRead;
         public long? Epoch = 7;
         public List<(GatewayApprovalKind Kind, string Id, string Decision, long Epoch)> Resolves = [];
         public Func<Task> ResolveResult = () => Task.CompletedTask;
+        public Action? BeforeResolve;
         public Dictionary<string, JsonElement> Replies = new(StringComparer.Ordinal);
         public Dictionary<string, TaskCompletionSource<JsonElement>> Pending = new(StringComparer.Ordinal);
         public List<string> Requests = [];
+        public Dictionary<string, Func<Task<JsonElement>>> Reads = new(StringComparer.Ordinal);
+        public Func<JsonObject, Task<JsonElement>>? CatalogPage;
+
+        public void SetCron(JsonElement inventory)
+        {
+            Replies["cron.list"] = inventory;
+            Raise("CronListUpdated", inventory);
+        }
 
         public static FakeGateway Create() => (FakeGateway)(object)DispatchProxy.Create<IOperatorGatewayClient, FakeGateway>();
 
@@ -553,21 +760,40 @@ public sealed class InboxGatewaySourceTests
                 case "get_HasHandshakeSnapshot":
                     return false;
                 case "get_AdvertisedServerMethods":
-                    return Array.Empty<string>();
+                    return Methods;
                 case "get_GrantedOperatorScopes":
                     return Scopes;
                 case "get_SessionMutationConnectionEpoch":
                     return Epoch;
                 case "ResolveApprovalAsync":
+                    BeforeResolve?.Invoke();
+                    (args![4] as Action)?.Invoke();
                     lock (Resolves) Resolves.Add(((GatewayApprovalKind)args![0]!, (string)args[1]!, (string)args[2]!, (long)args[3]!));
                     return ResolveResult();
                 case "RequestCronListAsync":
                 case "RequestCronStatusAsync":
                     lock (Requests) Requests.Add(name);
                     return Task.CompletedTask;
+                case "ReadSearchCatalogAsync":
+                    lock (Requests) Requests.Add((string)args![0]!);
+                    // Supply external pages, not an already-assembled fake inventory: exercise
+                    // the same pagination owner used by the real operator client.
+                    return GatewaySearchProtocol.ReadAutomationPagesAsync(
+                        (input, _) => CatalogPage is { } read ? read((JsonObject)input!)
+                            : Replies.TryGetValue("cron.list", out var cron) ? Task.FromResult(cron)
+                            : Task.FromException<JsonElement>(new InvalidOperationException("unknown method")),
+                        args![1], (CancellationToken)args[2]!);
+                case "SendWizardRequestOnConnectionAsync":
+                    var readMethod = (string)args![0]!;
+                    var readEpoch = (long)args[2]!;
+                    ConnectionReads.Add((readMethod, readEpoch));
+                    return ConnectionRead is { } connectionRead ? connectionRead(readMethod, readEpoch)
+                        : Task.FromException<JsonElement>(new NotSupportedException("No reconciliation reply configured"));
                 case "SendWizardRequestAsync":
                     var requested = (string)args![0]!;
                     lock (Requests) Requests.Add(requested);
+                    if (Reads.TryGetValue(requested, out var readReply))
+                        return readReply();
                     if (Pending.TryGetValue(requested, out var pending))
                         return pending.Task;
                     return Replies.TryGetValue(requested, out var reply)

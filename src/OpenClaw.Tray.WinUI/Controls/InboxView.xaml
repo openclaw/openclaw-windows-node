@@ -125,7 +125,7 @@
                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                            TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
                                 <TextBlock Text="{Binding Details}" Visibility="{Binding DetailsVisibility}"
-                                           TextWrapping="WrapWholeWords" IsTextSelectionEnabled="True"/>
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                 <Border Visibility="{Binding CommandVisibility}"
                                         Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

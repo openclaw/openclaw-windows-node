@@ -791,7 +791,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _inboxGatewaySource = new InboxGatewaySource(new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!));
         _approvalDecisions = new OperatorApprovalDecisions(_inboxGatewaySource);
         if (_chatCoordinator is not null)
+        {
             _chatCoordinator.ResolveExecApproval = _approvalDecisions.ResolveChatExecApprovalAsync;
+            _chatCoordinator.IsApprovalDecisionUncertain = _approvalDecisions.IsUncertain;
+            _inboxGatewaySource.Changed += (_, _) => _chatCoordinator?.Provider?.RefreshApprovalDecisionState();
+        }
         InboxFeed = new InboxFeed(_appNotificationService, _inboxGatewaySource, _approvalDecisions);
         _approvalToasts = new ApprovalToastPresenter(
             _inboxGatewaySource,

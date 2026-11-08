@@ -55,7 +55,8 @@ public interface IOperatorGatewayClient
     /// Sends an operator decision for a pending Gateway approval on the captured authenticated
     /// connection. Throws <see cref="GatewayApprovalStaleException"/> when the approval is no longer pending.
     /// </summary>
-    Task ResolveApprovalAsync(GatewayApprovalKind kind, string approvalId, string decision, long connectionEpoch)
+    Task ResolveApprovalAsync(GatewayApprovalKind kind, string approvalId, string decision, long connectionEpoch,
+        Action? validateBeforeSend = null)
         => Task.FromException(new NotSupportedException("Approval decisions are not supported by this gateway client."));
 
     /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>

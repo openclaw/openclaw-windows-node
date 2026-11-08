@@ -45,8 +45,12 @@ internal sealed record InboxGatewayItem(
     DateTimeOffset ArrivedAt)
 {
     public GatewayPendingApproval? Approval { get; init; }
+    /// <summary>Opaque source observation identity. Decisions must match the exact row the user reviewed.</summary>
+    public object? ApprovalObservation { get; init; }
     /// <summary>False when the connection lacks the scope to decide <see cref="Approval"/>.</summary>
     public bool CanDecide { get; init; } = true;
+    /// <summary>A previous decision may have reached the Gateway; no further decision may be sent.</summary>
+    public bool DecisionUncertain { get; init; }
     public InboxModelAuthAttention? ModelAuth { get; init; }
     /// <summary>Failure text reported by the Gateway for a failed automation.</summary>
     public string? Detail { get; init; }
@@ -123,10 +127,11 @@ internal static class InboxGatewayItems
     public static bool ShowsWholeCommandForReview(GatewayPendingApproval approval)
     {
         ArgumentNullException.ThrowIfNull(approval);
-        if (approval.Kind != GatewayApprovalKind.Exec)
+        if (!GatewayApprovalDecisions.CanReviewInFull(approval))
+            return false;
+        if (approval.Kind == GatewayApprovalKind.Plugin)
             return true;
         return !string.IsNullOrWhiteSpace(approval.Command) &&
-            GatewayApprovalDecisions.CanReviewInFull(approval) &&
             !approval.Command.EnumerateRunes().Any(IsLookalikeSpace);
     }
 
