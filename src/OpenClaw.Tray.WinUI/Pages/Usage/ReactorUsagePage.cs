@@ -115,9 +115,6 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
                 .Width(width).HAlign(HorizontalAlignment.Left))
             .AutomationId("UsagePageRoot");
         return Grid([GridSize.Star()], [GridSize.Star()],
-            Border(null).Height(320).VAlign(VerticalAlignment.Top).Background(Theme.Ref("UsageMastGradientBrush"))
-                .Set(border => border.IsHitTestVisible = false)
-                .AccessibilityHidden().AutomationId("UsageMastBackdrop").WithKey("backdrop"),
             scroll.Margin(0, topInset, 0, 0).WithKey("scroll"),
             UsageExportFeedback.Toast(state, props)?.WithKey("export-toast"),
             UsageExportFeedback.Dialog(state, controller, props.Viewport)?.WithKey("export-dialog"),
@@ -144,7 +141,7 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
 
         if (state.Availability == UsageAvailability.Disconnected)
         {
-            yield return Banner(S("UsagePage_GatewayDisconnected.Title"), S("UsagePage_GatewayDisconnected.Message"), warning,
+            yield return Banner(S("UsagePage_GatewayDisconnected.Title"), S("UsagePage_GatewayDisconnected.Message"), error,
                 "UsageDisconnectedBanner", S("UsagePage_OpenConnection.Content"), props.OpenConnection).WithKey("disconnected");
         }
         if (state.Availability is UsageAvailability.Forbidden or UsageAvailability.Unsupported)
@@ -194,24 +191,23 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
                 yield return Loading().WithKey("loading");
             // Provider plans load separately, so they still show when the usage overview could not load.
             if (state.Providers.Phase != UsageLoadPhase.Idle || state.Providers.Value is not null)
-                yield return UsageSections.Providers(state).WithKey("providers");
+                yield return UsageSections.Providers(state, props.Controller).WithKey("providers");
             yield break;
         }
 
         if (dashboard.IsEmpty && !state.Filters.HasQuery)
         {
             yield return EmptyState(props).WithKey("empty");
-            yield return UsageSections.Providers(state).WithKey("providers");
+            yield return UsageSections.Providers(state, props.Controller).WithKey("providers");
             yield break;
         }
 
-        yield return UsageSections.NeedsYou(state, props, layout).WithKey("needs");
         yield return Grid(layout.TwoColumns ? [GridSize.Px(layout.DailyWidth + PageResponsiveLayout.GapStack), GridSize.Star()] : [GridSize.Star()],
                 layout.TwoColumns ? [GridSize.Auto] : [GridSize.Auto, GridSize.Auto],
                 UsageSections.Daily(state, dashboard, props, layout.DailyWidth).VAlign(VerticalAlignment.Top)
                     .Width(layout.TwoColumns ? layout.DailyWidth : layout.ContentWidth).HAlign(HorizontalAlignment.Left)
                     .Grid(row: 0, column: 0).WithKey("daily"),
-                UsageSections.Providers(state).VAlign(VerticalAlignment.Top)
+                UsageSections.Providers(state, props.Controller).VAlign(VerticalAlignment.Top)
                     .Margin(0, layout.TwoColumns ? 0 : PageResponsiveLayout.GapStack, 0, 0)
                     .Grid(row: layout.TwoColumns ? 0 : 1, column: layout.TwoColumns ? 1 : 0).WithKey("providers"))
             .AutomationId("UsageStage").WithKey("stage");

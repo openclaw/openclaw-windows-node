@@ -29,48 +29,8 @@ internal static class UsageSections
     public static Element Contributors(UsagePageState state, UsageDashboard dashboard, UsagePageProps props, UsagePageLayout layout) =>
         Component<UsageContributorsSection, UsageContributorsProps>(new(state, dashboard, props, layout));
 
-    public static Element Providers(UsagePageState state) =>
-        Component<UsageProvidersSection, UsagePageState>(state);
-
-    public static Element NeedsYou(UsagePageState state, UsagePageProps props, UsagePageLayout layout)
-    {
-        var attention = UsageInsights.Attention(state);
-        if (attention.Count == 0) return Empty();
-        var cards = attention.Take(attention.Count > 3 ? 2 : 3).Select(provider =>
-        {
-            var window = provider.Windows.Where(window => window.ResetAt is null || window.ResetAt > DateTimeOffset.Now)
-                .OrderByDescending(w => w.UsedPercent).First();
-            var message = window.Label + (window.ResetAt is { } reset ? " · " + F("Usage_ResetAtFormat", FriendlyDate(reset, olderTime: true)) : "");
-            return (Element)Border(Grid([GridSize.Px(4), GridSize.Star()], [GridSize.Auto],
-                    Border(null).Background(Caution).Grid(column: 0),
-                    Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                        IconBadge("\uE7BA", 3, 36).AutomationId("UsageAttentionIcon_" + provider.Provider)
-                            .VAlign(VerticalAlignment.Top).Margin(0, 0, PageResponsiveLayout.GapGroup, 0).Grid(column: 0),
-                        VStack(8,
-                            TextBlock(F("Usage_AllowanceWarningFormat", provider.DisplayName,
-                                    UsageFormat.Percent(window.UsedPercent / 100, Culture, 0)))
-                                .FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
-                                .AutomationId("UsageAttentionTitle_" + provider.Provider),
-                            Note(message).AutomationId("UsageAttentionMessage_" + provider.Provider),
-                            Button(TextBlock(S("Usage_SeeUsing")).TextWrapping(TextWrapping.NoWrap), () => props.Controller.InspectProvider(provider.Provider))
-                                .AutomationName(F("Usage_SeeUsingProviderFormat", provider.DisplayName))
-                                .AutomationId("UsageInspectProvider_" + provider.Provider).HAlign(HorizontalAlignment.Left)).Grid(column: 1)))
-                        .Padding(CardPadding).Grid(column: 1)))
-                .CornerRadius(CardRadius).Background(CardFill).WithBorder(CardStroke, 1)
-                .AutomationId("UsageAttentionCard_" + provider.Provider).HAlign(HorizontalAlignment.Stretch)
-                .WithKey(provider.Provider);
-        }).ToList();
-        if (attention.Count > 3)
-            cards.Add(Card(MenuFlyout(Button(F("Usage_MoreNeedsFormat", Count(attention.Count - 2)))
-                    .AutomationName(F("Usage_MoreNeedsFormat", Count(attention.Count - 2))),
-                attention.Skip(2).Select(provider => (MenuFlyoutItemBase)MenuItem(
-                    F("Usage_SeeUsingProviderFormat", provider.DisplayName),
-                    () => props.Controller.InspectProvider(provider.Provider))).ToArray()), "UsageMoreNeeds").WithKey("more"));
-        return VStack(12,
-            HStack(8, TextBlock(S("Usage_NeedsYou")).FontSize(18).FontWeight(FontWeights.SemiBold).AutomationId("UsageNeedsHeading"),
-                Pill(Count(attention.Count), "UsageNeedsCount", critical: true)),
-            Columns(layout.NeedsColumns, cards).AutomationId("UsageAttentionGrid")).AutomationId("UsageNeedsYou");
-    }
+    public static Element Providers(UsagePageState state, UsagePageController controller) =>
+        Component<UsageProvidersSection, UsageProvidersProps>(new(state, controller));
 
     public static Element Activity(UsageDashboard dashboard, double width)
     {
@@ -167,7 +127,7 @@ internal sealed class UsageDailySection : Component<UsageDailyProps>
         var inside = Props.Width - CardPadding * 2;
         return Card(VStack(PageResponsiveLayout.GapStack, selectors.AutomationId("UsageDailyControls"), body,
             Border(null).Height(1).Background(CardStroke),
-            UsageSections.Columns(PageResponsiveLayout.TileColumns(inside, UsagePageLayout.StatMinWidth, 3), [
+            UsageSections.Columns(UsagePageLayout.DailyFactColumns(inside), [
                 UsageSections.Fact(S("Usage_Metric_Tokens"), ReportedTokens(totals, "totalTokens", totals.TotalTokens),
                     F("Usage_Details_TokenSplitFormat", ReportedTokens(totals, "input", totals.Input), ReportedTokens(totals, "output", totals.Output)), "UsageSummaryTokens"),
                 UsageSections.Fact(F("Usage_CacheWrittenFormat", ReportedTokens(totals, "cacheWrite", totals.CacheWrite)),
@@ -204,18 +164,20 @@ internal sealed class UsageDailySection : Component<UsageDailyProps>
             ? S("Usage_Overview_Unpriced") : AnalysisCost(day.Cost, day.LowerBound || day.MissingPrice);
 }
 
-internal sealed class UsageProvidersSection : Component<UsagePageState>
+internal sealed record UsageProvidersProps(UsagePageState State, UsagePageController Controller);
+
+internal sealed class UsageProvidersSection : Component<UsageProvidersProps>
 {
     public override Element Render()
     {
         var (all, setAll) = UseState(false);
-        var providers = Props.Providers;
+        var providers = Props.State.Providers;
         var items = providers.Value?.Providers.OrderByDescending(provider => provider.Windows.Count > 0
                 ? provider.Windows.Max(window => window.UsedPercent) : -1).ToList() ?? [];
         var rows = items.Take(all ? items.Count : 4).Select(provider => Provider(provider).WithKey(provider.Provider)).ToList();
         if (providers.Phase == UsageLoadPhase.Failed)
             rows.Insert(0, Note(S("Usage_Providers_Unavailable")).WithKey("failed"));
-        if (Props.Availability == UsageAvailability.Disconnected && providers.Value?.UpdatedAt is { } at)
+        if (Props.State.Availability == UsageAvailability.Disconnected && providers.Value?.UpdatedAt is { } at)
             rows.Insert(0, Note(F("Usage_LastKnownFormat", at.ToLocalTime().ToString("t", Culture))).WithKey("offline"));
         if (providers.Value?.Refreshing == true) rows.Insert(0, Note(S("Usage_Providers_Refreshing")).WithKey("refreshing"));
         if (items.Count == 0)
@@ -227,7 +189,7 @@ internal sealed class UsageProvidersSection : Component<UsagePageState>
             VStack(PageResponsiveLayout.GapInner, rows.ToArray()), "UsageProviders");
     }
 
-    private static Element Provider(ProviderUsageSnapshot provider)
+    private Element Provider(ProviderUsageSnapshot provider)
     {
         var windows = provider.Windows.OrderByDescending(window => window.UsedPercent).ToList();
         var highest = windows.FirstOrDefault();
@@ -270,6 +232,28 @@ internal sealed class UsageProvidersSection : Component<UsagePageState>
             info.Add(TextBlock(error).Foreground(Critical).TextWrapping(TextWrapping.WrapWholeWords).WithKey("error"));
         }
         else if (windows.Count == 0 && provider.Billing.Count == 0) info.Add(Note(S("Usage_Providers_NoQuota")).WithKey("noquota"));
+        if (UsageInsights.NearLimit(provider))
+        {
+            var reason = F("Usage_AllowanceWarningFormat", provider.DisplayName, percent);
+            accessible.Add(S("Usage_NearLimit") + ". " + reason);
+            info[0] = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                TextBlock(provider.DisplayName).FontWeight(FontWeights.SemiBold)
+                    .AutomationId("UsageProviderName_" + provider.Provider)
+                    .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .ToolTip(provider.DisplayName).VAlign(VerticalAlignment.Center)
+                    .Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
+                PageHero.AttentionBadge("UsageNearLimit_" + provider.Provider,
+                        S("Usage_NearLimit"), reason, "\uE7BA", PageHeroTone.Caution,
+                        !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                    .Grid(column: 1))
+                .HAlign(HorizontalAlignment.Left)
+                .WithKey("name");
+            info.Add(Button(TextBlock(S("Usage_SeeUsing")).TextWrapping(TextWrapping.WrapWholeWords),
+                    () => Props.Controller.InspectProvider(provider.Provider))
+                .IsEnabled(Props.State.Dashboard is not null)
+                .AutomationName(F("Usage_SeeUsingProviderFormat", provider.DisplayName))
+                .AutomationId("UsageInspectProvider_" + provider.Provider).HAlign(HorizontalAlignment.Left).WithKey("inspect"));
+        }
         Element ring = highest is null
             ? Border(TextBlock(Dash).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
                 .Size(56, 56).CornerRadius(28).WithBorder(CardStroke, 2)

@@ -742,9 +742,6 @@ x-colophon:
       usageChartBar:
         resource: UsageChartBarBrush
         usage: Daily chart bars use solid SystemAccentColor in light and dark themes, and SystemColorHighlightColor in high contrast. Reported current-day bars use the same solid fill; their date and reported value carry the meaning. Day selection uses native keyboard focus and an accessible selected status.
-      usageMastGradient:
-        resource: UsageMastGradientBrush
-        usage: Static accent-tinted mast backplate across the full page viewport, including the centered content's side margins. It stays anchored at the viewport top behind ordinary scrolling content, without intercepting input or making the header sticky. SystemAccentColor fades to transparent at 10% brush opacity over the top 320 logical pixels. High contrast uses a solid SystemColorWindowColor backplate. The rest of the page retains native Fluent card and window surfaces.
       usageCountPill:
         resource: UsageCountPillBrush
         usage: Neutral section count pill. TextFillColorPrimary at 16% brush opacity with primary text. High contrast uses SystemColorButtonFaceColor. Attention counts use the existing critical tint and critical foreground instead.
@@ -1129,6 +1126,16 @@ ComposerPickerOptions rows use full-row `subtleHover` and `subtlePressed` fills 
 TextBox ships as the stock `Microsoft.UI.Xaml.Controls.TextBox`, as used by `DirectUrlBox` in `Pages/ConnectionPage.xaml`, not a custom control template. The Colophon preview uses 14px body text, 32px single-line height, `sm` corners, exact text-control padding, pointer-over and disabled resource tokens, and the accent focus underline. WinUI has no separate pressed background for the input itself; pressing enters its focused state. The browser preview approximates the native elevation border with `controlLine` and does not reproduce the native focused-fill transition or clear-button template.
 
 Card binds its title to `subtitle` (`SubtitleTextBlockStyle`, 20/28 SemiBold) and its description to `body` (`BodyTextBlockStyle`, 14/20 Regular). Its Open report action references the shared HyperlinkButton, not a separately styled link. The card remains static while the action inherits the shared control's typography, hover, pressed, disabled, and focus states.
+
+### Usage daily facts
+
+The daily analysis card keeps tokens (with input/output), cache read/written,
+and sessions together as three equal columns or one column, never a two-plus-one
+strip. Three columns require 504 DIP of inner width: three 160-DIP minimums
+and two 12-DIP gaps. With narrow page padding of 20 DIP per side and card padding
+of 16 DIP per side, this fits at a 576-DIP content-host width. Smaller allocations
+stack all three facts. Existing width snapping, localized labels, native theme
+resources and wider three-column layouts remain unchanged.
 
 ### Native normal and accent buttons
 

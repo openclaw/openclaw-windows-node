@@ -8451,6 +8451,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Other ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Daily usage</value></data>
   <data name="Usage_NoReportedDates" xml:space="preserve"><value>No reported dates</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Mostly {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Top model: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Near limit</value></data>
   <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} days reported</value></data>
   <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} shown · {1} loaded</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Custom</value></data>

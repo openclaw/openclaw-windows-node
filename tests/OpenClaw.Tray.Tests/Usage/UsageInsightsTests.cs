@@ -7,6 +7,28 @@ namespace OpenClaw.Tray.Tests.Usage;
 public sealed class UsageInsightsTests
 {
     [Theory]
+    [InlineData(0, false)]
+    [InlineData(74.99, false)]
+    [InlineData(75, true)]
+    [InlineData(75.01, true)]
+    [InlineData(100, true)]
+    public void NearLimit_UsesInclusiveReportedAllowancePercentage(double percent, bool expected) =>
+        Assert.Equal(expected, UsageInsights.NearLimit(new()
+        {
+            Windows = [new("Week", null, percent, null)],
+        }));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0d)]
+    [InlineData(100d)]
+    public void NearLimit_DoesNotInventAllowanceFromMissingZeroOrReportedBillingLimit(double? limit) =>
+        Assert.False(UsageInsights.NearLimit(new()
+        {
+            Billing = [new("budget", "Budget", 90, limit, "USD", null)],
+        }));
+
+    [Theory]
     [InlineData("agent:main:cron:job:run:42", true)]
     [InlineData("agent:main:cron:job", true)]
     [InlineData("agent:cron:webchat:main", false)]

@@ -8385,6 +8385,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Overige ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Dagelijks gebruik</value></data>
   <data name="Usage_NoReportedDates" xml:space="preserve"><value>Geen gerapporteerde datums</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Vooral {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Meest gebruikt model: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Bijna aan limiet</value></data>
   <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dagen gerapporteerd</value></data>
   <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} getoond · {1} geladen</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Aangepast</value></data>

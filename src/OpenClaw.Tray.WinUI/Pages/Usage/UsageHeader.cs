@@ -27,56 +27,40 @@ internal static class UsageHeader
             : Cost(summary.Cost, summary.LowerBound || summary.MissingCostEntries > 0);
         Element headline = unsupported || forbidden
             ? TextBlock(S(unsupported ? "Usage_Unsupported_Title" : "Usage_Forbidden_Title"))
-                .FontSize(32).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
+                .FontSize(14).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.WrapWholeWords)
                 .MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
             : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                TextBlock(amount).FontSize(32).FontWeight(FontWeights.SemiBold).Foreground(AccentText)
-                    .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                TextBlock(amount).FontSize(14).FontWeight(FontWeights.SemiBold).Foreground(AccentText)
+                    .TextWrapping(TextWrapping.WrapWholeWords)
                     .MaxWidth(layout.ContentWidth / 2).ToolTip(amount)
                     .AutomationId("UsageSummaryCostValue").Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
-                TextBlock(HeadlineRange(state)).FontSize(32).FontWeight(FontWeights.SemiBold)
-                    .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).TextTrimming(TextTrimming.CharacterEllipsis)
+                TextBlock(HeadlineRange(state)).FontSize(14).Foreground(SecondaryText)
+                    .TextWrapping(TextWrapping.WrapWholeWords)
                     .ToolTip(HeadlineCaption(state)).HelpText(HeadlineCaption(state))
                     .AutomationId("UsageSummaryRange").Grid(column: 1));
         var incompleteReason = IncompleteReason(state);
-        var subtitle = unsupported ? S("Usage_Unsupported_Message")
-            : forbidden ? S("Usage_Forbidden_Message") : SummaryText(state);
-        var icon = highContrast
-            ? TextBlock("\uE9D2").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(20)
-                .Foreground(SecondaryText).TextAlignment(TextAlignment.Center)
-            : (Element)Image("ms-appx:///Assets/SidebarIcons/Usage.svg").AccessibilityHidden();
-        var title = VStack(PageResponsiveLayout.GapGroup,
-            HStack(PageResponsiveLayout.GapInner, icon.Size(20, 20).VAlign(VerticalAlignment.Center).AccessibilityHidden(),
-                TextBlock(S("Usage_Title")).Foreground(SecondaryText).FontWeight(FontWeights.SemiBold)
-                    .VAlign(VerticalAlignment.Center).HeadingLevel(AutomationHeadingLevel.Level1).AutomationId("UsagePageMarker"))
-                .VAlign(VerticalAlignment.Center),
-            headline.AutomationId("UsageHeadline"),
-            incompleteReason is null ? null : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
+        if (incompleteReason is not null)
+            headline = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                headline.Grid(column: 0),
                 Pill(S("Usage_PartialShort"), "UsageIncompleteChip")
-                    .HelpText(incompleteReason).Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
-                Note(incompleteReason).AutomationId("UsageIncompleteReason").Grid(column: 1)),
-            Note(subtitle).MaxLines(3).TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle).AutomationId("UsageSubtitle"),
+                    .HelpText(incompleteReason).ToolTip(incompleteReason)
+                    .Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 1));
+        var subtitle = unsupported ? S("Usage_Unsupported_Message")
+            : forbidden ? S("Usage_Forbidden_Message") : ContributorText(state);
+        var detail = VStack(4,
+            Note(subtitle).AutomationId("UsageSubtitle"),
+            incompleteReason is null ? null : Note(incompleteReason).AutomationId("UsageIncompleteReason"),
             summary?.MissingCostEntries > 0
                 ? Note(FN("Usage_MissingCostNoteFormat", summary.MissingCostEntries))
                     .AutomationId("UsageMissingCostChip") : null)
             .AutomationId("UsageMastText");
-        var buttons = layout.Narrow
-            ? HStack(PageResponsiveLayout.GapInner,
-                ExportMenu(state, actions.Export).WithKey("export"),
-                MenuFlyout(Button(TextBlock("\uE712").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).AccessibilityHidden())
-                        .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
-                        .AutomationName(S("NodesPage_Action_MoreOptions")).ToolTip(S("NodesPage_Action_MoreOptions")).AutomationId("UsageMastOverflow"),
-                    MenuItem(S("Usage_OpenWeb"), actions.OpenWebUsage) with { IsEnabled = state.Availability != UsageAvailability.Disconnected }).WithKey("overflow"))
-            : HStack(PageResponsiveLayout.GapInner,
+        var buttons = HStack(PageResponsiveLayout.GapInner,
                 OpenWebButton(state, actions.OpenWebUsage).WithKey("web"),
                 ExportMenu(state, actions.Export).WithKey("export"));
-        var mast = Grid(layout.Narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Auto],
-            layout.Narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
-            title.Grid(row: 0, column: 0),
-            unsupported || forbidden ? null : buttons.HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top)
-                .Margin(layout.Narrow ? 0 : PageResponsiveLayout.GapGroup, layout.Narrow ? PageResponsiveLayout.GapStack : 0, 0, 0)
-                .Grid(row: layout.Narrow ? 1 : 0, column: layout.Narrow ? 0 : 1).AutomationId("UsageMastActions"))
-            .AutomationId("UsageMast");
+        var mast = PageHero.Header("UsageMast", "\uE9D2", S("Usage_Title"), "UsagePageMarker",
+            headline.AutomationId("UsageHeadline"), detail,
+            unsupported || forbidden ? Empty() : buttons.AutomationId("UsageMastActions"),
+            layout.Narrow, !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled, highContrast);
         return VStack(PageResponsiveLayout.GapStack,
             mast,
             unsupported || forbidden ? null : RangeRow(state, actions.Controller, layout))
@@ -129,6 +113,21 @@ internal static class UsageHeader
         return text;
     }
 
+    private static string ContributorText(UsagePageState state)
+    {
+        var parts = new List<string>();
+        if (state.Dashboard is { } dashboard)
+        {
+            var (agent, share, model) = UsageInsights.HeroContributors(dashboard);
+            if (agent is not null && share is { } value)
+                parts.Add(F("Usage_Hero_MostlyFormat", agent)
+                    + " (" + UsageFormat.Percent(value, Culture, 0) + ")");
+            if (model is not null) parts.Add(F("Usage_Hero_TopModelFormat", model));
+        }
+        parts.Add(SummaryText(state));
+        return string.Join(" · ", parts);
+    }
+
     private static Element RangeRow(UsagePageState state, UsagePageController controller, UsagePageLayout layout)
     {
         var filters = state.Filters;
@@ -144,7 +143,8 @@ internal static class UsageHeader
                 ? ProgressRing().Size(20, 20).AutomationName(S("Usage_Refreshing")).AutomationId("UsageRefreshing").WithKey("refreshing")
                 : IconButton("\uE72C", S("Usage_Refresh"), controller.Refresh, "UsageRefresh",
                     state.Availability != UsageAvailability.Disconnected).WithKey("refresh"))
-            .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center).AutomationId("UsageFilterOptions");
+            .HAlign(layout.Narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right)
+            .VAlign(VerticalAlignment.Center).AutomationId("UsageFilterOptions");
         var wide = layout.Tier == PageWidthTier.Wide;
         var custom = filters.Preset == UsagePreset.Custom;
         var inlineDates = wide && custom;

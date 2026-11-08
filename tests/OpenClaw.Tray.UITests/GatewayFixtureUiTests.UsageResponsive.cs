@@ -198,8 +198,7 @@ public sealed partial class GatewayFixtureUiTests
                         // The actual InfoBar close peer must not become an extra Tab stop for this separate contract.
                         var closeButtons = feedback.FindAll(TreeScope.Descendants,
                             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
-                        Assert.Equal(1, closeButtons.Count);
-                        var close = closeButtons[0];
+                        var close = Assert.Single(closeButtons.Cast<AutomationElement>());
                         Assert.True(IsWithin(close, feedback));
                         Assert.Equal(ControlType.Button, close.Current.ControlType);
                         Invoke(close);
@@ -262,7 +261,7 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task UsageBackdrop_ViewportWashRemainsAnchoredWhileTheHeaderScrollsAway()
+    public async Task UsageHero_ViewportRemainsAnchoredWhileTheCardScrollsAway()
     {
         await WithAppAsync(async run =>
         {
@@ -283,7 +282,10 @@ public sealed partial class GatewayFixtureUiTests
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
                 FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage at top");
-            OwnedWindowCapture.Save(run, window, "Usage-Light-viewport-gradient-top.png", FindById(run, "UsagePageMarker")!);
+            var hero = FindById(run, "UsageMast") ?? throw new InvalidOperationException("Missing Usage hero card.");
+            var filter = FindById(run, "UsageFilterRow") ?? throw new InvalidOperationException("Missing Usage range bar.");
+            Assert.True(filter.Current.BoundingRectangle.Top >= hero.Current.BoundingRectangle.Bottom);
+            OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", FindById(run, "UsagePageMarker")!);
             var top = scrollElement.Current.BoundingRectangle;
             var previousTitle = FindById(run, "UsagePageMarker")!.Current.BoundingRectangle;
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 45);
@@ -291,7 +293,9 @@ public sealed partial class GatewayFixtureUiTests
                 (FindById(run, "UsagePageMarker")!.Current.IsOffscreen ||
                     FindById(run, "UsagePageMarker")!.Current.BoundingRectangle.Top < previousTitle.Top - 100),
                 "ordinary Usage header scrolled away");
-            OwnedWindowCapture.Save(run, window, "Usage-Light-viewport-gradient-scrolled.png");
+            Assert.Equal(top, scrollElement.Current.BoundingRectangle);
+            Assert.True(hero.Current.IsOffscreen || hero.Current.BoundingRectangle.Top < top.Top);
+            OwnedWindowCapture.Save(run, window, "Usage-Light-hero-scrolled.png");
             File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "viewport-scroll-proof.json"), JsonSerializer.Serialize(new
             {
                 observedHostWidthDip = top.Width / scale,
@@ -300,14 +304,14 @@ public sealed partial class GatewayFixtureUiTests
                 headerOffscreen = FindById(run, "UsagePageMarker")!.Current.IsOffscreen,
                 scale,
                 syntheticGateway = true,
-                contract = "The decorative viewport wash is behind ordinary scrolling content; no sticky header."
+                contract = "The hero card and its accent tint scroll inside an anchored viewport; no sticky header or page-wide wash."
             }, new JsonSerializerOptions { WriteIndented = true }));
         }, scenario: GatewayScenario.CreateUsageAnalytics(UsageAnalyticsMode.Released));
     }
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task UsageBackdrop_RealShellCapturesFullPageWashInLightAndDark()
+    public async Task UsageHero_RealShellCapturesCardAndRangeInLightAndDark()
     {
         foreach (var theme in new[] { "Light", "Dark" })
         {
@@ -315,7 +319,7 @@ public sealed partial class GatewayFixtureUiTests
             {
                 await run.InvokeAsync("app.navigate", new { page = "usage" });
                 await WaitUiAsync(run, () => FindById(run, "UsageSummaryCostValue") is { Current.IsOffscreen: false },
-                    "loaded Usage backdrop");
+                    "loaded Usage hero");
                 var window = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, "UsagePageRoot")) is not null);
                 var handle = new IntPtr(window.Current.NativeWindowHandle);
@@ -325,7 +329,7 @@ public sealed partial class GatewayFixtureUiTests
                 var failures = new List<string>();
                 foreach (var target in theme == "Light" ? new[] { 1400, 0 } : new[] { 1400 })
                 {
-                    var name = $"Usage-{theme}-backdrop-{(target == 0 ? "shell-minimum" : "1400")}";
+                    var name = $"Usage-{theme}-hero-{(target == 0 ? "shell-minimum" : "1400")}";
                     try
                     {
                         var before = UsageWindowBounds(handle);
@@ -336,7 +340,7 @@ public sealed partial class GatewayFixtureUiTests
                         {
                             var bounds = UsageWindowBounds(handle);
                             return bounds.Width == expected.Width && bounds.Height == expected.Height;
-                        }, "exact backdrop capture window bounds");
+                        }, "exact hero capture window bounds");
                         double? previous = null;
                         await run.WaitForAsync(async () =>
                         {
@@ -345,10 +349,19 @@ public sealed partial class GatewayFixtureUiTests
                             var stable = previous is { } value && Math.Abs(value - width) < 0.01;
                             previous = width;
                             return stable;
-                        }, "stable backdrop capture host width");
+                        }, "stable hero capture host width");
                         var frame = UsageWindowBounds(handle);
                         var page = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle;
                         var host = page.Width / scale;
+                        var hero = FindById(run, "UsageMast")!.Current.BoundingRectangle;
+                        var range = FindById(run, "UsageFilterRow")!.Current.BoundingRectangle;
+                        Assert.True(hero.Left >= page.Left && hero.Right <= page.Right);
+                        Assert.True(range.Top >= hero.Bottom, "Range controls overlap the Usage hero.");
+                        foreach (var id in new[] { "UsageOpenWeb", "UsageExport" })
+                        {
+                            var action = FindById(run, id)!.Current.BoundingRectangle;
+                            Assert.True(action.Left >= hero.Left && action.Right <= hero.Right);
+                        }
                         var file = name + ".png";
                         OwnedWindowCapture.Save(run, window, file, FindById(run, "UsagePageMarker")!);
                         using var capture = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.ArtifactsDirectory, name + ".json")));
@@ -404,7 +417,7 @@ public sealed partial class GatewayFixtureUiTests
                     }
                     finally
                     {
-                        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "backdrop-manifest.json"),
+                        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "hero-manifest.json"),
                             JsonSerializer.Serialize(manifests, new JsonSerializerOptions { WriteIndented = true }));
                     }
                 }

@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
@@ -7,6 +9,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Usage;
@@ -66,18 +69,18 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         {
             await WaitForAsync(host, "UsageDailyChart");
             ScrollViewer scroll = null!;
-            Border backdrop = null!;
+            Grid surface = null!;
             Grid chart = null!;
-            double contentTop = 0, backdropTop = 0;
+            double contentTop = 0, surfaceTop = 0;
             SessionsUsageReport report = null!;
             await ui.RunOnUIAsync(() =>
             {
                 scroll = Get<ScrollViewer>(host, "UsagePageRoot");
-                backdrop = Get<Border>(host, "UsageMastBackdrop");
+                surface = Get<Grid>(host, "UsageSurface");
                 chart = Get<Grid>(host, "UsageDailyChart");
                 Assert.Equal(initialInset, scroll.Margin.Top);
                 contentTop = Get<FrameworkElement>(host, "UsageContentColumn").TransformToVisual(host).TransformPoint(new()).Y;
-                backdropTop = backdrop.TransformToVisual(host).TransformPoint(new()).Y;
+                surfaceTop = surface.TransformToVisual(host).TransformPoint(new()).Y;
                 report = Assert.IsType<SessionsUsageReport>(gateway.Controller.State.Report);
                 viewport.UpdateTopInset(changedInset);
             });
@@ -90,7 +93,9 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Same(scroll, Get<ScrollViewer>(host, "UsagePageRoot"));
                 Assert.Same(chart, Get<Grid>(host, "UsageDailyChart"));
                 Assert.Same(report, gateway.Controller.State.Report);
-                Assert.Equal(backdropTop, backdrop.TransformToVisual(host).TransformPoint(new()).Y);
+                Assert.Same(surface, Get<Grid>(host, "UsageSurface"));
+                Assert.Equal(surfaceTop, surface.TransformToVisual(host).TransformPoint(new()).Y);
+                Assert.Null(Find<FrameworkElement>(host, "UsageMastBackdrop"));
                 Assert.Equal(1000, viewport.Width);
                 viewport.UpdateTopInset(initialInset);
             });
@@ -515,23 +520,22 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     [Theory]
     [InlineData(1400, 1200)]
     [InlineData(1000, 936)]
-    public async Task MastBackdrop_StaysAtTheViewportTopWhileCentredContentScrolls(double width, double contentWidth)
+    public async Task HeroContent_ScrollsNormallyWithinAnchoredSurfaceWithoutPageWideGlow(double width, double contentWidth)
     {
         await WithUsagePageAsync(Report(serverOverview: false), new RecordingCommands(), async (host, _) =>
         {
             await WaitForAsync(host, "UsageDaily");
             await ui.RunOnUIAsync(() =>
             {
-                var backdrop = Get<Border>(host, "UsageMastBackdrop");
+                var surface = Get<Grid>(host, "UsageSurface");
                 var content = Get<StackPanel>(host, "UsageContentColumn");
-                Assert.InRange(Math.Abs(backdrop.ActualWidth - host.ActualWidth), 0, 0.1);
-                Assert.InRange(Math.Abs(backdrop.TransformToVisual(host).TransformPoint(new()).X), 0, 0.1);
+                Assert.InRange(Math.Abs(surface.ActualWidth - host.ActualWidth), 0, 0.1);
+                Assert.InRange(Math.Abs(surface.TransformToVisual(host).TransformPoint(new()).X), 0, 0.1);
                 Assert.InRange(Math.Abs(Get<StackPanel>(host, "UsageBody").ActualWidth - contentWidth), 0, 0.1);
                 Assert.InRange(Math.Abs(content.TransformToVisual(host).TransformPoint(new()).X -
                     (width - content.ActualWidth) / 2), 0, 0.1);
-                Assert.InRange(Math.Abs(backdrop.ActualHeight - 320), 0, 0.1);
-                Assert.False(backdrop.IsHitTestVisible);
-                Assert.InRange(Math.Abs(backdrop.TransformToVisual(host).TransformPoint(new()).Y), 0, 0.1);
+                Assert.Null(Find<FrameworkElement>(host, "UsageMastBackdrop"));
+                Assert.InRange(Math.Abs(surface.TransformToVisual(host).TransformPoint(new()).Y), 0, 0.1);
                 Assert.Equal(32, content.Padding.Left);
             });
             await ui.RunOnUIAsync(() =>
@@ -542,18 +546,279 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Get<ScrollViewer>(host, "UsagePageRoot").VerticalOffset >= 199 &&
                 Get<StackPanel>(host, "UsageContentColumn").TransformToVisual(host).TransformPoint(new()).Y < -199,
-                "Usage content scrolling beneath its viewport backdrop"));
+                "Usage header scrolls normally within the retained surface"));
             await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
             {
-                var backdrop = Get<Border>(host, "UsageMastBackdrop");
+                var surface = Get<Grid>(host, "UsageSurface");
                 var content = Get<StackPanel>(host, "UsageContentColumn");
-                Assert.InRange(Math.Abs(backdrop.TransformToVisual(host).TransformPoint(new()).Y), 0, 0.1);
-                Assert.InRange(Math.Abs(backdrop.ActualWidth - host.ActualWidth), 0, 0.1);
+                Assert.InRange(Math.Abs(surface.TransformToVisual(host).TransformPoint(new()).Y), 0, 0.1);
+                Assert.InRange(Math.Abs(surface.ActualWidth - host.ActualWidth), 0, 0.1);
                 Assert.True(content.TransformToVisual(host).TransformPoint(new()).Y < -199);
                 Assert.True(Get<FrameworkElement>(host, "UsageHeader").TransformToVisual(host).TransformPoint(new()).Y < 0);
             });
         }, theme: ElementTheme.Light, pageWidth: width);
+    }
+
+    [Theory]
+    [InlineData(74.99, false)]
+    [InlineData(75, true)]
+    [InlineData(75.01, true)]
+    public async Task AllowanceRow_InspectActionUsesInclusiveReportedThreshold(double percent, bool expected)
+    {
+        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageProvider_anthropic");
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Null(Find<FrameworkElement>(host, "UsageNeedsYou"));
+                var action = Find<Button>(host, "UsageInspectProvider_anthropic");
+                Assert.Equal(expected, action is not null);
+                var badge = Find<Border>(host, "UsageNearLimit_anthropic");
+                Assert.Equal(expected, badge is not null);
+                if (badge is not null)
+                {
+                    var providerName = Get<TextBlock>(host, "UsageProviderName_anthropic");
+                    var row = Get<Border>(host, "UsageProvider_anthropic");
+                    var nameBounds = providerName.TransformToVisual(row).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, providerName.ActualWidth, providerName.ActualHeight));
+                    var badgeBounds = badge.TransformToVisual(row).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, badge.ActualWidth, badge.ActualHeight));
+                    Assert.InRange(badgeBounds.Left - nameBounds.Right, 0, 9);
+                    var name = AutomationProperties.GetName(badge);
+                    Assert.Contains(LocalizationHelper.GetString("Usage_NearLimit"), name);
+                    Assert.Contains("Claude", name);
+                    Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetItemStatus(badge)));
+                    Assert.Contains(LocalizationHelper.GetString("Usage_NearLimit"),
+                        AutomationProperties.GetName(Get<Border>(host, "UsageProvider_anthropic")));
+                }
+                if (action is not null)
+                {
+                    Assert.Equal(LocalizationHelper.Format("Usage_SeeUsingProviderFormat", "Claude"),
+                        AutomationProperties.GetName(action));
+                    Invoke(action);
+                    Assert.Equal("anthropic", gateway.Controller.State.FocusProvider);
+                }
+            });
+        }, configure: gateway => gateway.Providers =
+        [
+            new() { Provider = "anthropic", DisplayName = "Claude",
+                Windows = [new("Week", null, percent, DateTimeOffset.Now.AddDays(1))] },
+        ]);
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light, 1400)]
+    [InlineData(ElementTheme.Light, 800)]
+    [InlineData(ElementTheme.Light, 520)]
+    [InlineData(ElementTheme.Dark, 1400)]
+    [InlineData(ElementTheme.Dark, 800)]
+    [InlineData(ElementTheme.Dark, 520)]
+    public async Task HeroHeader_RequiredStateMatrixKeepsRangeAndActionsReachable(ElementTheme theme, double width)
+    {
+        foreach (var scenario in new[] { "typical", "near-limit", "disconnected", "legacy", "empty" })
+        {
+            var report = scenario == "empty"
+                ? new SessionsUsageReport
+                {
+                    Totals = new UsageTotals { Report = UsageReportState.Available },
+                    Aggregates = new UsageAggregates { SessionCount = 0 },
+                }
+                : Report(serverOverview: scenario != "legacy");
+            await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
+            {
+                await WaitForAsync(host, scenario == "empty" ? "UsageEmptyState" : "UsageDaily");
+                await WaitForAsync(host, "UsageProvider_anthropic");
+                if (scenario == "disconnected")
+                {
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        gateway.Connected = false;
+                        gateway.Controller.Refresh();
+                    });
+                    await WaitForAsync(host, "UsageDisconnectedBanner");
+                }
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    UsageActionSettled(host, "UsageOpenWeb") && UsageActionSettled(host, "UsageExport"),
+                    "Visible hero actions and ancestor composition opacity settled before capture"));
+                await ui.YieldToRenderAsync();
+                await ui.RunOnUIAsync(async () =>
+                {
+                    Assert.Null(Find<FrameworkElement>(host, "UsageRenderError"));
+                    Assert.Null(Find<FrameworkElement>(host, "UsageNeedsYou"));
+                    Assert.Null(Find<FrameworkElement>(host, "UsageMastBackdrop"));
+                    var header = Get<FrameworkElement>(host, "UsageHeader");
+                    var bounds = header.TransformToVisual(host).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, header.ActualWidth, header.ActualHeight));
+                    Assert.True(bounds.Left >= 0 && bounds.Right <= host.ActualWidth + 1);
+                    var mast = Get<Border>(host, "UsageMast");
+                    var range = Get<FrameworkElement>(host, "UsageFilterRow");
+                    var mastBounds = mast.TransformToVisual(host).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, mast.ActualWidth, mast.ActualHeight));
+                    var rangeBounds = range.TransformToVisual(host).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, range.ActualWidth, range.ActualHeight));
+                    Assert.True(rangeBounds.Top >= mastBounds.Bottom, "Range controls must follow, not overlap, the hero.");
+                    if (scenario == "legacy") Assert.Null(Find<FrameworkElement>(host, "UsageQuery"));
+                    if (scenario == "near-limit")
+                        Assert.NotNull(Find<Border>(host, "UsageNearLimit_anthropic"));
+                    var actions = new[] { Get<Button>(host, "UsageOpenWeb"), Get<Button>(host, "UsageExport") };
+                    foreach (var action in actions)
+                    {
+                        var actionBounds = action.TransformToVisual(host).TransformBounds(
+                            new Windows.Foundation.Rect(0, 0, action.ActualWidth, action.ActualHeight));
+                        Assert.True(actionBounds.Left >= 0 && actionBounds.Right <= host.ActualWidth + 1,
+                            $"{AutomationProperties.GetAutomationId(action)} leaves the {width}-DIP viewport.");
+                    }
+                    if (scenario == "disconnected") Assert.All(actions, action => Assert.False(action.IsEnabled));
+                    if (scenario != "empty") AssertDailyFacts(host, width == 520 ? 1 : 3);
+                    PersistUsageReceipts($"hero-{theme}-{width:0}-{scenario}",
+                        [UsageNativeReceipt(host, scenario)]);
+                    var captureName = $"Usage-{theme}-hero-{width:0}-{scenario}";
+                    var captureRoot = Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR");
+                    var existingCaptures = captureRoot is { Length: > 0 }
+                        ? Directory.Exists(Path.Combine(captureRoot, captureName))
+                            ? Directory.GetFiles(Path.Combine(captureRoot, captureName), "*.png").Length : 0
+                        : 0;
+                    await VisualTestCapture.CaptureAsync(ui.Container, captureName);
+                    if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1")
+                    {
+                        Assert.False(string.IsNullOrWhiteSpace(captureRoot), "Visual proof requires an explicit capture root.");
+                        var captures = Directory.GetFiles(Path.Combine(captureRoot!, captureName), "*.png");
+                        Assert.Equal(existingCaptures + 1, captures.Length);
+                        Assert.All(captures, path => Assert.True(new FileInfo(path).Length > 0, "Capture must contain image bytes."));
+                    }
+                });
+            }, theme: theme, pageWidth: width, configure: gateway =>
+            {
+                if (scenario != "near-limit")
+                    gateway.Providers = gateway.Providers.Select(provider => provider with
+                    {
+                        Windows = provider.Windows.Select(window => window with { UsedPercent = 34 }).ToList(),
+                    }).ToList();
+            });
+        }
+    }
+
+    [Fact]
+    public async Task SharedHeroReducedMotion_DisablesNativeTransitionsWithoutChangingTheWindowsSetting()
+    {
+        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageMast");
+            var animations = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+            ReactorHostControl proof = null!;
+            try
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    proof = new ReactorHostControl { Width = 520, Height = 300 };
+                    proof.Mount(_ => PageHero.Header("UsageReducedMotionHero", "\uE9D2",
+                        LocalizationHelper.GetString("Usage_Title"), "UsageReducedMotionTitle",
+                        TextBlock("$18.42"), TextBlock("63"),
+                        HStack(8, Button(LocalizationHelper.GetString("Usage_OpenWeb")),
+                            Button(LocalizationHelper.GetString("Usage_Export"))),
+                        narrow: true, reducedMotion: true));
+                    ui.Container.Children.Add(proof);
+                });
+                await WaitForAsync(proof, "UsageReducedMotionHero");
+                await ui.RunOnUIAsync(() =>
+                {
+                    var hero = Get<Border>(proof, "UsageReducedMotionHero");
+                    Assert.NotNull(hero.Transitions);
+                    Assert.Empty(hero.Transitions);
+                    var panels = FindDescendants<Panel>(hero).Where(panel => panel.Transitions is not null).ToArray();
+                    Assert.NotEmpty(panels);
+                    Assert.All(panels, panel =>
+                    {
+                        Assert.Empty(panel.Transitions);
+                        Assert.NotNull(panel.ChildrenTransitions);
+                        Assert.Empty(panel.ChildrenTransitions);
+                    });
+                    Assert.Equal(animations, new Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
+                    PersistUsageReceipts("reduced-motion", [UsageNativeReceipt(proof, "explicit-reduced-motion")]);
+                });
+            }
+            finally
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    if (proof is not null) { ui.Container.Children.Remove(proof); proof.Dispose(); }
+                });
+            }
+        });
+    }
+
+    [Fact]
+    public async Task AllowanceBadge_RefreshAppearsAndClearsWithoutRemountingThePage()
+    {
+        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageProvider_anthropic");
+            FrameworkElement surface = null!;
+            var frames = new List<object>();
+            EventHandler<object> recordFrame = (_, _) => frames.Add(UsageNativeReceipt(host, "badge-frame"));
+            await ui.RunOnUIAsync(() =>
+            {
+                surface = Get<FrameworkElement>(host, "UsageSurface");
+                frames.Add(UsageNativeReceipt(host, "before-badge-refresh"));
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += recordFrame;
+            });
+            try
+            {
+            foreach (var percent in new[] { 75d, 74.99d, 75.01d })
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    gateway.Providers =
+                    [
+                        new() { Provider = "anthropic", DisplayName = "Claude",
+                            Windows = [new("Week", null, percent, null)] },
+                    ];
+                    gateway.Controller.Refresh();
+                });
+                var expectedBadge = percent >= 75;
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    gateway.Controller.State.Providers.Phase == UsageLoadPhase.Loaded &&
+                    gateway.Controller.State.Providers.Value?.Providers.Single().Windows.Single().UsedPercent == percent &&
+                    (Find<Border>(host, "UsageNearLimit_anthropic") is not null) == expectedBadge &&
+                    (Find<Button>(host, "UsageInspectProvider_anthropic") is not null) == expectedBadge &&
+                    (!expectedBadge || (Get<Border>(host, "UsageNearLimit_anthropic") is
+                        { Visibility: Visibility.Visible, ActualWidth: > 0, ActualHeight: > 0 } badge &&
+                        ElementCompositionPreview.GetElementVisual(badge).Opacity >= 0.99)),
+                    "Refreshed allowance badge and inspect action match the percentage after native fade settles"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Same(surface, Get<FrameworkElement>(host, "UsageSurface"));
+                    Assert.Null(Find<FrameworkElement>(host, "UsageRenderError"));
+                    Assert.Equal(expectedBadge, Find<Button>(host, "UsageInspectProvider_anthropic") is not null);
+                    if (expectedBadge)
+                    {
+                        var provider = Get<Border>(host, "UsageProvider_anthropic");
+                        var inspect = Get<Button>(host, "UsageInspectProvider_anthropic");
+                        var bounds = inspect.TransformToVisual(provider).TransformBounds(
+                            new Windows.Foundation.Rect(0, 0, inspect.ActualWidth, inspect.ActualHeight));
+                        Assert.Equal(Visibility.Visible, inspect.Visibility);
+                        Assert.True(inspect.ActualWidth > 0 && inspect.ActualHeight > 0);
+                        Assert.True(bounds.Left >= 0 && bounds.Top >= 0 &&
+                            bounds.Right <= provider.ActualWidth + 1 && bounds.Bottom <= provider.ActualHeight + 1);
+                        Assert.InRange(ElementCompositionPreview.GetElementVisual(inspect).Opacity, 0.99f, 1f);
+                    }
+                    frames.Add(UsageNativeReceipt(host, $"settled-allowance-{percent.ToString(CultureInfo.InvariantCulture)}"));
+                });
+            }
+            }
+            finally
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= recordFrame;
+                    PersistUsageReceipts("badge-refresh", frames);
+                });
+            }
+        }, configure: gateway => gateway.Providers =
+        [
+            new() { Provider = "anthropic", DisplayName = "Claude", Windows = [new("Week", null, 74, null)] },
+        ]);
     }
 
     [Theory]
@@ -567,47 +832,120 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         var rows = NamedRows();
         var longTitle = new string('W', 160);
         rows[1] = rows[1] with { Label = longTitle };
-        await WithUsagePageAsync(Report(serverOverview: true, rows), new RecordingCommands(), async (host, gateway) =>
+        var report = Report(serverOverview: true, rows);
+        var chartActionId = "UsageDailyChart_" + report.Aggregates!.CostDaily[0].Date;
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
         {
             await WaitForAsync(host, "UsageSession_agent:research:discord:42");
             await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:research:discord:42")));
             await WaitForAsync(host, "UsageDetailLayout");
-            await ui.RunOnUIAsync(() => host.Width = width);
+            ScrollViewer retainedScroll = null!;
+            FrameworkElement retainedSurface = null!;
+            Button retainedFocus = null!;
+            await ui.RunOnUIAsync(() => host.Height = 600);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                Get<ScrollViewer>(host, "UsagePageRoot").ScrollableHeight > 128,
+                "Expanded session detail in a 600-DIP viewport provides a real scroll range"));
+            await ui.RunOnUIAsync(() =>
+            {
+                retainedScroll = Get<ScrollViewer>(host, "UsagePageRoot");
+                retainedSurface = Get<FrameworkElement>(host, "UsageSurface");
+                retainedFocus = Get<Button>(host, chartActionId);
+                Assert.True(retainedScroll.ScrollableHeight > 128, "Fixture must scroll without clamping the retained64-DIP offset.");
+                Assert.True(retainedFocus.Focus(FocusState.Programmatic), "Chart control must accept focus before resize.");
+                Assert.True(retainedScroll.ChangeView(null, 64, null, disableAnimation: true));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(retainedScroll.VerticalOffset - 64) < 1 &&
+                    ReferenceEquals(FocusManager.GetFocusedElement(host.XamlRoot), retainedFocus),
+                "known scroll offset and focused native control before resize"));
+            var frames = new List<object>();
+            EventHandler<object> recordFrame = (_, _) => frames.Add(UsageNativeReceipt(host, "resize-frame"));
+            await ui.RunOnUIAsync(() =>
+            {
+                frames.Add(UsageNativeReceipt(host, "before-resize"));
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += recordFrame;
+                host.Width = width;
+            });
+            try
+            {
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Math.Abs(host.ActualWidth - width) < 0.1 &&
                 Math.Abs(Get<Grid>(host, "UsageStage").ActualWidth - contentWidth) < 0.1 &&
-                Get<Grid>(host, "UsageStage").ColumnDefinitions.Count == columns, "Responsive Usage reflow"));
+                Get<Grid>(host, "UsageStage").ColumnDefinitions.Count == columns &&
+                frames.Count > 1 &&
+                UsageActionSettled(host, "UsageOpenWeb", requireViewport: false) &&
+                UsageActionSettled(host, "UsageExport", requireViewport: false),
+                "Responsive Usage reflow with settled visible hero actions"));
             await ui.YieldToRenderAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(retainedScroll, Get<ScrollViewer>(host, "UsagePageRoot"));
+                Assert.Same(retainedSurface, Get<FrameworkElement>(host, "UsageSurface"));
+                Assert.Same(retainedFocus, Get<Button>(host, chartActionId));
+                Assert.Same(retainedFocus, FocusManager.GetFocusedElement(host.XamlRoot));
+                Assert.True(retainedScroll.ScrollableHeight > 128);
+                Assert.InRange(Math.Abs(retainedScroll.VerticalOffset - 64), 0, 1);
+                frames.Add(UsageNativeReceipt(host, "settled-resize"));
+                host.Height = PageHeight;
+                retainedScroll.ChangeView(null, 0, null, disableAnimation: true);
+            });
+            }
+            finally
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= recordFrame;
+                    PersistUsageReceipts($"resize-{width:0}", frames);
+                });
+            }
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => retainedScroll.VerticalOffset < 1 &&
+                    UsageActionSettled(host, "UsageOpenWeb") && UsageActionSettled(host, "UsageExport"),
+                "top restored with visible settled actions for existing layout assertions"));
             await ui.RunOnUIAsync(() => gateway.ExportWorkflow.ExportAsync(UsageExportFormat.DailyCsv));
             await WaitForAsync(host, "UsageExportToast");
+            var terminalExportFrame = false;
+            var exportLabel = LocalizationHelper.GetString("Usage_Export");
+            bool ExportLabelRestored() => !gateway.Controller.State.Exporting &&
+                FindDescendants<TextBlock>(Get<Button>(host, "UsageExport")).Any(text => text.Text == exportLabel);
+            EventHandler<object> observeExportFrame = (_, _) =>
+            {
+                if (ExportLabelRestored()) terminalExportFrame = true;
+            };
+            await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += observeExportFrame);
+            try
+            {
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => ExportLabelRestored() && terminalExportFrame,
+                    "Terminal export state and restored native label observed on a render frame"));
+            }
+            finally
+            {
+                await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observeExportFrame);
+            }
             await ui.RunOnUIAsync(async () =>
             {
-                foreach (var id in new[] { "UsageStage", "UsageAttentionGrid", "UsageContributorLayout", "UsageDetailLayout" })
+                foreach (var id in new[] { "UsageStage", "UsageContributorLayout", "UsageDetailLayout" })
                     Assert.Equal(columns, Get<Grid>(host, id).ColumnDefinitions.Count);
                 Assert.Equal(filterRows, Get<Grid>(host, "UsageFilterRow").RowDefinitions.Count);
-                var attention = Get<Border>(host, "UsageAttentionCard_anthropic");
-                var heading = Get<TextBlock>(host, "UsageNeedsHeading");
-                Assert.InRange(Math.Abs(attention.TransformToVisual(host).TransformPoint(new()).X -
-                    heading.TransformToVisual(host).TransformPoint(new()).X), 0, 1);
-                var warningTitle = Get<TextBlock>(host, "UsageAttentionTitle_anthropic");
-                var warningMessage = Get<TextBlock>(host, "UsageAttentionMessage_anthropic");
-                Assert.InRange(Math.Abs(warningTitle.TransformToVisual(attention).TransformPoint(new()).X -
-                    warningMessage.TransformToVisual(attention).TransformPoint(new()).X), 0, 1);
-                var cardWidth = columns == 2 ? (contentWidth - 12) / 2 : contentWidth;
-                Assert.InRange(Math.Abs(attention.ActualWidth - cardWidth), 0, 1);
-                foreach (var id in new[] { "UsageAttentionIcon_anthropic", "UsageAttentionTitle_anthropic", "UsageInspectProvider_anthropic" })
-                {
-                    var item = Get<FrameworkElement>(host, id);
-                    var rect = item.TransformToVisual(attention).TransformBounds(
-                        new Windows.Foundation.Rect(0, 0, item.ActualWidth, item.ActualHeight));
-                    Assert.True(rect.Top >= 8 && rect.Bottom <= attention.ActualHeight - 8,
-                        $"{id} needs vertical card padding, rect {rect}, card height {attention.ActualHeight}.");
-                }
+                Assert.Equal(width == 520 ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+                    Get<StackPanel>(host, "UsageFilterOptions").HorizontalAlignment);
+                Assert.Null(Find<FrameworkElement>(host, "UsageNeedsYou"));
+                var provider = Get<Border>(host, "UsageProvider_anthropic");
+                var inspect = Get<Button>(host, "UsageInspectProvider_anthropic");
+                var inspectBounds = inspect.TransformToVisual(provider).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, inspect.ActualWidth, inspect.ActualHeight));
+                Assert.True(inspectBounds.Left >= 0 && inspectBounds.Right <= provider.ActualWidth &&
+                    inspectBounds.Top >= 8 && inspectBounds.Bottom <= provider.ActualHeight - 8,
+                    $"The allowance action must stay inside its provider row: {inspectBounds}.");
                 var title = Get<TextBlock>(host, "UsageRowTitle_agent:research:discord:42");
                 Assert.Equal(TextTrimming.CharacterEllipsis, title.TextTrimming);
                 Assert.True(title.IsTextTrimmed);
                 Assert.Equal(longTitle, ToolTipService.GetToolTip(title));
-                foreach (var id in new[] { "UsageMast", "UsageFilterRow", "UsageStage", "UsageAttentionGrid",
+                AssertSeparatedChildren(Get<Grid>(host, "UsageMastGrid"));
+                AssertDailyFacts(host, width == 520 ? 1 : 3);
+                foreach (var id in new[] { "UsageFilterRow", "UsageStage",
                     "UsageDailyControls", "UsageDailyFacts", "UsageActivity", "UsageContributorLayout", "UsageDetailLayout" })
                     AssertSeparatedChildren(Get<Grid>(host, id));
                 var activity = Get<Grid>(host, "UsageActivity");
@@ -656,7 +994,16 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 var y = buttons[0].TransformToVisual(actions).TransformPoint(new()).Y + buttons[0].ActualHeight / 2;
                 Assert.All(buttons, button => Assert.InRange(
                     Math.Abs(button.TransformToVisual(actions).TransformPoint(new()).Y + button.ActualHeight / 2 - y), 0, 1));
+                Exception? receiptFailure = null;
+                try { PersistUsageReceipts($"layout-{width:0}", [UsageNativeReceipt(host, "layout-and-actions")]); }
+                catch (Exception ex)
+                {
+                    receiptFailure = ex;
+                    output.WriteLine($"Action measurement receipt failed: {ex}");
+                }
                 AssertUnclippedText(host);
+                if (receiptFailure is not null)
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(receiptFailure).Throw();
                 await VisualTestCapture.CaptureAsync(host, $"Usage-Light-responsive-{width:0}");
             });
             await ui.RunOnUIAsync(() => host.Width = 1300);
@@ -913,11 +1260,53 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     text.DesiredSize.Height - text.Margin.Top - text.Margin.Bottom <= actual.Height + 1,
                     $"Text clips without ellipsis: '{text.Text}' ({AutomationProperties.GetAutomationId(text)}), needs {text.DesiredSize}, margin {text.Margin}, has {actual}.");
             }
+
             finally
             {
                 text.Measure(actual);
             }
         }
+    }
+
+    private static void AssertDailyFacts(FrameworkElement host, int expectedColumns)
+    {
+        var grid = Get<Grid>(host, "UsageDailyFacts");
+        Assert.Equal(expectedColumns, grid.ColumnDefinitions.Count);
+        Assert.All(grid.ColumnDefinitions, column => Assert.True(column.Width.IsStar));
+        Assert.Equal(12, grid.ColumnSpacing);
+        var ids = new[] { "UsageSummaryTokens", "UsageSummaryCache", "UsageSummarySessions" };
+        Assert.Equal(3, grid.Children.Count);
+        var labels = new[]
+        {
+            LocalizationHelper.GetString("Usage_Metric_Tokens"),
+            string.Format(CultureInfo.CurrentCulture, LocalizationHelper.GetString("Usage_CacheWrittenFormat"), "0"),
+            LocalizationHelper.GetString("Usage_Overview_Sessions"),
+        };
+        var widths = new List<double>();
+        for (var index = 0; index < ids.Length; index++)
+        {
+            var fact = Get<FrameworkElement>(host, ids[index]);
+            Assert.Equal(index / expectedColumns, Microsoft.UI.Xaml.Controls.Grid.GetRow(fact));
+            Assert.Equal(index % expectedColumns, Microsoft.UI.Xaml.Controls.Grid.GetColumn(fact));
+            Assert.True(fact.ActualWidth > 0 && fact.ActualHeight > 0);
+            widths.Add(fact.ActualWidth);
+            var texts = FindDescendants<TextBlock>(fact).ToArray();
+            Assert.Contains(texts, text => text.Text == labels[index]);
+            var value = Get<TextBlock>(host, ids[index] + "Value");
+            Assert.False(string.IsNullOrWhiteSpace(value.Text));
+            Assert.False(value.IsTextTrimmed, $"{ids[index]} value must remain readable.");
+            if (index == 0)
+                Assert.Contains(texts, text => text.Text == string.Format(CultureInfo.CurrentCulture,
+                    LocalizationHelper.GetString("Usage_Details_TokenSplitFormat"),
+                    UsageUi.Tokens(370000), UsageUi.Tokens(185000)));
+            var bounds = fact.TransformToVisual(grid).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, fact.ActualWidth, fact.ActualHeight));
+            Assert.True(bounds.Top >= -1 && bounds.Bottom <= grid.ActualHeight + 1,
+                $"{ids[index]} leaves the facts grid vertically.");
+            AssertUnclippedText(fact);
+        }
+        Assert.True(widths.Max() - widths.Min() <= 1, "Daily facts must have equal allocated widths.");
+        AssertSeparatedChildren(grid);
     }
 
     [Fact]
@@ -1387,6 +1776,120 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         });
     }
 
+    [PairedUsageDiagnosticTheory]
+    [InlineData(ElementTheme.Light, 1400)]
+    [InlineData(ElementTheme.Light, 520)]
+    public async Task PairedHeroDiagnostic_CorrelatesOwnedWindowAndRtbWithoutChangingMotionSettings(ElementTheme theme, double width)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR")),
+            "Diagnostic requires an explicitly admitted private-desktop capture lane.");
+        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageDaily");
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                UsageActionSettled(host, "UsageOpenWeb") && UsageActionSettled(host, "UsageExport"),
+                "Paired hero actions settled"));
+            await ui.RunOnUIAsync(async () =>
+            {
+                var state = $"Usage-paired-{theme}-{width:0}";
+                var animationsBefore = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+                var scroll = Get<ScrollViewer>(host, "UsagePageRoot");
+                var originalOffset = scroll.VerticalOffset;
+                Action? restore = null;
+                long frames = 0;
+                DateTimeOffset lastFrameUtc = default;
+                EventHandler<object> observe = (_, _) =>
+                {
+                    frames++;
+                    lastFrameUtc = DateTimeOffset.UtcNow;
+                };
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += observe;
+                try
+                {
+                    restore = await MountedControlCapture.ArrangeUsageSceneAsync(ui.TestWindow, host, state);
+                    await WaitForRenderedConditionAsync(() =>
+                        UsageActionSettled(host, "UsageOpenWeb") && UsageActionSettled(host, "UsageExport"),
+                        "Arranged paired hero actions settled");
+                    await PairAsync("top");
+                    if (width == 520)
+                    {
+                        var sessions = Get<FrameworkElement>(host, "UsageSummarySessions");
+                        var offset = sessions.TransformToVisual(scroll).TransformPoint(new()).Y + scroll.VerticalOffset;
+                        Assert.True(scroll.ChangeView(null, Math.Max(0, offset - 20), null, disableAnimation: true));
+                        await WaitForRenderedConditionAsync(() =>
+                        {
+                            var bounds = sessions.TransformToVisual(scroll).TransformBounds(
+                                new Windows.Foundation.Rect(0, 0, sessions.ActualWidth, sessions.ActualHeight));
+                            return bounds.Top >= 0 && bounds.Bottom <= scroll.ViewportHeight;
+                        }, "Complete Sessions fact is inside the scrolled viewport");
+                        await OnboardingNativeProof.NextCompositionAsync();
+                        await PairAsync("scrolled-sessions");
+                    }
+                    Assert.Equal(animationsBefore, new Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
+
+                    async Task PairAsync(string phase)
+                    {
+                        await OnboardingNativeProof.NextCompositionAsync();
+                        Assert.True(frames > 0, "A real Rendering callback is required for the paired diagnostic.");
+                        var before = frames;
+                        var beforeUtc = DateTimeOffset.UtcNow;
+                        PersistUsageReceipts(state + "-" + phase + "-before", [UsageNativeReceipt(host, phase)]);
+                        await VisualTestCapture.CaptureAsync(host, state + "-" + phase + "-rtb");
+                        var rtbFrame = frames;
+                        var rtbUtc = DateTimeOffset.UtcNow;
+                        await MountedControlCapture.RequiredUsageAsync(ui.TestWindow, state + "-" + phase + "-hwnd");
+                        PersistUsageReceipts(state + "-" + phase + "-after", [UsageNativeReceipt(host, phase)]);
+                        var mast = Get<Border>(host, "UsageMast");
+                        var panels = FindDescendants<Panel>(mast).ToArray();
+                        if (!animationsBefore)
+                        {
+                            Assert.True(mast.Transitions is null || mast.Transitions.Count == 0);
+                            Assert.All(panels, panel =>
+                            {
+                                Assert.True(panel.Transitions is null || panel.Transitions.Count == 0);
+                                Assert.True(panel.ChildrenTransitions is null || panel.ChildrenTransitions.Count == 0);
+                            });
+                        }
+                        var directory = Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR")!;
+                        File.WriteAllText(Path.Combine(directory, state + "-" + phase + "-correlation.json"),
+                            JsonSerializer.Serialize(new
+                            {
+                                qualification = "Sequential same-window captures, not simultaneous compositor proof or pixel acceptance.",
+                                hwnd = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow).ToInt64(),
+                                pid = Environment.ProcessId,
+                                processStartUtc = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime(),
+                                before, rtbFrame, after = frames, beforeUtc, rtbUtc, afterUtc = DateTimeOffset.UtcNow,
+                                lastFrameUtc, animationsBefore,
+                                actualPageReducedMotionVerified = !animationsBefore,
+                                reducedMotionBlocker = animationsBefore ? "Host animations are enabled. No OS setting was changed." : null,
+                                scroll.VerticalOffset, scroll.ViewportHeight,
+                            }, new JsonSerializerOptions { WriteIndented = true }));
+                    }
+                }
+                finally
+                {
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observe;
+                    try
+                    {
+                        scroll.ChangeView(null, originalOffset, null, disableAnimation: true);
+                        await WaitForRenderedConditionAsync(() => Math.Abs(scroll.VerticalOffset - originalOffset) <= 1,
+                            "Diagnostic scroll offset restored");
+                    }
+                    finally { restore?.Invoke(); }
+                }
+            });
+        }, theme: theme, pageWidth: width);
+    }
+
+    private sealed class PairedUsageDiagnosticTheoryAttribute : TheoryAttribute
+    {
+        public PairedUsageDiagnosticTheoryAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR")))
+                Skip = "Requires an explicitly admitted isolated private-desktop paired-capture lane.";
+        }
+    }
+
     private async Task CaptureSectionAsync(FrameworkElement host, string marker, string name)
     {
         await ui.RunOnUIAsync(() =>
@@ -1478,6 +1981,128 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     host.Dispose();
                 }
             });
+        }
+    }
+
+    private static object UsageNativeReceipt(FrameworkElement root, string phase)
+    {
+        var scroll = Find<ScrollViewer>(root, "UsagePageRoot");
+        var focus = FocusManager.GetFocusedElement(root.XamlRoot) as FrameworkElement;
+        var actionElements = Find<StackPanel>(root, "UsageMastActions") is { } actions
+            ? FindDescendants<FrameworkElement>(actions).ToHashSet()
+            : [];
+        var factElements = Find<Grid>(root, "UsageDailyFacts") is { } facts
+            ? FindDescendants<FrameworkElement>(facts).ToHashSet()
+            : [];
+        for (DependencyObject? ancestor = Find<Button>(root, "UsageExport"); ancestor is FrameworkElement element;
+            ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor))
+        {
+            actionElements.Add(element);
+            if (ReferenceEquals(element, root)) break;
+        }
+        object ElementReceipt(FrameworkElement element)
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            var bounds = element.TransformToVisual(root).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
+            var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(element);
+            var padding = element switch
+            {
+                Control control => control.Padding,
+                Border border => border.Padding,
+                Grid grid => grid.Padding,
+                StackPanel stack => stack.Padding,
+                _ => new Thickness(),
+            };
+            return new
+            {
+                id = AutomationProperties.GetAutomationId(element), type = element.GetType().FullName,
+                managedInstance = RuntimeHelpers.GetHashCode(element),
+                bounds = new { bounds.X, bounds.Y, bounds.Width, bounds.Height },
+                desired = new { element.DesiredSize.Width, element.DesiredSize.Height },
+                layoutSlot = new { slot.X, slot.Y, slot.Width, slot.Height },
+                margin = new { element.Margin.Left, element.Margin.Top, element.Margin.Right, element.Margin.Bottom },
+                padding = new { padding.Left, padding.Top, padding.Right, padding.Bottom },
+                clipType = element.Clip?.GetType().FullName,
+                clip = element.Clip is Microsoft.UI.Xaml.Media.RectangleGeometry rectangle
+                    ? new { rectangle.Rect.X, rectangle.Rect.Y, rectangle.Rect.Width, rectangle.Rect.Height } : null,
+                rasterizationScale = element.XamlRoot?.RasterizationScale,
+                element.Width, element.Height, element.MinWidth, element.MaxWidth,
+                element.HorizontalAlignment, element.VerticalAlignment,
+                text = (element as TextBlock)?.Text,
+                element.Opacity, element.Visibility, element.ActualTheme,
+                composition = new
+                {
+                    visual.Opacity,
+                    offset = new { visual.Offset.X, visual.Offset.Y, visual.Offset.Z },
+                    scale = new { visual.Scale.X, visual.Scale.Y, visual.Scale.Z },
+                },
+                transitions = element.Transitions?.Select(transition => transition.GetType().Name).ToArray(),
+                childrenTransitions = (element as Panel)?.ChildrenTransitions?
+                    .Select(transition => transition.GetType().Name).ToArray(),
+            };
+        }
+        return new
+        {
+            phase, utc = DateTimeOffset.UtcNow, pid = Environment.ProcessId,
+            mountedOnly = true, root.ActualWidth, root.ActualHeight, root.ActualTheme,
+            animationsEnabled = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
+            focus = focus is null ? null : ElementReceipt(focus),
+            scroll = scroll is null ? null : new
+            {
+                instance = RuntimeHelpers.GetHashCode(scroll), scroll.VerticalOffset, scroll.ScrollableHeight,
+                scroll.ViewportHeight, scroll.ExtentHeight,
+            },
+            elements = FindDescendants<FrameworkElement>(root).Where(element =>
+                actionElements.Contains(element) || factElements.Contains(element) ||
+                (AutomationProperties.GetAutomationId(element) is { Length: > 0 } id &&
+                (id.StartsWith("UsageMast", StringComparison.Ordinal) || id.StartsWith("UsageReducedMotion", StringComparison.Ordinal)
+                    || id.StartsWith("UsageNearLimit_", StringComparison.Ordinal)
+                    || id.StartsWith("UsageInspectProvider_", StringComparison.Ordinal)
+                    || id is "UsageOpenWeb" or "UsageExport" or "UsageSurface" or "UsageFilterRow"
+                        or "UsageDailyFacts" or "UsageSummaryTokens" or "UsageSummaryCache" or "UsageSummarySessions"
+                        or "UsageSummaryTokensValue" or "UsageSummaryCacheValue" or "UsageSummarySessionsValue")))
+                .Select(ElementReceipt).ToArray(),
+        };
+    }
+
+    private static bool UsageActionSettled(FrameworkElement root, string id, bool requireViewport = true)
+    {
+        var action = Find<Button>(root, id);
+        if (action is null || action.ActualWidth <= 0 || action.ActualHeight <= 0) return false;
+        var geometryRoot = requireViewport ? root : Find<Border>(root, "UsageMast");
+        if (geometryRoot is null) return false;
+        var bounds = action.TransformToVisual(geometryRoot).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, action.ActualWidth, action.ActualHeight));
+        if (bounds.Left < 0 || bounds.Top < 0 || bounds.Right > geometryRoot.ActualWidth + 1 ||
+            bounds.Bottom > geometryRoot.ActualHeight + 1) return false;
+        for (DependencyObject? current = action; current is UIElement element;
+            current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+        {
+            if (element.Visibility != Visibility.Visible) return false;
+            // Disabled action opacity is a native visual state, not an unfinished entrance.
+            if (!(ReferenceEquals(element, action) && !action.IsEnabled) &&
+                (element.Opacity < 0.99 || ElementCompositionPreview.GetElementVisual(element).Opacity < 0.99))
+                return false;
+            if (ReferenceEquals(current, root)) return true;
+        }
+        return false;
+    }
+
+    private void PersistUsageReceipts(string name, IReadOnlyList<object> frames)
+    {
+        var json = JsonSerializer.Serialize(frames, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            // Auto dimensions and unbounded maxima are emitted as named JSON strings.
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        });
+        output.WriteLine(json);
+        if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR") is { Length: > 0 } root)
+        {
+            var directory = Path.Combine(root, "native-receipts");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, name + ".json"), json);
         }
     }
 

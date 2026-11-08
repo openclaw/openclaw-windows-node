@@ -8436,6 +8436,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Outros ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Uso diário</value></data>
   <data name="Usage_NoReportedDates" xml:space="preserve"><value>Nenhuma data informada</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Principalmente {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Modelo principal: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Perto do limite</value></data>
   <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dias informados</value></data>
   <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} exibidas · {1} carregadas</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Personalizado</value></data>

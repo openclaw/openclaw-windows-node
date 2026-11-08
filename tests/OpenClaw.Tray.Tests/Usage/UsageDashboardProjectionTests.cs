@@ -12,6 +12,18 @@ namespace OpenClaw.Tray.Tests.Usage;
 public sealed class UsageDashboardProjectionTests
 {
     [Theory]
+    [InlineData(331.99, 1)]
+    [InlineData(332, 1)]
+    [InlineData(503.99, 1)]
+    [InlineData(504, 3)]
+    [InlineData(504.01, 3)]
+    [InlineData(503.994, 1)]
+    [InlineData(503.996, 3)]
+    [InlineData(1200, 3)]
+    public void DailyFacts_KeepAllThreeInOneColumnUntilThreeMinimumWidthColumnsFit(double innerWidth, int expected) =>
+        Assert.Equal(expected, UsagePageLayout.DailyFactColumns(innerWidth));
+
+    [Theory]
     [InlineData(408, 2)]
     [InlineData(664, 2)]
     [InlineData(713, 2)]
@@ -55,6 +67,51 @@ public sealed class UsageDashboardProjectionTests
     };
 
     private static UsageFilters Week => UsageFilters.Default(Today);
+
+    [Theory]
+    [InlineData(false, false, 0, true, 0.46)]
+    [InlineData(true, false, 0, true, null)]
+    [InlineData(false, true, 0, true, null)]
+    [InlineData(false, false, 1, true, null)]
+    [InlineData(false, false, 0, false, null)]
+    public void HeroCostShare_RequiresCompletePricedTotalsWithoutClaimingAgentModelAssociation(
+        bool partial, bool lowerBound, int missingPrices, bool costKnown, double? expectedShare)
+    {
+        var dashboard = UsageDashboardProjection.Project(new SessionsUsageReport(), Week, UsageMetric.Cost) with
+        {
+            Summary = new UsageSummary(1000, 100, 63, lowerBound, partial, missingPrices, CostKnown: costKnown),
+            Contributors = new Dictionary<UsageContributorKind, IReadOnlyList<UsageContributor>>
+            {
+                [UsageContributorKind.Agent] = [new("Atlas", null, 460, 46, false, false)],
+                [UsageContributorKind.Model] = [new("Independent model", "provider", 600, 60, false, false)],
+            },
+        };
+        var facts = UsageInsights.HeroContributors(dashboard);
+        Assert.Equal("Atlas", facts.Agent);
+        Assert.Equal(expectedShare, facts.CostShare);
+        Assert.Equal("Independent model", facts.Model);
+    }
+
+    [Theory]
+    [InlineData(0, false, false, true, null)]
+    [InlineData(101, false, false, true, null)]
+    [InlineData(46, true, false, true, null)]
+    [InlineData(46, false, true, true, null)]
+    [InlineData(46, false, false, false, null)]
+    [InlineData(100, false, false, true, 1d)]
+    public void HeroCostShare_RejectsUnpricedUnknownOrInconsistentAgentCosts(
+        double agentCost, bool unpriced, bool lowerBound, bool known, double? expected)
+    {
+        var dashboard = UsageDashboardProjection.Project(new SessionsUsageReport(), Week, UsageMetric.Cost) with
+        {
+            Summary = new UsageSummary(1000, 100, 63, false, false, 0),
+            Contributors = new Dictionary<UsageContributorKind, IReadOnlyList<UsageContributor>>
+            {
+                [UsageContributorKind.Agent] = [new("Atlas", null, 460, agentCost, unpriced, lowerBound, CostKnown: known)],
+            },
+        };
+        Assert.Equal(expected, UsageInsights.HeroContributors(dashboard).CostShare);
+    }
 
     [Fact]
     public void Presets_ResolveInclusiveRangesEndingToday()

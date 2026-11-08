@@ -8384,6 +8384,9 @@
   <data name="Usage_OtherFormat" xml:space="preserve"><value>其他（{0}）</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>每日用量</value></data>
   <data name="Usage_NoReportedDates" xml:space="preserve"><value>沒有已回報的日期</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>主要來自 {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>主要模型：{0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>接近限額</value></data>
   <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>已回報 {0} 天</value></data>
   <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>顯示 {0} 個 · 已載入 {1} 個</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>自訂</value></data>

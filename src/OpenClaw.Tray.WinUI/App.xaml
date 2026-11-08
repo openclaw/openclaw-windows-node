@@ -89,7 +89,6 @@
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
-                    <SolidColorBrush x:Key="UsageMastGradientBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="SetupIndicatorAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="SetupInactiveDotBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
 
@@ -121,11 +120,6 @@
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">True</x:Boolean>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-
-            <LinearGradientBrush x:Key="UsageMastGradientBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.10">
-                <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
-                <GradientStop Color="Transparent" Offset="1" />
-            </LinearGradientBrush>
 
             <!-- Hub NavigationView selection indicator follows the user's Windows accent. -->
             <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground"

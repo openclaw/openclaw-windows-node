@@ -406,15 +406,21 @@ total from an unknown population beyond the 1,000-row cap. The advanced view
 adds those server controls, without pretending a loaded-row drilldown is an
 exhaustive search.
 
-The mast shows the estimated range cost and a compact, localized custom date
-range. Cross-year ranges retain both years; the tooltip and accessibility help
+The hero shows estimated range cost and contributor details only when reported
+data supports them. Agent cost shares require complete priced totals; independent
+model aggregates do not claim an agent-to-model relationship. The header retains
+Open in web and Export CSV actions, with the range bar directly below it.
+Cross-year ranges retain both years; the tooltip and accessibility help
 retain the full dates and reporting zone. On Wide hosts, custom date pickers
 sit beside the presets, with server search on a separate row when available.
 Medium and Narrow hosts retain stacked controls. **Options** holds reporting-day
 boundaries and session-family counting. **Daily usage** contains cost/tokens,
 chart/table, token/cache facts and defined activity counts. Provider allowance
-windows at or above 75% produce **Needs you** cards only while the independently
-loaded provider data is current. **Usage breakdown** retains all contributor
+windows at or above 75% carry a **Near limit** badge on their allowance row,
+with its **See what's using it** action. Missing allowance percentages are not
+zero usage, and billing amounts or absent/zero billing limits never invent an
+allowance percentage. Disconnected rows retain their last-reported context.
+There is no separate Needs you section. **Usage breakdown** retains all contributor
 buckets behind a top-five plus Other legend and opens loaded sessions. Session
 details expand inline, and the trailing row chat button passes the exact key.
 No chart selection changes the requested range.
@@ -449,8 +455,8 @@ records are confined to the test Gateway scenarios.
 `PageResponsiveLayout` selects tiers from the page host width, not the window:
 Wide starts at 1,000 DIP, Medium at 720 DIP, and Narrow supports hosts down to
 480 DIP. The daily/allowance stage and contributor/detail pairs stack below
-Wide. Needs-you cards use equal columns on Wide, preserving an orphan's column
-width, and stretch across the content column below Wide. Native Border padding
+Wide. The hero uses a card-local accent tint, not a page-wide glow.
+Native Border padding
 owns their insets; bounded explanatory text stays left-aligned.
 Session and provider card rows have separate rounded borders with exactly
 `PageResponsiveLayout.GapInner` (DESIGN spacing2, 8 DIP) between adjacent cards,

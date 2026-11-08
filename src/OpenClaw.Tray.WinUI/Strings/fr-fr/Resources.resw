@@ -8384,6 +8384,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_OtherFormat" xml:space="preserve"><value>Autres ({0})</value></data>
   <data name="Usage_PerDay" xml:space="preserve"><value>Utilisation quotidienne</value></data>
   <data name="Usage_NoReportedDates" xml:space="preserve"><value>Aucune date signalée</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Principalement {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Modèle principal : {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Limite proche</value></data>
   <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} jours signalés</value></data>
   <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} affichées · {1} chargées</value></data>
   <data name="Usage_Preset_Custom" xml:space="preserve"><value>Personnalisé</value></data>
