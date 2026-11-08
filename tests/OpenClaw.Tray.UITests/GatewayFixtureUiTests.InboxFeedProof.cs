@@ -45,7 +45,7 @@ public sealed partial class GatewayFixtureUiTests
 
             var historyOccurrence = run.Gateway.Requests.Count(request =>
                 request.Method == "chat.history" && request.SessionKey == GatewayScenario.OtherSessionKey) + 1;
-            Invoke(InboxFeedButton(bellRow, "Open chat"));
+            Invoke(await InboxFeedButtonAsync(run, bellRow, "Open chat"));
             await WaitComposerSelectionAsync(run, GatewayScenario.OtherSessionKey);
             Assert.Equal("ok", (await run.Gateway.WaitForCompletedRequestAsync("chat.history",
                 GatewayScenario.OtherSessionKey, historyOccurrence)).Outcome);
@@ -122,7 +122,7 @@ public sealed partial class GatewayFixtureUiTests
             await InboxFeedLabelAsync(run, automation, "Failed");
             await InboxFeedTextAsync(run, automation, "Synthetic archive destination unavailable.");
             CaptureInboxFeed(run, "inbox-feed-automation-failed.png", automation);
-            Invoke(InboxFeedButton(automation, "Open Automations"));
+            Invoke(await InboxFeedButtonAsync(run, automation, "Open Automations"));
             await WaitUiAsync(run, () => InboxFeedVisibleId(run, "CronPageMarker") is not null, "native Automations destination");
             await CaptureIfRequestedAsync(run, "inbox-feed-automations-destination.png");
 
@@ -131,8 +131,8 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Contains("Account needs attention · fixture-token", account.Current.Name, StringComparison.Ordinal);
             await InboxFeedLabelAsync(run, account, "Account needs attention: Fixture Cloud");
             await InboxFeedLabelAsync(run, account, "Account needs attention · fixture-token");
-            Assert.True(InboxFeedFullyVisible(run, InboxFeedButton(account, "Ask OpenClaw")));
-            var review = InboxFeedButton(account, "Review account");
+            Assert.True(InboxFeedFullyVisible(run, await InboxFeedButtonAsync(run, account, "Ask OpenClaw")));
+            var review = await InboxFeedButtonAsync(run, account, "Review account");
             Assert.True(InboxFeedFullyVisible(run, review));
             CaptureInboxFeed(run, "inbox-feed-account-expired.png", account);
             Invoke(review);
@@ -142,7 +142,7 @@ public sealed partial class GatewayFixtureUiTests
             await OpenInboxFeedPageAsync(run, "Automations");
             automation = await ExpandInboxFeedRowAsync(run, "Fixture nightly archive, Failed");
             const string question = "This automation failed: Fixture nightly archive. Explain why it failed and how to fix it.";
-            Invoke(InboxFeedButton(automation, "Ask OpenClaw"));
+            Invoke(await InboxFeedButtonAsync(run, automation, "Ask OpenClaw"));
             await WaitComposerSelectionAsync(run, GatewayScenario.MainSessionKey);
             // The scenario independently rejects any other message/session. A receipt is
             // awaited, not inferred from a click, draft, or optimistic transcript entry.
@@ -187,18 +187,27 @@ public sealed partial class GatewayFixtureUiTests
         return row;
     }
 
-    private static AutomationElement InboxFeedButton(AutomationElement row, string name) =>
-        row.FindFirst(TreeScope.Descendants, new AndCondition(
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-            new PropertyCondition(AutomationElement.NameProperty, name)))
-            ?? throw new InvalidOperationException($"Missing Inbox action: {name}");
+    private static async Task<AutomationElement> InboxFeedButtonAsync(GatewayFixtureRun run, AutomationElement row, string name)
+    {
+        AutomationElement? button = null;
+        // Expanded state can precede materialization of the action subtree. Observe
+        // the real, enabled button before invoking once; never retry the action itself.
+        await WaitUiAsync(run, () =>
+        {
+            button = row.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.NameProperty, name)));
+            return button is not null && button.Current.IsEnabled && InboxFeedFullyVisible(run, button);
+        }, $"visible enabled Inbox action: {name}");
+        return button!;
+    }
 
     private static async Task AssertInboxFeedCommandAsync(GatewayFixtureRun run, AutomationElement row, string expected)
     {
         var command = await InboxFeedTextAsync(run, row, expected);
         var metadata = await InboxFeedTextAsync(run, row, @"Gateway · C:\fixture");
         Assert.True(InboxFeedFullyVisible(run, metadata));
-        Assert.True(InboxFeedFullyVisible(run, InboxFeedButton(row, "Open chat")));
+        Assert.True(InboxFeedFullyVisible(run, await InboxFeedButtonAsync(run, row, "Open chat")));
         foreach (var element in row.FindAll(TreeScope.Subtree, Condition.TrueCondition).Cast<AutomationElement>())
         {
             Assert.DoesNotContain("fixture-secret", element.Current.Name, StringComparison.Ordinal);
