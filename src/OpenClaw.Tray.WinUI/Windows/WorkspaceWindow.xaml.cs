@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Controls;
 using OpenClawTray.Dialogs;
@@ -44,6 +45,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     // clicks coalesce onto the latest ChatPage.QueueSession value.
     private bool _chatApplyQueued;
     private bool _showingAgentCreation;
+    private readonly ProfileAutoFillCoordinator _profileAutoFill = CurrentApp.ProfileAutoFill;
     private IOperatorGatewayClient? _refreshingClient;
     private readonly HubCommandExecutor _commandExecutor = new();
     private readonly HubSearchController _search;
@@ -53,8 +55,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private SettingsShellView? _settings;
     private SettingsShellView? _preparedSettings;
     private Microsoft.UI.Xaml.Controls.Control? _chatFocus;
-    private readonly PendingRequestSlot<SetupNativeNavigationRequest> _pendingSettingsRequest = new();
-    private readonly TaskCompletionSource _settingsRendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Raised when a Settings page saved a user setting.</summary>
     internal event EventHandler? SettingsSaved;
@@ -83,6 +83,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
+        _profileAutoFill.ProfileChanged += OnProfileAutoFilled;
         _sessionMenu = new WorkspaceSessionMenuController(
             () => IsClosed ? null : CurrentApp.GatewayClient,
             key => _state.Sessions.FirstOrDefault(s => s.Key == key),
@@ -317,22 +318,13 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     internal void NavigateNativeSetup(SetupNativeNavigationRequest request)
     {
-        _pendingSettingsRequest.Clear();
         var destination = request.WorkspaceDestination
-            ?? WorkspaceDestination.Settings(NormalizeNativeSetupTag(request.PageTag));
+            ?? throw new SetupNativeOwnershipException();
         // A one-shot request never binds or initializes a surface underneath any shared-root dialog.
         // Only ordinary destination intent may survive until the dialog closes.
         if (OpenModalDialog() is not null)
         {
             if (destination != Destination) Navigate(destination);
-            return;
-        }
-        if (request.WorkspaceDestination is null)
-        {
-            _pendingSettingsRequest.Set(request);
-            Navigate(destination);
-            if (Destination != destination)
-                _pendingSettingsRequest.Clear();
             return;
         }
         _chat.BindNativeSetupRequest(request);
@@ -342,29 +334,9 @@ public sealed partial class WorkspaceWindow : WindowEx
             _chat.Initialize(this);
     }
 
-    private string NormalizeNativeSetupTag(string tag) =>
-        WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? SelectedAgentId ?? "main");
-
     internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (request.WorkspaceDestination is null)
-        {
-            if (!IsSettingsVisible)
-                throw new InvalidOperationException("The selected setup destination changed.");
-            // A cold window renders Settings on Loaded; the request stays pending until then and
-            // the wait ends promptly if another destination supersedes it first.
-            if (_settings is null)
-                await _pendingSettingsRequest.WaitForRenderAsync(request, _settingsRendered.Task, ct);
-            ct.ThrowIfCancellationRequested();
-            if (_settings is null || IsClosed || !IsSettingsVisible)
-                throw new InvalidOperationException("The native window closed.");
-            await _settings.WaitForNativeSetupAsync(request, ct);
-            ct.ThrowIfCancellationRequested();
-            if (IsClosed || !IsSettingsVisible)
-                throw new InvalidOperationException("The native window closed.");
-            return;
-        }
         request.RequireWorkspaceDestination(Destination);
         await _chat.WaitForNativeSetupAsync(request, ct);
         ct.ThrowIfCancellationRequested();
@@ -393,7 +365,6 @@ public sealed partial class WorkspaceWindow : WindowEx
             RenderSettings();
             return;
         }
-        _pendingSettingsRequest.Clear();
         LeaveSettings();
         if (Destination.Page == WorkspacePageId.Home && Destination.SessionKey is { } sessionKey)
         {
@@ -488,10 +459,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         ApplySettingsPresentation(view);
         UpdateNavigationSelection();
         UpdateHistoryButtons();
-        var request = _pendingSettingsRequest.Consume();
         var tag = Destination.CompanionTag ?? "settings";
-        view.ShowSection(tag, request is not null && NormalizeNativeSetupTag(request.PageTag) == tag ? request : null);
-        _settingsRendered.TrySetResult();
+        view.ShowSection(tag);
         AccessibilityNavigationSignal.WritePageReady(view.CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
     }
 
@@ -538,7 +507,7 @@ public sealed partial class WorkspaceWindow : WindowEx
                 SelectSession(sessionKey);
             else
                 Navigate(destination);
-        }, OpenSettings);
+        }, OpenSettings, OpenDashboard);
     }
 
     /// <summary>
@@ -658,7 +627,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void RefreshSidebar(bool rosterUpdated = false)
     {
         _updating = true;
-        var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions);
+        var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions, _state.AgentIdentities);
         _agentSelection.Refresh(CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayId,
             _state.AgentsList, rosterAgents, rosterUpdated, _state.AgentsListUnsupported);
         IReadOnlyList<WorkspaceAgent> agents = _agentSelection.HasCurrentRoster ? rosterAgents : [];
@@ -675,10 +644,7 @@ public sealed partial class WorkspaceWindow : WindowEx
                 // Compensate the native item's leading template margin, not the popup's scroll extent.
                 Margin = new Thickness(-5, 0, 0, 0)
             };
-            item.Content = agent;
-            item.Tag = agent;
-            AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
-            AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+            UpdateAssistantItem(AssistantSelector, item, agent);
             desiredItems.Add(item);
         }
         desiredItems.Add(NewAgentOption);
@@ -704,6 +670,22 @@ public sealed partial class WorkspaceWindow : WindowEx
         // Before layout, NavigationView is still minimal and selecting an item closes its pane.
         if (Root.IsLoaded)
             UpdateNavigationSelection();
+    }
+
+    internal static void UpdateAssistantItem(ComboBox selector, ComboBoxItem item, WorkspaceAgent agent)
+    {
+        if (Equals(item.Content, agent))
+            return;
+
+        // ComboBox caches its closed selection separately from the item's content.
+        // Re-select under RefreshSidebar's _updating guard so identity hydration cannot navigate.
+        var selected = ReferenceEquals(selector.SelectedItem, item);
+        if (selected) selector.SelectedItem = null;
+        item.Content = agent;
+        item.Tag = agent;
+        AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
+        AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+        if (selected) selector.SelectedItem = item;
     }
 
     /// <summary>
@@ -973,7 +955,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (e.PropertyName is nameof(AppState.Status) or nameof(AppState.Presence) or nameof(AppState.SelfProfileRevision))
             RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
         if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.AgentsListUnsupported)
-            or nameof(AppState.Sessions) or nameof(AppState.Status))
+            or nameof(AppState.AgentIdentities) or nameof(AppState.Sessions) or nameof(AppState.Status))
             RefreshSidebar(rosterUpdated: e.PropertyName == nameof(AppState.AgentsList) ||
                 e.PropertyName == nameof(AppState.AgentsListUnsupported) && _state.AgentsListUnsupported);
         if (e.PropertyName == nameof(AppState.Status))
@@ -1014,8 +996,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateOwnerIdentity()
     {
         var name = _identity.DisplayName;
-        // macOS parity: the shared-credential owner is labelled as such; no known profile shows Owner.
-        var label = _identity.IsSharedOwner ? Text("SharedOwner.Text") : name ?? Text("Owner.Text");
+        // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
+        var label = _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
+            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        if (!IsClosed && name is not null)
+            AsyncEventHandlerGuard.Run(_profileAutoFill.ObserveAsync, new AppLogger(), nameof(UpdateOwnerIdentity));
         var avatar = _identity.Avatar;
         var avatarChanged = !ReferenceEquals(avatar, _shownAvatar);
         if (avatarChanged)
@@ -1080,7 +1065,25 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateNotificationsBadge();
     }
 
-    private static void OpenDashboard() => ((IAppCommands)CurrentApp).OpenDashboard(null);
+    private string? ResolveDashboardPath()
+    {
+        var destination = Destination;
+        var sessionKey = destination.Page == WorkspacePageId.Home
+            ? destination.SessionKey ?? _chat.CurrentSessionKey
+            : null;
+        bool? isMain = sessionKey is null
+            ? null
+            : _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)?.IsMain;
+        if (sessionKey is not null && isMain is null &&
+            CurrentApp.GatewayClient?.MainSessionKey is { } mainSessionKey)
+            isMain = string.Equals(sessionKey, mainSessionKey, StringComparison.Ordinal);
+
+        return HubSearchCatalog.ContextualDashboardPath(
+            destination, sessionKey, isMain, _state.GatewaySelf?.ServerVersion);
+    }
+
+    private void OpenDashboard(string? path = null) =>
+        ((IAppCommands)CurrentApp).OpenDashboard(path ?? ResolveDashboardPath());
 
     /// <summary>Footer popups are anchored to one section; switching sections closes them.</summary>
     private void HideFooterFlyouts()
@@ -1127,6 +1130,12 @@ public sealed partial class WorkspaceWindow : WindowEx
             _showingAgentCreation = false;
             if (!IsClosed) NewAgentOption.IsEnabled = true;
         }
+    }
+
+    private void OnProfileAutoFilled(object? sender, EventArgs e)
+    {
+        if (!IsClosed)
+            RefreshOwnerIdentity(invalidate: true);
     }
 
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
@@ -1394,7 +1403,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
-        Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);
+        Add("PairDevice", () => ((IAppCommands)Application.Current).OpenDashboard("channels"), FluentIconCatalog.Devices);
         var showConnectionStatus = false;
         var connectionStatusIcon = new FontIcon();
         var connectionStatusItem = new MenuFlyoutItem { Icon = connectionStatusIcon };
@@ -1454,6 +1463,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         IsClosed = true;
         WorkspaceSearchFlyout.Hide();
         _search.Dispose();
+        _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();
@@ -1474,8 +1484,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         try { CurrentApp.PageActivator?.Reset(); }
         catch (Exception ex) { Logger.Warn($"[Workspace] Navigation scope reset on close failed: {ex.Message}"); }
-        _pendingSettingsRequest.Clear();
-        _settingsRendered.TrySetCanceled();
         _deferred.Clear();
         _chatFocus = null;
         _chat.CloseSurface();

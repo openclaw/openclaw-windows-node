@@ -482,7 +482,7 @@ public sealed partial class GatewayFixtureUiTests
                     && FindText(run, "Remove “Weekly digest”?") is not null, "named destructive confirmation");
                 RecordTransientPeers(run, "remove-dialog-open");
                 Assert.Empty(VisibleMenuPeers(run));
-                Assert.NotNull(FindText(run, "It's removed from Fixture Gateway along with its schedule and run history. This can't be undone."));
+                Assert.NotNull(FindText(run, $"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone."));
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
                 var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),

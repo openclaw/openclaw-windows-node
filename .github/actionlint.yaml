@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - openclaw-managed
+    - rtx-n1x-6144
+    - rtx-n1x-5120
+    - azure
