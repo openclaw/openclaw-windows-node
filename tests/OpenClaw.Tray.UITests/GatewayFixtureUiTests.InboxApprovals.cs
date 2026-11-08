@@ -168,17 +168,34 @@ public sealed partial class GatewayFixtureUiTests
         var documentText = document.GetText(-1);
         Assert.Equal(disclosure, documentText.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\r', '\n'));
         Assert.False(string.IsNullOrEmpty(suffix));
-        Assert.Contains(suffix, documentText, StringComparison.Ordinal);
-        // DocumentRange can begin at structural positions before its first text character.
-        // Native exact-text lookup locates the content itself without treating UTF-16 offsets
-        // or zero character movement as provider endpoint positions.
-        var range = document.FindText(suffix, 0, 0);
-        Assert.NotNull(range);
+        var start = documentText.IndexOf(suffix, StringComparison.Ordinal);
+        Assert.True(start >= 0);
         const ComUia.TextPatternRangeEndpoint first = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start;
         const ComUia.TextPatternRangeEndpoint last = ComUia.TextPatternRangeEndpoint.TextPatternRangeEndpoint_End;
+        // WinUI does not implement FindText. Keep checked Character movement for these
+        // fixture strings, and verify exact text rather than assuming UTF-16/provider units agree.
+        var range = document.Clone();
+        range.MoveEndpointByRange(last, document, first);
+        Assert.Equal(start, range.MoveEndpointByUnit(first, ComUia.TextUnit.TextUnit_Character, start));
+        Assert.Equal(suffix.Length, range.MoveEndpointByUnit(last, ComUia.TextUnit.TextUnit_Character, suffix.Length));
+        Assert.Equal(suffix, range.GetText(-1));
+        if (start == 0)
+        {
+            // Zero movement leaves reserved document positions intact. A checked native
+            // Character round trip may discard only a strictly zero-content outer prefix.
+            var before = range.Clone();
+            Assert.Equal(1, range.MoveEndpointByUnit(first, ComUia.TextUnit.TextUnit_Character, 1));
+            Assert.Equal(-1, range.MoveEndpointByUnit(first, ComUia.TextUnit.TextUnit_Character, -1));
+            Assert.True(range.CompareEndpoints(first, before, first) >= 0);
+            Assert.Equal(0, range.CompareEndpoints(last, before, last));
+            var discarded = before.Clone();
+            discarded.MoveEndpointByRange(last, range, first);
+            Assert.True(string.IsNullOrEmpty(discarded.GetText(-1)), "Normalization must not discard any text, including whitespace.");
+            Assert.Equal(suffix, range.GetText(-1));
+        }
         Assert.True(range.CompareEndpoints(first, document, first) >= 0);
         Assert.True(range.CompareEndpoints(last, document, last) <= 0);
-        Assert.Equal(suffix, range.GetText(-1));
+        Assert.True(range.CompareEndpoints(first, range, last) < 0);
         range.Select();
         await WaitUiAsync(run, () =>
         {
