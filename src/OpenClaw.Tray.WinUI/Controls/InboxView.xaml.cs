@@ -11,6 +11,7 @@
 //   ...
 //   inboxView.Unbind();
 
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -28,7 +29,9 @@ internal sealed record InboxViewCommands(Action<string> OpenRoute, Action OpenSe
 public sealed partial class InboxView : UserControl
 {
     private const string PageMarkerAutomationId = "NotificationsPageMarker";
+    private static readonly TimeSpan AgeInterval = TimeSpan.FromSeconds(30);
     private readonly ObservableCollection<InboxItemViewModel> _items = new();
+    private readonly DispatcherQueueTimer _clock;
     private AppNotificationService? _service;
     private InboxViewCommands? _commands;
     private InboxSnapshot _snapshot = InboxSnapshot.Empty;
@@ -36,6 +39,10 @@ public sealed partial class InboxView : UserControl
 
     public InboxView()
     {
+        _clock = DispatcherQueue.CreateTimer();
+        _clock.Interval = AgeInterval;
+        _clock.IsRepeating = true;
+        _clock.Tick += (_, _) => RefreshClock();
         InitializeComponent();
         ItemsList.ItemsSource = _items;
         // Hosts own the binding lifetime (flyout Closed, page Unloaded). Unbinding here would let a
@@ -67,6 +74,7 @@ public sealed partial class InboxView : UserControl
 
     internal void Unbind()
     {
+        _clock.Stop();
         if (_service is not null)
             _service.Changed -= OnNotificationsChanged;
         _service = null;
@@ -88,6 +96,24 @@ public sealed partial class InboxView : UserControl
         ApplyTabLabels();
         SyncInboxItems(_snapshot.For(_tab), DateTimeOffset.UtcNow);
         ApplyChrome();
+    }
+
+    private void RefreshClock()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var item in _items)
+            item.RefreshClock(now);
+    }
+
+    private void UpdateClock()
+    {
+        if (_service is null || _items.Count == 0)
+        {
+            _clock.Stop();
+            return;
+        }
+        if (!_clock.IsRunning)
+            _clock.Start();
     }
 
     private void ApplyTabLabels()
@@ -152,6 +178,7 @@ public sealed partial class InboxView : UserControl
             : Visibility.Collapsed;
         var total = _snapshot.Entries.Count;
         CountText.Text = total > 0 ? LocalizationHelper.Format("Inbox_CountFormat", total) : string.Empty;
+        UpdateClock();
     }
 
     private void OnTabSelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)

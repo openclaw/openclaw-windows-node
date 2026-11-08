@@ -709,6 +709,24 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void InboxClock_RefreshesRowsOnlyWhileTheHostIsBound()
+    {
+        // WinUI-only lifecycle guard. Retire when mounted Inbox clock tests cover
+        // ticking, empty tabs and close/reopen through both hosting surfaces.
+        var view = Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs");
+        var row = Read("src", "OpenClaw.Tray.WinUI", "ViewModels", "InboxItemViewModel.cs");
+        Assert.Contains("_clock.IsRepeating = true;", view);
+        Assert.Contains("_clock.Tick += (_, _) => RefreshClock();", view);
+        Assert.Matches(@"internal void Unbind\(\)\s*\{\s*_clock.Stop\(\);", view);
+        Assert.Matches(@"if \((?:_service|_feed) is null \|\| _items.Count == 0\)\s*\{\s*_clock.Stop\(\);", view);
+        Assert.Matches(@"CountText.Text = [^;]+;\s*UpdateClock\(\);", view);
+        Assert.Contains("if (!_clock.IsRunning)", view);
+        Assert.Contains("_clock.Start();", view);
+        Assert.Contains("item.RefreshClock(now);", view);
+        Assert.Contains("OnPropertyChanged(nameof(AgeText));", row);
+    }
+
+    [Fact]
     public void DebugPage_ObservesAppState_NotHubWindow()
     {
         // After Ranjesh's single-app-model rebase, the page must

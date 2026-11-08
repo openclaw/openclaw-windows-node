@@ -16,6 +16,7 @@ namespace OpenClawTray.ViewModels;
 internal sealed class InboxItemViewModel : INotifyPropertyChanged
 {
     private bool _isExpanded;
+    private DateTimeOffset _createdAt;
 
     private InboxItemViewModel(string id) => Id = id;
 
@@ -72,6 +73,17 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         Apply(entry, now, raise: true);
     }
 
+    /// <summary>Advances the relative age without replacing the row or its expansion state.</summary>
+    public void RefreshClock(DateTimeOffset now)
+    {
+        var age = FormatAge(InboxProjection.Age(_createdAt, now), _createdAt);
+        if (!string.Equals(age, AgeText, StringComparison.Ordinal))
+        {
+            AgeText = age;
+            OnPropertyChanged(nameof(AgeText));
+        }
+    }
+
     private void Apply(InboxEntry entry, DateTimeOffset now, bool raise)
     {
         var notification = entry.Notification;
@@ -94,7 +106,8 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
                 LocalizeMetadataValue(notification.Category),
             }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
-        AgeText = FormatAge(InboxProjection.Age(notification.CreatedAt, now), notification.CreatedAt);
+        _createdAt = notification.CreatedAt;
+        AgeText = FormatAge(InboxProjection.Age(_createdAt, now), _createdAt);
         CreatedText = notification.CreatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
         ActionLabel = hasAction ? notification.ActionLabel : null;
         ActionRoute = hasAction ? notification.ActionRoute : null;
