@@ -6,6 +6,7 @@
 // Usage:
 //   inboxView.Initialize(appNotifications, new InboxViewCommands(
 //       OpenRoute: route => window.OpenNotificationRoute(route),
+//       TryNavigateAsync: appCommands.TryNavigateAsync,
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
 //       OpenPage: () => window.ShowInboxPage()));
 //   ...
@@ -15,6 +16,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -23,8 +25,15 @@ using System.Collections.ObjectModel;
 
 namespace OpenClawTray.Controls;
 
-/// <summary>Navigation supplied by the Inbox host. <paramref name="OpenPage"/> is null on the page itself.</summary>
-internal sealed record InboxViewCommands(Action<string> OpenRoute, Action OpenSettings, Action? OpenPage = null);
+/// <summary>
+/// Navigation supplied by the Inbox host. <paramref name="TryNavigateAsync"/> reports actual
+/// admission for app reminders; <paramref name="OpenPage"/> is null on the page itself.
+/// </summary>
+internal sealed record InboxViewCommands(
+    Action<string> OpenRoute,
+    Func<string, string?, Task<bool>> TryNavigateAsync,
+    Action OpenSettings,
+    Action? OpenPage = null);
 
 public sealed partial class InboxView : UserControl
 {
@@ -208,15 +217,13 @@ public sealed partial class InboxView : UserControl
     private void OnActionClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: InboxItemViewModel item } ||
-            string.IsNullOrWhiteSpace(item.ActionRoute) ||
             _commands is not { } commands)
             return;
 
-        var service = _service;
-        commands.OpenRoute(item.ActionRoute);
-        // Opening the conversation is what a mention asks for; other entries stay until resolved.
-        if (item.Kind == InboxEntryKind.Mention)
-            service?.Dismiss(item.Id);
+        if (_service is { } notifications)
+            AsyncEventHandlerGuard.Run(
+                () => notifications.NavigateActionAsync(item.Id, commands.TryNavigateAsync),
+                new AppLogger(), nameof(OnActionClick));
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => _commands?.OpenSettings();

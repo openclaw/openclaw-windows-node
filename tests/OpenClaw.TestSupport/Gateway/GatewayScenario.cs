@@ -135,6 +135,22 @@ public sealed partial class GatewayScenario
         return new(browse._sessions, browse._reads, interactive: true);
     }
 
+    /// <summary>Read-only health data that lets the real app publish an actionable channel reminder.</summary>
+    public static GatewayScenario CreateChannelIssue(string error)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(error);
+        var browse = CreateBrowse();
+        var reads = new Dictionary<string, JsonElement>(browse._reads, StringComparer.Ordinal);
+        var health = JsonNode.Parse(reads["health"].GetRawText())!.AsObject();
+        health["channels"] = JsonSerializer.SerializeToNode(new
+        {
+            slack = new { configured = true, running = false, lastError = error }
+        });
+        health["channelOrder"] = JsonSerializer.SerializeToNode(new[] { "slack" });
+        reads["health"] = JsonSerializer.SerializeToElement(health);
+        return new(browse._sessions, reads);
+    }
+
     public static GatewayScenario CreateSearchNavigation(bool includeUnrenderableSection = false)
     {
         var browse = CreateBrowse();
