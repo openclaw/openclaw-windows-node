@@ -28,7 +28,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly WorkspaceIdentitySource _identity;
     private readonly WorkspaceSessionMenuController _sessionMenu;
     private readonly WorkspaceNavigationHistory _navigation = new();
-    private bool _settingsResizeDeferred;
     private readonly WorkspaceSessionOrder _sessionOrder = new();
     private readonly ChatPage _chat = new();
     private readonly GatewayStatusContent _gatewayStatusContent = new();
@@ -134,7 +133,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chat.SessionSelected += OnChatSessionSelected;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
-        Root.SizeChanged += OnWorkspaceSizeChanged;
         // The no-gateway accessibility fixture publishes its explicit roster before this window exists.
         RefreshSidebar(rosterUpdated:
             _state.AgentsListUnsupported ||
@@ -151,12 +149,16 @@ public sealed partial class WorkspaceWindow : WindowEx
         _ = RefreshAsync();
     }
 
-    internal void Navigate(WorkspaceDestination destination, bool preserveConversation = true)
+    internal void Navigate(WorkspaceDestination destination, bool preserveConversation = true) =>
+        TryNavigate(destination, preserveConversation);
+
+    internal bool TryNavigate(WorkspaceDestination destination, bool preserveConversation = true)
     {
+        if (IsClosed) return false;
         if (preserveConversation && destination is { Page: WorkspacePageId.Home, SessionKey: null })
             destination = _navigation.ChatDestination;
         if (_deferred.ShouldDefer(destination != Destination) && DeferWhileModalOpen(() => Navigate(destination, preserveConversation)))
-            return;
+            return false;
         _chat.RetainNativeSetupForDestination(destination);
         if (!_navigation.Navigate(destination))
         {
@@ -167,11 +169,20 @@ public sealed partial class WorkspaceWindow : WindowEx
             }
             else if (ContentHost.Children.FirstOrDefault() is FrameworkElement current)
                 SignalContentReady(current);
-            return;
+            return IsDestinationShown(destination);
         }
         if (Root.XamlRoot is not null)
             RenderDestination();
+        return IsDestinationShown(destination);
     }
+
+    private bool IsDestinationShown(WorkspaceDestination destination) =>
+        !IsClosed && Root.XamlRoot is not null && Destination == destination &&
+        (destination.Page == WorkspacePageId.Settings
+            ? _settings?.IsSectionShown(destination.CompanionTag ?? "settings") == true
+            : destination.Page == WorkspacePageId.Home
+                ? ContentHost.Children.Contains(_chat)
+                : ContentHost.Children.FirstOrDefault() is NotificationsPage);
 
     internal void OpenCompanion(CompanionPageId page, string? agentId = null) =>
         OpenSettings(WorkspaceNavigation.CompanionTag(page, agentId ?? SelectedAgentId ?? "main"));
@@ -182,15 +193,17 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// </summary>
     internal void OpenSettings(string tag) => OpenSettings(tag, embedded: false);
 
-    internal void OpenSettings(string tag, bool embedded)
+    internal void OpenSettings(string tag, bool embedded) => TryOpenSettings(tag, embedded);
+
+    internal bool TryOpenSettings(string tag, bool embedded = false)
     {
-        if (IsClosed) return;
+        if (IsClosed) return false;
         if (tag == "command-center")
         {
             OpenCommandCenter();
-            return;
+            return false;
         }
-        Navigate(WorkspaceDestination.Settings(
+        return TryNavigate(WorkspaceDestination.Settings(
             WorkspaceNavigation.NormalizeSettingsTag(tag, _settings?.CurrentAgentId ?? SelectedAgentId ?? "main"), embedded));
     }
 
@@ -423,6 +436,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         view.NavigateRequested = tag => OpenSettings(tag);
         view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
+        view.ExitRequested = ExitSettings;
         view.PruneRequested = PruneSettingsHistory;
         view.SearchController = _search;
         view.SearchNavigation = ExecuteSearch;
@@ -508,6 +522,70 @@ public sealed partial class WorkspaceWindow : WindowEx
             else
                 Navigate(destination);
         }, OpenSettings, OpenDashboard);
+    }
+
+    /// <summary>
+    /// Back to app: leaves full Settings for the app destination it was opened from, as one ordinary
+    /// history entry. The retained chat host and draft are reused, a modal dialog defers the change,
+    /// and focus returns to the control that opened Settings.
+    /// </summary>
+    private void ExitSettings()
+    {
+        if (!IsSettingsVisible || Destination.Embedded) return;
+        // Resolve the target and its focus only when the exit actually runs, after any dialog closes.
+        if (DeferWhileModalOpen(ExitSettings)) return;
+        _sidebarInvoked = false;
+        // Like Back/Forward, never return to a pinned Gateway page that is no longer available.
+        PruneUnavailableGatewayHistory();
+        var destination = _navigation.AppDestination;
+        Navigate(destination);
+        // LeaveSettings restores chat focus. A rebuilt Notifications page or a pinned page beside the
+        // sidebar has no saved control, so focus moves to the destination instead of a hidden button.
+        if (destination.Page != WorkspacePageId.Home)
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => FocusAppDestination(destination));
+    }
+
+    private void FocusAppDestination(WorkspaceDestination destination)
+    {
+        if (IsClosed || Destination != destination) return;
+        // The pin row is unfocusable while the main sidebar is hidden; the page itself is the fallback.
+        if (destination.Embedded && TryFocus(NavView.SelectedItem as DependencyObject)) return;
+        var page = destination.Embedded ? (DependencyObject)SettingsSection : ContentHost;
+        TryFocus(Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(page));
+    }
+
+    private static bool TryFocus(DependencyObject? target) => target switch
+    {
+        Control control => control.Focus(FocusState.Programmatic),
+        Microsoft.UI.Xaml.Documents.Hyperlink link => link.Focus(FocusState.Programmatic),
+        _ => false,
+    };
+
+    // Bubbling KeyDown, so the focused control handles Escape first (PreviewKeyDown would steal it).
+    private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
+        if (!SettingsEscapePolicy.ExitsSettings(Destination, e.Handled, e.KeyStatus.WasKeyDown,
+                overlayOpen: HasOpenOverlay(), focusInEditor: IsInEscapeOwningEditor(e.OriginalSource as DependencyObject)))
+            return;
+        e.Handled = true;
+        ExitSettings();
+    }
+
+    private bool HasOpenOverlay() =>
+        Root.XamlRoot is { } xamlRoot && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot)
+            .Any(popup => popup.Child is not ToolTip);
+
+    private bool IsInEscapeOwningEditor(DependencyObject? source)
+    {
+        for (var element = source; element is not null; element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or ComboBox or NumberBox)
+                return true;
+            if (ReferenceEquals(element, Root))
+                return false;
+        }
+        return false;
     }
 
     /// <summary>
@@ -914,7 +992,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         OperationInfo.IsOpen = true;
         EmbeddedOperationInfo.Severity = severity;
         EmbeddedOperationInfo.Message = message;
-        EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && _settings is { ContentOnly: true };
+        EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded;
     }
 
     // Only the user's close button dismisses the shared message; hiding the mirror must not.
@@ -1202,42 +1280,25 @@ public sealed partial class WorkspaceWindow : WindowEx
     // history unless the pane is collapsed, when the Settings history bar returns.
     private void ApplySettingsPresentation(SettingsShellView view)
     {
-        var layout = WorkspaceSettingsLayout.Project(Root.ActualWidth, Destination.Embedded);
-        var embedded = layout.Embedded;
-        var focusSettingsNavigation = embedded && !view.ContentOnly && view.HasNavigationFocus;
-        var focusChatNavigation = !embedded && NavigationSection.Visibility == Visibility.Visible &&
-            HasChatNavigationFocus();
-        if (view.ContentOnly != embedded)
-            HideFooterFlyouts();
-        view.ApplyHostWidth(Root.ActualWidth);
+        var embedded = Destination.Embedded;
         if (embedded && !view.ContentOnly)
             view.Footer.HideFlyouts();
-        UpdateEmbeddedPageTopAllocation(view, embedded);
         view.ContentOnly = embedded;
         NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
+        UpdateEmbeddedPageTopAllocation(view);
         EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
         EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
         UpdateTitleBarActions();
-        if (focusChatNavigation || focusSettingsNavigation)
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (IsClosed || !IsSettingsVisible) return;
-                if (view.ContentOnly)
-                    (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
-                else
-                    view.FocusNavigation();
-            });
     }
 
-    private void UpdateEmbeddedPageTopAllocation(SettingsShellView view, bool? isEmbedded = null)
+    private void UpdateEmbeddedPageTopAllocation(SettingsShellView view)
     {
-        var embedded = isEmbedded ??
-            (IsSettingsVisible && WorkspaceSettingsLayout.Project(Root.ActualWidth, Destination.Embedded).Embedded);
+        var embedded = IsSettingsVisible && Destination.Embedded;
         var paneOpen = NavView.IsPaneOpen;
         var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(
             embedded, paneOpen, view.CurrentPage is ISettingsPageContentInset);
@@ -1246,40 +1307,6 @@ public sealed partial class WorkspaceWindow : WindowEx
             ? new Thickness(paneOpen ? NavView.OpenPaneLength : 0, allocation.HostMarginTop, 0, 0)
             : new Thickness(0);
         EmbeddedOperationInfo.Margin = new Thickness(0, allocation.PageTopInset, 0, 0);
-    }
-
-    private bool HasChatNavigationFocus()
-    {
-        for (var element = Root.XamlRoot is { } root
-                 ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as DependencyObject : null;
-             element is not null; element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
-        {
-            if (element == ContentHost) return false;
-            if (element == NavigationSection || element == PaneToggleChrome) return true;
-        }
-        return false;
-    }
-
-    private void OnWorkspaceSizeChanged(object sender, SizeChangedEventArgs e)
-        => ApplySettingsLayoutAfterResize();
-
-    private void ApplySettingsLayoutAfterResize()
-    {
-        if (_settings is not { } view || !IsSettingsVisible) return;
-        if (OpenModalDialog() is { } dialog)
-        {
-            // Resize is presentation, not a navigation intent. Never replace
-            // the user's pending Back/Forward or destination with a layout refresh.
-            if (_settingsResizeDeferred) return;
-            _settingsResizeDeferred = true;
-            dialog.Closed += (_, _) => DispatcherQueue.TryEnqueue(() =>
-            {
-                _settingsResizeDeferred = false;
-                if (!IsClosed) ApplySettingsLayoutAfterResize();
-            });
-            return;
-        }
-        ApplySettingsPresentation(view);
     }
 
     private void UpdateTitleBarActions()

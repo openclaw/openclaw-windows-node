@@ -646,7 +646,7 @@ geometry/renderer checks, not real-shell screenshot acceptance.
 the isolated released-Gateway fixture and owned-HWND PrintWindow capture.
 Its per-state manifest records measured host/content widths, the shared tier,
 window rectangles in pixels and DIP, and image hashes. The Hub's unchanged
-1,000 DIP window minimum prevents a real-shell 520 DIP host; the native pass
+800 DIP window minimum and expanded pane prevent a real-shell 520 DIP host; the native pass
 therefore captures the shell minimum with the pane open and collapsed.
 It samples host/navigation bounds at least 300 ms apart before capture.
 Run native proof only on an authorized, serial desktop slot with a fresh
@@ -656,6 +656,14 @@ bitmap does not establish visible shell acceptance.
 Reactor preview.17 includes the dialog theme and pooled-background fixes that
 previously required a task-local preview.12 backport. Validate the released
 package identities and loaded DLL hashes, not the historical local override.
+Usage retains the aligned Core/Advanced preview.17 pair when integrating the
+shared page foundation and Windows App SDK 2.6.5. Its declarative export
+`ContentDialog` needs inherited theme and host-disposal handling, and its pooled
+count-pill `Border` needs resource-backed background precedence. The mounted
+`ExportBlock_OffersDailyTotalsThenShowsTheSavedToastAndFolderAction` cases
+assert the actual Light/Dark dialog theme; the count-pill regression below
+checks the native brush. These are dependency regression requirements, not
+evidence that the newly merged package combination has passed native proof.
 If NuGet indexing lags, official preview.17 GitHub release packages may be
 consumed through a task-local feed without changing machine or repository feeds.
 Record their release URL and digests. A successful build alone is not dark-dialog proof.

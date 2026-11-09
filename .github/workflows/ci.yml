@@ -161,6 +161,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-desktop-resolution.ps1
 
+    - name: Test native animation prerequisite
+      shell: pwsh
+      run: ./scripts/test-native-animation-preference.ps1
+
     - name: Validate documentation
       shell: pwsh
       run: ./scripts/validate-docs.ps1
@@ -461,8 +465,8 @@ jobs:
 
   core-tests:
     name: Core and CLI tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -566,8 +570,8 @@ jobs:
 
   tray-tests:
     name: Tray, setup, and integration tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -665,8 +669,8 @@ jobs:
 
   ui-tests:
     name: UI, functional, and accessibility tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -766,7 +770,7 @@ jobs:
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
         -HangTimeoutSeconds 300
 
     - name: Capture non-memory Tray UI crash metadata
@@ -781,6 +785,34 @@ jobs:
         $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
         $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
         & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+
+    - name: Run animation-enabled reveal proof
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AnimationsEnabled
+        -TrxFileName AnimationsEnabled.trx
+        -Runtime win-x64
+        -Filter "Category=AnimationPreferenceEnabled"
+        -AnimationPreference Enabled
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
+
+    - name: Run animations-disabled behavior proof
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AnimationsDisabled
+        -TrxFileName AnimationsDisabled.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~PageHeroAnimationsDisabledTests"
+        -AnimationPreference Disabled
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
 
     - name: Run mock Gateway application scenarios
       id: gateway-fixture
@@ -914,8 +946,8 @@ jobs:
 
   setup-e2e:
     name: Setup and connect E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -992,8 +1024,8 @@ jobs:
 
   revocation-e2e:
     name: Revocation recovery E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -1070,8 +1102,8 @@ jobs:
 
   network-e2e:
     name: Network recovery E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -1650,8 +1682,8 @@ jobs:
   # Sign and package after the early release-critical suites pass so this work can
   # overlap the long UI and E2E tail. Publication remains gated by ci-gate below.
   prepare-release-assets:
-    needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
-    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
+    needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.change-classification.outputs.full == 'true' && needs.fast-validation.result == 'success' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:

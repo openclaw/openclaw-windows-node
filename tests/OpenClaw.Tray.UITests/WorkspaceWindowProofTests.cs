@@ -264,40 +264,12 @@ public sealed class WorkspaceWindowProofTests
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: true);
-        var originalWindowTop = root.Current.BoundingRectangle.Top;
-        var scale = Find(root, "SettingsTogglePane").Current.BoundingRectangle.Width / 40;
-        ((WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Normal);
-        await WaitUntilAsync(() =>
-            ((WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern)).Current.WindowVisualState == WindowVisualState.Normal
-            && ((TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern)).Current.CanResize);
-        foreach (var widthDip in new[] { 800, 1000 })
-        {
-            ((TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern))
-                .Resize(widthDip * scale, root.Current.BoundingRectangle.Height);
-            await WaitUntilAsync(() => Math.Abs(root.Current.BoundingRectangle.Width / scale - widthDip) <= 2);
-            await WaitUntilAsync(() => Find(root, "SettingsPageMarker").Current.BoundingRectangle.Top >=
-                Math.Max(Find(root, "SettingsBack").Current.BoundingRectangle.Bottom,
-                    Find(root, "SettingsForward").Current.BoundingRectangle.Bottom));
-            Capture(app, theme, $"settings-collapsed-{widthDip}");
-        }
-        var collapsedBack = Find(root, "SettingsBack").Current.BoundingRectangle;
-        var collapsedForward = Find(root, "SettingsForward").Current.BoundingRectangle;
-        var collapsedHeader = Find(root, "SettingsPageMarker").Current.BoundingRectangle;
-        await app.NavigateAsync("permissions", "PermissionsPage", "PermissionsPageMarker");
-        var permissionsHeader = Find(root, "PermissionsPageMarker").Current.BoundingRectangle;
-        Assert.True(permissionsHeader.Top >= Math.Max(collapsedBack.Bottom, collapsedForward.Bottom),
-            $"Permissions header {permissionsHeader} intersects collapsed history {collapsedBack}, {collapsedForward}");
-        Capture(app, theme, "permissions-collapsed-1000");
-        Invoke(Find(root, "SettingsBack"));
-        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
-        Assert.Equal(toggle.Top - originalWindowTop,
-            Find(root, "SettingsTogglePane").Current.BoundingRectangle.Top - root.Current.BoundingRectangle.Top);
-        var currentToggle = Find(root, "SettingsTogglePane").Current.BoundingRectangle;
+        Assert.Equal(toggle.Top, Find(root, "SettingsTogglePane").Current.BoundingRectangle.Top);
         await WaitUntilAsync(() => root.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
             .Cast<AutomationElement>().Where(item => !item.Current.IsOffscreen &&
-                item.Current.BoundingRectangle.Left < currentToggle.Right)
-            .All(item => item.Current.BoundingRectangle.Top >= currentToggle.Bottom));
+                item.Current.BoundingRectangle.Left < toggle.Right)
+            .All(item => item.Current.BoundingRectangle.Top >= toggle.Bottom));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
         await WaitUntilAsync(() => SearchBox() is not null);
@@ -312,8 +284,6 @@ public sealed class WorkspaceWindowProofTests
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: false);
-        await WaitUntilAsync(() => Find(root, "SettingsPageMarker").Current.BoundingRectangle.Top < collapsedHeader.Top);
-        Capture(app, theme, "settings-expanded-1000");
         // Regression: leaving Settings hides its (closed) search flyout. That must not leave the
         // deferred-open helper waiting for a close that never comes, which dropped every shortcut.
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
@@ -331,50 +301,6 @@ public sealed class WorkspaceWindowProofTests
             await Task.Delay(500);
         }
         Capture(app, theme, "settings-chrome");
-    }
-
-    [Theory]
-    [InlineData("Light")]
-    [InlineData("Dark")]
-    public async Task SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch(string theme)
-    {
-        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
-        var root = AutomationElement.FromHandle(app.HubWindowHandle);
-        await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
-        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
-
-        await FocusForKeyboardAsync(app, root, "SettingsPageAutoStart");
-        System.Windows.Forms.SendKeys.SendWait("{ESC}");
-        Assert.True(IsVisible(root, "SettingsSearch"));
-        Assert.True(Find(root, "SettingsPageAutoStart").Current.HasKeyboardFocus);
-
-        await FocusForKeyboardAsync(app, root, "SettingsNavSettings");
-        System.Windows.Forms.SendKeys.SendWait("{ESC}");
-        await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
-            Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
-        Assert.Equal("Expand navigation", Find(root, "SettingsTogglePane").Current.Name);
-        Assert.True(IsVisible(root, "SettingsPageMarker"));
-
-        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
-        await WaitUntilAsync(() => IsVisible(root, "SettingsSearch"));
-        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
-        Assert.True(Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
-
-        Invoke(Find(root, "SettingsSearch"));
-        await WaitUntilAsync(() => FindPopup(root, "SettingsSearchBox")?.Current.HasKeyboardFocus == true);
-        System.Windows.Forms.SendKeys.SendWait("{ESC}");
-        await WaitUntilAsync(() => FindPopup(root, "SettingsSearchBox") is null);
-        Assert.True(IsVisible(root, "SettingsSearch"));
-        Assert.Equal("Collapse navigation", Find(root, "SettingsTogglePane").Current.Name);
-        Assert.True(IsVisible(root, "SettingsPageMarker"));
-
-        await FocusForKeyboardAsync(app, root, "SettingsTogglePane");
-        System.Windows.Forms.SendKeys.SendWait("{ESC}");
-        await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch") &&
-            Find(root, "SettingsTogglePane").Current.HasKeyboardFocus);
-        System.Windows.Forms.SendKeys.SendWait("{ESC}");
-        Assert.Equal("Expand navigation", Find(root, "SettingsTogglePane").Current.Name);
-        Assert.True(IsVisible(root, "SettingsPageMarker"));
     }
 
     private static async Task VerifySettingsFooterAsync(AutomationElement root, bool compact)
@@ -434,9 +360,10 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(Find(root, "SettingsDashboard").Current.IsEnabled);
     }
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SettingsChatLink_ReturnsToRetainedChatInSameWindow(bool useMouse)
+    [InlineData("mouse")]
+    [InlineData("enter")]
+    [InlineData("escape")]
+    public async Task SettingsBackToApp_ReturnsToAppDestinationInSameWindow(string activation)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, syntheticData: true, initialRoute: null);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
@@ -444,40 +371,93 @@ public sealed class WorkspaceWindowProofTests
         var workspaceHandle = app.HubWindowHandle;
         var composer = Find(workspace, "ChatComposerInput");
         var identity = composer.GetRuntimeId();
-        const string draft = "Keep this draft when opening Chat from Settings";
+        const string draft = "Keep this draft when going back to the app from Settings";
         ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
         Assert.Null(workspace.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatDashboardButton")));
-        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         var settings = AutomationElement.FromHandle(app.HubWindowHandle);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
         Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
+        Assert.NotNull(Find(settings, "SettingsTitle"));
         Capture(app, "System", "connection-dashboard-card");
-        ActivateChatLink();
+        // The compact rail keeps Back to app as an arrow; the title and key hint return with the pane.
+        await InvokeWhenEnabledAsync(settings, "SettingsTogglePane");
+        await WaitUntilAsync(() => !IsVisible(settings, "SettingsTitle"));
+        Assert.True(IsVisible(settings, "SettingsBackToApp"));
+        Capture(app, "System", $"settings-header-rail-{activation}");
+        await InvokeWhenEnabledAsync(settings, "SettingsTogglePane");
+        await WaitUntilAsync(() => IsVisible(settings, "SettingsTitle"));
+        // Leave the toggle so its keyboard tooltip cannot cover the header in the proof frame.
+        Find(settings, "SettingsBackToApp").SetFocus();
+        await Task.Delay(500);
+        Capture(app, "System", $"settings-header-{activation}");
+        ActivateBackToApp();
         await WaitUntilAsync(() => IsVisible(workspace, "ChatComposerInput"));
         await AssertChatForegroundAsync();
         var retained = Find(workspace, "ChatComposerInput");
         Assert.Equal(identity, retained.GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
-        Capture(app, "System", "settings-chat-link");
+        Capture(app, "System", $"settings-back-to-app-{activation}");
 
-        void ActivateChatLink()
+        // Back to app returns to the app page Settings was opened from, not always to chat.
+        // Seed via the real notification producer; a capable host has no containment warning.
+        const string notificationTitle = "Settings return focus fixture";
+        await app.SendNotificationAsync(notificationTitle, "Keep this reminder while visiting Settings.");
+        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
+        await WaitUntilAsync(() => Find(workspace, "ClearButton").Current.IsEnabled &&
+            workspace.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, "Dismiss " + notificationTitle)) is not null);
+        Assert.True(Find(workspace, "ClearButton").Current.IsEnabled, "The fixture must first prove populated Notifications.");
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        settings = AutomationElement.FromHandle(app.HubWindowHandle);
+        ActivateBackToApp();
+        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        Assert.False(IsVisible(workspace, "ConnectionPageMarker"));
+        // WorkspaceNavigation includes the page, and its layout Grid has no automation peer.
+        // Require focus on a Notifications control in this exact window, not outside sidebar IDs.
+        await WaitUntilAsync(
+            () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
+            () => $"Notifications did not receive focus. Expected workspace foreground: {GetForegroundWindow() == workspaceHandle}. " +
+                $"Target controls: {DescribeNotificationFocus(workspace)}");
+        Capture(app, "System", $"settings-back-to-notifications-populated-{activation}");
+
+        Invoke(Find(workspace, "ClearButton"));
+        await WaitUntilAsync(() => !Find(workspace, "ClearButton").Current.IsEnabled &&
+            !IsVisible(workspace, "NotificationsList"));
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        settings = AutomationElement.FromHandle(app.HubWindowHandle);
+        ActivateBackToApp();
+        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        Capture(app, "System", $"settings-back-to-notifications-empty-{activation}");
+        await WaitUntilAsync(
+            () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
+            () => $"Empty Notifications did not receive focus. Expected workspace foreground: {GetForegroundWindow() == workspaceHandle}. " +
+                $"Target controls: {DescribeNotificationFocus(workspace)}");
+
+        void ActivateBackToApp()
         {
-            var link = Find(settings, "SettingsNavChat");
-            link.SetFocus();
+            var button = Find(settings, "SettingsBackToApp");
+            button.SetFocus();
             Assert.Equal(new IntPtr(settings.Current.NativeWindowHandle), GetForegroundWindow());
-            if (useMouse)
+            Assert.False(HasVisibleNotificationsFocus(workspace));
+            switch (activation)
             {
-                var bounds = link.Current.BoundingRectangle;
-                System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
-                    (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
-                MouseEvent(0x0002, 0, 0, 0, UIntPtr.Zero);
-                MouseEvent(0x0004, 0, 0, 0, UIntPtr.Zero);
+                case "mouse":
+                    var bounds = button.Current.BoundingRectangle;
+                    System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
+                        (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+                    MouseEvent(0x0002, 0, 0, 0, UIntPtr.Zero);
+                    MouseEvent(0x0004, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "enter":
+                    System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+                    break;
+                default:
+                    System.Windows.Forms.SendKeys.SendWait("{ESC}");
+                    break;
             }
-            else
-                System.Windows.Forms.SendKeys.SendWait("{ENTER}");
         }
 
         async Task AssertChatForegroundAsync()
@@ -951,6 +931,49 @@ public sealed class WorkspaceWindowProofTests
     private static bool IsVisible(AutomationElement root, string id) =>
         FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
 
+    private static bool HasVisibleNotificationsFocus(AutomationElement workspace)
+    {
+        try
+        {
+            if (AutomationElement.FocusedElement is not { } focused || focused.Current.IsOffscreen)
+                return false;
+            // These are the page's focusable controls. Resolve the current peers after each rebuild;
+            // exact element identity also rejects another window with the same automation IDs.
+            var clear = FindOrNull(workspace, "ClearButton");
+            var list = FindOrNull(workspace, "NotificationsList");
+            if (clear is { Current.IsEnabled: false } &&
+                (list is null || list.Current.IsOffscreen) &&
+                FindOrNull(workspace, "NotificationsPage") is { } emptyPage &&
+                Automation.Compare(focused, emptyPage))
+                return true;
+            for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
+            {
+                if ((clear is not null && Automation.Compare(current, clear)) ||
+                    (list is not null && Automation.Compare(current, list)))
+                    return true;
+            }
+            return false;
+        }
+        catch (ElementNotAvailableException) { return false; }
+    }
+
+    private static string DescribeNotificationFocus(AutomationElement workspace)
+    {
+        // Only report known fixture controls and boolean state. UI names, data-derived IDs and
+        // the focused element in another application must never enter failure logs.
+        return string.Join("; ", new[] { "NotificationsPage", "ClearButton", "NotificationsList", "SettingsBackToApp" }.Select(id =>
+        {
+            try
+            {
+                var element = FindOrNull(workspace, id);
+                if (element is null) return $"{id}: absent";
+                var info = element.Current;
+                return $"{id}: enabled={info.IsEnabled}, offscreen={info.IsOffscreen}, focused={info.HasKeyboardFocus}";
+            }
+            catch (ElementNotAvailableException) { return $"{id}: unavailable"; }
+        }));
+    }
+
     /// <summary>Returns null while the item is missing or stale, e.g. while the sidebar rebuilds session items.</summary>
     private static bool? SelectionState(AutomationElement root, string id)
     {
@@ -982,7 +1005,7 @@ public sealed class WorkspaceWindowProofTests
         });
     }
 
-    private static async Task WaitUntilAsync(Func<bool> predicate)
+    private static async Task WaitUntilAsync(Func<bool> predicate, Func<string>? failureMessage = null)
     {
         var timeout = Stopwatch.StartNew();
         while (timeout.Elapsed < TimeSpan.FromSeconds(10))
@@ -990,7 +1013,8 @@ public sealed class WorkspaceWindowProofTests
             if (predicate()) return;
             await Task.Delay(100);
         }
-        Assert.True(predicate(), "Native navigation did not reach the expected state.");
+        if (!predicate())
+            Assert.Fail(failureMessage?.Invoke() ?? "Native navigation did not reach the expected state.");
     }
 
     private static async Task EnsureWorkspacePaneOpenAsync(AutomationElement root)

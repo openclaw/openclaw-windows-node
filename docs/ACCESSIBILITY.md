@@ -12,6 +12,21 @@ dotnet test tests\OpenClaw.Tray.UITests --no-build -c Debug -r win-x64 --filter 
 
 Those tests launch the app in a real Windows desktop process and scan pages for WCAG violations through Axe.Windows. Failures are summarized in the GitHub Actions step summary and written to `Accessibility.trx`.
 
+Failure diagnostics retain rule IDs, bounded rule descriptions and canonical
+control types with scan-result ordinals. They omit UIA names, automation IDs
+(which can be data-derived), arbitrary properties and desktop focus state.
+Only the first 20 violations are printed; the total count remains visible.
+Missing or inconsistent scan metadata fails validation, including incomplete
+results for excluded rules. Test-authored context labels are bounded to 128
+characters; use static page/scenario labels, never user content.
+
+The data-only `FullyQualifiedName~AxeHelperTests` filter exercises failure
+reporting and the one-retry workflow without launching Companion or a native UI
+fixture. Scripted scan results and a small UI Automation adapter cover refusal
+for missing automation IDs, foreign processes, missing/offscreen/empty elements,
+and incomplete results, including the second scan. These tests do not replace
+real accessibility scans or prove native UI Automation behavior.
+
 ## Running locally
 
 From the repository root:
@@ -68,24 +83,20 @@ pairing.
 
 ### Settings navigation keyboard contract
 
-The Settings pane toggle exposes **Expand navigation** or **Collapse navigation**
-according to its state. Escape closes an expanded pane only while focus is in
-its navigation controls and returns focus to the toggle. Page controls keep
-their own Escape behavior; native search flyouts, menus and ContentDialogs
-handle dismissal before the shell. Collapsing the pane does not change the page.
-`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`
-checks the mounted Settings boundary in Light and Dark themes.
+Full Settings exposes **Back to app**, which returns to the app destination
+Settings was opened from. Unhandled Escape invokes the same navigation after
+editors, native search flyouts, menus and ContentDialogs have handled their
+own dismissal. It does not collapse the navigation rail. Pinned pages do not
+expose this full-Settings exit. The pane toggle preserves its saved preference.
+`WorkspaceWindowProofTests.SettingsBackToApp_ReturnsToAppDestinationInSameWindow`
+checks mouse, Enter and Escape through the mounted Settings boundary.
 
 Workspace still has an 800-DIP minimum width. The mock's below-720-DIP rail is
 not a supported window-size claim: pinned pages reserve a 256-DIP Chat sidebar,
 and existing page controls can require more space. Supporting smaller windows
 requires a cross-route layout change, not only reducing the minimum or changing
-the Settings rail. `WorkspaceSettingsLayout` prepares that shared seam using
-the host window width, not an embedded page's smaller content width. Below 720
-it projects a compact Settings rail and presents pins through the same retained
-frame, without the Chat sidebar. Narrow expansion is temporary; returning to
-wide restores the saved pane preference and requested embedding. This branch
-is not reachable through normal window resizing while the minimum remains 800.
+the Settings rail. `WorkspaceSettingsLayout` allocates the history band only;
+it does not switch the rail or requested embedding based on width.
 
 The integrated adaptive Config, Local AI, Default Model, Voice, Notifications,
 Event Stream and Diagnostics source uses each page's allocated width after

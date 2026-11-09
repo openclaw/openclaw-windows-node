@@ -8009,4 +8009,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>30 derniers jours</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Développer la navigation</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Réduire la navigation</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Retour à l'application</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Échap</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
 </root>

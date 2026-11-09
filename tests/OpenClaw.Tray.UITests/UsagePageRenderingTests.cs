@@ -188,7 +188,9 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         public readonly List<string> PendingChatKeys = [];
 
         public void OpenDashboard(string? path = null) => DashboardPaths.Add(path);
+        public Task<bool> TryOpenDashboardAsync(string? path = null) => throw new NotSupportedException();
         public void Navigate(string pageTag) => Navigations.Add(pageTag);
+        public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => throw new NotSupportedException();
         public void Reconnect() => throw new NotSupportedException();
         public void Disconnect() => throw new NotSupportedException();
         public void ShowVoiceOverlay() => throw new NotSupportedException();

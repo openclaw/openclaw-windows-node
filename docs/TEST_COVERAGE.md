@@ -283,6 +283,13 @@ owns the evidence checklist.
 
 ### CI impact fast paths
 
+Core, Tray, UI, and the three E2E jobs start as soon as classification selects
+them, in parallel with `fast-validation`, and keep their cancellation guards.
+CI Gate still requires `fast-validation` to succeed, so this removes it from
+the critical path without relaxing acceptance. A `fast-validation` failure no
+longer skips selected test lanes; their runner time is the accepted cost.
+Release asset preparation still waits for `fast-validation`.
+
 The setup/connect, revocation recovery and network recovery E2E jobs each run once
 against npm Latest, matching normal WSL setup.
 `scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
@@ -532,6 +539,40 @@ See [local execution evidence](PROOF_POOLS.md#validate-local-execution-evidence)
 for inventory-bound summaries and their assurance limits.
 
 ## Running tests
+
+Native reveal tests require Windows client-area animations to be enabled.
+The required `AnimationPreferenceEnabled` CI selection establishes that
+preference in `Invoke-CiTest.ps1 -AnimationPreference Enabled -RequireAllTestsPassed`,
+not in production code or the testhost. Ordinary UI tests keep their original
+Windows preference. The parent records and verifies the
+original value, holds a per-user/session cross-process lock, starts the test
+subprocess with the verified preference, and restores/read-checks the original
+even when the testhost fails. It never writes the persistent profile setting.
+Restoration or prerequisite failures fail the command. Ordinary Tray UI wrapper
+invocations hold the same lock without mutating the preference; unrelated managed
+suites are not serialized. This coordinates cooperating wrappers, not direct
+`dotnet test` commands or unrelated Windows processes.
+Do not terminate the parent wrapper while it owns the preference. A force-killed
+parent cannot restore it, so recover the recorded original or a known-good
+setting before proceeding. Detectable mutex abandonment fails closed, but if the
+last handle disappeared the next owner can create a fresh mutex; this is not
+durable crash recovery.
+
+The separate required `PageHeroAnimationsDisabledTests` step runs with
+`-AnimationPreference Disabled -RequireAllTestsPassed`; its environment opt-in
+keeps it out of ordinary runs, while missing, skipped or failed selected proof
+cannot pass that step. The six animation-enabled regressions retain their
+native assertions and are not skipped. Local or self-hosted use additionally
+requires explicit `-AllowUserAnimationPreferenceChange`; app-data isolation
+does not isolate this Windows logon-session preference. After building, an
+authorized local focused run can use:
+
+```powershell
+.\scripts\Invoke-CiTest.ps1 -Project tests\OpenClaw.Tray.UITests `
+  -Runtime win-arm64 -ResultsDirectory TestResults\PageHero `
+  -TrxFileName PageHero.trx -Filter 'FullyQualifiedName~PageHeroTests' `
+  -AnimationPreference Enabled -AllowUserAnimationPreferenceChange -RequireAllTestsPassed
+```
 
 ```powershell
 # Required validation after code changes

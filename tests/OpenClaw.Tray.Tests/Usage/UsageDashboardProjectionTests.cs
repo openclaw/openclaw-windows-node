@@ -28,11 +28,17 @@ public sealed class UsageDashboardProjectionTests
     [InlineData(664, 2)]
     [InlineData(713, 2)]
     [InlineData(834, 2)]
-    [InlineData(835.99, 4)]
+    [InlineData(835.99, 2)]
+    [InlineData(835.994, 2)]
+    [InlineData(835.996, 4)]
     [InlineData(836, 4)]
     [InlineData(1200, 4)]
-    public void ActivityTiles_UseOnlyCompleteOneOrTwoRowStrips(double width, int expected) =>
+    public void ActivityTiles_UseOnlyCompleteOneOrTwoRowStrips(double width, int expected)
+    {
         Assert.Equal(expected, UsagePageLayout.ActivityColumns(width));
+        if (expected == 4)
+            Assert.True(PageResponsiveLayout.TileWidth(PageResponsiveLayout.Snap(width), expected) >= 200);
+    }
 
     [Theory]
     [InlineData(1400, PageWidthTier.Wide, 1200, 4)]

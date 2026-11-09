@@ -42,7 +42,7 @@ public sealed class NativeCompletionPresentationTests
         Assert.True(commit.IndexOf("_nativeSetupFailureVersion++", StringComparison.Ordinal) <
             commit.IndexOf("_nativeSetupFailureDialog?.Hide();", StringComparison.Ordinal));
         var failure = manager[manager.IndexOf("public async Task ShowNativeSetupFailureAsync", StringComparison.Ordinal)..
-            manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)];
+            manager.IndexOf("private Task<bool> ShowHubCoreAsync", StringComparison.Ordinal)];
         var duplicateUnavailable = failure.IndexOf(
             "if (_nativeSetupFailureVisible && failure == SetupNativeLaunchFailure.Unavailable) return;",
             StringComparison.Ordinal);

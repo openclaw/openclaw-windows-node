@@ -27,6 +27,14 @@ Record actual ownership transfers in the existing ledger, not in this file.
 
 ## Characterize and prove the behavior
 
+Use [WinApp CLI](../../docs/WINAPP_CLI.md) proactively: `find-api` for our
+restored Windows API surface, `find-ui --source reactor` for chat patterns,
+`ui` for mounted controls, `devtools` for realized XAML properties, and `perf`
+or `run --debug-output` for timing/crash evidence. Check installed help/schema
+first. Select the authorized isolated runtime below before attaching or
+launching; late DevTools attachment and C#-generated Reactor controls do not
+guarantee authored-XAML or managed binding diagnostics.
+
 Protect the reported failure and relevant lifecycle before moving code. Prefer
 pure tests for projections and policies, faithful fixtures for transport, and
 current-build visible evidence for rendering. Concrete WinUI-only prohibited

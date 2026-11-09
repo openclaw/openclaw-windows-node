@@ -454,8 +454,10 @@ public sealed partial class GatewayFixtureUiTests
                     }
                 }
                 Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
-                if (FindById(run, "SettingsTogglePane")!.Current.Name == "Collapse navigation")
+                if (FindById(run, "SettingsSearch") is { Current.IsOffscreen: false })
                     Invoke(FindById(run, "SettingsTogglePane")!);
+                await WaitUiAsync(run, () => FindById(run, "SettingsSearch") is not { Current.IsOffscreen: false },
+                    "collapsed Settings before collecting history-band proof");
                 foreach (var width in new[] { 800, 1000 })
                 {
                     var expected = ResizeUsageWindow(handle, width, scale, capToDisplay: false);
@@ -510,7 +512,7 @@ public sealed partial class GatewayFixtureUiTests
         {
             var marker = FindById(run, markerId);
             var pane = FindById(run, "SettingsTogglePane");
-            var navigation = FindById(run, "SettingsNavChat");
+            var navigation = FindById(run, "SettingsNavConnection");
             if (marker is null || pane is null || navigation is null) return false;
             var content = TreeWalker.ControlViewWalker.GetParent(marker);
             if (content is null) return false;
@@ -540,12 +542,12 @@ public sealed partial class GatewayFixtureUiTests
                     expectedPaneOpen = paneOpen,
                     inferredContentOnly = false,
                     inferredPageType = markerId == "PermissionsPageMarker" ? "PermissionsPage" : "UsagePage",
-                    inferredFrameTopMargin = markerId == "PermissionsPageMarker" && !paneOpen ? 56 : 0,
+                    inferredFrameTopMargin = 0,
                     inferenceLimit = "Page type and margin follow source plus observed markers, not runtime field reads. Stable UIA bounds do not prove compositor transition continuity.",
                     samples,
                 }, new JsonSerializerOptions { WriteIndented = true }));
             var ready = !marker.Current.IsOffscreen
-                && state.paneLabel == (paneOpen ? "Collapse navigation" : "Expand navigation")
+                && state.searchVisible == paneOpen
                 && (markerId == "PermissionsPageMarker" ? !state.usageVisible : !state.permissionsVisible);
             if (ready && consecutive >= 3)
             {
@@ -561,6 +563,7 @@ public sealed partial class GatewayFixtureUiTests
     [Trait("Category", "GatewayFixture")]
     public async Task UsageResponsive_RealShellCapturesMeasuredWidthsAndCollapsedNavigation()
     {
+        const double minimumWindowWidthDip = 800;
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "usage" });
@@ -572,7 +575,7 @@ public sealed partial class GatewayFixtureUiTests
             var scale = UsageGetDpiForWindow(handle) / 96d;
             Assert.True(scale > 0);
             double HostWidth() => FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
-            double PaneItemWidth() => FindById(run, "SettingsNavChat")!.Current.BoundingRectangle.Width / scale;
+            double PaneItemWidth() => FindById(run, "SettingsNavConnection")!.Current.BoundingRectangle.Width / scale;
             async Task StableHost()
             {
                 var previous = (Host: HostWidth(), Pane: PaneItemWidth());
@@ -609,7 +612,7 @@ public sealed partial class GatewayFixtureUiTests
                         {
                             var chrome = before.Width / scale - beforeHost;
                             var hostTarget = target == 1000 ? target + PageResponsiveLayout.GapStack : target;
-                            var expected = ResizeUsageWindow(handle, target == 0 ? 1000 : hostTarget + chrome, scale, capToDisplay: target == 1400);
+                            var expected = ResizeUsageWindow(handle, target == 0 ? minimumWindowWidthDip : hostTarget + chrome, scale, capToDisplay: target == 1400);
                             await WaitUiAsync(run, () =>
                             {
                                 var rect = UsageWindowBounds(handle);
@@ -657,10 +660,11 @@ public sealed partial class GatewayFixtureUiTests
                                 JsonSerializer.Serialize(ink, new JsonSerializerOptions { WriteIndented = true }));
                         }
                         if (target != -1) Assert.NotEqual(before.Width, bounds.Width);
-                        if (target <= 0) Assert.InRange(Math.Abs(bounds.Width / scale - 1000), 0, 1);
+                        if (target <= 0) Assert.InRange(Math.Abs(bounds.Width / scale - minimumWindowWidthDip), 0, 1);
                         Assert.True(sizes.Add(sizeKey), "The capture must have distinct measured bounds.");
                         Assert.True(hashes.Add(sha), "The capture is byte-identical to another width.");
-                        Assert.Equal(target >= 1000 ? PageWidthTier.Wide : PageWidthTier.Medium,
+                        Assert.Equal(target >= 1000 ? PageWidthTier.Wide
+                                : target == 0 ? PageWidthTier.Narrow : PageWidthTier.Medium,
                             PageResponsiveLayout.TierFor(hostWidth));
                     }
                     catch (Exception ex)
