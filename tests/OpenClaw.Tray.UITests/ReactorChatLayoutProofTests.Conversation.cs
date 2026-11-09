@@ -73,8 +73,10 @@ public sealed partial class ReactorChatLayoutProofTests
         }, scenario: "loading");
     }
 
-    [Fact]
-    public async Task ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch()
+    [Theory]
+    [InlineData(480)]
+    [InlineData(1100)]
+    public async Task ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch(int width)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR") is { Length: > 0 } directory)
@@ -91,15 +93,19 @@ public sealed partial class ReactorChatLayoutProofTests
                 mcpPort = Environment.GetEnvironmentVariable("OPENCLAW_MCP_PORT"),
             }));
         }
-        await WithChatAsync(800, async (surface, host, _, provider) =>
+        await WithChatAsync(width, async (surface, host, _, provider) =>
         {
             var snapshot = await provider.LoadAsync();
             snapshot = snapshot with { Threads = [snapshot.Threads[0] with { ReasoningLevel = "on" }] };
             TextBox? composer = null;
-            await ui.RunOnUIAsync(() =>
+            void ResizeProofWindow()
             {
                 var scale = surface.XamlRoot.RasterizationScale;
                 _captureWindow!.AppWindow.Resize(new((int)(surface.Width * scale) + 32, (int)(surface.Height * scale) + 80));
+            }
+            await ui.RunOnUIAsync(() =>
+            {
+                ResizeProofWindow();
                 composer = FindControl<TextBox>(surface, "ChatComposerInput");
                 OpenClawReactorChatRoot.SetThinkingVisible(true);
                 OpenClawReactorChatRoot.SetToolCallsVisible(true);
@@ -263,17 +269,47 @@ public sealed partial class ReactorChatLayoutProofTests
             // Disclosure interaction relinquished following. Resume it explicitly.
             await ResumeFollowingAsync(surface);
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
+            var transcriptScroll = await ui.RunOnUIAsync(() => Task.FromResult(
+                Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView));
+            Task AwaitBottomAsync() => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => transcriptScroll.State == ScrollingInteractionState.Idle &&
+                    Math.Abs(transcriptScroll.ScrollableHeight - transcriptScroll.VerticalOffset) <= 1,
+                "jump reaches the exact transcript bottom",
+                () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; state={transcriptScroll.State}"));
+            async Task ScrollAwayAsync()
+            {
+                // Establish reader intent through the normal transcript keyboard-focus path.
+                await ui.RunOnUIAsync(() => Assert.True(FindDescendants<Button>(transcriptScroll)
+                    .Last(button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
+                        .StartsWith("ChatCopy_", StringComparison.Ordinal))
+                    .Focus(FocusState.Keyboard)));
+                await SettleAsync();
+                // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.True(composer!.Focus(FocusState.Programmatic));
+                    transcriptScroll.ScrollTo(0, 0,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                });
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => transcriptScroll.State == ScrollingInteractionState.Idle &&
+                        transcriptScroll.VerticalOffset <= 1 &&
+                        FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
+                    "reader at the top with the jump control visible",
+                    () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                        $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                        $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}"));
+            }
             var viewportBeforeJump = await ui.RunOnUIAsync(() => Task.FromResult(
-                Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView.ViewportHeight));
-            await ui.RunOnUIAsync(() =>
-                Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView.ScrollTo(0, 0,
-                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
-            await SettleAsync();
+                transcriptScroll.ViewportHeight));
+            await ScrollAwayAsync();
+            var readerOffset = await ui.RunOnUIAsync(() => Task.FromResult(transcriptScroll.VerticalOffset));
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Equal(1, FindControl<Button>(surface, "ChatJumpLatest").Opacity);
-                Assert.Equal(viewportBeforeJump,
-                    Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView.ViewportHeight, precision: 1);
+                var jump = FindControl<Button>(surface, "ChatJumpLatest");
+                Assert.Equal(1, jump.Opacity);
+                Assert.True(Bounds(jump, surface).Bottom <= Bounds(transcriptScroll, surface).Bottom);
+                Assert.Equal(viewportBeforeJump, transcriptScroll.ViewportHeight, precision: 1);
             });
             state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("New activity while reading"));
             state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("New reply while reading"));
@@ -282,6 +318,8 @@ public sealed partial class ReactorChatLayoutProofTests
             await CaptureAsync(surface, "Feedback-new-message");
             await ui.RunOnUIAsync(() =>
             {
+                Assert.Equal(readerOffset, transcriptScroll.VerticalOffset, precision: 1);
+                Assert.Equal(viewportBeforeJump, transcriptScroll.ViewportHeight, precision: 1);
                 var jump = FindControl<Button>(surface, "ChatJumpLatest");
                 Assert.Equal(1, jump.Opacity);
                 Assert.Contains("New messages", Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(jump));
@@ -289,14 +327,56 @@ public sealed partial class ReactorChatLayoutProofTests
                 Invoke(jump);
             });
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () =>
-                {
-                    var scroll = Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView;
-                    return scroll.State == ScrollingInteractionState.Idle &&
-                        Math.Abs(scroll.ScrollableHeight - scroll.VerticalOffset) <= 1;
-                }, "jump reaches the exact transcript bottom"));
+            await AwaitBottomAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var jump = FindControl<Button>(surface, "ChatJumpLatest");
+                Assert.Equal(0, jump.Opacity);
+                Assert.False(jump.IsEnabled);
+                Assert.False(jump.IsHitTestVisible);
+                Assert.False(jump.IsTabStop);
+            });
             await CaptureAsync(surface, "Feedback-jump-latest");
+
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Streaming reply.", IsStreaming: true));
+            await PublishAsync();
+            for (var index = 0; index < 4; index++)
+            {
+                state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
+                    "\n\n" + string.Join("\n\n", Enumerable.Repeat($"Streamed section {index}.", 5))));
+                await PublishAsync();
+                await AwaitBottomAsync();
+            }
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
+            await ui.RunOnUIAsync(() =>
+            {
+                surface.Width = width == 480 ? 1100 : 480;
+                ResizeProofWindow();
+            });
+            await SettleAsync();
+            await AwaitBottomAsync();
+            await ScrollAwayAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                surface.Width = width;
+                ResizeProofWindow();
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(transcriptScroll.ScrollableHeight - transcriptScroll.VerticalOffset >
+                    transcriptScroll.ViewportHeight);
+                Invoke(FindControl<Button>(surface, "ChatJumpLatest"));
+            });
+            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
+            await AwaitBottomAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal(Draft, composer!.Text);
+            });
 
             var older = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             ReactorHostControl? historyHost = null;
@@ -689,120 +769,6 @@ public sealed partial class ReactorChatLayoutProofTests
     }
 
     [Theory]
-    [InlineData(480)]
-    [InlineData(1100)]
-    public async Task ConversationScrolling_JumpIconReachesExactBottomAndPreservesReaderPosition(int width)
-    {
-        OnboardingNativeProof.AssertIsolatedRoots();
-        await WithChatAsync(width, async (surface, _, _, provider) =>
-        {
-            var snapshot = await provider.LoadAsync();
-            var state = snapshot.Timelines["proof"];
-            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
-            for (var index = 0; index < 24; index++)
-            {
-                state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent($"Earlier question {index}"));
-                state = ChatTimelineReducer.Apply(state, new ChatMessageEvent(
-                    string.Join("\n\n", Enumerable.Repeat($"Earlier answer {index} with wrapping text.", 4))));
-                state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
-            }
-            async Task PublishAsync()
-            {
-                await ui.RunOnUIAsync(() => provider.Publish(snapshot with
-                {
-                    Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
-                }));
-                await SettleAsync();
-            }
-            await PublishAsync();
-            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
-            var scroll = await ui.RunOnUIAsync(() => Task.FromResult(
-                Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView));
-            var input = await ui.RunOnUIAsync(() => Task.FromResult(
-                FindControl<TextBox>(surface, "ChatComposerInput")));
-            Task AwaitBottomAsync() => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => scroll.State == ScrollingInteractionState.Idle &&
-                    Math.Abs(scroll.ScrollableHeight - scroll.VerticalOffset) <= 1,
-                "exact transcript bottom",
-                () => $"offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; state={scroll.State}"));
-            async Task ScrollAwayAsync()
-            {
-                await ui.RunOnUIAsync(() => scroll.ScrollTo(0, 0,
-                    new ScrollingScrollOptions(ScrollingAnimationMode.Enabled, ScrollingSnapPointsMode.Ignore)));
-                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                    () => scroll.State == ScrollingInteractionState.Idle && scroll.VerticalOffset <= 1 &&
-                        FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
-                    "reader at the top with the jump control visible"));
-            }
-            await AwaitBottomAsync();
-            await ScrollAwayAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var jump = FindControl<Button>(surface, "ChatJumpLatest");
-                AssertJumpIcon(jump);
-                Assert.True(Bounds(jump, surface).Bottom <= Bounds(scroll, surface).Bottom);
-            });
-            await CaptureAsync(surface, $"Scroll-{width}-reading");
-            var readerOffset = await ui.RunOnUIAsync(() => Task.FromResult(scroll.VerticalOffset));
-            var viewport = await ui.RunOnUIAsync(() => Task.FromResult(scroll.ViewportHeight));
-            state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("New activity while reading"));
-            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("New reply while reading"));
-            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
-            await PublishAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(readerOffset, scroll.VerticalOffset, precision: 1);
-                Assert.Equal(viewport, scroll.ViewportHeight, precision: 1);
-                var jump = FindControl<Button>(surface, "ChatJumpLatest");
-                Assert.Contains("New messages", Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(jump));
-                Invoke(jump);
-            });
-            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
-            await AwaitBottomAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var jump = FindControl<Button>(surface, "ChatJumpLatest");
-                Assert.Equal(0, jump.Opacity);
-                Assert.False(jump.IsEnabled);
-                Assert.False(jump.IsHitTestVisible);
-                Assert.False(jump.IsTabStop);
-            });
-
-            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Streaming reply.", IsStreaming: true));
-            await PublishAsync();
-            for (var index = 0; index < 4; index++)
-            {
-                state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
-                    "\n\n" + string.Join("\n\n", Enumerable.Repeat($"Streamed section {index}.", 5))));
-                await PublishAsync();
-                await AwaitBottomAsync();
-            }
-            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
-            await PublishAsync();
-            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
-            await ui.RunOnUIAsync(() => surface.Width = width == 480 ? 1100 : 480);
-            await SettleAsync();
-            await AwaitBottomAsync();
-            await ScrollAwayAsync();
-            await ui.RunOnUIAsync(() => surface.Width = width);
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.True(scroll.ScrollableHeight - scroll.VerticalOffset > scroll.ViewportHeight);
-                Invoke(FindControl<Button>(surface, "ChatJumpLatest"));
-            });
-            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
-            await AwaitBottomAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
-                Assert.Equal(Draft, input.Text);
-            });
-            await CaptureAsync(surface, $"Scroll-{width}-bottom");
-        }, interactiveKeyboard: true);
-    }
-
-    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ConversationParity_ProgrammaticOrComposerFocusRetainsFollowing(bool transcriptFocus)
@@ -904,11 +870,11 @@ public sealed partial class ReactorChatLayoutProofTests
         var requiredKey = $"thread:{expectedSession}|generation:{expectedGeneration}|kind:Assistant|id:{expectedEntryId}";
         static string? CarrierKey(object? carrier) =>
             carrier?.GetType().GetProperty("Key", BindingFlags.Instance | BindingFlags.Public)?.GetValue(carrier) as string;
-        EventHandler<object> rendering = (_, _) =>
+        void ObserveTail()
         {
             var geometry = (scroll!.ExtentHeight, scroll.ViewportHeight, scroll.VerticalOffset);
             observedFrames++;
-            lastGeometry = $"extent={geometry.Item1}; viewport={geometry.Item2}; offset={geometry.Item3}; maximum={scroll.ScrollableHeight}; state={scroll.State}";
+            var geometryDescription = $"extent={geometry.Item1}; viewport={geometry.Item2}; offset={geometry.Item3}; maximum={scroll.ScrollableHeight}; state={scroll.State}";
             var repeater = FindDescendants<ItemsRepeater>(items!).FirstOrDefault();
             var source = repeater?.ItemsSourceView;
             var count = source?.Count ?? 0;
@@ -920,7 +886,7 @@ public sealed partial class ReactorChatLayoutProofTests
             var content = (last as ItemContainer)?.Child is Border row ? row.Child as FrameworkElement : null;
             var lastBottom = content?.TransformToVisual(surface).TransformBounds(
                 new Windows.Foundation.Rect(0, 0, content.ActualWidth, content.ActualHeight)).Bottom;
-            lastGeometry += $"; count={count}; expectedKey={CarrierKey(expected)}; realizedKey={CarrierKey(last?.DataContext)}; bottom={lastBottom}; viewportBottom={viewport.Bottom}";
+            lastGeometry = geometryDescription + $"; count={count}; expectedKey={CarrierKey(expected)}; realizedKey={CarrierKey(last?.DataContext)}; bottom={lastBottom}; viewportBottom={viewport.Bottom}";
             settledFrames = previous == geometry && scroll.State == ScrollingInteractionState.Idle &&
                 last is not null && repeater!.GetElementIndex(last) == count - 1 &&
                 ReferenceEquals(expected, last.DataContext) &&
@@ -929,6 +895,11 @@ public sealed partial class ReactorChatLayoutProofTests
             previous = geometry;
             if (settledFrames >= InitialTailConfirmation.SettledFramesBeforeDecision)
                 ready.TrySetResult();
+        }
+        EventHandler<object> rendering = (_, _) =>
+        {
+            try { ObserveTail(); }
+            catch (Exception ex) { ready.TrySetException(ex); }
         };
         await ui.RunOnUIAsync(() =>
         {
