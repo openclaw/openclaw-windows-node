@@ -66,13 +66,17 @@ function Complete-CiHostExitTrace {
         foreach ($file in $files) {
             if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
                 $file.Name -cnotlike 'testplatform*' -or $file.Length -gt $script:CiExitMaxTraceBytes) { throw 'Unexpected diagnostic inventory.' }
-            foreach ($line in [IO.File]::ReadLines($file.FullName)) {
-                $record = ConvertTo-CiHostExit -Line $line -Counts $counts
-                if ($null -ne $record) {
-                    if ($records.Count -ge $script:CiExitMaxRecords) { throw 'Diagnostic record limit exceeded.' }
-                    $records.Add($record)
+            $reader = [IO.File]::OpenText($file.FullName)
+            try {
+                while ($null -ne ($line = $reader.ReadLine())) {
+                    $record = ConvertTo-CiHostExit -Line $line -Counts $counts
+                    if ($null -ne $record) {
+                        if ($records.Count -ge $script:CiExitMaxRecords) { throw 'Diagnostic record limit exceeded.' }
+                        $records.Add($record)
+                    }
                 }
             }
+            finally { $reader.Dispose() }
         }
     }
     catch { $errorType = $_.Exception.GetType().FullName }
