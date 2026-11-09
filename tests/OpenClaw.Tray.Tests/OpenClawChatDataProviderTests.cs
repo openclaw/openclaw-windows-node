@@ -10,11 +10,13 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Runtime.ExceptionServices;
+using Xunit.Abstractions;
 
 namespace OpenClaw.Tray.Tests;
 
 [Collection("Chat telemetry")]
-public class OpenClawChatDataProviderTests
+public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 {
     private sealed class ChatActivityCollector : IDisposable
     {
@@ -297,13 +299,14 @@ public class OpenClawChatDataProviderTests
             Action? historyFailureReservedForTesting = null,
             Func<Func<Task>, Task>? deferredAbortScheduler = null,
             Action<Action>? post = null,
-            TimeProvider? throughputTimeProvider = null)
+            TimeProvider? throughputTimeProvider = null,
+            Func<Func<Task>, Task>? queueDrainScheduler = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
             lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
             lastStateSaveReservedForTesting is null && beforeSelectedStateSaveForTesting is null &&
-            deferredAbortScheduler is null && post is null && throughputTimeProvider is null
+            deferredAbortScheduler is null && post is null && throughputTimeProvider is null && queueDrainScheduler is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
                 bridge,
@@ -315,7 +318,8 @@ public class OpenClawChatDataProviderTests
                 historyRetryScheduler: historyRetryScheduler,
                 historyFailureReservedForTesting: historyFailureReservedForTesting,
                 deferredAbortScheduler: deferredAbortScheduler,
-                throughputTimeProvider: throughputTimeProvider);
+                throughputTimeProvider: throughputTimeProvider,
+                queueDrainScheduler: queueDrainScheduler);
         provider.SetPersistenceTestHooks(
             lastStateSaveReservedForTesting,
             beforeSelectedStateSaveForTesting);
@@ -8079,99 +8083,455 @@ public class OpenClawChatDataProviderTests
         secondSendGate.SetResult();
     }
 
+    private static readonly TimeSpan QueuedSendProbeDeadline = TimeSpan.FromMilliseconds(300);
+
     [Fact]
     public async Task QueuedSend_InFlightAckWithoutLifecycle_RequeuesAndRetriesSameIdempotencyKey()
     {
-        var dispatchDeadline = TimeSpan.FromMilliseconds(300);
+        var drains = new ControlledQueueDrains();
+        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var retryEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseRetry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var requeued = new TaskCompletionSource<ChatDataSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requeued = new TaskCompletionSource<(ChatDataSnapshot Snapshot, int SendCount, string? Key)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var committed = new TaskCompletionSource<ChatDataSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
         var sendCount = 0;
+        var phase = "setup";
         using var activities = new ChatActivityCollector();
-        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            new[] { MainSession() }, queueDrainScheduler: drains.Schedule);
         await using var providerLifetime = provider;
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
         bridge.SendBehavior = (_, _, _) =>
         {
-            if (Interlocked.Increment(ref sendCount) != 3)
-                return Task.CompletedTask;
-            retryEntered.TrySetResult();
-            return releaseRetry.Task;
+            switch (Interlocked.Increment(ref sendCount))
+            {
+                case 2:
+                    secondEntered.TrySetResult();
+                    return releaseSecond.Task;
+                case 3:
+                    retryEntered.TrySetResult();
+                    return releaseRetry.Task;
+                default:
+                    return Task.CompletedTask;
+            }
         };
-        provider.Changed += (_, e) =>
+        // Own both gates from the first operation after installing the bridge behavior.
+        await RunQueuedSendProbeAsync(async () =>
         {
-            var queued = GetQueuedMessages(e.Snapshot, "main");
-            if (Volatile.Read(ref sendCount) >= 2 &&
-                queued.Count == 1 && queued[0].Text == "Hello" &&
-                queued[0].SendState == ChatQueuedMessageSendState.Queued &&
-                e.Snapshot.Timelines["main"].Entries.All(item =>
-                    item.Kind != ChatTimelineItemKind.User || item.Text != "Hello"))
-                requeued.TrySetResult(e.Snapshot);
-            if (queued.Count == 0 &&
-                e.Snapshot.Timelines.TryGetValue("main", out var timeline) &&
-                timeline.Entries.Any(item => item.Kind == ChatTimelineItemKind.User && item.Text == "Hello"))
-                committed.TrySetResult(e.Snapshot);
-        };
-        await provider.LoadAsync();
-        bridge.RaiseStatus(ConnectionStatus.Connected);
+            provider.Changed += (_, e) =>
+            {
+                var queued = GetQueuedMessages(e.Snapshot, "main");
+                if (Volatile.Read(ref sendCount) >= 2 &&
+                    queued.Count == 1 && queued[0].Text == "Hello" &&
+                    queued[0].SendState == ChatQueuedMessageSendState.Queued &&
+                    e.Snapshot.Timelines["main"].Entries.All(item =>
+                        item.Kind != ChatTimelineItemKind.User || item.Text != "Hello"))
+                {
+                    // Count/key belong to this actual publication, not a later test continuation.
+                    requeued.TrySetResult((e.Snapshot, bridge.SentMessages.Count, bridge.SentIdempotencyKeys[1]));
+                }
+                if (queued.Count == 0 &&
+                    e.Snapshot.Timelines.TryGetValue("main", out var timeline) &&
+                    timeline.Entries.Any(item => item.Kind == ChatTimelineItemKind.User && item.Text == "Hello"))
+                    committed.TrySetResult(e.Snapshot);
+            };
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.SendMessageAsync("main", "first");
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+            await provider.SendMessageAsync("main", "Hello");
 
-        await provider.SendMessageAsync("main", "first");
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-        await provider.SendMessageAsync("main", "Hello");
+            phase = "nonterminal-negative-control";
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "assistant", Text = "first response", State = "delta",
+            });
+            Assert.Equal(0, drains.ScheduledCount);
+            Assert.Single(bridge.SentMessages);
+            Assert.Equal(ChatQueuedMessageSendState.Queued,
+                Assert.Single(GetQueuedMessages(snapshots[^1], "main")).SendState);
 
-        bridge.RaiseChat(new ChatMessageInfo
-        {
-            SessionKey = "main",
-            Role = "assistant",
-            Text = "first response",
-            State = "final",
-        });
-        var requeuedSnapshot = await requeued.Task.WaitAsync(dispatchDeadline);
-        Assert.Equal(2, bridge.SentMessages.Count);
-        var firstAttemptKey = bridge.SentIdempotencyKeys[1];
-        var deferred = Assert.Single(GetQueuedMessages(requeuedSnapshot, "main"));
-        Assert.Equal("Hello", deferred.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Queued, deferred.SendState);
-        Assert.DoesNotContain(requeuedSnapshot.Timelines["main"].Entries, e =>
-            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
+            phase = "terminal-scheduling";
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "assistant", Text = "first response", State = "final",
+            });
+            // No sessions update or private dispatch call may repair missing terminal scheduling.
+            Assert.Equal(1, drains.ScheduledCount);
+            Assert.Single(bridge.SentMessages);
+            var firstDrain = drains.RunNextAsync();
+            phase = "second-send-admission-held";
+            await secondEntered.Task.WaitAsync(QueuedSendProbeDeadline);
+            Assert.False(firstDrain.IsCompleted);
+            Assert.False(requeued.Task.IsCompleted);
+            Assert.False(committed.Task.IsCompleted);
+            Assert.Equal(2, bridge.SentMessages.Count);
+            var firstAttemptKey = bridge.SentIdempotencyKeys[1];
+            Assert.False(string.IsNullOrWhiteSpace(firstAttemptKey));
+            var awaitingAdmission = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+            Assert.Equal("Hello", awaitingAdmission.Text);
+            Assert.Equal(ChatQueuedMessageSendState.Sending, awaitingAdmission.SendState);
+            Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, item =>
+                item.Kind == ChatTimelineItemKind.User && item.Text == "Hello");
 
-        ChatDataSnapshot committedSnapshot;
-        try
-        {
-            bridge.RaiseSessions(new[] { MainSession() });
-            await retryEntered.Task.WaitAsync(dispatchDeadline);
+            phase = "in-flight-requeue";
+            releaseSecond.TrySetResult();
+            await firstDrain.WaitAsync(QueuedSendProbeDeadline);
+            var boundary = await requeued.Task.WaitAsync(QueuedSendProbeDeadline);
+            Assert.Equal(2, boundary.SendCount);
+            Assert.Equal(firstAttemptKey, boundary.Key);
+            var deferred = Assert.Single(GetQueuedMessages(boundary.Snapshot, "main"));
+            Assert.Equal("Hello", deferred.Text);
+            Assert.Equal(ChatQueuedMessageSendState.Queued, deferred.SendState);
+            Assert.DoesNotContain(boundary.Snapshot.Timelines["main"].Entries, item =>
+                item.Kind == ChatTimelineItemKind.User && item.Text == "Hello");
 
+            phase = "retry-admission-wait";
+            Assert.Equal(2, drains.ScheduledCount);
+            var retryDrain = await drains.RunUntilAdmissionAsync(retryEntered.Task, QueuedSendProbeDeadline);
+            phase = "retry-admission-held";
+            Assert.False(retryDrain.IsCompleted);
+            Assert.False(drains.HasPending);
+            var callbacksAtAdmission = drains.OwnedCompletions;
+            Assert.Same(retryDrain, Assert.Single(callbacksAtAdmission, task => !task.IsCompleted));
+            Assert.All(callbacksAtAdmission.Where(task => !ReferenceEquals(task, retryDrain)),
+                task => Assert.True(task.IsCompletedSuccessfully));
             Assert.Equal(3, bridge.SentMessages.Count);
             Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
             var sending = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
             Assert.Equal("Hello", sending.Text);
             Assert.Equal(ChatQueuedMessageSendState.Sending, sending.SendState);
             Assert.False(committed.Task.IsCompleted);
+            Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, item =>
+                item.Kind == ChatTimelineItemKind.User && item.Text == "Hello");
 
+            phase = "accepted-retry";
             releaseRetry.TrySetResult();
-            committedSnapshot = await committed.Task.WaitAsync(dispatchDeadline);
+            await retryDrain.WaitAsync(QueuedSendProbeDeadline);
+            var committedSnapshot = await committed.Task.WaitAsync(QueuedSendProbeDeadline);
+            Assert.Equal(3, bridge.SentMessages.Count);
+            Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
+            Assert.Empty(GetQueuedMessages(committedSnapshot, "main"));
+            Assert.Single(committedSnapshot.Timelines["main"].Entries, item =>
+                item.Kind == ChatTimelineItemKind.User && item.Text == "Hello");
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
+            var admissionStatuses = activities.Stopped
+                .Where(activity => activity.OperationName == ChatTelemetryTracker.SendSpanName)
+                .Select(activity => activity.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag)).ToArray();
+            Assert.Equal(new object?[] { "accepted", "deferred", "accepted" }, admissionStatuses);
+            Assert.False(drains.HasPending);
+            Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+            phase = "complete";
+        }, async () =>
+        {
+            releaseSecond.TrySetResult();
+            releaseRetry.TrySetResult();
+            await drains.DrainAsync(QueuedSendProbeDeadline);
+        }, cleanupType => output.WriteLine(
+            $"phase={phase} sendCount={Volatile.Read(ref sendCount)} scheduledDrains={drains.ScheduledCount} cleanupExceptionType={cleanupType ?? "none"}"));
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_FollowsCapturedRearmAndReturnsHeldAdmission()
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stages = new List<string>();
+        Task? admissionCallback = null;
+        var rearmCallback = drains.Schedule(() =>
+        {
+            stages.Add("rearm");
+            admissionCallback = drains.Schedule(() =>
+            {
+                stages.Add("admit");
+                entered.TrySetResult();
+                return release.Task;
+            });
+            return Task.CompletedTask;
+        });
+        await RunQueuedSendProbeAsync(async () =>
+        {
+            var held = await drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline);
+            Assert.Same(admissionCallback, held);
+            Assert.True(rearmCallback.IsCompletedSuccessfully);
+            Assert.False(held.IsCompleted);
+            Assert.False(drains.HasPending);
+            Assert.Equal(new[] { "rearm", "admit" }, stages);
+            release.TrySetResult();
+            await held.WaitAsync(QueuedSendProbeDeadline);
+            Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+            Assert.Equal(new[] { "rearm", "admit" }, stages);
+        }, async () =>
+        {
+            release.TrySetResult();
+            await drains.DrainAsync(QueuedSendProbeDeadline);
+        }, _ => { });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task QueuedSend_RetryDriver_RejectsMissingScheduledWork(bool completesWithoutRearm)
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        if (completesWithoutRearm)
+            _ = drains.Schedule(() => { calls++; return Task.CompletedTask; });
+
+        await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() =>
+            drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline));
+        Assert.Equal(completesWithoutRearm ? 1 : 0, calls);
+        Assert.False(entered.Task.IsCompleted);
+        Assert.False(drains.HasPending);
+        Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_PropagatesCallbackFailure()
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failure = new IOException("Scheduled callback failure sentinel.");
+        var callback = drains.Schedule(() => Task.FromException(failure));
+
+        var observed = await Assert.ThrowsAsync<IOException>(() =>
+            drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline));
+        Assert.Same(failure, observed);
+        Assert.True(callback.IsFaulted);
+        Assert.False(drains.HasPending);
+        Assert.False(entered.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_CancellationAfterRearmDoesNotAbandonRunningWork()
+    {
+        var drains = new ControlledQueueDrains();
+        using var phase = new CancellationTokenSource();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var successorStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stages = new List<string>();
+        Task? successor = null;
+        _ = drains.Schedule(() =>
+        {
+            stages.Add("rearm");
+            successor = drains.Schedule(() =>
+            {
+                stages.Add("successor");
+                successorStarted.TrySetResult();
+                return release.Task;
+            });
+            return Task.CompletedTask;
+        });
+        Task<Task>? driving = null;
+        await RunQueuedSendProbeAsync(async () =>
+        {
+            var operation = drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline, phase.Token);
+            driving = operation;
+            await successorStarted.Task.WaitAsync(QueuedSendProbeDeadline);
+            phase.Cancel();
+            var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+            Assert.Equal(phase.Token, error.CancellationToken);
+            Assert.NotNull(successor);
+            Assert.False(successor.IsCompleted);
+            Assert.False(entered.Task.IsCompleted);
+            Assert.False(drains.HasPending);
+            Assert.Equal(new[] { "rearm", "successor" }, stages);
+        }, async () =>
+        {
+            phase.Cancel();
+            release.TrySetResult();
+            await drains.DrainAsync(QueuedSendProbeDeadline);
+            if (driving is not null)
+            {
+                try { await driving; }
+                catch (OperationCanceledException) when (phase.IsCancellationRequested) { }
+            }
+            Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+        }, _ => { });
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_ExpiredBudgetCannotStartCapturedWork()
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var captured = drains.Schedule(() => { calls++; return Task.CompletedTask; });
+        await RunQueuedSendProbeAsync(async () =>
+        {
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                drains.RunUntilAdmissionAsync(entered.Task, TimeSpan.Zero));
+            Assert.Equal(0, calls);
+            Assert.False(captured.IsCompleted);
+            Assert.True(drains.HasPending);
+            Assert.False(entered.Task.IsCompleted);
+        }, () => drains.DrainAsync(QueuedSendProbeDeadline), _ => { });
+        Assert.True(captured.IsCompletedSuccessfully);
+        Assert.Equal(1, calls);
+    }
+
+    // Controls only when actual provider-scheduled work runs; it supplies no queue state or admission result.
+    private sealed class ControlledQueueDrains
+    {
+        private readonly ConcurrentQueue<Drain> _pending = new();
+        private readonly ConcurrentQueue<Drain> _owned = new();
+        public int ScheduledCount => _owned.Count;
+        public bool HasPending => !_pending.IsEmpty;
+        public Task[] OwnedCompletions => _owned.Select(drain => drain.Completion).ToArray();
+        public Task Schedule(Func<Task> work)
+        {
+            var drain = new Drain(work);
+            _owned.Enqueue(drain);
+            _pending.Enqueue(drain);
+            return drain.Completion;
+        }
+        public Task RunNextAsync()
+        {
+            Assert.True(_pending.TryDequeue(out var drain), "The provider must schedule the drain before the test can run it.");
+            return drain!.RunAsync();
+        }
+        public async Task<Task> RunUntilAdmissionAsync(
+            Task admission, TimeSpan deadline, CancellationToken cancellationToken = default)
+        {
+            var started = Stopwatch.GetTimestamp();
+            TimeSpan Remaining()
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var remaining = deadline - Stopwatch.GetElapsedTime(started);
+                if (remaining <= TimeSpan.Zero)
+                    throw new TimeoutException("Scheduled queue work did not reach admission within the phase budget.");
+                return remaining;
+            }
+
+            Assert.False(admission.IsCompleted, "Admission must come from the scheduled work being driven.");
+            while (true)
+            {
+                _ = Remaining();
+                var running = RunNextAsync();
+                // A real callback may only rearm the not-before delay. Observe its completion
+                // before driving its actual successor; never reset the shared phase deadline.
+                await Task.WhenAny(running, admission).WaitAsync(Remaining(), cancellationToken);
+                _ = Remaining();
+                if (running.IsCompleted) await running;
+                if (admission.IsCompleted)
+                {
+                    await admission;
+                    return running;
+                }
+            }
+        }
+        public async Task DrainAsync(TimeSpan deadline)
+        {
+            var drain = DrainOwnedAsync();
+            try { await drain.WaitAsync(deadline); }
+            catch (TimeoutException error) when (!drain.IsCompleted)
+            {
+                // A missed budget stays a failure, but never dispose beneath admitted work.
+                // The test releases every bridge gate before this finite drain is joined.
+                try { await drain; }
+                catch (Exception lateError) { error.Data["LateDrainExceptionType"] = lateError.GetType().Name; }
+                ExceptionDispatchInfo.Capture(error).Throw();
+            }
+        }
+        private async Task DrainOwnedAsync()
+        {
+            do
+            {
+                while (_pending.TryDequeue(out var drain)) _ = drain.RunAsync();
+                var owned = _owned.ToArray();
+                await Task.WhenAll(owned.Select(item => item.Completion));
+                if (_pending.IsEmpty && owned.Length == _owned.Count) return;
+            } while (true);
+        }
+        private sealed class Drain(Func<Task> work)
+        {
+            private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private int _started;
+            public Task Completion => _completion.Task;
+            public Task RunAsync()
+            {
+                if (Interlocked.Exchange(ref _started, 1) == 0) _ = CompleteAsync();
+                return Completion;
+            }
+            private async Task CompleteAsync()
+            {
+                try { await work(); _completion.TrySetResult(); }
+                catch (Exception error) { _completion.TrySetException(error); }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public async Task QueuedSend_ProbeCleanupJoinsAdmittedWorkAndPreservesPrimaryFailure(bool bodyFails, bool cleanupFails)
+    {
+        var drains = new ControlledQueueDrains();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var admitted = drains.Schedule(() => release.Task);
+        var running = drains.RunNextAsync();
+        var primary = new Xunit.Sdk.XunitException("Primary assertion sentinel");
+        var cleanup = new IOException("Secondary content must not be recorded");
+        string? recorded = "unobserved";
+        try
+        {
+            var observed = await Record.ExceptionAsync(() => RunQueuedSendProbeAsync(
+                () => bodyFails ? Task.FromException(primary) : Task.CompletedTask,
+                async () =>
+                {
+                    release.TrySetResult();
+                    await drains.DrainAsync(QueuedSendProbeDeadline);
+                    Assert.True(admitted.IsCompletedSuccessfully);
+                    if (cleanupFails) throw cleanup;
+                }, type => recorded = type));
+            Assert.True(running.IsCompletedSuccessfully);
+            Assert.Equal(cleanupFails ? "IOException" : null, recorded);
+            if (bodyFails) Assert.Same(primary, observed);
+            else if (cleanupFails) Assert.Same(cleanup, observed);
+            else Assert.Null(observed);
+            if (observed is not null)
+            {
+                Assert.Equal(cleanupFails ? 1 : 0, observed.Data.Count);
+                if (cleanupFails)
+                    Assert.Equal("IOException", Assert.IsType<string>(observed.Data["QueuedSendCleanupExceptionType"]));
+            }
         }
         finally
         {
-            releaseRetry.TrySetResult();
+            release.TrySetResult();
+            await drains.DrainAsync(QueuedSendProbeDeadline);
         }
-        Assert.Equal(3, bridge.SentMessages.Count);
-        Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
-        Assert.Empty(GetQueuedMessages(committedSnapshot, "main"));
-        Assert.Single(committedSnapshot.Timelines["main"].Entries, e =>
-            e.Kind == ChatTimelineItemKind.User && e.Text == "Hello");
+    }
 
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
-        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
-
-        var admissionStatuses = activities.Stopped
-            .Where(activity => activity.OperationName == ChatTelemetryTracker.SendSpanName)
-            .Select(activity => activity.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag))
-            .ToArray();
-        Assert.Equal(new object?[] { "accepted", "deferred", "accepted" }, admissionStatuses);
+    private static async Task RunQueuedSendProbeAsync(Func<Task> body, Func<Task> cleanup, Action<string?> diagnose)
+    {
+        ExceptionDispatchInfo? primary = null;
+        Exception? cleanupFailure = null;
+        Exception? diagnosticFailure = null;
+        try { await body(); }
+        catch (Exception error) { primary = ExceptionDispatchInfo.Capture(error); }
+        finally
+        {
+            try { await cleanup(); }
+            catch (Exception error) { cleanupFailure = error; }
+            try { diagnose(cleanupFailure?.GetType().Name); }
+            catch (Exception error) { diagnosticFailure = error; }
+        }
+        var failure = primary?.SourceException ?? cleanupFailure ?? diagnosticFailure;
+        if (failure is null) return;
+        if (cleanupFailure is not null) failure.Data["QueuedSendCleanupExceptionType"] = cleanupFailure.GetType().Name;
+        if (diagnosticFailure is not null) failure.Data["QueuedSendDiagnosticExceptionType"] = diagnosticFailure.GetType().Name;
+        (primary ?? ExceptionDispatchInfo.Capture(failure)).Throw();
     }
 
     [Fact]
@@ -16311,6 +16671,60 @@ public class OpenClawChatDataProviderTests
         Assert.Single(bridge.ResolvedApprovals);
         Assert.Equal(ChatPermissionActionKeys.Deny, bridge.ResolvedApprovals[0].Decision);
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RespondToPermissionAsync_SharedUncertaintyRemovesActionsAcrossSnapshotRefreshes(bool posted, bool correlated)
+    {
+        var deliveries = new ConcurrentQueue<Action>();
+        Action<Action>? post = posted ? deliveries.Enqueue : null;
+        void Drain() { while (deliveries.TryDequeue(out var delivery)) delivery(); }
+        const string canonical = "29c78023-a152-4a24-949d-59950de3a12e";
+        var displayedId = correlated ? "29c78023" : canonical;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, post: post);
+        bridge.CommandCatalogResult = new CommandCatalog { IsSupported = true };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(canonical, correlated ? displayedId : ""));
+        Drain();
+        var before = snapshots[^1].Timelines["main"];
+        Assert.Equal(displayedId, before.PendingPermission!.RequestId);
+        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
+        // An older queued publication must be projected with current authority at delivery.
+        provider.RefreshApprovalDecisionState();
+        provider.IsApprovalDecisionUncertain = id => id == canonical;
+        provider.RefreshApprovalDecisionState();
+        Drain();
+        AssertUncertain(snapshots[^1]);
+
+        // Command-catalog delivery bypasses Publish, but must use the same final projection.
+        await provider.EnsureCommandCatalogAsync();
+        Drain();
+        Assert.Equal(1, bridge.ListCommandsCallCount);
+        AssertUncertain(snapshots[^1]);
+        await provider.RespondToPermissionAsync("main", displayedId, allow: true);
+        bridge.RaiseSessions([MainSession()]);
+        Drain();
+        AssertUncertain(snapshots[^1]);
+        AssertUncertain(await provider.LoadAsync());
+        Assert.Empty(bridge.ResolvedApprovals);
+        // Previously delivered snapshots and the authoritative request remain immutable.
+        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
+        Assert.DoesNotContain("Inbox_ApprovalDecisionUncertain", before.PendingPermission.Detail);
+
+        void AssertUncertain(ChatDataSnapshot snapshot)
+        {
+            var timeline = snapshot.Timelines["main"];
+            Assert.Empty(timeline.PendingPermission!.Actions!);
+            Assert.Contains("Inbox_ApprovalDecisionUncertain", timeline.PendingPermission.Detail);
+            var row = Assert.Single(timeline.Entries, entry => entry.PermissionRequestId == displayedId);
+            Assert.Equal(ChatPermissionDecision.Pending, row.PermissionDecision);
+            Assert.Empty(row.PermissionActions!);
+            Assert.Contains("Inbox_ApprovalDecisionUncertain", row.Text);
+        }
     }
 
     [Fact]

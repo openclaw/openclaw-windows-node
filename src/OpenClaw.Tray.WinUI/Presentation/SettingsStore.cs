@@ -144,6 +144,7 @@ internal sealed class SettingsStore : ISettingsStore
         UseLegacyWebChat = _settings.UseLegacyWebChat,
         ShowNotifications = _settings.ShowNotifications,
         NotificationSound = _settings.NotificationSound,
+        DoNotDisturb = _settings.DoNotDisturb,
         AppTheme = _settings.AppTheme,
         ShowDiagnosticsEffective = _settings.ShowDiagnosticsEffective,
         NotifyHealth = _settings.NotifyHealth,
@@ -195,6 +196,7 @@ internal sealed class SettingsStore : ISettingsStore
         public bool UseLegacyWebChat { set => _settings.UseLegacyWebChat = value; }
         public bool ShowNotifications { set => _settings.ShowNotifications = value; }
         public string NotificationSound { set => _settings.NotificationSound = value; }
+        public bool DoNotDisturb { set => _settings.DoNotDisturb = value; }
         public string AppTheme { set => _settings.AppTheme = value; }
         public bool? ShowDiagnosticsOverride { set => _settings.ShowDiagnosticsOverride = value; }
         public bool NotifyHealth { set => _settings.NotifyHealth = value; }

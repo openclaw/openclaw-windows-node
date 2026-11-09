@@ -3208,24 +3208,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>{0} : {1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Alertes</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Consultez et effacez les notifications OpenClaw actives.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Effacer</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>Aucune notification</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>Les nouvelles notifications de l'application apparaissent ici jusqu'à ce que vous les ignoriez ou les effaciez.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>Ignorer {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Approbation d'exécution</value>
   </data>
@@ -5758,10 +5740,10 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Consulter les notifications actives de l'application</value>
+    <value>Consulter les demandes et alertes qui vous attendent</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Accéder à Notifications</value>
+    <value>Accéder à la boîte de réception</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6460,18 +6442,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7594,8 +7564,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Boîte de réception</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Boîte de réception</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ouvrir le tableau de bord</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Ouvrir le tableau de bord (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Suivant</value></data>
@@ -7864,6 +7834,92 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Boîte de réception</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Ignorer les éléments affichés</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Paramètres de notification</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Paramètres de notification</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Catégories de la boîte de réception</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>Tout</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Approbations</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Mentions</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automatisations</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>Système</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Rien en attente</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Rien en attente</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Les nouvelles demandes et alertes arrivent ici.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Ouvrir la boîte de réception</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} en attente</value></data>
+  <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>Ne pas déranger</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ne pas déranger</value></data>
+  <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>Ne pas déranger est activé. {0}</value></data>
+  <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>Ce PC</value></data>
+  <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>Confidentialité</value></data>
+  <data name="ThisPc_CameraBlockedTitle" xml:space="preserve"><value>Ce PC : l'accès à la caméra est désactivé</value></data>
+  <data name="ThisPc_CameraBlockedMessage" xml:space="preserve"><value>Les agents peuvent utiliser la caméra, mais les paramètres de confidentialité de Windows bloquent l'accès à la caméra : les photos et les clips échouent.</value></data>
+  <data name="ThisPc_MicrophoneBlockedTitle" xml:space="preserve"><value>Ce PC : l'accès au microphone est désactivé</value></data>
+  <data name="ThisPc_MicrophoneBlockedMessage" xml:space="preserve"><value>Les agents peuvent enregistrer du son pour la reconnaissance vocale ou les clips de la caméra, mais les paramètres de confidentialité de Windows bloquent l'accès au microphone : ces demandes échouent.</value></data>
+  <data name="ThisPc_LocationBlockedTitle" xml:space="preserve"><value>Ce PC : l'accès à la localisation est désactivé</value></data>
+  <data name="ThisPc_LocationBlockedMessage" xml:space="preserve"><value>Les agents peuvent demander la position de ce PC, mais les paramètres de confidentialité de Windows bloquent l'accès à la localisation : les demandes de position échouent.</value></data>
+  <data name="ThisPc_ManagedBySystem" xml:space="preserve"><value>Ce paramètre est géré par Windows ou votre organisation.</value></data>
+  <data name="ThisPc_OpenPrivacySettings" xml:space="preserve"><value>Ouvrir les paramètres de confidentialité Windows</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Ignorer {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>maintenant</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} h</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} j</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Demander à OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Ouvrir le chat</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Ouvrir les automatisations</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Échec</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>En retard</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>Cette automatisation a échoué : {0}. Explique pourquoi elle a échoué et comment la corriger.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>Cette automatisation est en retard : {0}, prévue pour {1}. Explique pourquoi elle ne s'est pas exécutée et comment la corriger.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>Ces identifiants de fournisseur de modèles nécessitent une attention : {0}. Explique ce qui a expiré et comment se réauthentifier.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Approbation de commande requise</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Approbation de plug-in requise</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approbation requise</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expire dans {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expirée</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Passerelle</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Appareil</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Bac à sable</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, jusqu'à révocation (révocable)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, pendant {1} jours (révocable)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Envoie à {0} destinataire(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>Destinataires indiqués :
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>Aucun indiqué</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>Audience : {0}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Paie {0} {1} à {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Publie en externe sur {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>Commande :
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>Visibilité : {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Le compte nécessite une attention : {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Connexion requise</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>La clé API nécessite une attention</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Le compte nécessite une attention</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Se connecter</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Mettre à jour la clé API</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Vérifier le compte</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>Autoriser une fois</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>Toujours autoriser</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>Refuser</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>Décisions d'approbation</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>Vous devez disposer de l'accès aux approbations pour approuver.</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>Aucune commande incluse</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>Aucune commande n'a été incluse avec cette approbation, seul Refuser est donc disponible.</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>Cette approbation ne peut pas être affichée en entier, seul Refuser est donc disponible.</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>Votre décision n’a pas pu être confirmée. Vérifiez son état avant de réessayer.</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>Cette approbation n'attend plus de décision.</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>Cette décision n'est pas disponible pour cette approbation.</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>Examiner</value></data>
+  <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>Vous devez disposer de l'accès aux approbations pour approuver.</value></data>
+  <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>Cette demande ne peut pas être traitée depuis cette application.</value></data>
+  <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>S'exécute sur cet ordinateur</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>La décision n’a pas pu être confirmée. Toute autre décision est bloquée tant que son résultat reste inconnu.</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>Retour à l'application</value>
   </data>

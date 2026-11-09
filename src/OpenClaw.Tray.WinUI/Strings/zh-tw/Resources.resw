@@ -3208,24 +3208,6 @@
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>{0}：{1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>通知</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>檢閱並清除作用中的 OpenClaw 通知。</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>清除</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>沒有通知</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>新的應用程式通知會顯示在這裡，直到您關閉或清除它們。</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>關閉 {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>執行核准</value>
   </data>
@@ -5758,10 +5740,10 @@
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>檢閱作用中的應用程式通知</value>
+    <value>檢閱需要你處理的要求和警示</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>前往通知</value>
+    <value>前往收件匣</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6460,18 +6442,6 @@
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7594,8 +7564,8 @@
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>通知</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>收件匣</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>收件匣</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>開啟儀表板</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>開啟儀表板 (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>前進</value></data>
@@ -7864,6 +7834,92 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>收件匣</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>略過顯示的項目</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>通知設定</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>通知設定</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>收件匣類別</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>全部</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>核准</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>提及</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>自動化</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>系統</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>沒有待處理的項目</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>沒有待處理的項目</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>新的要求和警示會顯示在這裡。</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>開啟收件匣</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} 項待處理</value></data>
+  <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>勿擾</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>勿擾</value></data>
+  <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>勿擾已開啟。{0}</value></data>
+  <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>本機</value></data>
+  <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>隱私權</value></data>
+  <data name="ThisPc_CameraBlockedTitle" xml:space="preserve"><value>本機：相機存取已關閉</value></data>
+  <data name="ThisPc_CameraBlockedMessage" xml:space="preserve"><value>代理程式可以使用相機，但 Windows 隱私權設定封鎖了相機存取，因此拍照和錄製片段會失敗。</value></data>
+  <data name="ThisPc_MicrophoneBlockedTitle" xml:space="preserve"><value>本機：麥克風存取已關閉</value></data>
+  <data name="ThisPc_MicrophoneBlockedMessage" xml:space="preserve"><value>代理程式可以為語音轉文字或相機片段錄製聲音，但 Windows 隱私權設定封鎖了麥克風存取，因此這些要求會失敗。</value></data>
+  <data name="ThisPc_LocationBlockedTitle" xml:space="preserve"><value>本機：位置存取已關閉</value></data>
+  <data name="ThisPc_LocationBlockedMessage" xml:space="preserve"><value>代理程式可以要求本機的位置，但 Windows 隱私權設定封鎖了位置存取，因此位置要求會失敗。</value></data>
+  <data name="ThisPc_ManagedBySystem" xml:space="preserve"><value>此設定由 Windows 或您的組織管理。</value></data>
+  <data name="ThisPc_OpenPrivacySettings" xml:space="preserve"><value>開啟 Windows 隱私權設定</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>略過 {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>剛剛</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} 分鐘</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} 小時</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} 天</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>詢問 OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>開啟聊天</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>開啟自動化</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>失敗</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>已逾期</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>此自動化失敗：{0}。請說明失敗原因以及如何修正。</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>此自動化已逾期：{0}，排定時間為 {1}。請說明它為何未執行以及如何修正。</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>以下模型提供者認證需要處理：{0}。請說明哪些內容已過期以及如何重新驗證。</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>需要核准命令</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>需要核准外掛程式</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>需要核准</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>{0} 後到期</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>已到期</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>閘道</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>裝置</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>沙箱</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，直到撤銷（可撤銷）</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，持續 {1} 天（可撤銷）</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>透過 {1} 傳送給 {0} 位收件者</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>列出的收件者：
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>未列出</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>對象：{0}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>向 {2} 支付 {0} {1}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>對外發布到 {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>命令：
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>可見性：{0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>帳戶需要處理：{0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>需要登入</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API 金鑰需要處理</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>帳戶需要處理</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>登入</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>更新 API 金鑰</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>檢視帳戶</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>允許一次</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>一律允許</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>拒絕</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>核准決定</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>你需要核准權限才能核准。</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>未包含命令</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>此核准未包含命令，因此只能拒絕。</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>此核准無法完整顯示，因此只能拒絕。</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>無法確認你的決定。請先檢查其狀態，再重試。</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>此核准已不再等待決定。</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>此核准不提供該決定。</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>檢閱</value></data>
+  <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>你需要核准權限才能核准。</value></data>
+  <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>無法在此應用程式中處理此要求。</value></data>
+  <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>在此電腦上執行</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>無法確認此決定。在結果明確之前，將禁止傳送其他決定。</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>返回應用程式</value>
   </data>

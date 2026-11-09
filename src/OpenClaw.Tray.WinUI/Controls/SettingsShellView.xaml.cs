@@ -46,6 +46,7 @@ internal sealed partial class SettingsShellView : UserControl
     public string CurrentAgentId => _currentAgentId;
     private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
     private AppNotificationService? _appNotificationService;
+    private InboxFeed? _inboxFeed;
     private readonly AppNotificationInfoBarPresenter _appNotificationInfoBarPresenter = new();
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
@@ -153,10 +154,25 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_appNotificationService != null)
             _appNotificationService.Changed -= OnAppNotificationChanged;
+        if (_inboxFeed != null)
+            _inboxFeed.DoNotDisturbChanged -= OnDoNotDisturbChanged;
 
         _appNotificationService = service;
         _appNotificationService.Changed += OnAppNotificationChanged;
+        _inboxFeed = CurrentApp.InboxFeed;
+        if (_inboxFeed != null)
+            _inboxFeed.DoNotDisturbChanged += OnDoNotDisturbChanged;
         RenderAppNotification(service.Snapshot);
+    }
+
+    // Do not disturb hides or restores non-approval banners without a notification change.
+    private void OnDoNotDisturbChanged(object? sender, EventArgs args)
+    {
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            if (_disposed || _appNotificationService is not { } service) return;
+            RenderAppNotification(service.Snapshot);
+        });
     }
 
     /// <summary>
@@ -172,9 +188,12 @@ internal sealed partial class SettingsShellView : UserControl
         _gatewayNavHideTimer?.Stop();
         if (_appNotificationService != null)
             _appNotificationService.Changed -= OnAppNotificationChanged;
+        if (_inboxFeed != null)
+            _inboxFeed.DoNotDisturbChanged -= OnDoNotDisturbChanged;
         if (AppModel != null)
             AppModel.PropertyChanged -= OnAppModelChanged;
         _appNotificationService = null;
+        _inboxFeed = null;
     }
 
     private void OnAppNotificationChanged(object? sender, AppNotificationChangedEventArgs args)
@@ -195,7 +214,8 @@ internal sealed partial class SettingsShellView : UserControl
             _currentAppNotificationPresentation.Notification?.Id,
             AppNotificationInfoBar.IsOpen,
             _currentNavTag,
-            LocalizationHelper.GetString("AppNotification_ShowMore"));
+            LocalizationHelper.GetString("AppNotification_ShowMore"),
+            _inboxFeed?.DoNotDisturb == true);
         if (!_currentAppNotificationPresentation.IsVisible)
         {
             HideAppNotificationInfoBar();
@@ -266,7 +286,8 @@ internal sealed partial class SettingsShellView : UserControl
             // that were already active. The Notifications page remains the source
             // of truth, and deleting the displayed list item can still reveal a
             // remaining hidden item via RenderAppNotification's fallback path.
-            _appNotificationInfoBarPresenter.HideActiveNotifications(_lastAppNotificationSnapshot);
+            _appNotificationInfoBarPresenter.HideActiveNotifications(
+                _lastAppNotificationSnapshot, _inboxFeed?.DoNotDisturb == true);
         }
 
         HideAppNotificationInfoBar();
@@ -284,6 +305,11 @@ internal sealed partial class SettingsShellView : UserControl
         if (_currentAppNotificationPresentation.Action is
             { Kind: AppNotificationInfoBarActionKind.NotificationRoute, Route.Length: > 0 })
         {
+            if (ThisPcAlertSource.TryOpenPrivacySettings(_currentAppNotificationPresentation.Action.Route))
+            {
+                // The block is still there; the row stays until Windows reports it cleared.
+                return;
+            }
             if (_appNotificationService is { } notifications)
             {
                 var notificationId = _currentAppNotificationPresentation.Notification!.Id;
@@ -874,7 +900,7 @@ internal sealed partial class SettingsShellView : UserControl
                 break;
             case SettingsPage settings: settings.Initialize(); break;
             case AboutPage about: about.Initialize(); break;
-            case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
+            case NotificationsPage notifications: notifications.Initialize(CurrentApp.InboxFeed); break;
             case DebugPage debug: debug.Initialize(); break;
         }
     }

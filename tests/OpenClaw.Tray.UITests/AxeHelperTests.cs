@@ -3,6 +3,7 @@ using Axe.Windows.Automation;
 using Axe.Windows.Automation.Data;
 using Axe.Windows.Core.Enums;
 using Axe.Windows.Rules;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using Xunit.Sdk;
@@ -315,6 +316,344 @@ public sealed class AxeHelperTests
 
         Assert.Same(expected, failure);
         Assert.Empty(scans);
+    }
+
+    [Theory]
+    [InlineData("[l=10,t=20,r=12,b=23]", 2, 3, 6)]
+    [InlineData("[l=-10,t=-20,r=-8,b=-17]", 2, 3, 6)]
+    [InlineData("[l=10,t=20,r=10,b=20]", 0, 0, 0)]
+    public void CachedBoundsUseThePinnedProducerFormatWithoutEchoingProperties(
+        string bounds, double width, double height, double area)
+    {
+        using var diagnostic = ObserveDiagnosticFailure(DiagnosticError(bounds));
+        var row = diagnostic.RootElement.GetProperty("observations")[0];
+        Assert.Equal(1, row.GetProperty("Scan").GetInt32());
+        Assert.Equal(1, row.GetProperty("ErrorOrdinal").GetInt32());
+        Assert.Equal("BoundingRectangleSizeReasonable", row.GetProperty("Rule").GetString());
+        Assert.Equal("Text(50020)", row.GetProperty("ControlType").GetString());
+        Assert.True(row.GetProperty("AutomationIdPresent").GetBoolean());
+        Assert.Equal("SnapshotNotZeroHeight", row.GetProperty("RetryReason").GetString());
+        var size = row.GetProperty("SnapshotBounds");
+        Assert.True(size.GetProperty("Available").GetBoolean());
+        Assert.Equal(width, size.GetProperty("Width").GetDouble());
+        Assert.Equal(height, size.GetProperty("Height").GetDouble());
+        Assert.Equal(area, size.GetProperty("Area").GetDouble());
+        Assert.False(row.GetProperty("LiveBounds").GetProperty("Available").GetBoolean());
+        Assert.DoesNotContain("private", diagnostic.RootElement.GetRawText());
+        Assert.DoesNotContain(bounds, diagnostic.RootElement.GetRawText());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("[l=0,t=0,w=2,h=3]")]
+    [InlineData("private [l=0,t=0,r=2,b=3]")]
+    [InlineData("[l=0,t=0,r=2,b=3] private")]
+    [InlineData("[l=0,t=0,r=2,b=3,private=1]")]
+    [InlineData("[l=0,t=0,r=-1,b=3]")]
+    [InlineData("[l=0,t=0,r=2,b=-1]")]
+    [InlineData("[l=0,t=0,r=NaN,b=3]")]
+    [InlineData("[l=0,t=0,r=Infinity,b=3]")]
+    [InlineData("[l=0,t=0,r=2.5,b=3]")]
+    [InlineData("[l=0,t=0,r=2147483648,b=3]")]
+    [InlineData("[l=0,t=0,r=2,b= 3]")]
+    [InlineData("[l=0,t=0,r=2,b=3")]
+    public void UnknownOrMalformedCachedBoundsRemainUnavailable(string? bounds)
+    {
+        using var diagnostic = ObserveDiagnosticFailure(DiagnosticError(bounds));
+        var size = diagnostic.RootElement.GetProperty("observations")[0].GetProperty("SnapshotBounds");
+        Assert.False(size.GetProperty("Available").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, size.GetProperty("Width").ValueKind);
+        Assert.Equal(JsonValueKind.Null, size.GetProperty("Height").ValueKind);
+        Assert.Equal(JsonValueKind.Null, size.GetProperty("Area").ValueKind);
+        Assert.DoesNotContain("private", diagnostic.RootElement.GetRawText());
+    }
+
+    [Fact]
+    public void LayoutDiagnosticSchemaContainsOnlyApprovedOperationalFields()
+    {
+        using var diagnostic = ObserveDiagnosticFailure(DiagnosticError("[l=10,t=20,r=12,b=23]"));
+        static string[] Names(JsonElement value) => value.EnumerateObject().Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { "firstErrorCount", "observations", "observationsTruncated", "retryAttempted",
+            "scanCount", "schema", "secondErrorCount", "source" }, Names(diagnostic.RootElement));
+        var row = diagnostic.RootElement.GetProperty("observations")[0];
+        Assert.Equal(new[] { "AutomationIdPresent", "ControlType", "ErrorOrdinal", "LiveBounds", "LiveIsOffscreen",
+            "MetadataUnavailable", "RetryReason", "Rule", "Scan", "SnapshotBounds" }, Names(row));
+        Assert.Equal(new[] { "Area", "Available", "Height", "Width" }, Names(row.GetProperty("SnapshotBounds")));
+        Assert.Equal("axe-layout", diagnostic.RootElement.GetProperty("source").GetString());
+        Assert.Equal(1, diagnostic.RootElement.GetProperty("schema").GetInt32());
+    }
+
+    [Fact]
+    public void DiagnosticPropertyAndRecordBoundsNeverLeakContent()
+    {
+        using var oversized = ObserveDiagnosticFailure(DiagnosticError("[l=0,t=0,r=2,b=3]" + new string('x', 10_000)));
+        Assert.False(oversized.RootElement.GetProperty("observations")[0]
+            .GetProperty("SnapshotBounds").GetProperty("Available").GetBoolean());
+        var error = Error(new Dictionary<string, string>
+        {
+            ["ControlType"] = "private custom type", ["AutomationId"] = "private id",
+            ["Name"] = "private text", ["BoundingRectangle"] = "private bounds"
+        });
+        error.Rule.ID = (RuleId)int.MaxValue;
+        using var unknown = ObserveDiagnosticFailure(error);
+        var row = unknown.RootElement.GetProperty("observations")[0];
+        Assert.Equal("Unknown", row.GetProperty("Rule").GetString());
+        Assert.Equal("Unknown", row.GetProperty("ControlType").GetString());
+        Assert.Equal("IncompleteMetadata", row.GetProperty("RetryReason").GetString());
+        Assert.DoesNotContain("private", unknown.RootElement.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("incomplete", "IncompleteMetadata")]
+    [InlineData("rule", "RuleNotEligible")]
+    [InlineData("logical-size", "SnapshotSizeMissing")]
+    [InlineData("nonzero", "SnapshotNotZeroHeight")]
+    [InlineData("id", "AutomationIdMissing")]
+    public void CachedRetryRefusalsDoNotAddLiveQueries(string missing, string reason)
+    {
+        var properties = new Dictionary<string, string> { ["LogicalSize"] = "[w=100,h=0]", ["AutomationId"] = "Composer" };
+        var error = Error(properties);
+        if (missing == "incomplete") SetMetadata(error, nameof(ScanResult.Rule), null);
+        if (missing == "rule") error.Rule.ID = RuleId.NameIsInformative;
+        if (missing == "logical-size") properties.Remove("LogicalSize");
+        if (missing == "nonzero") properties["LogicalSize"] = "[w=100,h=20]";
+        if (missing == "id") properties["AutomationId"] = " ";
+        using var diagnostic = ObserveDiagnosticFailure(error);
+        Assert.Equal(reason, diagnostic.RootElement.GetProperty("observations")[0].GetProperty("RetryReason").GetString());
+        Assert.False(diagnostic.RootElement.GetProperty("retryAttempted").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("hub", "ForeignHub")]
+    [InlineData("missing", "ElementMissing")]
+    [InlineData("foreign", "ForeignElement")]
+    [InlineData("offscreen", "LiveOffscreen")]
+    [InlineData("empty", "LiveEmpty")]
+    [InlineData("unavailable", "ElementUnavailable")]
+    public void ExistingOwnedProbeRefusalsAreReportedWithoutAnotherProbe(string stage, string reason)
+    {
+        var messages = new List<string>();
+        var scans = new Queue<ScanOutput?>([Scan(LayoutError())]);
+        AxeHelper.ILayoutElement GetHub() => stage switch
+        {
+            "hub" => new LayoutElement(OtherProcessId),
+            "unavailable" => throw new ElementNotAvailableException(),
+            _ => new LayoutElement(TargetProcessId)
+            {
+                Find = _ => stage == "missing" ? null : new LayoutElement(stage == "foreign" ? OtherProcessId : TargetProcessId)
+                {
+                    IsOffscreen = stage == "offscreen",
+                    ReadBounds = () => stage == "foreign" ? throw new InvalidOperationException("Foreign geometry must not be read")
+                        : new Rect(0, 0, stage == "empty" ? 0 : 100, 20)
+                }
+            }
+        };
+        Assert.Throws<FailException>(() => AxeHelper.AssertScan(() => scans.Dequeue(), TargetProcessId,
+            GetHub, new HashSet<RuleId>(), null, messages.Add));
+        Assert.Empty(scans);
+        using var diagnostic = JsonDocument.Parse(Assert.Single(messages));
+        Assert.Equal(reason, diagnostic.RootElement.GetProperty("observations")[0].GetProperty("RetryReason").GetString());
+        Assert.False(diagnostic.RootElement.GetProperty("retryAttempted").GetBoolean());
+    }
+
+    [Fact]
+    public void CachedDiagnosticReadFailureCannotReplaceTheOriginalAssertion()
+    {
+        var error = Error(new ThrowingBoundsProperties());
+        error.Rule.ID = RuleId.NameIsInformative; // Original policy never probes this rule.
+        using var diagnostic = ObserveDiagnosticFailure(error);
+        var row = diagnostic.RootElement.GetProperty("observations")[0];
+        Assert.True(row.GetProperty("MetadataUnavailable").GetBoolean());
+        Assert.Equal("RuleNotEligible", row.GetProperty("RetryReason").GetString());
+        Assert.False(row.GetProperty("SnapshotBounds").GetProperty("Available").GetBoolean());
+        Assert.DoesNotContain("private", diagnostic.RootElement.GetRawText());
+    }
+
+    [Fact]
+    public void ObservationsPreserveAllShortCircuitAndDoNotProbeLaterErrors()
+    {
+        var messages = new List<string>();
+        var first = Error(new Dictionary<string, string> { ["LogicalSize"] = "[w=1,h=1]" });
+        Assert.Throws<FailException>(() => AxeHelper.AssertScan(() => Scan(first, LayoutError()), TargetProcessId,
+            () => throw new InvalidOperationException("Unexpected probe"), new HashSet<RuleId>(), null, messages.Add));
+        using var diagnostic = JsonDocument.Parse(Assert.Single(messages));
+        var rows = diagnostic.RootElement.GetProperty("observations");
+        Assert.Equal("SnapshotNotZeroHeight", rows[0].GetProperty("RetryReason").GetString());
+        Assert.Equal("NotEvaluated", rows[1].GetProperty("RetryReason").GetString());
+        Assert.Equal(JsonValueKind.Null, rows[1].GetProperty("LiveIsOffscreen").ValueKind);
+    }
+
+    [Fact]
+    public void LiveValuesAreReadOnceInOriginalOrderAndSecondScanIsNotReevaluated()
+    {
+        var reads = new List<string>();
+        var child = new CountingLayoutElement("element", reads);
+        var hub = new CountingLayoutElement("hub", reads) { Child = child };
+        var messages = new List<string>();
+        var scans = new Queue<ScanOutput?>([Scan(LayoutError()), Scan(Error())]);
+        Assert.Throws<FailException>(() => AxeHelper.AssertScan(() => scans.Dequeue(), TargetProcessId,
+            () => { reads.Add("getHub"); return hub; }, new HashSet<RuleId>(), null, messages.Add));
+        Assert.Equal(new[] { "getHub", "hub.pid", "hub.find", "element.pid", "element.bounds", "element.offscreen" }, reads);
+        Assert.Empty(scans);
+        using var diagnostic = JsonDocument.Parse(Assert.Single(messages));
+        Assert.Equal(2, diagnostic.RootElement.GetProperty("scanCount").GetInt32());
+        Assert.True(diagnostic.RootElement.GetProperty("retryAttempted").GetBoolean());
+        var rows = diagnostic.RootElement.GetProperty("observations");
+        Assert.Equal("Eligible", rows[0].GetProperty("RetryReason").GetString());
+        Assert.Equal(100, rows[0].GetProperty("LiveBounds").GetProperty("Width").GetDouble());
+        Assert.Equal(20, rows[0].GetProperty("LiveBounds").GetProperty("Height").GetDouble());
+        Assert.Equal(2000, rows[0].GetProperty("LiveBounds").GetProperty("Area").GetDouble());
+        Assert.False(rows[0].GetProperty("LiveIsOffscreen").GetBoolean());
+        Assert.Equal(2, rows[1].GetProperty("Scan").GetInt32());
+        Assert.Equal("NotEvaluated", rows[1].GetProperty("RetryReason").GetString());
+    }
+
+    [Theory]
+    [InlineData(double.NaN, false)]
+    [InlineData(double.PositiveInfinity, true)]
+    [InlineData(1.0, true)]
+    public void DiagnosticNumericValidationCannotChangeOriginalLiveRetryCriterion(double width, bool retry)
+    {
+        var messages = new List<string>();
+        var calls = 0;
+        Action run = () => AxeHelper.AssertScan(() => ++calls == 1 ? Scan(LayoutError()) : Scan(), TargetProcessId,
+            () => new LayoutElement(TargetProcessId)
+            {
+                Find = _ => new LayoutElement(TargetProcessId) { ReadBounds = () => new Rect(0, 0, width, 1) }
+            }, new HashSet<RuleId>(), null, messages.Add);
+        if (retry) run(); else Assert.Throws<FailException>(run);
+        Assert.Equal(retry ? 2 : 1, calls);
+        using var diagnostic = JsonDocument.Parse(Assert.Single(messages));
+        var live = diagnostic.RootElement.GetProperty("observations")[0].GetProperty("LiveBounds");
+        Assert.Equal(double.IsFinite(width), live.GetProperty("Available").GetBoolean());
+        if (double.IsFinite(width)) Assert.Equal(1, live.GetProperty("Area").GetDouble());
+        else Assert.Equal(JsonValueKind.Null, live.GetProperty("Area").ValueKind);
+    }
+
+    [Fact]
+    public void MalformedDiagnosticBoundsCannotTightenTheExistingSnapshotSubstringCriterion()
+    {
+        var messages = new List<string>();
+        var error = Error(new Dictionary<string, string>
+        {
+            ["LogicalSize"] = "private legacy h=0", ["AutomationId"] = "Composer",
+            ["BoundingRectangle"] = "private invalid size"
+        });
+        var scans = new Queue<ScanOutput?>([Scan(error), Scan()]);
+        AxeHelper.AssertScan(() => scans.Dequeue(), TargetProcessId, OwnedHub, new HashSet<RuleId>(), null, messages.Add);
+        Assert.Empty(scans);
+        using var diagnostic = JsonDocument.Parse(Assert.Single(messages));
+        Assert.True(diagnostic.RootElement.GetProperty("retryAttempted").GetBoolean());
+        Assert.False(diagnostic.RootElement.GetProperty("observations")[0].GetProperty("SnapshotBounds").GetProperty("Available").GetBoolean());
+        Assert.DoesNotContain("private", diagnostic.RootElement.GetRawText());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThrowingDiagnosticWriterPreservesTheSamePrimaryException(bool secondScan)
+    {
+        var primary = new InvalidOperationException("private primary");
+        var calls = 0;
+        var writes = 0;
+        var observed = Assert.Throws<InvalidOperationException>(() => AxeHelper.AssertScan(
+            () => ++calls == 1 ? Scan(LayoutError()) : throw primary, TargetProcessId,
+            () => secondScan ? OwnedHub() : throw primary, new HashSet<RuleId>(), null,
+            _ => { writes++; throw new IOException("private diagnostic sink"); }));
+        Assert.Same(primary, observed);
+        Assert.Equal(secondScan ? 2 : 1, calls);
+        Assert.Equal(1, writes);
+    }
+
+    [Fact]
+    public void DiagnosticWriterFailureCannotFailAnOtherwisePassingRetry()
+    {
+        var writes = 0;
+        var scans = new Queue<ScanOutput?>([Scan(LayoutError()), Scan()]);
+        AxeHelper.AssertScan(() => scans.Dequeue(), TargetProcessId, OwnedHub, new HashSet<RuleId>(), null,
+            _ => { writes++; throw new IOException("private sink"); });
+        Assert.Empty(scans);
+        Assert.Equal(1, writes);
+        AxeHelper.AssertScan(() => Scan(), TargetProcessId, OwnedHub, new HashSet<RuleId>(), null,
+            _ => throw new InvalidOperationException("A clean first scan should not emit diagnostics"));
+    }
+
+    [Fact]
+    public void BothScanObservationsAreCappedWithoutSkippingPolicyEvaluations()
+    {
+        var messages = new List<string>();
+        var probes = 0;
+        var scans = new Queue<ScanOutput?>([Scan(Enumerable.Repeat(LayoutError(), 25).ToArray()), Scan(Enumerable.Repeat(Error(), 30).ToArray())]);
+        Assert.Throws<FailException>(() => AxeHelper.AssertScan(() => scans.Dequeue(), TargetProcessId,
+            () => { probes++; return OwnedHub(); }, new HashSet<RuleId>(), null, messages.Add));
+        Assert.Empty(scans);
+        Assert.Equal(25, probes);
+        var text = Assert.Single(messages);
+        Assert.InRange(System.Text.Encoding.UTF8.GetByteCount(text), 1, 32 * 1024);
+        using var diagnostic = JsonDocument.Parse(text);
+        Assert.True(diagnostic.RootElement.GetProperty("observationsTruncated").GetBoolean());
+        Assert.Equal(25, diagnostic.RootElement.GetProperty("firstErrorCount").GetInt32());
+        Assert.Equal(30, diagnostic.RootElement.GetProperty("secondErrorCount").GetInt32());
+        var rows = diagnostic.RootElement.GetProperty("observations").EnumerateArray().ToArray();
+        Assert.Equal(40, rows.Length);
+        Assert.Equal(20, rows.Count(row => row.GetProperty("Scan").GetInt32() == 1));
+        Assert.Equal(20, rows.Count(row => row.GetProperty("Scan").GetInt32() == 2));
+        Assert.All(rows, row => Assert.InRange(row.GetProperty("ErrorOrdinal").GetInt32(), 1, 20));
+    }
+
+    private static ScanResult DiagnosticError(string? bounds)
+    {
+        var error = Error(new Dictionary<string, string>
+        {
+            ["ControlType"] = "Text(50020)", ["LogicalSize"] = "[w=100,h=20]",
+            ["BoundingRectangle"] = bounds!, ["AutomationId"] = "private dynamic id",
+            ["Name"] = "private user content", ["private key"] = "private value"
+        });
+        error.Rule.ID = RuleId.BoundingRectangleSizeReasonable;
+        error.Rule.Description = "The BoundingRectangle property must represent an area of at least 25 pixels.";
+        return error;
+    }
+
+    private static JsonDocument ObserveDiagnosticFailure(ScanResult error)
+    {
+        var messages = new List<string>();
+        var failure = Assert.Throws<FailException>(() => AxeHelper.AssertScan(() => Scan(error), TargetProcessId,
+            () => throw new InvalidOperationException("No native lookup is allowed in this diagnostic case"),
+            new HashSet<RuleId>(), null, messages.Add));
+        Assert.DoesNotContain("private", failure.Message);
+        return JsonDocument.Parse(Assert.Single(messages));
+    }
+
+    private sealed class ThrowingBoundsProperties : IReadOnlyDictionary<string, string>
+    {
+        public int Count => 0;
+        public IEnumerable<string> Keys => throw new InvalidOperationException("No property enumeration");
+        public IEnumerable<string> Values => throw new InvalidOperationException("No property enumeration");
+        public string this[string key] => throw new InvalidOperationException("No property indexer");
+        public bool ContainsKey(string key) => throw new InvalidOperationException("No property enumeration");
+        public bool TryGetValue(string key, out string value)
+        {
+            if (key == "BoundingRectangle") throw new InvalidOperationException("private cached data failure");
+            value = null!;
+            return false;
+        }
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => throw new InvalidOperationException("No property enumeration");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class CountingLayoutElement(string role, List<string> reads) : AxeHelper.ILayoutElement
+    {
+        public AxeHelper.ILayoutElement? Child { get; init; }
+        public int ProcessId { get { reads.Add(role + ".pid"); return TargetProcessId; } }
+        public Rect Bounds { get { reads.Add(role + ".bounds"); return new Rect(0, 0, 100, 20); } }
+        public bool IsOffscreen { get { reads.Add(role + ".offscreen"); return false; } }
+        public AxeHelper.ILayoutElement? FindByAutomationId(string automationId)
+        {
+            reads.Add(role + ".find");
+            return Child;
+        }
     }
 
     private static void AssertLayoutFailure(Func<AxeHelper.ILayoutElement> getHub)

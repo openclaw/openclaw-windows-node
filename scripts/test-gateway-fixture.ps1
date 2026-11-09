@@ -4,8 +4,9 @@ Run fixture profile checks and real-app UI smokes against an explicitly selected
 .DESCRIPTION
 Requires a Windows desktop and a built app with fixture isolation support. Missing
 desktop/runtime support and skipped/zero-test runs are failures, not successful proof.
-StableAppPath selects the released-profile compatibility case instead of the ordinary
-application smoke. Both executables must advertise fixture isolation support.
+StableAppPath selects the released-profile compatibility and candidate native DND
+persistence cases instead of the ordinary application smoke. Both executables must
+advertise fixture isolation support.
 #>
 [CmdletBinding()]
 param(
@@ -72,9 +73,10 @@ function Invoke-FixtureTests {
 
 if ($resolvedStableApp) {
     Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'
+    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'FullyQualifiedName~InboxDoNotDisturb_ReleasedProfileNativeSavesSurviveCandidateRestarts' 'fixture-released-profile-dnd'
 } else {
     Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'
+    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required&FixturePhase!=ReleasedProfile' 'fixture-ui'
     if ($KeyboardProof) {
         Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
     }
