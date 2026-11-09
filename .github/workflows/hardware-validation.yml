@@ -1,107 +1,69 @@
-name: Windows hardware validation
+name: Windows hardware validation (temporary RTX1 WSL qualification overlay)
 
-# Opt-in only. The dedicated branch also allows proving a new workflow before
-# it is merged to main and becomes available in the workflow_dispatch UI.
 on:
   workflow_dispatch:
-  push:
-    branches: [ci/hardware-validation]
+    inputs:
+      source_sha:
+        description: Exact reviewed 40-character workflow/helper commit (must match selected ref)
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+# Temporary branch overlay of existing workflow ID 408676726, not a default-branch change.
+# Parent reserves RTX1 before the single read-only qualification dispatch.
 concurrency:
   group: windows-hardware-validation
   cancel-in-progress: false
 
 jobs:
-  validate:
+  inventory:
     if: github.repository == 'openclaw/openclaw-windows-node'
-    name: Validate ${{ matrix.host }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - host: rtx-1
-            architecture: arm64
-            hardware: rtx-n1x-6144
-          - host: rtx-2
-            architecture: arm64
-            hardware: rtx-n1x-5120
-          - host: azure-mxc-1
-            architecture: x64
-            hardware: azure
-    runs-on: [openclaw-managed, windows, '${{ matrix.architecture }}', '${{ matrix.hardware }}']
-    timeout-minutes: 60
+    runs-on: [openclaw-managed, windows, arm64, rtx-n1x-6144]
+    timeout-minutes: 5
     defaults:
       run:
         shell: pwsh
     env:
-      EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
-      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      GitVersion_NoNormalizeEnabled: 'true'
-      GitVersion_NoFetchEnabled: 'true'
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
+      INVENTORY_CHECKOUT: .host-inventory-${{ github.run_id }}-${{ github.run_attempt }}
+      INVENTORY_SOURCE_SHA: ${{ inputs.source_sha }}
+      INVENTORY_WORKFLOW_SHA: ${{ github.sha }}
+      INVENTORY_HOST: rtx-1
+      INVENTORY_ARCHITECTURE: arm64
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Verify native host and toolchain
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
+      - name: Require immutable reviewed source
         run: |
-          "OPENCLAW_TRAY_DATA_DIR=$env:RUNNER_TEMP/hardware-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/tray" >> $env:GITHUB_ENV
-          $actual = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-          $process = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
-          if ($process -ne $actual) { throw "Emulated PowerShell ($process) on $actual is not native validation" }
-          if ($actual -ne $env:EXPECTED_ARCHITECTURE) { throw "Expected $env:EXPECTED_ARCHITECTURE, got $actual" }
-          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SHA) { throw 'Checkout differs from the workflow source SHA' }
-          Write-Output "Native architecture: $actual; source: $env:EXPECTED_SHA"
-          dotnet --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Command-normalization tests resolve bash from Git for Windows.
-          $gitBin = Join-Path (Split-Path (Split-Path (Get-Command git.exe).Source)) 'bin'
-          if (-not (Test-Path (Join-Path $gitBin 'bash.exe'))) { throw 'Git Bash is required by shared tests' }
-          $gitBin >> $env:GITHUB_PATH
-          ./scripts/setup-dev.ps1 -CheckOnly -NoTrustRepository
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build repository
-        run: |
-          ./build.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run shared and tray tests
-        run: |
-          foreach ($suite in @('OpenClaw.Shared.Tests', 'OpenClaw.Tray.Tests')) {
-            $project = "./tests/$suite/$suite.csproj"
-            # Build first: --no-restore alone can silently no-op in a fresh checkout.
-            # Helpers expect bin/Debug/<tfm>; retain native RID without an extra path segment.
-            dotnet build $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            dotnet test $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false --no-restore --results-directory ./TestResults/Hardware --logger "trx;LogFileName=$suite.trx"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            [xml]$trx = Get-Content "./TestResults/Hardware/$suite.trx" -Raw
-            $counts = $trx.TestRun.ResultSummary.Counters
-            if ([int]$counts.executed -le 0 -or [int]$counts.passed -le 0 -or [int]$counts.failed -ne 0) {
-              throw "$suite did not report a nonempty passing test run"
-            }
-            # VSTest can leave Counters.notExecuted at zero even when results contain skips.
-            $skipped = @($trx.TestRun.Results.UnitTestResult | Where-Object outcome -eq 'NotExecuted').Count
-            "$suite : total=$($counts.total), executed=$($counts.executed), passed=$($counts.passed), failed=$($counts.failed), skipped=$skipped" >> $env:GITHUB_STEP_SUMMARY
+          if ($env:INVENTORY_SOURCE_SHA -cnotmatch '\A[a-f0-9]{40}\z' -or
+              $env:INVENTORY_SOURCE_SHA -cne $env:INVENTORY_WORKFLOW_SHA) {
+            Write-Output '{"outcome":"source-rejected"}'
+            exit 1
           }
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v7
+      - id: inventory_checkout
+        uses: actions/checkout@v7
         with:
-          name: hardware-tests-${{ matrix.host }}-${{ github.run_attempt }}
-          path: TestResults/Hardware/*.trx
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Remove isolated test settings
-        if: always()
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          set-safe-directory: false
+          clean: false
+          path: ${{ env.INVENTORY_CHECKOUT }}
+      - name: Check pure parsing and privacy controls
+        run: '& "$env:INVENTORY_CHECKOUT/scripts/Get-ManagedHostInventory.ps1" -SelfTest'
+      - name: Read bounded WSL and input-desktop readiness
         run: |
-          $path = Join-Path $env:RUNNER_TEMP "hardware-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+          & "$env:INVENTORY_CHECKOUT/scripts/Get-ManagedHostInventory.ps1" -SourceRevision $env:INVENTORY_SOURCE_SHA -HostSelector $env:INVENTORY_HOST -ExpectedArchitecture $env:INVENTORY_ARCHITECTURE
+      - name: Remove only this invocation checkout
+        if: always() && steps.inventory_checkout.outcome != 'skipped'
+        run: |
+          try {
+            if ($env:INVENTORY_CHECKOUT -cnotmatch '\A\.host-inventory-[0-9]+-[0-9]+\z') { throw 'invalid-checkout' }
+            $path = Join-Path $env:GITHUB_WORKSPACE $env:INVENTORY_CHECKOUT
+            if (Test-Path -LiteralPath $path) {
+              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+            }
+            Write-Output '{"checkoutCleanup":"complete"}'
+          } catch {
+            Write-Output '{"checkoutCleanup":"failed"}'
+            exit 1
+          }
