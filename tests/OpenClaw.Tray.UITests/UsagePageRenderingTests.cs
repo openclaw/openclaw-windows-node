@@ -1491,6 +1491,78 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     }
 
     [Fact]
+    public async Task BasicGateway_CostliestLoadedDrilldownRevealsOnlyTheSelectedExtraRow()
+    {
+        var rows = Enumerable.Range(0, 12).Select(index =>
+            Row($"agent:main:disclosure:{index}", $"Session {index}", "main", "model", 100, index == 11 ? 50 : 1,
+                Anchor.AddMinutes(-index))).ToArray();
+        await WithUsagePageAsync(Report(false, rows), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageSessions");
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(10, SessionRowIds(host).Count);
+                Assert.Null(Find<Expander>(host, "UsageSessionExpander_agent:main:disclosure:11"));
+                var button = Assert.Single(FindDescendants<Button>(Get<StackPanel>(host, "UsageHighlights")),
+                    control => AutomationProperties.GetName(control) == "Session 11");
+                Invoke(button);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                Find<Expander>(host, "UsageSessionExpander_agent:main:disclosure:11") is { IsExpanded: true }
+                    && SessionRowIds(host).Count == 11, "selected loaded session disclosed"));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var title = Get<TextBlock>(host, "UsageRowTitle_agent:main:disclosure:11");
+                var scroll = Get<ScrollViewer>(host, "UsagePageRoot");
+                var titleBounds = title.TransformToVisual(scroll).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, title.ActualWidth, title.ActualHeight));
+                return title.ActualHeight > 0 && titleBounds.Top >= 0 && titleBounds.Bottom <= scroll.ViewportHeight;
+            }, "selected session header inside the scrolled viewport"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("agent:main:disclosure:11", gateway.Controller!.State.Detail!.Key);
+                Assert.Null(Find<Expander>(host, "UsageSessionExpander_agent:main:disclosure:10"));
+                Assert.Equal(11, SessionRowIds(host).Distinct().Count());
+            });
+        });
+    }
+
+    [Fact]
+    public async Task MixedPricing_ContributorCostIsQualifiedWithoutAnExactShareOrWinner()
+    {
+        var partialTotals = RangeTotals with { TotalCost = 5, MissingCostEntries = 1 };
+        var partial = NamedRows()[0] with
+        {
+            Usage = NamedRows()[0].Usage! with
+            {
+                Totals = partialTotals,
+            },
+        };
+        var report = Report(false, [partial]) with
+        {
+            Totals = partialTotals,
+            Aggregates = new()
+            {
+                SessionCount = 1,
+                ByAgent = [new("main", partialTotals)],
+            },
+        };
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, _) =>
+        {
+            await WaitForAsync(host, "UsageContributor_Agent_main");
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Null(Find<FrameworkElement>(host, "UsageContributorShares"));
+                var contributor = Get<Expander>(host, "UsageContributor_Agent_main");
+                Assert.Contains("≥", AutomationProperties.GetName(contributor));
+                Assert.DoesNotContain("%", AutomationProperties.GetName(contributor));
+                Assert.DoesNotContain(FindDescendants<TextBlock>(Get<StackPanel>(host, "UsageHighlights")),
+                    text => text.Text == LocalizationHelper.GetString("Usage_CostliestLoaded"));
+            });
+        });
+    }
+
+    [Fact]
     public async Task BasicGateway_AtTheRowLimitWithoutACount_ShowsAFloorInsteadOfAnExactTotal()
     {
         var limit = SessionsUsageQuery.FullRowLimit;

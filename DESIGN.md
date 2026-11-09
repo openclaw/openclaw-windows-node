@@ -1163,11 +1163,12 @@ Card binds its title to `subtitle` (`SubtitleTextBlockStyle`, 20/28 SemiBold) an
 ### Usage daily facts
 
 The daily analysis card keeps tokens (with input/output), cache read/written,
-and sessions together as three equal columns or one column, never a two-plus-one
-strip. Three columns require 504 DIP of inner width: three 160-DIP minimums
+and sessions in three, two or one columns according to the available width.
+Three columns require 504 DIP of inner width: three 160-DIP minimums
 and two 12-DIP gaps. With narrow page padding of 20 DIP per side and card padding
-of 16 DIP per side, this fits at a 576-DIP content-host width. Smaller allocations
-stack all three facts. Existing width snapping, localized labels, native theme
+of 16 DIP per side, this fits at a 576-DIP content-host width. At least 332 DIP
+of inner width fits two columns, with the third fact on the next row. Smaller
+allocations stack all three facts. Existing width snapping, localized labels, native theme
 resources and wider three-column layouts remain unchanged.
 
 ### Native normal and accent buttons

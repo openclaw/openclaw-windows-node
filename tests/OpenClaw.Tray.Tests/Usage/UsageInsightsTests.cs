@@ -6,6 +6,95 @@ namespace OpenClaw.Tray.Tests.Usage;
 
 public sealed class UsageInsightsTests
 {
+    [Fact]
+    public void MixedPricing_InContributorPreventsExactHeroShareEvenWhenRangeOmitsMissingCount()
+    {
+        var report = new SessionsUsageReport
+        {
+            Totals = new() { TotalCost = 10, TotalTokens = 100 },
+            Aggregates = new()
+            {
+                ByAgent = [new("main", new() { TotalCost = 5, TotalTokens = 50, MissingCostEntries = 1 })],
+            },
+        };
+        var dashboard = UsageDashboardProjection.Project(report, UsageFilters.Default(new(2026, 10, 30)), UsageMetric.Cost);
+        Assert.Null(UsageInsights.HeroContributors(dashboard).CostShare);
+    }
+
+    [Theory]
+    [InlineData(null, 10, "session0999")]
+    [InlineData("session0999", 10, "session0999")]
+    [InlineData("session0000", 11, "session0000")]
+    [InlineData("missing", 10, "session0999")]
+    public void BasicSessionDisclosure_KeepsTenRowsPlusAtMostTheSelectedLoadedRow(string? selected, int count, string first)
+    {
+        var sessions = UsageDashboardProjection.Sessions(new()
+        {
+            Sessions = Enumerable.Range(0, 1000).Select(index => new SessionUsageRow
+            {
+                Key = $"session{index:D4}", UpdatedAt = DateTimeOffset.UnixEpoch.AddMinutes(index),
+            }).ToArray(),
+        });
+
+        var visible = UsageInsights.VisibleSessions(sessions, 10, selected);
+
+        Assert.Equal(count, visible.Count);
+        Assert.Equal(first, visible[0].Key);
+        Assert.Equal(count, visible.Select(row => row.Key).Distinct().Count());
+        Assert.Contains(visible, row => row.Key == "session0990");
+        Assert.DoesNotContain(visible, row => row.Key == "session0500");
+        Assert.Equal(21, UsageInsights.VisibleSessions(sessions, 20, "session0000").Count);
+        Assert.Equal(10, UsageInsights.VisibleSessions(sessions, 10, null).Count);
+    }
+
+    [Fact]
+    public void ServerPagedSessionDisclosure_PreservesTheServerPage()
+    {
+        var sessions = UsageDashboardProjection.Sessions(new()
+        {
+            Overview = new UsageOverview { Total = 100, Offset = 50, Limit = 50 },
+            Sessions = Enumerable.Range(50, 50).Select(index => new SessionUsageRow { Key = index.ToString() }).ToArray(),
+        });
+        var visible = UsageInsights.VisibleSessions(sessions, 10, "1");
+        Assert.Equal(50, visible.Count);
+        Assert.Equal("50", visible[0].Key);
+        Assert.Equal("99", visible[^1].Key);
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void MixedPricing_QualifiesCostWithoutDiscardingCompleteTokenCounts(int missing, bool costComplete)
+    {
+        var partial = new UsageTotals { TotalTokens = 50, TotalCost = 5, MissingCostEntries = missing };
+        var report = new SessionsUsageReport
+        {
+            Totals = new() { TotalTokens = 100, TotalCost = 10, MissingCostEntries = missing },
+            Aggregates = new() { ByAgent = [new("partial", partial), new("priced", new() { TotalCost = 5, TotalTokens = 50 })] },
+            Sessions =
+            [
+                new() { Key = "partial", Usage = new() { Totals = partial } },
+                new() { Key = "priced", Usage = new() { Totals = new() { TotalCost = 10, TotalTokens = 50 } } },
+            ],
+        };
+        var dashboard = UsageDashboardProjection.Project(report, UsageFilters.Default(new(2026, 10, 30)), UsageMetric.Cost);
+        var contributors = dashboard.Contributors[UsageContributorKind.Agent];
+        var contributor = Assert.Single(contributors, row => row.Label == "partial");
+        Assert.Equal(!costComplete, contributor.CostIncomplete);
+        Assert.False(contributor.Unpriced);
+        Assert.False(contributor.LowerBound);
+        Assert.True(contributor.TokensKnown);
+        Assert.Equal(costComplete, UsageInsights.ContributorSharesKnown(dashboard.Summary, contributors, UsageMetric.Cost));
+        Assert.True(UsageInsights.ContributorSharesKnown(dashboard.Summary, contributors, UsageMetric.Tokens));
+        Assert.Equal(!costComplete, Assert.Single(dashboard.Sessions.Rows, row => row.Key == "partial").CostIncomplete);
+        Assert.Equal(costComplete ? "priced" : null, UsageInsights.CostliestLoadedSession(dashboard)?.Key);
+        Assert.Null(UsageInsights.CostliestLoadedSession(dashboard with
+        {
+            Sessions = dashboard.Sessions with { Rows = [dashboard.Sessions.Rows[0] with { Computing = true }] },
+        }));
+        Assert.False(UsageInsights.ContributorSharesKnown(dashboard.Summary with { Partial = true }, contributors, UsageMetric.Tokens));
+    }
+
     [Theory]
     [InlineData(0, false)]
     [InlineData(74.99, false)]

@@ -53,13 +53,13 @@ internal enum UsageContributorKind
 /// <summary>One contributor's reported cost and tokens.</summary>
 internal sealed record UsageContributor(
     string Label, string? Provider, long Tokens, double Cost, bool Unpriced, bool LowerBound,
-    bool TokensKnown = true, bool CostKnown = true);
+    bool TokensKnown = true, bool CostKnown = true, bool CostIncomplete = false);
 
 internal sealed record UsageSessionRowView(
     string Key, string Title, string? AgentId, string? Provider, string? Model,
     int Errors, long Tokens, double Cost,
     bool LowerBound, bool Computing, bool Selected, DateTimeOffset? LastActivity,
-    bool TokensKnown = true, bool CostKnown = true);
+    bool TokensKnown = true, bool CostKnown = true, bool CostIncomplete = false);
 
 /// <summary>
 /// The session list. <see cref="Rows"/> is the loaded page. <see cref="Total"/> counts every matching session when the
@@ -210,7 +210,8 @@ internal static class UsageDashboardProjection
         return items.Select(i => new UsageContributor(
                 i.Label, i.Provider, i.Totals.TotalTokens, i.Totals.TotalCost,
                 Unpriced: i.Totals.TotalCost == 0 && i.Totals.MissingCostEntries > 0,
-                LowerBound: i.Totals.IsLowerBound, TokensKnown: i.Totals.HasValue("totalTokens"), CostKnown: i.Totals.HasValue("totalCost")))
+                LowerBound: i.Totals.IsLowerBound, TokensKnown: i.Totals.HasValue("totalTokens"), CostKnown: i.Totals.HasValue("totalCost"),
+                CostIncomplete: i.Totals.MissingCostEntries > 0))
             .ToList();
     }
 
@@ -277,6 +278,7 @@ internal static class UsageDashboardProjection
             row.Computing,
             selected,
             usage?.LastActivity ?? row.UpdatedAt,
-            TokensKnown: usage?.Totals.HasValue("totalTokens") == true, CostKnown: usage?.Totals.HasValue("totalCost") == true);
+            TokensKnown: usage?.Totals.HasValue("totalTokens") == true, CostKnown: usage?.Totals.HasValue("totalCost") == true,
+            CostIncomplete: usage?.Totals.MissingCostEntries > 0);
     }
 }

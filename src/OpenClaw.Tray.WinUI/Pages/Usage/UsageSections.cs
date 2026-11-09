@@ -309,8 +309,7 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
         var top = ordered.Take(5).ToList();
         var tail = ordered.Skip(5).ToList();
         var total = metric == UsageMetric.Cost ? ordered.Sum(item => item.Cost) : ordered.Sum(item => (double)item.Tokens);
-        var knownShares = !Props.Dashboard.Summary.Partial && ordered.All(item => !item.LowerBound &&
-            (metric == UsageMetric.Cost ? item.CostKnown && !item.Unpriced : item.TokensKnown));
+        var knownShares = UsageInsights.ContributorSharesKnown(Props.Dashboard.Summary, ordered, metric);
         double Share(UsageContributor item) => total > 0 ? (metric == UsageMetric.Cost ? item.Cost : item.Tokens) / total : 0;
         var parts = top.Select(item => (Share(item), Palette(PaletteIndex(item.Label)))).ToList();
         if (tail.Count > 0) parts.Add((tail.Sum(Share), Other));
@@ -324,7 +323,9 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                         TextBlock(row.Title).FontSize(12).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
                             .ToolTip(row.Title).Margin(0, 0, PageResponsiveLayout.GapInner, 0).Grid(column: 0),
                         TextBlock((metric == UsageMetric.Cost ? row.CostKnown : row.TokensKnown)
-                            ? Metric(metric, row.Tokens, row.Cost, row.LowerBound) : Dash).FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 1)),
+                            ? metric == UsageMetric.Cost && row.CostIncomplete && row.Cost == 0 ? S("Usage_Overview_Unpriced")
+                                : Metric(metric, row.Tokens, row.Cost, row.LowerBound || metric == UsageMetric.Cost && row.CostIncomplete)
+                            : Dash).FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 1)),
                     () => Props.Actions.Controller.SelectSession(row.Key, row.AgentId))
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
                     .SubtleButton().AutomationName(row.Title).AutomationId("UsageContributorSession_" + row.Key)
@@ -335,7 +336,8 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                     () => Props.Actions.Controller.SetQuery("agent:" + item.Label), "UsageContributorFilter_" + item.Label).WithKey("filter"));
             var value = (!(metric == UsageMetric.Cost ? item.CostKnown : item.TokensKnown) ? Dash
                 : item.Unpriced && metric == UsageMetric.Cost ? S("Usage_Overview_Unpriced")
-                : Metric(metric, item.Tokens, item.Cost, item.LowerBound)) + (knownShares ? " · " + UsageFormat.Percent(Share(item), Culture, 0) : "");
+                : Metric(metric, item.Tokens, item.Cost, item.LowerBound || metric == UsageMetric.Cost && item.CostIncomplete))
+                + (knownShares ? " · " + UsageFormat.Percent(Share(item), Culture, 0) : "");
             var narrow = Props.Layout.Narrow;
             var header = Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto],
                 narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
@@ -380,9 +382,8 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
     private static Element Highlights(UsageDashboard dashboard, UsageMetric metric, UsagePageProps actions)
     {
         var entries = new List<Element> { TextBlock(S("Usage_Highlights")).FontWeight(FontWeights.SemiBold).WithKey("title") };
-        var costly = dashboard.Sessions.Rows.Where(row => !row.Computing).OrderByDescending(row => row.Cost).FirstOrDefault();
-        if (costly is not null && costly.Cost > 0 && !dashboard.Summary.Partial
-            && dashboard.Sessions.Rows.All(row => row.CostKnown && !row.LowerBound))
+        var costly = UsageInsights.CostliestLoadedSession(dashboard);
+        if (costly is not null)
             entries.Add(VStack(4,
                 Note(S("Usage_CostliestLoaded")),
                 Button(TextBlock(costly.Title).TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)

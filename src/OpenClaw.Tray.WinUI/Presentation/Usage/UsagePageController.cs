@@ -30,6 +30,7 @@ internal sealed record UsagePageState
     public string? Error { get; init; }
     public SessionsUsageReport? Report { get; init; }
     public UsageDashboard? Dashboard { get; init; }
+    public bool? SupportsOverview { get; init; }
     public DateTimeOffset? LoadedAt { get; init; }
     /// <summary>True while an incomplete result is being re-checked automatically.</summary>
     public bool AutoRefreshing { get; init; }
@@ -47,7 +48,8 @@ internal sealed record UsagePageState
     /// The connected Gateway returns full rows without the server-side overview (every released Gateway through
     /// 2026.10.9), so search, facets, session sort and paging are unavailable.
     /// </summary>
-    public bool BasicGateway => Availability == UsageAvailability.Connected && Report is { Overview: null };
+    public bool BasicGateway => Availability == UsageAvailability.Connected
+        && (SupportsOverview == false || Report is { Overview: null });
 
     /// <summary>
     /// Search, sort and paging need the server-side overview. Basic Gateways ignore them, so the page neither sends
@@ -93,6 +95,7 @@ internal sealed class UsagePageController : IDisposable
     private int _detailGeneration;
     private int _rechecks;
     private bool _disposed;
+    private bool _providerRefreshPending;
     // The operator client whose reads produced the current figures, selection and plans.
     private IOperatorGatewayClient? _stateClient;
 
@@ -126,24 +129,27 @@ internal sealed class UsagePageController : IDisposable
     /// <summary>Re-evaluates the connection and reloads. Call on open, reconnect and client replacement.</summary>
     public void Activate()
     {
+        _providerRefreshPending = false;
         var client = _client();
         ForgetReplacedGateway(client);
         _ownedProviders?.SetConnection(client, _providerBindingRevision);
         if (client is not { IsConnectedToGateway: true })
         {
+            _providerRefreshPending = false;
             CancelAll();
             Update(s => SettleLoading(s) with { Availability = UsageAvailability.Disconnected, AutoRefreshing = false });
             return;
         }
         // Availability is re-learned from each load, so a Gateway upgraded while disconnected is retried.
         // Relative presets move with the calendar, so a page left open past midnight reloads the current range.
+        ChangeFilters(Rebased(State.Filters));
         Update(s => s with
         {
             Availability = s.Availability == UsageAvailability.Disconnected ? UsageAvailability.Connected : s.Availability,
-            Filters = Rebased(s.Filters),
         });
         Reload(client, resetRechecks: true);
-        _providers.Refresh(client);
+        _providerRefreshPending = true;
+        RefreshBoundProviders(client);
         if (State.Detail is { } detail) LoadDetail(client, detail.Key, detail.AgentId);
     }
 
@@ -181,6 +187,7 @@ internal sealed class UsagePageController : IDisposable
             Error = null,
             Report = null,
             Dashboard = null,
+            SupportsOverview = null,
             LoadedAt = null,
             AutoRefreshing = false,
             AutoRefreshPaused = false,
@@ -407,7 +414,7 @@ internal sealed class UsagePageController : IDisposable
         var filters = change(previous);
         if (filters == previous) return;
         var client = _client();
-        Update(s => s with { Filters = filters });
+        ChangeFilters(filters);
         Reload(client, resetRechecks: true);
         // Details cover the selected range, time zone and scope; search, sort and paging do not change them.
         if (State.Detail is { } detail
@@ -416,13 +423,33 @@ internal sealed class UsagePageController : IDisposable
             LoadDetail(client, detail.Key, detail.AgentId);
     }
 
+    private void ChangeFilters(UsageFilters filters)
+    {
+        if (filters == State.Filters) return;
+        var detailChanged = filters.Start != State.Filters.Start || filters.End != State.Filters.End
+            || filters.TimeZone != State.Filters.TimeZone || filters.Scope != State.Filters.Scope;
+        if (detailChanged) CancelDetail();
+        Update(s => s with
+        {
+            Filters = filters,
+            Report = null,
+            Dashboard = null,
+            LoadedAt = null,
+            Phase = UsageLoadPhase.Idle,
+            Error = null,
+            Detail = detailChanged && s.Detail is { } detail
+                ? detail with { Row = UsageRead<SessionUsageRow>.Idle } : s.Detail,
+        });
+    }
+
     private void Reload(IOperatorGatewayClient? client, bool resetRechecks)
     {
         if (_disposed) return;
         ForgetReplacedGateway(client);
         if (client is not { IsConnectedToGateway: true })
         {
-            Update(s => s with { Availability = UsageAvailability.Disconnected });
+            CancelAll();
+            Update(s => SettleLoading(s) with { Availability = UsageAvailability.Disconnected, AutoRefreshing = false });
             return;
         }
         if (resetRechecks) _rechecks = 0;
@@ -506,6 +533,7 @@ internal sealed class UsagePageController : IDisposable
                 Phase = UsageLoadPhase.Loaded,
                 Filters = filters,
                 Report = report,
+                SupportsOverview = report.Overview is not null,
                 Dashboard = UsageDashboardProjection.Project(report, filters, s.Metric, s.Detail?.Key),
                 LoadedAt = DateTimeOffset.Now,
                 Error = null,
@@ -558,6 +586,21 @@ internal sealed class UsagePageController : IDisposable
             Providers = ReferenceEquals(providers.Client, _stateClient)
                 ? providers.Read : UsageRead<ProviderUsageSummary>.Idle,
         });
+        if (_providerRefreshPending) RefreshBoundProviders(_client());
+    }
+
+    private void RefreshBoundProviders(IOperatorGatewayClient? client)
+    {
+        if (_disposed || !_providerRefreshPending) return;
+        var providers = _providers.State;
+        if (!ReferenceEquals(client, _stateClient) || !ReferenceEquals(providers.Client, client)
+            || client is not { IsConnectedToGateway: true }) return;
+        // Consume before Refresh raises Changed. A matching in-flight read already fulfills activation.
+        _providerRefreshPending = false;
+        if (providers.Read.IsLoading) return;
+        _providers.Refresh(client);
+        if (_providers.State.Read.Phase == UsageLoadPhase.Idle)
+            _providerRefreshPending = true;
     }
 
     private void LoadDetail(IOperatorGatewayClient? client, string key, string? agentId)

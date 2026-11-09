@@ -52,7 +52,7 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
 
     // A queued host hook or timer must not expose an old authenticated socket's count in the meantime.
     public UsageProviderReadState State => !IsCurrent(_state.Client, _socketEpoch)
-        ? _state with { Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null }
+        ? _state with { Client = null, Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null }
         : _expiresAt is { } expiry && expiry <= _now()
             ? _state with { AttentionCount = null }
             : _state;

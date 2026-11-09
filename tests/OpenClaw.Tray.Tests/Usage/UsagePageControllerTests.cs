@@ -408,6 +408,166 @@ public sealed class UsagePageControllerTests
         Assert.True(controller.State.ShowLoadError);
     }
 
+    [Theory]
+    [InlineData("range", true)]
+    [InlineData("custom", true)]
+    [InlineData("scope", true)]
+    [InlineData("zone", true)]
+    [InlineData("query", true)]
+    [InlineData("sort", true)]
+    [InlineData("page", true)]
+    [InlineData("range", false)]
+    [InlineData("custom", false)]
+    [InlineData("scope", false)]
+    [InlineData("zone", false)]
+    [InlineData("query", false)]
+    [InlineData("sort", false)]
+    [InlineData("page", false)]
+    public async Task DifferentQuery_NeverRelabelsRetainedFigures(string change, bool connected)
+    {
+        var (controller, gateway, dispatcher) = Create();
+        using var lifetime = controller;
+        gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(
+            Report("old-range") with { Overview = new UsageOverview() }));
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Loaded);
+        Assert.NotNull(controller.State.Dashboard);
+        gateway.Connected = connected;
+        gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Failed("new query failed"));
+
+        switch (change)
+        {
+            case "range": controller.SetPreset(UsagePreset.Today); break;
+            case "custom": controller.SetRange(Today.AddDays(-20), Today.AddDays(-10)); break;
+            case "scope": controller.SetScope(UsageScope.Family); break;
+            case "zone": controller.SetTimeZone(UsageTimeZoneMode.Utc); break;
+            case "query": controller.SetQuery("agent:other"); break;
+            case "sort": controller.SetSort(UsageSort.Tokens); break;
+            case "page": controller.SetPage(50); break;
+        }
+
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.Null(controller.State.LoadedAt);
+        dispatcher.Drain();
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.Equal(connected ? UsageLoadPhase.Failed : UsageLoadPhase.Idle, controller.State.Phase);
+    }
+
+    [Fact]
+    public async Task DisconnectedQueryChange_FencesThePreviousPendingRefresh()
+    {
+        var (controller, gateway, dispatcher) = Create();
+        using var lifetime = controller;
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Loaded);
+        var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>();
+        gateway.Usage = _ => pending.Task;
+        controller.Refresh();
+        gateway.Connected = false;
+
+        controller.SetPreset(UsagePreset.Today);
+        var posted = dispatcher.Posted;
+        pending.SetResult(UsageReadResult<SessionsUsageReport>.Ok(Report("late-old-range")));
+        await dispatcher.PumpUntilAsync(() => dispatcher.Posted > posted);
+        dispatcher.Drain();
+
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.Equal(UsagePreset.Today, controller.State.Filters.Preset);
+    }
+
+    [Fact]
+    public async Task RebasedPreset_DropsYesterdayFiguresButKeepsBasicCapability()
+    {
+        var today = Today;
+        var (controller, gateway, dispatcher) = Create(today: () => today);
+        using var lifetime = controller;
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State.Phase == UsageLoadPhase.Loaded);
+        today = today.AddDays(1);
+        gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Failed("offline"));
+
+        controller.Activate();
+        dispatcher.Drain();
+
+        Assert.Null(controller.State.Report);
+        Assert.Null(controller.State.Dashboard);
+        Assert.Equal(today, controller.State.Filters.End);
+        Assert.True(controller.State.ServerFiltersUnavailable);
+    }
+
+    [Fact]
+    public async Task InjectedProviderSource_BindsAfterActivationAndDeduplicatesPendingRead()
+    {
+        var client = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var gateway = (UsageGateway)client;
+        var dispatcher = new ManualDispatcher();
+        using var source = new UsageProviderReadSource(dispatcher.Post);
+        using var controller = new UsagePageController(() => client, () => Today, dispatcher.Post, providers: source);
+        var pending = new TaskCompletionSource<UsageReadResult<ProviderUsageSummary>>();
+        gateway.Providers = () => pending.Task;
+        controller.Activate();
+        Assert.DoesNotContain("GetProviderUsageAsync", gateway.Calls);
+
+        source.SetConnection(client, 1);
+        Assert.Single(gateway.Calls, call => call == "GetProviderUsageAsync");
+        source.SetConnection(client, 1);
+        controller.Activate();
+        Assert.Single(gateway.Calls, call => call == "GetProviderUsageAsync");
+        pending.SetResult(UsageReadResult<ProviderUsageSummary>.Failed("quota service unavailable"));
+        await dispatcher.PumpUntilAsync(() => controller.State.Providers.Phase == UsageLoadPhase.Failed);
+        Assert.Equal(UsageLoadPhase.Failed, controller.State.Providers.Phase);
+        Assert.Single(gateway.Calls, call => call == "GetProviderUsageAsync");
+    }
+
+    [Fact]
+    public async Task InjectedProviderSource_ReconnectActivationWaitsForNewSocketBinding()
+    {
+        var client = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var gateway = (UsageGateway)client;
+        var dispatcher = new ManualDispatcher();
+        using var source = new UsageProviderReadSource(dispatcher.Post);
+        using var controller = new UsagePageController(() => client, () => Today, dispatcher.Post, providers: source);
+        source.SetConnection(client, 1);
+        controller.Activate();
+        await dispatcher.PumpUntilAsync(() => controller.State.Providers.Phase == UsageLoadPhase.Loaded);
+        gateway.SocketEpoch = 2;
+
+        controller.Activate();
+        Assert.Single(gateway.Calls, call => call == "GetProviderUsageAsync");
+        source.SetConnection(client, 2);
+        await dispatcher.PumpUntilAsync(() => controller.State.Providers.Phase == UsageLoadPhase.Loaded);
+
+        Assert.Equal(2, gateway.Calls.Count(call => call == "GetProviderUsageAsync"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InjectedProviderSource_DelayedBindingDoesNotReadAfterDisconnectOrDisposal(bool dispose)
+    {
+        var client = DispatchProxy.Create<IOperatorGatewayClient, UsageGateway>();
+        var gateway = (UsageGateway)client;
+        var dispatcher = new ManualDispatcher();
+        using var source = new UsageProviderReadSource(dispatcher.Post);
+        using var controller = new UsagePageController(() => client, () => Today, dispatcher.Post, providers: source);
+        controller.Activate();
+        if (dispose) controller.Dispose();
+        else
+        {
+            gateway.Connected = false;
+            controller.Activate();
+            gateway.Connected = true;
+        }
+
+        source.SetConnection(client, 1);
+        dispatcher.Drain();
+
+        Assert.DoesNotContain("GetProviderUsageAsync", gateway.Calls);
+    }
+
     [Fact]
     public async Task BasicGateway_SelectionMadeDuringARefreshSurvivesItsReply()
     {

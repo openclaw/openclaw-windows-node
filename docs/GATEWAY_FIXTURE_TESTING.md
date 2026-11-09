@@ -664,13 +664,23 @@ count-pill `Border` needs resource-backed background precedence. The mounted
 assert the actual Light/Dark dialog theme; the count-pill regression below
 checks the native brush. These are dependency regression requirements, not
 evidence that the newly merged package combination has passed native proof.
-If NuGet indexing lags, official preview.17 GitHub release packages may be
-consumed through a task-local feed without changing machine or repository feeds.
-Record their release URL and digests. A successful build alone is not dark-dialog proof.
+`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
+Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
+build or run commands; `build.ps1` and building through `run-app-local.ps1`
+already do this. The initializer verifies the official preview.17 release
+digests without changing global NuGet configuration or clearing its cache.
+A successful build alone is not dark-dialog proof.
 The count-pill contrast regression also checks the actual native brush after
 pooled reuse. A pooled Border must release a local null background when its
 theme style owns that property; a correctly defined resource alone does not
 prove that it was painted.
+
+Usage retains figures during a same-query refresh, but clears them when the
+date range, reporting zone, scope or server filters change. A failed new query
+must not relabel old values. Basic browsing retains its row limit while
+disclosing at most one extra selected loaded session. Missing prices qualify
+cost independently of token completeness and suppress unsupported exact
+contributor percentages and costliest-session claims.
 
 ## Known runtime regression
 

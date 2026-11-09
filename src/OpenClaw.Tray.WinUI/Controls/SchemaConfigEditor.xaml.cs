@@ -373,7 +373,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         {
             Header = label,
             MaxWidth = 350,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Left,
             PlaceholderText = config.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(config.GetString())
                 ? "Leave blank to keep existing value"
                 : ""
@@ -940,7 +940,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                         {
                             Header = GetLabel(childPath, prop.Name),
                             MaxWidth = 350,
-                            HorizontalAlignment = HorizontalAlignment.Stretch,
+                            HorizontalAlignment = HorizontalAlignment.Left,
                             PlaceholderText = hasExistingValue ? "Leave blank to keep existing value" : ""
                         };
                         pwBox.PasswordChanged += (s, e) =>

@@ -144,9 +144,9 @@ internal sealed class UsageSessionsList : Component<UsageSessionsListProps>
         var controller = Props.Props.Controller;
         UseEffect(() => setShown(UsageSessionsSection.PreviewRows), state.Filters.Start, state.Filters.End, state.Filters.Query);
         var rows = sessions.Rows;
-        var visible = state.BasicGateway ? rows.Take(shown).ToList() : rows;
+        var visible = UsageInsights.VisibleSessions(sessions, shown, state.Detail?.Key);
         var body = new List<Element>();
-        if (state.BasicGateway)
+        if (!sessions.ServerPaged)
         {
             body.Add(Note(S("Usage_Sessions_NewestFirst")).AutomationId("UsageSessionsNewestFirst").WithKey("order"));
             if (sessions.Truncated)
@@ -169,13 +169,15 @@ internal sealed class UsageSessionsList : Component<UsageSessionsListProps>
         }
         foreach (var row in visible)
         {
-            body.Add(Component<UsageSessionCard, UsageSessionCardProps>(new(row, state, Props.Props, Props.Layout))
+            var reveal = !sessions.ServerPaged && row.Key == state.Detail?.Key
+                && !rows.Take(shown).Any(candidate => candidate.Key == row.Key);
+            body.Add(Component<UsageSessionCard, UsageSessionCardProps>(new(row, state, Props.Props, Props.Layout, reveal))
                 .WithKey("row:" + row.Key));
         }
 
         if (rows.Count == 0) body.Add(EmptyText(S(state.Report?.SessionsKnown == true && sessions.Total == 0
             ? "Usage_Sessions_NoneInRange" : "Usage_Daily_NotLoaded"), "UsageSessionsEmpty").WithKey("empty"));
-        if (state.BasicGateway && rows.Count > visible.Count)
+        if (!sessions.ServerPaged && rows.Count > visible.Count)
             body.Add(Button(TextBlock(S("Usage_ShowMoreLoaded")).TextWrapping(TextWrapping.NoWrap), () => setShown(shown + UsageSessionsSection.PreviewRows))
                 .AutomationName(S("Usage_ShowMoreLoaded")).AutomationId("UsageSessionsShowAll").WithKey("more"));
         if (sessions.ServerPaged && sessions.Total > sessions.Limit)
@@ -197,15 +199,19 @@ internal sealed class UsageSessionsList : Component<UsageSessionsListProps>
     }
 }
 
-internal sealed record UsageSessionCardProps(UsageSessionRowView Row, UsagePageState State, UsagePageProps Actions, UsagePageLayout Layout);
+internal sealed record UsageSessionCardProps(UsageSessionRowView Row, UsagePageState State, UsagePageProps Actions,
+    UsagePageLayout Layout, bool Reveal);
 
 /// <summary>Independent native expansion using loaded summaries, with only the active detail read in the controller.</summary>
 internal sealed class UsageSessionCard : Component<UsageSessionCardProps>
 {
+    private Action? _cancelReveal;
+
     public override Element Render()
     {
         var (open, setOpen) = UseState(false);
         var row = Props.Row;
+        UseEffect((Func<Action>)(() => () => _cancelReveal?.Invoke()), row.Key);
         var selected = Props.State.Detail?.Key == row.Key;
         UseEffect(() => { if (selected) setOpen(true); }, selected);
         void Expand(bool value)
@@ -229,6 +235,37 @@ internal sealed class UsageSessionCard : Component<UsageSessionCardProps>
             UsageSessionsSection.ChatButton(row.Key, row.Title, Props.Actions)
                 .VAlign(open ? VerticalAlignment.Top : VerticalAlignment.Center)
                 .Margin(PageResponsiveLayout.GapInner, open ? CardPadding : 0, 0, 0).Grid(column: 1))
-            .AutomationId("UsageSessionCard_" + row.Key);
+            .AutomationId("UsageSessionCard_" + row.Key)
+            .OnMountAdd(control => AttachReveal((Microsoft.UI.Xaml.Controls.Grid)control, row.Key));
+    }
+
+    private void AttachReveal(Microsoft.UI.Xaml.Controls.Grid control, string key)
+    {
+        _cancelReveal?.Invoke();
+        if (!Props.Reveal) return;
+        void Cancel()
+        {
+            control.LayoutUpdated -= OnLayout;
+            control.Unloaded -= OnUnloaded;
+            _cancelReveal = null;
+        }
+        void OnUnloaded(object sender, RoutedEventArgs args) => Cancel();
+        void OnLayout(object? sender, object args)
+        {
+            if (!Props.Reveal || Props.Actions.Controller.State.Detail?.Key != key)
+            {
+                Cancel();
+                return;
+            }
+            if (!control.IsLoaded || control.ActualWidth <= 0 ||
+                !control.Children.OfType<Microsoft.UI.Xaml.Controls.Expander>()
+                    .Any(expander => expander.IsExpanded && expander.ActualHeight > 0))
+                return;
+            Cancel();
+            control.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0 });
+        }
+        _cancelReveal = Cancel;
+        control.LayoutUpdated += OnLayout;
+        control.Unloaded += OnUnloaded;
     }
 }
