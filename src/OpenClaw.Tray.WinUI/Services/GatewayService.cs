@@ -1,9 +1,13 @@
 using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
 
@@ -38,6 +42,7 @@ internal sealed class GatewayService
     // Client tracking for stale-event safety
     private IOperatorGatewayClient? _currentClient;
     private int _clientGeneration;
+    private int _agentIdentityRevision;
 
     public GatewayService(AppState state, DispatcherQueue dispatcher)
     {
@@ -70,6 +75,9 @@ internal sealed class GatewayService
         // Clear service-level caches on actual client swap
         if (!ReferenceEquals(oldClient, newClient))
         {
+            _agentIdentityRevision++;
+            _state.AgentsList = null;
+            _state.ClearAgentIdentities();
             _lastChannelStatusSignature = null;
             _sessionActivities.Clear();
             _displayedSessionKey = null;
@@ -198,6 +206,7 @@ internal sealed class GatewayService
 
             if (status == ConnectionStatus.Disconnected || status == ConnectionStatus.Error)
             {
+                _agentIdentityRevision++;
                 _state.ClearCachedData();
                 // Pair lists were just cleared — notify the approval coordinator so it
                 // reconciles to empty (resolving any open approvals / closing the dialog)
@@ -461,13 +470,64 @@ internal sealed class GatewayService
 
     private void OnAgentsListUpdated(object? sender, JsonElement data)
     {
-        if (sender != _currentClient) return;
+        if (sender != _currentClient || sender is not IOperatorGatewayClient client) return;
         var cloned = data.Clone();
         EnqueueModelUpdate(() =>
         {
             _state.AgentsListUnsupported = false;
             _state.AgentsList = cloned;
+            RefreshAgentIdentities(client, cloned);
         });
+    }
+
+    /// <summary>
+    /// Resolves each roster agent's Gateway identity (agent.identity.get), as the Control UI does,
+    /// so an agent without a configured name shows the Gateway's resolved name instead of its ID.
+    /// Runs on the UI thread; results apply only while the client and roster are still current.
+    /// </summary>
+    private void RefreshAgentIdentities(IOperatorGatewayClient client, JsonElement roster)
+    {
+        var generation = _clientGeneration;
+        var revision = ++_agentIdentityRevision;
+        var previous = _state.AgentIdentities;
+        var agentIds = WorkspaceProjection.Agents(roster, []).Select(agent => agent.Id).ToArray();
+        _ = LoadAsync();
+
+        async Task LoadAsync()
+        {
+            var failures = 0;
+            string? failure = null;
+            var results = await Task.WhenAll(agentIds.Select(async agentId =>
+            {
+                try
+                {
+                    var response = await client.SendWizardRequestAsync("agent.identity.get", new { agentId })
+                        .ConfigureAwait(false);
+                    return ChatWelcomePresentation.ParseAgentIdentity(agentId, response);
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref failures);
+                    failure = ex.GetType().Name;
+                    return previous.GetValueOrDefault(agentId);
+                }
+            })).ConfigureAwait(false);
+            if (failures > 0)
+                Logger.Warn($"[GatewayService] agent.identity.get failed for {failures} agent(s): {failure}");
+
+            _dispatcher.TryEnqueue(() =>
+            {
+                if (generation != _clientGeneration || revision != _agentIdentityRevision) return;
+                var identities = results.OfType<ChatAgentIdentity>()
+                    .ToDictionary(identity => identity.AgentId, StringComparer.Ordinal);
+                var current = _state.AgentIdentities;
+                if (identities.Count != current.Count ||
+                    identities.Any(entry => !Equals(current.GetValueOrDefault(entry.Key), entry.Value)))
+                {
+                    _state.AgentIdentities = identities;
+                }
+            });
+        }
     }
 
     private void OnAgentsListUnsupportedChanged(object? sender, bool unsupported)
