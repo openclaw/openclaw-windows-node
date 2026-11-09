@@ -1568,6 +1568,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             Publish(usageSnapshot);
         }
 
+        if (message.CostUsd is { } costUsd &&
+            _state.SnapshotAssistantCost(threadId, costUsd, ProjectionContext()) is { } costSnapshot)
+        {
+            Publish(costSnapshot);
+        }
+
         if (!message.IsFinal)
             return;
         var completedRunId = _state.CompleteAssistantFinal(threadId);
