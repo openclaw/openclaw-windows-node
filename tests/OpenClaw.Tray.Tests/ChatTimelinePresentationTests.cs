@@ -570,6 +570,52 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorTimeline_NewConversationWaitsForPreviousBringAndRestoresFarEdgeAnchoring()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+
+        var requestStart = binding.IndexOf("public void Request(", StringComparison.Ordinal);
+        var updateStart = binding.IndexOf("public void UpdateTail(", requestStart, StringComparison.Ordinal);
+        Assert.True(requestStart >= 0 && updateStart > requestStart);
+        var request = binding[requestStart..updateStart];
+        var deferred = request.IndexOf("_deferredBringCorrelation = _inFlightBringCorrelation;", StringComparison.Ordinal);
+        var restore = request.IndexOf("RestoreFarEdgeAnchoring();", StringComparison.Ordinal);
+        Assert.True(deferred > request.IndexOf("DetachLayout();", StringComparison.Ordinal));
+        Assert.True(deferred < restore && restore < request.IndexOf("AwaitLayout();", StringComparison.Ordinal));
+
+        var layoutStart = binding.IndexOf("private void OnLayoutUpdated(", StringComparison.Ordinal);
+        var dispatchStart = binding.IndexOf("private void DispatchTailRequest(", layoutStart, StringComparison.Ordinal);
+        var layout = binding[layoutStart..dispatchStart];
+        var hold = layout.IndexOf("if (_deferredBringCorrelation is not null)", StringComparison.Ordinal);
+        Assert.True(hold > layout.IndexOf("AttachScrollView();", StringComparison.Ordinal));
+        Assert.True(hold < layout.IndexOf("DispatchTailRequest(", StringComparison.Ordinal));
+
+        var bringing = binding[binding.IndexOf("private void OnBringingIntoView(", StringComparison.Ordinal)..];
+        var bringingSender = bringing.IndexOf("if (!ReferenceEquals(sender, _scrollView))", StringComparison.Ordinal);
+        var tracked = bringing.IndexOf("_inFlightBringCorrelation = args.CorrelationId;", StringComparison.Ordinal);
+        Assert.True(bringingSender >= 0 && bringingSender < tracked);
+        Assert.True(tracked < bringing.IndexOf("if (!_initialPending", StringComparison.Ordinal));
+
+        var completed = binding[binding.IndexOf("private void OnScrollCompleted(", StringComparison.Ordinal)..];
+        var completedSender = completed.IndexOf("if (!ReferenceEquals(sender, _scrollView))", StringComparison.Ordinal);
+        var matched = completed.IndexOf("if (_inFlightBringCorrelation == args.CorrelationId)", StringComparison.Ordinal);
+        var cleared = completed.IndexOf("_inFlightBringCorrelation = null;", StringComparison.Ordinal);
+        var deferredMatched = completed.IndexOf("if (_deferredBringCorrelation == args.CorrelationId)", StringComparison.Ordinal);
+        var resumed = completed.IndexOf("ResumeAfterDeferredBring(_version);", StringComparison.Ordinal);
+        Assert.True(completedSender >= 0 && completedSender < matched && matched < cleared);
+        Assert.True(cleared < deferredMatched && deferredMatched < resumed);
+        Assert.True(resumed < completed.IndexOf("if (_initialPending)", StringComparison.Ordinal));
+
+        var resumeStart = binding.IndexOf("private void ResumeAfterDeferredBring(", StringComparison.Ordinal);
+        var resume = binding[resumeStart..binding.IndexOf("private void RestoreFarEdgeAnchoring(", resumeStart, StringComparison.Ordinal)];
+        Assert.Contains("DispatcherQueue.TryEnqueue(", resume);
+        Assert.True(resume.IndexOf("RestoreFarEdgeAnchoring();", StringComparison.Ordinal)
+            < resume.IndexOf("AwaitLayout();", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ReactorTimeline_InitialTailStaysPendingUntilLandingIsConfirmed()
     {
         var binding = File.ReadAllText(Path.Combine(

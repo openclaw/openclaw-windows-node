@@ -108,6 +108,8 @@ file sealed class InitialTailPositioner : IDisposable
     private Microsoft.UI.Xaml.Controls.Primitives.IScrollController? _inputScrollController;
     private WinUIScrollView? _awaitingScrollView;
     private WinUIScrollView? _scrollView;
+    private int? _inFlightBringCorrelation;
+    private int? _deferredBringCorrelation;
     private bool _following;
     private bool _initialPending;
     private bool _awaitingInitialRows;
@@ -135,6 +137,12 @@ file sealed class InitialTailPositioner : IDisposable
         _version++;
         _reflowCorrection.Clear();
         DetachLayout();
+        // A bring still running from the previous conversation can complete after the new rows are arranged,
+        // leaving the offset past the new extent; starting the next bring then can hang ItemsView's layout.
+        // Wait for that bring to complete before positioning the new conversation.
+        _deferredBringCorrelation = _inFlightBringCorrelation;
+        if (_deferredBringCorrelation is null)
+            RestoreFarEdgeAnchoring();
         _tailIndex = tailIndex;
         _itemCount = itemCount;
         _displayedTailKey = displayedTailKey;
@@ -236,6 +244,9 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         AttachScrollView();
+        if (_deferredBringCorrelation is not null)
+            return;
+
         var initialRequest = new InitialTailNavigationRequest(_version);
 
         if (!renderAfterLayout)
@@ -426,10 +437,36 @@ file sealed class InitialTailPositioner : IDisposable
             AwaitLayout(renderAfterLayout: true);
     }
 
+    private void ResumeAfterDeferredBring(int version)
+    {
+        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_disposed || version != _version || _deferredBringCorrelation is not null)
+                return;
+
+            RestoreFarEdgeAnchoring();
+            itemsView.InvalidateArrange();
+            AwaitLayout();
+        }))
+            OpenClawTray.Services.Logger.Warn("Chat tail navigation could not resume after the previous scroll.");
+    }
+
+    // For a few frames after StartBringItemIntoView completes, ItemsView anchors to that row at a 0.5 ratio.
+    // A conversation swap in that window can strand the view at the top, so restore far-edge anchoring
+    // before the new rows are arranged.
+    private void RestoreFarEdgeAnchoring()
+    {
+        if (_scrollView is not null)
+            _scrollView.VerticalAnchorRatio = 1.0;
+    }
+
     private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
     {
-        if (!_initialPending || !ReferenceEquals(sender, _scrollView)
-            || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
+        if (!ReferenceEquals(sender, _scrollView))
+            return;
+
+        _inFlightBringCorrelation = args.CorrelationId;
+        if (!_initialPending || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
             return;
 
         _confirmation.BringingIntoView(args.CorrelationId, target.DataContext);
@@ -437,7 +474,17 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
     {
-        if (_initialPending && ReferenceEquals(sender, _scrollView))
+        if (!ReferenceEquals(sender, _scrollView))
+            return;
+
+        if (_inFlightBringCorrelation == args.CorrelationId)
+            _inFlightBringCorrelation = null;
+        if (_deferredBringCorrelation == args.CorrelationId)
+        {
+            _deferredBringCorrelation = null;
+            ResumeAfterDeferredBring(_version);
+        }
+        if (_initialPending)
             _confirmation.ScrollCompleted(args.CorrelationId);
     }
 
@@ -597,6 +644,8 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         _scrollView = null;
+        _inFlightBringCorrelation = null;
+        _deferredBringCorrelation = null;
     }
 
     public void Dispose()
