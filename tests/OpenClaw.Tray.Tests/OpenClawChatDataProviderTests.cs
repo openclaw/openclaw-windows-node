@@ -16673,6 +16673,60 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RespondToPermissionAsync_SharedUncertaintyRemovesActionsAcrossSnapshotRefreshes(bool posted, bool correlated)
+    {
+        var deliveries = new ConcurrentQueue<Action>();
+        Action<Action>? post = posted ? deliveries.Enqueue : null;
+        void Drain() { while (deliveries.TryDequeue(out var delivery)) delivery(); }
+        const string canonical = "29c78023-a152-4a24-949d-59950de3a12e";
+        var displayedId = correlated ? "29c78023" : canonical;
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, post: post);
+        bridge.CommandCatalogResult = new CommandCatalog { IsSupported = true };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(canonical, correlated ? displayedId : ""));
+        Drain();
+        var before = snapshots[^1].Timelines["main"];
+        Assert.Equal(displayedId, before.PendingPermission!.RequestId);
+        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
+        // An older queued publication must be projected with current authority at delivery.
+        provider.RefreshApprovalDecisionState();
+        provider.IsApprovalDecisionUncertain = id => id == canonical;
+        provider.RefreshApprovalDecisionState();
+        Drain();
+        AssertUncertain(snapshots[^1]);
+
+        // Command-catalog delivery bypasses Publish, but must use the same final projection.
+        await provider.EnsureCommandCatalogAsync();
+        Drain();
+        Assert.Equal(1, bridge.ListCommandsCallCount);
+        AssertUncertain(snapshots[^1]);
+        await provider.RespondToPermissionAsync("main", displayedId, allow: true);
+        bridge.RaiseSessions([MainSession()]);
+        Drain();
+        AssertUncertain(snapshots[^1]);
+        AssertUncertain(await provider.LoadAsync());
+        Assert.Empty(bridge.ResolvedApprovals);
+        // Previously delivered snapshots and the authoritative request remain immutable.
+        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
+        Assert.DoesNotContain("Inbox_ApprovalDecisionUncertain", before.PendingPermission.Detail);
+
+        void AssertUncertain(ChatDataSnapshot snapshot)
+        {
+            var timeline = snapshot.Timelines["main"];
+            Assert.Empty(timeline.PendingPermission!.Actions!);
+            Assert.Contains("Inbox_ApprovalDecisionUncertain", timeline.PendingPermission.Detail);
+            var row = Assert.Single(timeline.Entries, entry => entry.PermissionRequestId == displayedId);
+            Assert.Equal(ChatPermissionDecision.Pending, row.PermissionDecision);
+            Assert.Empty(row.PermissionActions!);
+            Assert.Contains("Inbox_ApprovalDecisionUncertain", row.Text);
+        }
+    }
+
     [Fact]
     public async Task RespondToPermissionAsync_RpcThrows_BannerPreservedForRetry()
     {
