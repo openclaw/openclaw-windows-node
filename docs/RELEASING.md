@@ -489,7 +489,9 @@ that helper. Ordinary CI uses the helper from its normal source checkout.
 The UI job's product-root exporter (`Set-CiUiTestEnvironment.ps1`) is also
 pipeline-owned: the job loads it from the dispatch SHA and binds the isolated
 roots to the alpha checkout, so an alpha that predates the exporter still runs
-UI tests with isolated profiles.
+UI tests with isolated profiles. The native Markdown disclosure proofs belong to
+the candidate's test inventory: a promotion skips them only when the alpha has
+no disclosure proof tests, while ordinary CI always runs them.
 
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Promotion rechecks candidate eligibility and
