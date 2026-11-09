@@ -93,6 +93,29 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
+    public void Installer_MigratesOnlyAStartupShortcutThatMatchesAnInstallerWrittenCommand()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("function StartupShortcutIsInstallerOwned", StringComparison.Ordinal);
+        Assert.True(start >= 0, "Migration must read the shortcut's command before replacing it.");
+        var end = iss.IndexOf("procedure CurStepChanged", start, StringComparison.Ordinal);
+        var migration = iss[start..end];
+
+        // Earlier installers wrote the shortcut with no arguments, then with --background.
+        // A retargeted, customized, or unreadable shortcut is the user's and stays in place.
+        Assert.Contains("CreateOleObject('WScript.Shell')", migration);
+        Assert.Contains("CreateShortcut(ShortcutPath)", migration);
+        Assert.Contains("CompareText(Target, ExpandConstant('{app}\\{#MyAppExeName}')) = 0", migration);
+        Assert.Contains("(Arguments = '') or (Arguments = '--background')", migration);
+        Assert.Matches(@"except\s*Log\('Could not read the Startup folder shortcut", migration);
+
+        var check = migration.IndexOf("if not StartupShortcutIsInstallerOwned(ShortcutPath) then", StringComparison.Ordinal);
+        Assert.True(check >= 0, "MigrateLegacyStartupShortcut must call the ownership check.");
+        Assert.True(check < migration.IndexOf("RegWriteStringValue", StringComparison.Ordinal));
+        Assert.True(check < migration.IndexOf("DeleteFile(ShortcutPath)", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Installer_ArgumentFreeRunMigrationAlwaysQuotesTheExecutable()
     {
         var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));

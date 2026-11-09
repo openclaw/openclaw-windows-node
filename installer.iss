@@ -576,6 +576,33 @@ begin
     (Ord(Approval[2]) = 0) and (Ord(Approval[3]) = 0) and (Ord(Approval[4]) = 0);
 end;
 
+function StartupShortcutIsInstallerOwned(const ShortcutPath: string): Boolean;
+var
+  Shell: Variant;
+  Link: Variant;
+  Target: string;
+  Arguments: string;
+begin
+  { Earlier installers wrote this shortcut to this installation's executable, first with
+    no arguments and later with --background. Anything else was retargeted or customized
+    by the user, so it is not ours to replace. An unreadable link reports an empty target. }
+  Result := False;
+  try
+    Shell := CreateOleObject('WScript.Shell');
+    Link := Shell.CreateShortcut(ShortcutPath);
+    Target := Link.TargetPath;
+    Arguments := Link.Arguments;
+  except
+    Log('Could not read the Startup folder shortcut. It was left in place: ' + GetExceptionMessage);
+    Exit;
+  end;
+  Arguments := Trim(Arguments);
+  Result := (CompareText(Target, ExpandConstant('{app}\{#MyAppExeName}')) = 0) and
+    ((Arguments = '') or (Arguments = '--background'));
+  if not Result then
+    Log('The Startup folder shortcut was customized. It was left in place.');
+end;
+
 procedure MigrateLegacyStartupShortcut;
 var
   ShortcutPath: string;
@@ -583,9 +610,12 @@ var
   ExpectedRunCommand: string;
 begin
   { Retire an enabled shortcut only when this installation has an enabled replacement.
-    Preserve disabled, unknown, or conflicting identities without rewriting Windows approval. }
+    Preserve disabled, unknown, customized, or conflicting identities without rewriting
+    Windows approval. }
   ShortcutPath := ExpandConstant('{userstartup}\{#MyAppName}.lnk');
   if not FileExists(ShortcutPath) then
+    Exit;
+  if not StartupShortcutIsInstallerOwned(ShortcutPath) then
     Exit;
   if not StartupEntryMayRun('StartupFolder', '{#MyAppName}.lnk') then
     Exit;
