@@ -7858,6 +7858,34 @@
   <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} 分鐘</value></data>
   <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} 小時</value></data>
   <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} 天</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>詢問 OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>開啟聊天</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>開啟自動化</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>失敗</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>已逾期</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>此自動化失敗：{0}。請說明失敗原因以及如何修正。</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>此自動化已逾期：{0}，排定時間為 {1}。請說明它為何未執行以及如何修正。</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>以下模型提供者認證需要處理：{0}。請說明哪些內容已過期以及如何重新驗證。</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>需要核准命令</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>需要核准外掛程式</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>需要核准</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>{0} 後到期</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>已到期</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>閘道</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>裝置</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>沙箱</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，直到撤銷（可撤銷）</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，持續 {1} 天（可撤銷）</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>透過 {1} 傳送給 {0} 位收件者</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>向 {2} 支付 {0} {1}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>對外發布到 {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>帳戶需要處理：{0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>需要登入</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API 金鑰需要處理</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>帳戶需要處理</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>登入</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>更新 API 金鑰</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>檢視帳戶</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>返回應用程式</value>
   </data>
