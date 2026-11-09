@@ -152,6 +152,11 @@ public sealed partial class WorkspacePaneFooter : UserControl
                 NotificationsFlyout.Hide();
                 commands.OpenRoute(route);
             },
+            (route, sessionKey) =>
+            {
+                NotificationsFlyout.Hide();
+                return commands.TryNavigateAsync(route, sessionKey);
+            },
             () =>
             {
                 NotificationsFlyout.Hide();

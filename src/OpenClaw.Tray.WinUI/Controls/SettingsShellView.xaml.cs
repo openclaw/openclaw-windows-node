@@ -300,24 +300,20 @@ internal sealed partial class SettingsShellView : UserControl
         }
 
         if (_currentAppNotificationPresentation.Action is
-            { Kind: AppNotificationInfoBarActionKind.NotificationRoute, Route.Length: > 0 } action)
+            { Kind: AppNotificationInfoBarActionKind.NotificationRoute, Route.Length: > 0 })
         {
-            var route = action.Route;
-            if (ThisPcAlertSource.TryOpenPrivacySettings(route))
+            if (ThisPcAlertSource.TryOpenPrivacySettings(_currentAppNotificationPresentation.Action.Route))
             {
                 // The block is still there; the row stays until Windows reports it cleared.
                 return;
             }
-            if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
+            if (_appNotificationService is { } notifications)
             {
-                CurrentApp.PendingChatSessionKey = sessionKey;
-                NavigateTo("chat");
+                var notificationId = _currentAppNotificationPresentation.Notification!.Id;
+                AsyncEventHandlerGuard.Run(
+                    () => notifications.NavigateActionAsync(notificationId, ((IAppCommands)CurrentApp).TryNavigateAsync),
+                    new AppLogger(), nameof(OnAppNotificationActionButtonClick));
             }
-            else
-            {
-                NavigateTo(route);
-            }
-            _appNotificationService?.Dismiss(_currentAppNotificationPresentation.Notification!.Id);
             return;
         }
     }
@@ -449,6 +445,10 @@ internal sealed partial class SettingsShellView : UserControl
 
     /// <summary>Returns the currently displayed page in the content frame.</summary>
     public object? CurrentPage => ContentFrame?.Content;
+
+    internal bool IsSectionShown(string tag) =>
+        !_disposed && _active && ContentFrame.Content is not null &&
+        _currentNavTag == tag;
 
     /// <summary>The canonical tag of the section currently shown, or null while deactivated.</summary>
     internal string? CurrentSectionTag => _currentNavTag;
