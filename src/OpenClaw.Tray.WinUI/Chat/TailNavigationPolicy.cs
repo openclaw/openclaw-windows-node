@@ -110,6 +110,17 @@ internal enum InitialTailLanding
     GiveUp,
 }
 
+// Content-free value copy for the existing GiveUp warning. It never retains the
+// target object or correlation/generation identities and cannot drive navigation.
+internal readonly record struct InitialTailDiagnosticSnapshot(
+    int ObservedFrames,
+    int Retries,
+    int SettledFrames,
+    bool HasExpectedTarget,
+    bool HasCorrelation,
+    bool BringCompleted,
+    bool AttemptActive);
+
 // A dispatched bring-into-view can be dropped or reset by a concurrent layout
 // (for example a session switch restoring cached rows), leaving the reader at
 // the top. Initial positioning stays pending until the settled view is at the tail.
@@ -132,6 +143,10 @@ internal sealed class InitialTailConfirmation
     private object? _targetItem;
     private bool _bringCompleted;
     private bool _attemptActive;
+
+    public InitialTailDiagnosticSnapshot Diagnostics => new(
+        _observedFrames, _retries, _settledFrames, _targetItem is not null,
+        _correlationId is not null, _bringCompleted, _attemptActive);
 
     public int Reset(object? targetItem = null)
     {
