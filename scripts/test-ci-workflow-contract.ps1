@@ -523,6 +523,10 @@ Assert-NotContains -Text $productionUiStep -Unexpected 'continue-on-error:' `
 foreach ($token in @(
         "OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production",
         "OPENCLAW_UI_TEST_APP_THEME: Light",
+        "OPENCLAW_RUN_KEYBOARD_PROOF: '1'",
+        "OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'",
+        'OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures',
+        '-RequireAllTestsPassed',
         '-Filter "Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"',
         "AutomationsSteadyResources.trx"
     )) {

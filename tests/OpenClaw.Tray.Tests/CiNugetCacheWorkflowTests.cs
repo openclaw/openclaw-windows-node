@@ -28,6 +28,10 @@ public sealed class CiNugetCacheWorkflowTests
         var steady = ExtractStep(job, "Run steady-resource Automations UI tests", "Run Accessibility Tests (Axe.Windows)");
         Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production", steady);
         Assert.Contains("OPENCLAW_UI_TEST_APP_THEME: Light", steady);
+        Assert.Contains("OPENCLAW_RUN_KEYBOARD_PROOF: '1'", steady);
+        Assert.Contains("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'", steady);
+        Assert.Contains(@"OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures", steady);
+        Assert.Contains("-RequireAllTestsPassed", steady);
         Assert.Contains("-Filter \"Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", steady);
         Assert.Contains("AutomationsSteadyResources.trx", steady);
     }

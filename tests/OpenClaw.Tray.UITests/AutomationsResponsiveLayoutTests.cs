@@ -194,6 +194,11 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 proofWindow.Activate();
                 proofHandle = WinRT.Interop.WindowNative.GetWindowHandle(proofWindow);
             });
+            if (capture)
+            {
+                Assert.Equal((uint)Environment.ProcessId, OwnedWindowCapture.ReadCurrentProcessGeometry(proofHandle).ProcessId);
+                await NativeKeyboardProof.ActivateAsync(proofHandle);
+            }
             // Activate schedules XamlRoot attachment; it is not available in the
             // same dispatcher callback that constructs the new window.
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>

@@ -396,7 +396,7 @@ public sealed partial class GatewayFixtureUiTests
     [InlineData("Light")]
     [InlineData("Dark")]
     [Trait("Category", "GatewayFixture")]
-    public async Task Automations_ViewportBackdropStaysAnchored(string theme)
+    public async Task Automations_HeroWashScrollsWhileTheBackplateStaysAnchored(string theme)
     {
         await WithAppAsync(async run =>
         {
@@ -404,7 +404,7 @@ public sealed partial class GatewayFixtureUiTests
             await OpenMainAutomationsAsync(run);
             await WaitUiAsync(run, () => FindById(run, "AutomationsAgendaList") is not null, "complete agenda");
             await ScrollAutomationsToTopAsync(run);
-            await AssertAutomationsViewportBackdropAsync(run, theme);
+            await AssertAutomationsHeroWashAsync(run, theme);
         }, scenario: GatewayScenario.CreateAutomations());
     }
 
@@ -711,7 +711,11 @@ public sealed partial class GatewayFixtureUiTests
                 await Task.Delay(ErrorToastPersistenceProbe);
                 Assert.NotNull(FindById(run, "AutomationsNotice"));
                 Assert.Null(FindById(run, "AutomationsOperationError"));
-                Invoke(FindById(run, "AutomationToastClose")!);
+                var notice = FindById(run, "AutomationsNotice")!;
+                var close = Assert.Single(notice.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
+                    .Cast<AutomationElement>(), button => !button.Current.IsOffscreen && button.Current.IsEnabled);
+                Invoke(close);
                 await WaitUiAsync(run, () => FindById(run, "AutomationsNotice") is null, "error toast dismissed explicitly");
                 scenario.CronReadOnly = false;
             });
@@ -722,16 +726,26 @@ public sealed partial class GatewayFixtureUiTests
                 await ChooseAutomationAgentAsync(run, "All agents");
                 await WaitUiAsync(run, () => FindById(run, $"AutomationExpander:{GatewayScenario.AutomationsOtherAgentJobId}") is not null, "all agents");
                 Assert.Contains(run.Gateway.Requests, r => r.Method == "cron.list" && r.AgentId is null && r.Outcome == "ok");
+                await ChooseAutomationAgentAsync(run, "ops");
+                await WaitUiAsync(run, () => FindById(run, $"AutomationExpander:{GatewayScenario.AutomationsOtherAgentJobId}") is not null
+                    && FindById(run, "AutomationExpander:morning-brief") is null, "single-job agent");
+                Assert.NotNull(FindById(run, "AutomationsAgentFilter"));
+                await ChooseAutomationAgentAsync(run, "All agents");
+                await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is not null, "return from single-job agent");
                 await run.InvokeAsync("app.navigate", new { page = "agent:research:cron" });
                 await WaitUiAsync(run, () => FindText(run, "No automations yet") is not null, "empty agent");
                 Assert.Null(FindByIdPrefix(run, "AutomationExpander:"));
                 RecordHeadline(run, "empty-body-loaded");
-                await WaitUiAsync(run, () => FindById(run, "AutomationsHeadline") is { } headline
+                await WaitUiAsync(run, () => FindById(run, "AutomationsHeroAnswer") is { } headline
                     && headline.Current.Name == "Nothing scheduled yet", "overview commits empty headline");
                 RecordHeadline(run, "empty-overview-committed");
                 Assert.NotNull(FindById(run, "AutomationsEmptyNew"));
                 Assert.Null(FindById(run, "AutomationsOperationError"));
                 Capture(run, "automations-empty.png", "AutomationsEmptyChat");
+                await ChooseAutomationAgentAsync(run, "All agents");
+                await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is not null
+                    && FindById(run, $"AutomationExpander:{GatewayScenario.AutomationsOtherAgentJobId}") is not null,
+                    "empty agent retains gateway-wide discovery");
             });
             Assert.True(proofFailures.Count == 0, string.Join(Environment.NewLine + Environment.NewLine, proofFailures));
             Assert.True(accessibilityFailures.Count == 0, string.Join(Environment.NewLine + Environment.NewLine, accessibilityFailures));
@@ -1294,48 +1308,112 @@ public sealed partial class GatewayFixtureUiTests
     }
 
     /// <summary>
-    /// The wash has no UIA peer, so the real app proves it with pixels: the empty margin beside the
-    /// centred header keeps the same wash after the content scrolls the header out of view. The two
-    /// images are the only evidence, so they are captured even when ordinary screenshots are off.
+    /// Samples the decorative wash inside the hero's padding, not the plain page margin.
+    /// The hero scrolls away while the surrounding native backplate remains unchanged.
     /// </summary>
-    private static async Task AssertAutomationsViewportBackdropAsync(GatewayFixtureRun run, string theme)
+    private static async Task AssertAutomationsHeroWashAsync(GatewayFixtureRun run, string theme)
     {
         var page = await WaitForPageScrollPeerAsync(run);
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        SaveAutomationsWindow(run, "automations-viewport-top.png", "AutomationsHeadline");
-        Assert.True(scroll.Current.VerticallyScrollable, "The populated page must scroll to prove the anchored backdrop.");
+        SaveAutomationsWindow(run, "automations-hero-top.png", "AutomationsHeadline", "AutomationsMast");
+        Assert.True(scroll.Current.VerticallyScrollable, "The populated page must scroll to prove the hero placement.");
         var window = AutomationsWindow(run);
-        var (frame, viewport, headline) = OwnedWindowCapture.WithPhysicalCoordinates(() => (
+        var (frame, viewport, headline, hero) = OwnedWindowCapture.WithPhysicalCoordinates(() => (
             OwnedWindowCapture.ReadOwnedBounds(run, window), page.Current.BoundingRectangle,
-            FindById(run, "AutomationsHeadline")!.Current.BoundingRectangle));
+            FindById(run, "AutomationsHeadline")!.Current.BoundingRectangle,
+            FindById(run, "AutomationsMast")!.Current.BoundingRectangle));
+        var scale = OwnedWindowCapture.OwnedDpiScale(run, window);
+        var highContrast = new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
+        var range = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
+        var shift = Math.Min(hero.Top - viewport.Top - scale, hero.Height / 4);
+        Assert.True(range > 0 && shift >= 8 * scale, "A visible partial-scroll interval is required for wash tracking.");
+        await MoveAutomationScrollAsync(run, page, scroll, shift * 100 / range);
+        var translatedHero = OwnedWindowCapture.WithPhysicalCoordinates(() =>
+            FindById(run, "AutomationsMast")!.Current.BoundingRectangle);
+        Assert.True(translatedHero.Top < hero.Top - scale);
+        Assert.Equal(hero.Size, translatedHero.Size);
+        Assert.True(translatedHero.Top >= viewport.Top && translatedHero.Bottom <= viewport.Bottom);
+        SaveAutomationsWindow(run, "automations-hero-partial.png", "AutomationsMast");
+        Assert.Equal(frame, OwnedWindowCapture.ReadOwnedBounds(run, window));
+        using var atTop = new System.Drawing.Bitmap(Path.Combine(run.ArtifactsDirectory, "automations-hero-top.png"));
+        using var partial = new System.Drawing.Bitmap(Path.Combine(run.ArtifactsDirectory, "automations-hero-partial.png"));
+        (int TranslatedDelta, int StationaryDelta)? motion = null;
+        if (!highContrast)
+            motion = AssertHeroWashTranslation(atTop.GetPixel, partial.GetPixel,
+                new global::System.Windows.Rect(hero.Left - frame.Left, hero.Top - frame.Top, hero.Width, hero.Height),
+                new global::System.Windows.Rect(translatedHero.Left - frame.Left, translatedHero.Top - frame.Top,
+                    translatedHero.Width, translatedHero.Height), (int)Math.Ceiling(12 * scale));
         scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
         await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 99.5 && OwnedWindowCapture.WithPhysicalCoordinates(() =>
             FindById(run, "AutomationsHeadline") is not { } moved || moved.Current.IsOffscreen ||
             moved.Current.BoundingRectangle is var area && (area.IsEmpty || area.Bottom <= viewport.Top + 1)),
             "header scrolled out with the content");
         Assert.Equal(viewport, OwnedWindowCapture.WithPhysicalCoordinates(() => page.Current.BoundingRectangle));
-        SaveAutomationsWindow(run, "automations-viewport-scrolled.png");
-        var top = Path.Combine(run.ArtifactsDirectory, "automations-viewport-top.png");
-        var scrolled = Path.Combine(run.ArtifactsDirectory, "automations-viewport-scrolled.png");
-        using var atTop = new System.Drawing.Bitmap(top);
+        SaveAutomationsWindow(run, "automations-hero-scrolled.png");
+        var scrolled = Path.Combine(run.ArtifactsDirectory, "automations-hero-scrolled.png");
         using var afterScroll = new System.Drawing.Bitmap(scrolled);
         static int Delta(System.Drawing.Color a, System.Drawing.Color b) =>
             Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
-        var x = (int)((viewport.Left + headline.Left) / 2 - frame.Left);
+        var x = (int)((viewport.Left + hero.Left) / 2 - frame.Left);
         var bandTop = (int)Math.Ceiling(viewport.Top - frame.Top);
         var bandBottom = (int)(headline.Bottom - frame.Top);
         var drift = Enumerable.Range(bandTop, bandBottom - bandTop).Max(y => Delta(atTop.GetPixel(x, y), afterScroll.GetPixel(x, y)));
-        var wash = Delta(atTop.GetPixel(x, bandTop + 2), atTop.GetPixel(x, (int)(viewport.Bottom - frame.Top) - 8));
-        var highContrast = new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
-        await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "automations-viewport-proof.json"),
+        var inset = 12 * scale;
+        Assert.True(hero.Width > 2 * inset && hero.Height > 2 * inset);
+        var wash = Delta(
+            atTop.GetPixel((int)(hero.Left - frame.Left + inset), (int)(hero.Top - frame.Top + inset)),
+            atTop.GetPixel((int)(hero.Right - frame.Left - inset), (int)(hero.Bottom - frame.Top - inset)));
+        await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "automations-hero-proof.json"),
             System.Text.Json.JsonSerializer.Serialize(new
             {
-                theme, highContrast, scroll.Current.VerticalScrollPercent, frame, viewport, headline,
-                sampleX = x, bandTop, bandBottom, maxBandDelta = drift, washDelta = wash,
+                theme, highContrast, scroll.Current.VerticalScrollPercent, frame, viewport, headline, hero, translatedHero,
+                motion = motion is { } measured ? new { measured.TranslatedDelta, measured.StationaryDelta } : null,
+                sampleX = x, bandTop, bandBottom, maxBackplateDelta = drift, heroWashDelta = wash,
             }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        Assert.True(headline.Left - viewport.Left >= 16, $"No empty page margin to sample: {viewport} vs {headline}.");
-        if (!highContrast) Assert.True(wash >= 4, $"The {theme} viewport wash is not visible (delta {wash}).");
-        Assert.True(drift <= 3, $"The {theme} viewport wash moved with the content (max delta {drift}).");
+        Assert.True(hero.Left - viewport.Left >= 16 * scale, $"No empty page margin to sample: {viewport} vs {hero}.");
+        if (!highContrast) Assert.True(wash >= 4, $"The {theme} hero wash is not visible (delta {wash}).");
+        Assert.True(drift <= 3, $"The {theme} native backplate changed while scrolling (max delta {drift}).");
+    }
+
+    private static (int TranslatedDelta, int StationaryDelta) AssertHeroWashTranslation(
+        Func<int, int, System.Drawing.Color> before, Func<int, int, System.Drawing.Color> after,
+        global::System.Windows.Rect hero, global::System.Windows.Rect moved, int inset)
+    {
+        static int Delta(System.Drawing.Color a, System.Drawing.Color b) =>
+            Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
+        var dx = (int)Math.Round(moved.Left - hero.Left);
+        var dy = (int)Math.Round(moved.Top - hero.Top);
+        var x = (int)Math.Round(hero.Left) + inset;
+        var first = (int)Math.Ceiling(hero.Top) + inset;
+        var last = (int)Math.Floor(Math.Min(hero.Bottom, moved.Bottom)) - inset;
+        Assert.True(dy < 0 && last > first, "A translated, overlapping hero interior is required.");
+        var translated = 0;
+        var stationary = 0;
+        for (var y = first; y < last; y++)
+        {
+            var original = before(x, y);
+            translated = Math.Max(translated, Delta(original, after(x + dx, y + dy)));
+            stationary = Math.Max(stationary, Delta(original, after(x, y)));
+        }
+        Assert.True(translated <= 3, $"The wash did not follow the hero (translated delta {translated}).");
+        Assert.True(stationary >= 4, $"The samples cannot distinguish a stationary wash (delta {stationary}).");
+        return (translated, stationary);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HeroWashPixelProofRejectsAViewportAnchoredGradient(bool anchored)
+    {
+        static System.Drawing.Color Gradient(int x, int y) =>
+            System.Drawing.Color.FromArgb(255, Math.Clamp(240 - y, 0, 255), 200, 160);
+        System.Drawing.Color After(int x, int y) => Gradient(x, anchored ? y : y + 20);
+        var original = new global::System.Windows.Rect(20, 40, 200, 120);
+        var moved = new global::System.Windows.Rect(20, 20, 200, 120);
+        if (anchored)
+            Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertHeroWashTranslation(Gradient, After, original, moved, 12));
+        else
+            Assert.Equal((0, 20), AssertHeroWashTranslation(Gradient, After, original, moved, 12));
     }
 
     private static async Task<AutomationElement> WaitForPageScrollPeerAsync(GatewayFixtureRun run)

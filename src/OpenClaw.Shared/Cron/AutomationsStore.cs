@@ -288,6 +288,7 @@ public sealed class AutomationsStore : IDisposable
         // Rows from another agent must never be shown or acted on under this filter:
         // retire any in-flight page and start the new inventory from empty.
         ++_listGeneration;
+        ++_overviewGeneration;
         _listReloadPending = false;
         Set(s =>
         {
@@ -387,13 +388,16 @@ public sealed class AutomationsStore : IDisposable
             {
                 if (generation != _listGeneration) return;
                 Set(s => s with { ListLoading = false, ListLoadingMore = false });
-                if (_listReloadPending)
-                {
-                    _listReloadPending = false;
-                    _ = LoadListAsync();
-                }
+                ReloadListIfPending();
             });
         }
+    }
+
+    private void ReloadListIfPending()
+    {
+        if (!_listReloadPending) return;
+        _listReloadPending = false;
+        _ = LoadListAsync();
     }
 
     private void ApplyListPage(CronListPage page, bool append, CronListQuery? loadedQuery = null)
@@ -592,7 +596,7 @@ public sealed class AutomationsStore : IDisposable
                 }
                 Post(() =>
                 {
-                    if (generation != _overviewGeneration) return;
+                    if (generation != _overviewGeneration || agent != _state.AgentFilter) return;
                     Set(s => s with
                     {
                         OverviewJobs = jobs.DistinctBy(j => j.Id).ToArray(),
@@ -605,7 +609,7 @@ public sealed class AutomationsStore : IDisposable
             {
                 Post(() =>
                 {
-                    if (generation != _overviewGeneration) return;
+                    if (generation != _overviewGeneration || agent != _state.AgentFilter) return;
                     var denied = CronGatewayRequests.IsForbidden(ex);
                     Set(s => s with
                     {
@@ -651,11 +655,18 @@ public sealed class AutomationsStore : IDisposable
             Post(() =>
             {
                 if (generation != _listGeneration) return;
+                var pendingQuery = _listReloadPending ? _state.ListQuery : null;
                 if (scan.Query.AgentId != _state.AgentFilter) SetAgentFilter(scan.Query.AgentId, reloadList: false);
+                if (pendingQuery is not null)
+                {
+                    _listReloadPending = true;
+                    Set(s => s with { ListQuery = pendingQuery with { AgentId = s.AgentFilter } });
+                }
                 ApplyListPage(scan.Page, false, scan.Query);
                 Set(s => s with { ListLoading = false });
                 if (scan.Found) Select(jobId);
                 else Notify(new AutomationsNotice(AutomationsNoticeKind.JobUnavailable, jobId));
+                ReloadListIfPending();
             });
             return scan.Found ? AutomationRevealOutcome.Revealed : AutomationRevealOutcome.NotFound;
         }
@@ -665,6 +676,7 @@ public sealed class AutomationsStore : IDisposable
             {
                 if (generation != _listGeneration) return;
                 Set(s => s with { ListLoading = false, ListError = ex.Message });
+                ReloadListIfPending();
             });
             return AutomationRevealOutcome.Failed;
         }

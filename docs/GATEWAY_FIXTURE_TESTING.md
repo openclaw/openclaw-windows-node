@@ -433,13 +433,17 @@ With
 `OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS=1`, it opens only its own Light proof window
 and saves real owned-HWND `PrintWindow` captures beneath
 `OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS`; this mode requires the coordinated desktop
-lock. Select `Category=ProductionResources` separately from the external-app
+lock and explicit native-input opt-in (`OPENCLAW_RUN_KEYBOARD_PROOF=1`). The
+capture path activates only its newly created proof window before initial focus;
+later resize captures still require that owned window to remain foreground.
+Select `Category=ProductionResources` separately from the external-app
 Automations theory and from the mixed UI suite. All mounted native runs, including
 offscreen runs, require the authorized serial native slot. Each case uses its own correctly sized offscreen client viewport,
 not the shared fixture's 1x1 window, so layout and containment checks remain faithful.
 
-The steady-resource lane has seven cases: the five widths, the toast case, and
-the combined toast -> 1400 -> 1000 remount lifecycle. It uses
+The steady-resource lane covers responsive widths, toast/remount lifecycle,
+same-control focus retention, editor saves, full run results and hero summaries.
+It uses
 `OPENCLAW_UI_TEST_RESOURCE_PROFILE=Production`: the existing `UIThreadFixture`
 startup callback loads actual `App.xaml` resources once, after the `Application.Start`
 callback returns and before readiness. Markup errors fail setup. Individual page mounts
@@ -455,8 +459,14 @@ in a dedicated PowerShell process (use `win-arm64` on ARM64):
 $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
 $env:OPENCLAW_UI_TEST_RESOURCE_PROFILE = 'Production'
 $env:OPENCLAW_UI_TEST_APP_THEME = 'Light'
-dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
-    --no-build -c Debug -r win-x64 --filter 'Category=ProductionResources'
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path (Get-Location) 'artifacts\automations-mounted'
+.\scripts\Invoke-CiTest.ps1 -Project tests\OpenClaw.Tray.UITests `
+    -Runtime win-x64 -ResultsDirectory TestResults\AutomationsSteadyResources `
+    -TrxFileName AutomationsSteadyResources.trx `
+    -Filter 'Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled' `
+    -RequireAllTestsPassed -HangTimeoutSeconds 300
 ```
 
 The unset/default `Standard` profile preserves the legacy synthetic resources.
@@ -465,6 +475,13 @@ the selected test, rather than skipping it or silently using fallback resources.
 `ChatThemeProofScope` rejects replacement in the Production profile.
 Existing chat/markdown scope replacement and synthetic HighContrast projection
 are unchanged in the Standard lane. Do not mix them into steady-resource proof.
+
+The separate real-app `Automations_HeroWashScrollsWhileTheBackplateStaysAnchored`
+case tracks corresponding gradient pixels through a settled partial scroll,
+then verifies that the hero scrolls out of view and compares the plain page
+margin before and after. Synthetic pixel controls reject a viewport-anchored
+gradient even if its text moves.
+It does not expect the retired viewport-wide wash to remain behind the content.
 
 The separate `Automations_ResponsiveShellWidthsHaveDistinctMeasuredFrames`
 case captures reachable native page-host widths and the unchanged shell minimum,

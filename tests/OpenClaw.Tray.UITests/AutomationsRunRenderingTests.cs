@@ -65,7 +65,13 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var root = Assert.IsAssignableFrom<Microsoft.UI.Xaml.DependencyObject>(renderer!.Content);
-                if (inline) Assert.True(Assert.Single(FindLogical<Expander>(root)).IsExpanded);
+                if (inline)
+                {
+                    Assert.IsType<Border>(root);
+                    var disclosure = Assert.Single(FindLogical<HyperlinkButton>(root),
+                        button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "AutomationRunExpand:run");
+                    Assert.Equal(catalog["Automations_Runs_ShowLess"], disclosure.Content);
+                }
                 if (error)
                 {
                     var literal = Assert.Single(FindLogical<TextBlock>(root), text => text.Text.Contains("## Summary"));

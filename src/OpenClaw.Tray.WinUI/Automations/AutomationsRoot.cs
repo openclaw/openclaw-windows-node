@@ -273,6 +273,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 GlyphButton(GlyphRefresh, t["Retry"], store.Refresh, "AutomationsRetry"));
         else if (state.ListLoaded && state.Jobs.Count == 0 && !state.IsFiltered)
             content = VStack(16,
+                RenderAgentFilter(host, state),
                 Hero(GlyphCalendar, t["Empty_Title"], t[state.CanManage ? "Empty_Body" : "Empty_ReadOnlyBody"], "AutomationsEmpty",
                     state.CanManage ? GlyphButton(GlyphAdd, t["NewAutomation"], actions.New, "AutomationsEmptyNew", state.Connected, accent: true) : Empty(),
                     GlyphButton(GlyphChat, t["Review_OpenChat"], () => host.OpenChat($"agent:{state.DefaultAgentId}:main"), "AutomationsEmptyChat")),
@@ -668,6 +669,19 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             .AutomationId("AutomationsAgenda");
     }
 
+    private static Element RenderAgentFilter(AutomationsHost host, AutomationsSnapshot state)
+    {
+        var t = host.Text;
+        var agents = state.FilterAgents(host.KnownAgents());
+        var labels = new[] { t["Filter_AllAgents"] }.Concat(agents).ToArray();
+        var agentIndex = state.AgentFilter is null ? 0 : Array.IndexOf(agents.ToArray(), state.AgentFilter) + 1;
+        return ComboBox(labels, agentIndex, i => { if (i >= 0) host.Store.SetAgentFilter(i == 0 ? null : agents[i - 1]); })
+            .MinWidth(140).MaxWidth(240).HAlign(HorizontalAlignment.Left)
+            .VAlign(VerticalAlignment.Center)
+            .AutomationName(t.Format("AgentFilterFor", t.AgentScope(state.AgentFilter)))
+            .AutomationId("AutomationsAgentFilter");
+    }
+
     private static Element RenderInventory(AutomationsHost host, AutomationsSnapshot state, string search, Action<string> onSearch,
         AutomationsActions actions, AutomationsLook look, PageWidthTier tier, bool twoColumns, Action<FrameworkElement, string> registerRow,
         ImmutableHashSet<string> expanded, Action<string, bool> toggle, IReadOnlyDictionary<string, AutomationsSnapshot> detailSnapshots,
@@ -675,9 +689,6 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
     {
         var t = host.Text;
         var store = host.Store;
-        var agents = state.FilterAgents(host.KnownAgents());
-        var labels = new[] { t["Filter_AllAgents"] }.Concat(agents).ToArray();
-        var agentIndex = state.AgentFilter is null ? 0 : Array.IndexOf(agents.ToArray(), state.AgentFilter) + 1;
         var narrow = tier == PageWidthTier.Narrow;
         var status = SelectorBar([
                     SelectorBarItem(t.CountLabel("Redesign_All", state.InventoryTotal)),
@@ -686,11 +697,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                     state.ListQuery.Enabled switch { CronEnabledFilter.Enabled => 1, CronEnabledFilter.Disabled => 2, _ => 0 },
                     index => store.SetQuery(state.ListQuery with { Enabled = index switch { 1 => CronEnabledFilter.Enabled, 2 => CronEnabledFilter.Disabled, _ => CronEnabledFilter.All } }))
                     .AutomationId("AutomationsStatusFilter");
-        var agent = ComboBox(labels, agentIndex, i => { if (i >= 0) store.SetAgentFilter(i == 0 ? null : agents[i - 1]); })
-                        .MinWidth(140).MaxWidth(240).HAlign(HorizontalAlignment.Left)
-                        .VAlign(VerticalAlignment.Center)
-                        .AutomationName(t.Format("AgentFilterFor", t.AgentScope(state.AgentFilter)))
-                        .AutomationId("AutomationsAgentFilter");
+        var agent = RenderAgentFilter(host, state);
         var searchBox = (AutoSuggestBox(search, onSearch, onSearch) with { PlaceholderText = t["Search_Placeholder"], QueryIcon = FontIcon(GlyphSearch) })
                         .MinWidth(240).MaxWidth(tier == PageWidthTier.Wide ? 360 : double.PositiveInfinity)
                         .HAlign(tier == PageWidthTier.Wide ? HorizontalAlignment.Right : HorizontalAlignment.Stretch)
@@ -706,7 +713,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                     : Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto, GridSize.Auto],
                         status.Grid(column: 0), agent.Margin(8, 0, 0, 0).Grid(column: 1),
                         searchBox.Margin(0, 12, 0, 0).Grid(column: 0, row: 1, columnSpan: 2))
-            : (Element)Empty();
+            : VStack(0, agent);
         var rows = new List<Element>();
         foreach (var enabled in new[] { true, false })
         {

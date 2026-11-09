@@ -782,6 +782,9 @@ jobs:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production
         OPENCLAW_UI_TEST_APP_THEME: Light
         OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+        OPENCLAW_RUN_KEYBOARD_PROOF: '1'
+        OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
+        OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
@@ -789,6 +792,7 @@ jobs:
         -TrxFileName AutomationsSteadyResources.trx
         -Runtime win-x64
         -Filter "Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
+        -RequireAllTestsPassed
         -HangTimeoutSeconds 300
 
     - name: Capture non-memory Tray UI crash metadata

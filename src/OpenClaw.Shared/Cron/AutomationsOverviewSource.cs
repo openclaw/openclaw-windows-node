@@ -168,6 +168,9 @@ public sealed class AutomationsOverviewSource(
                         generation = _generation;
                         continue;
                     }
+                    // A refresh after this handoff must start a loader, not invalidate
+                    // the completed read while coalescing into its exiting task.
+                    _pending = null;
                 }
                 var acceptedGeneration = generation;
                 post(() =>

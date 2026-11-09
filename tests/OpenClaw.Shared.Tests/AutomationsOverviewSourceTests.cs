@@ -161,6 +161,39 @@ public sealed class AutomationsOverviewSourceTests
     };
 
     [Fact]
+    public async Task RefreshAtPublicationBoundaryStartsANewReadInsteadOfLosingInvalidation()
+    {
+        var (client, wire) = Client();
+        var posts = new ConcurrentQueue<Action>();
+        AutomationsOverviewSource? source = null;
+        Task? second = null;
+        var requested = false;
+        using (source = new AutomationsOverviewSource(() => client, action =>
+        {
+            if (!requested && wire.Requests.Count == 2)
+            {
+                requested = true;
+                second = source!.RefreshAsync();
+            }
+            posts.Enqueue(action);
+        }))
+        {
+            wire.Pages.Enqueue(_ => Task.FromResult(Page([Job("old", true, "ok")], 0)));
+            wire.Pages.Enqueue(_ => Task.FromResult(Page([], 0)));
+            QueueInventory(wire);
+            var first = source.RefreshAsync();
+            await first;
+            Assert.NotNull(second);
+            await second;
+            Drain(posts);
+            Assert.Equal(4, wire.Requests.Count);
+            Assert.True(source.State.IsCurrent);
+            Assert.False(source.State.IsLoading);
+            Assert.Equal("failed", Assert.Single(source.State.Jobs).Id);
+        }
+    }
+
+    [Fact]
     public async Task ForbiddenRefreshClearsReadableJobsAndReportsFailure()
     {
         var (client, wire) = Client();
