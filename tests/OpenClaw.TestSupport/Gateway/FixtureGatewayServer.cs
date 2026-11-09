@@ -537,23 +537,6 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
-    /// <summary>One canonical top-level exec request for the read-only Inbox scenario.
-    /// The authenticated transport is unchanged. This never issues a resolvable approval ID.</summary>
-    public async Task PublishInboxFeedApprovalAsync(CancellationToken cancellationToken = default)
-    {
-        var targets = AcquireConnections(onlyOpen: true);
-        try
-        {
-            if (targets.Length == 0)
-                throw new InvalidOperationException("No authenticated fixture connection is available.");
-            var payload = _scenario.CreateInboxLiveApproval();
-            await PublishEventAsync(targets, new { type = "event", @event = "exec.approval.requested", payload }, cancellationToken);
-            // PublishEventAsync returns after the first successful send, not a broadcast.
-            lock (_sync) _events.Add(new GatewayFixtureEvent("exec.approval.requested", 1));
-        }
-        finally { ReleaseConnections(targets); }
-    }
-
     public async Task PublishAgentEventAsync(
         string sessionKey,
         object data,
