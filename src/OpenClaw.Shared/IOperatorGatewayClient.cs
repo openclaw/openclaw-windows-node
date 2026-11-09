@@ -47,6 +47,17 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
+    /// <summary>A Gateway approval (exec, plugin or system agent) now waits for a decision.</summary>
+    event EventHandler<GatewayPendingApproval>? PendingApprovalRequested { add { } remove { } }
+    /// <summary>A pending Gateway approval was decided; the argument is its id.</summary>
+    event EventHandler<string>? PendingApprovalResolved { add { } remove { } }
+    /// <summary>
+    /// Sends an operator decision for a pending Gateway approval on the captured authenticated
+    /// connection. Throws <see cref="GatewayApprovalStaleException"/> when the approval is no longer pending.
+    /// </summary>
+    Task ResolveApprovalAsync(GatewayApprovalKind kind, string approvalId, string decision, long connectionEpoch,
+        Action? validateBeforeSend = null)
+        => Task.FromException(new NotSupportedException("Approval decisions are not supported by this gateway client."));
 
     /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
     IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
