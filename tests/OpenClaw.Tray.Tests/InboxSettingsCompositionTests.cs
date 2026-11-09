@@ -51,25 +51,15 @@ public sealed class InboxSettingsCompositionTests
         Assert.DoesNotContain("TabsBar.IsEnabled =", code);
     }
 
-    [Theory]
-    [InlineData("en-us", "Inbox", "Back to app", "Esc", "Settings")]
-    [InlineData("fr-fr", "Boîte de réception", "Retour à l'application", "Échap", "Paramètres")]
-    [InlineData("nl-nl", "Postvak IN", "Terug naar app", "Esc", "Instellingen")]
-    [InlineData("pt-br", "Caixa de entrada", "Voltar ao app", "Esc", "Configurações")]
-    [InlineData("zh-cn", "收件箱", "返回应用", "Esc", "设置")]
-    [InlineData("zh-tw", "收件匣", "返回應用程式", "Esc", "設定")]
-    public void EveryLocale_RetainsInboxAndSettingsReturnCopy(string locale, string inbox, string back, string key, string title)
+    [Fact]
+    public void InboxAndSettingsReturn_RequiredResourceKeysExist()
     {
-        var root = XDocument.Parse(Read("Strings", locale, "Resources.resw")).Root!;
-        Assert.Equal(inbox, Value("Inbox_Title.Text"));
-        Assert.Equal(back, Value("SettingsShell_BackToApp"));
-        Assert.Equal(key, Value("SettingsShell_BackToAppKeyHint"));
-        Assert.Equal(title, Value("SettingsShell_Title"));
-        foreach (var name in new[] { "Inbox_TabAll", "Inbox_EmptyTitle.Text",
+        // Global localization tests enforce parity, unique keys and nonempty values
+        // in every locale. Keep only the required-key inventory here, not translations.
+        var resources = XDocument.Parse(Read("Strings", "en-us", "Resources.resw")).Root!;
+        foreach (var key in new[] { "Inbox_Title.Text", "SettingsShell_BackToApp", "SettingsShell_BackToAppKeyHint",
+            "SettingsShell_Title", "Inbox_TabAll", "Inbox_EmptyTitle.Text",
             "Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" })
-            Assert.False(string.IsNullOrWhiteSpace(Value(name)));
-
-        string Value(string name) => Assert.Single(root.Elements("data"),
-            element => (string?)element.Attribute("name") == name).Element("value")!.Value;
+            Assert.Contains(resources.Elements("data"), element => (string?)element.Attribute("name") == key);
     }
 }

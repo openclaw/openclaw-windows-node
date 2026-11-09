@@ -13,7 +13,8 @@ public enum NativeUiPhase
 }
 
 /// <summary>
-/// Opt-in, testhost-only metadata. A scope/last-started dispatch is an observation,
+/// Testhost-only metadata: opt-in file capture with bounded, content-free stderr
+/// fallback. A scope/last-started dispatch is an observation,
 /// not attribution of a late exception to that operation. No exception or UI object
 /// is retained. This does not read stowed/restricted error records or handle errors.
 /// </summary>
@@ -25,12 +26,17 @@ public sealed class NativeUiExceptionDiagnostics : IDisposable
     public const int MaxBytes = 2 * 1024 * 1024;
     public const int MaxRecordBytes = 1024;
     public const int MaxTypeCharacters = 128;
+    public const int MaxFallbackRecords = 16;
 
     private readonly object _gate = new();
     private readonly int _processId = Environment.ProcessId;
     private readonly string? _invocationId;
     private readonly string? _configuredSourceRevision;
     private readonly Action _failureSignal;
+    private readonly Action<string> _fallbackWriter;
+    private readonly bool _captureRequested;
+    private bool _fileOpened;
+    private int _fallbackRecords;
     private Stream? _stream;
     private bool _failed, _overflowed, _disposed;
     private int _records, _bytes;
@@ -38,8 +44,11 @@ public sealed class NativeUiExceptionDiagnostics : IDisposable
     private string _lastDispatchState = "none";
     private NativeUiPhase _phase = NativeUiPhase.Idle;
 
-    private NativeUiExceptionDiagnostics(string? invocationId, string? sourceRevision, Action? failureSignal)
+    private NativeUiExceptionDiagnostics(string? invocationId, string? sourceRevision, Action? failureSignal,
+        bool captureRequested, Action<string>? fallbackWriter)
     {
+        _captureRequested = captureRequested;
+        _fallbackWriter = fallbackWriter ?? (line => Console.Error.WriteLine(line));
         _invocationId = Guid.TryParseExact(invocationId, "N", out var id) ? id.ToString("N") : null;
         _configuredSourceRevision = sourceRevision is { Length: 40 } && sourceRevision.All(char.IsAsciiHexDigit)
             ? sourceRevision.ToLowerInvariant() : null;
@@ -52,12 +61,14 @@ public sealed class NativeUiExceptionDiagnostics : IDisposable
         Environment.GetEnvironmentVariable(InvocationVariable),
         Environment.GetEnvironmentVariable("OPENCLAW_RELEASE_SOURCE_SHA"));
 
+    // The optional writer avoids process-global Console changes in pure fallback tests.
     // The stream factory is a fault-injection seam for pure tests; the harness uses
     // CreateNew, one writer, read-only sharing and synchronous durable flushes.
     public static NativeUiExceptionDiagnostics Open(string? path, string? invocationId, string? sourceRevision,
-        Action? failureSignal = null, Func<string, Stream>? createStream = null)
+        Action? failureSignal = null, Func<string, Stream>? createStream = null, Action<string>? fallbackWriter = null)
     {
-        var sink = new NativeUiExceptionDiagnostics(invocationId, sourceRevision, failureSignal);
+        var sink = new NativeUiExceptionDiagnostics(invocationId, sourceRevision, failureSignal,
+            !string.IsNullOrEmpty(path), fallbackWriter);
         if (string.IsNullOrEmpty(path)) return sink; // Explicitly disabled outside the invocation wrapper.
         try
         {
@@ -66,6 +77,8 @@ public sealed class NativeUiExceptionDiagnostics : IDisposable
             sink._stream = createStream is null
                 ? new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough)
                 : createStream(path);
+            if (sink._stream is null) throw new IOException("Diagnostic stream unavailable.");
+            sink._fileOpened = true;
             sink.Write("ready"); // Flushed before the UI thread/bootstrap starts.
         }
         catch { sink.Fail(); }
@@ -116,42 +129,73 @@ public sealed class NativeUiExceptionDiagnostics : IDisposable
     {
         lock (_gate)
         {
-            if (_disposed || _stream is null || _failed || _overflowed) return;
+            if (_disposed || ((_stream is null || _failed || _overflowed) && _fallbackRecords >= MaxFallbackRecords)) return;
             Exception? exception = null;
             var readFailed = false;
             try { exception = readException(); }
             catch { readFailed = true; }
             if (source == NativeUiExceptionSource.DispatchCatch && _lastDispatch == sourceDispatchId)
                 _lastDispatchState = "faulted";
-            Write(Enum.IsDefined(source) ? source.ToString() : "Unknown", exception, readFailed, sourceDispatchId);
+            var name = Enum.IsDefined(source) ? source.ToString() : "Unknown";
+            if (!Write(name, exception, readFailed, sourceDispatchId))
+                WriteFallback(name, exception, readFailed);
         }
     }
 
-    private void Write(string source, Exception? exception = null, bool readFailed = false, long sourceDispatchId = 0)
+    private bool Write(string source, Exception? exception = null, bool readFailed = false, long sourceDispatchId = 0)
     {
-        if (_disposed || _stream is null || _failed || _overflowed) return;
+        if (_disposed || _stream is null || _failed || _overflowed) return false;
         try
         {
-            // Only non-virtual, content-free exception metadata is read. In particular,
-            // WinUI's projected HResult is not claimed to be a stowed ResultCode.
-            var type = exception?.GetType().Name;
-            if (type is not null)
-                type = new string(type.Take(MaxTypeCharacters)
-                    .Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '+' ? c : '_').ToArray());
-            var hresult = exception?.HResult;
+            var (type, hresult) = ProjectException(exception);
             var record = Serialize(source, type, hresult, readFailed, sourceDispatchId);
-            if (record.Length > MaxRecordBytes) { Fail(); return; }
+            if (record.Length > MaxRecordBytes) { Fail(); return false; }
             // Reserve one bounded record for explicit truncation. No silent overwrite/ring.
             if (_records >= MaxRecords - 1 || _bytes + record.Length > MaxBytes - MaxRecordBytes)
             {
                 record = Serialize("overflow", null, null, false, 0);
                 WriteBytes(record);
                 _overflowed = true;
-                return;
+                return false;
             }
             WriteBytes(record);
+            return true;
         }
-        catch { Fail(); }
+        catch { Fail(); return false; }
+    }
+
+    // File capture is optional; exception reporting is not. This separate budget
+    // includes a final truncation record and counts failed writer attempts too.
+    private void WriteFallback(string source, Exception? exception, bool readFailed)
+    {
+        if (_fallbackRecords >= MaxFallbackRecords) return;
+        var truncated = ++_fallbackRecords == MaxFallbackRecords;
+        try
+        {
+            var (type, hresult) = ProjectException(truncated ? null : exception);
+            var line = JsonSerializer.Serialize(new
+            {
+                schema = 1, source = truncated ? "fallbackOverflow" : source, processId = _processId,
+                fallbackSequence = _fallbackRecords,
+                fileCapture = _overflowed ? "overflow" : _fileOpened ? "failed" : _captureRequested ? "unavailable" : "disabled",
+                exceptionAvailable = type is not null, exceptionReadFailed = !truncated && readFailed,
+                exceptionType = type, reportedHResult = hresult,
+                reportedHResultHex = hresult is { } value ? "0x" + unchecked((uint)value).ToString("X8", CultureInfo.InvariantCulture) : null
+            });
+            if (System.Text.Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length <= MaxRecordBytes)
+                _fallbackWriter(line);
+        }
+        catch { /* A fallback writer/projection failure must not replace the original exception. */ }
+    }
+
+    private static (string? Type, int? HResult) ProjectException(Exception? exception)
+    {
+        // Only non-virtual, content-free metadata. This is not a stowed ResultCode.
+        var type = exception?.GetType().Name;
+        if (type is not null)
+            type = new string(type.Take(MaxTypeCharacters)
+                .Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '+' ? c : '_').ToArray());
+        return (type, exception?.HResult);
     }
 
     private byte[] Serialize(string source, string? type, int? hresult, bool readFailed, long sourceDispatchId)
