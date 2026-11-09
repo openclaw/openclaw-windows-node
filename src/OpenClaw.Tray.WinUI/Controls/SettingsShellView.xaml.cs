@@ -59,8 +59,11 @@ internal sealed partial class SettingsShellView : UserControl
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
 
-    /// <summary>Raised when the rail's Chat item or a notification route leaves Settings.</summary>
+    /// <summary>Raised when a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
+
+    /// <summary>Raised by Back to app; the host returns to the app destination Settings was opened from.</summary>
+    internal Action? ExitRequested { get; set; }
 
     /// <summary>
     /// Asks the host to drop unavailable Settings sections from history. The second argument is the
@@ -90,6 +93,14 @@ internal sealed partial class SettingsShellView : UserControl
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(SettingsSearchButton, searchLabel);
         ToolTipService.SetToolTip(SettingsSearchButton, searchLabel);
+        var backToApp = LocalizationHelper.GetString("SettingsShell_BackToApp");
+        var escapeKey = LocalizationHelper.GetString("SettingsShell_BackToAppKeyHint");
+        BackToAppLabel.Text = backToApp;
+        BackToAppKeyHintText.Text = escapeKey;
+        AutomationProperties.SetName(BackToAppButton, backToApp);
+        AutomationProperties.SetAcceleratorKey(BackToAppButton, escapeKey);
+        _backToAppToolTip = $"{backToApp} ({escapeKey})";
+        SettingsTitle.Text = LocalizationHelper.GetString("SettingsShell_Title");
         NavView.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdatePaneChrome());
         UpdatePaneChrome();
         RefreshDiagnosticsNavVisibility();
@@ -99,6 +110,7 @@ internal sealed partial class SettingsShellView : UserControl
     }
 
     private readonly FlyoutShowRequest _commandSearchShow;
+    private readonly string _backToAppToolTip;
 
     /// <summary>The shared account, Dashboard and bell footer; <c>WorkspaceWindow</c> applies its state.</summary>
     internal WorkspacePaneFooter Footer => PaneFooterControl;
@@ -368,7 +380,17 @@ internal sealed partial class SettingsShellView : UserControl
 
     private void UpdatePaneChrome()
     {
-        SettingsNavigationActions.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        var open = NavView.IsPaneOpen;
+        SettingsNavigationActions.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        // The compact rail keeps Back to app as an arrow aligned with the item icons, like NavigationView
+        // items, which show their label as a tooltip only while compact.
+        var headerText = open ? Visibility.Visible : Visibility.Collapsed;
+        BackToAppLabel.Visibility = headerText;
+        BackToAppKeyHint.Visibility = headerText;
+        SettingsTitle.Visibility = headerText;
+        BackToAppButton.Width = open ? double.NaN : 40;
+        BackToAppButton.HorizontalAlignment = open ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        ToolTipService.SetToolTip(BackToAppButton, open ? null : _backToAppToolTip);
         // Footer popups are anchored to buttons that move when the rail opens or closes.
         if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
             PaneFooterControl.HideFlyouts();
@@ -692,18 +714,11 @@ internal sealed partial class SettingsShellView : UserControl
 
     public System.Text.Json.JsonElement? LastAgentsData => AppModel?.AgentsList;
 
-    private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    private void OnBackToAppClick(object sender, RoutedEventArgs e)
     {
-        if (args.InvokedItemContainer is not NavigationViewItem { Tag: "chat" })
-            return;
-
-        // NavigationView finishes focusing its item after ItemInvoked returns.
-        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (!_disposed && _active)
-                    NavigateTo("chat");
-            }))
-            Logger.Warn("Could not queue the Chat navigation because Settings is shutting down.");
+        if (_disposed || !_active) return;
+        if (ExitRequested is { } exit) exit();
+        else NavigateTo("chat");
     }
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -892,7 +907,6 @@ internal sealed partial class SettingsShellView : UserControl
     // constructing or subscribing to the legacy WinRT accessibility API.
     private static readonly Dictionary<string, string> s_highContrastGlyphFallback = new()
     {
-        { "chat",        "\uE8BD" },
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
         { "instances",   "\uE977" },
