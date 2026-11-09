@@ -12,6 +12,30 @@ public sealed partial class GatewayFixtureUiTests
 {
     private static readonly TimeSpan UsageResizeSampleInterval = TimeSpan.FromMilliseconds(300);
 
+    private sealed record UsageDiagnosticBounds(bool IsEmpty, double? Left, double? Top, double? Width, double? Height);
+
+    // UIA can return Rect.Empty for an offscreen peer. Keep that fact without serializing infinities.
+    private static UsageDiagnosticBounds UsageBoundsForDiagnostic(System.Windows.Rect bounds)
+    {
+        static double? Finite(double value) => double.IsFinite(value) ? value : null;
+        return new(bounds.IsEmpty, Finite(bounds.Left), Finite(bounds.Top), Finite(bounds.Width), Finite(bounds.Height));
+    }
+
+    [Fact]
+    public void UsageScrollDiagnostics_SerializeEmptyAndMeasuredBoundsWithoutNonfiniteNumbers()
+    {
+        using var empty = JsonDocument.Parse(JsonSerializer.Serialize(UsageBoundsForDiagnostic(System.Windows.Rect.Empty)));
+        Assert.True(empty.RootElement.GetProperty("IsEmpty").GetBoolean());
+        foreach (var name in new[] { "Left", "Top", "Width", "Height" })
+            Assert.Equal(JsonValueKind.Null, empty.RootElement.GetProperty(name).ValueKind);
+        using var measured = JsonDocument.Parse(JsonSerializer.Serialize(UsageBoundsForDiagnostic(new(10, 20, 30, 40))));
+        Assert.False(measured.RootElement.GetProperty("IsEmpty").GetBoolean());
+        Assert.Equal(10, measured.RootElement.GetProperty("Left").GetDouble());
+        Assert.Equal(20, measured.RootElement.GetProperty("Top").GetDouble());
+        Assert.Equal(30, measured.RootElement.GetProperty("Width").GetDouble());
+        Assert.Equal(40, measured.RootElement.GetProperty("Height").GetDouble());
+    }
+
     private static System.Windows.Rect UsageRangeBounds(GatewayFixtureRun run)
     {
         // Layout-only Grids have no UIA peer. Measure the actual interactive controls.
@@ -133,6 +157,15 @@ public sealed partial class GatewayFixtureUiTests
                 }
                 async Task StableGeometry(bool collapsed, string stateName)
                 {
+                    System.Windows.Rect Bounds(string id)
+                    {
+                        var peer = FindById(run, id)
+                            ?? throw new InvalidOperationException($"Missing pinned Usage control peer: {id}.");
+                        var bounds = peer.Current.BoundingRectangle;
+                        Assert.True(!bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0,
+                            $"Pinned Usage control {id} has no measured bounds: {bounds}.");
+                        return bounds;
+                    }
                     string? previous = null;
                     var consecutive = 0;
                     var samples = new List<object>();
@@ -140,13 +173,11 @@ public sealed partial class GatewayFixtureUiTests
                     {
                         var geometry = new
                         {
-                            host = FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle,
-                            surface = FindById(run, "UsageSurface")!.Current.BoundingRectangle,
-                            viewport = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle,
-                            marker = FindById(run, "UsagePageMarker")!.Current.BoundingRectangle,
-                            button = FindById(run, collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane")!
-                                .Current.BoundingRectangle,
-                            feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!.Current.BoundingRectangle,
+                            titleBar = Bounds("WorkspaceTitleBar"),
+                            viewport = Bounds("UsagePageRoot"),
+                            marker = Bounds("UsagePageMarker"),
+                            button = Bounds(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane"),
+                            feedback = Bounds("WorkspaceEmbeddedOperationFeedback"),
                         };
                         var current = JsonSerializer.Serialize(geometry);
                         consecutive = previous == current ? consecutive + 1 : 0;
@@ -195,10 +226,9 @@ public sealed partial class GatewayFixtureUiTests
                     var content = FindById(run, "UsagePageRoot")!;
                     Assert.Equal(contentIdentity, content.GetRuntimeId());
                     var titleBottom = FindById(run, "WorkspaceTitleBar")!.Current.BoundingRectangle.Bottom;
-                    var host = FindById(run, "WorkspaceSettingsHost")!;
-                    var surface = FindById(run, "UsageSurface")!;
-                    Assert.InRange(Math.Abs((host.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
-                    Assert.InRange(Math.Abs((surface.Current.BoundingRectangle.Top - host.Current.BoundingRectangle.Top) / scale), 0, 2);
+                    // Grids have no UIA peer. The mounted ContentInset test measures the actual
+                    // surface against its host; this real-shell test measures the scrolling control
+                    // against native title chrome and keeps the 0/56-DIP integration contract.
                     Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale
                         - (collapsed ? 56 : 0)), 0, 2);
                     var button = FindById(run, buttonId)!;
@@ -249,8 +279,6 @@ public sealed partial class GatewayFixtureUiTests
                             "collapsed error recapture");
                         await StableGeometry(true, "collapsed-retriggered");
                         Assert.Equal(contentIdentity, FindById(run, "UsagePageRoot")!.GetRuntimeId());
-                        Assert.InRange(Math.Abs((host.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
-                        Assert.InRange(Math.Abs((surface.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                         Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale - 56), 0, 2);
                         feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                         Assert.False(feedback.Current.IsOffscreen);
@@ -263,8 +291,7 @@ public sealed partial class GatewayFixtureUiTests
                         JsonSerializer.Serialize(new
                         {
                             theme, collapsed, scale, expectedInsetDip = collapsed ? 56 : 0,
-                            host = host.Current.BoundingRectangle,
-                            surface = surface.Current.BoundingRectangle,
+                            titleBarBottom = titleBottom,
                             viewport = content.Current.BoundingRectangle,
                             button = button.Current.BoundingRectangle,
                             feedback = feedback.Current.BoundingRectangle,
@@ -304,13 +331,39 @@ public sealed partial class GatewayFixtureUiTests
             OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", FindById(run, "UsagePageMarker")!);
             var top = scrollElement.Current.BoundingRectangle;
             var previousTitle = FindById(run, "UsagePageMarker")!.Current.BoundingRectangle;
+            void RecordScrollObservation(string phase)
+            {
+                var title = FindById(run, "UsagePageMarker")
+                    ?? throw new InvalidOperationException("Missing Usage title during scroll proof.");
+                File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "hero-scroll-" + phase + ".json"),
+                    JsonSerializer.Serialize(new
+                    {
+                        utc = DateTimeOffset.UtcNow, phase, scrollPercent = scroll.Current.VerticalScrollPercent,
+                        viewport = UsageBoundsForDiagnostic(scrollElement.Current.BoundingRectangle),
+                        previousTitle = UsageBoundsForDiagnostic(previousTitle),
+                        title = new { bounds = UsageBoundsForDiagnostic(title.Current.BoundingRectangle), offscreen = title.Current.IsOffscreen, runtimeId = title.GetRuntimeId() },
+                        card = new { bounds = UsageBoundsForDiagnostic(hero.Current.BoundingRectangle), offscreen = hero.Current.IsOffscreen, runtimeId = hero.GetRuntimeId() },
+                    }, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            RecordScrollObservation("before");
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 45);
-            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 44 &&
-                (FindById(run, "UsagePageMarker")!.Current.IsOffscreen ||
-                    FindById(run, "UsagePageMarker")!.Current.BoundingRectangle.Top < previousTitle.Top - 100),
+            await WaitUiAsync(run, () =>
+                {
+                    RecordScrollObservation("after");
+                    var title = FindById(run, "UsagePageMarker")!;
+                    var bounds = title.Current.BoundingRectangle;
+                    return scroll.Current.VerticalScrollPercent >= 44 &&
+                        (title.Current.IsOffscreen || (!bounds.IsEmpty && bounds.Height > 0 &&
+                            bounds.Top < top.Top && bounds.Top < previousTitle.Top - 100));
+                },
                 "ordinary Usage header scrolled away");
             Assert.Equal(top, scrollElement.Current.BoundingRectangle);
-            Assert.True(hero.Current.IsOffscreen || hero.Current.BoundingRectangle.Top < top.Top);
+            // Border peers can expose clipped bounds. The mounted HeroContent test asserts the
+            // actual card transform; here retain visible title movement and the real-shell capture.
+            var scrolledTitle = FindById(run, "UsagePageMarker")!;
+            Assert.True(scrolledTitle.Current.IsOffscreen ||
+                (!scrolledTitle.Current.BoundingRectangle.IsEmpty && scrolledTitle.Current.BoundingRectangle.Height > 0 &&
+                    scrolledTitle.Current.BoundingRectangle.Top < top.Top));
             OwnedWindowCapture.Save(run, window, "Usage-Light-hero-scrolled.png");
             File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "viewport-scroll-proof.json"), JsonSerializer.Serialize(new
             {
@@ -687,7 +740,7 @@ public sealed partial class GatewayFixtureUiTests
                 if (collapsed) Invoke(FindById(run, "SettingsTogglePane")!);
             }
             Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
-        }, scenario: GatewayScenario.CreateUsageAnalytics(UsageAnalyticsMode.Released));
+        }, scenario: GatewayScenario.CreateUsageAnalytics(UsageAnalyticsMode.Released, completeDailyCoverage: true));
     }
 
     private static System.Drawing.Rectangle UsageWindowBounds(IntPtr handle)

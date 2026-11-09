@@ -79,6 +79,9 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Equal(initialInset, scroll.Margin.Top);
                 contentTop = Get<FrameworkElement>(host, "UsageContentColumn").TransformToVisual(host).TransformPoint(new()).Y;
                 surfaceTop = surface.TransformToVisual(host).TransformPoint(new()).Y;
+                Assert.InRange(Math.Abs(surfaceTop), 0, 0.1);
+                Assert.InRange(Math.Abs(surface.ActualWidth - host.ActualWidth), 0, 0.1);
+                Assert.InRange(Math.Abs(scroll.TransformToVisual(host).TransformPoint(new()).Y - initialInset), 0, 1);
                 report = Assert.IsType<SessionsUsageReport>(gateway.Controller.State.Report);
                 viewport.UpdateTopInset(changedInset);
             });
@@ -93,6 +96,8 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Same(report, gateway.Controller.State.Report);
                 Assert.Same(surface, Get<Grid>(host, "UsageSurface"));
                 Assert.Equal(surfaceTop, surface.TransformToVisual(host).TransformPoint(new()).Y);
+                Assert.InRange(Math.Abs(surface.ActualWidth - host.ActualWidth), 0, 0.1);
+                Assert.InRange(Math.Abs(scroll.TransformToVisual(host).TransformPoint(new()).Y - changedInset), 0, 1);
                 Assert.Null(Find<FrameworkElement>(host, "UsageMastBackdrop"));
                 Assert.Equal(1000, viewport.Width);
                 viewport.UpdateTopInset(initialInset);
@@ -669,6 +674,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.InRange(Math.Abs(surface.ActualWidth - host.ActualWidth), 0, 0.1);
                 Assert.True(content.TransformToVisual(host).TransformPoint(new()).Y < -199);
                 Assert.True(Get<FrameworkElement>(host, "UsageHeader").TransformToVisual(host).TransformPoint(new()).Y < 0);
+                Assert.True(Get<Border>(host, "UsageMast").TransformToVisual(host).TransformPoint(new()).Y < 0);
             });
         }, theme: ElementTheme.Light, pageWidth: width);
     }
@@ -1404,6 +1410,135 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         AssertSeparatedChildren(grid);
     }
 
+    [Theory]
+    [InlineData("complete", true)]
+    [InlineData("complete-forty", true)]
+    [InlineData("partial", false)]
+    [InlineData("stale", false)]
+    [InlineData("pending", false)]
+    public async Task SessionDetails_ExactLookingTotalsDoNotCreateAShareForAnIncompleteRange(string status, bool hasShare)
+    {
+        var report = Report(serverOverview: false);
+        var totals = new UsageTotals { TotalCost = 5, TotalTokens = 100, Report = UsageReportState.Available };
+        var row = report.Sessions[0] with
+        {
+            Usage = new() { Totals = totals with { TotalCost = status == "complete-forty" ? 2 : 5 } },
+        };
+        report = report with { Totals = totals, Sessions = [row], Aggregates = report.Aggregates with { SessionCount = 1 } };
+        if (status == "partial") report = report with { Partial = new("time-budget", "Incomplete range") };
+        if (status == "stale") report = report with { CacheStatus = new("stale", 0, 0, null) };
+        if (status == "pending") report = report with { CacheStatus = new("fresh", 1, 0, null) };
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageSession_" + row.Key);
+            await ui.RunOnUIAsync(() => ExpandSession(host, row.Key));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                gateway.Controller.State.Detail?.Row.Phase == UsageLoadPhase.Loaded &&
+                Find<TextBlock>(host, "UsageDetailCostValue") is not null &&
+                (Find<TextBlock>(host, "UsageDetailCostShare") is not null) == hasShare,
+                "Session cost share reflects whole-range completeness"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var share = Find<TextBlock>(host, "UsageDetailCostShare");
+                if (hasShare) Assert.Contains(status == "complete-forty" ? "40" : "100", share!.Text);
+                else Assert.Null(share);
+                Assert.NotEqual(UsageUi.Dash, Get<TextBlock>(host, "UsageDetailCostValue").Text);
+            });
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionDetails_RendersLoadedSummaryWhilePendingAndAfterFailureButPrefersCompletedDetail(bool fails)
+    {
+        var report = Report(serverOverview: false);
+        var row = report.Sessions[0] with { Model = "list-model", ModelOverride = null };
+        report = report with { Sessions = [row] };
+        await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageSession_" + row.Key);
+            var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await ui.RunOnUIAsync(() =>
+            {
+                gateway.Pending = pending;
+                ExpandSession(host, row.Key);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                gateway.Controller.State.Detail?.Row.IsLoading == true &&
+                Find<TextBlock>(host, "UsageDetailModelValue")?.Text == "list-model",
+                "Loaded model remains visible while the selected detail read is pending"));
+            await ui.RunOnUIAsync(() =>
+            {
+                gateway.Pending = null;
+                pending.SetResult(fails ? UsageReadResult<SessionsUsageReport>.Failed("Synthetic detail failure")
+                    : UsageReadResult<SessionsUsageReport>.Ok(report with
+                    {
+                        Sessions = [row with { Model = "detail-model" }],
+                    }));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                gateway.Controller.State.Detail?.Row.Phase == (fails ? UsageLoadPhase.Failed : UsageLoadPhase.Loaded) &&
+                Find<TextBlock>(host, "UsageDetailModelValue")?.Text == (fails ? "list-model" : "detail-model"),
+                "Completed detail wins, while failed detail retains the list summary"));
+            await ui.RunOnUIAsync(() => Assert.Equal(fails, Find<InfoBar>(host, "UsageDetailRowError") is not null));
+        });
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("error")]
+    [InlineData("disconnected")]
+    public async Task AllowanceBadge_InvalidationRetainsDisplayOnlyWhileItsBindingRemainsAvailable(string invalidation)
+    {
+        var provider = new ProviderUsageSnapshot
+        {
+            Provider = "anthropic", DisplayName = "Claude", Windows = [new("Reported week", null, 90, null)],
+        };
+        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageNearLimit_anthropic");
+            var changed = provider;
+            await ui.RunOnUIAsync(() =>
+            {
+                changed = invalidation switch
+                {
+                    "expired" => provider with { Windows = [new("Reported week", null, 90, DateTimeOffset.Now.AddDays(-1))] },
+                    "error" => provider with { Error = "Synthetic provider error" },
+                    _ => provider,
+                };
+                gateway.Providers = [changed];
+                if (invalidation == "disconnected") gateway.Connected = false;
+                gateway.Controller.Refresh();
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                (invalidation == "disconnected" ? gateway.Controller.State.Availability == UsageAvailability.Disconnected &&
+                      gateway.Controller.State.Providers.Value is null && Find<Border>(host, "UsageProvider_anthropic") is null
+                    : gateway.Controller.State.Providers.Phase == UsageLoadPhase.Loaded &&
+                      ReferenceEquals(gateway.Controller.State.Providers.Value?.Providers.Single(), changed) &&
+                      Find<Border>(host, "UsageProvider_anthropic") is not null) &&
+                Find<Border>(host, "UsageNearLimit_anthropic") is null &&
+                Find<Button>(host, "UsageInspectProvider_anthropic") is null,
+                "Invalid provider state hides attention; an unavailable authenticated binding also drops its snapshot"));
+            await ui.RunOnUIAsync(() =>
+            {
+                if (invalidation == "disconnected")
+                {
+                    Assert.Null(gateway.Controller.State.Providers.Value);
+                    Assert.Null(Find<Border>(host, "UsageProvider_anthropic"));
+                    Assert.Null(Find<Border>(host, "UsageNearLimit_anthropic"));
+                    Assert.Null(Find<Button>(host, "UsageInspectProvider_anthropic"));
+                    return;
+                }
+                var card = Get<Border>(host, "UsageProvider_anthropic");
+                Assert.Contains(FindDescendants<TextBlock>(card), text => text.Text.Contains("Reported week") && text.Text.Contains("90"));
+                Assert.DoesNotContain(LocalizationHelper.GetString("Usage_NearLimit"), AutomationProperties.GetName(card));
+                if (invalidation == "error")
+                    Assert.Contains(FindDescendants<TextBlock>(card), text => text.Text == "Synthetic provider error");
+            });
+        }, configure: gateway => gateway.Providers = [provider]);
+    }
+
     [Fact]
     public async Task SessionDetails_OpenNativeChatForThatSessionAndTheUsageRouteThroughAppCommands()
     {
@@ -1993,7 +2128,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 controller = new UsagePageController(() => client, () => today ?? DateOnly.FromDateTime(DateTime.Now),
                     action => dispatcher.TryEnqueue(() => action()));
                 gateway.Controller = controller;
-                gateway.ExportWorkflow = new UsageExportWorkflow(controller, (name, _) =>
+                gateway.ExportWorkflow = new UsageExportWorkflow(controller, (name, _, _) =>
                 {
                     if (gateway.SaveFails) throw new UnauthorizedAccessException("Synthetic save permission failure");
                     gateway.SavedNames.Add(name);

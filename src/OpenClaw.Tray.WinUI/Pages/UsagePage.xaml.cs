@@ -63,7 +63,7 @@ public sealed partial class UsagePage : Page, ISettingsPageContentInset
         var (openWebUsage, openConversation) = UsageHandoffs.For(
             (IAppCommands)CurrentApp, sessionKey => CurrentApp.PendingChatSessionKey = sessionKey);
         var controller = _controller;
-        _exportWorkflow = new UsageExportWorkflow(controller, (name, content) => SaveCsvAsync(controller, name, content),
+        _exportWorkflow = new UsageExportWorkflow(controller, SaveCsvAsync,
             () => ReferenceEquals(_controller, controller), Logger.Warn);
         var props = new UsagePageProps(_controller, _viewport, OpenConnection, openWebUsage, openConversation, _exportWorkflow.ExportAsync,
             () => ((IAppCommands)CurrentApp).Navigate(UsageHandoffs.ChatPageTag), OpenExportFolderAsync);
@@ -125,7 +125,7 @@ public sealed partial class UsagePage : Page, ISettingsPageContentInset
 
     private void OpenConnection() => ((IAppCommands)CurrentApp).Navigate("connection");
 
-    private async Task<UsageSavedExport?> SaveCsvAsync(UsagePageController controller, string name, string content)
+    private async Task<UsageSavedExport?> SaveCsvAsync(string name, string content, Func<bool> isCurrent)
     {
         var window = CurrentApp.ActiveHubWindow;
         if (window is null) throw new InvalidOperationException("The Usage save picker requires an active window.");
@@ -136,10 +136,13 @@ public sealed partial class UsagePage : Page, ISettingsPageContentInset
         };
         picker.FileTypeChoices.Add("CSV", new List<string> { ".csv" });
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
-        var file = await picker.PickSaveFileAsync();
-        if (file is null || !ReferenceEquals(_controller, controller)) return null;
-        await FileIO.WriteTextAsync(file, content);
-        return new(file.Name, System.IO.Path.GetDirectoryName(file.Path));
+        return await UsageExportWorkflow.SaveAfterSelectionAsync<StorageFile>(
+            async () => await picker.PickSaveFileAsync(),
+            async file =>
+            {
+                await FileIO.WriteTextAsync(file, content);
+                return new(file.Name, System.IO.Path.GetDirectoryName(file.Path));
+            }, isCurrent);
     }
 
     private async Task OpenExportFolderAsync(string path)

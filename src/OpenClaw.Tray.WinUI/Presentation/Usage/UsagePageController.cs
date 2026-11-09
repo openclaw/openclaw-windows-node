@@ -36,6 +36,8 @@ internal sealed record UsagePageState
     public bool AutoRefreshing { get; init; }
     public bool AutoRefreshPaused { get; init; }
     public UsageRead<ProviderUsageSummary> Providers { get; init; } = UsageRead<ProviderUsageSummary>.Idle;
+    /// <summary>Invalidates time-dependent provider presentation even when the retained figures are unchanged.</summary>
+    public long ProviderFreshnessRevision { get; init; }
     public UsageDetailState? Detail { get; init; }
     public bool Exporting { get; init; }
     public bool ExportInteraction { get; init; }
@@ -585,6 +587,7 @@ internal sealed class UsagePageController : IDisposable
         {
             Providers = ReferenceEquals(providers.Client, _stateClient)
                 ? providers.Read : UsageRead<ProviderUsageSummary>.Idle,
+            ProviderFreshnessRevision = s.ProviderFreshnessRevision + 1,
         });
         if (_providerRefreshPending) RefreshBoundProviders(_client());
     }

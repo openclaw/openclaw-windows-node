@@ -102,20 +102,38 @@ public sealed class UsageInsightsTests
     [InlineData(75.01, true)]
     [InlineData(100, true)]
     public void NearLimit_UsesInclusiveReportedAllowancePercentage(double percent, bool expected) =>
-        Assert.Equal(expected, UsageInsights.NearLimit(new()
+        Assert.Equal(expected, UsageProviderAttention.HighestWindow(new()
         {
             Windows = [new("Week", null, percent, null)],
-        }));
+        }, DateTimeOffset.UnixEpoch) is not null);
 
     [Theory]
     [InlineData(null)]
     [InlineData(0d)]
     [InlineData(100d)]
     public void NearLimit_DoesNotInventAllowanceFromMissingZeroOrReportedBillingLimit(double? limit) =>
-        Assert.False(UsageInsights.NearLimit(new()
+        Assert.Null(UsageProviderAttention.HighestWindow(new()
         {
             Billing = [new("budget", "Budget", 90, limit, "USD", null)],
-        }));
+        }, DateTimeOffset.UnixEpoch));
+
+    [Fact]
+    public void ProviderWarning_UsesTheLiveWindowRatherThanTheExpiredMaximumAndRejectsErrors()
+    {
+        var now = new DateTimeOffset(2026, 11, 9, 12, 0, 0, TimeSpan.Zero);
+        var provider = new ProviderUsageSnapshot
+        {
+            Provider = "mixed",
+            Windows = [new("Expired", null, 99, now), new("Live", null, 80, now.AddHours(1))],
+        };
+        var warning = UsageProviderAttention.HighestWindow(provider, now);
+        Assert.NotNull(warning);
+        Assert.Equal("Live", warning.Label);
+        Assert.Equal(80, warning.UsedPercent);
+        Assert.Null(UsageProviderAttention.HighestWindow(provider with { Error = "unavailable" }, now));
+        Assert.Null(UsageProviderAttention.HighestWindow(provider, now.AddHours(1)));
+        Assert.Equal(2, provider.Windows.Count); // Historical display facts are not pruned.
+    }
 
     [Theory]
     [InlineData("agent:main:cron:job:run:42", true)]

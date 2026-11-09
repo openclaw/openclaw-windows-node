@@ -6,9 +6,6 @@ namespace OpenClawTray.Presentation.Usage;
 /// <summary>Derived presentation facts, never inferred billing limits or exhaustive loaded-row analysis.</summary>
 internal static class UsageInsights
 {
-    public static bool NearLimit(ProviderUsageSnapshot provider) =>
-        provider.Windows.Any(window => window.UsedPercent >= 75);
-
     public static (string? Agent, double? CostShare, string? Model) HeroContributors(UsageDashboard dashboard)
     {
         var agent = dashboard.Contributors.GetValueOrDefault(UsageContributorKind.Agent)?
@@ -50,11 +47,11 @@ internal static class UsageInsights
         return visible;
     }
 
-    public static IReadOnlyList<ProviderUsageSnapshot> Attention(UsagePageState state) =>
+    public static IReadOnlyList<ProviderUsageSnapshot> Attention(UsagePageState state, DateTimeOffset? now = null) =>
         state.Availability != UsageAvailability.Connected || state.Providers.Phase != UsageLoadPhase.Loaded
             || state.Providers.Value is not { Refreshing: false } providers
                 ? []
-                : UsageProviderAttention.Select(providers, DateTimeOffset.Now);
+                : UsageProviderAttention.Select(providers, now ?? DateTimeOffset.Now);
 
     public static IReadOnlyList<UsageSessionRowView> LoadedSessions(
         UsageSessionsView sessions, UsageContributorKind kind, UsageContributor contributor) =>

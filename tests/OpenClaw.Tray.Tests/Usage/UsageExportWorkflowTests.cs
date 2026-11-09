@@ -1,5 +1,6 @@
 using System.Reflection;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClaw.Shared.Usage;
 using OpenClawTray.Presentation.Usage;
 
@@ -27,6 +28,65 @@ public sealed class UsageExportWorkflowTests
         return (new(() => client, () => Today, action => action(), delay), (UsagePageControllerTests.UsageGateway)client);
     }
 
+    [Theory]
+    [InlineData("unchanged", true)]
+    [InlineData("gateway", false)]
+    [InlineData("page", false)]
+    [InlineData("cancel", false)]
+    public async Task PendingPicker_RechecksOriginBeforeWritingTheSelectedFile(string change, bool writes)
+    {
+        var first = DispatchProxy.Create<IOperatorGatewayClient, UsagePageControllerTests.UsageGateway>();
+        var second = DispatchProxy.Create<IOperatorGatewayClient, UsagePageControllerTests.UsageGateway>();
+        ((UsagePageControllerTests.UsageGateway)first).Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report()));
+        IOperatorGatewayClient activeClient = first;
+        using var controller = new UsagePageController(() => activeClient, () => Today, action => action());
+        controller.Activate();
+        using var temp = new TempDirectory();
+        var target = temp.Combine("selected.csv");
+        await File.WriteAllTextAsync(target, "existing file must survive a stale picker");
+        var selected = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pickerOpened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pageCurrent = true;
+        var warnings = new List<string>();
+        var workflow = new UsageExportWorkflow(controller, (name, content, current) =>
+            UsageExportWorkflow.SaveAfterSelectionAsync<string>(() =>
+            {
+                pickerOpened.SetResult();
+                return selected.Task;
+            }, async path =>
+            {
+                await File.WriteAllTextAsync(path, content);
+                return new UsageSavedExport(name, temp.Path);
+            }, current), () => pageCurrent, warnings.Add);
+
+        var export = workflow.ExportAsync(UsageExportFormat.DailyCsv);
+        Assert.True(pickerOpened.Task.IsCompleted, "The synchronous fixture read must reach the pending picker.");
+        Assert.False(export.IsCompleted);
+        if (change == "gateway")
+        {
+            activeClient = second;
+            controller.Activate(); // Replacement retains this controller, as the production page does.
+        }
+        if (change == "page") pageCurrent = false;
+        selected.SetResult(change == "cancel" ? null : target);
+        await export;
+
+        var bytes = await File.ReadAllTextAsync(target);
+        if (writes)
+        {
+            Assert.StartsWith("date,inputTokens", bytes);
+            Assert.Contains("2026-10-30", bytes);
+            Assert.NotNull(controller.State.ExportNotice?.FileName);
+        }
+        else
+        {
+            Assert.Equal("existing file must survive a stale picker", bytes);
+            Assert.Null(controller.State.ExportNotice);
+        }
+        Assert.False(controller.State.ExportInteraction);
+        Assert.Empty(warnings);
+    }
+
     [Fact]
     public async Task BlockedSessions_OffersDailyTotalsUsingTheOriginalRangeAndReportsTheSavedFile()
     {
@@ -35,7 +95,7 @@ public sealed class UsageExportWorkflowTests
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report(1500)));
         var saved = new List<string>();
         var warnings = new List<string>();
-        var workflow = new UsageExportWorkflow(controller, (name, content) =>
+        var workflow = new UsageExportWorkflow(controller, (name, content, _) =>
         {
             Assert.StartsWith("date,inputTokens", content);
             saved.Add(name);
@@ -67,7 +127,7 @@ public sealed class UsageExportWorkflowTests
         }));
         var saves = 0;
         var warnings = new List<string>();
-        var workflow = new UsageExportWorkflow(controller, (_, _) =>
+        var workflow = new UsageExportWorkflow(controller, (_, _, _) =>
         {
             saves++;
             return Task.FromResult<UsageSavedExport?>(null);
@@ -89,7 +149,7 @@ public sealed class UsageExportWorkflowTests
         using var lifetime = controller;
         gateway.Usage = _ => Task.FromResult(UsageReadResult<SessionsUsageReport>.Ok(Report()));
         var warnings = new List<string>();
-        var workflow = new UsageExportWorkflow(controller, (_, _) => cancelled
+        var workflow = new UsageExportWorkflow(controller, (_, _, _) => cancelled
             ? Task.FromResult<UsageSavedExport?>(null)
             : throw new UnauthorizedAccessException("synthetic private path"), () => true, warnings.Add);
         await workflow.ExportAsync(UsageExportFormat.DailyCsv);
@@ -117,7 +177,7 @@ public sealed class UsageExportWorkflowTests
         }));
         var saved = false;
         var warnings = new List<string>();
-        var workflow = new UsageExportWorkflow(controller, (_, _) =>
+        var workflow = new UsageExportWorkflow(controller, (_, _, _) =>
         {
             saved = true;
             return Task.FromResult<UsageSavedExport?>(null);
@@ -138,7 +198,7 @@ public sealed class UsageExportWorkflowTests
         var current = true;
         var saved = false;
         var warnings = new List<string>();
-        var workflow = new UsageExportWorkflow(controller, (_, _) =>
+        var workflow = new UsageExportWorkflow(controller, (_, _, _) =>
         {
             saved = true;
             return Task.FromResult<UsageSavedExport?>(null);
@@ -165,7 +225,7 @@ public sealed class UsageExportWorkflowTests
         var saves = 0;
         var current = true;
         var warnings = new List<string>();
-        var workflow = new UsageExportWorkflow(controller, (_, _) =>
+        var workflow = new UsageExportWorkflow(controller, (_, _, _) =>
         {
             saves++;
             return pending.Task;

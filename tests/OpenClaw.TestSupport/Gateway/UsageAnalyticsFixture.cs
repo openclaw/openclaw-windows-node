@@ -46,10 +46,17 @@ public sealed class UsageAnalyticsFixture
     private readonly object _sync = new();
     private UsageAnalyticsMode _mode;
 
-    public UsageAnalyticsFixture(bool richProviders = false) => RichProviders = richProviders;
+    public UsageAnalyticsFixture(bool richProviders = false, bool completeDailyCoverage = false)
+    {
+        RichProviders = richProviders;
+        CompleteDailyCoverage = completeDailyCoverage;
+    }
 
     /// <summary>When true, <c>usage.status</c> returns synthetic provider plans and quotas.</summary>
     public bool RichProviders { get; }
+
+    /// <summary>Layout/ink proof input: the daily-summary session has real synthetic activity on every requested date.</summary>
+    public bool CompleteDailyCoverage { get; }
 
     /// <summary>Parameters <see cref="UsageAnalyticsMode.Released"/> accepts. Narrow it to model an older schema.</summary>
     public IReadOnlyCollection<string> ReleasedParameters { get; set; } = ReleasedSessionsUsageParameters;
@@ -146,7 +153,7 @@ public sealed class UsageAnalyticsFixture
         return h;
     }
 
-    private static List<Row> Population(DateOnly start, DateOnly end, UsageAnalyticsMode mode)
+    private List<Row> Population(DateOnly start, DateOnly end, UsageAnalyticsMode mode)
     {
         if (mode == UsageAnalyticsMode.Empty)
             return [];
@@ -164,6 +171,7 @@ public sealed class UsageAnalyticsFixture
                 // Weekends are quieter except for cron jobs.
                 var weekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
                 var chance = weekend && spec.Channel != "cron" ? spec.ActivityPercent / 3 : spec.ActivityPercent;
+                if (CompleteDailyCoverage && spec.Key == "agent:main:cron:daily-summary") chance = 100;
                 if (h % 100 >= (uint)chance) continue;
                 var scale = 0.45 + (h >> 8) % 1000 / 1000.0;
                 var tokens = (long)(52_000 * spec.Weight * scale);

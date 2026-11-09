@@ -7,7 +7,7 @@ internal sealed record UsageExportBlock(UsageFilters Filters, UsageExportCoverag
 /// <summary>Coordinates the guarded read, alternate export, system save picker and page-local result notification.</summary>
 internal sealed class UsageExportWorkflow(
     UsagePageController controller,
-    Func<string, string, Task<UsageSavedExport?>> save,
+    Func<string, string, Func<bool>, Task<UsageSavedExport?>> save,
     Func<bool> isCurrent,
     Action<string> warn)
 {
@@ -39,7 +39,7 @@ internal sealed class UsageExportWorkflow(
                 controller.SetExportNotice(new(null, error ?? UsageExportError.Failed));
                 return;
             }
-            var saved = await save(UsageExport.FileName(format, filters), content);
+            var saved = await save(UsageExport.FileName(format, filters), content, Current);
             if (Current() && saved is not null)
                 controller.SetExportNotice(new(saved.Name, null, saved.Folder));
         }
@@ -54,5 +54,15 @@ internal sealed class UsageExportWorkflow(
             controller.SetExportInteraction(false);
             _running = false;
         }
+    }
+
+    /// <summary>Fences the write after the asynchronous native selection, not merely its result notification.</summary>
+    internal static async Task<UsageSavedExport?> SaveAfterSelectionAsync<T>(
+        Func<Task<T?>> select, Func<T, Task<UsageSavedExport>> write, Func<bool> isCurrent) where T : class
+    {
+        var target = await select();
+        if (target is null || !isCurrent()) return null;
+        // The platform callback starts the write synchronously, without another asynchronous boundary.
+        return await write(target);
     }
 }

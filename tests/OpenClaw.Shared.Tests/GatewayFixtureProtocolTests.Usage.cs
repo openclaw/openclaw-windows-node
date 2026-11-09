@@ -14,6 +14,29 @@ public sealed partial class GatewayFixtureProtocolTests
         OverviewProjection = overview,
     };
 
+    [Theory]
+    [InlineData(false, 6)]
+    [InlineData(true, 7)]
+    public async Task RealClient_LayoutProofCoverageIsExplicitAndDefaultFixtureKeepsMissingDates(bool complete, int expectedDates)
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateUsageAnalytics(UsageAnalyticsMode.Released, completeDailyCoverage: complete);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var result = await connected.Client.GetSessionsUsageAsync(new()
+        {
+            StartDate = "2026-11-03", EndDate = "2026-11-09", TimeZone = UsageTimeZoneMode.Utc,
+        });
+        Assert.Equal(UsageReadStatus.Ok, result.Status);
+        var days = result.Value!.Aggregates.CostDaily;
+        Assert.Equal(expectedDates, days.Count);
+        Assert.Equal(complete, days.Any(day => day.Date == "2026-11-08"));
+        Assert.All(days, day => Assert.True(day.Totals.TotalTokens > 0));
+        if (complete)
+            Assert.Equal(new[] { "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09" },
+                days.Select(day => day.Date));
+    }
+
     [Fact]
     public async Task RealClient_UsageReadsReturnTypedOverviewSessionDetailAndProviderPlans()
     {

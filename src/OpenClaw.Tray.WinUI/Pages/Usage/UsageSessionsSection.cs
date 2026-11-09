@@ -32,10 +32,8 @@ internal static class UsageSessionsSection
         var cost = totals is null || !totals.HasValue("totalCost") ? Dash
             : totals.TotalCost == 0 && totals.MissingCostEntries > 0 ? S("Usage_Overview_Unpriced")
             : AnalysisCost(totals.TotalCost, totals.IsLowerBound || totals.MissingCostEntries > 0);
-        var share = totals is not null && totals.HasValue("totalCost")
-            && state.Report?.Totals is { TotalCost: > 0 } range && range.HasValue("totalCost")
-            && !range.IsLowerBound && !totals.IsLowerBound && range.MissingCostEntries == 0 && totals.MissingCostEntries == 0
-                ? F("Usage_Detail_ShareFormat", UsageFormat.Percent(totals.TotalCost / range.TotalCost, Culture, 0), UsageHeader.RangeWords(state.Filters))
+        var share = UsageSessionDetailProjection.CostShare(state.Report, row) is { } costShare
+                ? F("Usage_Detail_ShareFormat", UsageFormat.Percent(costShare, Culture, 0), UsageHeader.RangeWords(state.Filters))
                 : null;
         var padding = ThemeResource.Thickness("ExpanderContentPadding");
         var inner = layout.ContentWidth - padding.Left - padding.Right;
@@ -57,7 +55,7 @@ internal static class UsageSessionsSection
                 TextBlock(S("Usage_Summary_EstimatedCost")).FontWeight(FontWeights.SemiBold),
                 TextBlock(cost).FontSize(28).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
                     .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(cost).AutomationId("UsageDetailCostValue" + suffix),
-                share is null ? null : Note(share),
+                share is null ? null : Note(share).AutomationId("UsageDetailCostShare" + suffix),
                 UsageInsights.IsAutomation(detail.Key) ? Note(S("Usage_FromAutomation")) : null,
                 totals?.MissingCostEntries > 0 ? Note(FN("Usage_Details_MissingCostFormat", totals.MissingCostEntries)) : null),
             VStack(8,

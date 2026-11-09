@@ -234,12 +234,70 @@ public sealed class UsageProviderReadSourceTests
         source.Refresh(client);
         await dispatcher.RunNextAsync();
         Assert.Equal(1, source.State.AttentionCount);
+        UsagePageState PageState() => new()
+        {
+            Filters = UsageFilters.Default(new(2026, 11, 6)),
+            Availability = UsageAvailability.Connected,
+            Providers = source.State.Read,
+        };
+        Assert.Single(UsageInsights.Attention(PageState(), now));
         now = Now.AddHours(1);
         Assert.Null(source.State.AttentionCount);
         Assert.NotNull(source.State.Read.Value);
+        Assert.Empty(UsageInsights.Attention(PageState(), now));
         timer.SetResult();
         await dispatcher.RunNextAsync();
         Assert.Null(source.State.AttentionCount);
+        Assert.Empty(UsageInsights.Attention(PageState(), now));
+        Assert.Equal(90, Assert.Single(source.State.Read.Value!.Providers.Single().Windows).UsedPercent);
+        Assert.Single(gateway.Calls, call => call == "GetProviderUsageAsync");
+    }
+
+    [Fact]
+    public async Task EveryRetainedWindowExpiryNotifiesWithoutReReadingOrRestoringTheExactCount()
+    {
+        var (client, gateway) = Client();
+        var dispatcher = new Dispatcher();
+        var now = Now;
+        var timers = new List<TaskCompletionSource>();
+        using var source = new UsageProviderReadSource(dispatcher.Post, () => now, (_, _) =>
+        {
+            var timer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            timers.Add(timer);
+            return timer.Task;
+        });
+        source.SetConnection(client, 1);
+        gateway.Providers = () => Task.FromResult(Success(new ProviderUsageSnapshot
+        {
+            Provider = "two-windows", Windows =
+                [new("First", null, 90, Now.AddHours(1)), new("Second", null, 80, Now.AddHours(2))],
+        }));
+        using var controller = new UsagePageController(() => client, () => new(2026, 11, 6),
+            dispatcher.Post, providers: source);
+        controller.Activate();
+        await dispatcher.RunNextAsync(); // Overview completion.
+        await dispatcher.RunNextAsync(); // Provider completion.
+        var before = controller.State;
+        Assert.Equal(1, source.State.AttentionCount);
+        Assert.Single(timers);
+        now = Now.AddHours(1);
+        timers[0].SetResult();
+        await dispatcher.RunNextAsync();
+        Assert.Null(source.State.AttentionCount);
+        Assert.NotEqual(before, controller.State);
+        Assert.Same(before.Providers.Value, controller.State.Providers.Value);
+        before = controller.State;
+        Assert.Equal("Second", UsageProviderAttention.HighestWindow(source.State.Read.Value!.Providers.Single(), now)!.Label);
+        Assert.Equal(2, timers.Count);
+        now = Now.AddHours(2);
+        timers[1].SetResult();
+        await dispatcher.RunNextAsync();
+        Assert.Null(source.State.AttentionCount);
+        Assert.NotEqual(before, controller.State);
+        Assert.Same(before.Providers.Value, controller.State.Providers.Value);
+        Assert.Empty(UsageInsights.Attention(controller.State, now));
+        Assert.Equal(2, source.State.Read.Value!.Providers.Single().Windows.Count);
+        Assert.Equal(2, timers.Count);
         Assert.Single(gateway.Calls, call => call == "GetProviderUsageAsync");
     }
 

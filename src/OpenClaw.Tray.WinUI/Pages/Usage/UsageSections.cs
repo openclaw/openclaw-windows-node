@@ -172,9 +172,13 @@ internal sealed class UsageProvidersSection : Component<UsageProvidersProps>
     {
         var (all, setAll) = UseState(false);
         var providers = Props.State.Providers;
+        var now = DateTimeOffset.Now;
+        var attention = UsageInsights.Attention(Props.State, now).ToHashSet();
         var items = providers.Value?.Providers.OrderByDescending(provider => provider.Windows.Count > 0
                 ? provider.Windows.Max(window => window.UsedPercent) : -1).ToList() ?? [];
-        var rows = items.Take(all ? items.Count : 4).Select(provider => Provider(provider).WithKey(provider.Provider)).ToList();
+        var rows = items.Take(all ? items.Count : 4).Select(provider => Provider(provider,
+            attention.Contains(provider) ? UsageProviderAttention.HighestWindow(provider, now) : null)
+            .WithKey(provider.Provider)).ToList();
         if (providers.Phase == UsageLoadPhase.Failed)
             rows.Insert(0, Note(S("Usage_Providers_Unavailable")).WithKey("failed"));
         if (Props.State.Availability == UsageAvailability.Disconnected && providers.Value?.UpdatedAt is { } at)
@@ -189,10 +193,10 @@ internal sealed class UsageProvidersSection : Component<UsageProvidersProps>
             VStack(PageResponsiveLayout.GapInner, rows.ToArray()), "UsageProviders");
     }
 
-    private Element Provider(ProviderUsageSnapshot provider)
+    private Element Provider(ProviderUsageSnapshot provider, ProviderUsageWindow? attentionWindow)
     {
         var windows = provider.Windows.OrderByDescending(window => window.UsedPercent).ToList();
-        var highest = windows.FirstOrDefault();
+        var highest = attentionWindow ?? windows.FirstOrDefault();
         var percent = highest is null ? Dash : UsageFormat.Percent(highest.UsedPercent / 100, Culture, 0);
         var accessible = new List<string> { provider.DisplayName };
         var info = new List<Element>
@@ -232,7 +236,7 @@ internal sealed class UsageProvidersSection : Component<UsageProvidersProps>
             info.Add(TextBlock(error).Foreground(Critical).TextWrapping(TextWrapping.WrapWholeWords).WithKey("error"));
         }
         else if (windows.Count == 0 && provider.Billing.Count == 0) info.Add(Note(S("Usage_Providers_NoQuota")).WithKey("noquota"));
-        if (UsageInsights.NearLimit(provider))
+        if (attentionWindow is not null)
         {
             var reason = F("Usage_AllowanceWarningFormat", provider.DisplayName, percent);
             accessible.Add(S("Usage_NearLimit") + ". " + reason);
@@ -259,7 +263,7 @@ internal sealed class UsageProvidersSection : Component<UsageProvidersProps>
                 .Size(56, 56).CornerRadius(28).WithBorder(CardStroke, 2)
             : Grid([GridSize.Auto], [GridSize.Auto],
                 ProgressRing(Math.Clamp(highest.UsedPercent, 0, 100)).Size(56, 56)
-                    .Foreground(highest.UsedPercent >= 75 ? Caution : Accent)
+                    .Foreground(attentionWindow is not null ? Caution : Accent)
                     .AutomationName(F("Usage_AllowanceWarningFormat", provider.DisplayName, percent)),
                 TextBlock(percent).FontSize(12).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center).AccessibilityHidden());
         return Border(Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],

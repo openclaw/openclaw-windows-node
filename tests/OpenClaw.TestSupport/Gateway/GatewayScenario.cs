@@ -138,10 +138,10 @@ public sealed partial class GatewayScenario
     };
 
     /// <summary>Synthetic usage analytics with provider plans. <see cref="UsageAnalytics"/> switches modes.</summary>
-    public static GatewayScenario CreateUsageAnalytics(UsageAnalyticsMode mode = UsageAnalyticsMode.Populated)
+    public static GatewayScenario CreateUsageAnalytics(UsageAnalyticsMode mode = UsageAnalyticsMode.Populated, bool completeDailyCoverage = false)
     {
         var browse = CreateBrowse();
-        var usage = new UsageAnalyticsFixture(richProviders: true) { Mode = mode };
+        var usage = new UsageAnalyticsFixture(richProviders: true, completeDailyCoverage: completeDailyCoverage) { Mode = mode };
         return new(browse._sessions, browse._reads, usageAnalytics: usage);
     }
 

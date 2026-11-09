@@ -17,11 +17,16 @@ internal sealed record UsageProviderReadState(
 /// <summary>The same provider-window predicate serves the page list and the host's valid count.</summary>
 internal static class UsageProviderAttention
 {
+    /// <summary>Returns the highest currently valid warning window, never an expired or failed-provider snapshot.</summary>
+    public static ProviderUsageWindow? HighestWindow(ProviderUsageSnapshot provider, DateTimeOffset now) =>
+        !string.IsNullOrEmpty(provider.Error) ? null : provider.Windows
+            .Where(window => window.UsedPercent >= 75 && (window.ResetAt is null || window.ResetAt > now))
+            .OrderByDescending(window => window.UsedPercent).FirstOrDefault();
+
     public static IReadOnlyList<ProviderUsageSnapshot> Select(ProviderUsageSummary providers, DateTimeOffset now) =>
-        providers.Providers.Where(provider => string.IsNullOrEmpty(provider.Error)
-                && provider.Windows.Any(window => window.UsedPercent >= 75
-                    && (window.ResetAt is null || window.ResetAt > now)))
-            .OrderByDescending(provider => provider.Windows.Max(window => window.UsedPercent)).ToList();
+        providers.Providers.Select(provider => (Provider: provider, Window: HighestWindow(provider, now)))
+            .Where(item => item.Window is not null)
+            .OrderByDescending(item => item.Window!.UsedPercent).Select(item => item.Provider).ToList();
 }
 
 /// <summary>
@@ -158,6 +163,12 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
                 ? _state with { Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null }
                 : _state with { AttentionCount = null };
             Changed?.Invoke();
+            // Retained display rows can have later reset boundaries too. Wake the same consumers
+            // at each boundary without rereading, and never restore an invalidated exact count.
+            var next = _state.Read.Value?.Providers.SelectMany(provider => provider.Windows)
+                .Where(window => window.ResetAt > _now()).Select(window => window.ResetAt).Min();
+            if (next is { } nextExpiry)
+                _ = ExpireAsync(client, epoch, generation, nextExpiry, token);
         });
     }
 

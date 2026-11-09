@@ -5,16 +5,45 @@ namespace OpenClaw.Tray.Tests.Usage;
 
 public sealed class UsageSessionDetailAndExportTests
 {
-    [Fact]
-    public void SummaryRow_PrefersTheSingleSessionReadAndFallsBackToTheListRow()
+    [Theory]
+    [InlineData("complete", 1d)]
+    [InlineData("forty-percent", 0.4d)]
+    [InlineData("partial", null)]
+    [InlineData("stale", null)]
+    [InlineData("pending", null)]
+    [InlineData("cache-partial", null)]
+    [InlineData("overview-lower-bound", null)]
+    [InlineData("computing", null)]
+    [InlineData("missing-price", null)]
+    [InlineData("lower-bound", null)]
+    public void SessionCostShare_RequiresACompletePricedRange(string condition, double? expected)
     {
-        var listRow = new SessionUsageRow { Key = "k", Usage = new SessionUsageSummary { Totals = new UsageTotals { TotalTokens = 50 } } };
-        var detail = listRow with { Usage = new SessionUsageSummary { Totals = new UsageTotals { TotalTokens = 900 } } };
+        var totals = new UsageTotals { TotalCost = 5, Report = UsageReportState.Available };
+        var session = new SessionUsageRow
+        {
+            Key = "completed",
+            Usage = new() { Totals = totals with { TotalCost = condition == "forty-percent" ? 2 : 5 } },
+        };
+        var report = new SessionsUsageReport { Totals = totals, Sessions = [session] };
+        report = condition switch
+        {
+            "partial" => report with { Partial = new("time-budget", "Incomplete range") },
+            "stale" => report with { CacheStatus = new("stale", 0, 0, null) },
+            "pending" => report with { CacheStatus = new("fresh", 1, 0, null) },
+            "cache-partial" => report with { CacheStatus = new("fresh", 0, 0, new("time-budget", "Incomplete cache")) },
+            "overview-lower-bound" => report with { Overview = new() { Report = UsageReportState.Unavailable } },
+            "computing" => report with { Sessions = [session, new() { Key = "pending", Computing = true }] },
+            "missing-price" => report with { Totals = totals with { MissingCostEntries = 1 } },
+            "lower-bound" => report with { Totals = totals with { Report = UsageReportState.Unavailable } },
+            _ => report,
+        };
 
-        Assert.Same(detail, UsageSessionDetailProjection.SummaryRow(listRow, detail));
-        // While the detail read loads, or after it fails, the list row keeps the panel populated.
-        Assert.Same(listRow, UsageSessionDetailProjection.SummaryRow(listRow, null));
-        Assert.Null(UsageSessionDetailProjection.SummaryRow(null, null));
+        Assert.Equal(expected, UsageSessionDetailProjection.CostShare(report, session));
+        Assert.Null(UsageSessionDetailProjection.CostShare(report, session with { Computing = true }));
+        Assert.Null(UsageSessionDetailProjection.CostShare(report, session with
+        {
+            Usage = new() { Totals = totals with { MissingCostEntries = 1 } },
+        }));
     }
 
     [Fact]
