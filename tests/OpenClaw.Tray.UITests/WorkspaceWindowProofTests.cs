@@ -1028,6 +1028,7 @@ public sealed class WorkspaceWindowProofTests
         ((ExpandCollapsePattern)help.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         Invoke(WaitForMenuItem(pid, "Settings"));
         Assert.NotNull(await WaitForMarkerAsync(pid, "SettingsPageMarker", IntPtr.Zero));
+        await WaitUntilAsync(() => IsVisible(workspaceElement, "SettingsBack"));
         Invoke(Find(workspaceElement, "SettingsBack"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceTogglePane"));
         await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceTogglePane");
