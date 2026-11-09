@@ -47,7 +47,8 @@ internal sealed class AppNotificationInfoBarPresenter
         string? displayedNotificationId,
         bool isInfoBarOpen,
         string? currentTag,
-        string showMoreLabel)
+        string showMoreLabel,
+        bool doNotDisturb = false)
     {
         var bannerActive = snapshot.ActiveNotifications
             .Where(notification => IsBannerSeverity(notification.Severity))
@@ -61,9 +62,11 @@ internal sealed class AppNotificationInfoBarPresenter
             isInfoBarOpen &&
             !bannerSnapshot.ActiveNotifications.Any(notification =>
                 string.Equals(notification.Id, displayedNotificationId, StringComparison.Ordinal));
+        // Do not disturb leaves only approval banners eligible; hidden-banner state still sees every banner.
         var notification = _bannerState.SelectVisibleNotification(
             bannerSnapshot,
-            revealHiddenIfNeeded: displayedNotificationWasRemoved);
+            revealHiddenIfNeeded: displayedNotificationWasRemoved,
+            isEligible: candidate => DoNotDisturbPolicy.AllowsBanner(doNotDisturb, candidate));
         if (notification is null)
             return AppNotificationInfoBarPresentation.Hidden;
 
@@ -89,8 +92,14 @@ internal sealed class AppNotificationInfoBarPresenter
         };
     }
 
-    public void HideActiveNotifications(AppNotificationSnapshot snapshot) =>
-        _bannerState.HideActiveNotifications(snapshot);
+    /// <summary>
+    /// Hides the banners the user could have seen. While Do not disturb is on, suppressed
+    /// banners stay unhidden so they can appear once it turns off.
+    /// </summary>
+    public void HideActiveNotifications(AppNotificationSnapshot snapshot, bool doNotDisturb = false) =>
+        _bannerState.HideActiveNotifications(
+            snapshot,
+            isEligible: notification => DoNotDisturbPolicy.AllowsBanner(doNotDisturb, notification));
 
     private static AppNotificationInfoBarAction GetAction(
         AppNotification notification,

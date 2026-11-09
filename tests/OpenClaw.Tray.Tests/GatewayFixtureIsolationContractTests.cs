@@ -108,9 +108,22 @@ public sealed class GatewayFixtureIsolationContractTests
             @"if \(!GatewayFixtureIsolation\.IsEnabled && !AppIdentity\.IsIsolated\)\s+ToastNotificationManagerCompat\.OnActivated -= OnToastActivated;",
             ReadTraySource("App.AppShutdownCoordinator.cs"));
         var body = BodyAfter(ReadTraySource("Services", "ToastService.cs"),
-            "public void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null)");
+            "public void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null, AlertKind alertKind = AlertKind.Standard)");
         Assert.StartsWith("if (GatewayFixtureIsolation.IsEnabled)", body);
         Assert.Contains("return;", body[..body.IndexOf("ShouldShowToast(", StringComparison.Ordinal)]);
+    }
+
+    [Fact]
+    public void ThisPcBoundaries_NeitherReadHostPrivacyNorOpenSettingsInFixtureMode()
+    {
+        var source = ReadTraySource("Services", "ThisPcAlertSource.cs");
+        var open = BodyAfter(source, "public static bool TryOpenPrivacySettings(string? route)");
+        var fixtureGuard = open.IndexOf("if (GatewayFixtureIsolation.IsEnabled)", StringComparison.Ordinal);
+        Assert.True(fixtureGuard >= 0 && fixtureGuard < open.IndexOf("Process.Start(", StringComparison.Ordinal));
+
+        Assert.Matches(
+            @"public static IDeviceAccessReader Create\(\) =>\s+GatewayFixtureIsolation\.IsEnabled\s+\? new FixtureDeviceAccessReader\(",
+            ReadTraySource("Services", "WindowsDeviceAccessReader.cs"));
     }
 
     private static string ReadTraySource(params string[] parts) =>
