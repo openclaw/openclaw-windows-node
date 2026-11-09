@@ -296,6 +296,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\BoardDocumentModel.cs" Link="Dashboards\BoardDocumentModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\DashboardsPageState.cs" Link="Dashboards\DashboardsPageState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\BoardWidgetWebHostRequest.cs" Link="Dashboards\BoardWidgetWebHostRequest.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Dashboards\BoardWidgetRenderDeadline.cs" Link="Dashboards\BoardWidgetRenderDeadline.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearch.cs" Link="Presentation\HubSearch.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchCatalog.cs" Link="Presentation\HubSearchCatalog.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchController.cs" Link="Presentation\HubSearchController.cs" />

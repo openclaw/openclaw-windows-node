@@ -42,7 +42,7 @@ internal sealed class BoardWidgetWebHost : Control
     private Uri? _sandboxUrl;
     private bool _proxyReady;
     private string? _pendingHtml;
-    private string? _renderId;
+    private readonly BoardWidgetRenderDeadline _renderDeadline;
     private string _nonce = "";
     private CancellationTokenSource? _loadCancellation;
     private DispatcherQueueTimer? _slowTimer;
@@ -58,6 +58,7 @@ internal sealed class BoardWidgetWebHost : Control
 
     public BoardWidgetWebHost()
     {
+        _renderDeadline = new BoardWidgetRenderDeadline(ScheduleRenderDeadline, OnRenderTimedOut);
         Template = (ControlTemplate)Application.Current.Resources["BoardWidgetWebHostTemplate"];
         IsTabStop = false;
         Loaded += (_, _) =>
@@ -298,13 +299,14 @@ internal sealed class BoardWidgetWebHost : Control
             case BoardWidgetHostMessage.ProxyReady ready when _sandboxUrl is not null &&
                 string.Equals(ready.SandboxUrl, _sandboxUrl.AbsoluteUri, StringComparison.Ordinal):
                 _proxyReady = true;
+                _deadlineTimer?.Stop();
+                _deadlineTimer = null;
                 // The sandbox answered, so earlier pages (ticket renewals, slow starts) don't count against it.
                 _frameAttempts = 0;
                 PostTheme();
                 DeliverDocument();
                 break;
-            case BoardWidgetHostMessage.ResourceLoaded loaded when loaded.RenderId == _renderId:
-                _renderId = null;
+            case BoardWidgetHostMessage.ResourceLoaded loaded when _renderDeadline.TryComplete(loaded.RenderId):
                 StopTimers();
                 // A recovered frame must not be replaced by a retry scheduled before it rendered.
                 _frameRetryTimer?.Stop();
@@ -375,10 +377,12 @@ internal sealed class BoardWidgetWebHost : Control
     {
         if (!_proxyReady || _pendingHtml is null)
             return;
-        _renderId = Guid.NewGuid().ToString("N");
+        var renderId = Guid.NewGuid().ToString("N");
         var html = _pendingHtml;
         _pendingHtml = null;
-        PostJson(BoardWidgetHostPage.ResourceReadyMessage(html, _renderId));
+        // HTTP recovery can outlive proxy startup. Each delivery owns a new acknowledgement budget.
+        _renderDeadline.Start(renderId);
+        PostJson(BoardWidgetHostPage.ResourceReadyMessage(html, renderId));
     }
 
     private void StartTimers(int generation)
@@ -402,10 +406,30 @@ internal sealed class BoardWidgetWebHost : Control
                 return;
             if (!_proxyReady)
                 RetryFrame();
-            else if (_renderId is not null)
-                Report(BoardWidgetWebHostStatus.Failed, LocalizationHelper.GetString("Dashboards_Widget_RenderTimeout"));
         };
         _deadlineTimer.Start();
+    }
+
+    private IDisposable ScheduleRenderDeadline(TimeSpan delay, Action expired)
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = delay;
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => expired();
+        timer.Start();
+        return new RenderTimerLease(timer);
+    }
+
+    private void OnRenderTimedOut()
+    {
+        // A timed-out document cannot later reveal itself or complete a replacement delivery.
+        Teardown(closeWebView: true);
+        Report(BoardWidgetWebHostStatus.Failed, LocalizationHelper.GetString("Dashboards_Widget_RenderTimeout"));
+    }
+
+    private sealed class RenderTimerLease(DispatcherQueueTimer timer) : IDisposable
+    {
+        public void Dispose() => timer.Stop();
     }
 
     /// <summary>
@@ -526,6 +550,7 @@ internal sealed class BoardWidgetWebHost : Control
 
     private void StopTimers()
     {
+        _renderDeadline.Cancel();
         _slowTimer?.Stop();
         _deadlineTimer?.Stop();
         _slowTimer = null;
@@ -545,7 +570,6 @@ internal sealed class BoardWidgetWebHost : Control
         _documentRetryTimer = null;
         _proxyReady = false;
         _pendingHtml = null;
-        _renderId = null;
         _state = null;
         if (closeWebView)
             CloseWebView();
