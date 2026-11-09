@@ -4520,7 +4520,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) são contidos pelas configurações abaixo.</value>
+    <value>) e as ações de arquivo usam as configurações do Sandbox abaixo.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Comandos que o agente executa diretamente no Gateway não são. Se o Gateway estiver no WSL neste PC, eles podem acessar seus arquivos do Windows, área de transferência e rede: use as aprovações de execução do Gateway.</value>
@@ -7878,6 +7878,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>A limpeza de uploads está bloqueada</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Revise o acesso às pastas e as permissões dos dados privados. Uploads antigos podem permanecer até que a limpeza seja restabelecida. Não repita automaticamente uploads concluídos.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remover item</value>
   </data>

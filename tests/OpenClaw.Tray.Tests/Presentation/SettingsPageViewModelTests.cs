@@ -224,6 +224,7 @@ public sealed class SettingsPageViewModelTests
             vm.ShowChatThinking = false;
 
             Assert.False(settings.ShowChatThinking);
+            Assert.False(settings.CapturePresentationSnapshot().ShowChatThinking);
             Assert.Equal(1, appCommands.NotifySettingsSavedCount);
         }
     }
