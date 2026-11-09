@@ -50,27 +50,10 @@ public static class ExecApprovalCommandDisplaySanitizer
             oversizedMarker: WarningOversizedMarker).Text;
     }
 
-    /// <summary>
-    /// Bounded, secret-redacted command review text. CRLF becomes LF; LF and tabs remain
-    /// selectable layout. Lone CR, Unicode separators and other invisible characters stay
-    /// visible escapes, including private-use glyphs. Literal escape sequences are never decoded.
-    /// </summary>
-    public static string SanitizeCommandForReview(string text) => SanitizeCommandForReviewWithStatus(text).Text;
-
-    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
-        SanitizeCommandForReviewWithStatus(string text)
-    {
-        var normalized = text.Length > MaxInput ? text : text.Replace("\r\n", "\n", StringComparison.Ordinal);
-        var result = SanitizeInternal(normalized,
-            preserveLineBreaks: true, commandReviewLayout: true);
-        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
-    }
-
     private static SanitizedDisplayText SanitizeInternal(
         string text,
         bool preserveLineBreaks = false,
-        string? oversizedMarker = null,
-        bool commandReviewLayout = false)
+        string? oversizedMarker = null)
     {
         if (text.Length > MaxInput)
         {
@@ -109,7 +92,7 @@ public static class ExecApprovalCommandDisplaySanitizer
 
         if (strippedRedacted == strippedView.Text)
             return TruncateForDisplay(
-                EscapeInvisibles(rawRedacted, preserveLineBreaks, commandReviewLayout),
+                EscapeInvisibles(rawRedacted, preserveLineBreaks),
                 redacted,
                 unsafeConcealment);
 
@@ -125,7 +108,7 @@ public static class ExecApprovalCommandDisplaySanitizer
 
         if (!bypassDetected)
             return TruncateForDisplay(
-                EscapeInvisibles(rawRedacted, preserveLineBreaks, commandReviewLayout),
+                EscapeInvisibles(rawRedacted, preserveLineBreaks),
                 redacted,
                 unsafeConcealment);
 
@@ -137,7 +120,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         }
 
         return TruncateForDisplay(
-            RenderUnionMask(text, unionMask, preserveLineBreaks, commandReviewLayout),
+            RenderUnionMask(text, unionMask, preserveLineBreaks),
             redacted: true,
             unsafeConcealment);
     }
@@ -154,7 +137,7 @@ public static class ExecApprovalCommandDisplaySanitizer
             .Replace("\u2029", "\n", StringComparison.Ordinal);
     }
 
-    private static string EscapeInvisibles(string text, bool preserveLineBreaks, bool commandReviewLayout)
+    private static string EscapeInvisibles(string text, bool preserveLineBreaks)
     {
         if (string.IsNullOrEmpty(text))
             return text;
@@ -163,13 +146,13 @@ public static class ExecApprovalCommandDisplaySanitizer
         for (var i = 0; i < text.Length;)
         {
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if ((preserveLineBreaks && codePoint == '\n') || (commandReviewLayout && codePoint == '\t'))
+            if (preserveLineBreaks && codePoint == '\n')
             {
-                sanitized.Append((char)codePoint);
+                sanitized.Append('\n');
             }
-            else if (IsInvisible(codePoint, commandReviewLayout))
+            else if (IsInvisible(codePoint))
             {
-                AppendCodePointEscape(sanitized, codePoint, commandReviewLayout);
+                AppendCodePointEscape(sanitized, codePoint);
             }
             else
             {
@@ -190,9 +173,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         for (var i = 0; i < original.Length;)
         {
             var codePoint = ReadCodePoint(original, i, out var codeUnitLength);
-            // Private-use glyphs can also split a credential key. Strip them for detection
-            // in every mode, without changing legacy inline/warning glyph presentation.
-            if (!IsInvisible(codePoint, commandReviewLayout: true))
+            if (!IsInvisible(codePoint))
             {
                 stripped.Append(original, i, codeUnitLength);
                 for (var k = 0; k < codeUnitLength; k++)
@@ -205,7 +186,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         return new StrippedView(stripped.ToString(), strippedToOriginal.ToArray());
     }
 
-    private static string RenderUnionMask(string text, bool[] unionMask, bool preserveLineBreaks, bool commandReviewLayout)
+    private static string RenderUnionMask(string text, bool[] unionMask, bool preserveLineBreaks)
     {
         var rendered = new StringBuilder(text.Length);
         for (var i = 0; i < text.Length;)
@@ -222,13 +203,13 @@ public static class ExecApprovalCommandDisplaySanitizer
             }
 
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if ((preserveLineBreaks && codePoint == '\n') || (commandReviewLayout && codePoint == '\t'))
+            if (preserveLineBreaks && codePoint == '\n')
             {
-                rendered.Append((char)codePoint);
+                rendered.Append('\n');
             }
-            else if (IsInvisible(codePoint, commandReviewLayout))
+            else if (IsInvisible(codePoint))
             {
-                AppendCodePointEscape(rendered, codePoint, commandReviewLayout);
+                AppendCodePointEscape(rendered, codePoint);
             }
             else
             {
@@ -282,11 +263,9 @@ public static class ExecApprovalCommandDisplaySanitizer
         return input[..end];
     }
 
-    private static bool IsInvisible(int codePoint, bool commandReviewLayout)
+    private static bool IsInvisible(int codePoint)
     {
         var category = GetUnicodeCategory(codePoint);
-        if (commandReviewLayout && category == UnicodeCategory.PrivateUse)
-            return true;
         if (category is UnicodeCategory.Control
             or UnicodeCategory.Format
             or UnicodeCategory.Surrogate
@@ -325,9 +304,9 @@ public static class ExecApprovalCommandDisplaySanitizer
         return current;
     }
 
-    private static void AppendCodePointEscape(StringBuilder builder, int codePoint, bool commandReviewLayout)
+    private static void AppendCodePointEscape(StringBuilder builder, int codePoint)
     {
-        builder.Append("\\u{").Append(codePoint.ToString(commandReviewLayout ? "X4" : "X", CultureInfo.InvariantCulture)).Append('}');
+        builder.Append("\\u{").Append(codePoint.ToString("X")).Append('}');
     }
 
     private sealed record SanitizedDisplayText(

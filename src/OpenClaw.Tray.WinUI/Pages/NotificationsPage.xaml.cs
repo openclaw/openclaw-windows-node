@@ -39,35 +39,16 @@ public sealed partial class NotificationsPage : Page
     /// Binds the Inbox. Without host commands (the Settings companion), routes use the
     /// app-wide navigation commands.
     /// </summary>
-    internal void Initialize(InboxFeed? inbox, InboxViewCommands? commands = null)
+    internal void Initialize(AppNotificationService? notificationService, InboxViewCommands? commands = null)
     {
-        if (inbox is null)
+        if (notificationService is null)
         {
             Inbox.Unbind();
             return;
         }
 
-        Inbox.Initialize(inbox, commands ?? new InboxViewCommands(
-            OpenGatewayRoute,
+        Inbox.Initialize(notificationService, commands ?? new InboxViewCommands(
             ((IAppCommands)CurrentApp).TryNavigateAsync,
-            () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings),
-            () => ((IAppCommands)CurrentApp).OpenDashboard(),
-            AskOpenClaw: AskOpenClaw));
-    }
-
-    private static void AskOpenClaw(string question)
-    {
-        if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
-            OpenGatewayRoute(AppNotificationActionRoutes.Chat(sessionKey));
-        else
-            ((IAppCommands)CurrentApp).Navigate("connection");
-    }
-
-    private static void OpenGatewayRoute(string route)
-    {
-        var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
-        AsyncEventHandlerGuard.Run(
-            () => ((IAppCommands)CurrentApp).TryNavigateAsync(isChat ? "chat" : route, sessionKey),
-            new AppLogger(), nameof(OpenGatewayRoute));
+            () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings)));
     }
 }
