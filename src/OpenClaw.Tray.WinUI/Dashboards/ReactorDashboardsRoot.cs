@@ -168,15 +168,6 @@ internal static class DashboardsStates
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
 
-    public static Element Eyebrow(bool highContrast) => HStack(GapInner,
-        (highContrast
-            ? (Element)Glyph(DashboardsGlyphs.Dashboard, 16)
-            : Image("ms-appx:///Assets/SidebarIcons/Dashboards.svg").Size(20, 20).AccessibilityHidden())
-            .VAlign(VerticalAlignment.Center),
-        TextBlock(LocalizationHelper.GetString("Dashboards_Title")).SemiBold()
-            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-            .VAlign(VerticalAlignment.Center));
-
     public static Element ChatButton(string title, Action open, string id) =>
         IconButton(DashboardsGlyphs.Chat, LocalizationHelper.GetString("Dashboards_OpenChat"), open, id)
             .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", title));
@@ -241,15 +232,7 @@ internal static class DashboardsStates
             hue: DashboardHues.Purple);
 
     public static ButtonElement IconButton(string glyph, string label, Action onClick, string automationId) =>
-        Button(Glyph(glyph, 16, "TextFillColorPrimaryBrush"), onClick)
-            .SubtleButton()
-            .Size(36, 36)
-            .Padding(0)
-            .Set(button =>
-            {
-                button.HorizontalContentAlignment = HorizontalAlignment.Center;
-                button.VerticalContentAlignment = VerticalAlignment.Center;
-            })
+        Button(Icon(FontIcon(glyph)), onClick)
             .ToolTip(label)
             .AutomationName(label)
             .AutomationId(automationId);
@@ -487,18 +470,10 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                     : state.Connected && state.OpenWebDashboards is { } openWeb
                     ? Button(
                             HStack(8,
-                                DashboardsStates.Glyph(DashboardsGlyphs.OpenInBrowser, 14, "TextFillColorPrimaryBrush").VAlign(VerticalAlignment.Center),
+                                Icon(FontIcon(DashboardsGlyphs.OpenInBrowser)).VAlign(VerticalAlignment.Center),
                                 TextBlock(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))),
                             openWeb)
-                        .ApplyStyle("DefaultButtonStyle")
-                        .Background(Theme.Ref("ControlFillColorDefaultBrush"))
-                        .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
-                        .BorderThickness(1)
-                        .Padding(11, 5, 11, 6).MinHeight(32)
-                        .Resources(resources => resources
-                            .Set("ButtonBackground", Theme.Ref("ControlFillColorDefaultBrush"))
-                            .Set("ButtonBorderBrush", Theme.Ref("ControlStrokeColorDefaultBrush")))
-                        .Height(36).VAlign(VerticalAlignment.Top)
+                        .VAlign(VerticalAlignment.Top)
                         .ToolTip(LocalizationHelper.GetString("Dashboards_OpenWebGallery_GalleryHint"))
                         .AutomationName(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))
                         .AutomationId("DashboardsOpenWeb")
@@ -511,7 +486,8 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             .AutomationId("DashboardsMastActions");
 
         return PageHero.Header("DashboardsHero", DashboardsGlyphs.Dashboard, headline, "DashboardsTitle",
-                AgentPicker(state, snapshot, TierFor(width) != PageWidthTier.Wide), detail, actions, narrow, reducedMotion, highContrast)
+                AgentPicker(state, snapshot, TierFor(width) != PageWidthTier.Wide), detail, actions, narrow, reducedMotion, highContrast,
+                pageTag: DashboardsRoute.Tag)
             .Margin(0, 0, 0, 20);
     }
 
@@ -712,7 +688,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
         var cover = Border(Border(TextBlock(DashboardsPresentation.TitleInitials(title)).FontSize(20).SemiBold()
                     .Foreground(Theme.Ref(DashboardHues.Strong(hue))).Center().AccessibilityHidden())
                 .Size(48, 48).CornerRadius(8).Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-                .HAlign(HorizontalAlignment.Left).Margin(16, 12))
+                .HAlign(HorizontalAlignment.Left).Margin(16, compact ? 8 : 12))
             .Height(compact ? 64 : 80)
             .Background(Theme.Ref(DashboardHues.Subtle(hue))).CornerRadius(12, 12, 0, 0);
         var content = Grid(
@@ -737,48 +713,31 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             updated,
         }.Where(part => !string.IsNullOrEmpty(part)));
 
-        // The card surface is one native subtle button (click, Enter, and Space open the
-        // dashboard); the outer frame owns the backplate, stroke, and hover lift.
+        // One stock button paints the whole card. Noninteractive content and the
+        // independent chat action occupy auto-sized rows above its surface.
         var cardId = "DashboardCard" + prefix + "_" + row.Key;
-        var button = Button(content, () => props.State.Open(new BoardSessionTarget(row.Key, row.AgentId), title, row, cardId))
-            .SubtleButton()
-            .Padding(0)
-            .Set(b =>
-            {
-                b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                b.VerticalContentAlignment = VerticalAlignment.Stretch;
-            })
+        var button = Button(Empty(), () => props.State.Open(new BoardSessionTarget(row.Key, row.AgentId), title, row, cardId))
             .CornerRadius(12)
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
             .AutomationName(label)
             .HelpText(summaryText)
+            .ToolTip(title + "\n" + summaryText + "\n" + author.Label + " · " + updated)
             .AutomationId(cardId);
 
         // The chat action is a sibling, never an interactive control inside the card button.
-        Element card = Border(Grid([GridSize.Star()], [GridSize.Star(), GridSize.Auto],
-                button.Grid(row: 0),
+        Element card = Grid([GridSize.Star()], [GridSize.Star(), GridSize.Auto],
+                button.Grid(row: 0, rowSpan: 2),
+                content.IsHitTestVisible(false).AccessibilityHidden().Margin(1).Grid(row: 0),
                 props.State.OpenChat is { } chat
-                    ? Button(HStack(8, DashboardsStates.Glyph(DashboardsGlyphs.Chat, 14).VAlign(VerticalAlignment.Center),
+                    ? Button(HStack(8, Icon(FontIcon(DashboardsGlyphs.Chat)).VAlign(VerticalAlignment.Center),
                             TextBlock(LocalizationHelper.GetString("Dashboards_OpenChat"))), () => chat(row.Key))
                         .AutomationName(LocalizationHelper.Format("Dashboards_OpenChatFor", title))
                         .AutomationId("DashboardCardChat" + prefix + "_" + row.Key)
-                        .BorderThickness(1).BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
                         .HAlign(HorizontalAlignment.Right).Margin(16, 0, 16, 12).Grid(row: 1)
-                    : Empty()))
-            .MinHeight(featured ? 300 : compact ? 280 : 304)
+                    : Empty())
             .VAlign(featured || compact ? VerticalAlignment.Stretch : VerticalAlignment.Top)
-            .CornerRadius(12)
-            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-            .BorderThickness(1);
-        if (!reducedMotion)
-        {
-            card = card.InteractionStates(states => states
-                    .PointerOver(translation: new System.Numerics.Vector3(0, -4, 0))
-                    .Pressed(translation: new System.Numerics.Vector3(0, -1, 0)),
-                Microsoft.UI.Reactor.Animation.Curve.Ease(160, Microsoft.UI.Reactor.Animation.Easing.Decelerate));
-        }
+            .AutomationId(cardId + "Layout");
         return DashboardsArt.Enter(card, reducedMotion)
             .Margin(0).HAlign(HorizontalAlignment.Stretch)
             .VAlign(featured || compact ? VerticalAlignment.Stretch : VerticalAlignment.Top);

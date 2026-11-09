@@ -64,7 +64,8 @@ public static class PageHero
         bool reducedMotion,
         bool highContrast = false,
         string? glyphAutomationId = null,
-        Element? captionLine = null)
+        Element? captionLine = null,
+        string? pageTag = null)
     {
         var titleLine = VStack(4,
             TextBlock(title)
@@ -86,10 +87,7 @@ public static class PageHero
         var content = WithMotion(Grid(
             narrow ? [GridSize.Px(48), GridSize.Star()] : [GridSize.Px(48), GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],
-            Border(Glyph(glyph, 24, Theme.Ref("TextOnAccentFillColorPrimaryBrush")).Center())
-                .Size(48, 48).CornerRadius(8).Background(Theme.Ref("AccentFillColorDefaultBrush"))
-                .AutomationId(glyphAutomationId ?? $"{automationId}:Glyph")
-                .Grid(column: 0).VAlign(VerticalAlignment.Top),
+            PageHeroIcon.Marker(automationId, glyph, pageTag, highContrast, glyphAutomationId),
             narrow
                 ? (Element)copyAndActions.Margin(16, 0, 0, 0).Grid(column: 1)
                 : copyAndActions.Margin(16, 0, 16, 0).Grid(column: 1, row: 0),

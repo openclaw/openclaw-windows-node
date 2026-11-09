@@ -742,8 +742,7 @@ internal sealed partial class SettingsShellView : UserControl
             NavSessions.Visibility = vis;
             NavInstances.Visibility = vis;
             NavCron.Visibility = vis;
-            var gatewayToolVisibility = keepCurrentGatewayPageVisible && !DashboardsRoute.IsDashboardsTag(currentTag)
-                ? Visibility.Visible : vis;
+            var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
             AgentsNavItem.Visibility = gatewayToolVisibility;
             NavUsage.Visibility = gatewayToolVisibility;
             NavConfig.Visibility = gatewayToolVisibility;

@@ -7761,14 +7761,8 @@
   <data name="Dashboards_Title" xml:space="preserve">
     <value>儀表板</value>
   </data>
-  <data name="Dashboards_LearnMore" xml:space="preserve">
-    <value>深入了解</value>
-  </data>
   <data name="Dashboards_Refresh" xml:space="preserve">
     <value>重新整理</value>
-  </data>
-  <data name="Dashboards_AgentLabel" xml:space="preserve">
-    <value>代理程式</value>
   </data>
   <data name="Dashboards_BoardsFrom" xml:space="preserve">
     <value>看板來自</value>
@@ -7850,9 +7844,6 @@
   </data>
   <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
     <value>此閘道連線無法讀取工作階段儀表板。請向閘道擁有者要求讀取權限，或更新閘道。</value>
-  </data>
-  <data name="Dashboards_Back" xml:space="preserve">
-    <value>返回儀表板</value>
   </data>
   <data name="Dashboards_OpenChat" xml:space="preserve">
     <value>開啟聊天</value>
@@ -8001,18 +7992,6 @@
   <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
     <value>開啟儀表板</value>
   </data>
-  <data name="Dashboards_Tagline" xml:space="preserve">
-    <value>由代理程式建立並持續更新的即時看板。</value>
-  </data>
-  <data name="Dashboards_StatTotal" xml:space="preserve">
-    <value>儀表板</value>
-  </data>
-  <data name="Dashboards_StatLive" xml:space="preserve">
-    <value>正在即時更新</value>
-  </data>
-  <data name="Dashboards_StatAuthors" xml:space="preserve">
-    <value>作者</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>開啟儀表板</value>
   </data>
@@ -8021,9 +8000,6 @@
   </data>
   <data name="Dashboards_NoSummary" xml:space="preserve">
     <value>暫無摘要</value>
-  </data>
-  <data name="Dashboards_AskInChat" xml:space="preserve">
-    <value>在聊天中詢問</value>
   </data>
   <data name="Dashboards_OpenWebGallery" xml:space="preserve">
     <value>在網頁中開啟</value>
@@ -8151,15 +8127,6 @@
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
   <data name="Dashboards_OpenChatFor" xml:space="preserve">
     <value>開啟聊天：{0}</value>
-  </data>
-  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
-    <value>{0} 的儀表板</value>
-  </data>
-  <data name="Dashboards_CountManyFormat" xml:space="preserve">
-    <value>{0} 個儀表板</value>
-  </data>
-  <data name="Dashboards_CountOne" xml:space="preserve">
-    <value>1 個儀表板</value>
   </data>
   <data name="Dashboards_FreshToday" xml:space="preserve">
     <value>今日更新</value>

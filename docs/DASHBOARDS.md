@@ -73,49 +73,31 @@ does not manufacture category details or subscription records.
 
 ## Responsive layout
 
-The page measures its Reactor host, not the window. The canonical
-`PageResponsiveLayout` helper selects Wide (1000 or more DIP), Medium (720 to
-999 DIP), or Narrow (below 720 DIP, supported down to a 480-DIP host), including
-snapping of WinUI's fractional boundary measurements. Content is centered,
-capped at 1200 DIP after horizontal padding (32 DIP, or 20 in Narrow).
-The system-accent wash is contained inside the shared hero card. There is no
-full-page decorative backdrop. The card, its answer line and the content column
-scroll together; actions reflow below the copy in Narrow.
-The gallery and board use native `ScrollViewer` controls with horizontal
-scrolling disabled. Their content fills the viewport and exposes the native
-ScrollPattern. Each page scrolls its mast, tabs and content together; there is no
-sticky header or scroll-offset compensation.
-
-When narrow full Settings collapses its own rail, the shell supplies a retained
-56-DIP content inset through `ISettingsPageContentInset`. Only the gallery/board
-scroll viewport and disconnected content move down; the page frame and
-copy-notice overlay remain at the origin. The hero moves with the retained
-viewport without changing its height. Embedded pins also receive the 56-DIP content inset when the
-Workspace Chat pane is collapsed, keeping the outer page host at the origin.
-Expanded panes and standalone content-only hosts receive zero inset. Ordinary
-non-opted-in pages retain the outer host margin instead. This allocation never
-changes board/session keys or remounts the reader.
+The page measures its Reactor host, not the window. Geometry, tiers and
+identity colours follow the [Dashboards design contract](../DESIGN.md#dashboards-expressive-extension);
+shell/history allocation follows the Settings width-dependent chrome row in
+the [architecture ledger](ARCHITECTURE.md). Resizing retains board/session
+identity and mounted widget documents. The hero, tabs and content scroll
+together in a native vertical `ScrollViewer`, without a sticky header,
+horizontal scrolling or a full-page decorative backdrop.
 
 The mast uses a native bordered **Open in web** button followed by Refresh.
-The action group aligns to the content column's right edge. Explicit native
-button brush resources keep its chrome intact when Reactor reuses controls.
-Mast actions use one row under the text in Narrow; the browser command moves
-into More options. Search is right-aligned in Wide and gets its own full-width
-row in Medium/Narrow. Board cards use explicit equal-width Grid columns with a
-240-DIP minimum and 12-DIP gaps. Last-row cards do not stretch into empty columns.
-Fresh today uses top-aligned, stretched feature/side columns in Wide, feature
-plus a two-up side row in Medium (full width when only one side card exists),
-and stacked cards in Narrow. Grid spacing, not retained per-card margins, owns
-the gaps across resizes. Layout cells own placement independently
-of entrance motion. Widget documents remain mounted when the page reflows.
+The action group aligns to the content column's right edge. Header actions use
+stock buttons and FontIcons, with native sizing, brushes and interaction states.
+In Narrow, actions move under the copy and the browser command moves into
+More options. Search gets its own row below Wide. Grid cells own placement
+and spacing independently of entrance motion; last-row cards do not stretch
+into empty columns.
 
-`ResponsivePage_UsesMeasuredHostWidthWithoutOverlappingOrUnmarkedClipping`
-mounts the gallery and board at 1400, 1000, 760, and 520 DIP, checking geometry,
-ellipsis, column counts, mast action rows, and retained board loading. The
-real-shell fixture capture also records measured host/content widths, tiers,
-window rectangles in pixels/DIP, and image hashes. The unchanged Hub shell
-minimum is 1000 DIP, so its open-pane minimum host remains about 740 DIP:
-Narrow is a mounted-page contract, not a claim that the shell reaches 520 DIP.
+A stock button paints each gallery card's full surface and owns keyboard focus,
+hover and pressed states. The coloured cover and identity badge remain decorative
+content. Open chat is a separate sibling in an auto-sized footer, not a button
+nested inside the board action. Card content can grow without a fixed minimum
+height, and the card does not apply its own hover translation.
+
+Mounted tests cover Wide, Medium and Narrow hosts; full-shell captures are a
+separate proof. The shell's minimum width does not imply it can expose every
+supported mounted-page width.
 
 Windows is a native **reader** for agent-created boards. It covers what people
 check daily and links to the Gateway's web Dashboards for the rest.
@@ -156,17 +138,9 @@ explicitly forwarded from the page. A stable Reactor announcement region
 announces failures assertively and success politely after the menu/commit turn.
 It is page-owned because the shared persistent banner filters success notices.
 
-## Delivery steps
-
-| Step | Scope | Status |
-|---|---|---|
-| 1 | Native reader: gallery, board view, reports, HTML viewer, website links, web handoff | Done, awaiting approval |
-| 2 | Widget permission grants, host bridge actions, tab and widget moves, resize, auto height toggle, remove | Deferred: web Dashboards |
-| 3 | MCP app host and MCP app widgets | Deferred: web Dashboards |
-
 ## Gateway contract
 
-Step 1 uses only these methods and events. It sends no board mutation, grant,
+The reader uses only these methods and events. It sends no board mutation, grant,
 bridge, or `mcp.app.*` request.
 
 Displayed boards come from `sessions.list`; tabs, widget grants and report props
@@ -224,94 +198,28 @@ disable redirects and cookies. The sandbox proxy document is served by the
 Gateway's sandbox listener at
 `/mcp-app-sandbox` on `sandboxPort` (or the configured `sandboxOrigin`).
 
-## Parity checklist
+## Reader limits
 
-Status values: **Done** (available natively), **Deferred** (not in the native
-reader, with where the work lives instead).
-
-### Gallery
-
-| Web item | Native equivalent | Data source | Status |
-|---|---|---|---|
-| Gallery of sessions with a board, scoped to the selected agent | Dashboards hub page; agent picker in the header; cards in an adaptive grid | `sessions.list` dashboard rows, `agentId` | Done |
-| Load every page (`pagination.hasMore`) | Pages fetched until `hasMore` is false, capped at 25 pages of 200 rows; rows beyond 5,000 are not shown | `pagination.nextOffset` | Done (capped) |
-| Search title, author, last message, key | Search box | Row `label`/`displayName`/`derivedTitle`, author, `lastMessagePreview`, `key` | Done |
-| Author filter with all-authors option | Search matches author; no separate author combo | `createdActor`, `owner.actor`, `agentId` fallback | Deferred |
-| Sort by recently updated or title | Sort combo box | `updatedAt`, display title | Done |
-| Result count and total count | Section count and live-region result count (loaded rows only) | filtered rows | Done |
-| Card: title, author, updated relative time, unknown time | Static card: title initials on an agent-tinted band, summary (with explicit missing state), author/update footer, Open board label and bordered sibling Open chat action | row fields | Done |
-| Live indicator for running sessions | Live badge | `status == "running"` | Done |
-| Live board preview on each card | none: cards never load a board, widget ticket, or web content | `board.get` | Deferred: the gallery stays a static list |
-| Open the full dashboard from a card | Card click opens the dashboard view | session key | Done |
-| Loading skeleton | Static native placeholders and an accessible loading label | none | Done |
-| Empty gallery and no-results states | Empty and no-results panels | rows | Done |
-| Load error with stale data retained | Error banner over retained rows | request failure | Done |
-| Docs link | No header link; this guide documents the reader | none | Deferred |
-| Web gallery | Header **Open in web** | Control UI `dashboards` route | Done |
-
-### Opening a dashboard
-
-| Web item | Native equivalent | Data source | Status |
-|---|---|---|---|
-| Open from gallery | Dashboard view inside the Dashboards page with Back | session key | Done |
-| Open from a session | Sessions page row menu "Open dashboard"; command palette; an explicit route agent also selects that gallery scope | session key, route `agent` | Done |
-| Widget grid with spans | 12-column grid with column/row spans | `sizeW`, `sizeH`, `position` | Done |
-| Tabs with overflow | Tab strip (`SelectorBar`), hidden for one tab, overflow menu after six | `tabs[]` ordered by `position` | Done |
-| Remote tab focus | Selects the requested tab | `board.command` `focus_tab` | Done |
-| Live refresh on change | Refetch on `board.changed` and reconnect | events | Done |
-| Empty board state | "A clear board, ready for work" | empty tab | Done |
-| Missing session, not found, unavailable, load error | Status panels | request outcome | Done |
-| No permission (no `operator.read` or `board.get` not advertised) | "Dashboards are unavailable" state | hello scopes and methods | Done |
-| Disconnected | Disconnected state with an Open connection action | connection state | Done |
-| Chat dock beside the board (`chatDock`, `set_chat_dock`) and focus mode | "Open chat" action routes to native chat for the session | `tabs[].chatDock` | Deferred: native chat is a single-surface owner; embedding a second chat host needs a chat ownership change |
-| Full-width page widget (`pageWidgetName`, website/browser page chrome) | Grid layout only | layout | Deferred: web Dashboards |
-| Open the board in the web Control UI | **Open in web** opens the web gallery; **Copy session key** to find the board | Control UI `dashboards` route | Done (gallery, not the exact board) |
-
-### Widgets
-
-| Web item | Native equivalent | Data source | Status |
-|---|---|---|---|
-| Header: title, kind label (HTML, MCP, Plugin, core label) | Widget chrome title and kind chip | widget fields | Done |
-| HTML content in an isolated sandbox | WebView2 widget host (see Security) | `frameUrl`, `sandboxUrl` | Done |
-| Presentation `card`, `full-bleed`, `frameless` | Chrome padding and border variants | `presentation` | Done |
-| Loading, slow-loading notice, load timeout | Progress ring, slow notice after 10 s, timeout error | host lifecycle | Done |
-| Unauthorized ticket retries `board.get`; repeated failure message | Refetch; a failed refresh shows content unavailable with Retry, while repeated ticket rejection shows the authorization error | HTTP 401 and refresh outcome | Done |
-| Sandbox origin required hint for remote Gateways | Same message after repeated authorization failures, or when the sandbox doesn't respond to three fresh relay pages | `sandboxOrigin` absent on non-loopback | Done |
-| Ticket renewal before expiry | Refetch board before `viewTicketTtlMs` elapses | `viewTicketTtlMs` | Done |
-| Error state with details and Retry | Error card with expandable details and Retry | host error | Done |
-| Browser or renderer repeatedly fails | Three automatic restarts, then the WebView closes and shows a localized error until Retry; crashes do not imply a sandbox configuration failure | WebView2 process failure | Done |
-| Theme matching | Initial `#theme=` seed and widget theme message on theme change | app theme | Done |
-| Auto height from content | Height reports applied to auto-height widgets | `openclaw:widget-size` | Done (toggle deferred: web Dashboards) |
-| MCP app widget | Placeholder card with **Open in web** | `contentKind:"mcp-app"` | Deferred: web Dashboards |
-| Stale widget | none | MCP view lease | Deferred: web Dashboards |
-| Remove | none | `board.update` `widget_remove` | Deferred: web Dashboards |
-| Menu: move to tab, no other tabs, resize presets SM/MD/LG/XL, auto height toggle | none | `board.update` | Deferred: web Dashboards |
-| Drag to move, drag to resize, keyboard focus and Alt+arrow nudge, live announcements | none | `board.update` | Deferred: web Dashboards |
-| Action in progress and failure feedback | none | mutation outcome | Deferred: web Dashboards |
-| Disabled plugin state with Remove | "Widget from disabled plugin" card | `controlUiWidgetKinds` | Done (Remove deferred: web Dashboards) |
-| Core plugin `session:report` | Native report: text, metrics, table, bar/line chart, links | `props` | Done |
-| Core plugin `session:website` | Link card: the site's host and **Open website**, which opens the validated URL in the user's browser. Windows does not embed websites | `props.url` | Done (embedding deferred) |
-| Core plugin `session:progress` | Unsupported card with **Open in web** | progress card RPC and session row | Deferred: web Dashboards |
-| Core plugin `browser:dashboard` | none | browser plugin live viewer | Deferred: Windows has no Gateway browser panel host |
-| Third-party plugin widget contributions | none | Control UI JavaScript bundles | Deferred: web-only plugin UI bundles cannot run in native UI; shown as disabled plugin |
-
-### Widget permissions and actions
-
-| Web item | Native equivalent | Data source | Status |
-|---|---|---|---|
-| Needs approval card listing network origins and host tools, or summary | Approval card in the widget (read-only) with **Open in web** | `grantState:"pending"`, `declared`, `declaredSummary` | Done |
-| Allow and Reject require an explicit choice | none; never automatic | `board.widget.grant` | Deferred: web Dashboards |
-| Rejected state with Remove | Rejected card with **Open in web** | `grantState:"rejected"` | Done (Remove deferred) |
-| Granted badge with active capabilities | Chrome badge with tooltip | `declared` | Done |
-| Allow or reject failure message | none | grant failure | Deferred: web Dashboards |
-| Widget bridge: open link, state emit, data read, action run, cron trigger, prompt send with confirmation | none: the relay closes every offered port | `board.event`, `board.data.read`, `board.action`, `board.prompt.authorize` | Deferred: web Dashboards |
-
-### MCP app widgets
-
-Windows shows a placeholder card for MCP app widgets and hands off to the web
-Dashboards gallery. App hosting, `mcp.app.*` tool and resource relays,
-confirmation dialogs, host context, notifications, and view leases
-(`board.widget.appView`) are deferred.
+- Gallery fetching is capped at 25 pages of 200 rows (5,000 boards). Counts
+  describe loaded rows. Search includes author; there is no separate author
+  filter or live widget preview in gallery cards.
+- Boards use a 12-column grid. Tabs are hidden for one tab, with More tabs
+  overflow after six. Remote `focus_tab` selects the named tab. Chat dock/focus
+  mode and `pageWidgetName` presentation remain web-only; Open chat uses the
+  existing native chat surface.
+- HTML hosting shows a slow notice after 10 seconds, renews expiring tickets,
+  retries rejected authorization, and stops after three automatic renderer
+  restarts until Retry. Repeated sandbox failure is reported separately from
+  renderer crashes. Granted capabilities remain visible; pending and rejected
+  grants are read-only and link to web Dashboards.
+- Native plugins support `session:report` and validated `session:website`
+  browser links. `session:progress`, `browser:dashboard`, third-party UI bundles
+  and MCP app hosting remain web-only. Unsupported/disabled contributions show
+  an explanation rather than executing a plugin bundle.
+- The deferred editing and actions in the scope table include all move/resize
+  presets, drag/keyboard nudging, auto-height toggles, widget removal, permission
+  grants, bridge actions and MCP view leases. Read-only auto-height reports are
+  applied without granting any of those capabilities.
 
 ## Widget hosting security
 

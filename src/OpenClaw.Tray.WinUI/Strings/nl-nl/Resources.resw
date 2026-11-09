@@ -7762,14 +7762,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_Title" xml:space="preserve">
     <value>Dashboards</value>
   </data>
-  <data name="Dashboards_LearnMore" xml:space="preserve">
-    <value>Meer informatie</value>
-  </data>
   <data name="Dashboards_Refresh" xml:space="preserve">
     <value>Vernieuwen</value>
-  </data>
-  <data name="Dashboards_AgentLabel" xml:space="preserve">
-    <value>Agent</value>
   </data>
   <data name="Dashboards_BoardsFrom" xml:space="preserve">
     <value>Borden van</value>
@@ -7851,9 +7845,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
     <value>Deze gatewayverbinding kan geen sessiedashboards lezen. Vraag de eigenaar van de gateway om leestoegang of werk de gateway bij.</value>
-  </data>
-  <data name="Dashboards_Back" xml:space="preserve">
-    <value>Terug naar dashboards</value>
   </data>
   <data name="Dashboards_OpenChat" xml:space="preserve">
     <value>Chat openen</value>
@@ -8002,18 +7993,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
     <value>Dashboard openen</value>
   </data>
-  <data name="Dashboards_Tagline" xml:space="preserve">
-    <value>Live borden die je agents bouwen en up-to-date houden.</value>
-  </data>
-  <data name="Dashboards_StatTotal" xml:space="preserve">
-    <value>Dashboards</value>
-  </data>
-  <data name="Dashboards_StatLive" xml:space="preserve">
-    <value>Nu live</value>
-  </data>
-  <data name="Dashboards_StatAuthors" xml:space="preserve">
-    <value>Auteurs</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Dashboard openen</value>
   </data>
@@ -8022,9 +8001,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Dashboards_NoSummary" xml:space="preserve">
     <value>Geen samenvatting beschikbaar</value>
-  </data>
-  <data name="Dashboards_AskInChat" xml:space="preserve">
-    <value>Vragen in chat</value>
   </data>
   <data name="Dashboards_OpenWebGallery" xml:space="preserve">
     <value>Openen op het web</value>
@@ -8152,15 +8128,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="Dashboards_OpenChatFor" xml:space="preserve">
     <value>Chat openen: {0}</value>
-  </data>
-  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
-    <value>Dashboards voor {0}</value>
-  </data>
-  <data name="Dashboards_CountManyFormat" xml:space="preserve">
-    <value>{0} dashboards</value>
-  </data>
-  <data name="Dashboards_CountOne" xml:space="preserve">
-    <value>1 dashboard</value>
   </data>
   <data name="Dashboards_FreshToday" xml:space="preserve">
     <value>Vandaag bijgewerkt</value>

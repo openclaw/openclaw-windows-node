@@ -209,7 +209,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
 
         return PageHero.Header("DashboardHero", DashboardsGlyphs.Dashboard, title, "DashboardsTitle",
                 meta, null, HStack(GapInner, actions).AutomationId("DashboardMastActions"),
-                narrow, reducedMotion, highContrast)
+                narrow, reducedMotion, highContrast, pageTag: DashboardsRoute.Tag)
             .Margin(0, 0, 0, 20);
     }
 

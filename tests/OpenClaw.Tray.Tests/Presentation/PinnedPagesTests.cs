@@ -284,8 +284,8 @@ public sealed class PinnedPagesTests
         using var store = Store(temp.Path, out _);
         Assert.Equal(["usage"], Tags(store.Current.PinnedPagesFor("custom")));
         Assert.Empty(store.Current.PinnedPagesFor("empty"));
-        store.Update(null, editor => editor.SetPagePinned("empty", "channels", true));
-        Assert.Equal(["channels"], Tags(store.Current.PinnedPagesFor("empty")));
+        store.Update(null, editor => editor.SetPagePinned("empty", "sessions", true));
+        Assert.Equal(["sessions"], Tags(store.Current.PinnedPagesFor("empty")));
         Assert.Equal(["dashboards"], Tags(store.Current.PinnedPagesFor("new")));
     }
 

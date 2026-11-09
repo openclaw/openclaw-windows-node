@@ -7814,14 +7814,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_Title" xml:space="preserve">
     <value>Painéis</value>
   </data>
-  <data name="Dashboards_LearnMore" xml:space="preserve">
-    <value>Saiba mais</value>
-  </data>
   <data name="Dashboards_Refresh" xml:space="preserve">
     <value>Atualizar</value>
-  </data>
-  <data name="Dashboards_AgentLabel" xml:space="preserve">
-    <value>Agente</value>
   </data>
   <data name="Dashboards_BoardsFrom" xml:space="preserve">
     <value>Painéis de</value>
@@ -7903,9 +7897,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
     <value>Esta conexão com o gateway não pode ler painéis de sessão. Peça acesso de leitura ao proprietário do gateway ou atualize o gateway.</value>
-  </data>
-  <data name="Dashboards_Back" xml:space="preserve">
-    <value>Voltar aos painéis</value>
   </data>
   <data name="Dashboards_OpenChat" xml:space="preserve">
     <value>Abrir chat</value>
@@ -8054,18 +8045,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
     <value>Abrir painel</value>
   </data>
-  <data name="Dashboards_Tagline" xml:space="preserve">
-    <value>Painéis ao vivo que seus agentes criam e mantêm atualizados.</value>
-  </data>
-  <data name="Dashboards_StatTotal" xml:space="preserve">
-    <value>Painéis</value>
-  </data>
-  <data name="Dashboards_StatLive" xml:space="preserve">
-    <value>Ao vivo agora</value>
-  </data>
-  <data name="Dashboards_StatAuthors" xml:space="preserve">
-    <value>Autores</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Abrir painel</value>
   </data>
@@ -8074,9 +8053,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Dashboards_NoSummary" xml:space="preserve">
     <value>Nenhum resumo disponível</value>
-  </data>
-  <data name="Dashboards_AskInChat" xml:space="preserve">
-    <value>Perguntar no chat</value>
   </data>
   <data name="Dashboards_OpenWebGallery" xml:space="preserve">
     <value>Abrir na web</value>
@@ -8204,15 +8180,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
   <data name="Dashboards_OpenChatFor" xml:space="preserve">
     <value>Abrir conversa: {0}</value>
-  </data>
-  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
-    <value>Painéis de {0}</value>
-  </data>
-  <data name="Dashboards_CountManyFormat" xml:space="preserve">
-    <value>{0} painéis</value>
-  </data>
-  <data name="Dashboards_CountOne" xml:space="preserve">
-    <value>1 painel</value>
   </data>
   <data name="Dashboards_FreshToday" xml:space="preserve">
     <value>Atualizados hoje</value>

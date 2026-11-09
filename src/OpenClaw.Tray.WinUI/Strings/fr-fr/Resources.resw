@@ -7761,14 +7761,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Dashboards_Title" xml:space="preserve">
     <value>Tableaux de bord</value>
   </data>
-  <data name="Dashboards_LearnMore" xml:space="preserve">
-    <value>En savoir plus</value>
-  </data>
   <data name="Dashboards_Refresh" xml:space="preserve">
     <value>Actualiser</value>
-  </data>
-  <data name="Dashboards_AgentLabel" xml:space="preserve">
-    <value>Agent</value>
   </data>
   <data name="Dashboards_BoardsFrom" xml:space="preserve">
     <value>Tableaux de</value>
@@ -7850,9 +7844,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   </data>
   <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
     <value>Cette connexion à la passerelle ne peut pas lire les tableaux de bord des sessions. Demandez un accès en lecture au propriétaire de la passerelle ou mettez-la à jour.</value>
-  </data>
-  <data name="Dashboards_Back" xml:space="preserve">
-    <value>Retour aux tableaux de bord</value>
   </data>
   <data name="Dashboards_OpenChat" xml:space="preserve">
     <value>Ouvrir la conversation</value>
@@ -8001,18 +7992,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
-  <data name="Dashboards_Tagline" xml:space="preserve">
-    <value>Des tableaux en direct que vos agents créent et tiennent à jour.</value>
-  </data>
-  <data name="Dashboards_StatTotal" xml:space="preserve">
-    <value>Tableaux de bord</value>
-  </data>
-  <data name="Dashboards_StatLive" xml:space="preserve">
-    <value>En direct</value>
-  </data>
-  <data name="Dashboards_StatAuthors" xml:space="preserve">
-    <value>Auteurs</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Ouvrir le tableau</value>
   </data>
@@ -8021,9 +8000,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   </data>
   <data name="Dashboards_NoSummary" xml:space="preserve">
     <value>Aucun résumé disponible</value>
-  </data>
-  <data name="Dashboards_AskInChat" xml:space="preserve">
-    <value>Demander dans la conversation</value>
   </data>
   <data name="Dashboards_OpenWebGallery" xml:space="preserve">
     <value>Ouvrir sur le web</value>
@@ -8151,15 +8127,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
   <data name="Dashboards_OpenChatFor" xml:space="preserve">
     <value>Ouvrir la discussion : {0}</value>
-  </data>
-  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
-    <value>Tableaux de bord de {0}</value>
-  </data>
-  <data name="Dashboards_CountManyFormat" xml:space="preserve">
-    <value>{0} tableaux de bord</value>
-  </data>
-  <data name="Dashboards_CountOne" xml:space="preserve">
-    <value>1 tableau de bord</value>
   </data>
   <data name="Dashboards_FreshToday" xml:space="preserve">
     <value>Mis à jour aujourd’hui</value>

@@ -7829,14 +7829,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Dashboards_Title" xml:space="preserve">
     <value>Dashboards</value>
   </data>
-  <data name="Dashboards_LearnMore" xml:space="preserve">
-    <value>Learn more</value>
-  </data>
   <data name="Dashboards_Refresh" xml:space="preserve">
     <value>Refresh</value>
-  </data>
-  <data name="Dashboards_AgentLabel" xml:space="preserve">
-    <value>Agent</value>
   </data>
   <data name="Dashboards_BoardsFrom" xml:space="preserve">
     <value>Boards from</value>
@@ -7918,9 +7912,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
     <value>This Gateway connection can't read session dashboards. Ask the Gateway owner for read access or update the Gateway.</value>
-  </data>
-  <data name="Dashboards_Back" xml:space="preserve">
-    <value>Back to dashboards</value>
   </data>
   <data name="Dashboards_OpenChat" xml:space="preserve">
     <value>Open chat</value>
@@ -8069,18 +8060,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
     <value>Open dashboard</value>
   </data>
-  <data name="Dashboards_Tagline" xml:space="preserve">
-    <value>Live boards your agents build and keep up to date.</value>
-  </data>
-  <data name="Dashboards_StatTotal" xml:space="preserve">
-    <value>Dashboards</value>
-  </data>
-  <data name="Dashboards_StatLive" xml:space="preserve">
-    <value>Live now</value>
-  </data>
-  <data name="Dashboards_StatAuthors" xml:space="preserve">
-    <value>Authors</value>
-  </data>
   <data name="Dashboards_OpenAction" xml:space="preserve">
     <value>Open board</value>
   </data>
@@ -8089,9 +8068,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Dashboards_NoSummary" xml:space="preserve">
     <value>No summary available</value>
-  </data>
-  <data name="Dashboards_AskInChat" xml:space="preserve">
-    <value>Ask in chat</value>
   </data>
   <data name="Dashboards_OpenWebGallery" xml:space="preserve">
     <value>Open in web</value>
@@ -8219,15 +8195,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
   <data name="Dashboards_OpenChatFor" xml:space="preserve">
     <value>Open chat: {0}</value>
-  </data>
-  <data name="Dashboards_ForAgentFormat" xml:space="preserve">
-    <value>Dashboards for {0}</value>
-  </data>
-  <data name="Dashboards_CountManyFormat" xml:space="preserve">
-    <value>{0} dashboards</value>
-  </data>
-  <data name="Dashboards_CountOne" xml:space="preserve">
-    <value>1 dashboard</value>
   </data>
   <data name="Dashboards_FreshToday" xml:space="preserve">
     <value>Fresh today</value>

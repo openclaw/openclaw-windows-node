@@ -105,21 +105,6 @@ internal static class DashboardsArt
     public static Element HueBadge(string glyph, int hue, double size) =>
         GlyphBadge(glyph, DashboardHues.Strong(hue), DashboardHues.Subtle(hue), size);
 
-    /// <summary>Kind chip: a colored glyph and the kind label on a tinted pill.</summary>
-    public static Element KindChip(BoardWidget widget, string label)
-    {
-        var hue = DashboardHues.ForKind(widget);
-        return Border(HStack(5,
-                DashboardsStates.Glyph(DashboardsGlyphsExtra.ForKind(widget), 11, DashboardHues.Strong(hue))
-                    .VAlign(VerticalAlignment.Center),
-                TextBlock(label).FontSize(11).SemiBold()
-                    .Foreground(Theme.Ref("TextFillColorPrimaryBrush"))
-                    .VAlign(VerticalAlignment.Center)))
-            .Padding(7, 2, 8, 3)
-            .CornerRadius(999)
-            .Background(Theme.Ref(DashboardHues.Subtle(hue)));
-    }
-
     /// <summary>A green dot with a soft breathing halo.</summary>
     public static Element LiveDot(bool reducedMotion)
     {

@@ -108,6 +108,7 @@ internal static class HubPageRegistry
             HubPageKind.Connection => ("HubWindow_NavigationViewItem_88.Content", FluentIconCatalog.Plug),
             HubPageKind.LocalAi => ("HubWindow_NavigationViewItem_LocalAi.Content", FluentIconCatalog.Inference),
             HubPageKind.Sessions => ("HubWindow_NavigationViewItem_91.Content", FluentIconCatalog.Sessions),
+            HubPageKind.Dashboards => ("HubWindow_NavDashboards.Content", FluentIconCatalog.Dashboard),
             HubPageKind.DefaultModel => ("HubWindow_NavigationViewItem_DefaultModel.Content", FluentIconCatalog.Settings),
             HubPageKind.Cron => ("HubWindow_NavigationViewItem_124.Content", FluentIconCatalog.Cron),
             HubPageKind.Workspace => ("WorkspacePage_TextBlock_22.Text", FluentIconCatalog.Workspace),

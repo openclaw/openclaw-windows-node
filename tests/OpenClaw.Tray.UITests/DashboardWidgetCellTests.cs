@@ -272,7 +272,8 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             var card = ById<Button>(host, "DashboardCard_agent:main:fresh:0");
             Assert.StartsWith("Open board: Board 0", AutomationProperties.GetName(card));
             Assert.Equal("No summary available", AutomationProperties.GetHelpText(card));
-            Assert.Contains(FindDescendants<TextBlock>(card), text => text.Text == "B0");
+            Assert.Contains(FindDescendants<TextBlock>(ById<Grid>(host, AutomationProperties.GetAutomationId(card) + "Layout")),
+                text => text.Text == "B0");
             Assert.Equal(0, client.BoardLoads);
         }, ready: host => FindDescendants<Grid>(host).Any(element =>
             AutomationProperties.GetAutomationId(element) == "DashboardsCards"), width: 1400);
@@ -542,12 +543,13 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             capture: "mixed-report-website");
     }
 
-    private async Task WaitForMountedStateAsync(ReactorHostControl host, Func<ReactorHostControl, bool> ready)
+    private async Task WaitForMountedStateAsync(ReactorHostControl host, Func<ReactorHostControl, bool> ready,
+        Func<string>? failureMessage = null)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (!await ui.RunOnUIAsync(() => Task.FromResult(ready(host))))
         {
-            Assert.True(DateTime.UtcNow < deadline, "Mounted dashboard did not reach the expected state.");
+            Assert.True(DateTime.UtcNow < deadline, failureMessage?.Invoke() ?? "Mounted dashboard did not reach the expected state.");
             await ui.YieldToRenderAsync();
         }
     }
@@ -890,6 +892,26 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     [Theory]
     [InlineData(1400)]
     [InlineData(1008)]
+    [InlineData(761)]
+    [InlineData(739)]
+    public Task FreshToday_CompactCardInitialsFitWithinTheirBanner(double width) =>
+        WithFreshGalleryAsync(width, host =>
+        {
+            var card = ById<Button>(host, "DashboardCardFresh_agent:main:resize:1");
+            var layout = ById<Grid>(host, AutomationProperties.GetAutomationId(card) + "Layout");
+            var initials = Assert.Single(FindDescendants<TextBlock>(layout), text => text.Text == "RT");
+            var badge = Assert.IsType<Border>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(initials));
+            var banner = Assert.IsType<Border>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(badge));
+            var badgeBounds = Bounds(badge, banner);
+            Assert.InRange(badgeBounds.Width, 47.5, 48.5);
+            Assert.InRange(badgeBounds.Height, 47.5, 48.5);
+            Assert.InRange(badgeBounds.Top, 7.5, 8.5);
+            Assert.InRange(banner.ActualHeight - badgeBounds.Bottom, 7.5, 8.5);
+        });
+
+    [Theory]
+    [InlineData(1400)]
+    [InlineData(1008)]
     public Task FreshToday_WideCardsHaveAlignedTopsAndEqualRowHeights(double width) =>
         WithFreshGalleryAsync(width, host =>
         {
@@ -912,8 +934,8 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             var column = Bounds(ById<Grid>(host, "DashboardsFreshLayout"), host);
             Assert.InRange(Math.Abs(feature.Left - side.Left), 0, 0.5);
             Assert.InRange(Math.Abs(feature.Right - side.Right), 0, 0.5);
-            Assert.InRange(Math.Abs(feature.Left - column.Left - 1), 0, 0.5);
-            Assert.InRange(Math.Abs(feature.Right - column.Right + 1), 0, 0.5);
+            Assert.InRange(Math.Abs(feature.Left - column.Left), 0, 0.5);
+            Assert.InRange(Math.Abs(feature.Right - column.Right), 0, 0.5);
         });
 
     [Theory]
@@ -927,7 +949,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         {
             var button = ById<Button>(host, "DashboardsOpenWeb");
             Assert.Contains(FindDescendants<TextBlock>(button), text => text.Text == "Open in web");
-            Assert.Contains(FindDescendants<TextBlock>(button), text => text.Text == "\uE8A7");
+            Assert.Contains(FindDescendants<FontIcon>(button), icon => icon.Glyph == "\uE8A7");
             Assert.True(button.BorderThickness.Right > 0, "The web command must retain its native button border.");
             AssertDefaultWebButton(host, button);
             var scroller = ById<ScrollViewer>(host, "DashboardsGalleryScroll");
@@ -985,7 +1007,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                         Assert.InRange(Math.Abs(feature.Left - side.Left), 0, 0.5);
                         Assert.InRange(Math.Abs(feature.Right - side.Right), 0, 0.5);
                     }
-                    Assert.InRange(Math.Abs(side.Right - column.Right + 1), 0, 0.5);
+                    Assert.InRange(Math.Abs(side.Right - column.Right), 0, 0.5);
                     var gallery = ById<Border>(host, "DashboardsGallery");
                     Assert.InRange(Math.Abs(column.Left - Bounds(gallery, host).Left - gallery.Padding.Left), 0, 0.5);
                     Assert.InRange(Math.Abs(column.Right - Bounds(gallery, host).Right + gallery.Padding.Right), 0, 0.5);
@@ -1009,8 +1031,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 hero = ById<Border>(host, "DashboardsHero");
                 Assert.True(sort.Focus(FocusState.Keyboard));
                 host.UpdateLayout();
-                if (Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
-                    WriteMountedGeometry(host, directory, "resize-before-scroll-geometry.json");
                 Assert.True(scroll.ScrollableHeight >= 120,
                     $"Resize fixture needs 120 DIP of scroll range; extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, range={scroll.ScrollableHeight}.");
                 Assert.True(scroll.ChangeView(null, 120, null, disableAnimation: true));
@@ -1023,8 +1043,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 var focusedBounds = Bounds(sort!, host);
                 Assert.InRange(focusedBounds.Top, 0, scroll!.ViewportHeight);
                 Assert.InRange(focusedBounds.Bottom, 0, scroll.ViewportHeight);
-                if (Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
-                    WriteMountedGeometry(host, directory, "resize-established-scroll-geometry.json");
             });
             foreach (var width in new[] { 820d, 600d, 1100d })
             {
@@ -1087,17 +1105,30 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     private static void AssertDefaultWebButton(ReactorHostControl host, Button button)
     {
         var fill = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(button.Background);
-        var stroke = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(button.BorderBrush);
-        var expectedFill = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(
-            Application.Current.Resources["ControlFillColorDefaultBrush"]);
-        var expectedStroke = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(
-            Application.Current.Resources["ControlStrokeColorDefaultBrush"]);
-        Assert.Equal(expectedFill.Color, fill.Color);
-        Assert.Equal(expectedStroke.Color, stroke.Color);
         Assert.True(fill.Color.A > 0 && fill.Opacity > 0);
-        Assert.True(stroke.Color.A > 0 && stroke.Opacity > 0);
-        Assert.Equal(new Thickness(11, 5, 11, 6), button.Padding);
-        Assert.True(button.MinHeight >= 32);
+        Assert.NotNull(button.BorderBrush);
+        Assert.Null(button.Style);
+        Assert.True(double.IsNaN(button.Height));
+        Assert.True(double.IsNaN(button.Width));
+        var localKeys = button.Resources.Select(entry => entry.Key).ToArray();
+        Assert.DoesNotContain(localKeys, key => key is "ButtonBackground" or "ButtonBorderBrush");
+        var parent = Assert.IsAssignableFrom<Panel>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(button));
+        var pristine = new Button { RequestedTheme = button.ActualTheme };
+        parent.Children.Add(pristine);
+        try
+        {
+            var pristineKeys = pristine.Resources.Select(entry => entry.Key).ToArray();
+            Assert.DoesNotContain(pristineKeys, key => key is "ButtonBackground" or "ButtonBorderBrush");
+            Assert.True(pristine.Resources.ContainsKey("ButtonBackground"));
+            pristine.Resources["ButtonBackground"] = pristine.Resources["ButtonBackground"];
+            var injectedKeys = pristine.Resources.Select(entry => entry.Key).ToArray();
+            Assert.Contains("ButtonBackground", injectedKeys);
+        }
+        finally
+        {
+            parent.Children.Remove(pristine);
+        }
+        Assert.True(button.Padding.Left > 0 && button.Padding.Right > 0);
         var buttonBounds = Bounds(button, host);
         foreach (var text in FindDescendants<TextBlock>(button))
         {
@@ -1110,8 +1141,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         var refresh = ById<Button>(host, "DashboardsRefresh");
         Assert.True(Bounds(button, host).Right < Bounds(refresh, host).Left,
             "Open in web must precede Refresh without overlapping.");
-        Assert.Equal(fill.Color, Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(button.Resources["ButtonBackground"]).Color);
-        Assert.Equal(stroke.Color, Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(button.Resources["ButtonBorderBrush"]).Color);
     }
 
     private static Windows.Foundation.Rect Bounds(FrameworkElement element, FrameworkElement root) =>
@@ -1512,8 +1541,14 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 candidate => AutomationProperties.GetAutomationId(candidate) == "BoardWidgetOpenWeb_other"));
     }
 
-    [Fact]
-    public async Task GalleryHeader_OpensTheWebGalleryAndCardsStayStatic()
+    [Theory]
+    [InlineData("Light", "Normal", 739)]
+    [InlineData("Light", "Normal", 1400)]
+    [InlineData("Light", "PointerOver", 1400)]
+    [InlineData("Light", "Pressed", 1400)]
+    [InlineData("Light", "Focused", 1400)]
+    [InlineData("Dark", "PointerOver", 739)]
+    public async Task GalleryCard_UsesOneNativeSurfaceAndKeepsChatIndependent(string theme, string visualState, double width)
     {
         var opened = 0;
         var chats = new List<string>();
@@ -1535,7 +1570,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         };
         state.SetConnection(client, connected: true);
         await WithMountedAsync(() => Component<ReactorDashboardGallery, DashboardGalleryProps>(
-                new DashboardGalleryProps(state, client, "main", state.ConnectionRevision)),
+                new DashboardGalleryProps(state, client, "main", state.ConnectionRevision, width)),
             host =>
             {
                 var button = Assert.Single(FindDescendants<Button>(host),
@@ -1547,17 +1582,106 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     candidate => AutomationProperties.GetAutomationId(candidate) == "DashboardCardChat_agent:main:dashboard:ops");
                 Assert.Equal(new Microsoft.UI.Xaml.Thickness(1), chat.BorderThickness);
                 Assert.Contains(FindDescendants<TextBlock>(chat), text => text.Text == "Open chat");
-                Assert.Contains(FindDescendants<TextBlock>(chat), text => text.Text == "\uE8BD");
+                Assert.Contains(FindDescendants<FontIcon>(chat), icon => icon.Glyph == "\uE8BD");
                 var card = Assert.Single(FindDescendants<Button>(host),
                     candidate => AutomationProperties.GetAutomationId(candidate) == "DashboardCard_agent:main:dashboard:ops");
+                var layout = ById<Grid>(host, AutomationProperties.GetAutomationId(card) + "Layout");
+                Assert.Null(layout.Background);
+                Assert.Equal(new Thickness(0), layout.BorderThickness);
+                Assert.Null(card.Style);
+                Assert.True(double.IsNaN(card.Height));
+                Assert.True(double.IsNaN(chat.Height));
+                var tolerance = 1 / host.XamlRoot.RasterizationScale;
+                var bounds = Bounds(card, layout);
+                Assert.InRange(Math.Abs(bounds.Left), 0, tolerance);
+                Assert.InRange(Math.Abs(bounds.Top), 0, tolerance);
+                Assert.InRange(Math.Abs(bounds.Right - layout.ActualWidth), 0, tolerance);
+                Assert.InRange(Math.Abs(bounds.Bottom - layout.ActualHeight), 0, tolerance);
+                var initials = Assert.Single(FindDescendants<TextBlock>(layout), text => text.Text == "OO");
+                var badge = Assert.IsType<Border>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(initials));
+                var cover = Assert.IsType<Border>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(badge));
+                Assert.NotNull(cover.Background);
                 Assert.DoesNotContain(FindDescendants<Button>(card), candidate => candidate == chat);
+                var chatBounds = Bounds(chat, layout);
+                var summary = Assert.Single(FindDescendants<TextBlock>(layout), text => text.Text == "Deploy finished.");
+                Assert.True(Bounds(summary, layout).Bottom <= chatBounds.Top, "The sibling chat footer must not cover card text.");
+                Assert.True(chat.Focus(FocusState.Keyboard));
                 Invoke(chat);
+                Assert.Null(state.OpenTarget);
+                Assert.True(card.Focus(FocusState.Keyboard));
+                Assert.Equal(FocusState.Keyboard, card.FocusState);
+                if (visualState != "Focused")
+                {
+                    Assert.True(card.Focus(FocusState.Programmatic));
+                    Assert.True(VisualStateManager.GoToState(card, "Normal", false));
+                }
+                var presenter = Assert.Single(FindDescendants<ContentPresenter>(card));
+                var painted = Bounds(presenter, layout);
+                Assert.InRange(Math.Abs(painted.Left - bounds.Left), 0, tolerance);
+                Assert.InRange(Math.Abs(painted.Top - bounds.Top), 0, tolerance);
+                Assert.InRange(Math.Abs(painted.Right - bounds.Right), 0, tolerance);
+                Assert.InRange(Math.Abs(painted.Bottom - bounds.Bottom), 0, tolerance);
+                Assert.NotNull(presenter.Background);
             },
             ready: host => FindDescendants<Button>(host).Any(candidate =>
-                AutomationProperties.GetAutomationId(candidate) == "DashboardCard_agent:main:dashboard:ops"));
+                AutomationProperties.GetAutomationId(candidate) == "DashboardCard_agent:main:dashboard:ops"),
+            theme: theme, width: width, capture: $"stock-card-{visualState}-{width}",
+            afterMounted: async host =>
+            {
+                await ui.YieldToRenderAsync();
+                if (visualState is not ("PointerOver" or "Pressed"))
+                    return;
+                var card = await ui.RunOnUIAsync(() => Task.FromResult(
+                    ById<Button>(host, "DashboardCard_agent:main:dashboard:ops")));
+                var normalPixel = await ui.RunOnUIAsync(() => CardCenterPixelAsync(card));
+                var probe = await ui.RunOnUIAsync(() =>
+                {
+                    var reference = (Border)XamlReader.Load(
+                        $"<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Width=\"0\" Height=\"0\" Background=\"{{ThemeResource ButtonBackground{visualState}}}\" />");
+                    ui.Container.Children.Add(reference);
+                    return Task.FromResult(reference);
+                });
+                try
+                {
+                    await ui.RunOnUIAsync(() => Assert.True(VisualStateManager.GoToState(card, visualState, false)));
+                    var observation = "The themed reference has not loaded.";
+                    await WaitForMountedStateAsync(host, _ =>
+                    {
+                        if (!probe.IsLoaded)
+                            return false;
+                        Assert.Equal(theme == "Dark" ? ElementTheme.Dark : ElementTheme.Light, probe.ActualTheme);
+                        Assert.Equal(host.ActualTheme, probe.ActualTheme);
+                        Assert.Equal(card.ActualTheme, probe.ActualTheme);
+                        var presenter = Assert.Single(FindDescendants<ContentPresenter>(card));
+                        var expected = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(probe.Background);
+                        var actual = presenter.Background as Microsoft.UI.Xaml.Media.SolidColorBrush;
+                        observation = $"{visualState}: actual ARGB={actual?.Color}, expected ARGB={expected.Color}; " +
+                            $"root={host.ActualTheme}, card={card.ActualTheme}, probe={probe.ActualTheme}.";
+                        return actual is not null && actual.Color == expected.Color && actual.Opacity == expected.Opacity;
+                    }, () => observation);
+                    var deadline = DateTime.UtcNow.AddSeconds(10);
+                    while (await ui.RunOnUIAsync(() => CardCenterPixelAsync(card)) == normalPixel)
+                    {
+                        Assert.True(DateTime.UtcNow < deadline,
+                            $"The native surface did not render differently from Normal. {observation}");
+                        await ui.YieldToRenderAsync();
+                    }
+                }
+                finally { await ui.RunOnUIAsync(() => ui.Container.Children.Remove(probe)); }
+            });
         Assert.Equal(1, opened);
         Assert.Equal(0, client.BoardLoads);
         Assert.Equal(new[] { "agent:main:dashboard:ops" }, chats);
+    }
+
+    private static async Task<uint> CardCenterPixelAsync(Button card)
+    {
+        var bitmap = new RenderTargetBitmap();
+        await bitmap.RenderAsync(card);
+        Assert.True(bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0);
+        var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+        var center = ((bitmap.PixelHeight / 2) * bitmap.PixelWidth + bitmap.PixelWidth / 2) * 4;
+        return BitConverter.ToUInt32(pixels, center);
     }
 
     [Fact]
@@ -1638,27 +1762,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         Action? restoreCaptureWindow = null;
         Exception? mountedFailure = null;
         var previousTheme = ElementTheme.Default;
-        var diagnosticStart = System.Diagnostics.Stopwatch.StartNew();
-        var diagnosticStages = new List<object>();
-        var pairedDiagnostic = theme == "Light" && (capture is "hero-600-gallery" or "hero-1100-board") &&
-            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR"));
-        void RecordStage(string stage)
-        {
-            if (!pairedDiagnostic || host is null ||
-                Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is not { Length: > 0 } directory)
-                return;
-            WriteMountedGeometry(host, directory, $"{theme}-{capture}-{stage}-geometry.json");
-            diagnosticStages.Add(new { stage, elapsedMs = diagnosticStart.Elapsed.TotalMilliseconds });
-            File.WriteAllText(Path.Combine(directory, $"{theme}-{capture}-stages.json"), JsonSerializer.Serialize(new
-            {
-                theme, capture, width, stage, stages = diagnosticStages,
-                observation = "Stage snapshots only. No Loaded/Unloaded subscriptions or animation-completion claim.",
-            }, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
-            }));
-        }
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -1676,7 +1779,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 captureFrame.RequestedTheme = requested;
                 captureFrame.Child = host;
                 ui.Container.Children.Add(captureFrame);
-                RecordStage("assigned");
             });
             // Board views load through the posted dispatcher; let those turns and layout settle.
             for (var turn = 0; turn < 3; turn++)
@@ -1694,7 +1796,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             {
                 ui.Container.UpdateLayout();
                 assert(host!);
-                RecordStage("ready");
             });
             if (afterMounted is not null)
                 await afterMounted(host!);
@@ -1705,14 +1806,11 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     {
                         restoreCaptureWindow = await MountedControlCapture.ArrangeSceneAsync(
                             ui.TestWindow, captureFrame!, $"{theme}-{capture}-owned-window");
-                        RecordStage("arranged");
                     });
                 if (capture.StartsWith("hero-", StringComparison.Ordinal))
                     await WaitForMountedStateAsync(host!, HeroCaptureIsSettled);
                 await ui.RunOnUIAsync(async () =>
                 {
-                    WriteMountedGeometry(host!, directory, $"{theme}-{capture}-geometry.json");
-                    RecordStage("before-rtb");
                     var bitmap = new RenderTargetBitmap();
                     await bitmap.RenderAsync(captureFrame);
                     var pixels = await bitmap.GetPixelsAsync();
@@ -1725,12 +1823,9 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
                         (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels.ToArray());
                     await encoder.FlushAsync();
-                    RecordStage("after-rtb");
                     if (theme == "Light" && (capture is "hero-600-gallery" or "hero-1100-board"))
                     {
-                        RecordStage("before-owned-window");
                         await MountedControlCapture.OptionalAsync(ui.TestWindow, $"{theme}-{capture}-owned-window");
-                        RecordStage("after-owned-window");
                     }
                 });
             }
@@ -1738,34 +1833,11 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         catch (Exception failure)
         {
             mountedFailure = failure;
-            if (host is not null && Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
-            {
-                var failureId = $"failure-{Guid.NewGuid():N}";
-                Directory.CreateDirectory(directory);
-                File.WriteAllText(Path.Combine(directory, $"{failureId}-exception.txt"), failure.ToString());
-                try
-                {
-                    await ui.RunOnUIAsync(() => WriteMountedGeometry(host, directory, $"{failureId}-geometry.json"));
-                }
-                catch (Exception diagnosticFailure)
-                {
-                    File.WriteAllText(Path.Combine(directory, $"{failureId}-diagnostic-exception.txt"), diagnosticFailure.ToString());
-                }
-            }
             throw;
         }
         finally
         {
             var cleanupFailures = new List<Exception>();
-            try
-            {
-                await ui.RunOnUIAsync(() =>
-                {
-                    try { RecordStage("cleanup"); }
-                    catch (Exception failure) { cleanupFailures.Add(failure); }
-                });
-            }
-            catch (Exception failure) { cleanupFailures.Add(failure); }
             try
             {
                 await ui.RunOnUIAsync(() => restoreCaptureWindow?.Invoke());
@@ -1786,14 +1858,9 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             catch (Exception failure) { cleanupFailures.Add(failure); }
             if (cleanupFailures.Count > 0)
             {
-                var cleanupFailure = new AggregateException("Mounted fixture cleanup failed.", cleanupFailures);
-                if (Environment.GetEnvironmentVariable("OPENCLAW_DASHBOARD_STATE_ARTIFACTS") is { Length: > 0 } directory)
-                {
-                    Directory.CreateDirectory(directory);
-                    File.WriteAllText(Path.Combine(directory, $"cleanup-{Guid.NewGuid():N}-exception.txt"), cleanupFailure.ToString());
-                }
-                if (mountedFailure is null)
-                    throw cleanupFailure;
+                if (mountedFailure is not null)
+                    cleanupFailures.Insert(0, mountedFailure);
+                throw new AggregateException("Mounted fixture cleanup failed.", cleanupFailures);
             }
         }
     }
@@ -1844,149 +1911,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 return true;
         return false;
     }
-
-    private static void WriteMountedGeometry(ReactorHostControl host, string directory, string fileName)
-    {
-        var hero = FindDescendants<Border>(host).FirstOrDefault(element =>
-            AutomationProperties.GetAutomationId(element) is "DashboardsHero" or "DashboardHero");
-        var geometryElements = FindDescendants<FrameworkElement>(host).Prepend(host).ToList();
-        for (var ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(host); ancestor is not null;
-            ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor))
-            if (ancestor is FrameworkElement element)
-                geometryElements.Add(element);
-        var elements = geometryElements.Select(element =>
-        {
-            var sameXamlRoot = host.XamlRoot is not null && ReferenceEquals(element.XamlRoot, host.XamlRoot);
-            var attachedAndLoaded = host.IsLoaded && element.IsLoaded && sameXamlRoot;
-            Microsoft.UI.Composition.Visual? visual = null;
-            string? compositionUnavailable = attachedAndLoaded ? null : "Deferred until attached and loaded.";
-            try
-            {
-                if (attachedAndLoaded)
-                    visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
-            }
-            catch (UnauthorizedAccessException unavailable) when (
-                unavailable.HResult == unchecked((int)0x80070005) &&
-                unavailable.Message.Contains("Scale property in use", StringComparison.Ordinal))
-            {
-                compositionUnavailable = unavailable.Message;
-            }
-            var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
-            var scroll = element as ScrollViewer;
-            var grid = element as Grid;
-            return new
-            {
-                type = element.GetType().Name,
-                identity = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element),
-                id = AutomationProperties.GetAutomationId(element),
-                text = (element as TextBlock)?.Text,
-                parentType = parent?.GetType().Name,
-                parentIdentity = parent is null ? (int?)null : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(parent),
-                hasXamlRoot = element.XamlRoot is not null,
-                sameXamlRoot,
-                parentId = parent is DependencyObject dependency ? AutomationProperties.GetAutomationId(dependency) : null,
-                geometryState = !sameXamlRoot ? "Not attached to the host XamlRoot. Geometry deferred." :
-                    !attachedAndLoaded ? "Same XamlRoot, not loaded. Geometry deferred." :
-                    element.ActualWidth <= 0 || element.ActualHeight <= 0 ? "Loaded with zero layout extent." : "Loaded with layout extent.",
-                bounds = attachedAndLoaded ? Bounds(element, host).ToString() : null,
-                heroRelativeBounds = attachedAndLoaded && hero is { IsLoaded: true } &&
-                    ReferenceEquals(hero.XamlRoot, host.XamlRoot) ? Bounds(element, hero).ToString() : null,
-                element.ActualWidth,
-                element.ActualHeight,
-                element.IsLoaded,
-                visibility = element.Visibility.ToString(),
-                element.Opacity,
-                element.IsHitTestVisible,
-                margin = element.Margin.ToString(),
-                nativeClip = attachedAndLoaded ? element.Clip?.Rect.ToString() : null,
-                nativeClipType = element.Clip?.GetType().Name,
-                renderTransformBasis = attachedAndLoaded && element.RenderTransform is { } transform ? new[]
-                {
-                    transform.TransformPoint(new Windows.Foundation.Point(0, 0)).ToString(),
-                    transform.TransformPoint(new Windows.Foundation.Point(1, 0)).ToString(),
-                    transform.TransformPoint(new Windows.Foundation.Point(0, 1)).ToString(),
-                } : null,
-                renderTransformType = element.RenderTransform?.GetType().Name,
-                zIndex = Microsoft.UI.Xaml.Controls.Canvas.GetZIndex(element),
-                background = DescribeBrush(element switch
-                {
-                    Border border => border.Background,
-                    Panel panel => panel.Background,
-                    Control control => control.Background,
-                    _ => null,
-                }),
-                foreground = DescribeBrush(element switch
-                {
-                    TextBlock text => text.Foreground,
-                    Control control => control.Foreground,
-                    _ => null,
-                }),
-                transitions = element.Transitions?.Select(transition => transition.GetType().Name).ToArray(),
-                parentChildrenTransitions = (parent as Panel)?.ChildrenTransitions?.Select(transition => new
-                {
-                    type = transition.GetType().Name,
-                    staggering = transition is Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition entrance
-                        ? (bool?)entrance.IsStaggeringEnabled : null,
-                }).ToArray(),
-                padding = element switch
-                {
-                    Grid padded => padded.Padding.ToString(),
-                    Border padded => padded.Padding.ToString(),
-                    Control padded => padded.Padding.ToString(),
-                    _ => null
-                },
-                gridRow = Microsoft.UI.Xaml.Controls.Grid.GetRow(element),
-                gridColumn = Microsoft.UI.Xaml.Controls.Grid.GetColumn(element),
-                gridRowSpan = Microsoft.UI.Xaml.Controls.Grid.GetRowSpan(element),
-                gridColumnSpan = Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(element),
-                columnCount = grid?.ColumnDefinitions.Count,
-                compositionOpacity = visual?.Opacity,
-                compositionOffset = visual?.Offset.ToString(),
-                compositionScale = visual?.Scale.ToString(),
-                compositionIsVisible = visual?.IsVisible,
-                compositionIdentity = visual is null ? (int?)null : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(visual),
-                compositionParentIdentity = visual?.Parent is { } visualParent
-                    ? (int?)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(visualParent) : null,
-                compositionClipType = visual?.Clip?.GetType().Name,
-                compositionClipUnavailable = visual?.Clip is not null and not Microsoft.UI.Composition.InsetClip
-                    ? "Only public InsetClip extents recorded; other clip geometry unavailable." : null,
-                compositionInsetClip = visual?.Clip is Microsoft.UI.Composition.InsetClip inset
-                    ? new[] { inset.LeftInset, inset.TopInset, inset.RightInset, inset.BottomInset } : null,
-                compositionTransform = visual?.TransformMatrix.ToString(),
-                compositionUnavailable,
-                nativeScale = element.Scale.ToString(),
-                translation = element.Translation.ToString(),
-                scrollOffset = scroll?.VerticalOffset,
-                scrollableHeight = scroll?.ScrollableHeight,
-                extentHeight = scroll?.ExtentHeight,
-                viewportHeight = scroll?.ViewportHeight,
-            };
-        }).ToArray();
-        var focused = host.IsLoaded && host.XamlRoot is { } xamlRoot
-            ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xamlRoot) as DependencyObject : null;
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, fileName), JsonSerializer.Serialize(new
-        {
-            recordedUtc = DateTimeOffset.UtcNow,
-            identityKind = "Managed reference hash, stable while subscribed; not a native COM identity or animation-completion receipt.",
-            animationState = "Public configured transitions only. Running implicit animation progress unavailable.",
-            hostWidth = host.ActualWidth,
-            hostHeight = host.ActualHeight,
-            focusedId = focused is null ? null : AutomationProperties.GetAutomationId(focused),
-            elements
-        }, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
-        }));
-    }
-
-    private static object? DescribeBrush(Microsoft.UI.Xaml.Media.Brush? brush) => brush is null ? null : new
-    {
-        type = brush.GetType().Name,
-        brush.Opacity,
-        color = (brush as Microsoft.UI.Xaml.Media.SolidColorBrush)?.Color.ToString(),
-    };
 
     private static ResourceDictionary? s_installedResources;
 

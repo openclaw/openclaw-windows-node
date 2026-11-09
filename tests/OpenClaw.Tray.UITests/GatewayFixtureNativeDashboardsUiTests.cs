@@ -51,39 +51,6 @@ public sealed partial class GatewayFixtureUiTests
                         var point = new System.Windows.Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
                         var hit = AutomationElement.FromPoint(point);
                         var belongsToButton = IsWithin(hit, button);
-                        if (!belongsToButton)
-                        {
-                            object DescribeHitElement(AutomationElement element) => new
-                            {
-                                runtimeId = element.GetRuntimeId(),
-                                automationId = element.Current.AutomationId,
-                                name = element.Current.Name,
-                                className = element.Current.ClassName,
-                                controlType = element.Current.ControlType.ProgrammaticName,
-                                processId = element.Current.ProcessId,
-                                nativeWindowHandle = element.Current.NativeWindowHandle,
-                                bounds = element.Current.BoundingRectangle,
-                                isOffscreen = element.Current.IsOffscreen,
-                                isEnabled = element.Current.IsEnabled
-                            };
-                            var ancestry = new List<object>();
-                            for (AutomationElement? current = hit; current is not null;
-                                 current = TreeWalker.RawViewWalker.GetParent(current))
-                                ancestry.Add(DescribeHitElement(current));
-                            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"{theme}-{id}-center-hit-failure.json"),
-                                JsonSerializer.Serialize(new
-                                {
-                                    run.ArtifactsDirectory,
-                                    run.AppProcessId,
-                                    theme,
-                                    target = DescribeHitElement(button),
-                                    point,
-                                    hwnd = hwnd.ToInt64(),
-                                    windowRect = DashboardRect(hwnd),
-                                    scale,
-                                    ancestry
-                                }));
-                        }
                         Assert.True(belongsToButton,
                             $"Pinned pane button {id} is occluded at its center by {hit.Current.AutomationId}.");
                     }
@@ -168,11 +135,6 @@ public sealed partial class GatewayFixtureUiTests
                                     Assert.True(toggleBounds.Bottom <= feedback.Current.BoundingRectangle.Top,
                                         "Pinned operation feedback overlaps the reopen button.");
                             }
-                            await File.WriteAllTextAsync(Path.ChangeExtension(Path.Combine(run.ArtifactsDirectory, name), ".host.json"),
-                                JsonSerializer.Serialize(new { theme, surface, collapsed, hostMode = "standalone ContentOnly",
-                                    windowWidthDip = DashboardRect(hwnd).Width / scale,
-                                    hostWidthDip = host.Width / scale, hostTopDip = host.Top / scale,
-                                    externalHistoryBandDip = measuredHostMargin, internalInsetDip = measuredInset }));
                             if (!collapsed)
                                 continue;
                             var scroll = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!;
