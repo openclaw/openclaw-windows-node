@@ -10,8 +10,7 @@ param(
     [Parameter(Mandatory)][string]$TrxFileName,
     [string]$Runtime,
     [string]$Filter,
-    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
-    [switch]$NativeCrashDiagnostics
+    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0
 )
 
 Set-StrictMode -Version Latest
@@ -60,11 +59,7 @@ if ($HangTimeoutSeconds -gt 0) {
 }
 
 $collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
-if ($NativeCrashDiagnostics) {
-    if ($collectCoverage) { throw 'Native crash diagnosis does not support coverage instrumentation.' }
-    . (Join-Path $PSScriptRoot 'Invoke-CiNativeCrashProbe.ps1')
-    $global:LASTEXITCODE = Invoke-CiNativeCrashProbe -TestArguments $testArguments.ToArray() -ResultsDirectory $ResultsDirectory
-} elseif ($collectCoverage) {
+if ($collectCoverage) {
     $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
     & dotnet-coverage collect `
         --output $coverageOutput `
