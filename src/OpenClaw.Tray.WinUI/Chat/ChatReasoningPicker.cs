@@ -39,6 +39,35 @@ internal sealed class ChatReasoningPicker : Component<ChatReasoningPickerProps>
         var pointerCanceled = UseRef<PointerEventHandler?>(null);
         var (_, redrawAfterCancellation) = UseState(0L);
         var previewKey = UseRef<KeyEventHandler?>(null);
+
+        void DetachSlider(Slider control)
+        {
+            inputPolicy.Current.CancelPending();
+            if (pointerPressed.Current is { } pressed)
+                control.RemoveHandler(UIElement.PointerPressedEvent, pressed);
+            if (pointerReleased.Current is { } released)
+                control.RemoveHandler(UIElement.PointerReleasedEvent, released);
+            if (pointerCaptureLost.Current is { } captureLost)
+                control.RemoveHandler(UIElement.PointerCaptureLostEvent, captureLost);
+            if (pointerCanceled.Current is { } canceled)
+                control.RemoveHandler(UIElement.PointerCanceledEvent, canceled);
+            if (previewKey.Current is { } key)
+                control.PreviewKeyDown -= key;
+            pointerPressed.Current = null;
+            pointerReleased.Current = null;
+            pointerCaptureLost.Current = null;
+            pointerCanceled.Current = null;
+            previewKey.Current = null;
+            sliderControl.Current = null;
+        }
+
+        // Host disposal runs effect cleanups without guaranteeing element OnUnmount.
+        UseEffect((Func<Action>)(() => () =>
+        {
+            if (sliderControl.Current is { } control)
+                DetachSlider(control);
+        }), Array.Empty<object>());
+
         void CancelPointer(uint pointer, long revision)
         {
             if (inputPolicy.Current.CancelPointer(pointer, revision))
@@ -139,26 +168,7 @@ internal sealed class ChatReasoningPicker : Component<ChatReasoningPickerProps>
                         slider.AddHandler(UIElement.PointerCanceledEvent, pointerCanceled.Current, true);
                         slider.PreviewKeyDown += previewKey.Current;
                     })
-                    .OnUnmount(control =>
-                    {
-                        inputPolicy.Current.CancelPending();
-                        if (pointerPressed.Current is { } pressed)
-                            ((Slider)control).RemoveHandler(UIElement.PointerPressedEvent, pressed);
-                        if (pointerReleased.Current is { } released)
-                            ((Slider)control).RemoveHandler(UIElement.PointerReleasedEvent, released);
-                        if (pointerCaptureLost.Current is { } captureLost)
-                            ((Slider)control).RemoveHandler(UIElement.PointerCaptureLostEvent, captureLost);
-                        if (pointerCanceled.Current is { } canceled)
-                            ((Slider)control).RemoveHandler(UIElement.PointerCanceledEvent, canceled);
-                        if (previewKey.Current is { } key)
-                            ((Slider)control).PreviewKeyDown -= key;
-                        pointerPressed.Current = null;
-                        pointerReleased.Current = null;
-                        pointerCaptureLost.Current = null;
-                        pointerCanceled.Current = null;
-                        previewKey.Current = null;
-                        sliderControl.Current = null;
-                    })
+                    .OnUnmount(control => DetachSlider((Slider)control))
                     .IsEnabled(props.Enabled),
                 Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                     TextBlock(ChatMarkdownPresentation.Localized("Chat_Composer_Effort_Faster", "Faster"))

@@ -5,10 +5,12 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class HubPresentationContractTests
 {
     [Theory]
-    [InlineData("Pages", "NotificationsPage.xaml.cs", "private void OnNotificationActionClick")]
-    [InlineData("Controls", "SettingsShellView.xaml.cs", "private void OnAppNotificationActionButtonClick")]
+    [InlineData("Controls", "InboxView.xaml.cs", "private void OnActionClick",
+        "notifications.NavigateActionAsync(", "commands.TryNavigateAsync")]
+    [InlineData("Controls", "SettingsShellView.xaml.cs", "private void OnAppNotificationActionButtonClick",
+        "notifications.NavigateActionAsync(", "((IAppCommands)CurrentApp).TryNavigateAsync")]
     public void NotificationActions_UseAdmissionWithoutPublishingPendingChatIntent(
-        string folder, string file, string handler)
+        string folder, string file, string handler, string admissionCall, string navigationCallback)
     {
         var source = ReadSource(folder, file);
         var start = source.IndexOf(handler, StringComparison.Ordinal);
@@ -16,11 +18,34 @@ public sealed class HubPresentationContractTests
         var end = source.IndexOf("\n    private ", start + handler.Length, StringComparison.Ordinal);
         var action = end < 0 ? source[start..] : source[start..end];
 
-        Assert.Contains("notifications.NavigateActionAsync(", action);
+        Assert.Contains(admissionCall, action);
         Assert.Contains("AsyncEventHandlerGuard.Run(", action);
-        Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync", action);
+        Assert.Contains(navigationCallback, action);
         Assert.DoesNotContain("PendingChatSessionKey", action);
         Assert.DoesNotContain(".Dismiss(", action);
+    }
+
+    [Fact]
+    public void InboxHosts_ForwardAdmissionResultsAndRequestLocalChatKeys()
+    {
+        // The shared row handler owns admission on both surfaces. Retire this wiring guard
+        // when native refusal/deferral proof covers the page and each footer host.
+        var page = ReadSource("Pages", "NotificationsPage.xaml.cs");
+        var workspace = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
+        var footer = ReadSource("Controls", "WorkspacePaneFooter.xaml.cs");
+        var view = ReadSource("Controls", "InboxView.xaml.cs");
+        Assert.Contains("Func<string, string?, Task<bool>> TryNavigateAsync", view);
+        // The superseded fire-and-forget route path is closed; reminders need admission.
+        Assert.DoesNotContain("OpenRoute", view);
+        Assert.DoesNotContain("commands.OpenRoute", footer);
+        Assert.DoesNotContain("OpenInboxRoute", workspace);
+        Assert.DoesNotContain("OpenAppRoute", page);
+        Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync,", page);
+        Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync,", workspace);
+        Assert.Contains("return commands.TryNavigateAsync(route, sessionKey);", footer);
+        Assert.DoesNotContain("PendingChatSessionKey", page);
+        Assert.DoesNotContain("OnNotificationActionClick", page);
+        Assert.DoesNotContain("NotificationsList", page);
     }
 
     [Fact]

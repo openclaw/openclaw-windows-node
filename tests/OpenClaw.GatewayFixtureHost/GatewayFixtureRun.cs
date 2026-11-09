@@ -540,6 +540,26 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
+    /// <summary>Preserves the failed assertion and contains native workers before releasing this run.</summary>
+    public Task FinishUiFailureAsync(Exception original, Task body,
+        Func<CancellationToken, Task> capture, Action? releasePendingResponses = null)
+    {
+        var runId = Profile.RunId;
+        var failure = Redact(original.ToString());
+        return GatewayFixtureUiFailure.FinishAsync(original, body,
+            async token =>
+            {
+                await WriteReportAsync("failed", original).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                if (IsRunning) await capture(token).ConfigureAwait(false);
+            }, releasePendingResponses ?? (() => { }), StopAppAsync, () => DisposeAsync().AsTask(),
+            stages => File.WriteAllTextAsync(Path.Combine(ArtifactsDirectory, "failure-lifecycle.json"),
+                JsonSerializer.Serialize(new { runId, outcome = "failed", failure, stages,
+                    recordedAt = DateTimeOffset.UtcNow }, new JsonSerializerOptions { WriteIndented = true })),
+            // Exit only this test worker if its native calls cannot unwind. FailFast could create a dump.
+            () => Environment.Exit(1), GatewayFixtureUiFailure.PhaseTimeout);
+    }
+
     private async Task StopAppAsync()
     {
         _client?.Dispose();

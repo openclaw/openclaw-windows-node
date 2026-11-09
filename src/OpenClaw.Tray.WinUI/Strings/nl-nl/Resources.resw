@@ -3208,24 +3208,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>Kan {0} niet starten: {1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Meldingen</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Bekijk en wis actieve OpenClaw-meldingen.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Wissen</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>Geen meldingen</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>Nieuwe app-meldingen verschijnen hier totdat u ze sluit of wist.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>{0} sluiten</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Uitvoeringsgoedkeuring</value>
   </data>
@@ -5764,10 +5746,10 @@ Controleer of de gateway actief is.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Actieve app-meldingen bekijken</value>
+    <value>Verzoeken en waarschuwingen bekijken die op u wachten</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Ga naar Meldingen</value>
+    <value>Ga naar Postvak IN</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6466,18 +6448,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7600,8 +7570,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingen</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Postvak IN</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Postvak IN</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Dashboard openen</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Dashboard openen (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vooruit</value></data>
@@ -7921,6 +7891,28 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Review_Web" xml:space="preserve"><value>Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Time-out bij controle door provider</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Controle door provider geannuleerd</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Postvak IN</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Getoonde sluiten</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Meldingsinstellingen</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingsinstellingen</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Categorieën in Postvak IN</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>Alles</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Goedkeuringen</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Vermeldingen</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automatiseringen</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>Systeem</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Niets in afwachting</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Niets in afwachting</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Nieuwe verzoeken en waarschuwingen komen hier binnen.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Postvak IN openen</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} in afwachting</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>{0} sluiten</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>nu</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} u</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} d</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>Terug naar app</value>
   </data>

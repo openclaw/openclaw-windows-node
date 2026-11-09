@@ -691,11 +691,14 @@ public sealed class DiagnosticsPageContractTests
         var footer = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml.cs");
         foreach (var shell in new[] { hub, workspace, footer })
         {
-            Assert.DoesNotContain("SyncBellItems(", shell);
+            Assert.DoesNotContain("SyncInboxItems(", shell);
             Assert.DoesNotContain("GatewayRowDetail.Text", shell);
             Assert.DoesNotContain("CountEnabledCapabilities(", shell);
         }
-        Assert.Contains("SyncBellItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "NotificationFlyoutContent.xaml.cs"));
+        Assert.Contains("SyncInboxItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        // Hosts own the Inbox binding: a late Unloaded from a quick close/reopen must not unbind the open flyout.
+        Assert.DoesNotContain("Unloaded +=", Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs"));
+        Assert.Contains("Unloaded += (_, _) => Inbox.Unbind();", Read("src", "OpenClaw.Tray.WinUI", "Pages", "NotificationsPage.xaml.cs"));
         Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Controls", "WorkspacePaneFooter.xaml");
         Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);
@@ -703,6 +706,24 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("_notifications.Changed -= OnNotificationsChanged;", workspace);
         Assert.Contains("footer.Close();", workspace);
         Assert.Contains("NotificationContent.Unbind();", footer);
+    }
+
+    [Fact]
+    public void InboxClock_RefreshesRowsOnlyWhileTheHostIsBound()
+    {
+        // WinUI-only lifecycle guard. Retire when mounted Inbox clock tests cover
+        // ticking, empty tabs and close/reopen through both hosting surfaces.
+        var view = Read("src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml.cs");
+        var row = Read("src", "OpenClaw.Tray.WinUI", "ViewModels", "InboxItemViewModel.cs");
+        Assert.Contains("_clock.IsRepeating = true;", view);
+        Assert.Contains("_clock.Tick += (_, _) => RefreshClock();", view);
+        Assert.Matches(@"internal void Unbind\(\)\s*\{\s*_clock.Stop\(\);", view);
+        Assert.Matches(@"if \((?:_service|_feed) is null \|\| _items.Count == 0\)\s*\{\s*_clock.Stop\(\);", view);
+        Assert.Matches(@"CountText.Text = [^;]+;\s*UpdateClock\(\);", view);
+        Assert.Contains("if (!_clock.IsRunning)", view);
+        Assert.Contains("_clock.Start();", view);
+        Assert.Contains("item.RefreshClock(now);", view);
+        Assert.Contains("OnPropertyChanged(nameof(AgeText));", row);
     }
 
     [Fact]
