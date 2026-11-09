@@ -3208,24 +3208,6 @@
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>{0}：{1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>通知</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>查看并清除活动的 OpenClaw 通知。</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>清除</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>没有通知</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>新的应用通知会显示在此处，直到你关闭或清除它们。</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>关闭 {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>执行批准</value>
   </data>
@@ -5758,10 +5740,10 @@
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>查看活动的应用通知</value>
+    <value>查看需要你处理的请求和提醒</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>转到通知</value>
+    <value>转到收件箱</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6460,18 +6442,6 @@
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7594,8 +7564,8 @@
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>通知</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>收件箱</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>收件箱</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>打开仪表板</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>打开仪表板 (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>前进</value></data>
@@ -7864,6 +7834,28 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>收件箱</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>忽略显示的项目</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>通知设置</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>通知设置</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>收件箱类别</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>全部</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>审批</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>提及</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>自动化</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>系统</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>没有待处理的项目</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>没有待处理的项目</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>新的请求和提醒会显示在这里。</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>打开收件箱</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} 项待处理</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>忽略 {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>刚刚</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} 分钟</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} 小时</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} 天</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>返回应用</value>
   </data>

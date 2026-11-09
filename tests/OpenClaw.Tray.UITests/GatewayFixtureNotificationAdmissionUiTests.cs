@@ -1,3 +1,5 @@
+using System.Windows.Automation;
+using OpenClaw.GatewayFixtureHost;
 using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Tray.UITests;
@@ -42,6 +44,8 @@ public sealed partial class GatewayFixtureUiTests
                 }
             }
             await run.InvokeAsync("app.navigate", new { page = sourceRoute });
+            if (!settingsBanner)
+                await ExpandNotificationReminderAsync(run, reminderTitle, actionLabel);
             await WaitUiAsync(run, () =>
                 FindById(run, sourceMarker) is { Current.IsOffscreen: false } &&
                 FindButtons(run, actionLabel).Count == 1, "actionable channel reminder on the selected surface");
@@ -68,10 +72,13 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "NotificationsPageMarker") is { Current.IsOffscreen: false } &&
                 FindButtons(run, "Dismiss " + reminderTitle).Count == 1,
                 "original reminder retained in the inbox after refusal and separate recovery");
+            await ExpandNotificationReminderAsync(run, reminderTitle, actionLabel);
             Assert.Single(FindButtons(run, actionLabel));
             await CaptureIfRequestedAsync(run, "notification-retained-after-retry.png");
 
             await run.InvokeAsync("app.navigate", new { page = sourceRoute });
+            if (!settingsBanner)
+                await ExpandNotificationReminderAsync(run, reminderTitle, actionLabel);
             await WaitUiAsync(run, () => FindById(run, sourceMarker) is { Current.IsOffscreen: false } &&
                 FindButtons(run, actionLabel).Count == 1, "original action available again on the selected surface");
             Invoke(Assert.Single(FindButtons(run, actionLabel)));
@@ -90,5 +97,45 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Empty(FindButtons(run, actionLabel));
             await CaptureIfRequestedAsync(run, "notification-dismissed-after-admission.png");
         }, scenario: GatewayScenario.CreateChannelIssue("Fixture channel authorization failed."));
+    }
+
+    // The page hosts the same expandable InboxView as the bell. Observe its actual row,
+    // expand once, then require the enabled native action before the caller invokes it.
+    private static async Task ExpandNotificationReminderAsync(GatewayFixtureRun run, string title, string actionLabel)
+    {
+        AutomationElement? row = null;
+        await WaitUiAsync(run, () =>
+        {
+            row = FindButtons(run, "Dismiss " + title).SingleOrDefault();
+            return row is not null;
+        }, "notification reminder present");
+        var reminderRow = row!;
+        while (reminderRow.Current.ControlType != ControlType.ListItem)
+            reminderRow = TreeWalker.ControlViewWalker.GetParent(reminderRow)
+                ?? throw new InvalidOperationException("Reminder has no Inbox list-item ancestor.");
+        Assert.Equal(run.AppProcessId, reminderRow.Current.ProcessId);
+        if (reminderRow.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll))
+            ((ScrollItemPattern)scroll).ScrollIntoView();
+        var expander = Assert.Single(reminderRow.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+            .Cast<AutomationElement>());
+        var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        if (pattern.Current.ExpandCollapseState == ExpandCollapseState.Collapsed)
+            pattern.Expand();
+        await WaitUiAsync(run, () =>
+        {
+            var button = reminderRow.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.NameProperty, actionLabel)));
+            if (pattern.Current.ExpandCollapseState != ExpandCollapseState.Expanded ||
+                button is null || button.Current.IsOffscreen || !button.Current.IsEnabled)
+                return false;
+            var bounds = button.Current.BoundingRectangle;
+            return !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+                double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) &&
+                bounds.Width > 0 && bounds.Height > 0 &&
+                reminderRow.Current.BoundingRectangle.Contains(bounds) &&
+                AppWindows(run).Any(window => window.Current.BoundingRectangle.Contains(bounds));
+        }, "expanded notification action visible and enabled");
     }
 }

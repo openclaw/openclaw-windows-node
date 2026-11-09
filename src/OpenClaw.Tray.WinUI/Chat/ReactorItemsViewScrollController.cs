@@ -338,12 +338,41 @@ file sealed class InitialTailPositioner : IDisposable
                     QueueInitialTailRetry(version, generation);
                     break;
                 case InitialTailLanding.GiveUp:
+                    var diagnostics = _confirmation.Diagnostics;
+                    var attemptDiagnostics = _confirmation.AttemptDiagnostics;
+                    var bringOptions = _confirmation.BringOptionsObservation;
                     CompleteInitialLanding();
-                    OpenClawTray.Services.Logger.Warn("Chat initial tail navigation did not land at the tail.");
+                    LogInitialTailFailure(diagnostics, attemptDiagnostics, scrollView, bringOptions);
                     break;
             }
         };
         CompositionTarget.Rendering += _confirming;
+    }
+
+    private void LogInitialTailFailure(InitialTailDiagnosticSnapshot diagnostics,
+        InitialTailAttemptDiagnostics attempt, WinUIScrollView scrollView,
+        InitialTailBringOptionsObservation bringOptions)
+    {
+        // This runs only after the existing GiveUp cleanup. Native reads and the
+        // local logger are best effort: neither can interrupt navigation cleanup.
+        var native = "nativeReadSucceeded=False";
+        try
+        {
+            native = FormattableString.Invariant(
+                $"nativeReadSucceeded=True offset={scrollView.VerticalOffset} scrollableHeight={scrollView.ScrollableHeight} viewportHeight={scrollView.ViewportHeight} state={(int)scrollView.State}");
+        }
+        catch (Exception) { }
+
+        try
+        {
+            OpenClawTray.Services.Logger.Warn(FormattableString.Invariant(
+                $"Chat initial tail navigation did not land at the tail. frames={diagnostics.ObservedFrames} retries={diagnostics.Retries} settledFrames={diagnostics.SettledFrames} hasExpectedTarget={diagnostics.HasExpectedTarget} hasCorrelation={diagnostics.HasCorrelation} bringCompleted={diagnostics.BringCompleted} attemptActive={diagnostics.AttemptActive} itemCount={_itemCount} tailIndex={_tailIndex} {native} ") +
+                FormattableString.Invariant($"bringReadSucceeded={attempt.ProposedOffset.HasValue && attempt.BringOffset.HasValue && attempt.BringScrollableHeight.HasValue} proposedOffset={attempt.ProposedOffset} bringOffset={attempt.BringOffset} bringScrollableHeight={attempt.BringScrollableHeight} targetIndexAvailable={attempt.TargetIndex.HasValue} targetIndex={attempt.TargetIndex} ") +
+                FormattableString.Invariant($"completionReadSucceeded={attempt.CompletedOffset.HasValue && attempt.CompletedScrollableHeight.HasValue} completedOffset={attempt.CompletedOffset} completedScrollableHeight={attempt.CompletedScrollableHeight} completionSourceReadSucceeded={attempt.CompletionSourceItemMatches.HasValue} completionSourceItemMatches={attempt.CompletionSourceItemMatches} ") +
+                FormattableString.Invariant($"maxOffsetAvailable={attempt.MaxObservedOffset.HasValue} maxObservedOffset={attempt.MaxObservedOffset} ") +
+                FormattableString.Invariant($"bringCancelReadSucceeded={bringOptions.CancelAtCallback.HasValue} bringCancelAtCallback={bringOptions.CancelAtCallback} bringAnimationDesiredReadSucceeded={bringOptions.AnimationDesiredAtCallback.HasValue} bringAnimationDesiredAtCallback={bringOptions.AnimationDesiredAtCallback}"));
+        }
+        catch (Exception) { }
     }
 
     private void QueueInitialTailRetry(int version, int generation)
@@ -432,13 +461,52 @@ file sealed class InitialTailPositioner : IDisposable
             || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
             return;
 
-        _confirmation.BringingIntoView(args.CorrelationId, target.DataContext);
+        var correlationId = args.CorrelationId;
+        var targetItem = target.DataContext;
+        (double ProposedOffset, double Offset, double ScrollableHeight)? geometry = null;
+        int? targetIndex = null;
+        // Public getters only. Do not realize a row or force layout to diagnose it.
+        try { geometry = (args.TargetVerticalOffset, sender.VerticalOffset, sender.ScrollableHeight); }
+        catch (Exception) { }
+        try
+        {
+            if (sender.Content is Microsoft.UI.Xaml.Controls.ItemsRepeater repeater
+                && ReferenceEquals(VisualTreeHelper.GetParent(target), repeater))
+                targetIndex = repeater.GetElementIndex(target);
+        }
+        catch (Exception) { }
+        _confirmation.BringingIntoView(correlationId, targetItem, geometry, targetIndex);
+        // Passive callback-time values, not the final outcome after all listeners.
+        bool? cancelAtCallback = null;
+        bool? animationDesiredAtCallback = null;
+        try { cancelAtCallback = args.Cancel; }
+        catch (Exception) { }
+        try { animationDesiredAtCallback = args.RequestEventArgs?.AnimationDesired; }
+        catch (Exception) { }
+        _confirmation.ObserveBringOptions(correlationId, targetItem, cancelAtCallback, animationDesiredAtCallback);
     }
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
     {
         if (_initialPending && ReferenceEquals(sender, _scrollView))
-            _confirmation.ScrollCompleted(args.CorrelationId);
+        {
+            var correlationId = args.CorrelationId;
+            (double Offset, double ScrollableHeight)? geometry = null;
+            object? currentSourceItem = null;
+            var sourceReadSucceeded = false;
+            try { geometry = (sender.VerticalOffset, sender.ScrollableHeight); }
+            catch (Exception) { }
+            try
+            {
+                if (itemsView.ItemsSource is System.Collections.IList items)
+                {
+                    currentSourceItem = _tailIndex >= 0 && _tailIndex < items.Count ? items[_tailIndex] : null;
+                    sourceReadSucceeded = true;
+                }
+            }
+            catch (Exception) { }
+            _confirmation.ScrollCompleted(correlationId, geometry, currentSourceItem, sourceReadSucceeded);
+        }
     }
 
     private void OnScrollStateChanged(WinUIScrollView sender, object args)
@@ -479,6 +547,11 @@ file sealed class InitialTailPositioner : IDisposable
     {
         _following = IsNearBottom(sender);
         _confirmation.GeometryChanged();
+        if (_initialPending && ReferenceEquals(sender, _scrollView))
+        {
+            try { _confirmation.ObserveOffset(sender.VerticalOffset); }
+            catch (Exception) { }
+        }
     }
 
     private void QueueTailRequest(int version, TailNavigationRequest request)

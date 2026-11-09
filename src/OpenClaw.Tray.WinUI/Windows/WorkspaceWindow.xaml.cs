@@ -406,7 +406,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         else
         {
             var notifications = new NotificationsPage();
-            notifications.Initialize(_notifications);
+            notifications.Initialize(_notifications, InboxCommands(openPage: null));
             ContentHost.Children.Add(notifications);
         }
 
@@ -1134,7 +1134,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// <summary>Wires one footer to the window-owned state and commands, then applies current state.</summary>
     private void ConfigureFooter(WorkspacePaneFooter footer)
     {
-        footer.BindNotifications(_notifications, () => Navigate(new(WorkspacePageId.Notifications)));
+        footer.BindNotifications(_notifications, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
         footer.DashboardRequested += (_, _) => OpenDashboard();
         if (footer.Layout != WorkspacePaneFooterLayout.TitleBar)
             footer.SetOwnerMenu(BuildOwnerMenu(footer));
@@ -1239,11 +1239,20 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var count = _notifications.Snapshot.ActiveNotifications.Count;
-        var helpText = LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", count);
+        var badge = InboxProjection.Build(_notifications.Snapshot.ActiveNotifications).Badge;
+        var helpText = badge.IsVisible
+            ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
+            : LocalizationHelper.GetString("Inbox_NothingWaiting");
         foreach (var footer in Footers)
-            footer.ApplyNotificationCount(count, helpText);
+            footer.ApplyInboxBadge(badge, helpText);
     }
+
+    /// <summary>Inbox actions use app-wide navigation admission; settings/page callbacks remain host-owned.</summary>
+    private InboxViewCommands InboxCommands(Action? openPage) => new(
+        ((IAppCommands)CurrentApp).TryNavigateAsync,
+        () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
+        openPage);
+
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
     private void OnTogglePane(object sender, RoutedEventArgs e)
