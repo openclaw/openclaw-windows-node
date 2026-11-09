@@ -15,7 +15,8 @@ public sealed class NativeUiExceptionDiagnosticsTests
     {
         using var directory = new TempDirectory();
         var path = directory.Combine("metadata.jsonl");
-        using var sink = NativeUiExceptionDiagnostics.Open(path, Invocation, Revision);
+        using var fallback = new StringWriter();
+        using var sink = NativeUiExceptionDiagnostics.Open(path, Invocation, Revision, fallbackWriter: fallback.WriteLine);
         var ready = Assert.Single(Read(path));
         Assert.Equal("ready", ready.GetProperty("source").GetString());
         Assert.Equal(1, ready.GetProperty("sequence").GetInt32());
@@ -47,6 +48,7 @@ public sealed class NativeUiExceptionDiagnosticsTests
         Assert.Equal("faulted", record.GetProperty("lastStartedDispatchState").GetString());
         Assert.DoesNotContain("PRIVATE", ReadText(path), StringComparison.Ordinal);
         Assert.False(sink.WriteFailed);
+        Assert.Equal(string.Empty, fallback.ToString());
     }
 
     [Fact]
@@ -166,7 +168,9 @@ public sealed class NativeUiExceptionDiagnosticsTests
         using var directory = new TempDirectory();
         var path = directory.Combine("metadata.jsonl");
         using var stream = new MemoryStream();
-        using var sink = NativeUiExceptionDiagnostics.Open(path, Invocation, Revision, createStream: _ => stream);
+        using var fallback = new StringWriter();
+        using var sink = NativeUiExceptionDiagnostics.Open(path, Invocation, Revision, createStream: _ => stream,
+            fallbackWriter: fallback.WriteLine);
         Exception? error = longType
             ? new ExceptionWithAnIntentionallyLongMetadataTypeNameForTheDiagnosticByteBudgetContractWhichMustBeTruncatedWithoutReadingAnyContentOrPayloadBeyondTheAllowedName()
             : null;
@@ -189,6 +193,10 @@ public sealed class NativeUiExceptionDiagnosticsTests
         sink.Dispose();
         Assert.Equal(bytes, stream.ToArray());
         Assert.False(sink.WriteFailed);
+        var fallbackRecords = ReadRecords(fallback.ToString());
+        Assert.Equal(16, fallbackRecords.Length);
+        Assert.Equal("fallbackOverflow", fallbackRecords[^1].GetProperty("source").GetString());
+        Assert.All(fallbackRecords, r => Assert.Equal("overflow", r.GetProperty("fileCapture").GetString()));
     }
 
     [Theory]
@@ -251,7 +259,7 @@ public sealed class NativeUiExceptionDiagnosticsTests
     }
 
     [Fact]
-    public void InvalidDestinationOrIdentity_FailsExplicitlyWhileUnsetPathDoesNoIo()
+    public void InvalidDestinationOrIdentity_FailsExplicitlyWhileUnsetPathDoesNoFileIo()
     {
         using var directory = new TempDirectory();
         var signals = 0;
@@ -270,6 +278,146 @@ public sealed class NativeUiExceptionDiagnosticsTests
         Assert.True(unavailable.WriteFailed);
         Assert.Equal(2, signals);
     }
+
+    [Theory]
+    [InlineData(false, "disabled")]
+    [InlineData(true, "unavailable")]
+    public void MissingFileCapture_ReportsContentFreeExceptionToFallback(bool requestFile, string outcome)
+    {
+        using var directory = new TempDirectory();
+        using var fallback = new StringWriter();
+        var signals = 0;
+        var path = directory.Combine("missing", "PRIVATE.jsonl");
+        using var sink = NativeUiExceptionDiagnostics.Open(requestFile ? path : null, Invocation, Revision,
+            () => signals++, fallbackWriter: fallback.WriteLine);
+        var reads = 0;
+        sink.RecordException(NativeUiExceptionSource.WinUiUnhandled, () => { reads++; return new PoisonException(); });
+        var record = Assert.Single(ReadRecords(fallback.ToString()));
+        Assert.Equal(new[]
+        {
+            "exceptionAvailable", "exceptionReadFailed", "exceptionType", "fallbackSequence", "fileCapture",
+            "processId", "reportedHResult", "reportedHResultHex", "schema", "source"
+        }, record.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal("WinUiUnhandled", record.GetProperty("source").GetString());
+        Assert.Equal(outcome, record.GetProperty("fileCapture").GetString());
+        Assert.Equal(1, record.GetProperty("schema").GetInt32());
+        Assert.Equal(1, record.GetProperty("fallbackSequence").GetInt32());
+        Assert.Equal(Environment.ProcessId, record.GetProperty("processId").GetInt32());
+        Assert.True(record.GetProperty("exceptionAvailable").GetBoolean());
+        Assert.False(record.GetProperty("exceptionReadFailed").GetBoolean());
+        Assert.Equal("PoisonException", record.GetProperty("exceptionType").GetString());
+        Assert.Equal(-2147467259, record.GetProperty("reportedHResult").GetInt32());
+        Assert.Equal("0x80004005", record.GetProperty("reportedHResultHex").GetString());
+        Assert.DoesNotContain("PRIVATE", fallback.ToString(), StringComparison.Ordinal);
+        Assert.InRange(Encoding.UTF8.GetByteCount(fallback.ToString()), 1, 1024);
+        Assert.Equal(1, reads);
+        Assert.Equal(requestFile ? 1 : 0, signals);
+        Assert.Equal(requestFile, sink.WriteFailed);
+        Assert.False(File.Exists(path));
+    }
+
+    [Theory]
+    [InlineData("write")]
+    [InlineData("flush")]
+    public void FileFailure_ReportsTheExceptionWhoseWriteFailed(string fault)
+    {
+        using var directory = new TempDirectory();
+        using var fallback = new StringWriter();
+        var stream = new FaultStream();
+        using var sink = NativeUiExceptionDiagnostics.Open(directory.Combine("metadata.jsonl"), Invocation, Revision,
+            failureSignal: () => { }, createStream: _ => stream, fallbackWriter: fallback.WriteLine);
+        stream.Fault = fault;
+        sink.RecordException(NativeUiExceptionSource.ChatUnhandled, () => new PoisonException());
+        var record = Assert.Single(ReadRecords(fallback.ToString()));
+        Assert.Equal("failed", record.GetProperty("fileCapture").GetString());
+        Assert.Equal("ChatUnhandled", record.GetProperty("source").GetString());
+        Assert.Equal("PoisonException", record.GetProperty("exceptionType").GetString());
+        Assert.True(sink.WriteFailed);
+        Assert.DoesNotContain("PRIVATE", fallback.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DisabledFallback_PreservesNullAndFailedProjectionWithoutInventingHResult(bool getterThrows)
+    {
+        using var fallback = new StringWriter();
+        using var sink = NativeUiExceptionDiagnostics.Open(null, Invocation, Revision, fallbackWriter: fallback.WriteLine);
+        sink.RecordException((NativeUiExceptionSource)int.MaxValue,
+            () => getterThrows ? throw new PoisonException() : null);
+        var record = Assert.Single(ReadRecords(fallback.ToString()));
+        Assert.Equal("Unknown", record.GetProperty("source").GetString());
+        Assert.False(record.GetProperty("exceptionAvailable").GetBoolean());
+        Assert.Equal(getterThrows, record.GetProperty("exceptionReadFailed").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, record.GetProperty("exceptionType").ValueKind);
+        Assert.Equal(JsonValueKind.Null, record.GetProperty("reportedHResult").ValueKind);
+        Assert.Equal(JsonValueKind.Null, record.GetProperty("reportedHResultHex").ValueKind);
+        Assert.DoesNotContain("PRIVATE", fallback.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DisabledFallback_IsBoundedAndDisposedSinkDoesNotReadLateException()
+    {
+        using var fallback = new StringWriter();
+        using var sink = NativeUiExceptionDiagnostics.Open(null, Invocation, Revision, fallbackWriter: fallback.WriteLine);
+        var reads = 0;
+        for (var i = 0; i < 40; i++)
+            sink.RecordException(NativeUiExceptionSource.WinUiUnhandled, () => { reads++; return new PoisonException(); });
+        var records = ReadRecords(fallback.ToString());
+        Assert.Equal(16, records.Length);
+        Assert.Equal(16, reads);
+        Assert.Equal(Enumerable.Range(1, 16), records.Select(r => r.GetProperty("fallbackSequence").GetInt32()));
+        Assert.Equal("fallbackOverflow", records[^1].GetProperty("source").GetString());
+        Assert.False(records[^1].GetProperty("exceptionAvailable").GetBoolean());
+        Assert.All(records, r => Assert.Equal("disabled", r.GetProperty("fileCapture").GetString()));
+        Assert.All(fallback.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries),
+            line => Assert.InRange(Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length, 1, 1024));
+        Assert.InRange(Encoding.UTF8.GetByteCount(fallback.ToString()), 1, 16 * 1024);
+        Assert.DoesNotContain("PRIVATE", fallback.ToString(), StringComparison.Ordinal);
+
+        using var lateFallback = new StringWriter();
+        var closed = NativeUiExceptionDiagnostics.Open(null, Invocation, Revision, fallbackWriter: lateFallback.WriteLine);
+        closed.Dispose();
+        closed.RecordException(NativeUiExceptionSource.WinUiUnhandled, () => { reads++; return new PoisonException(); });
+        Assert.Equal(16, reads);
+        Assert.Equal(string.Empty, lateFallback.ToString());
+    }
+
+    [Theory]
+    [InlineData("disabled")]
+    [InlineData("unavailable")]
+    [InlineData("failed")]
+    public void FallbackWriterFailure_NeverReplacesOriginalExceptionOrItsThrowSite(string mode)
+    {
+        using var directory = new TempDirectory();
+        var stream = new FaultStream();
+        var writes = 0;
+        using var sink = NativeUiExceptionDiagnostics.Open(mode == "disabled" ? null : directory.Combine("metadata.jsonl"),
+            Invocation, Revision, failureSignal: () => throw new IOException("PRIVATE failure reporter"),
+            createStream: _ => mode == "unavailable" ? throw new IOException("PRIVATE open") : stream,
+            fallbackWriter: _ => { writes++; throw new IOException("PRIVATE fallback writer"); });
+        stream.Fault = "write";
+        var original = new InvalidOperationException("PRIVATE original");
+        Assert.Same(original, Assert.Throws<InvalidOperationException>(() => ThrowOriginal(original)));
+        var primary = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(original);
+        var observed = Record.Exception((Action)(() =>
+        {
+            try { primary.Throw(); }
+            catch (Exception caught)
+            {
+                sink.RecordException(NativeUiExceptionSource.WinUiUnhandled, () => caught);
+                throw;
+            }
+            finally { sink.Dispose(); }
+        }));
+        Assert.Same(original, observed);
+        Assert.Contains(nameof(ThrowOriginal), original.StackTrace!, StringComparison.Ordinal);
+        Assert.Equal(1, writes);
+        Assert.Equal(mode != "disabled", sink.WriteFailed);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void ThrowOriginal(Exception original) => throw original;
 
     [Fact]
     public void HarnessHooks_KeepPermanentHandlerAndSameExceptionPropagation_WithoutContentReporters()
