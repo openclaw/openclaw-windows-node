@@ -171,6 +171,19 @@ Legacy MXC payload cleanup uses the Windows PowerShell included with Windows and
 
 ### Build Individual Projects
 
+Before a direct WinUI build, restore, run, or the first Visual Studio restore,
+initialize the repository-local feed for the published Reactor packages:
+
+```powershell
+.\scripts\Initialize-ReactorPackages.ps1
+```
+
+`NuGet.Config` maps Reactor exclusively to this verified feed. `build.ps1` and
+`run-app-local.ps1` initialize it before building; `run-app-local.ps1 -NoBuild`
+does not acquire packages and requires existing output. Shared-only builds do
+not require Reactor. The initializer does not change the global NuGet cache or
+configuration.
+
 **Shared Library:**
 ```bash
 dotnet build src/OpenClaw.Shared

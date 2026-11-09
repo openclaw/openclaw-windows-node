@@ -33,6 +33,19 @@ public sealed record DashboardAuthor(string Id, string Label)
 /// </summary>
 public static class DashboardGalleryPolicy
 {
+    /// <summary>Selects up to three boards updated during the supplied local calendar day.</summary>
+    public static ImmutableArray<DashboardSessionRow> FreshToday(ImmutableArray<DashboardSessionRow> rows, DateTimeOffset now)
+    {
+        if (rows.Length < 5)
+            return [];
+        var date = now.LocalDateTime.Date;
+        var start = new DateTimeOffset(date).ToUnixTimeMilliseconds();
+        var end = new DateTimeOffset(date.AddDays(1)).ToUnixTimeMilliseconds();
+        var fresh = rows.Where(row => row.UpdatedAtMs is { } ms && ms >= start && ms < end)
+            .OrderByDescending(row => row.UpdatedAtMs).Take(3).ToImmutableArray();
+        return fresh.Length >= 2 ? fresh : [];
+    }
+
     /// <summary>
     /// Author of a dashboard: the creating actor, else the current owner, with
     /// the row's agent (then the selected agent) as the id fallback.

@@ -481,6 +481,59 @@ public sealed class BoardDocumentModelTests
         Assert.Equal(TimeSpan.FromMilliseconds(80_000), Assert.Single(scheduler.Delays));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task MissingWidgetTab_IsAnExplicitLoadErrorAndPreservesAnEarlierBoard(bool hasOtherTab, bool refresh)
+    {
+        var queue = new System.Collections.Concurrent.ConcurrentQueue<Action>();
+        var client = new FakeBoardClient();
+        var original = Board(1, ("main", 0)) with { Widgets = [Widget("saved-html", 100_000)] };
+        var invalid = Board(2, hasOtherTab ? [("other", 0)] : []) with { Widgets = [Widget("orphan", 100_000)] };
+        var scheduler = new FakeScheduler();
+        using var model = new BoardDocumentModel(client, Target, queue.Enqueue, scheduler.Schedule);
+        if (refresh)
+        {
+            client.Boards.Enqueue(original);
+            await DashboardTestDispatcher.Pump(queue, model.LoadAsync());
+        }
+        client.Boards.Enqueue(invalid);
+
+        await DashboardTestDispatcher.Pump(queue, model.LoadAsync());
+
+        Assert.Equal(refresh ? DashboardLoadStatus.Ready : DashboardLoadStatus.Error, model.Snapshot.Status);
+        Assert.Equal("The Gateway returned a board with widgets referencing missing tabs.", model.Snapshot.Error);
+        if (refresh)
+            Assert.Same(original, model.Snapshot.Board);
+        else
+            Assert.Null(model.Snapshot.Board);
+        Assert.Equal(refresh ? 1 : 0, scheduler.Delays.Count);
+    }
+
+    [Fact]
+    public async Task HtmlOnlyBoard_KeepsItsSuppliedTabAndTicket()
+    {
+        var client = new FakeBoardClient();
+        client.Boards.Enqueue(Board(1, ("main", 0)) with
+        {
+            Widgets = [Widget("saved-html", 100_000) with { FrameUrl = "/saved-html?bt=opaque" }],
+        });
+        using var model = new BoardDocumentModel(client, Target, action => action(), new FakeScheduler().Schedule);
+
+        await model.LoadAsync();
+
+        Assert.Equal(DashboardLoadStatus.Ready, model.Snapshot.Status);
+        Assert.Null(model.Snapshot.Error);
+        Assert.Equal("main", model.Snapshot.ActiveTabId);
+        var widget = Assert.Single(model.Snapshot.Board!.Widgets);
+        Assert.Equal(BoardWidgetContentKind.Html, widget.ContentKind);
+        Assert.Equal("saved-html", widget.Name);
+        Assert.Equal("/saved-html?bt=opaque", widget.FrameUrl);
+        Assert.Equal(100_000, widget.ViewTicketTtlMs);
+    }
+
     [Fact]
     public async Task Unauthorized_RefreshesThenFailsAfterRepeatedRejection()
     {

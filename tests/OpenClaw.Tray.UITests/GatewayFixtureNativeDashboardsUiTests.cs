@@ -10,6 +10,9 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    private static AutomationElement? FindDashboardGalleryCard(GatewayFixtureRun run, string sessionKey) =>
+        FindById(run, $"DashboardCardFresh_{sessionKey}") ?? FindById(run, $"DashboardCard_{sessionKey}");
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task DashboardsPinnedHost_RecordsBothThemesAcrossPaneAndScrollStates()
@@ -23,7 +26,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WithAppAsync(async run =>
                 {
                     await run.InvokeAsync("app.navigate", new { page = "dashboards" });
-                    await WaitUiAsync(run, () => FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}") is not null,
+                    await WaitUiAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey) is not null,
                         "pinned-host gallery ready");
                     var hub = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.AutomationIdProperty, "DashboardsTitle")) is not null);
@@ -58,7 +61,7 @@ public sealed partial class GatewayFixtureUiTests
                     {
                         if (board)
                         {
-                            Invoke(FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}")!);
+                            Invoke(FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey)!);
                             await WaitUiAsync(run, () => FindById(run, "DashboardView") is not null, "pinned board ready");
                         }
                         var surface = board ? "board" : "gallery";
@@ -186,7 +189,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WithAppAsync(async run =>
                 {
                     await run.InvokeAsync("app.navigate", new { page = "dashboards" });
-                    await WaitUiAsync(run, () => FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}") is not null,
+                    await WaitUiAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey) is not null,
                         "backdrop gallery loaded");
                     var hub = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.AutomationIdProperty, "DashboardsTitle")) is not null);
@@ -319,7 +322,7 @@ public sealed partial class GatewayFixtureUiTests
                         await CaptureScroll("gallery");
                     if (theme == "Light")
                         await Capture("gallery", minimum: true);
-                    Invoke(FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}")!);
+                    Invoke(FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey)!);
                     await Capture("board");
                     if (theme == "Light")
                         await CaptureScroll("board");
@@ -353,7 +356,7 @@ public sealed partial class GatewayFixtureUiTests
             await WithAppAsync(async run =>
             {
                 await run.InvokeAsync("app.navigate", new { page = "dashboards" });
-                await WaitUiAsync(run, () => FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}") is not null,
+                await WaitUiAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey) is not null,
                     "responsive dashboard gallery loaded");
                 var hub = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, "DashboardsTitle")) is not null);
@@ -920,12 +923,17 @@ public sealed partial class GatewayFixtureUiTests
                     await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is
                         { Current.IsOffscreen: false, Current.IsEnabled: true }, "default Dashboards page pin");
                     Invoke(FindById(run, "WorkspacePinnedPage:dashboards")!);
-                    await WaitUiAsync(run, () => FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}") is not null,
+                    await WaitUiAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey) is not null,
                         "dashboard gallery populated");
-                    await WaitUiAsync(run, () =>
-                        FindById(run, "DashboardsTitle")?.Current.Name == "Dashboards for Fixture Main" &&
-                        FindById(run, "DashboardsSubtitle")?.Current.Name == "6 dashboards",
-                        "Gateway agent name and saved-board count in gallery heading");
+                    bool GalleryHeaderMatches() =>
+                        FindById(run, "DashboardsTitle")?.Current.Name == "Dashboards" &&
+                        FindById(run, "DashboardsResultCount")?.Current.Name == "Dashboards: 6" &&
+                        FindById(run, "DashboardsAgentPicker") is { } picker &&
+                        picker.TryGetCurrentPattern(SelectionPattern.Pattern, out var selection) &&
+                        ((SelectionPattern)selection).Current.GetSelection() is { Length: 1 } selected &&
+                        selected[0].Current.Name == "Fixture Main";
+                    await WaitUiAsync(run, GalleryHeaderMatches,
+                        "current gallery title, selected Gateway agent and saved-board count");
                     Assert.NotNull(FindById(run, "DashboardsOpenWeb"));
                     Assert.False(FindById(run, "WorkspacePagesCustomize")!.Current.IsOffscreen);
                     Assert.True(((SelectionItemPattern)FindById(run, "WorkspacePinnedPage:dashboards")!
@@ -944,7 +952,7 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "board.get");
 
                     AutomationElement? opsCard = null;
-                    await WaitUiAsync(run, () => (opsCard = FindById(run, $"DashboardCardFresh_{FixtureBoards.OpsSessionKey}"))
+                    await WaitUiAsync(run, () => (opsCard = FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey))
                         is { Current.IsOffscreen: false }, "visible Ops dashboard card");
                     Invoke(opsCard!);
                     // This host's UIA provider can stop at the WebView pane.
@@ -995,7 +1003,7 @@ public sealed partial class GatewayFixtureUiTests
                     await WaitUiAsync(run, () => FindById(run, $"DashboardCard_{FixtureBoards.EmptySessionKey}")
                             is { Current.IsOffscreen: false },
                         "gallery after same-route navigation");
-                    Assert.Equal("Dashboards for Fixture Main", FindById(run, "DashboardsTitle")!.Current.Name);
+                    Assert.True(GalleryHeaderMatches(), "Returning from the board must retain the gallery agent and count.");
                     foreach (var pinned in new[] { false, true })
                     {
                         Invoke(FindById(run, "WorkspacePagesCustomize")!);
@@ -1009,7 +1017,7 @@ public sealed partial class GatewayFixtureUiTests
                             "Dashboards pin flyout closed");
                         await WaitUiAsync(run, () => (FindById(run, "WorkspacePinnedPage:dashboards") is not null) == pinned,
                             "Dashboards pin preference applied");
-                        Assert.Equal("Dashboards for Fixture Main", FindById(run, "DashboardsTitle")!.Current.Name);
+                        Assert.True(GalleryHeaderMatches(), "Changing the pin must not change the gallery agent or count.");
                     }
                     await run.InvokeAsync("app.navigate", new
                     {

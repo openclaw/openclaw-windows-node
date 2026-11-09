@@ -21,7 +21,8 @@ public sealed class AdaptiveSettingsLayoutSourceTests
             Assert.Null(field.Attribute("Width"));
             Assert.Null(field.Attribute("MinWidth"));
             if (field.Attribute("MaxWidth") is not null)
-                Assert.Equal("Stretch", field.Attribute("HorizontalAlignment")?.Value);
+                Assert.Equal(field.Name.LocalName is "Slider" or "ProgressBar" ? "Stretch" : "Left",
+                    field.Attribute("HorizontalAlignment")?.Value);
         }
     }
 
@@ -33,6 +34,9 @@ public sealed class AdaptiveSettingsLayoutSourceTests
         // Excludes MaxWidth and the compact icon-only array remove button.
         Assert.DoesNotMatch(@"(?<!\w)Width\s*=\s*(?:200|250|300|350)\b", source);
         Assert.Contains("MaxWidth = 350", source);
+        Assert.DoesNotMatch(@"MaxWidth\s*=\s*350,\s*HorizontalAlignment\s*=\s*HorizontalAlignment\.Stretch", source);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(source,
+            @"MaxWidth\s*=\s*350,\s*HorizontalAlignment\s*=\s*HorizontalAlignment\.Left").Count);
     }
 
     [Fact]

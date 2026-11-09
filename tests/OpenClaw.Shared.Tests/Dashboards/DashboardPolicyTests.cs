@@ -1,4 +1,5 @@
 using System.Net;
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared.Dashboards;
@@ -52,6 +53,47 @@ public class DashboardGalleryPolicyTests
     {
         Assert.Equal("A", new DashboardAuthor("a", "ada").Initial);
         Assert.Equal("?", new DashboardAuthor("a", " ").Initial);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(2, 59)]
+    [InlineData(3, 0)]
+    [InlineData(23, 59)]
+    public void FreshToday_UsesTheCalendarDayEvenAtMidnight(int hour, int minute)
+    {
+        var midnight = new DateTimeOffset(new DateTime(2026, 11, 9, 0, 0, 0, DateTimeKind.Local));
+        var now = midnight.AddHours(hour).AddMinutes(minute);
+        var rows = new long?[]
+        {
+            midnight.ToUnixTimeMilliseconds(),
+            midnight.ToUnixTimeMilliseconds(),
+            midnight.AddMilliseconds(-1).ToUnixTimeMilliseconds(),
+            midnight.AddDays(1).ToUnixTimeMilliseconds(),
+            -1, long.MaxValue, null,
+        }.Select((timestamp, index) => Row("board-" + index, "main", 0, null, null, null)
+            with { UpdatedAtMs = timestamp }).ToImmutableArray();
+
+        Assert.Equal(["board-0", "board-1"], DashboardGalleryPolicy.FreshToday(rows, now).Select(row => row.Key));
+        Assert.Empty(DashboardGalleryPolicy.FreshToday(rows, midnight.AddMilliseconds(-1)));
+        Assert.Empty(DashboardGalleryPolicy.FreshToday(rows, midnight.AddDays(1)));
+    }
+
+    [Theory]
+    [InlineData(4, 2, 0)]
+    [InlineData(5, 1, 0)]
+    [InlineData(5, 2, 2)]
+    [InlineData(6, 4, 3)]
+    public void FreshToday_RequiresEnoughBoardsAndUpdatesAndLimitsTheShelf(int count, int todayCount, int expectedCount)
+    {
+        var now = new DateTimeOffset(new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Local));
+        var rows = Enumerable.Range(0, count).Select(index =>
+            Row("board-" + index, "main",
+                (index < todayCount ? now.AddMinutes(-index) : now.AddDays(-1)).ToUnixTimeMilliseconds(),
+                null, null, null)).ToImmutableArray();
+
+        Assert.Equal(Enumerable.Range(0, expectedCount).Select(index => "board-" + index),
+            DashboardGalleryPolicy.FreshToday(rows, now).Select(row => row.Key));
     }
 
     private static string Title(DashboardSessionRow row) => row.Key.Split(':')[^1];

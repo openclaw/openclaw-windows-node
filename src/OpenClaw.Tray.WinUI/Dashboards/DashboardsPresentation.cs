@@ -20,18 +20,6 @@ internal static class DashboardsPresentation
         ? LocalizationHelper.GetString("Dashboards_NoSummary")
         : row.LastMessagePreview;
 
-    public static ImmutableArray<DashboardSessionRow> FreshToday(ImmutableArray<DashboardSessionRow> rows, DateTimeOffset now)
-    {
-        if (rows.Length < 5)
-            return [];
-        var date = now.LocalDateTime.Date;
-        var start = new DateTimeOffset(date).ToUnixTimeMilliseconds();
-        var end = new DateTimeOffset(date.AddDays(1)).ToUnixTimeMilliseconds();
-        var fresh = rows.Where(row => row.UpdatedAtMs is { } ms && ms >= start && ms < end)
-            .OrderByDescending(row => row.UpdatedAtMs).Take(3).ToImmutableArray();
-        return fresh.Length >= 2 ? fresh : [];
-    }
-
     /// <summary>Largest Unix millisecond value <see cref="DateTimeOffset"/> can represent (year 9999).</summary>
     private static readonly long s_maxUnixMs = DateTimeOffset.MaxValue.ToUnixTimeMilliseconds();
 

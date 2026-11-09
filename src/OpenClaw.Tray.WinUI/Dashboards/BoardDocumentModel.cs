@@ -123,6 +123,9 @@ internal sealed class BoardDocumentModel : IDisposable
         try
         {
             var board = await _client.GetBoardAsync(_target).ConfigureAwait(false);
+            var tabIds = board.Tabs.Select(tab => tab.TabId).ToHashSet(StringComparer.Ordinal);
+            if (board.Widgets.Any(widget => !tabIds.Contains(widget.TabId)))
+                throw new InvalidOperationException("The Gateway returned a board with widgets referencing missing tabs.");
             var kinds = _client.PluginWidgetKinds;
             var origin = _client.GatewayHttpOrigin;
             await Apply(

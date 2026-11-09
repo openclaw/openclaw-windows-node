@@ -1009,6 +1009,8 @@ public sealed partial class GatewayFixtureProtocolTests
                 "exec.approval.resolve",
                 new { id = "fixture-approval-invalid", decision = "approve" }));
         await connected.Client.ResolveExecApprovalAsync("fixture-approval-invalid", "allow-once");
+        // The reply can arrive before the fixture finishes publishing its request log.
+        await server.WaitForCompletedRequestAsync("exec.approval.resolve", occurrence: 2);
 
         Assert.Contains("Unsupported approval decision", error.Message);
         var requests = server.Requests

@@ -32,6 +32,11 @@ Existing customized pin lists and explicit empty lists are preserved; unpinning
 the last page stays empty after restart. Session links and command navigation
 open the same standalone reader without showing the Settings section list.
 
+Older versions erased a Gateway's pin entry when its last pin was removed.
+That missing entry cannot distinguish an old opt-out from a new scope, so it
+receives the default Dashboards pin on upgrade. Unpinning it now saves an
+explicit empty list. Windows does not infer a preference that was not retained.
+
 The Reactor gallery uses an agent-scoped mast, static title-initial identity
 tiles on agent-tinted bands, readable message summaries (or "No summary
 available"), bordered sibling chat buttons, and batches of 24 cards with Show
@@ -41,7 +46,8 @@ title, live state, author and update time; the summary is help text.
 Fresh today requires five or more boards and at least two updates within the
 current local calendar day. Its featured board leads with a title and summary,
 not an empty cover. Larger inventories use denser bands. Sort and search appear
-above five boards. On the first unscoped visit, the gallery discovers the most
+above five boards, and remain available while a search is active even if an
+agent switch or refresh leaves fewer boards or none. On the first unscoped visit, the gallery discovers the most
 recent board's configured agent before loading that agent's boards. Explicit
 routes and later picker choices win. Agent labels come from `agents.list`;
 missing labels fall back to IDs. The empty gallery's Open chat action opens the
@@ -156,6 +162,9 @@ metrics and chart values are required payload fields; missing values are rejecte
 not substituted with zero. Missing session, tab or widget collections are errors,
 not evidence of an empty gallery or board. Explicit empty arrays remain valid.
 Refresh failures retain previously received data with an error indication.
+Widgets referencing absent tabs cause an explicit board-load error before
+rendering. A failed refresh retains the last valid board; valid HTML-only
+boards with their supplied tabs and tickets remain readable.
 Gallery invalidation observes the operator owner's `SessionsUpdated` event as
 well as `board.changed`, so runs can change card titles, recency and Live without
 editing the board. Both event sources share the same queued-refresh coalescing,

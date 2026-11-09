@@ -145,21 +145,6 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public void FreshToday_ExcludesTomorrowAndInvalidTimestamps()
-    {
-        var now = DateTimeOffset.Now;
-        var today = new DateTimeOffset(now.LocalDateTime.Date).ToUnixTimeMilliseconds();
-        var tomorrow = new DateTimeOffset(now.LocalDateTime.Date.AddDays(1)).ToUnixTimeMilliseconds();
-        var rows = new long?[] { today, now.ToUnixTimeMilliseconds(), tomorrow, -1, long.MaxValue, null }
-            .Select((timestamp, index) => new DashboardSessionRow
-            {
-                Session = new SessionInfo { Key = "board-" + index, AgentId = "main" },
-                UpdatedAtMs = timestamp,
-            }).ToImmutableArray();
-        Assert.Equal(new[] { "board-1", "board-0" }, DashboardsPresentation.FreshToday(rows, now).Select(row => row.Key));
-    }
-
-    [Fact]
     public async Task DashboardContentHost_IsReachableInTheAutomationPeerTree()
     {
         ReactorHostControl? host = null;
@@ -1713,6 +1698,66 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         });
         Assert.Equal(1, opened);
         Assert.Equal(new[] { sessionKey }, copied);
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(false, 1)]
+    [InlineData(true, 0)]
+    [InlineData(true, 1)]
+    public async Task ActiveSearch_RemainsClearableAfterAgentSwitchOrInventoryShrinks(bool switchAgent, int remaining)
+    {
+        var client = new SnapshotBoardClient(new BoardSnapshot("unused", 1, [], []))
+        {
+            Gallery = new DashboardSessionPage(
+                [.. Enumerable.Range(0, 6).Select(index => new DashboardSessionRow
+                {
+                    Session = new SessionInfo { Key = "board-" + index, AgentId = "main", DisplayName = "Keep " + index },
+                })], false, null, 6),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        state.SetAgents(["main", "research"], "main");
+        state.SetConnection(client, true);
+        await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
+            _ => { }, ready: host => FindDescendants<TextBox>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "DashboardsSearch"),
+            width: 1400, afterMounted: async host =>
+            {
+                await ui.RunOnUIAsync(() => ById<TextBox>(host, "DashboardsSearch").Text = "Keep");
+                await WaitForMountedStateAsync(host, _ => state.GalleryQuery == "Keep");
+                await ui.RunOnUIAsync(() =>
+                {
+                    var agent = switchAgent ? "research" : "main";
+                    client.Gallery = new DashboardSessionPage(remaining == 0 ? [] :
+                        [new DashboardSessionRow
+                        {
+                            Session = new SessionInfo { Key = "remaining", AgentId = agent, DisplayName = "Other board" },
+                        }], false, null, remaining);
+                    if (switchAgent)
+                        ById<ComboBox>(host, "DashboardsAgentPicker").SelectedIndex = 1;
+                    else
+                        Invoke(ById<Button>(host, "DashboardsRefresh"));
+                });
+                await WaitForMountedStateAsync(host, root => FindDescendants<FrameworkElement>(root).Any(element =>
+                    AutomationProperties.GetAutomationId(element) == "DashboardsNoResults"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Equal(switchAgent ? "research" : "main", state.AgentId);
+                    var search = ById<TextBox>(host, "DashboardsSearch");
+                    Assert.Equal("Keep", search.Text);
+                    Assert.True(search.IsEnabled);
+                    Assert.True(search.ActualWidth > 0 && search.ActualHeight > 0);
+                    search.Text = "";
+                });
+                await WaitForMountedStateAsync(host, root =>
+                    state.GalleryQuery.Length == 0 &&
+                    FindDescendants<FrameworkElement>(root).Any(element =>
+                        AutomationProperties.GetAutomationId(element) == (remaining == 0 ? "DashboardsEmpty" : "DashboardCard_remaining")));
+            });
     }
 
     private static BoardWidgetCellProps Cell(

@@ -76,6 +76,42 @@ try {
     catch { $failed = $_.ToString().Contains('Synthetic bootstrap caller failure') }
     if (!$failed -or $dotnetReached) { throw 'Normal build overwrote bootstrap failure with a later dotnet result.' }
     $passed++
+    $launcherAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $repo 'run-app-local.ps1'), [ref]$null, [ref]$parseErrors)
+    if ($parseErrors) { throw $parseErrors }
+    $localBuild = @($launcherAst.FindAll({ param($node)
+        $node -is [Management.Automation.Language.IfStatementAst] -and
+        $node.Clauses[0].Item1.Extent.Text -eq '-not $NoBuild'
+    }, $true))
+    if ($localBuild.Count -ne 1) { throw 'Expected one local-launcher build boundary.' }
+    [IO.File]::WriteAllText((Join-Path $scriptDirectory 'Initialize-ReactorPackages.ps1'),
+        '$reactorCalls.Add("bootstrap"); if ($failBootstrap) { throw "Synthetic bootstrap caller failure." }')
+    function dotnet { $reactorCalls.Add('dotnet'); $global:LASTEXITCODE = 0 }
+    $projectPath = $fixture
+    $RuntimeIdentifier = 'win-arm64'
+    $Dev = $false
+    foreach ($case in @(
+        @{ NoBuild = $false; Failure = $false; Calls = 'bootstrap,dotnet'; Throws = $false },
+        @{ NoBuild = $false; Failure = $true; Calls = 'bootstrap'; Throws = $true },
+        @{ NoBuild = $true; Failure = $false; Calls = ''; Throws = $false },
+        @{ NoBuild = $true; Failure = $true; Calls = ''; Throws = $false }
+    )) {
+        $NoBuild = $case.NoBuild
+        $failBootstrap = $case.Failure
+        $reactorCalls = [Collections.Generic.List[string]]::new()
+        $failed = $false
+        try { & ([scriptblock]::Create($localBuild[0].Extent.Text)) }
+        catch {
+            if (!$_.ToString().Contains('Synthetic bootstrap caller failure')) { throw }
+            $failed = $true
+        }
+        if ($failed -ne $case.Throws -or ($reactorCalls -join ',') -cne $case.Calls) {
+            throw "Local launcher bootstrap order/failure/NoBuild contract failed: NoBuild=$NoBuild Failure=$failBootstrap Calls=$reactorCalls"
+        }
+        $passed++
+    }
+    [IO.File]::WriteAllText((Join-Path $scriptDirectory 'Initialize-ReactorPackages.ps1'),
+        "throw 'Synthetic bootstrap caller failure.'")
     foreach ($workflow in 'ci.yml', 'codeql.yml', 'release-candidate-e2e.yml') {
         $text = Get-Content (Join-Path $repo ".github\workflows\$workflow") -Raw
         $blocks = [regex]::Matches($text, '(?m)^(?<indent> +)run: \|\r?\n(?<body>(?:\k<indent>  .*(?:\r?\n|$))+)' )

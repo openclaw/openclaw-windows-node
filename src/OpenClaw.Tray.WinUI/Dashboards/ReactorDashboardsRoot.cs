@@ -396,7 +396,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                 LocalizationHelper.Format("Dashboards_LoadErrorFormat", snapshot.Error ?? ""),
                 Button(LocalizationHelper.GetString("Dashboards_Retry"), refresh).AutomationName(LocalizationHelper.GetString("Dashboards_Retry")).AutomationId("DashboardsRetry"),
                 alert: true),
-            _ when !snapshot.HasRows => DashboardsStates.Status(
+            _ when !snapshot.HasRows && string.IsNullOrWhiteSpace(query) => DashboardsStates.Status(
                 "DashboardsEmpty",
                 DashboardsGlyphs.Dashboard,
                 LocalizationHelper.GetString("Dashboards_Empty_Title"),
@@ -601,7 +601,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             : Cards(props, visible.Take(shown).ToImmutableArray(), fallbackAgentId, reducedMotion, width);
 
         var sections = new List<Element>();
-        var fresh = DashboardsPresentation.FreshToday(snapshot.Rows, DateTimeOffset.Now);
+        var fresh = DashboardGalleryPolicy.FreshToday(snapshot.Rows, DateTimeOffset.Now);
         if (!fresh.IsEmpty && string.IsNullOrEmpty(query))
         {
             sections.Add(TextBlock(LocalizationHelper.GetString("Dashboards_FreshToday")).FontSize(22).SemiBold());
@@ -639,7 +639,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                 .AutomationId("DashboardsResultCount"))
                 .Padding(10, 3).CornerRadius(12).VAlign(VerticalAlignment.Center)
                 .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))));
-        if (snapshot.Rows.Length > 5)
+        if (snapshot.Rows.Length > 5 || !string.IsNullOrWhiteSpace(query))
             sections.Add(toolbar);
         sections.Add(results);
         if (visible.Length > shown)
