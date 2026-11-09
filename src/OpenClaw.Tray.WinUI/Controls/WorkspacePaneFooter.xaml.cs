@@ -141,11 +141,6 @@ public sealed partial class WorkspacePaneFooter : UserControl
         if (_notifications is null || _inboxCommands is not { } commands) return;
         // Every Inbox command leaves the flyout before navigating.
         NotificationContent.Initialize(_notifications, new InboxViewCommands(
-            route =>
-            {
-                NotificationsFlyout.Hide();
-                commands.OpenRoute(route);
-            },
             (route, sessionKey) =>
             {
                 NotificationsFlyout.Hide();

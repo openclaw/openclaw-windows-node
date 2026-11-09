@@ -5,7 +5,6 @@
 //
 // Usage:
 //   inboxView.Initialize(appNotifications, new InboxViewCommands(
-//       OpenRoute: route => window.OpenNotificationRoute(route),
 //       TryNavigateAsync: appCommands.TryNavigateAsync,
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
 //       OpenPage: () => window.ShowInboxPage()));
@@ -30,7 +29,6 @@ namespace OpenClawTray.Controls;
 /// admission for app reminders; <paramref name="OpenPage"/> is null on the page itself.
 /// </summary>
 internal sealed record InboxViewCommands(
-    Action<string> OpenRoute,
     Func<string, string?, Task<bool>> TryNavigateAsync,
     Action OpenSettings,
     Action? OpenPage = null);
