@@ -280,6 +280,7 @@ public sealed class PageHeroTests(UIThreadFixture ui)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    [Trait("Category", "AnimationPreferenceEnabled")]
     public async Task RepeatedReveal_RestoresOriginalWithoutOverwritingExternalBackground(bool replaceBackground)
     {
         await ui.ResetContainerAsync();
@@ -361,6 +362,7 @@ public sealed class PageHeroTests(UIThreadFixture ui)
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
+    [Trait("Category", "AnimationPreferenceEnabled")]
     public async Task Reveal_PreservesThemeResourceAfterCompletionOrCancellation(bool localResource, bool cancel)
     {
         await ui.ResetContainerAsync();
