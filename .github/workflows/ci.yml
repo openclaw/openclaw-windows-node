@@ -752,6 +752,7 @@ jobs:
 
     - name: Run Tray UI Tests
       timeout-minutes: 15
+      # Temporary diagnosis: dumps and raw debugger logs stay outside uploaded TestResults.
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
@@ -760,6 +761,7 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
+        -NativeCrashDiagnostics
 
     - name: Capture non-memory Tray UI crash metadata
       if: always() && steps.tray-ui-crash-window.outcome == 'success'
