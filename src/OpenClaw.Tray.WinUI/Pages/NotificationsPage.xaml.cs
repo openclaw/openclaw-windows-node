@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClawTray.Helpers;
@@ -48,18 +49,15 @@ public sealed partial class NotificationsPage : Page
 
         Inbox.Initialize(notificationService, commands ?? new InboxViewCommands(
             OpenAppRoute,
+            ((IAppCommands)CurrentApp).TryNavigateAsync,
             () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings)));
     }
 
     private static void OpenAppRoute(string route)
     {
-        if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
-        {
-            CurrentApp.PendingChatSessionKey = sessionKey;
-            ((IAppCommands)CurrentApp).Navigate("chat");
-            return;
-        }
-
-        ((IAppCommands)CurrentApp).Navigate(route);
+        var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
+        AsyncEventHandlerGuard.Run(
+            () => ((IAppCommands)CurrentApp).TryNavigateAsync(isChat ? "chat" : route, sessionKey),
+            new AppLogger(), nameof(OpenAppRoute));
     }
 }
