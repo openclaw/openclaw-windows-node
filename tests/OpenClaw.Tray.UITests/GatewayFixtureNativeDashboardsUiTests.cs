@@ -913,7 +913,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WithAppAsync(async run =>
                 {
                     await run.InvokeAsync("app.navigate", new { page = "settings" });
-                    await WaitUiAsync(run, () => FindById(run, "SettingsNavChat") is { Current.IsOffscreen: false },
+                    await WaitUiAsync(run, () => FindById(run, "SettingsBackToApp") is { Current.IsOffscreen: false },
                         "Settings navigation visible");
                     Assert.Null(FindById(run, "HubNavDashboards"));
                     await run.InvokeAsync("app.navigate", new { page = "chat" });

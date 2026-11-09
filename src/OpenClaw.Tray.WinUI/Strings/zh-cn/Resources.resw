@@ -8145,4 +8145,13 @@
   </data>
   <data name="Navigation_Expand" xml:space="preserve"><value>展开导航</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>折叠导航</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>返回应用</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>设置</value>
+  </data>
 </root>

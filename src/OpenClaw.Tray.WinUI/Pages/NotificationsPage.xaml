@@ -2,7 +2,9 @@
 <Page
     x:Class="OpenClawTray.Pages.NotificationsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    AutomationProperties.AutomationId="NotificationsPage"
+    AutomationProperties.LabeledBy="{Binding ElementName=NotificationsHeading}">
 
     <Grid Padding="24">
         <Grid MaxWidth="900" HorizontalAlignment="Stretch">
@@ -21,7 +23,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel x:Name="PageHeading" Spacing="2">
-                    <TextBlock x:Uid="NotificationsPage_Title"
+                    <TextBlock x:Name="NotificationsHeading"
+                               x:Uid="NotificationsPage_Title"
                                Text="Notifications"
                                TextWrapping="Wrap"
                                AutomationProperties.AutomationId="NotificationsPageMarker"

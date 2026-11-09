@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 using OpenClawTray.ViewModels;
 using System.Collections.ObjectModel;
@@ -41,6 +43,16 @@ public sealed partial class NotificationsPage : Page
         Grid.SetColumn(actions, compact ? 1 : 2);
         Grid.SetColumnSpan(actions, compact ? 2 : 1);
         actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new NotificationsPageAutomationPeer(this);
+
+    // Page has no default peer. Expose the empty destination and its localized heading
+    // so the keyboard focus handoff is also announced by assistive technology.
+    private sealed class NotificationsPageAutomationPeer(NotificationsPage owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
+        protected override string GetClassNameCore() => nameof(NotificationsPage);
     }
 
     internal void Initialize(AppNotificationService? notificationService)
@@ -85,6 +97,9 @@ public sealed partial class NotificationsPage : Page
         NotificationsList.Visibility = hasNotifications ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = hasNotifications ? Visibility.Collapsed : Visibility.Visible;
         ClearButton.IsEnabled = hasNotifications;
+        // An empty inbox has no enabled child control. Keep a named destination for
+        // the workspace focus handoff instead of leaving focus in the Settings pane.
+        IsTabStop = !hasNotifications;
     }
 
     private void OnClearClick(object sender, RoutedEventArgs e)
@@ -103,18 +118,9 @@ public sealed partial class NotificationsPage : Page
         if (sender is not FrameworkElement { Tag: NotificationItemViewModel item })
             return;
 
-        if (string.IsNullOrWhiteSpace(item.ActionRoute))
-            return;
-
-        if (AppNotificationActionRoutes.TryGetChatSessionKey(item.ActionRoute, out var sessionKey))
-        {
-            CurrentApp.PendingChatSessionKey = sessionKey;
-            ((IAppCommands)CurrentApp).Navigate("chat");
-            _notificationService?.Dismiss(item.Id);
-            return;
-        }
-
-        ((IAppCommands)CurrentApp).Navigate(item.ActionRoute);
-        _notificationService?.Dismiss(item.Id);
+        if (_notificationService is { } notifications)
+            AsyncEventHandlerGuard.Run(
+                () => notifications.NavigateActionAsync(item.Id, ((IAppCommands)CurrentApp).TryNavigateAsync),
+                new AppLogger(), nameof(OnNotificationActionClick));
     }
 }

@@ -396,7 +396,7 @@ public sealed class PinnedPagesTests
         Assert.Contains("_sidebarInvoked = true;", pins);
         Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", window);
         Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
-        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && _settings is { ContentOnly: true }", window);
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", window);
         Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);

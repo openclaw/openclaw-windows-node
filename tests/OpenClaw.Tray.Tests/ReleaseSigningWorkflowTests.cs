@@ -169,7 +169,8 @@ public sealed class ReleaseSigningWorkflowTests
 
         var preparationJob = workflow[preparationStart..releaseStart];
         var releaseJob = workflow[releaseStart..];
-        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]", preparationJob);
+        Assert.Contains("needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]", preparationJob);
+        Assert.Contains("needs.fast-validation.result == 'success'", preparationJob);
         Assert.DoesNotContain("ci-gate", preparationJob);
         Assert.Contains("name: Sign Installers", preparationJob);
         Assert.Contains("name: Upload prepared release assets", preparationJob);

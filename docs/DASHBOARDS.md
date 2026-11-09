@@ -75,11 +75,16 @@ does not manufacture category details or subscription records.
 
 The page measures its Reactor host, not the window. Geometry, tiers and
 identity colours follow the [Dashboards design contract](../DESIGN.md#dashboards-expressive-extension);
-shell/history allocation follows the Settings width-dependent chrome row in
+shell/history allocation follows the Settings page history-band allocation row in
 the [architecture ledger](ARCHITECTURE.md). Resizing retains board/session
 identity and mounted widget documents. The hero, tabs and content scroll
 together in a native vertical `ScrollViewer`, without a sticky header,
 horizontal scrolling or a full-page decorative backdrop.
+
+The reader consumes the canonical shared hero and Settings inset contract.
+Page width tiers do not switch shell embedding, change saved pane preferences,
+or intercept Escape. The shared shell owns Back to app and Escape; Workspace
+Back first returns an open board to its retained gallery.
 
 The mast uses a native bordered **Open in web** button followed by Refresh.
 The action group aligns to the content column's right edge. Header actions use
@@ -283,6 +288,12 @@ package feed or machine-wide configuration change is needed.
 The earlier backport screenshots are historical evidence, not proof of the
 published preview.17 runtime; rerun mounted and native theme/scroll proof after
 the upgrade.
+
+The shared Windows App SDK version remains owned by `Directory.Build.props`.
+Integrating the canonical shared hero and shell with this dependency train
+requires fresh reader theme, scrolling, HTML and announcement proof, plus
+the chat Markdown link/list/table contract. Earlier results do not validate
+the integrated source.
 
 - Panel `Padding` and `CornerRadius` on `Grid` require Reactor preview.13 or
   later, so widget chrome uses `Border` for padding, stroke and corners.

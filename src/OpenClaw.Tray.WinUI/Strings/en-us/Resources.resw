@@ -8213,4 +8213,16 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Back to app</value>
+    <comment>Settings sidebar button that leaves Settings for the app destination it was opened from.</comment>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+    <comment>Keyboard key-cap label for Escape shown beside Back to app; use the key's printed name.</comment>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Settings</value>
+    <comment>Large title at the top of the Settings sidebar.</comment>
+  </data>
 </root>
