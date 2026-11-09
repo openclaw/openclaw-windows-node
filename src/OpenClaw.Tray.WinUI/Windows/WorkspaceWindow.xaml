@@ -181,18 +181,6 @@
                 <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
             </Grid>
         </NavigationView>
-        <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                AutomationProperties.AutomationId="WorkspaceTogglePane"
-                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
-            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-        </Button>
-        <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                AutomationProperties.AutomationId="WorkspaceReopenPane"
-                Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
-            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-        </Button>
         </Grid>
         <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
               AutomationProperties.AutomationId="WorkspaceSettingsHost">
@@ -201,6 +189,23 @@
             <InfoBar x:Name="EmbeddedOperationInfo" Canvas.ZIndex="1" IsOpen="False" IsClosable="True"
                      Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
                      AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
+        </Grid>
+        <!-- Opted-in page backdrops extend under this chrome; the pane buttons must stay above them. -->
+        <Grid x:Name="PaneToggleChrome" Grid.Row="1"
+              Visibility="{Binding Visibility, ElementName=NavigationSection}"
+              HorizontalAlignment="Left" VerticalAlignment="Top" Width="48" Height="56">
+            <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                    AutomationProperties.AutomationId="WorkspaceTogglePane"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                    Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+            </Button>
+            <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                    AutomationProperties.AutomationId="WorkspaceReopenPane"
+                    Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                    Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+            </Button>
         </Grid>
         <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
