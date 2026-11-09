@@ -1,12 +1,13 @@
-// Projects active app notifications into the web-aligned Inbox: only items that
-// still need the user, in a fixed action-first order, grouped into tabs, with the
-// bell badge derived from the same entries. WinUI-free so it is unit-testable.
+// Projects active app notifications and Gateway-sourced items into the web-aligned
+// Inbox: only items that still need the user, in a fixed action-first order, grouped
+// into tabs, with the bell badge derived from the same entries. WinUI-free so it is
+// unit-testable.
 //
 // Usage:
-//   var inbox = InboxProjection.Build(service.Snapshot.ActiveNotifications);
+//   var inbox = InboxProjection.Build(service.Snapshot.ActiveNotifications, gateway.Items);
 //   footer.ApplyInboxBadge(inbox.Badge, helpText);
 //   foreach (var entry in inbox.For(InboxTab.Approvals)) { ... }
-//   var age = InboxProjection.Age(entry.Notification.CreatedAt, DateTimeOffset.UtcNow);
+//   var age = InboxProjection.Age(entry.CreatedAt, DateTimeOffset.UtcNow);
 
 using OpenClawTray.Services;
 
@@ -52,15 +53,29 @@ internal static class InboxRoutes
 {
     /// <summary>Settings route of the notification preferences opened by the Inbox gear.</summary>
     public const string NotificationSettings = "notification-preferences";
+
+    /// <summary>Settings route of the Automations (cron) page linked from automation failures.</summary>
+    public const string Automations = "cron";
+
+    /// <summary>Settings route of the Models page, where provider accounts are signed in again.</summary>
+    public const string Models = "model";
 }
 
+/// <summary>
+/// One Inbox row. Exactly one of <see cref="Notification"/> (app notifications) and
+/// <see cref="GatewayItem"/> (live Gateway facts) is set.
+/// </summary>
 internal sealed record InboxEntry(
-    AppNotification Notification,
+    AppNotification? Notification,
     InboxEntryKind Kind,
     InboxCategory Category,
     InboxSeverity Severity)
 {
-    public string Id => Notification.Id;
+    public InboxGatewayItem? GatewayItem { get; init; }
+
+    public string Id => GatewayItem?.Id ?? Notification!.Id;
+
+    public DateTimeOffset CreatedAt => GatewayItem?.ArrivedAt ?? Notification!.CreatedAt;
 
     /// <summary>Approvals leave the Inbox only when they are decided or expire.</summary>
     public bool CanDismiss => Kind != InboxEntryKind.Approval;
@@ -99,19 +114,36 @@ internal sealed record InboxSnapshot(IReadOnlyList<InboxEntry> Entries, InboxBad
 
 internal static class InboxProjection
 {
-    public static InboxSnapshot Build(IEnumerable<AppNotification> notifications)
+    public static InboxSnapshot Build(
+        IEnumerable<AppNotification> notifications,
+        IEnumerable<InboxGatewayItem>? gatewayItems = null)
     {
         ArgumentNullException.ThrowIfNull(notifications);
 
         var entries = notifications
-            .Select(Classify)
+            .Select(notification => Classify(notification))
             .OfType<InboxEntry>()
+            .Concat((gatewayItems ?? []).Select(item => Classify(item)))
             .OrderBy(entry => entry.Kind)
-            .ThenByDescending(entry => entry.Notification.CreatedAt)
+            .ThenByDescending(entry => entry.CreatedAt)
             // The service coalesces by dedupe key, not id; one row per id keeps rows and badge consistent.
             .DistinctBy(entry => entry.Id, StringComparer.Ordinal)
             .ToList();
         return new InboxSnapshot(entries, BuildBadge(entries));
+    }
+
+    /// <summary>Maps a Gateway fact to its Inbox kind, tab and severity.</summary>
+    public static InboxEntry Classify(InboxGatewayItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        var (kind, category, severity) = item.Kind switch
+        {
+            InboxGatewayItemKind.Approval => (InboxEntryKind.Approval, InboxCategory.Approvals, InboxSeverity.Warning),
+            InboxGatewayItemKind.AutomationFailed => (InboxEntryKind.Error, InboxCategory.Automations, InboxSeverity.Error),
+            InboxGatewayItemKind.AutomationOverdue => (InboxEntryKind.Warning, InboxCategory.Automations, InboxSeverity.Warning),
+            _ => (InboxEntryKind.Error, InboxCategory.System, InboxSeverity.Error),
+        };
+        return new InboxEntry(null, kind, category, severity) { GatewayItem = item };
     }
 
     /// <summary>
