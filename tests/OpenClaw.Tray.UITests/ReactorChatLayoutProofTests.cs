@@ -416,7 +416,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     FindControl<Button>(surface, "ChatComposerReasoningPicker"), surface).Right);
                 Assert.True(Bounds(button, surface).Right <= Bounds(
                     FindControl<Button>(surface, "ChatComposerVoice"), surface).Left);
+                ui.Diagnostics.SetPhase(NativeUiPhase.ChatShowingFlyout);
                 button.Flyout.ShowAt(button);
+                ui.Diagnostics.SetPhase(NativeUiPhase.ChatFlyoutShown);
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -2341,6 +2343,61 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Fact]
+    public async Task ReasoningPicker_HostDisposalCancelsQueuedValueChange()
+    {
+        await ui.ResetContainerAsync();
+        var selected = new List<string>();
+        ReactorHostControl? host = null;
+        Border? surface = null;
+        Slider? slider = null;
+        ChatThemeProofScope? themeScope = null;
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                themeScope = new ChatThemeProofScope("Light");
+                host = new ReactorHostControl();
+                host.Mount(_ => Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
+                    Button("Effort", null).AutomationId("ReasoningRetirementTarget"),
+                    [new("off", "Off"), new("low", "Low"), new("high", "High")],
+                    "off", "Off", true, selected.Add, () => { }, 480)));
+                surface = new Border { Child = host, Width = 480, Height = 720 };
+                ui.Container.Children.Add(surface);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface!, "ReasoningRetirementTarget");
+                var content = Assert.IsAssignableFrom<FrameworkElement>(Assert.IsType<Flyout>(button.Flyout).Content);
+                slider = FindControl<Slider>(content, "ChatReasoningSlider");
+                slider.Value = 1;
+            });
+            await SettleAsync();
+            Assert.Equal(new[] { "low" }, selected);
+
+            await ui.RunOnUIAsync(() =>
+            {
+                selected.Clear();
+                slider!.Value = 2;
+                host!.Dispose();
+                surface!.Child = null;
+            });
+            await SettleAsync();
+            Assert.Empty(selected);
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host?.Dispose();
+                if (surface is not null)
+                    ui.Container.Children.Remove(surface);
+                themeScope?.Dispose();
+            });
+        }
+    }
+
     [Theory]
     [InlineData(null, "Default", 0)]
     [InlineData("", "Default", 0)]
@@ -2866,6 +2923,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
         IChatAgentRosterSource? agentRosterSource = null)
     {
+        using var diagnosticScope = ui.Diagnostics.BeginChatScope();
         await ui.ResetContainerAsync();
         using var settingsDirectory = new TempDirectory();
         using var settingsStore = new SettingsStore(
@@ -2878,8 +2936,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         ChatThemeProofScope? themeScope = null;
         var provider = new ProofProvider(scenario, thinkingLevel, placementGateway, identityLoader);
         var renderErrors = new RenderErrorLogger();
-        Microsoft.UI.Xaml.UnhandledExceptionEventHandler reportException = (_, args) =>
-            Console.Error.WriteLine($"Native chat harness: {args.Message}\n{args.Exception}");
+        var reportException = TestApp.CreateExceptionReporter(ui.Diagnostics, NativeUiExceptionSource.ChatUnhandled);
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -2932,15 +2989,18 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
             Console.WriteLine("chat-proof: body start");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatBody);
             await proof(surface!, host!, session!, provider);
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
         }
         finally
         {
             Console.WriteLine("chat-proof: teardown begin");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatClosingPopups);
             await CloseOpenPopupsAsync(surface);
             await SettleAsync();
             Console.WriteLine("chat-proof: popups closed");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingWindow);
             await ui.RunOnUIAsync(() =>
             {
                 session?.Dispose();
@@ -2948,14 +3008,19 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 {
                     surface.Child = null;
                 }
+                diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingHost);
                 host?.Dispose();
+                diagnosticScope.SetPhase(NativeUiPhase.ChatClosingWindow);
                 proofWindow?.Close();
+                diagnosticScope.SetPhase(NativeUiPhase.ChatWindowClosed);
                 _captureWindow = null;
                 themeScope?.Dispose();
                 Application.Current.UnhandledException -= reportException;
             });
+            diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingProvider);
             await provider.DisposeAsync();
             Console.WriteLine("chat-proof: window closed");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatClosed);
         }
     }
 

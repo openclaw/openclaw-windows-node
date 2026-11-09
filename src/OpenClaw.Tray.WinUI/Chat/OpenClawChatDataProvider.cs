@@ -119,6 +119,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     internal ChatQuestionCoordinator? Questions { get; }
     private readonly Action<Action>? _post;
     private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
+    private readonly Func<Func<Task>, Task> _queueDrainScheduler;
     private readonly object _publishGate = new();
     private readonly Dictionary<int, int> _deliveryDepthByThread = [];
     private readonly ManualResetEventSlim _disposeCompleted = new();
@@ -193,7 +194,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
         Action? historyFailureReservedForTesting = null,
         Func<Func<Task>, Task>? deferredAbortScheduler = null,
-        TimeProvider? throughputTimeProvider = null)
+        TimeProvider? throughputTimeProvider = null,
+        Func<Func<Task>, Task>? queueDrainScheduler = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         Questions = bridge is IChatQuestionGateway questionGateway
@@ -202,6 +204,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         _throughput = new ChatThroughputTracker(throughputTimeProvider ?? TimeProvider.System);
         _deferredAbortScheduler =
             deferredAbortScheduler ?? (work => Task.Run(work));
+        // Only the scheduling boundary is injectable; delay, admission and commits retain their owners.
+        _queueDrainScheduler = queueDrainScheduler ?? (work => Task.Run(work));
         _metadataStore = new ChatMetadataStore(
             toolMetaCacheFilePath,
             attachmentMetaCacheFilePath);
@@ -380,7 +384,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             DateTimeOffset.UtcNow,
             ProjectionContext());
         Publish(snapshot);
-        TryDispatchNextQueuedSend(threadId);
+        _ = TryDispatchNextQueuedSend(threadId);
         return Task.FromResult(true);
     }
 
@@ -508,7 +512,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 if (preparation.Snapshot is not null)
                 {
                     Publish(preparation.Snapshot);
-                    TryDispatchNextQueuedSend(threadId);
+                    _ = TryDispatchNextQueuedSend(threadId);
                 }
                 return false;
             }
@@ -593,7 +597,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 }
             }
             if (!commit.IsCurrent && commit.AcceptedSnapshot is not null)
-                TryDispatchNextQueuedSend(threadId);
+                _ = TryDispatchNextQueuedSend(threadId);
 
             if (hasAttachments && commit.IsCurrent)
             {
@@ -630,7 +634,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 if (failure.Snapshot is not null)
                 {
                     Publish(failure.Snapshot);
-                    TryDispatchNextQueuedSend(threadId);
+                    _ = TryDispatchNextQueuedSend(threadId);
                 }
 
                 // The task completes so a reset does not surface as an error.
@@ -656,7 +660,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                     LocalizationHelper.GetString(
                         "Chat_Notification_SendFailed"),
                     ex.Message));
-            TryDispatchNextQueuedSend(threadId);
+            _ = TryDispatchNextQueuedSend(threadId);
             if (rethrow)
                 throw;
             return false;
@@ -707,7 +711,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             Publish(completion.Snapshot);
         if (result.Succeeded && command == ChatLifecycleCommandKind.Compact)
             _ = LoadHistoryAsync(threadId, force: true, authoritative: true);
-        TryDispatchNextQueuedSend(threadId);
+        _ = TryDispatchNextQueuedSend(threadId);
     }
 
     private static ChatAdmissionTelemetryStatus ToTelemetryAdmissionStatus(
@@ -1244,7 +1248,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
         foreach (var threadId in transition.QueuedThreadsToDrain)
         {
-            TryDispatchNextQueuedSend(threadId);
+            _ = TryDispatchNextQueuedSend(threadId);
         }
     }
 
@@ -1861,7 +1865,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             $"(reason='{ChatTelemetryTracker.ToTelemetryValue(reason)}').");
     }
 
-    private void TryDispatchNextQueuedSend(string threadId)
+    private Task TryDispatchNextQueuedSend(string threadId)
     {
         var start = _state.TryStartNextQueuedSend(
             threadId,
@@ -1878,12 +1882,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         if (start.Snapshot is not null)
             Publish(start.Snapshot);
         if (dispatch is not null)
-            _ = DispatchQueuedSendAsync(
+            return DispatchQueuedSendAsync(
                 dispatch,
                 queueCompletion,
                 rethrow: false);
         else if (start.DelayedRetry is { } delay)
             ScheduleQueuedSendDrain(threadId, delay);
+        return Task.CompletedTask;
     }
 
     private void ScheduleQueuedSendDrain(string threadId)
@@ -1894,7 +1899,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         if (!_state.TryScheduleQueueDrain(threadId))
             return;
 
-        _ = Task.Run(async () =>
+        _ = _queueDrainScheduler(async () =>
         {
             try
             {
@@ -1907,7 +1912,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
             try
             {
-                TryDispatchNextQueuedSend(threadId);
+                await TryDispatchNextQueuedSend(threadId).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

@@ -71,10 +71,14 @@ internal static class OwnedWindowCapture
             (int)Math.Round(currentPixels + (desiredHostDip - measuredHostDip) * scale, MidpointRounding.AwayFromZero));
 
     internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
-        params AutomationElement[] assertedElements)
+        params AutomationElement[] assertedElements) => Save(run, window, name, CancellationToken.None, assertedElements);
+
+    internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
+        CancellationToken cancellationToken, params AutomationElement[] assertedElements)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         run.EnsureRunning();
-        SaveCore(run.AppProcessId, run.Profile.RunId, run.ArtifactsDirectory, window, name, assertedElements);
+        SaveCore(run.AppProcessId, run.Profile.RunId, run.ArtifactsDirectory, window, name, assertedElements, cancellationToken);
     }
 
     internal static void SaveCurrentProcessWindow(IntPtr handle, string runId, string artifactsDirectory, string name)
@@ -86,8 +90,9 @@ internal static class OwnedWindowCapture
     }
 
     private static void SaveCore(int appProcessId, string runId, string artifactsDirectory, AutomationElement window,
-        string name, AutomationElement[] assertedElements)
+        string name, AutomationElement[] assertedElements, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var handle = new IntPtr(window.Current.NativeWindowHandle);
         Assert.Equal(appProcessId, window.Current.ProcessId);
         GetWindowThreadProcessId(handle, out var processId);
@@ -126,6 +131,8 @@ internal static class OwnedWindowCapture
                 for (var x = 20; x < image.Width - 20; x += Math.Max(1, image.Width / 100))
                     colors.Add(image.GetPixel(x, y).ToArgb());
             Assert.True(colors.Count >= 16, $"Rejected blank native content ({colors.Count} sampled colors).");
+            // Do not publish an image that returns after owned termination.
+            cancellationToken.ThrowIfCancellationRequested();
             var path = Path.Combine(artifactsDirectory, name);
             image.Save(path, ImageFormat.Png);
             File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonSerializer.Serialize(new

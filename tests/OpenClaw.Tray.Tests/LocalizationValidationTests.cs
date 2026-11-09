@@ -84,6 +84,10 @@ public class LocalizationValidationTests
         // Punctuation-only layout format; localized parts are supplied by
         // separate placeholders and should keep the same visual separator.
         "ConfigPage_AccessSummaryFormat",
+        // Inbox layout formats: a localized label/title plus a count or state
+        // supplied by separate, already localized placeholders.
+        "Inbox_TabCountFormat",
+        "Inbox_RowAutomationNameFormat",
         // NodesPage detail labels — "Version", "Hardware", and "PATH" are
         // technical loanwords that read the same in every supported locale
         // in this app's audience. Translating them adds no clarity and
@@ -655,15 +659,14 @@ public class LocalizationValidationTests
         // Approved Workspace copy is seeded consistently in English while
         // locale review is pending, matching the existing deferred-copy policy.
         || key.StartsWith("WorkspaceShell_", StringComparison.Ordinal)
-        // Title-bar status pill + notifications bell flyout strings. Seeded
-        // English-only across all five .resw files using the deferred-translation
-        // pattern; translations land in a follow-up.
+        // Title-bar status pill strings. Seeded English-only across all five
+        // .resw files using the deferred-translation pattern; translations
+        // land in a follow-up.
         || key.StartsWith("HubWindow_StatusFlyout_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_StatusPill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Pill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Role_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Bell_", StringComparison.Ordinal)
-        || key.StartsWith("NotificationsFlyout_", StringComparison.Ordinal)
         // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
         // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
         // five .resw files with English values. Translations land in a follow-up.
@@ -1161,7 +1164,7 @@ public class LocalizationValidationTests
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
                         or "HubWindow_NavigationViewItem_145.Content"
-                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
+                        or "Inbox_TabMentions" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
                         "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],

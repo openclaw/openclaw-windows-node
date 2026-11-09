@@ -3169,24 +3169,6 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Alertes</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Consultez et effacez les notifications OpenClaw actives.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Effacer</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>Aucune notification</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>Les nouvelles notifications de l'application apparaissent ici jusqu'à ce que vous les ignoriez ou les effaciez.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>Ignorer {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Approbation d'exécution</value>
   </data>
@@ -4307,7 +4289,7 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) sont confinées par les paramètres ci-dessous.</value>
+    <value>) et les actions sur les fichiers utilisent les paramètres Sandbox ci-dessous.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Les commandes que l'agent exécute directement sur la passerelle ne le sont pas. Si la passerelle est sur WSL sur ce PC, elles peuvent accéder à vos fichiers Windows, votre presse-papiers et votre réseau: utilisez les approbations d'exécution de la passerelle.</value>
@@ -5476,10 +5458,10 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Consulter les notifications actives de l'application</value>
+    <value>Consulter les demandes et alertes qui vous attendent</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Accéder à Notifications</value>
+    <value>Accéder à la boîte de réception</value>
   </data>
   <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6160,18 +6142,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7294,8 +7264,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Boîte de réception</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Boîte de réception</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ouvrir le tableau de bord</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Ouvrir le tableau de bord (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Suivant</value></data>
@@ -8344,6 +8314,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Le nettoyage des fichiers téléversés est bloqué</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Vérifiez l'accès aux dossiers et les autorisations des données privées. Les anciens fichiers peuvent subsister jusqu'au rétablissement du nettoyage. Ne relancez pas automatiquement les téléversements terminés.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Supprimer l’élément</value>
   </data>
@@ -8450,6 +8422,56 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Planification à {0}</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Développer la navigation</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Réduire la navigation</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Boîte de réception</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Ignorer les éléments affichés</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Paramètres de notification</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Paramètres de notification</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Catégories de la boîte de réception</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>Tout</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Approbations</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Mentions</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automatisations</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>Système</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Rien en attente</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Rien en attente</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Les nouvelles demandes et alertes arrivent ici.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Ouvrir la boîte de réception</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} en attente</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Ignorer {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>maintenant</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} h</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} j</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Demander à OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Ouvrir le chat</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Ouvrir les automatisations</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Échec</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>En retard</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>Cette automatisation a échoué : {0}. Explique pourquoi elle a échoué et comment la corriger.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>Cette automatisation est en retard : {0}, prévue pour {1}. Explique pourquoi elle ne s'est pas exécutée et comment la corriger.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>Ces identifiants de fournisseur de modèles nécessitent une attention : {0}. Explique ce qui a expiré et comment se réauthentifier.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Approbation de commande requise</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Approbation de plug-in requise</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approbation requise</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expire dans {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expirée</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Passerelle</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Appareil</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Bac à sable</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, jusqu'à révocation (révocable)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Toujours autoriser exécute cette commande exacte pour « {0} » sans demander, pendant {1} jours (révocable)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Envoie à {0} destinataire(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Paie {0} {1} à {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Publie en externe sur {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Le compte nécessite une attention : {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Connexion requise</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>La clé API nécessite une attention</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Le compte nécessite une attention</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Se connecter</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Mettre à jour la clé API</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Vérifier le compte</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>Retour à l'application</value>
   </data>

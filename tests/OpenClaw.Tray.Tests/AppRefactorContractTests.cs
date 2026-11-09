@@ -24,6 +24,21 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void NodeService_ShutsDownProducersBeforeReleasingExecutorCleanupLeases()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+        var teardown = ExtractMethod(source, "DisposeCoreAsync");
+        var release = teardown.IndexOf("_sandboxExecutor?.Dispose()", StringComparison.Ordinal);
+        Assert.True(release >= 0);
+        foreach (var producer in new[] { "await StopMcpServerAsync()", "await _uploadRetention.DisposeAsync()", "DetachClientHandlers(client)" })
+        {
+            var stop = teardown.IndexOf(producer, StringComparison.Ordinal);
+            Assert.True(stop >= 0 && stop < release, $"{producer} must precede executor cleanup release.");
+        }
+    }
+
+    [Fact]
     public void E2ESetupFixture_UsesSeparateRoamingRootThroughoutItsLifecycle()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

@@ -457,7 +457,8 @@ $testLanes = [ordered]@{
         Projects = @(
             "tests/OpenClaw.Shared.Tests",
             "tests/OpenClaw.Connection.Tests",
-            "tests/OpenClaw.WinNode.Cli.Tests"
+            "tests/OpenClaw.WinNode.Cli.Tests",
+            "tests/OpenClaw.FileWorker.Tests"
         )
         Artifact = "test-results-core"
     }
@@ -580,11 +581,13 @@ foreach ($token in @(
         "'src/OpenClaw.Connection/OpenClaw.Connection.csproj'",
         "'src/OpenClaw.Cli/OpenClaw.Cli.csproj'",
         "'src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj'",
+        "'src/OpenClaw.FileWorker/OpenClaw.FileWorker.csproj'",
         "'tests/OpenClaw.TestSupport/OpenClaw.TestSupport.csproj'",
         "'tests/OpenClaw.Shared.TestHost/OpenClaw.Shared.TestHost.csproj'",
         "'tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj'",
         "'tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj'",
-        "'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'"
+        "'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'",
+        "'tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj'"
     )) {
     Assert-Contains -Text $coreJob -Expected $token -Message "Core NuGet cache is missing '$token'."
 }

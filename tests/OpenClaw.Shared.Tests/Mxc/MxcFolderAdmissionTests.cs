@@ -187,12 +187,17 @@ public sealed class MxcFolderAdmissionTests : IDisposable
             settingsPath, scratch, context, Read)).Message);
     }
 
-    [Fact]
-    public void NativeMetadataQueryNeedsAttributesOnlyAndDoesNotReadFileData()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeMetadataQueryNeedsAttributesOnlyAndDoesNotReadFileData(bool longPath)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows metadata proof requires Windows.");
-        Directory.CreateDirectory(_root);
-        var path = Path.Combine(_root, "metadata-only.txt");
+        var directory = _root;
+        if (longPath)
+            while (directory.Length < 320) directory = Path.Combine(directory, new string('p', 40));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "metadata-only.txt");
         File.WriteAllText(path, "owned synthetic content");
         var file = new FileInfo(path);
         var original = file.GetAccessControl();
@@ -208,6 +213,8 @@ public sealed class MxcFolderAdmissionTests : IDisposable
             Assert.NotNull(metadata);
             Assert.Equal(0u, metadata.Value.ReparseTag);
             Assert.True(MxcFolderAdmission.IsAdmissible(path, metadata.Value));
+            Assert.Equal(metadata, MxcFolderAdmission.ReadMetadata(@"\\?\" + path));
+            Assert.Null(MxcFolderAdmission.ReadMetadata(Path.Combine(directory, "missing.txt")));
         }
         finally { file.SetAccessControl(original); }
     }

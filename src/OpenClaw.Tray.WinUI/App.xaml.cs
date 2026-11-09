@@ -270,6 +270,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private AppNotificationService? _appNotificationService;
     private SettingsPersistenceNotification? _settingsPersistenceNotification;
     internal AppNotificationService? AppNotifications => _appNotificationService;
+    private InboxGatewaySource? _inboxGatewaySource;
+    /// <summary>Inbox rows, tab counts and badge: app notifications plus live Gateway facts.</summary>
+    internal InboxFeed? InboxFeed { get; private set; }
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastSandboxRiskNotificationKey;
@@ -792,6 +795,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
+        _inboxGatewaySource = new InboxGatewaySource(new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!));
+        InboxFeed = new InboxFeed(_appNotificationService, _inboxGatewaySource);
         _settingsPersistenceNotification = new SettingsPersistenceNotification(
             _settings, new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!),
             _appNotificationService, LocalizationHelper.GetString);
@@ -2350,6 +2355,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Delegate all 27 event subscriptions to GatewayService
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
         _automationsOverview?.SetConnection(GatewayClient);
+        _inboxGatewaySource?.AttachClient(e.NewClient);
 
         // Configure new client
         if (e.NewClient is { } client)
