@@ -510,7 +510,8 @@ $uiJob = Get-JobBlock "ui-tests"
 $standardUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
 foreach ($token in @(
         "OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard",
-        "Category!=ProductionResources"
+        "Category!=ProductionResources",
+        "-CaptureHostExit"
     )) {
     Assert-Contains -Text $standardUiStep -Expected $token `
         -Message "Mixed UI tests must stay separate from the production-resource lane: '$token'."
@@ -524,6 +525,9 @@ Assert-NotContains -Text $productionUiStep -Unexpected 'continue-on-error:' `
 foreach ($token in @(
         "OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production",
         "OPENCLAW_UI_TEST_APP_THEME: Light",
+        "timeout-minutes: 15",
+        "-HangTimeoutSeconds 300",
+        "-CaptureHostExit",
         "OPENCLAW_RUN_KEYBOARD_PROOF: '1'",
         "OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'",
         'OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures',
@@ -860,12 +864,78 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
         -Message "CI test runner is missing hang diagnostic argument '$token'."
 }
 
-$runnerUses = [regex]::Matches(
-    $workflow,
-    "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 11) {
-    throw "Expected 9 non-E2E project runs plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
+# Bind every ordinary/project and dedicated proof invocation to its owning job,
+# named step and distinct result destination. A global count alone cannot detect
+# a missing lane replaced by a duplicate or an invocation routed to another project.
+$ciTestInvocations = @(
+    @{ Job = 'core-tests'; Step = 'Run Shared Tests'; Project = 'tests/OpenClaw.Shared.Tests'; ResultsDirectory = 'TestResults\Shared'; TrxFileName = 'OpenClaw.Shared.Tests.trx' },
+    @{ Job = 'core-tests'; Step = 'Run Connection Tests'; Project = 'tests/OpenClaw.Connection.Tests'; ResultsDirectory = 'TestResults\Connection'; TrxFileName = 'OpenClaw.Connection.Tests.trx' },
+    @{ Job = 'core-tests'; Step = 'Run WinNode CLI Tests'; Project = 'tests/OpenClaw.WinNode.Cli.Tests'; ResultsDirectory = 'TestResults\WinNodeCli'; TrxFileName = 'OpenClaw.WinNode.Cli.Tests.trx' },
+    @{ Job = 'core-tests'; Step = 'Run File Worker Tests'; Project = 'tests/OpenClaw.FileWorker.Tests'; ResultsDirectory = 'TestResults\FileWorker'; TrxFileName = 'OpenClaw.FileWorker.Tests.trx' },
+    @{ Job = 'tray-tests'; Step = 'Run Tray Tests'; Project = 'tests/OpenClaw.Tray.Tests'; ResultsDirectory = 'TestResults\Tray'; TrxFileName = 'OpenClaw.Tray.Tests.trx' },
+    @{ Job = 'tray-tests'; Step = 'Run Tray Integration Tests'; Project = 'tests/OpenClaw.Tray.IntegrationTests'; ResultsDirectory = 'TestResults\TrayIntegration'; TrxFileName = 'OpenClaw.Tray.IntegrationTests.trx' },
+    @{ Job = 'tray-tests'; Step = 'Run SetupEngine Tests'; Project = 'tests/OpenClaw.SetupEngine.Tests'; ResultsDirectory = 'TestResults\SetupEngine'; TrxFileName = 'OpenClaw.SetupEngine.Tests.trx' },
+    @{ Job = 'ui-tests'; Step = 'Run Functional UI Tests'; Project = 'tests/OpenClawTray.FunctionalUI.Tests'; ResultsDirectory = 'TestResults\FunctionalUI'; TrxFileName = 'OpenClawTray.FunctionalUI.Tests.trx' },
+    @{ Job = 'ui-tests'; Step = 'Run Tray UI Tests'; Project = 'tests/OpenClaw.Tray.UITests'; ResultsDirectory = 'TestResults\TrayUI'; TrxFileName = 'OpenClaw.Tray.UITests.trx' },
+    @{ Job = 'ui-tests'; Step = 'Run steady-resource Automations UI tests'; Project = 'tests/OpenClaw.Tray.UITests'; ResultsDirectory = 'TestResults\AutomationsSteadyResources'; TrxFileName = 'AutomationsSteadyResources.trx' },
+    @{ Job = 'ui-tests'; Step = 'Run animation-enabled reveal proof'; Project = 'tests/OpenClaw.Tray.UITests'; ResultsDirectory = 'TestResults\AnimationsEnabled'; TrxFileName = 'AnimationsEnabled.trx' },
+    @{ Job = 'ui-tests'; Step = 'Run animations-disabled behavior proof'; Project = 'tests/OpenClaw.Tray.UITests'; ResultsDirectory = 'TestResults\AnimationsDisabled'; TrxFileName = 'AnimationsDisabled.trx' }
+)
+
+function Assert-CiTestInvocationInventory {
+    param([Parameter(Mandatory)][string]$Text)
+
+    $runnerPattern = '(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$'
+    foreach ($invocation in $ciTestInvocations) {
+        $jobPattern = '(?m)^  ' + [regex]::Escape($invocation.Job) + ':\r?$'
+        if ([regex]::Matches($Text, $jobPattern).Count -ne 1) {
+            throw "CI runner inventory requires one job '$($invocation.Job)'."
+        }
+        $job = Get-JobBlock -Name $invocation.Job -Text $Text
+        $stepPattern = '(?m)^    - name: ' + [regex]::Escape($invocation.Step) + '\r?$'
+        if ([regex]::Matches($job, $stepPattern).Count -ne 1) {
+            throw "CI runner inventory requires one '$($invocation.Step)' step in '$($invocation.Job)'."
+        }
+        $step = Get-StepBlock -Text $job -Name $invocation.Step
+        if ([regex]::Matches($step, $runnerPattern).Count -ne 1) {
+            throw "CI runner inventory requires one Invoke-CiTest.ps1 call in '$($invocation.Step)'."
+        }
+        foreach ($parameter in @('Project', 'ResultsDirectory', 'TrxFileName')) {
+            $values = [regex]::Matches($step, '(?m)^\s+-' + $parameter + ' (?<value>[^\r\n]+)\r?$')
+            if ($values.Count -ne 1 -or $values[0].Groups['value'].Value.Trim() -cne $invocation[$parameter]) {
+                throw "CI runner inventory has an unexpected -$parameter route in '$($invocation.Step)'."
+            }
+        }
+    }
+    # Every registered step above has exactly one call. Any remaining invocation
+    # (including one in an unnamed step or another job) is outside this inventory.
+    if ([regex]::Matches($Text, $runnerPattern).Count -ne $ciTestInvocations.Count) {
+        throw 'CI runner inventory contains an unregistered Invoke-CiTest.ps1 call.'
+    }
 }
+
+Assert-CiTestInvocationInventory -Text $workflow
+
+# Exercise rejection on in-memory workflow mutations, never by changing CI files.
+# These cases must reach the named inventory guard, not fail unrelated setup.
+$inventoryMutations = @(
+    @{ Name = 'missing lane'; Text = $workflow.Replace($productionUiStep, ''); Failure = "requires one 'Run steady-resource Automations UI tests' step in 'ui-tests'" },
+    @{ Name = 'duplicate lane'; Text = $workflow.Replace($productionUiStep, $productionUiStep + $productionUiStep); Failure = "requires one 'Run steady-resource Automations UI tests' step in 'ui-tests'" },
+    @{ Name = 'wrong project'; Text = $workflow.Replace($productionUiStep, $productionUiStep.Replace('-Project tests/OpenClaw.Tray.UITests', '-Project tests/OpenClaw.Shared.Tests')); Failure = "unexpected -Project route in 'Run steady-resource Automations UI tests'" },
+    @{ Name = 'wrong result directory'; Text = $workflow.Replace($productionUiStep, $productionUiStep.Replace('TestResults\AutomationsSteadyResources', 'TestResults\TrayUI')); Failure = "unexpected -ResultsDirectory route in 'Run steady-resource Automations UI tests'" },
+    @{ Name = 'wrong TRX'; Text = $workflow.Replace($productionUiStep, $productionUiStep.Replace('AutomationsSteadyResources.trx', 'OpenClaw.Tray.UITests.trx')); Failure = "unexpected -TrxFileName route in 'Run steady-resource Automations UI tests'" },
+    @{ Name = 'unregistered lane'; Text = $workflow.Replace($productionUiStep, $productionUiStep + $productionUiStep.Replace('Run steady-resource Automations UI tests', 'Run unregistered proof')); Failure = 'contains an unregistered Invoke-CiTest.ps1 call' },
+    @{ Name = 'wrong owning job'; Text = $workflow.Replace($productionUiStep, '').Replace($trayJob, $trayJob + $productionUiStep); Failure = "requires one 'Run steady-resource Automations UI tests' step in 'ui-tests'" }
+)
+foreach ($mutation in $inventoryMutations) {
+    $failure = $null
+    try { Assert-CiTestInvocationInventory -Text $mutation.Text }
+    catch { $failure = $_.Exception.Message }
+    if ($null -eq $failure -or $failure.IndexOf($mutation.Failure, [StringComparison]::Ordinal) -lt 0) {
+        throw "CI runner inventory negative control '$($mutation.Name)' did not reject at its expected guard: $failure"
+    }
+}
+Write-Host "CI runner inventory: $($ciTestInvocations.Count) named routes and $($inventoryMutations.Count) rejection controls passed."
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."
 }
