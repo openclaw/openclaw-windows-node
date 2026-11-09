@@ -85,6 +85,8 @@ public class OpenClawChatDataProviderTests
         public Func<string, string, Task>? PatchSessionThinkingLevelBehavior { get; set; }
         public Func<string, Task>? ClearSessionThinkingLevelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
+        public Func<string, Task<JsonElement>>? AgentIdentityBehavior { get; set; }
+        public List<string> RequestedAgentIdentityIds { get; } = new();
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
         public ModelsListInfo? CurrentModels { get; set; }
@@ -171,6 +173,13 @@ public class OpenClawChatDataProviderTests
         {
             RequestSessionsCallCount++;
             return Task.CompletedTask;
+        }
+
+        public Task<JsonElement> RequestAgentIdentityAsync(string agentId)
+        {
+            RequestedAgentIdentityIds.Add(agentId);
+            return AgentIdentityBehavior?.Invoke(agentId) ??
+                Task.FromException<JsonElement>(new NotSupportedException());
         }
 
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
@@ -728,6 +737,34 @@ public class OpenClawChatDataProviderTests
 
             await scheduledRetry!();
             Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAgentIdentity_RequestsSelectedGatewayIdentityAndProjectsImage()
+    {
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.AgentIdentityBehavior = agentId =>
+        {
+            using var response = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                agentId,
+                name = "Research assistant",
+                avatar = "data:image/png;base64,AQID",
+                emoji = "✨"
+            }));
+            return Task.FromResult(response.RootElement.Clone());
+        };
+
+        await using (provider)
+        {
+            var identity = await provider.LoadAgentIdentityAsync("research");
+
+            Assert.Equal(["research"], bridge.RequestedAgentIdentityIds);
+            Assert.Equal("research", identity?.AgentId);
+            Assert.Equal("Research assistant", identity?.DisplayName);
+            Assert.Equal("data:image/png;base64,AQID", identity?.AvatarUrl);
+            Assert.Equal("✨", identity?.Emoji);
         }
     }
 
@@ -16274,60 +16311,6 @@ public class OpenClawChatDataProviderTests
         Assert.Single(bridge.ResolvedApprovals);
         Assert.Equal(ChatPermissionActionKeys.Deny, bridge.ResolvedApprovals[0].Decision);
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
-    }
-
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task RespondToPermissionAsync_SharedUncertaintyRemovesActionsAcrossSnapshotRefreshes(bool posted, bool correlated)
-    {
-        var deliveries = new ConcurrentQueue<Action>();
-        Action<Action>? post = posted ? deliveries.Enqueue : null;
-        void Drain() { while (deliveries.TryDequeue(out var delivery)) delivery(); }
-        const string canonical = "29c78023-a152-4a24-949d-59950de3a12e";
-        var displayedId = correlated ? "29c78023" : canonical;
-        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, post: post);
-        bridge.CommandCatalogResult = new CommandCatalog { IsSupported = true };
-        await provider.LoadAsync();
-        bridge.RaiseStatus(ConnectionStatus.Connected);
-        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(canonical, correlated ? displayedId : ""));
-        Drain();
-        var before = snapshots[^1].Timelines["main"];
-        Assert.Equal(displayedId, before.PendingPermission!.RequestId);
-        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
-        // An older queued publication must be projected with current authority at delivery.
-        provider.RefreshApprovalDecisionState();
-        provider.IsApprovalDecisionUncertain = id => id == canonical;
-        provider.RefreshApprovalDecisionState();
-        Drain();
-        AssertUncertain(snapshots[^1]);
-
-        // Command-catalog delivery bypasses Publish, but must use the same final projection.
-        await provider.EnsureCommandCatalogAsync();
-        Drain();
-        Assert.Equal(1, bridge.ListCommandsCallCount);
-        AssertUncertain(snapshots[^1]);
-        await provider.RespondToPermissionAsync("main", displayedId, allow: true);
-        bridge.RaiseSessions([MainSession()]);
-        Drain();
-        AssertUncertain(snapshots[^1]);
-        AssertUncertain(await provider.LoadAsync());
-        Assert.Empty(bridge.ResolvedApprovals);
-        // Previously delivered snapshots and the authoritative request remain immutable.
-        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
-        Assert.DoesNotContain("Inbox_ApprovalDecisionUncertain", before.PendingPermission.Detail);
-
-        void AssertUncertain(ChatDataSnapshot snapshot)
-        {
-            var timeline = snapshot.Timelines["main"];
-            Assert.Empty(timeline.PendingPermission!.Actions!);
-            Assert.Contains("Inbox_ApprovalDecisionUncertain", timeline.PendingPermission.Detail);
-            var row = Assert.Single(timeline.Entries, entry => entry.PermissionRequestId == displayedId);
-            Assert.Equal(ChatPermissionDecision.Pending, row.PermissionDecision);
-            Assert.Empty(row.PermissionActions!);
-            Assert.Contains("Inbox_ApprovalDecisionUncertain", row.Text);
-        }
     }
 
     [Fact]

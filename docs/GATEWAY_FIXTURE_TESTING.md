@@ -10,6 +10,10 @@ automated tests. Its five sessions include an empty conversation, distinct
 session identities and titles, and 240 mixed-height messages with an explicit
 final-message marker. Supporting model, agent, health, usage and configuration
 responses populate the application rather than just its disconnected shell.
+Read-only `agent.identity.get` resolves each roster agent (and the agent the
+`agent-creation` scenario creates) to its roster name with no avatar, so the app
+renders generated faces; an unknown ID receives `INVALID_REQUEST`, as on a real
+Gateway.
 Read-only placement discovery returns an empty project catalog and one synthetic
 local environment through `projects.list` and `environments.list`. It creates no
 project or host resources; `projects.add` is rejected as a write.
@@ -151,20 +155,6 @@ uninstallation, host management, or node command execution.
 The one write-shaped exception is `exec.approval.resolve`: the fixture validates
 the fixture-owned approval ID and decision, records only that safe correlation,
 and returns a synthetic acknowledgement without executing a command.
-
-Approval consent tests opt into `GatewayScenario.CreateApprovalReview`, which grants
-only `operator.read` and `operator.approvals`. Its canonical exec and plugin approval
-events exercise the shared production decision owner. Plugin decisions are limited
-to Allow once or Deny for bounded fixture-issued IDs, with one-shot resolution and
-separate exec/plugin identity admission. This does not enable plugin execution or
-general Gateway writes.
-
-The `GatewayFixtureUiTests.InboxPluginReview_` cases expand real Inbox rows on the
-page and bell flyout. They require complete selectable title/detail text, visible
-critical suffixes after native text-range scrolling, and the exact decision RPC.
-Truncated or concealed detail/warning cases require Deny-only controls. With
-`-Screenshots`, the existing fixture runner retains owned-window captures of those
-states. Row-model tests and successful protocol replies alone are not rendered proof.
 
 The native agent-creation UI test explicitly opts into a separate `agent-creation`
 scenario. Only that scenario grants administrator scope and accepts one

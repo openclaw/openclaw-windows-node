@@ -23,10 +23,12 @@ public sealed class ChatPlacementTests
         new(GatewayChatPlacementClient.ParseEnvironments(Environments)[remote ? 1 : 0], workspace ?? Folder);
 
     [Theory]
-    [InlineData("Research assistant", "Configured name", "Research assistant")]
+    [InlineData("Research assistant", "Configured name", "Configured name")]
+    [InlineData("Research assistant", null, "Research assistant")]
     [InlineData(null, "Configured name", "Configured name")]
-    [InlineData(" ", null, "main")]
-    public void Catalog_UsesSelectedAgentIdentityName(string? identityName, string? name, string expected)
+    [InlineData(" ", null, null)]
+    public void Catalog_PrefersRosterNameThenIdentityNameWithoutIdFallback(
+        string? identityName, string? name, string? expected)
     {
         var agents = JsonSerializer.SerializeToElement(new
         {
@@ -56,21 +58,24 @@ public sealed class ChatPlacementTests
         var catalog = GatewayChatPlacementClient.ParseCatalog(42, "main", Environments, projects, agents);
         Assert.Equal("\u2728", catalog.AgentEmoji);
         Assert.Equal("data:image/png;base64,AQID", catalog.AgentAvatarUrl);
+        Assert.Equal("agent.png", catalog.AgentAvatar);
 
         var unknown = GatewayChatPlacementClient.ParseCatalog(42, "missing", Environments, projects, agents);
         Assert.Null(unknown.AgentEmoji);
         Assert.Null(unknown.AgentAvatarUrl);
+        Assert.Null(unknown.AgentAvatar);
     }
 
     [Theory]
     [InlineData("https://example.com/agent.png", "https://example.com/agent.png")]
     [InlineData(" ", null)]
-    public void Catalog_AvatarFallsBackToIdentityAvatar(string avatar, string? expected)
+    public void Catalog_KeepsRawIdentityAvatarSeparateFromResolvedUrl(string avatar, string? expected)
     {
         var agents = JsonSerializer.SerializeToElement(new { agents = new[] { new { id = "main", identity = new { avatar } } } });
         var catalog = GatewayChatPlacementClient.ParseCatalog(42, "main", Environments,
             JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>() }), agents);
-        Assert.Equal(expected, catalog.AgentAvatarUrl);
+        Assert.Equal(expected, catalog.AgentAvatar);
+        Assert.Null(catalog.AgentAvatarUrl);
     }
 
     [Fact]

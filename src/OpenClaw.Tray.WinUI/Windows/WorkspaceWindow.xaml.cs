@@ -25,7 +25,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
-    private readonly InboxFeed _inbox;
     private readonly WorkspaceIdentitySource _identity;
     private readonly WorkspaceSessionMenuController _sessionMenu;
     private readonly WorkspaceNavigationHistory _navigation = new();
@@ -80,9 +79,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         _search = new(CaptureSearch, new Presentation.Adapters.WinUIDispatcher(DispatcherQueue),
             category => Logger.Warn($"[Search] {category}"));
         _notifications = notifications;
-        // App creates the feed with the notification service; a window-owned fallback would never unsubscribe.
-        _inbox = CurrentApp.InboxFeed
-            ?? throw new InvalidOperationException("The Inbox feed is created with the app notification service.");
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
@@ -129,7 +125,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         ConfigureFooter(ChatFooter);
         ConfigureFooter(TitleBarFooter);
         _state.PropertyChanged += OnStateChanged;
-        _inbox.Changed += OnNotificationsChanged;
+        _notifications.Changed += OnNotificationsChanged;
         _chat.Loaded += (_, _) =>
         {
             if (Destination.Page == WorkspacePageId.Home) _chat.Initialize(this);
@@ -395,7 +391,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         else
         {
             var notifications = new NotificationsPage();
-            notifications.Initialize(_inbox, InboxCommands(openPage: null));
+            notifications.Initialize(_notifications, InboxCommands(openPage: null));
             ContentHost.Children.Add(notifications);
         }
 
@@ -424,6 +420,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
+        view.ExitRequested = ExitSettings;
         view.PruneRequested = PruneSettingsHistory;
         view.SearchController = _search;
         view.SearchNavigation = ExecuteSearch;
@@ -508,6 +505,70 @@ public sealed partial class WorkspaceWindow : WindowEx
             else
                 Navigate(destination);
         }, OpenSettings, OpenDashboard);
+    }
+
+    /// <summary>
+    /// Back to app: leaves full Settings for the app destination it was opened from, as one ordinary
+    /// history entry. The retained chat host and draft are reused, a modal dialog defers the change,
+    /// and focus returns to the control that opened Settings.
+    /// </summary>
+    private void ExitSettings()
+    {
+        if (!IsSettingsVisible || Destination.Embedded) return;
+        // Resolve the target and its focus only when the exit actually runs, after any dialog closes.
+        if (DeferWhileModalOpen(ExitSettings)) return;
+        _sidebarInvoked = false;
+        // Like Back/Forward, never return to a pinned Gateway page that is no longer available.
+        PruneUnavailableGatewayHistory();
+        var destination = _navigation.AppDestination;
+        Navigate(destination);
+        // LeaveSettings restores chat focus. A rebuilt Notifications page or a pinned page beside the
+        // sidebar has no saved control, so focus moves to the destination instead of a hidden button.
+        if (destination.Page != WorkspacePageId.Home)
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => FocusAppDestination(destination));
+    }
+
+    private void FocusAppDestination(WorkspaceDestination destination)
+    {
+        if (IsClosed || Destination != destination) return;
+        // The pin row is unfocusable while the main sidebar is hidden; the page itself is the fallback.
+        if (destination.Embedded && TryFocus(NavView.SelectedItem as DependencyObject)) return;
+        var page = destination.Embedded ? (DependencyObject)SettingsSection : ContentHost;
+        TryFocus(Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(page));
+    }
+
+    private static bool TryFocus(DependencyObject? target) => target switch
+    {
+        Control control => control.Focus(FocusState.Programmatic),
+        Microsoft.UI.Xaml.Documents.Hyperlink link => link.Focus(FocusState.Programmatic),
+        _ => false,
+    };
+
+    // Bubbling KeyDown, so the focused control handles Escape first (PreviewKeyDown would steal it).
+    private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
+        if (!SettingsEscapePolicy.ExitsSettings(Destination, e.Handled, e.KeyStatus.WasKeyDown,
+                overlayOpen: HasOpenOverlay(), focusInEditor: IsInEscapeOwningEditor(e.OriginalSource as DependencyObject)))
+            return;
+        e.Handled = true;
+        ExitSettings();
+    }
+
+    private bool HasOpenOverlay() =>
+        Root.XamlRoot is { } xamlRoot && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot)
+            .Any(popup => popup.Child is not ToolTip);
+
+    private bool IsInEscapeOwningEditor(DependencyObject? source)
+    {
+        for (var element = source; element is not null; element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element))
+        {
+            if (element is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or ComboBox or NumberBox)
+                return true;
+            if (ReferenceEquals(element, Root))
+                return false;
+        }
+        return false;
     }
 
     /// <summary>
@@ -627,7 +688,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void RefreshSidebar(bool rosterUpdated = false)
     {
         _updating = true;
-        var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions);
+        var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions, _state.AgentIdentities);
         _agentSelection.Refresh(CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayId,
             _state.AgentsList, rosterAgents, rosterUpdated, _state.AgentsListUnsupported);
         IReadOnlyList<WorkspaceAgent> agents = _agentSelection.HasCurrentRoster ? rosterAgents : [];
@@ -644,10 +705,7 @@ public sealed partial class WorkspaceWindow : WindowEx
                 // Compensate the native item's leading template margin, not the popup's scroll extent.
                 Margin = new Thickness(-5, 0, 0, 0)
             };
-            item.Content = agent;
-            item.Tag = agent;
-            AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
-            AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+            UpdateAssistantItem(AssistantSelector, item, agent);
             desiredItems.Add(item);
         }
         desiredItems.Add(NewAgentOption);
@@ -673,6 +731,22 @@ public sealed partial class WorkspaceWindow : WindowEx
         // Before layout, NavigationView is still minimal and selecting an item closes its pane.
         if (Root.IsLoaded)
             UpdateNavigationSelection();
+    }
+
+    internal static void UpdateAssistantItem(ComboBox selector, ComboBoxItem item, WorkspaceAgent agent)
+    {
+        if (Equals(item.Content, agent))
+            return;
+
+        // ComboBox caches its closed selection separately from the item's content.
+        // Re-select under RefreshSidebar's _updating guard so identity hydration cannot navigate.
+        var selected = ReferenceEquals(selector.SelectedItem, item);
+        if (selected) selector.SelectedItem = null;
+        item.Content = agent;
+        item.Tag = agent;
+        AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
+        AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+        if (selected) selector.SelectedItem = item;
     }
 
     /// <summary>
@@ -942,7 +1016,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (e.PropertyName is nameof(AppState.Status) or nameof(AppState.Presence) or nameof(AppState.SelfProfileRevision))
             RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
         if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.AgentsListUnsupported)
-            or nameof(AppState.Sessions) or nameof(AppState.Status))
+            or nameof(AppState.AgentIdentities) or nameof(AppState.Sessions) or nameof(AppState.Status))
             RefreshSidebar(rosterUpdated: e.PropertyName == nameof(AppState.AgentsList) ||
                 e.PropertyName == nameof(AppState.AgentsListUnsupported) && _state.AgentsListUnsupported);
         if (e.PropertyName == nameof(AppState.Status))
@@ -1043,7 +1117,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// <summary>Wires one footer to the window-owned state and commands, then applies current state.</summary>
     private void ConfigureFooter(WorkspacePaneFooter footer)
     {
-        footer.BindNotifications(_inbox, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
+        footer.BindNotifications(_notifications, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
         footer.DashboardRequested += (_, _) => OpenDashboard();
         if (footer.Layout != WorkspacePaneFooterLayout.TitleBar)
             footer.SetOwnerMenu(BuildOwnerMenu(footer));
@@ -1140,7 +1214,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnNewConversation(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(NewSessionAsync, new AppLogger(), nameof(OnNewConversation));
-    private void OnNotificationsChanged(object? sender, EventArgs e) =>
+    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs e) =>
         DispatcherQueue.TryEnqueue(() =>
         {
             if (!IsClosed) UpdateNotificationsBadge();
@@ -1148,7 +1222,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var badge = _inbox.Snapshot.Badge;
+        var badge = InboxProjection.Build(_notifications.Snapshot.ActiveNotifications).Badge;
         var helpText = badge.IsVisible
             ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
             : LocalizationHelper.GetString("Inbox_NothingWaiting");
@@ -1160,18 +1234,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private InboxViewCommands InboxCommands(Action? openPage) => new(
         OpenInboxRoute,
         () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
-        () => ((IAppCommands)CurrentApp).OpenDashboard(),
-        openPage,
-        AskOpenClaw);
-
-    /// <summary>Sends an Inbox failure's explain prompt to the main conversation and shows it.</summary>
-    private void AskOpenClaw(string question)
-    {
-        if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
-            SelectSession(sessionKey);
-        else
-            OpenCompanion(CompanionPageId.Connection);
-    }
+        openPage);
 
     private void OpenInboxRoute(string route)
     {
@@ -1433,7 +1496,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();
-        _inbox.Changed -= OnNotificationsChanged;
+        _notifications.Changed -= OnNotificationsChanged;
         _workspaceSearchShow.Cancel();
         foreach (var footer in Footers)
             footer.Close();

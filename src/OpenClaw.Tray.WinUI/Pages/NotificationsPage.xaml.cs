@@ -1,5 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
+using OpenClawTray.Helpers;
 using OpenClawTray.Controls;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -15,35 +18,37 @@ public sealed partial class NotificationsPage : Page
     {
         InitializeComponent();
         Inbox.UsePageLayout();
+        // The heading is inside InboxView's namescope. Name the page from that same
+        // localized resource; its enabled Settings/tabs remain the focus destinations even when empty.
+        AutomationProperties.SetName(this, LocalizationHelper.GetString("Inbox_Title.Text"));
         // Each navigation creates a new page, so its Unloaded ends this page's Inbox binding.
         Unloaded += (_, _) => Inbox.Unbind();
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new NotificationsPageAutomationPeer(this);
+
+    // Keep a named native pane without adding an empty-page tab stop ahead of Inbox controls.
+    private sealed class NotificationsPageAutomationPeer(NotificationsPage owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
+        protected override string GetClassNameCore() => nameof(NotificationsPage);
     }
 
     /// <summary>
     /// Binds the Inbox. Without host commands (the Settings companion), routes use the
     /// app-wide navigation commands.
     /// </summary>
-    internal void Initialize(InboxFeed? inbox, InboxViewCommands? commands = null)
+    internal void Initialize(AppNotificationService? notificationService, InboxViewCommands? commands = null)
     {
-        if (inbox is null)
+        if (notificationService is null)
         {
             Inbox.Unbind();
             return;
         }
 
-        Inbox.Initialize(inbox, commands ?? new InboxViewCommands(
+        Inbox.Initialize(notificationService, commands ?? new InboxViewCommands(
             OpenAppRoute,
-            () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings),
-            () => ((IAppCommands)CurrentApp).OpenDashboard(),
-            AskOpenClaw: AskOpenClaw));
-    }
-
-    private static void AskOpenClaw(string question)
-    {
-        if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
-            OpenAppRoute(AppNotificationActionRoutes.Chat(sessionKey));
-        else
-            ((IAppCommands)CurrentApp).Navigate("connection");
+            () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings)));
     }
 
     private static void OpenAppRoute(string route)

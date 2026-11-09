@@ -1,16 +1,13 @@
 // The Inbox list shared by the footer bell flyout and the full Inbox page: tabs,
-// action-first rows that expand in place, approval decisions (Allow once / Always allow /
-// Deny, sent through InboxFeed to OperatorApprovalDecisions), "Dismiss shown", the empty
-// state and the notification settings shortcut. Data comes from InboxFeed (app notifications
-// plus live Gateway facts); navigation and "Ask OpenClaw" are supplied by the hosting window.
+// action-first rows that expand in place, "Dismiss shown", the empty state and the
+// notification settings shortcut. Data comes from AppNotificationService through
+// InboxProjection; navigation is supplied by the hosting window.
 //
 // Usage:
-//   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
+//   inboxView.Initialize(appNotifications, new InboxViewCommands(
 //       OpenRoute: route => window.OpenNotificationRoute(route),
-//       OpenDashboard: () => appCommands.OpenDashboard(),
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
-//       OpenPage: () => window.ShowInboxPage(),
-//       AskOpenClaw: question => window.AskOpenClaw(question)));
+//       OpenPage: () => window.ShowInboxPage()));
 //   ...
 //   inboxView.Unbind();
 
@@ -18,7 +15,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -27,25 +23,16 @@ using System.Collections.ObjectModel;
 
 namespace OpenClawTray.Controls;
 
-/// <summary>
-/// Navigation supplied by the Inbox host. <paramref name="OpenPage"/> is null on the page itself;
-/// <paramref name="AskOpenClaw"/> sends a failure's explain prompt to OpenClaw and shows the reply.
-/// </summary>
-internal sealed record InboxViewCommands(
-    Action<string> OpenRoute,
-    Action OpenSettings,
-    Action OpenDashboard,
-    Action? OpenPage = null,
-    Action<string>? AskOpenClaw = null);
+/// <summary>Navigation supplied by the Inbox host. <paramref name="OpenPage"/> is null on the page itself.</summary>
+internal sealed record InboxViewCommands(Action<string> OpenRoute, Action OpenSettings, Action? OpenPage = null);
 
 public sealed partial class InboxView : UserControl
 {
     private const string PageMarkerAutomationId = "NotificationsPageMarker";
-    private static readonly TimeSpan CountdownInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan AgeInterval = TimeSpan.FromSeconds(30);
     private readonly ObservableCollection<InboxItemViewModel> _items = new();
     private readonly DispatcherQueueTimer _clock;
-    private InboxFeed? _feed;
+    private AppNotificationService? _service;
     private InboxViewCommands? _commands;
     private InboxSnapshot _snapshot = InboxSnapshot.Empty;
     private InboxTab _tab = InboxTab.All;
@@ -53,6 +40,7 @@ public sealed partial class InboxView : UserControl
     public InboxView()
     {
         _clock = DispatcherQueue.CreateTimer();
+        _clock.Interval = AgeInterval;
         _clock.IsRepeating = true;
         _clock.Tick += (_, _) => RefreshClock();
         InitializeComponent();
@@ -75,36 +63,36 @@ public sealed partial class InboxView : UserControl
         TabsBar.ClearValue(Control.PaddingProperty);
     }
 
-    internal void Initialize(InboxFeed feed, InboxViewCommands commands)
+    internal void Initialize(AppNotificationService service, InboxViewCommands commands)
     {
         Unbind();
-        _feed = feed;
+        _service = service;
         _commands = commands;
-        feed.Changed += OnFeedChanged;
-        Render(feed.Snapshot);
+        service.Changed += OnNotificationsChanged;
+        Render(service.Snapshot);
     }
 
     internal void Unbind()
     {
         _clock.Stop();
-        if (_feed is not null)
-            _feed.Changed -= OnFeedChanged;
-        _feed = null;
+        if (_service is not null)
+            _service.Changed -= OnNotificationsChanged;
+        _service = null;
         _commands = null;
     }
 
-    private void OnFeedChanged(object? sender, EventArgs args)
+    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs args)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_feed is { } feed && ReferenceEquals(sender, feed))
-                Render(feed.Snapshot);
+            if (_service is { } service && ReferenceEquals(sender, service))
+                Render(service.Snapshot);
         });
     }
 
-    private void Render(InboxSnapshot snapshot)
+    private void Render(AppNotificationSnapshot snapshot)
     {
-        _snapshot = snapshot;
+        _snapshot = InboxProjection.Build(snapshot.ActiveNotifications);
         ApplyTabLabels();
         SyncInboxItems(_snapshot.For(_tab), DateTimeOffset.UtcNow);
         ApplyChrome();
@@ -117,17 +105,13 @@ public sealed partial class InboxView : UserControl
             item.RefreshClock(now);
     }
 
-    // Countdowns tick every second while an approval is shown; otherwise ages refresh slowly.
     private void UpdateClock()
     {
-        if (_feed is null || _items.Count == 0)
+        if (_service is null || _items.Count == 0)
         {
             _clock.Stop();
             return;
         }
-        var interval = _items.Any(item => item.HasCountdown) ? CountdownInterval : AgeInterval;
-        if (_clock.Interval != interval)
-            _clock.Interval = interval;
         if (!_clock.IsRunning)
             _clock.Start();
     }
@@ -208,92 +192,31 @@ public sealed partial class InboxView : UserControl
 
     private void OnDismissShownClick(object sender, RoutedEventArgs e)
     {
-        if (_feed is not { } feed)
+        if (_service is not { } service)
             return;
         foreach (var id in InboxProjection.DismissibleIds(_snapshot, _tab))
-            feed.Dismiss(id);
+            service.Dismiss(id);
     }
 
     private void OnDismissClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string id } &&
             _items.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal)) is { CanDismiss: true })
-            _feed?.Dismiss(id);
+            _service?.Dismiss(id);
     }
 
     private void OnActionClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: InboxItemViewModel item } ||
+            string.IsNullOrWhiteSpace(item.ActionRoute) ||
             _commands is not { } commands)
             return;
 
-        if (string.IsNullOrWhiteSpace(item.ActionRoute))
-            return;
-        var feed = _feed;
+        var service = _service;
         commands.OpenRoute(item.ActionRoute);
         // Opening the conversation is what a mention asks for; other entries stay until resolved.
         if (item.Kind == InboxEntryKind.Mention)
-            feed?.Dismiss(item.Id);
-    }
-
-    private void OnSecondaryActionClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: InboxItemViewModel item } && _commands is { } commands)
-            item.OpenSecondaryAction(commands.OpenRoute, commands.OpenDashboard);
-    }
-
-    private void OnAskClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: InboxItemViewModel { AskQuestion: { Length: > 0 } question } })
-            _commands?.AskOpenClaw?.Invoke(question);
-    }
-
-    private void OnAllowOnceClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.AllowOnce);
-
-    private void OnAllowAlwaysClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.AllowAlways);
-
-    private void OnDenyClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.Deny);
-
-    // A sent or already-resolved decision removes the row through the feed; anything else stays for retry.
-    private void Decide(object sender, string decision)
-    {
-        if (sender is not FrameworkElement { Tag: InboxItemViewModel { GatewayItem: { } gatewayItem } item } ||
-            _feed is not { } feed ||
-            !item.DecisionsEnabled)
-            return;
-
-        AsyncEventHandlerGuard.Run(
-            () => DecideAsync(feed, item, gatewayItem, decision),
-            new AppLogger(),
-            nameof(Decide),
-            _ =>
-            {
-                item.IsDeciding = false;
-                item.DecisionErrorText = LocalizationHelper.GetString("Inbox_ApprovalDecisionFailed");
-            });
-    }
-
-    private static async Task DecideAsync(InboxFeed feed, InboxItemViewModel item, InboxGatewayItem gatewayItem, string decision)
-    {
-        item.IsDeciding = true;
-        item.DecisionErrorText = "";
-        try
-        {
-            var outcome = await feed.DecideApprovalAsync(gatewayItem, decision);
-            item.DecisionErrorText = outcome switch
-            {
-                ApprovalDecisionOutcome.Failed => LocalizationHelper.GetString("Inbox_ApprovalDecisionFailed"),
-                // The source-backed uncertainty note survives rerender and reopening the Inbox.
-                ApprovalDecisionOutcome.Uncertain => "",
-                ApprovalDecisionOutcome.NotPending => LocalizationHelper.GetString("Inbox_ApprovalNoLongerPending"),
-                ApprovalDecisionOutcome.NotAllowed => LocalizationHelper.GetString("Inbox_ApprovalDecisionUnavailable"),
-                _ => "",
-            };
-        }
-        finally
-        {
-            item.IsDeciding = false;
-        }
+            service?.Dismiss(item.Id);
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => _commands?.OpenSettings();

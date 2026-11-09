@@ -29,7 +29,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     private readonly double _paneButtonHeight;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
     private string _automationIdPrefix = "Workspace";
-    private InboxFeed? _inbox;
+    private AppNotificationService? _notifications;
     private InboxViewCommands? _inboxCommands;
     private string _ownerName = "";
     private string _connectionLabel = "";
@@ -111,9 +111,9 @@ public sealed partial class WorkspacePaneFooter : UserControl
     }
 
     /// <summary>Supplies the Inbox shown by the bell flyout and the window commands its rows use.</summary>
-    internal void BindNotifications(InboxFeed inbox, InboxViewCommands commands)
+    internal void BindNotifications(AppNotificationService notifications, InboxViewCommands commands)
     {
-        _inbox = inbox;
+        _notifications = notifications;
         _inboxCommands = commands;
     }
 
@@ -127,7 +127,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     {
         HideFlyouts();
         NotificationContent.Unbind();
-        _inbox = null;
+        _notifications = null;
         _inboxCommands = null;
     }
 
@@ -138,9 +138,9 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     private void OnNotificationsOpening(object sender, object e)
     {
-        if (_inbox is null || _inboxCommands is not { } commands) return;
+        if (_notifications is null || _inboxCommands is not { } commands) return;
         // Every Inbox command leaves the flyout before navigating.
-        NotificationContent.Initialize(_inbox, new InboxViewCommands(
+        NotificationContent.Initialize(_notifications, new InboxViewCommands(
             route =>
             {
                 NotificationsFlyout.Hide();
@@ -154,20 +154,8 @@ public sealed partial class WorkspacePaneFooter : UserControl
             () =>
             {
                 NotificationsFlyout.Hide();
-                commands.OpenDashboard();
-            },
-            () =>
-            {
-                NotificationsFlyout.Hide();
                 commands.OpenPage?.Invoke();
-            },
-            commands.AskOpenClaw is { } ask
-                ? question =>
-                {
-                    NotificationsFlyout.Hide();
-                    ask(question);
-                }
-                : null));
+            }));
     }
 
     private void OnNotificationsClosed(object sender, object e) => NotificationContent.Unbind();

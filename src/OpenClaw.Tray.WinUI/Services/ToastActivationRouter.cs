@@ -1,5 +1,3 @@
-using OpenClawTray.Presentation;
-
 namespace OpenClawTray.Services;
 
 public static class ToastActivationRouter
@@ -26,17 +24,6 @@ public static class ToastActivationRouter
                 return string.IsNullOrWhiteSpace(command) ? null : new ActivationRoute.CopyPairingCommand(command);
             case "review_pairing":
                 return new ActivationRoute.ReviewPairing();
-            case ApprovalToastPlan.OpenInboxAction:
-                return new ActivationRoute.OpenHub("notifications");
-            case ApprovalToastPlan.DecideAction:
-                var approvalId = getArgument(ApprovalToastPlan.ApprovalIdKey);
-                var decision = getArgument(ApprovalToastPlan.DecisionKey);
-                var token = getArgument(ApprovalToastPlan.TokenKey);
-                return string.IsNullOrWhiteSpace(approvalId) ||
-                    !OpenClaw.Shared.GatewayApprovalDecisions.IsKnown(decision) ||
-                    string.IsNullOrWhiteSpace(token)
-                        ? new ActivationRoute.OpenHub("notifications")
-                        : new ActivationRoute.DecideApproval(approvalId, decision!, token);
             default:
                 return null;
         }

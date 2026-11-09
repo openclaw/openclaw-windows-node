@@ -3,9 +3,11 @@
     x:Class="OpenClawTray.Pages.NotificationsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:OpenClawTray.Controls">
+    xmlns:controls="using:OpenClawTray.Controls"
+    AutomationProperties.AutomationId="NotificationsPage"
+    IsTabStop="False">
 
     <Grid Padding="24">
-        <controls:InboxView x:Name="Inbox" MaxWidth="900" HorizontalAlignment="Stretch"/>
+        <controls:InboxView x:Name="Inbox" IsTabStop="False" MaxWidth="900" HorizontalAlignment="Stretch"/>
     </Grid>
 </Page>

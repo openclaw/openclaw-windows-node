@@ -684,6 +684,61 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Theory]
+    [InlineData("main", "Fixture Main")]
+    [InlineData("research", "Fixture Research")]
+    public async Task RealClient_AgentIdentityServesEachRosterAgent(string agentId, string name)
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateBrowse();
+        Assert.Contains("agent.identity.get", scenario.ReadMethods);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var identity = await connected.Client.SendWizardRequestAsync("agent.identity.get", new { agentId });
+
+        Assert.Equal(agentId, identity.GetProperty("agentId").GetString());
+        Assert.Equal(name, identity.GetProperty("name").GetString());
+        Assert.Contains(server.Requests, request => request.Method == "agent.identity.get" && request.Outcome == "ok");
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_AgentIdentityServesAnAgentCreatedByTheScenario()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowAgentCreation: true), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+
+        var created = await client.SendWizardRequestAsync(
+            "agents.create", new { name = "Fixture Created Agent", workspace = "/fixture/created" });
+        var agentId = created.GetProperty("agentId").GetString();
+        var identity = await client.SendWizardRequestAsync("agent.identity.get", new { agentId });
+
+        Assert.Equal(agentId, identity.GetProperty("agentId").GetString());
+        Assert.Equal("Fixture Created Agent", identity.GetProperty("name").GetString());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_AgentIdentityForAnUnknownAgentIsAProtocolErrorNotAnUnexpectedRequest()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.SendWizardRequestAsync("agent.identity.get", new { agentId = "not-a-roster-agent" }));
+
+        Assert.Contains("Unknown agent id", error.Message);
+        Assert.Contains(
+            server.Requests,
+            request => request.Method == "agent.identity.get" && request.Outcome == "error:INVALID_REQUEST");
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RealClient_ScopedConfiguredCatalogRetainsCurrentModelOutsideManualPolicy(bool publishedModelCatalog)
@@ -727,6 +782,8 @@ public sealed partial class GatewayFixtureProtocolTests
     [InlineData("question.list", """{"sessionKey":"agent:main:main"}""", "Unsupported fixture request parameter")]
     [InlineData("projects.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
     [InlineData("environments.list", """{"unexpected":true}""", "Unsupported fixture request parameter")]
+    [InlineData("agent.identity.get", """{"agentId":"main","typo":true}""", "Unsupported fixture request parameter")]
+    [InlineData("agent.identity.get", "{}", "Missing agentId")]
     public async Task RealClient_InvalidOrUnknownParametersFailExplicitly(string method, string json, string message)
     {
         var token = CreateToken();
@@ -912,101 +969,6 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal("allow-once", request.Decision);
         Assert.Equal("ok", request.Outcome);
         Assert.Empty(server.UnexpectedRequests);
-    }
-
-    [Fact]
-    public async Task RealClient_ResolveApprovalOnConnection_RefusesAnotherEpochBeforeSending()
-    {
-        var token = CreateToken();
-        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
-        await using var connected = await ConnectedClient.OpenAsync(server, token);
-        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
-        {
-            phase = "requested",
-            approvalId = "fixture-approval-epoch",
-            command = "echo fixture",
-        });
-        var epoch = connected.Client.SessionMutationConnectionEpoch;
-        Assert.True(epoch.HasValue);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-approval-epoch", "deny", epoch!.Value + 1));
-        Assert.DoesNotContain(server.Requests, request => request.Method == "exec.approval.resolve");
-
-        await connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-approval-epoch", "deny", epoch!.Value);
-
-        var sent = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
-        Assert.Equal(("fixture-approval-epoch", "deny", "ok"), (sent.ApprovalId, sent.Decision, sent.Outcome));
-        Assert.Empty(server.UnexpectedRequests);
-    }
-
-    [Fact]
-    public async Task ApprovalReviewFixture_UsesCanonicalEventsAndAnExplicitNarrowGrant()
-    {
-        var token = CreateToken();
-        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateApprovalReview(), token);
-        await using var connected = await ConnectedClient.OpenAsync(server, token);
-        var observed = new TaskCompletionSource<GatewayPendingApproval>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connected.Client.PendingApprovalRequested += (_, approval) => observed.TrySetResult(approval);
-
-        await server.PublishExecApprovalRequestedAsync(
-            GatewayScenario.MainSessionKey, "fixture-canonical-approval", "echo fixture");
-        var pending = await observed.Task.WaitAsync(Deadline);
-
-        Assert.Equal(["operator.read", "operator.approvals"], connected.Client.GrantedOperatorScopes);
-        Assert.Equal("fixture-canonical-approval", pending.Id);
-        Assert.Equal("echo fixture", pending.Command);
-        Assert.Equal(GatewayScenario.MainSessionKey, pending.SessionKey);
-        Assert.True(pending.ExpiresAtMs > pending.CreatedAtMs);
-        await connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, pending.Id, "deny",
-            connected.Client.SessionMutationConnectionEpoch!.Value);
-        Assert.Equal("ok", (await server.WaitForCompletedRequestAsync("exec.approval.resolve")).Outcome);
-    }
-
-    [Fact]
-    public async Task RealClient_QueuedApprovalRechecksAdmissionBeforeAnyResolveFrame()
-    {
-        var token = CreateToken();
-        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
-        await using var connected = await ConnectedClient.OpenAsync(server, token);
-        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
-        {
-            phase = "requested", approvalId = "fixture-queued-approval", command = "echo fixture",
-        });
-        var epoch = connected.Client.SessionMutationConnectionEpoch;
-        Assert.True(epoch.HasValue);
-        var sendLock = (SemaphoreSlim)typeof(WebSocketClientBase)
-            .GetField("_sendLock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(connected.Client)!;
-        using var deadline = new CancellationTokenSource(Deadline);
-        await sendLock.WaitAsync(deadline.Token);
-        var admitted = true;
-        var admissions = 0;
-        Task sending;
-        try
-        {
-            sending = connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-queued-approval", "deny", epoch!.Value, () =>
-            {
-                admissions++;
-                if (!admitted) throw new InvalidOperationException("Fixture approval authority was withdrawn.");
-            });
-            Assert.False(sending.IsCompleted);
-            Assert.Equal(0, admissions);
-            admitted = false;
-        }
-        finally
-        {
-            sendLock.Release();
-        }
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => sending.WaitAsync(Deadline));
-        Assert.Equal(1, admissions);
-        Assert.DoesNotContain(server.Requests, request => request.Method == "exec.approval.resolve");
-        // The denied queue entry did not consume the approval or close the shared transport.
-        await connected.Client.ResolveApprovalAsync(GatewayApprovalKind.Exec, "fixture-queued-approval", "deny", epoch!.Value);
-        var sent = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
-        Assert.Equal("ok", sent.Outcome);
-        Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
     }
 
     [Fact]

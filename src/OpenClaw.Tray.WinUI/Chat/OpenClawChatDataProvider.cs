@@ -42,6 +42,38 @@ internal static class LocalizationHelper
 }
 #endif
 
+/// <summary>Loads the Gateway-resolved identity (agent.identity.get) for one agent.</summary>
+public interface IChatAgentIdentitySource
+{
+    Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId);
+}
+
+/// <summary>Provides the current Workspace presentation for a Gateway roster agent.</summary>
+public interface IChatAgentRosterSource
+{
+    event EventHandler? AgentRosterChanged;
+
+    ChatAgentPresentation? FindAgent(string agentId);
+}
+
+/// <summary>The display identity already composed from the current Gateway roster and resolved identity.</summary>
+public sealed record ChatAgentPresentation(
+    string AgentId,
+    string Name,
+    string? AvatarUrl = null,
+    string? Emoji = null,
+    long Revision = 0)
+{
+    internal ChatAgentIdentity ToChatAgentIdentity() => new(AgentId, Name, AvatarUrl, Emoji);
+}
+
+/// <summary>Gateway identity for one agent. Absent values let the roster or generated face decide.</summary>
+public sealed record ChatAgentIdentity(
+    string AgentId,
+    string? DisplayName = null,
+    string? AvatarUrl = null,
+    string? Emoji = null);
+
 /// <summary>
 /// Adapts <see cref="IChatGatewayBridge"/> (which wraps a live
 /// <see cref="OpenClawGatewayClient"/>) into the
@@ -74,7 +106,7 @@ internal static class LocalizationHelper
 /// subsequent <see cref="SendMessageAsync"/> calls.
 /// </para>
 /// </remarks>
-public sealed class OpenClawChatDataProvider : IChatDataProvider
+public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIdentitySource
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
@@ -102,6 +134,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     public string DisplayName => "OpenClaw gateway";
     public IChatPlacementGateway? PlacementGateway => _bridge.PlacementGateway;
+
+    public async Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        var response = await _bridge.RequestAgentIdentityAsync(agentId).ConfigureAwait(false);
+        return ChatWelcomePresentation.ParseAgentIdentity(agentId, response);
+    }
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
@@ -208,7 +247,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         cancellationToken.ThrowIfCancellationRequested();
         Questions?.Start();
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
-        return Task.FromResult(WithApprovalDecisionState(_state.Load(sessions, ProjectionContext())));
+        return Task.FromResult(_state.Load(sessions, ProjectionContext()));
     }
 
     internal void RememberSelectedThread(string? threadId)
@@ -952,13 +991,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         QueueFencedDelivery(Deliver);
     }
 
-    internal Func<string, bool>? IsApprovalDecisionUncertain { get; set; }
-
-    internal void RefreshApprovalDecisionState() => Publish(_state.Snapshot(ProjectionContext()));
-
-    private bool IsUncertainApproval(string id) => IsApprovalDecisionUncertain is { } check &&
-        (check(id) || _state.AlternateApprovalId(id) is { } alternate && check(alternate));
-
     public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -979,11 +1011,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
 
         var decision = NormalizeApprovalAction(action);
-        if (IsUncertainApproval(requestId))
-        {
-            RefreshApprovalDecisionState();
-            return;
-        }
         if (!_state.CanRespondToPermission(threadId, requestId, decision))
         {
             Logger.Warn("[Approval] response blocked: no matching pending approval permits this decision");
@@ -1002,19 +1029,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         try
         {
-            await _bridge.ResolveExecApprovalAsync(requestId, _state.AlternateApprovalId(requestId), decision);
-        }
-        catch (ApprovalDecisionRefusedException ex) when (ex.Outcome == ApprovalDecisionOutcome.Uncertain)
-        {
-            RefreshApprovalDecisionState();
-            return;
+            await _bridge.ResolveExecApprovalAsync(requestId, decision);
         }
         catch (Exception ex)
         {
-            // The shared owner maps post-admission uncertainty to the branch above.
-            // A pre-admission failure leaves the banner available for an explicit retry.
-            // Clearing it would hide an approval the user still needs to decide.
-            Logger.Warn($"[Approval] response send failed decision={decision}: {ex.GetType().Name} (banner preserved for retry)");
+            // Send failed: leave the Allow/Deny banner up so the user can
+            // retry. Clearing it on failure would silently swallow the
+            // problem and leave the agent waiting on an approval that the
+            // user has no way to re-issue.
+            Logger.Warn($"[Approval] response send failed requestId={requestId}: {ex.Message} (banner preserved for retry)");
             return;
         }
 
@@ -2211,16 +2234,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         failure?.Throw();
     }
 
-    private ChatDataSnapshot WithApprovalDecisionState(ChatDataSnapshot snapshot) =>
-        IsApprovalDecisionUncertain is null ? snapshot
-            : ChatSnapshotProjector.WithUncertainApprovals(snapshot, IsUncertainApproval,
-                LocalizationHelper.GetString("Inbox_ApprovalDecisionUncertain"));
-
     private ExceptionDispatchInfo? InvokeChangedSubscribers(
         ChatDataSnapshot snapshot)
     {
-        // Apply after authoritative coalescing and for direct catalog deliveries too.
-        snapshot = WithApprovalDecisionState(snapshot);
         var handlers = Changed;
         if (handlers is null)
             return null;

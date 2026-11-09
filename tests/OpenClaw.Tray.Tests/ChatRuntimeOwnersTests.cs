@@ -1054,34 +1054,6 @@ public sealed class ChatEventMapperTests
         Assert.Equal("echo ok", request.Detail);
     }
 
-    [Theory]
-    [InlineData("granted", """["allow-once","deny"]""", new[] { "allow-once", "deny" }, null)]
-    [InlineData("granted", "[]", new string[0], "Chat_Permission_NoDecisionAvailable")]
-    [InlineData("missing", """["allow-once","allow-always","deny"]""", new string[0], "Chat_Permission_NoApprovalAccess")]
-    public void Map_TopLevelApprovalOffersOnlyTheOwnersDecisions(string access, string offered, string[] expected, string? reasonKey)
-    {
-        using var document = JsonDocument.Parse(
-            $$"""{ "phase": "requested", "approvalId": "a1", "host": "gateway", "command": "echo ok", "allowedDecisions": {{offered}}, "decisionAccess": "{{access}}" }""");
-        var mapping = ChatEventMapper.Map(new AgentEventInfo
-        {
-            Stream = "approval",
-            SessionKey = "main",
-            Data = document.RootElement.Clone(),
-        });
-
-        var request = Assert.IsType<ChatPermissionRequestEvent>(mapping.Event);
-        Assert.Equal(expected, request.Actions);
-        Assert.Equal(expected, ChatPermissionActionKeys.NormalizeActions(request.Actions));
-        if (reasonKey is null)
-            Assert.Equal("echo ok", request.Detail);
-        else
-            Assert.EndsWith(reasonKey switch
-            {
-                "Chat_Permission_NoApprovalAccess" => "You need approval access to approve.",
-                _ => "This request can't be decided from this app.",
-            }, request.Detail);
-    }
-
     [Fact]
     public void Map_ApprovalRequestSanitizesCommandAndMessage()
     {
