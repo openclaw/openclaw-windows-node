@@ -68,7 +68,6 @@ public interface ISettingsEditor
     bool UseLegacyWebChat { set; }
     bool ShowNotifications { set; }
     string NotificationSound { set; }
-    bool DoNotDisturb { set; }
     string AppTheme { set; }
 
     /// <summary>Writes the raw diagnostics override (null clears it back to the computed default).</summary>
@@ -123,7 +122,6 @@ public sealed record SettingsSnapshot
     public bool UseLegacyWebChat { get; init; }
     public bool ShowNotifications { get; init; }
     public string NotificationSound { get; init; } = "Default";
-    public bool DoNotDisturb { get; init; }
     public string AppTheme { get; init; } = "System";
 
     /// <summary>The effective diagnostics visibility (override applied over the computed default).</summary>

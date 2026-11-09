@@ -26,12 +26,10 @@ public sealed partial class WorkspacePaneFooter : UserControl
 {
     private const double ButtonGap = 4;
     private const double TitleBarButtonHeight = 32;
-    private const string BellGlyph = "\uEA8F";
-    private const string DoNotDisturbBellGlyph = "\uE7ED";
     private readonly double _paneButtonHeight;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
     private string _automationIdPrefix = "Workspace";
-    private InboxFeed? _inbox;
+    private AppNotificationService? _notifications;
     private InboxViewCommands? _inboxCommands;
     private string _ownerName = "";
     private string _connectionLabel = "";
@@ -101,14 +99,10 @@ public sealed partial class WorkspacePaneFooter : UserControl
         ApplyOwnerToolTip();
     }
 
-    /// <summary>
-    /// Applies the Inbox bell: hidden badge at zero, capped text, caution tone while an approval
-    /// waits, and the slashed bell while Do not disturb is on (the badge still counts).
-    /// </summary>
-    internal void ApplyInboxBadge(InboxBadge badge, bool doNotDisturb, string helpText)
+    /// <summary>Applies the Inbox badge: hidden at zero, capped text, caution tone while an approval waits.</summary>
+    internal void ApplyInboxBadge(InboxBadge badge, string helpText)
     {
         var attention = badge.Tone == InboxBadgeTone.Attention;
-        NotificationsGlyph.Glyph = doNotDisturb ? DoNotDisturbBellGlyph : BellGlyph;
         NotificationsBadgeText.Text = badge.Text;
         NotificationsAttentionBadgeText.Text = badge.Text;
         NotificationsBadge.Visibility = badge.IsVisible && !attention ? Visibility.Visible : Visibility.Collapsed;
@@ -117,9 +111,9 @@ public sealed partial class WorkspacePaneFooter : UserControl
     }
 
     /// <summary>Supplies the Inbox shown by the bell flyout and the window commands its rows use.</summary>
-    internal void BindNotifications(InboxFeed inbox, InboxViewCommands commands)
+    internal void BindNotifications(AppNotificationService notifications, InboxViewCommands commands)
     {
-        _inbox = inbox;
+        _notifications = notifications;
         _inboxCommands = commands;
     }
 
@@ -133,7 +127,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     {
         HideFlyouts();
         NotificationContent.Unbind();
-        _inbox = null;
+        _notifications = null;
         _inboxCommands = null;
     }
 
@@ -144,9 +138,9 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     private void OnNotificationsOpening(object sender, object e)
     {
-        if (_inbox is null || _inboxCommands is not { } commands) return;
+        if (_notifications is null || _inboxCommands is not { } commands) return;
         // Every Inbox command leaves the flyout before navigating.
-        NotificationContent.Initialize(_inbox, new InboxViewCommands(
+        NotificationContent.Initialize(_notifications, new InboxViewCommands(
             route =>
             {
                 NotificationsFlyout.Hide();
@@ -165,20 +159,8 @@ public sealed partial class WorkspacePaneFooter : UserControl
             () =>
             {
                 NotificationsFlyout.Hide();
-                commands.OpenDashboard();
-            },
-            () =>
-            {
-                NotificationsFlyout.Hide();
                 commands.OpenPage?.Invoke();
-            },
-            commands.AskOpenClaw is { } ask
-                ? question =>
-                {
-                    NotificationsFlyout.Hide();
-                    ask(question);
-                }
-                : null));
+            }));
     }
 
     private void OnNotificationsClosed(object sender, object e) => NotificationContent.Unbind();

@@ -109,12 +109,6 @@ public interface IChatGatewayBridge : IDisposable
         Task.FromResult(AssistantFileDownloadStatus.Unavailable);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
-    /// <summary>
-    /// Resolves a banner decision; <paramref name="alternateId"/> is the correlated id (the canonical
-    /// approval id when the banner shows a slug), letting the decision owner find the live approval.
-    /// </summary>
-    Task ResolveExecApprovalAsync(string approvalId, string? alternateId, string decision) =>
-        ResolveExecApprovalAsync(approvalId, decision);
 
     event EventHandler<ConnectionStatus>? StatusChanged;
     event EventHandler<SessionInfo[]>? SessionsUpdated;
@@ -156,20 +150,13 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     private volatile ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
     private ModelsListInfo? _currentModels;
     private readonly Func<Uri, Task<bool>> _launchUri;
-    private readonly Func<IOperatorGatewayClient, string, string?, string, Task>? _resolveExecApproval;
     private bool _disposed;
 
-    /// <param name="resolveExecApproval">
-    /// The app's approval decision owner (client, banner id, correlated id, decision); when null
-    /// (tests, isolated hosts) the bridge calls the client's own resolve RPC directly.
-    /// </param>
     public GatewayClientChatBridge(
         OpenClawGatewayClient client,
-        Func<Uri, Task<bool>>? launchUri = null,
-        Func<IOperatorGatewayClient, string, string?, string, Task>? resolveExecApproval = null)
+        Func<Uri, Task<bool>>? launchUri = null)
     {
         _client = client;
-        _resolveExecApproval = resolveExecApproval;
         PlacementGateway = client.CreateChatPlacementGateway();
         _launchUri = launchUri ?? LaunchWithDefaultBrowserAsync;
         _statusChangedHandler = (s, e) =>
@@ -351,12 +338,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 
     public Task ResolveExecApprovalAsync(string approvalId, string decision) =>
-        ResolveExecApprovalAsync(approvalId, null, decision);
-
-    public Task ResolveExecApprovalAsync(string approvalId, string? alternateId, string decision) =>
-        _resolveExecApproval is { } resolve
-            ? resolve(_client, approvalId, alternateId, decision)
-            : _client.ResolveExecApprovalAsync(approvalId, decision);
+        _client.ResolveExecApprovalAsync(approvalId, decision);
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;

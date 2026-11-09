@@ -30,11 +30,6 @@ internal abstract record ActivationRoute
     internal sealed record OpenVoice : ActivationRoute;
     internal sealed record StopVoice : ActivationRoute;
     internal sealed record SendMessage(string Message) : ActivationRoute;
-    /// <summary>
-    /// An approval toast button. Carries only ids and the one-shot token; the decision is
-    /// revalidated against live pending state by <see cref="OperatorApprovalDecisions"/>.
-    /// </summary>
-    internal sealed record DecideApproval(string ApprovalId, string Decision, string Token) : ActivationRoute;
 
     private ActivationRoute()
     {
