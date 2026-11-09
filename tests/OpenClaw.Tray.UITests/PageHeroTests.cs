@@ -1,4 +1,5 @@
 using Microsoft.UI.Reactor;
+using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -10,6 +11,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using NativeGrid = Microsoft.UI.Xaml.Controls.Grid;
+using NativeBorder = Microsoft.UI.Xaml.Controls.Border;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
 
@@ -282,6 +284,8 @@ public sealed class PageHeroTests(UIThreadFixture ui)
     {
         await ui.ResetContainerAsync();
         Border? target = null;
+        Brush? original = null;
+        Brush? firstHighlight = null;
         Brush? expected = null;
         try
         {
@@ -291,23 +295,44 @@ public sealed class PageHeroTests(UIThreadFixture ui)
                     "This regression requires native animations enabled.");
                 Assert.False(new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast,
                     "This regression exercises highlighting outside OS high contrast.");
-                var original = new SolidColorBrush(Microsoft.UI.Colors.SteelBlue);
+                original = new SolidColorBrush(Microsoft.UI.Colors.SteelBlue);
                 target = new Border { Width = 300, Height = 100, Background = original };
                 ui.Container.Children.Add(target);
                 ui.Container.UpdateLayout();
                 PageHero.RevealAndHighlight(target, reducedMotion: false);
-                var firstHighlight = target.Background;
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => !ReferenceEquals(target!.Background, original), "first highlight applied"));
+            await ui.RunOnUIAsync(() =>
+            {
+                firstHighlight = target!.Background;
                 Assert.NotSame(original, firstHighlight);
                 PageHero.RevealAndHighlight(target, reducedMotion: false);
-                Assert.NotSame(firstHighlight, target.Background);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => !ReferenceEquals(target!.Background, firstHighlight)
+                    && !ReferenceEquals(target.Background, original), "replacement highlight applied"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.NotSame(firstHighlight, target!.Background);
                 Assert.NotSame(original, target.Background);
                 // Repeated requests must never retain the previous temporary brush as the baseline.
                 PageHero.RevealAndHighlight(target, reducedMotion: true);
-                Assert.Same(original, target.Background);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => ReferenceEquals(target!.Background, original), "cancellation restores original background"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(original, target!.Background);
                 PageHero.RevealAndHighlight(target, reducedMotion: false);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => !ReferenceEquals(target!.Background, original), "final highlight applied"));
+            await ui.RunOnUIAsync(() =>
+            {
                 expected = replaceBackground ? new SolidColorBrush(Microsoft.UI.Colors.Green) : original;
                 if (replaceBackground)
-                    target.Background = expected;
+                    target!.Background = expected;
             });
             // A sentinel storyboard supplies a native completion boundary after both highlights.
             await ui.RunOnUIAsync(async () =>
@@ -328,6 +353,110 @@ public sealed class PageHeroTests(UIThreadFixture ui)
         finally
         {
             await ui.ResetContainerAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Reveal_PreservesThemeResourceAfterCompletionOrCancellation(bool localResource, bool cancel)
+    {
+        await ui.ResetContainerAsync();
+        Grid? surface = null;
+        Border? target = null;
+        ReactorHostControl? renderer = null;
+        ResourceDictionary? testResources = null;
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(new Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
+                Assert.False(new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast);
+                testResources = (ResourceDictionary)Microsoft.UI.Xaml.Markup.XamlReader.Load("""
+                    <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                        <ResourceDictionary.ThemeDictionaries>
+                            <ResourceDictionary x:Key="Light">
+                                <SolidColorBrush x:Key="RevealTestBackground" Color="SteelBlue"/>
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="Dark">
+                                <SolidColorBrush x:Key="RevealTestBackground" Color="DarkGreen"/>
+                            </ResourceDictionary>
+                        </ResourceDictionary.ThemeDictionaries>
+                    </ResourceDictionary>
+                    """);
+                // Reactor parses its generated style before attachment, so its resource must be app-visible.
+                Application.Current.Resources.MergedDictionaries.Add(testResources);
+                surface = new Grid { RequestedTheme = ElementTheme.Light, Width = 300, Height = 100 };
+                if (localResource)
+                {
+                    target = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load("""
+                        <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                Background="{ThemeResource RevealTestBackground}"/>
+                        """);
+                    surface.Children.Add(target);
+                }
+                else
+                {
+                    renderer = new ReactorHostControl();
+                    renderer.Mount(_ => Border(Empty()).Background(Theme.Ref("RevealTestBackground"))
+                        .AutomationId("ThemedRevealTarget"));
+                    surface.Children.Add(renderer);
+                }
+                ui.Container.Children.Add(surface);
+                ui.Container.UpdateLayout();
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                target ??= Find(surface!, "ThemedRevealTarget") as Border;
+                return target?.Background is SolidColorBrush brush && brush.Color == Microsoft.UI.Colors.SteelBlue;
+            }, "light theme resource resolved before reveal"));
+            await ui.RunOnUIAsync(() => surface!.RequestedTheme = ElementTheme.Dark);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => target!.Background is SolidColorBrush brush && brush.Color == Microsoft.UI.Colors.DarkGreen,
+                "fixture resource follows dark theme before reveal"));
+            await ui.RunOnUIAsync(() => surface!.RequestedTheme = ElementTheme.Light);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => target!.Background is SolidColorBrush brush && brush.Color == Microsoft.UI.Colors.SteelBlue,
+                "fixture resource returns to light before reveal"));
+            await ui.RunOnUIAsync(() =>
+            {
+                if (!localResource)
+                    Assert.Same(DependencyProperty.UnsetValue, target!.ReadLocalValue(NativeBorder.BackgroundProperty));
+                PageHero.RevealAndHighlight(target!, reducedMotion: false);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => target!.Background is SolidColorBrush brush && brush.Color != Microsoft.UI.Colors.SteelBlue,
+                "highlight is active"));
+            if (cancel)
+                await ui.RunOnUIAsync(() => PageHero.RevealAndHighlight(target!, reducedMotion: true));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => target!.Background is SolidColorBrush brush && brush.Color == Microsoft.UI.Colors.SteelBlue,
+                "highlight completes or cancels"));
+            await ui.RunOnUIAsync(() =>
+            {
+                surface!.RequestedTheme = ElementTheme.Dark;
+                ui.Container.UpdateLayout();
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => target!.Background is SolidColorBrush brush && brush.Color == Microsoft.UI.Colors.DarkGreen,
+                "original resource binding follows dark theme after reveal"));
+            await ui.RunOnUIAsync(() =>
+            {
+                if (!localResource)
+                    Assert.Same(DependencyProperty.UnsetValue, target!.ReadLocalValue(NativeBorder.BackgroundProperty));
+            });
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (surface is not null) ui.Container.Children.Remove(surface);
+                renderer?.Dispose();
+                if (testResources is not null) Application.Current.Resources.MergedDictionaries.Remove(testResources);
+            });
         }
     }
 }

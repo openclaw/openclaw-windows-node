@@ -1225,8 +1225,10 @@ Tile padding is 16/14 DIPs. Attention badges are 20 DIPs high with 8-DIP
 horizontal padding, semantic Fluent brushes and caller-owned accessible text.
 Reduced motion clears native entrance/reflow/exit transitions and disables
 reveal highlighting. Reveal skips controls that cannot take native focus.
-Repeated reveals restart one target-owned highlight and restore the original
-background, without overwriting a background subsequently set by the page.
+Repeated reveals restart one target-owned animation without replacing the
+background's style, theme resource or binding. Completion or cancellation
+reveals the current underlying background, including changes made by the page
+while the highlight was active.
 
 Pages may implement `ISettingsPageContentInset` to retain full-frame backdrops
 while reserving the 56-DIP history band inside their content. Apply updates,

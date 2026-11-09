@@ -43,8 +43,7 @@ public static class PageHero
     private const double HeaderRadius = 8;
     private const double TileGap = PageResponsiveLayout.GapGroup;
     private const double HighlightDurationMs = 1200;
-    private static readonly ConditionalWeakTable<FrameworkElement, HighlightState> Highlights = new();
-    private sealed record HighlightState(Brush Original, SolidColorBrush Brush, Storyboard Storyboard);
+    private static readonly ConditionalWeakTable<FrameworkElement, Storyboard> Highlights = new();
 
     /// <summary>Builds a hero; callers own localized text, actions, accessibility IDs and page state.</summary>
     public static Element Header(
@@ -191,26 +190,34 @@ public static class PageHero
         target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = animate });
         TryFocus(target);
         if (!animate || new AccessibilitySettings().HighContrast) return;
-        var original = GetBackground(target);
-        if (original is null) return;
+        if (GetBackground(target) is null) return;
         var accent = FunctionalTheme.ResolveColor("AccentFillColorDefault", target.ActualTheme);
         var highlight = new SolidColorBrush(Color.FromArgb(0x2E, accent.R, accent.G, accent.B));
-        SetBackground(target, highlight);
+        var duration = TimeSpan.FromMilliseconds(HighlightDurationMs);
+        // Animation precedence leaves the underlying style, resource expression or binding intact.
+        var background = new ObjectAnimationUsingKeyFrames
+        {
+            Duration = duration,
+            FillBehavior = FillBehavior.Stop,
+        };
+        background.KeyFrames.Add(new DiscreteObjectKeyFrame { KeyTime = TimeSpan.Zero, Value = highlight });
+        Storyboard.SetTarget(background, target);
+        Storyboard.SetTargetProperty(background, nameof(Control.Background));
         var animation = new DoubleAnimation
         {
             From = 1,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(HighlightDurationMs),
+            Duration = duration,
         };
         var storyboard = new Storyboard();
-        var state = new HighlightState(original, highlight, storyboard);
-        Highlights.Add(target, state);
+        Highlights.Add(target, storyboard);
         Storyboard.SetTarget(animation, highlight);
         Storyboard.SetTargetProperty(animation, nameof(Brush.Opacity));
+        storyboard.Children.Add(background);
         storyboard.Children.Add(animation);
         storyboard.Completed += (_, _) =>
         {
-            if (Highlights.TryGetValue(target, out var current) && ReferenceEquals(current, state))
+            if (Highlights.TryGetValue(target, out var current) && ReferenceEquals(current, storyboard))
                 StopHighlight(target);
         };
         storyboard.Begin();
@@ -218,11 +225,9 @@ public static class PageHero
 
     private static void StopHighlight(FrameworkElement target)
     {
-        if (!Highlights.TryGetValue(target, out var state)) return;
+        if (!Highlights.TryGetValue(target, out var storyboard)) return;
         Highlights.Remove(target);
-        state.Storyboard.Stop();
-        if (ReferenceEquals(GetBackground(target), state.Brush))
-            SetBackground(target, state.Original);
+        storyboard.Stop();
     }
 
     private static Element AccentWash(bool highContrast)
@@ -368,12 +373,4 @@ public static class PageHero
         _ => null,
     };
 
-    private static void SetBackground(FrameworkElement target, Brush? brush)
-    {
-        switch (target)
-        {
-            case Control control: control.Background = brush; break;
-            case Border border: border.Background = brush; break;
-        }
-    }
 }
