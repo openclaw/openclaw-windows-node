@@ -121,6 +121,18 @@ internal readonly record struct InitialTailDiagnosticSnapshot(
     bool BringCompleted,
     bool AttemptActive);
 
+// One attempt's numeric observations, never navigation inputs. Null means the
+// read was unavailable; zero is a real observed offset. No native objects survive.
+internal readonly record struct InitialTailAttemptDiagnostics(
+    double? ProposedOffset,
+    double? BringOffset,
+    double? BringScrollableHeight,
+    int? TargetIndex,
+    double? CompletedOffset,
+    double? CompletedScrollableHeight,
+    bool? CompletionSourceItemMatches,
+    double? MaxObservedOffset);
+
 // A dispatched bring-into-view can be dropped or reset by a concurrent layout
 // (for example a session switch restoring cached rows), leaving the reader at
 // the top. Initial positioning stays pending until the settled view is at the tail.
@@ -143,6 +155,9 @@ internal sealed class InitialTailConfirmation
     private object? _targetItem;
     private bool _bringCompleted;
     private bool _attemptActive;
+    private InitialTailAttemptDiagnostics _attemptDiagnostics;
+
+    public InitialTailAttemptDiagnostics AttemptDiagnostics => _attemptDiagnostics;
 
     public InitialTailDiagnosticSnapshot Diagnostics => new(
         _observedFrames, _retries, _settledFrames, _targetItem is not null,
@@ -163,6 +178,7 @@ internal sealed class InitialTailConfirmation
         _generation++;
         _attemptActive = false;
         _targetItem = null;
+        _attemptDiagnostics = default;
     }
 
     public void BeginAttempt(object? targetItem = null)
@@ -172,9 +188,11 @@ internal sealed class InitialTailConfirmation
         _targetItem = targetItem;
         _bringCompleted = false;
         _attemptActive = true;
+        _attemptDiagnostics = default;
     }
 
-    public void BringingIntoView(int correlationId, object? targetItem)
+    public void BringingIntoView(int correlationId, object? targetItem,
+        (double ProposedOffset, double Offset, double ScrollableHeight)? geometry = null, int? targetIndex = null)
     {
         if (!_attemptActive || correlationId < 0 || _targetItem is null
             || !ReferenceEquals(_targetItem, targetItem))
@@ -183,16 +201,49 @@ internal sealed class InitialTailConfirmation
         _correlationId = correlationId;
         _bringCompleted = false;
         _settledFrames = 0;
+        _attemptDiagnostics = _attemptDiagnostics with
+        {
+            ProposedOffset = Finite(geometry?.ProposedOffset),
+            BringOffset = Finite(geometry?.Offset),
+            BringScrollableHeight = Finite(geometry?.ScrollableHeight),
+            TargetIndex = targetIndex,
+            CompletedOffset = null,
+            CompletedScrollableHeight = null,
+            CompletionSourceItemMatches = null,
+        };
+        ObserveOffset(geometry?.Offset);
     }
 
-    public void ScrollCompleted(int correlationId)
+    public void ScrollCompleted(int correlationId,
+        (double Offset, double ScrollableHeight)? geometry = null,
+        object? currentSourceItem = null, bool sourceReadSucceeded = false)
     {
         if (!_attemptActive || _correlationId != correlationId)
             return;
 
         _bringCompleted = true;
         _settledFrames = 0;
+        _attemptDiagnostics = _attemptDiagnostics with
+        {
+            CompletedOffset = Finite(geometry?.Offset),
+            CompletedScrollableHeight = Finite(geometry?.ScrollableHeight),
+            CompletionSourceItemMatches = sourceReadSucceeded
+                ? _targetItem is not null && ReferenceEquals(_targetItem, currentSourceItem) : null,
+        };
+        ObserveOffset(geometry?.Offset);
     }
+
+    public void ObserveOffset(double? offset)
+    {
+        if (_attemptActive && _correlationId is not null && Finite(offset) is { } value)
+            _attemptDiagnostics = _attemptDiagnostics with
+            {
+                MaxObservedOffset = Math.Max(_attemptDiagnostics.MaxObservedOffset ?? value, value),
+            };
+    }
+
+    private static double? Finite(double? value) =>
+        value is { } number && double.IsFinite(number) ? number : null;
 
     public void GeometryChanged() => _settledFrames = 0;
 
