@@ -73,11 +73,17 @@ internal sealed class AppNotificationBannerState
     private const string ConnectionSource = "connection";
     private readonly HashSet<string> _hiddenNotificationIds = new(StringComparer.Ordinal);
 
-    public AppNotification? SelectVisibleNotification(AppNotificationSnapshot snapshot, bool revealHiddenIfNeeded = false)
+    public AppNotification? SelectVisibleNotification(
+        AppNotificationSnapshot snapshot,
+        bool revealHiddenIfNeeded = false,
+        Func<AppNotification, bool>? isEligible = null)
     {
         PruneRemovedNotifications(snapshot);
+        var eligible = snapshot.ActiveNotifications
+            .Where(notification => isEligible?.Invoke(notification) != false)
+            .ToList();
 
-        var visibleCandidates = snapshot.ActiveNotifications
+        var visibleCandidates = eligible
             .Where(notification => !_hiddenNotificationIds.Contains(notification.Id))
             .ToList();
 
@@ -96,9 +102,9 @@ internal sealed class AppNotificationBannerState
         if (visible is not null || !revealHiddenIfNeeded)
             return visible;
 
-        var fallback = snapshot.ActiveNotifications.FirstOrDefault(IsActionableConnectionPriority)
-            ?? snapshot.ActiveNotifications.FirstOrDefault(IsConnectionPriority)
-            ?? snapshot.ActiveNotifications.FirstOrDefault();
+        var fallback = eligible.FirstOrDefault(IsActionableConnectionPriority)
+            ?? eligible.FirstOrDefault(IsConnectionPriority)
+            ?? eligible.FirstOrDefault();
         if (fallback is not null)
             _hiddenNotificationIds.Remove(fallback.Id);
         return fallback;
@@ -112,11 +118,14 @@ internal sealed class AppNotificationBannerState
         && !string.IsNullOrWhiteSpace(notification.ActionLabel)
         && !string.IsNullOrWhiteSpace(notification.ActionRoute);
 
-    public void HideActiveNotifications(AppNotificationSnapshot snapshot)
+    public void HideActiveNotifications(AppNotificationSnapshot snapshot, Func<AppNotification, bool>? isEligible = null)
     {
         PruneRemovedNotifications(snapshot);
         foreach (var notification in snapshot.ActiveNotifications)
-            _hiddenNotificationIds.Add(notification.Id);
+        {
+            if (isEligible?.Invoke(notification) != false)
+                _hiddenNotificationIds.Add(notification.Id);
+        }
     }
 
     private void PruneRemovedNotifications(AppNotificationSnapshot snapshot)

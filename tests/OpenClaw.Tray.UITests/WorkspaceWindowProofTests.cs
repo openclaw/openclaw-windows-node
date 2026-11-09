@@ -221,6 +221,45 @@ public sealed class WorkspaceWindowProofTests
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
         var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var ownedWindow = app.HubWindowHandle;
+        var ownedProcessId = root.Current.ProcessId;
+
+        async Task<AutomationElement> WaitForSettingsForwardAsync(string pageMarkerId, bool expectedEnabled)
+        {
+            AutomationElement? readyForward = null;
+            // A page marker does not establish sibling history-button readiness. Keep one
+            // joint observation under the original owned root, within the existing wait budget.
+            await WaitUntilAsync(() =>
+            {
+                try
+                {
+                    var rootInfo = root.Current;
+                    if (app.HubWindowHandle != ownedWindow || rootInfo.ProcessId != ownedProcessId ||
+                        new IntPtr(rootInfo.NativeWindowHandle) != ownedWindow)
+                        return false;
+                    var page = FindOrNull(root, pageMarkerId);
+                    var button = FindOrNull(root, "SettingsForward");
+                    if (page is null || button is null) return false;
+                    var pageInfo = page.Current;
+                    var buttonInfo = button.Current;
+                    if (pageInfo.ProcessId != ownedProcessId || pageInfo.IsOffscreen ||
+                        !HasVisibleBounds(pageInfo.BoundingRectangle) ||
+                        buttonInfo.ProcessId != ownedProcessId || buttonInfo.ControlType != ControlType.Button ||
+                        buttonInfo.IsOffscreen || !HasVisibleBounds(buttonInfo.BoundingRectangle) ||
+                        buttonInfo.IsEnabled != expectedEnabled)
+                        return false;
+                    readyForward = button;
+                    return true;
+                }
+                catch (ElementNotAvailableException) { return false; }
+            }, () => $"Owned {pageMarkerId} and SettingsForward (enabled={expectedEnabled}) did not become ready.");
+            return readyForward!;
+        }
+
+        static bool HasVisibleBounds(System.Windows.Rect bounds) =>
+            !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+            double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) && bounds.Width > 0 && bounds.Height > 0;
+
         Assert.Null(root.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavigation")));
         var title = Find(root, "WorkspaceTitleBar").Current.BoundingRectangle;
@@ -240,11 +279,11 @@ public sealed class WorkspaceWindowProofTests
         await VerifySettingsFooterAsync(root, compact: false);
         await app.NavigateAsync("permissions", "PermissionsPage", "PermissionsPageMarker");
         Invoke(Find(root, "SettingsBack"));
-        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
-        Assert.True(Find(root, "SettingsForward").Current.IsEnabled);
-        Invoke(Find(root, "SettingsForward"));
-        await WaitUntilAsync(() => IsVisible(root, "PermissionsPageMarker"));
-        Assert.False(Find(root, "SettingsForward").Current.IsEnabled);
+        var forwardAfterBack = await WaitForSettingsForwardAsync("SettingsPageMarker", expectedEnabled: true);
+        Assert.True(forwardAfterBack.Current.IsEnabled);
+        Invoke(forwardAfterBack);
+        var forwardAfterForward = await WaitForSettingsForwardAsync("PermissionsPageMarker", expectedEnabled: false);
+        Assert.False(forwardAfterForward.Current.IsEnabled);
 
         AutomationElement? SearchBox() => ProcessWindows(root.Current.ProcessId).Cast<AutomationElement>()
             .Select(window => window.FindFirst(TreeScope.Descendants,
@@ -258,9 +297,9 @@ public sealed class WorkspaceWindowProofTests
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
-        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
+        var forwardAfterSearch = await WaitForSettingsForwardAsync("SettingsPageMarker", expectedEnabled: false);
         await WaitUntilAsync(() => SearchBox() is null);
-        Assert.False(Find(root, "SettingsForward").Current.IsEnabled);
+        Assert.False(forwardAfterSearch.Current.IsEnabled);
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: true);

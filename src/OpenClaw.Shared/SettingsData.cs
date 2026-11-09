@@ -31,6 +31,11 @@ public record class SettingsData
     public bool HasInjectedFirstRunBootstrap { get; set; }
     public bool ShowNotifications { get; set; } = true;
     public string? NotificationSound { get; set; }
+    /// <summary>
+    /// Inbox "Do not disturb": silences toasts, banners and their sounds for everything
+    /// except Gateway approvals. The Inbox still collects items and the bell still counts.
+    /// </summary>
+    public bool DoNotDisturb { get; set; }
     public bool NotifyHealth { get; set; } = true;
     public bool NotifyUrgent { get; set; } = true;
     public bool NotifyReminder { get; set; } = true;

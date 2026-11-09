@@ -1241,12 +1241,15 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var badge = _inbox.Snapshot.Badge;
+        var snapshot = _inbox.Snapshot;
+        var badge = snapshot.Badge;
         var helpText = badge.IsVisible
             ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
             : LocalizationHelper.GetString("Inbox_NothingWaiting");
+        if (snapshot.DoNotDisturb)
+            helpText = LocalizationHelper.Format("Inbox_DoNotDisturbBellHelpFormat", helpText);
         foreach (var footer in Footers)
-            footer.ApplyInboxBadge(badge, helpText);
+            footer.ApplyInboxBadge(badge, snapshot.DoNotDisturb, helpText);
     }
 
     /// <summary>Window navigation for Inbox rows: chat routes select the session; other routes use Settings routing.</summary>
@@ -1269,6 +1272,8 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OpenInboxRoute(string route)
     {
+        if (ThisPcAlertSource.TryOpenPrivacySettings(route))
+            return;
         if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey) && sessionKey is not null)
         {
             SelectSession(sessionKey);
