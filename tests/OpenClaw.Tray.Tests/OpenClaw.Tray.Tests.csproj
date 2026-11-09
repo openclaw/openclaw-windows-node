@@ -320,6 +320,10 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ModelProviderGatewayService.cs" Link="Services\ModelProviderGatewayService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\InboxProjection.cs" Link="Presentation\InboxProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\InboxGatewayItems.cs" Link="Presentation\InboxGatewayItems.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\InboxGatewaySource.cs" Link="Services\InboxGatewaySource.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\InboxFeed.cs" Link="Services\InboxFeed.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>

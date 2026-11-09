@@ -462,6 +462,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<bool>? AgentsListUnsupportedChanged;
     public event EventHandler<JsonElement>? AgentFilesListUpdated;
     public event EventHandler<JsonElement>? AgentFileContentUpdated;
+    public event EventHandler<GatewayPendingApproval>? PendingApprovalRequested;
+    public event EventHandler<string>? PendingApprovalResolved;
 
     /// <summary>
     /// Raised when the gateway broadcasts a "chat" event (assistant or user
@@ -3690,7 +3692,43 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 // every downstream consumer sees a uniform agent-stream
                 // envelope. See OpenClawChatDataProvider.MapApprovalEvent.
                 HandleExecApprovalEvent(root, eventType!);
+                RaisePendingApprovalEvent(root, eventType!);
                 break;
+            case "plugin.approval.requested":
+            case "plugin.approval.resolved":
+            case "openclaw.approval.requested":
+            case "openclaw.approval.resolved":
+                // Chat renders exec approvals only; these feed the typed pending-approval observation.
+                RaisePendingApprovalEvent(root, eventType!);
+                break;
+        }
+    }
+
+    // Typed pending-approval observation for the Inbox. Payload text is untrusted
+    // display data, so only ids and kinds are logged.
+    private void RaisePendingApprovalEvent(JsonElement root, string eventType)
+    {
+        if (!GatewayPendingApprovalParser.TryGetEventKind(eventType, out var kind, out var requested) ||
+            !root.TryGetProperty("payload", out var payload))
+            return;
+
+        try
+        {
+            if (requested)
+            {
+                if (GatewayPendingApprovalParser.TryParse(kind, payload, out var approval))
+                    PendingApprovalRequested?.Invoke(this, approval);
+                else
+                    _logger.Warn($"[Approval] {eventType} payload is incomplete; not tracked as pending");
+            }
+            else if (GatewayPendingApprovalParser.TryParseResolvedId(payload, out var id))
+            {
+                PendingApprovalResolved?.Invoke(this, id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[Approval] Pending-approval subscriber threw on {eventType}: {ex.GetType().Name}");
         }
     }
 

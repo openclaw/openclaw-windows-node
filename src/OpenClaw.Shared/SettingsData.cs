@@ -230,6 +230,10 @@ public record class SettingsData
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
+
+    /// <summary>Legacy staging configuration, preserved for compatibility. New uploads use executor-owned profile storage.</summary>
+    public string? SandboxUploadStagingPath { get; set; }
+    public long SandboxMaxTransferBytes { get; set; } = FileTransfer.FileLimits.DefaultCreateBytes;
     public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
 
     /// <summary>

@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using OpenClaw.Shared;
+using OpenClaw.Shared.Mxc;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
@@ -114,6 +117,52 @@ public interface ISettingsEditor
 /// </summary>
 public sealed record SettingsSnapshot
 {
+    internal static SettingsSnapshot FromData(SettingsData data, long version) => new()
+    {
+        Version = version,
+        SystemRunFilesystemScope = data.SystemRunFilesystemScope,
+        SystemRunPolicyFingerprint = MxcRequestBuilder.Fingerprint(data),
+        AutoStart = data.AutoStart,
+        GlobalHotkeyEnabled = data.GlobalHotkeyEnabled,
+        UseLegacyWebChat = data.UseLegacyWebChat,
+        ShowNotifications = data.ShowNotifications,
+        NotificationSound = data.NotificationSound ?? "Default",
+        AppTheme = SettingsManager.NormalizeAppTheme(data.AppTheme),
+        ShowDiagnosticsEffective = data.ShowDiagnostics ?? Helpers.DiagnosticsGate.BuildDefault,
+        NotifyHealth = data.NotifyHealth,
+        NotifyUrgent = data.NotifyUrgent,
+        NotifyReminder = data.NotifyReminder,
+        NotifyEmail = data.NotifyEmail,
+        NotifyCalendar = data.NotifyCalendar,
+        NotifyBuild = data.NotifyBuild,
+        NotifyStock = data.NotifyStock,
+        NotifyInfo = data.NotifyInfo,
+        EnableNodeMode = data.EnableNodeMode,
+        EnableMcpServer = data.EnableMcpServer,
+        NodeSystemRunEnabled = data.NodeSystemRunEnabled,
+        NodeBrowserProxyEnabled = data.NodeBrowserProxyEnabled,
+        NodeCameraEnabled = data.NodeCameraEnabled,
+        NodeCanvasEnabled = data.NodeCanvasEnabled,
+        NodeScreenEnabled = data.NodeScreenEnabled,
+        NodeLocationEnabled = data.NodeLocationEnabled,
+        NodeTtsEnabled = data.NodeTtsEnabled,
+        NodeSttEnabled = data.NodeSttEnabled,
+        NodeOllamaInferenceEnabled = data.NodeOllamaInferenceEnabled,
+        EnableManagedLocalGatewayAutoRepair = data.EnableManagedLocalGatewayAutoRepair,
+        SttModelName = data.SttModelName ?? "base",
+        TtsProvider = data.TtsProvider ?? "",
+        TtsPiperVoiceId = data.TtsPiperVoiceId ?? "",
+        TtsElevenLabsApiKey = data.TtsElevenLabsApiKey ?? "",
+        TtsElevenLabsVoiceId = data.TtsElevenLabsVoiceId ?? "",
+        ScreenRecordingConsentGiven = data.ScreenRecordingConsentGiven,
+        CameraRecordingConsentGiven = data.CameraRecordingConsentGiven,
+        LocationConsentGiven = data.LocationConsentGiven,
+        ShowChatToolCalls = data.ShowChatToolCalls,
+        PinnedPagesByGateway = data.PinnedPagesByGateway?.ToImmutableDictionary(
+            entry => entry.Key, entry => entry.Value.ToImmutableArray(), StringComparer.Ordinal) ??
+            ImmutableDictionary<string, ImmutableArray<string>>.Empty,
+    };
+
     public OpenClaw.Shared.SystemRunFilesystemScope? SystemRunFilesystemScope { get; init; }
     public string SystemRunPolicyFingerprint { get; init; } = "";
     public long Version { get; init; }
