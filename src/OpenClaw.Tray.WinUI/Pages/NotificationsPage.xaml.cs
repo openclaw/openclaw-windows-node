@@ -1,126 +1,73 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClaw.Shared;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
+using OpenClawTray.Helpers;
+using OpenClawTray.Controls;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
-using OpenClawTray.ViewModels;
-using System.Collections.ObjectModel;
 
 namespace OpenClawTray.Pages;
 
+/// <summary>Full-size Inbox. Rows, tabs and actions come from the shared <see cref="InboxView"/>.</summary>
 public sealed partial class NotificationsPage : Page
 {
-    private const double CompactLayoutWidth = 720;
     private static App CurrentApp => (App)Application.Current!;
-    private readonly ObservableCollection<NotificationItemViewModel> _notificationItems = new();
-    private AppNotificationService? _notificationService;
 
     public NotificationsPage()
     {
         InitializeComponent();
-        SizeChanged += OnLayoutSizeChanged;
-        NotificationsList.ItemsSource = _notificationItems;
-        Unloaded += OnUnloaded;
-    }
-
-    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var compact = e.NewSize.Width < CompactLayoutWidth;
-        Grid.SetColumnSpan(PageHeading, compact ? 2 : 1);
-        Grid.SetRow(ClearButton, compact ? 1 : 0);
-        Grid.SetColumn(ClearButton, compact ? 0 : 1);
-        ClearButton.HorizontalAlignment = HorizontalAlignment.Left;
-    }
-
-    private void OnNotificationLayoutSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var grid = (Grid)sender;
-        var content = (StackPanel)grid.FindName("NotificationContent");
-        var actions = (StackPanel)grid.FindName("NotificationActions");
-        var compact = e.NewSize.Width < CompactLayoutWidth;
-        Grid.SetColumnSpan(content, compact ? 2 : 1);
-        Grid.SetRow(actions, compact ? 1 : 0);
-        Grid.SetColumn(actions, compact ? 1 : 2);
-        Grid.SetColumnSpan(actions, compact ? 2 : 1);
-        actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        Inbox.UsePageLayout();
+        // The heading is inside InboxView's namescope. Name the page from that same
+        // localized resource; its enabled Settings/tabs remain the focus destinations even when empty.
+        AutomationProperties.SetName(this, LocalizationHelper.GetString("Inbox_Title.Text"));
+        // Each navigation creates a new page, so its Unloaded ends this page's Inbox binding.
+        Unloaded += (_, _) => Inbox.Unbind();
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new NotificationsPageAutomationPeer(this);
 
-    // Page has no default peer. Expose the empty destination and its localized heading
-    // so the keyboard focus handoff is also announced by assistive technology.
+    // Keep a named native pane without adding an empty-page tab stop ahead of Inbox controls.
     private sealed class NotificationsPageAutomationPeer(NotificationsPage owner) : FrameworkElementAutomationPeer(owner)
     {
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
         protected override string GetClassNameCore() => nameof(NotificationsPage);
     }
 
-    internal void Initialize(AppNotificationService? notificationService)
+    /// <summary>
+    /// Binds the Inbox. Without host commands (the Settings companion), routes use the
+    /// app-wide navigation commands.
+    /// </summary>
+    internal void Initialize(InboxFeed? inbox, InboxViewCommands? commands = null)
     {
-        if (!ReferenceEquals(_notificationService, notificationService))
+        if (inbox is null)
         {
-            if (_notificationService is not null)
-                _notificationService.Changed -= OnNotificationsChanged;
-
-            _notificationService = notificationService;
-
-            if (_notificationService is not null)
-                _notificationService.Changed += OnNotificationsChanged;
+            Inbox.Unbind();
+            return;
         }
 
-        Render(notificationService?.Snapshot);
+        Inbox.Initialize(inbox, commands ?? new InboxViewCommands(
+            OpenGatewayRoute,
+            ((IAppCommands)CurrentApp).TryNavigateAsync,
+            () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings),
+            () => ((IAppCommands)CurrentApp).OpenDashboard(),
+            AskOpenClaw: AskOpenClaw));
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private static void AskOpenClaw(string question)
     {
-        if (_notificationService is not null)
-            _notificationService.Changed -= OnNotificationsChanged;
-        _notificationService = null;
+        if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
+            OpenGatewayRoute(AppNotificationActionRoutes.Chat(sessionKey));
+        else
+            ((IAppCommands)CurrentApp).Navigate("connection");
     }
 
-    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs e)
+    private static void OpenGatewayRoute(string route)
     {
-        DispatcherQueue?.TryEnqueue(() => Render(e.Snapshot));
-    }
-
-    private void Render(AppNotificationSnapshot? snapshot)
-    {
-        _notificationItems.Clear();
-
-        if (snapshot is not null)
-        {
-            foreach (var notification in snapshot.ActiveNotifications)
-                _notificationItems.Add(NotificationItemViewModel.From(notification));
-        }
-
-        var hasNotifications = _notificationItems.Count > 0;
-        NotificationsList.Visibility = hasNotifications ? Visibility.Visible : Visibility.Collapsed;
-        EmptyState.Visibility = hasNotifications ? Visibility.Collapsed : Visibility.Visible;
-        ClearButton.IsEnabled = hasNotifications;
-        // An empty inbox has no enabled child control. Keep a named destination for
-        // the workspace focus handoff instead of leaving focus in the Settings pane.
-        IsTabStop = !hasNotifications;
-    }
-
-    private void OnClearClick(object sender, RoutedEventArgs e)
-        => _notificationService?.ClearAll();
-
-    private void OnDismissNotificationClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: string notificationId })
-            return;
-
-        _notificationService?.Dismiss(notificationId);
-    }
-
-    private void OnNotificationActionClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: NotificationItemViewModel item })
-            return;
-
-        if (_notificationService is { } notifications)
-            AsyncEventHandlerGuard.Run(
-                () => notifications.NavigateActionAsync(item.Id, ((IAppCommands)CurrentApp).TryNavigateAsync),
-                new AppLogger(), nameof(OnNotificationActionClick));
+        var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
+        AsyncEventHandlerGuard.Run(
+            () => ((IAppCommands)CurrentApp).TryNavigateAsync(isChat ? "chat" : route, sessionKey),
+            new AppLogger(), nameof(OpenGatewayRoute));
     }
 }

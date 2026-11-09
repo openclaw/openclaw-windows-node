@@ -7,34 +7,36 @@ public sealed class AdaptiveAuxiliaryRoutesSourceTests
     // Native pages cannot be mounted in Tray.Tests. Retire these narrow-measurement
     // source guards when native route tests cover populated rows and focused actions.
     [Fact]
-    public void NotificationsConstrainTextAndStackActionsWithoutRebuildingItems()
+    public void NotificationsUseSharedInboxWithConstrainedTextAndSeparateActions()
     {
-        var markup = Load("NotificationsPage");
-        var content = Named(markup, "NotificationContent");
-        Assert.Equal("Grid", content.Elements().First().Name.LocalName);
-        Assert.Contains(content.Descendants(), element =>
-            element.Attribute("Text")?.Value == "{Binding Metadata}" &&
-            element.Attribute("TextWrapping")?.Value == "WrapWholeWords");
-        Assert.Contains(markup.Descendants(), element =>
+        // Inbox replaced the page-local row builder. Keep the text/action geometry
+        // guard at that owner; InboxSettingsCompositionTests covers page binding.
+        var markup = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml"));
+        var list = Named(markup, "ItemsList");
+        Assert.Contains(list.Descendants(), element =>
             element.Name.LocalName == "Setter" &&
             element.Attribute("Property")?.Value == "HorizontalContentAlignment" &&
             element.Attribute("Value")?.Value == "Stretch");
-        Assert.Equal("OnNotificationLayoutSizeChanged",
-            Named(markup, "NotificationActions").Parent!.Attribute("SizeChanged")?.Value);
+        var details = list.Descendants().Single(element =>
+            element.Attribute("Text")?.Value == "{Binding Details}");
+        Assert.Equal("Wrap", details.Attribute("TextWrapping")?.Value);
+        var metadata = list.Descendants().Single(element =>
+            element.Attribute("Text")?.Value == "{Binding Metadata}");
+        Assert.Equal("Wrap", metadata.Attribute("TextWrapping")?.Value);
+        Assert.Equal("*", metadata.Parent!.Elements().First().Elements().First()
+            .Attribute("Width")?.Value);
 
-        var source = Read("NotificationsPage");
-        var resize = source[source.IndexOf("private void OnLayoutSizeChanged", StringComparison.Ordinal)..
-            source.IndexOf("internal void Initialize", StringComparison.Ordinal)];
-        Assert.Contains("Grid.SetRow(actions, compact ? 1 : 0)", resize);
-        Assert.Contains("Grid.SetColumnSpan(content, compact ? 2 : 1)", resize);
-        Assert.Contains("actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal", resize);
-        Assert.Contains("e.NewSize.Width", resize);
-        Assert.DoesNotMatch(@"Render\(|_notificationItems\.|\.Dismiss\(|ClearAll\(|\.Navigate\(|\.Focus\(", resize);
-        Assert.Equal("OnNotificationActionClick",
-            Named(markup, "NotificationActions").Elements().First().Attribute("Click")?.Value);
-        Assert.Equal("{Binding DismissAutomationName}",
-            Named(markup, "NotificationActions").Elements().Last().Attribute(
-                "AutomationProperties.Name")?.Value);
+        var action = list.Descendants().Single(element =>
+            element.Attribute("Click")?.Value == "OnActionClick");
+        Assert.Equal("{Binding ActionLabel}", action.Attribute("Content")?.Value);
+        Assert.Equal("{Binding}", action.Attribute("Tag")?.Value);
+        Assert.NotSame(metadata.Parent, action.Parent);
+        var dismiss = list.Descendants().Single(element =>
+            element.Attribute("Click")?.Value == "OnDismissClick");
+        Assert.Equal("{Binding DismissAutomationName}", dismiss.Attribute("AutomationProperties.Name")?.Value);
+        Assert.Equal("1", dismiss.Attribute("Grid.Column")?.Value);
+        Assert.Equal("Grid", dismiss.Parent!.Name.LocalName);
     }
 
     [Fact]

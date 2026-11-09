@@ -8,6 +8,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
+using OpenClaw.Shared.FileTransfer;
 using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mcp;
@@ -59,9 +61,15 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     /// pre-auth contract — kept so existing dev configs keep working). When set,
     /// every request must carry <c>Authorization: Bearer &lt;token&gt;</c>.
     /// </summary>
-    private string? _authToken;
+    private sealed record Authentication(string? Token, long FileEpoch);
+    private Authentication _authentication;
+    private readonly object _authenticationUpdateLock = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _handlerLimiter;
+    private readonly SemaphoreSlim _ingressLimiter = new(32, 32);
+    private readonly SemaphoreSlim _controlLimiter = new(8, 8);
+    private readonly SemaphoreSlim _streamLimiter = new(4, 4);
+    private readonly SemaphoreSlim _largeBodyLimiter = new(2, 2);
     private readonly object _activeLock = new();
     private readonly HashSet<Task> _activeHandlers = new();
     private readonly object _startLock = new();
@@ -154,7 +162,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         _writeText = writeText ?? throw new ArgumentNullException(nameof(writeText));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _port = port;
-        _authToken = string.IsNullOrEmpty(authToken) ? null : authToken;
+        _authentication = new(string.IsNullOrEmpty(authToken) ? null : authToken, _bridge.FileChannels.Epoch);
         _listener = listener ?? new SystemMcpHttpListener(port);
         _handlerLimiter = new SemaphoreSlim(
             _options.MaxConcurrentHandlers,
@@ -212,7 +220,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     public void UpdateAuthToken(string? authToken)
     {
-        Volatile.Write(ref _authToken, string.IsNullOrEmpty(authToken) ? null : authToken);
+        lock (_authenticationUpdateLock)
+        {
+            var epoch = _bridge.FileChannels.Reset();
+            Volatile.Write(ref _authentication, new(string.IsNullOrEmpty(authToken) ? null : authToken, epoch));
+        }
     }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
@@ -263,7 +275,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 // Wait briefly so transient handoff spikes can succeed without
                 // introducing unbounded queueing.
                 _options.HandlerAdmissionStarted?.Invoke();
-                if (!await _handlerLimiter
+                if (!await _ingressLimiter
                         .WaitAsync(_options.HandlerAdmissionTimeout, ct)
                         .ConfigureAwait(false))
                 {
@@ -316,7 +328,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             {
                 if (handlerSlotAcquired)
                 {
-                    try { _handlerLimiter.Release(); }
+                    try { _ingressLimiter.Release(); }
                     catch (ObjectDisposedException) { }
                 }
                 requestTelemetry?.Dispose();
@@ -335,6 +347,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         CancellationTokenRegistration timeoutRegistration = default;
         CancellationToken shutdownCancellation = default;
         CancellationToken timeoutCancellation = default;
+        using var admission = new Admission(_ingressLimiter);
         try
         {
             _options.HandlerExecutionStarting?.Invoke();
@@ -377,7 +390,8 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                     cancellationState,
                     timeoutCancellation,
                     shutdownCancellation,
-                    requestTelemetry.Context)
+                    requestTelemetry.Context,
+                    admission)
                 .ConfigureAwait(false);
             requestTelemetry.Complete(result.Outcome, result.ErrorCategory, result.ErrorType);
         }
@@ -414,7 +428,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             // Without this guard, a handler racing with shutdown can throw
             // ObjectDisposedException into an unobserved task, which surfaces
             // through global unhandled-exception handlers.
-            try { _handlerLimiter.Release(); }
+            try { admission.Dispose(); }
             catch (ObjectDisposedException) { /* Server torn down during request; expected. */ }
             catch (SemaphoreFullException ex)
             {
@@ -441,14 +455,15 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         McpRequestCancellationState cancellationState,
         CancellationToken timeoutCancellation,
         CancellationToken shutdownCancellation,
-        ActivityContext requestTelemetryContext)
+        ActivityContext requestTelemetryContext,
+        Admission admission)
     {
-        // Snapshot the auth token once. UpdateAuthToken can rotate _authToken
-        // on another thread, and reading the field separately for the null-test
-        // and the comparison would let a single request observe two different
-        // values (e.g. enter the auth branch with the old token, then compare
-        // against the new one — or vice versa).
-        var authToken = Volatile.Read(ref _authToken);
+        // A request admitted during rotation keeps the old epoch, which channel
+        // admission rejects. It must never pair an old bearer with the new epoch.
+        var authentication = Volatile.Read(ref _authentication);
+        var fileEpoch = authentication.FileEpoch;
+        var authToken = authentication.Token;
+        var largeReserved = false;
         McpToolBridge.McpTransportResponse? transportResponse = null;
         try
         {
@@ -511,6 +526,9 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
             if (ctx.Request.HttpMethod == "GET")
             {
+                if (!await admission.TransferAsync(_handlerLimiter, _options.HandlerAdmissionTimeout, ct))
+                    return RejectRequest(ctx, HttpStatusCode.ServiceUnavailable, "server busy",
+                        McpServerOutcome.Failure, McpServerErrorCategory.Busy);
                 // Friendly probe response — useful for confirming the server is up
                 // from a curl/browser without hitting the JSON-RPC endpoint.
                 _writeText(ctx.Response, HttpStatusCode.OK,
@@ -546,7 +564,10 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
             // Reject bodies that exceed our cap *before* reading them — a
             // multi-GB POST would otherwise OOM the tray.
-            if (ctx.Request.ContentLength64 > MaxRequestBodyBytes)
+            var declaredCommand = ctx.Request.Headers[FileTransportJson.EnvelopeHeader];
+            var declaredFile = declaredCommand != null && FileCommandParser.Commands.Contains(declaredCommand);
+            var bodyLimit = declaredFile ? FileTransportJson.EnvelopeBytes : MaxRequestBodyBytes;
+            if (ctx.Request.ContentLength64 > bodyLimit)
             {
                 return RejectRequest(
                     ctx,
@@ -559,9 +580,16 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             string body;
             try
             {
+                if (declaredFile && (ctx.Request.ContentLength64 > MaxRequestBodyBytes || ctx.Request.ContentLength64 < 0))
+                {
+                    if (!_largeBodyLimiter.Wait(0))
+                        return RejectRequest(ctx, HttpStatusCode.ServiceUnavailable, "large request capacity full",
+                            McpServerOutcome.Failure, McpServerErrorCategory.Busy);
+                    largeReserved = true;
+                }
                 body = await (_options.RequestBodyReader ?? ReadBodyAsync)(
                         ctx.Request,
-                        MaxRequestBodyBytes,
+                        bodyLimit,
                         ct)
                     .ConfigureAwait(false);
             }
@@ -586,9 +614,78 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
             try
             {
+                using var envelope = JsonDocument.Parse(body);
+                var root = envelope.RootElement;
+                var method = root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("method", out var methodElement) && methodElement.ValueKind == JsonValueKind.String
+                    ? methodElement.GetString() : null;
+                var isControl = method == "notifications/cancelled" ||
+                    (method?.StartsWith(McpFileChannels.MethodPrefix, StringComparison.Ordinal) == true);
+                var isStream = false;
+                var isFile = false;
+                if (method == "tools/call" && root.TryGetProperty("params", out var parameters) &&
+                    parameters.ValueKind == JsonValueKind.Object)
+                {
+                    var command = parameters.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
+                        ? name.GetString() : null;
+                    isFile = command != null && FileCommandParser.Commands.Contains(command);
+                    if (isFile)
+                    {
+                        try { using var bounded = JsonDocument.Parse(body, new JsonDocumentOptions { MaxDepth = 32 }); }
+                        catch (JsonException)
+                        {
+                            return RejectRequest(ctx, HttpStatusCode.BadRequest, "file envelope is too deep",
+                                McpServerOutcome.Failure, McpServerErrorCategory.InvalidRequest);
+                        }
+                    }
+                    if (declaredFile && declaredCommand != command)
+                        return RejectRequest(ctx, HttpStatusCode.BadRequest, "file envelope command mismatch",
+                            McpServerOutcome.Failure, McpServerErrorCategory.InvalidRequest);
+                    isStream = parameters.TryGetProperty("_meta", out var meta) && meta.ValueKind == JsonValueKind.Object &&
+                        meta.TryGetProperty(McpFileChannels.MetadataKey, out _);
+                }
+                if ((declaredFile && !isFile) ||
+                    (isControl && Encoding.UTF8.GetByteCount(body) > 2 * FileFrameChannel.FrameBytes))
+                    return RejectRequest(ctx, HttpStatusCode.RequestEntityTooLarge, "invalid envelope size",
+                        McpServerOutcome.Failure, McpServerErrorCategory.InvalidRequest);
+                if (isStream && largeReserved)
+                {
+                    if (Encoding.UTF8.GetByteCount(body) > MaxRequestBodyBytes)
+                        return RejectRequest(ctx, HttpStatusCode.RequestEntityTooLarge, "stream metadata too large",
+                            McpServerOutcome.Failure, McpServerErrorCategory.InvalidRequest);
+                    _largeBodyLimiter.Release();
+                    largeReserved = false;
+                }
+                else if (isFile && !isStream && !largeReserved)
+                {
+                    if (!_largeBodyLimiter.Wait(0))
+                        return RejectRequest(ctx, HttpStatusCode.ServiceUnavailable, "file response capacity full",
+                            McpServerOutcome.Failure, McpServerErrorCategory.Busy);
+                    largeReserved = true;
+                }
+                var limiter = isControl ? _controlLimiter : isStream ? _streamLimiter : _handlerLimiter;
+                if (!await admission.TransferAsync(limiter, _options.HandlerAdmissionTimeout, ct))
+                    return RejectRequest(ctx, HttpStatusCode.ServiceUnavailable, "server busy",
+                        McpServerOutcome.Failure, McpServerErrorCategory.Busy);
                 transportResponse = await _bridge
-                    .HandleTransportRequestAsync(body, ct, requestTelemetryContext)
+                    .HandleTransportRequestAsync(body, ct, requestTelemetryContext,
+                        authToken != null ? fileEpoch : null)
                     .ConfigureAwait(false);
+                if (isFile && transportResponse.Body != null &&
+                    Encoding.UTF8.GetByteCount(transportResponse.Body) > FileTransportJson.ResultEnvelopeBytes)
+                    throw new InvalidDataException("MCP response exceeds the command transport limit.");
+            }
+            catch (JsonException)
+            {
+                if (declaredFile)
+                    return RejectRequest(ctx, HttpStatusCode.BadRequest, "invalid file envelope",
+                        McpServerOutcome.Failure, McpServerErrorCategory.InvalidRequest);
+                // Malformed/deep JSON still goes through ordinary admission. In particular,
+                // the bridge may accept a deeper generic request than the file classifier.
+                if (!await admission.TransferAsync(_handlerLimiter, _options.HandlerAdmissionTimeout, ct))
+                    return RejectRequest(ctx, HttpStatusCode.ServiceUnavailable, "server busy",
+                        McpServerOutcome.Failure, McpServerErrorCategory.Busy);
+                transportResponse = await _bridge.HandleTransportRequestAsync(body, ct, requestTelemetryContext);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -608,7 +705,16 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return McpRequestResult.Success;
             }
 
-            _writeText(ctx.Response, HttpStatusCode.OK, transportResponse.Body, "application/json");
+            if (_writeText == WriteText)
+            {
+                var bytes = Encoding.UTF8.GetBytes(transportResponse.Body);
+                ctx.Response.StatusCode = (int)HttpStatusCode.OK;
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.ContentLength64 = bytes.Length;
+                await ctx.Response.OutputStream.WriteAsync(bytes, ct).ConfigureAwait(false);
+                ctx.Response.Close();
+            }
+            else _writeText(ctx.Response, HttpStatusCode.OK, transportResponse.Body, "application/json");
             transportResponse.CompleteDelivery();
             return McpRequestResult.Success;
         }
@@ -634,6 +740,19 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                     : McpServerErrorCategory.InternalFailure,
                 ex.GetType());
         }
+        finally { if (largeReserved) _largeBodyLimiter.Release(); }
+    }
+
+    private sealed class Admission(SemaphoreSlim ingress) : IDisposable
+    {
+        private SemaphoreSlim? _held = ingress;
+        public async Task<bool> TransferAsync(SemaphoreSlim target, TimeSpan timeout, CancellationToken ct)
+        {
+            if (!await target.WaitAsync(timeout, ct).ConfigureAwait(false)) return false;
+            Interlocked.Exchange(ref _held, target)?.Release();
+            return true;
+        }
+        public void Dispose() => Interlocked.Exchange(ref _held, null)?.Release();
     }
 
     private McpRequestResult RejectCancellation(
@@ -894,6 +1013,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
         try
         {
+            _bridge.FileChannels.Reset();
             try { _cts.Cancel(); }
             catch (Exception ex)
             {
@@ -1020,6 +1140,10 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         }
         _cts.Dispose();
         _handlerLimiter.Dispose();
+        _ingressLimiter.Dispose();
+        _controlLimiter.Dispose();
+        _streamLimiter.Dispose();
+        _largeBodyLimiter.Dispose();
     }
 
     private void ObserveBackgroundFault(Task task, string message)

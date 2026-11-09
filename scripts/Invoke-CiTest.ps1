@@ -12,6 +12,7 @@ param(
     [string]$Filter,
     [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
     [switch]$CollectNativeFailureMetadata,
+    [switch]$CaptureHostExit,
     [ValidateSet('Unchanged', 'Enabled', 'Disabled')][string]$AnimationPreference = 'Unchanged',
     [switch]$AllowUserAnimationPreferenceChange,
     [switch]$RequireAllTestsPassed
@@ -70,7 +71,53 @@ if ($HangTimeoutSeconds -gt 0) {
 $script:testExitCode = $null
 $runTests = {
     $collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
-    if ($collectCoverage) {
+    if ($CaptureHostExit) {
+        . (Join-Path $PSScriptRoot "CiTestHostExit.ps1")
+        if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -or -not [IO.Path]::IsPathFullyQualified($env:RUNNER_TEMP)) {
+            throw 'Host-exit diagnostics require an absolute RUNNER_TEMP outside the checkout.'
+        }
+        $tempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([char[]]"\/") + [IO.Path]::DirectorySeparatorChar
+        $checkout = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd([char[]]"\/") + [IO.Path]::DirectorySeparatorChar
+        if ($tempRoot.StartsWith($checkout, [StringComparison]::OrdinalIgnoreCase)) { throw 'Raw diagnostics must stay outside the checkout and its artifacts.' }
+        $rawRoot = Join-Path $tempRoot ("ci-testhost-exit-" + $invocation.id)
+        $testArguments.Add('--diag')
+        $testArguments.Add((Join-Path $rawRoot 'testplatform.log') + ';tracelevel=info')
+        New-Item -ItemType Directory -Path $rawRoot -ErrorAction Stop | Out-Null
+        $testExit = $null; $nativeErrorType = $null
+        # Only the existing ordinary-UI CaptureHostExit lane opts in. The invocation
+        # owns this curated, content-free file under the already-uploaded TestResults.
+        $previousMetadataPath = $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH
+        $previousMetadataInvocation = $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID
+        try {
+            $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH = Join-Path $ResultsDirectory 'native-ui-exceptions.jsonl'
+            $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID = $invocation.id
+            Invoke-CiNativeWithExit -ExitCode ([ref]$testExit) -Command {
+                if ($collectCoverage) {
+                    $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
+                    & dotnet-coverage collect --output $coverageOutput --output-format cobertura dotnet @testArguments
+                } else {
+                    & dotnet @testArguments
+                }
+            }
+        }
+        catch { $nativeErrorType = $_.Exception.GetType().FullName }
+        finally {
+            try {
+                $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH = $previousMetadataPath
+                $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID = $previousMetadataInvocation
+            } catch {
+                # Diagnostic cleanup must not replace the observed native result.
+                try { Write-Host 'CI native UI metadata: environmentRestoreFailed=true' } catch { }
+            }
+            $diagnostic = Complete-CiHostExitTrace -Root $rawRoot -NativeExitCode $testExit -NativeErrorType $nativeErrorType
+            Write-Host ('CI host exit metadata: ' + ($diagnostic | ConvertTo-Json -Depth 5 -Compress))
+        }
+        $script:testExitCode = $testExit
+        # Return to the preference owner before the outer script propagates a failed native exit.
+        if ($null -ne $testExit -and $testExit -ne 0) { return }
+        if ($null -eq $testExit -or $nativeErrorType) { throw 'Test command failed without a successful native exit.' }
+        if ($diagnostic.diagnosticErrorType -or -not $diagnostic.rawTraceRemoved) { throw 'Host-exit diagnostic extraction or cleanup failed.' }
+    } elseif ($collectCoverage) {
         $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
         & dotnet-coverage collect `
             --output $coverageOutput `
@@ -79,7 +126,7 @@ $runTests = {
     } else {
         & dotnet @testArguments
     }
-    $script:testExitCode = $LASTEXITCODE
+    if (-not $CaptureHostExit) { $script:testExitCode = $LASTEXITCODE }
 }
 $projectPath = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Project))
 $projectName = [IO.Path]::GetFileName($projectPath.TrimEnd([char[]]'\/'))

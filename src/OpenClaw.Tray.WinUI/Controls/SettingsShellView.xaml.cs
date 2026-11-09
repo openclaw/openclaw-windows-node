@@ -878,7 +878,7 @@ internal sealed partial class SettingsShellView : UserControl
                 break;
             case SettingsPage settings: settings.Initialize(); break;
             case AboutPage about: about.Initialize(); break;
-            case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
+            case NotificationsPage notifications: notifications.Initialize(CurrentApp.InboxFeed); break;
             case DebugPage debug: debug.Initialize(); break;
         }
     }

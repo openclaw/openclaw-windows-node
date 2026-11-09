@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Windows.ApplicationModel.Resources;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -36,7 +37,7 @@ internal sealed class TestApp : Application, IXamlMetadataProvider
 
     public XmlnsDefinition[] GetXmlnsDefinitions() => _metadata.GetXmlnsDefinitions();
 
-    public TestApp()
+    public TestApp(NativeUiExceptionDiagnostics diagnostics)
     {
         var requestedTheme = Environment.GetEnvironmentVariable("OPENCLAW_UI_TEST_APP_THEME");
         if (!string.IsNullOrWhiteSpace(requestedTheme))
@@ -57,7 +58,14 @@ internal sealed class TestApp : Application, IXamlMetadataProvider
             ?? throw new MissingFieldException(localization.FullName, "s_resourceManager");
         resourceCache.SetValue(null, productResources);
         UnhandledException += (_, args) => OpenClaw.TestSupport.NativeTestFailureTrace.Write(args.Exception);
+        UnhandledException += CreateExceptionReporter(diagnostics, NativeUiExceptionSource.WinUiUnhandled);
     }
+
+    // Separate closure scope: an event handler must retain only the sink/source,
+    // never the per-case display class containing its windows, session or controls.
+    internal static Microsoft.UI.Xaml.UnhandledExceptionEventHandler CreateExceptionReporter(
+        NativeUiExceptionDiagnostics diagnostics, NativeUiExceptionSource source) =>
+        (_, args) => diagnostics.RecordException(source, () => args.Exception);
 
     private static readonly (string Key, Windows.UI.Color Color)[] FluentBrushFallbacks =
     [

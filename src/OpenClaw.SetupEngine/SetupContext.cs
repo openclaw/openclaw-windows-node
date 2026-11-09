@@ -15,6 +15,7 @@ using System.Text.Json.Serialization;
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared;
+using OpenClaw.Shared.FileTransfer;
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 
@@ -259,7 +260,10 @@ public sealed class CapabilitiesConfig
     /// </summary>
     public IReadOnlyList<(string Category, string[] Commands)> GetEnabledCapabilities()
     {
-        var result = new List<(string, string[])>();
+        var result = new List<(string, string[])>
+        {
+            ("file", FileCommandParser.Commands.ToArray())
+        };
 
         if (System) result.Add(("system", ["system.notify", "system.run", "system.run.prepare", "system.which", "system.execApprovals.get", "system.execApprovals.set"]));
         if (Canvas) result.Add(("canvas", ["canvas.present", "canvas.hide", "canvas.navigate", "canvas.eval", "canvas.snapshot", "canvas.a2ui.push", "canvas.a2ui.pushJSONL", "canvas.a2ui.reset", "canvas.a2ui.dump", "canvas.caps"]));

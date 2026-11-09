@@ -51,6 +51,10 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
+    /// <summary>A Gateway approval (exec, plugin or system agent) now waits for a decision.</summary>
+    event EventHandler<GatewayPendingApproval>? PendingApprovalRequested { add { } remove { } }
+    /// <summary>A pending Gateway approval was decided; the argument is its id.</summary>
+    event EventHandler<string>? PendingApprovalResolved { add { } remove { } }
 
     /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
     IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
