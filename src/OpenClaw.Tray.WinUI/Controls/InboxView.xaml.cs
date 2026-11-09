@@ -5,7 +5,7 @@
 //
 // Usage:
 //   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
-//       OpenRoute: route => window.OpenNotificationRoute(route),
+//       OpenGatewayRoute: route => window.OpenGatewayInboxRoute(route),
 //       TryNavigateAsync: appCommands.TryNavigateAsync,
 //       OpenDashboard: () => appCommands.OpenDashboard(),
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
@@ -29,12 +29,13 @@ namespace OpenClawTray.Controls;
 
 /// <summary>
 /// Navigation supplied by the Inbox host. <paramref name="TryNavigateAsync"/> reports actual
-/// admission for app reminders; Gateway row actions keep their own lifetime.
+/// admission for app reminders. <paramref name="OpenGatewayRoute"/> navigates only
+/// Gateway facts without dismissing or deciding them; those rows keep their own lifetime.
 /// <paramref name="OpenPage"/> is null on the page itself;
 /// <paramref name="AskOpenClaw"/> sends a failure's explain prompt to OpenClaw and shows the reply.
 /// </summary>
 internal sealed record InboxViewCommands(
-    Action<string> OpenRoute,
+    Action<string> OpenGatewayRoute,
     Func<string, string?, Task<bool>> TryNavigateAsync,
     Action OpenSettings,
     Action OpenDashboard,
@@ -240,13 +241,14 @@ public sealed partial class InboxView : UserControl
         }
 
         // Navigation for a Gateway fact never dismisses or decides the underlying item.
-        item.OpenAction(commands.OpenRoute, commands.OpenDashboard);
+        item.OpenAction(commands.OpenGatewayRoute, commands.OpenDashboard);
     }
 
     private void OnSecondaryActionClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: InboxItemViewModel { SecondaryActionRoute: { Length: > 0 } route } })
-            _commands?.OpenRoute(route);
+        if (sender is FrameworkElement { Tag: InboxItemViewModel { SecondaryActionRoute: { Length: > 0 } route } item } &&
+            InboxGatewayItems.IsGatewayItemId(item.Id))
+            _commands?.OpenGatewayRoute(route);
     }
 
     private void OnAskClick(object sender, RoutedEventArgs e)

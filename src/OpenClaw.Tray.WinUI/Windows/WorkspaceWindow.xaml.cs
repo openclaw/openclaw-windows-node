@@ -1251,9 +1251,9 @@ public sealed partial class WorkspaceWindow : WindowEx
             footer.ApplyInboxBadge(badge, helpText);
     }
 
-    /// <summary>Window navigation for Inbox rows: chat routes select the session; other routes use Settings routing.</summary>
+    /// <summary>Gateway facts navigate without dismissal; app reminders use the separate admission callback.</summary>
     private InboxViewCommands InboxCommands(Action? openPage) => new(
-        OpenInboxRoute,
+        OpenGatewayInboxRoute,
         ((IAppCommands)CurrentApp).TryNavigateAsync,
         () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
         () => ((IAppCommands)CurrentApp).OpenDashboard(),
@@ -1269,7 +1269,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             OpenCompanion(CompanionPageId.Connection);
     }
 
-    private void OpenInboxRoute(string route)
+    private void OpenGatewayInboxRoute(string route)
     {
         if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey) && sessionKey is not null)
         {

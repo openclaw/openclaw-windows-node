@@ -35,12 +35,44 @@ public sealed class HubPresentationContractTests
         var footer = ReadSource("Controls", "WorkspacePaneFooter.xaml.cs");
         var view = ReadSource("Controls", "InboxView.xaml.cs");
         Assert.Contains("Func<string, string?, Task<bool>> TryNavigateAsync", view);
+        // App reminders cannot regain the retired fire-and-forget route path.
+        Assert.DoesNotContain("OpenRoute", view);
+        Assert.DoesNotContain("commands.OpenRoute", footer);
+        Assert.DoesNotContain("OpenInboxRoute", workspace);
+        Assert.DoesNotContain("OpenAppRoute", page);
         Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync,", page);
         Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync,", workspace);
         Assert.Contains("return commands.TryNavigateAsync(route, sessionKey);", footer);
         Assert.DoesNotContain("PendingChatSessionKey", page);
         Assert.DoesNotContain("OnNotificationActionClick", page);
         Assert.DoesNotContain("NotificationsList", page);
+    }
+
+    [Fact]
+    public void InboxGatewayRoutes_CannotBypassAppReminderAdmission()
+    {
+        // This boundary is native-XAML-only. Retire the source guard when mandatory
+        // mounted proof can inject an app reminder into the secondary-action handler.
+        var view = ReadSource("Controls", "InboxView.xaml.cs");
+        var actionStart = view.IndexOf("private void OnActionClick", StringComparison.Ordinal);
+        Assert.True(actionStart >= 0);
+        var secondaryStart = view.IndexOf("private void OnSecondaryActionClick", actionStart, StringComparison.Ordinal);
+        Assert.True(secondaryStart > actionStart);
+        var action = view[actionStart..secondaryStart];
+        var appStart = action.IndexOf("if (!InboxGatewayItems.IsGatewayItemId(item.Id))", StringComparison.Ordinal);
+        var gatewayStart = action.IndexOf("item.OpenAction(commands.OpenGatewayRoute, commands.OpenDashboard);", StringComparison.Ordinal);
+        Assert.True(appStart >= 0 && gatewayStart > appStart);
+        var appBranch = action[appStart..gatewayStart];
+        Assert.Contains("feed.NavigateNotificationAsync(item.Id, commands.TryNavigateAsync)", appBranch);
+        Assert.Contains("return;", appBranch);
+        Assert.DoesNotContain("OpenGatewayRoute", appBranch);
+        Assert.DoesNotContain(".Dismiss(", action);
+
+        var secondary = view[secondaryStart..view.IndexOf("private void OnAskClick", secondaryStart, StringComparison.Ordinal)];
+        Assert.Matches(@"&&\s+InboxGatewayItems\.IsGatewayItemId\(item\.Id\)\)\s+_commands\?\.OpenGatewayRoute\(route\);", secondary);
+        Assert.Contains("_commands?.OpenGatewayRoute(route);", secondary);
+        Assert.DoesNotContain("NavigateNotificationAsync", secondary);
+        Assert.DoesNotContain(".Dismiss(", secondary);
     }
 
     [Fact]
