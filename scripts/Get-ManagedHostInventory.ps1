@@ -1,4 +1,4 @@
-# Temporary RTX1 read-only qualification. No product suite, installer, or distro launch.
+# Temporary RTX2 read-only qualification. No product suite, installer, or distro launch.
 [CmdletBinding()]
 param(
     [switch]$SelfTest,
@@ -36,7 +36,7 @@ function Convert-SafeBoolean([object]$Value) {
 function New-InventoryReport($Version, $Build, $ProductType, [string]$NativeArchitecture,
     [string]$ProcessArchitecture, $UserInteractive, $NonzeroSession, $WslFilePresent) {
     if (-not (Test-SourceRevision $SourceRevision) -or
-        $HostSelector -cne 'rtx-1' -or
+        $HostSelector -cne 'rtx-2' -or
         $ExpectedArchitecture -cne 'arm64') { throw 'invalid-input' }
     $versionValue = Convert-SafeVersion $Version
     $buildValue = Convert-SafeBuild $Build
@@ -74,7 +74,7 @@ if ($SelfTest) {
 try {
     # Reject before any host query. The workflow separately fences this SHA to its ref.
     if (-not (Test-SourceRevision $SourceRevision) -or
-        $HostSelector -cne 'rtx-1' -or
+        $HostSelector -cne 'rtx-2' -or
         $ExpectedArchitecture -cne 'arm64') { throw 'invalid-input' }
     $native = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     $process = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()

@@ -7,7 +7,7 @@ function New-CompleteQuery([string]$Kind, [string]$Text) {
     $q.rootExitObserved = $true; $q.exitCode = 0; $q.privateOut = $Text; $q.privateError = ''
     return $q
 }
-$SourceRevision = '0123456789abcdef0123456789abcdef01234567'; $HostSelector = 'rtx-1'; $ExpectedArchitecture = 'arm64'
+$SourceRevision = '0123456789abcdef0123456789abcdef01234567'; $HostSelector = 'rtx-2'; $ExpectedArchitecture = 'arm64'
 Confirm (Test-SourceRevision $SourceRevision)
 Confirm (-not (Test-SourceRevision ($SourceRevision + [Environment]::NewLine)))
 Confirm (-not (Test-SourceRevision ('A' * 40)))

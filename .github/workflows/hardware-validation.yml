@@ -1,4 +1,4 @@
-name: Windows hardware validation (temporary RTX1 WSL qualification overlay)
+name: Windows hardware validation (temporary RTX2 WSL qualification overlay)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 # Temporary branch overlay of existing workflow ID 408676726, not a default-branch change.
-# Parent reserves RTX1 before the single read-only qualification dispatch.
+# Parent reserves RTX2 before the single read-only qualification dispatch.
 concurrency:
   group: windows-hardware-validation
   cancel-in-progress: false
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   inventory:
     if: github.repository == 'openclaw/openclaw-windows-node'
-    runs-on: [openclaw-managed, windows, arm64, rtx-n1x-6144]
+    runs-on: [openclaw-managed, windows, arm64, rtx-n1x-5120]
     timeout-minutes: 5
     defaults:
       run:
@@ -29,7 +29,7 @@ jobs:
       INVENTORY_CHECKOUT: .host-inventory-${{ github.run_id }}-${{ github.run_attempt }}
       INVENTORY_SOURCE_SHA: ${{ inputs.source_sha }}
       INVENTORY_WORKFLOW_SHA: ${{ github.sha }}
-      INVENTORY_HOST: rtx-1
+      INVENTORY_HOST: rtx-2
       INVENTORY_ARCHITECTURE: arm64
     steps:
       - name: Require immutable reviewed source
