@@ -1,107 +1,88 @@
 name: Windows hardware validation
-
-# Opt-in only. The dedicated branch also allows proving a new workflow before
-# it is merged to main and becomes available in the workflow_dispatch UI.
+# TEMPORARY overlay of the already registered workflow, only on the owned branch.
+# Two isolated case executions, not a full UI retry or hardware/WSL proof.
 on:
   workflow_dispatch:
-  push:
-    branches: [ci/hardware-validation]
-
+    inputs:
+      pipeline_sha:
+        description: Exact reviewed temporary pipeline commit (must equal dispatch SHA)
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
   group: windows-hardware-validation
   cancel-in-progress: false
-
 jobs:
-  validate:
-    if: github.repository == 'openclaw/openclaw-windows-node'
-    name: Validate ${{ matrix.host }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - host: rtx-1
-            architecture: arm64
-            hardware: rtx-n1x-6144
-          - host: rtx-2
-            architecture: arm64
-            hardware: rtx-n1x-5120
-          - host: azure-mxc-1
-            architecture: x64
-            hardware: azure
-    runs-on: [openclaw-managed, windows, '${{ matrix.architecture }}', '${{ matrix.hardware }}']
+  focused-voice-pair:
+    if: >-
+      github.repository == 'openclaw/openclaw-windows-node' &&
+      github.ref == 'refs/heads/validation/inbox-stack-ab3cbe7b-20261108' &&
+      github.event_name == 'workflow_dispatch' && github.run_attempt == 1 &&
+      inputs.pipeline_sha == github.sha
+    runs-on: windows-latest
     timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
     env:
-      EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
-      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       GitVersion_NoNormalizeEnabled: 'true'
       GitVersion_NoFetchEnabled: 'true'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
+      OPENCLAW_CI_COLLECT_COVERAGE: 'false'
+      EXPECTED_PIPELINE_SHA: ${{ inputs.pipeline_sha }}
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.pipeline_sha }}
+          path: pipeline
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify native host and toolchain
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
-        run: |
-          "OPENCLAW_TRAY_DATA_DIR=$env:RUNNER_TEMP/hardware-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/tray" >> $env:GITHUB_ENV
-          $actual = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-          $process = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
-          if ($process -ne $actual) { throw "Emulated PowerShell ($process) on $actual is not native validation" }
-          if ($actual -ne $env:EXPECTED_ARCHITECTURE) { throw "Expected $env:EXPECTED_ARCHITECTURE, got $actual" }
-          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_SHA) { throw 'Checkout differs from the workflow source SHA' }
-          Write-Output "Native architecture: $actual; source: $env:EXPECTED_SHA"
-          dotnet --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Command-normalization tests resolve bash from Git for Windows.
-          $gitBin = Join-Path (Split-Path (Split-Path (Get-Command git.exe).Source)) 'bin'
-          if (-not (Test-Path (Join-Path $gitBin 'bash.exe'))) { throw 'Git Bash is required by shared tests' }
-          $gitBin >> $env:GITHUB_PATH
-          ./scripts/setup-dev.ps1 -CheckOnly -NoTrustRepository
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build repository
-        run: |
-          ./build.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run shared and tray tests
-        run: |
-          foreach ($suite in @('OpenClaw.Shared.Tests', 'OpenClaw.Tray.Tests')) {
-            $project = "./tests/$suite/$suite.csproj"
-            # Build first: --no-restore alone can silently no-op in a fresh checkout.
-            # Helpers expect bin/Debug/<tfm>; retain native RID without an extra path segment.
-            dotnet build $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            dotnet test $project -r "win-$env:EXPECTED_ARCHITECTURE" -p:AppendRuntimeIdentifierToOutputPath=false --no-restore --results-directory ./TestResults/Hardware --logger "trx;LogFileName=$suite.trx"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            [xml]$trx = Get-Content "./TestResults/Hardware/$suite.trx" -Raw
-            $counts = $trx.TestRun.ResultSummary.Counters
-            if ([int]$counts.executed -le 0 -or [int]$counts.passed -le 0 -or [int]$counts.failed -ne 0) {
-              throw "$suite did not report a nonempty passing test run"
-            }
-            # VSTest can leave Counters.notExecuted at zero even when results contain skips.
-            $skipped = @($trx.TestRun.Results.UnitTestResult | Where-Object outcome -eq 'NotExecuted').Count
-            "$suite : total=$($counts.total), executed=$($counts.executed), passed=$($counts.passed), failed=$($counts.failed), skipped=$skipped" >> $env:GITHUB_STEP_SUMMARY
-          }
-      - name: Upload test results
+      - uses: actions/checkout@v7
+        with:
+          ref: 1c223f14f6b66cf0928eeb8686f34208b5ea4d51
+          path: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 1e60d1135ae50d3a37525c7cdc3433b81123b4f3
+          path: approval
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Cache NuGet packages
+        continue-on-error: true
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Validate curator, build both pins and prepare existing CI runtime
+        run: ./pipeline/scripts/Invoke-VoicePair.ps1 -Mode Prepare -ExpectedPipelineSha $env:EXPECTED_PIPELINE_SHA
+      - name: Execute main once, then approval once only after qualified cleanup
+        timeout-minutes: 32
+        run: ./pipeline/scripts/Invoke-VoicePair.ps1 -Mode Run -ExpectedPipelineSha $env:EXPECTED_PIPELINE_SHA
+      - name: Remove privately retained data only after owned lifetime completion
+        if: always()
+        run: ./pipeline/scripts/Invoke-VoicePair.ps1 -Mode Cleanup -ExpectedPipelineSha $env:EXPECTED_PIPELINE_SHA
+      - name: Upload only strict curated operational results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: hardware-tests-${{ matrix.host }}-${{ github.run_attempt }}
-          path: TestResults/Hardware/*.trx
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Remove isolated test settings
-        if: always()
-        run: |
-          $path = Join-Path $env:RUNNER_TEMP "hardware-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+          name: focused-voice-pair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            pipeline/TestResults/FocusedVoice/manifest.json
+            pipeline/TestResults/FocusedVoice/main.invocation.json
+            pipeline/TestResults/FocusedVoice/approval.invocation.json
+            pipeline/TestResults/FocusedVoice/main.json
+            pipeline/TestResults/FocusedVoice/approval.json
+            pipeline/TestResults/FocusedVoice/main.sanitized.trx
+            pipeline/TestResults/FocusedVoice/approval.sanitized.trx
+            pipeline/TestResults/FocusedVoice/summary.json
+            pipeline/TestResults/FocusedVoice/incomplete.json
+          if-no-files-found: error
+          retention-days: 7
