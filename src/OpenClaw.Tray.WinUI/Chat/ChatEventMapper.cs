@@ -562,9 +562,11 @@ internal static class ChatEventMapper
         if (string.IsNullOrEmpty(requestId))
             return new(null);
 
-        var host = StringProperty(evt.Data, "host");
+        var hostStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "host"));
+        var host = hostStatus.Text;
         var commandStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "command"));
-        var title = StringProperty(evt.Data, "title");
+        var titleStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "title"));
+        var title = titleStatus.Text;
         var messageStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "message"));
         var detail = string.IsNullOrEmpty(messageStatus.Text)
             ? commandStatus.Text
@@ -580,13 +582,41 @@ internal static class ChatEventMapper
 
         var canReviewInFull = !string.IsNullOrWhiteSpace(commandStatus.Text)
             && !commandStatus.Truncated && !commandStatus.Oversized && !commandStatus.UnsafeConcealment
-            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment;
+            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment
+            && !hostStatus.Truncated && !hostStatus.Oversized && !hostStatus.UnsafeConcealment
+            && !titleStatus.Truncated && !titleStatus.Oversized && !titleStatus.UnsafeConcealment;
+        IReadOnlyList<string> actions = canReviewInFull ? ChatPermissionActionKeys.ExecApprovalDefaults : [ChatPermissionActionKeys.Deny];
+        // Top-level approvals carry the decisions the shared owner would accept (and whether this
+        // connection may decide at all), so the banner never offers a decision it would refuse.
+        if (evt.Data.TryGetProperty("allowedDecisions", out var offeredValue) && offeredValue.ValueKind == JsonValueKind.Array)
+        {
+            var offered = offeredValue.EnumerateArray()
+                .Where(value => value.ValueKind == JsonValueKind.String)
+                .Select(value => value.GetString())
+                .ToHashSet(StringComparer.Ordinal);
+            actions = actions.Where(offered.Contains).ToArray();
+            if (evt.Data.TryGetProperty("requiresInboxReview", out var review) && review.ValueKind == JsonValueKind.True)
+            {
+                var note = Localized("Inbox_ApprovalUnreviewableCommand", "This approval can't be shown in full, so only Deny is available.", null);
+                detail = string.IsNullOrEmpty(detail) ? note : detail + "\n\n" + note;
+            }
+            var reason = StringProperty(evt.Data, "decisionAccess") == "missing"
+                ? Localized("Chat_Permission_NoApprovalAccess", "You need approval access to approve.", null)
+                : actions.Count == 0
+                    ? Localized("Chat_Permission_NoDecisionAvailable", "This request can't be decided from this app.", null)
+                    : null;
+            if (reason is not null)
+            {
+                actions = [];
+                detail = string.IsNullOrEmpty(detail) ? reason : detail + "\n\n" + reason;
+            }
+        }
         var mapped = new ChatPermissionRequestEvent(
             requestId,
             !string.IsNullOrEmpty(title) ? title : "Exec approval",
             !string.IsNullOrEmpty(host) ? host : "node",
             detail,
-            canReviewInFull ? ChatPermissionActionKeys.ExecApprovalDefaults : [ChatPermissionActionKeys.Deny]);
+            actions);
         var alternateId = !string.IsNullOrEmpty(slug) ? approvalId : slug;
         return new(mapped, new ChatApprovalIdentity(requestId, alternateId));
     }

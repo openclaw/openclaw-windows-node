@@ -196,6 +196,10 @@ public partial class App
         {
             _settingsPersistenceNotification?.Dispose();
             _settingsPersistenceNotification = null;
+            _approvalToasts?.Dispose();
+            _approvalToasts = null;
+            _inboxGatewaySource?.Dispose();
+            _inboxGatewaySource = null;
             if (_appState != null)
                 _appState.PropertyChanged -= OnAppStateChanged;
             PermissionsRuntimeChanged = null;

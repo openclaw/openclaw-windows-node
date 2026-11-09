@@ -42,18 +42,50 @@ public static class ExecApprovalCommandDisplaySanitizer
             result.UnsafeConcealment);
     }
 
-    public static string SanitizeWarningText(string text)
+    public static string SanitizeWarningText(string text) => SanitizeWarningTextWithStatus(text).Text;
+
+    /// <summary>Preserves multiline review text and reports whether any required content was concealed or lost.</summary>
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeWarningTextWithStatus(string text)
     {
-        return SanitizeInternal(
+        var result = SanitizeInternal(
             NormalizeDisplayLineBreaks(text),
             preserveLineBreaks: true,
-            oversizedMarker: WarningOversizedMarker).Text;
+            oversizedMarker: WarningOversizedMarker);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
+    }
+
+    /// <summary>
+    /// Bounded, secret-redacted command review text. CRLF becomes LF; LF and tabs remain
+    /// selectable layout. Lone CR, Unicode separators and other invisible characters stay
+    /// visible escapes, including private-use glyphs. Literal escape sequences are never decoded.
+    /// </summary>
+    public static string SanitizeCommandForReview(string text) => SanitizeCommandForReviewWithStatus(text).Text;
+
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeCommandForReviewWithStatus(string text)
+    {
+        var normalized = text.Length > MaxInput ? text : text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var result = SanitizeInternal(normalized,
+            preserveLineBreaks: true, commandReviewLayout: true);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
+    }
+
+    /// <summary>Full review text for one list entry, with every invisible character escaped, including line/tab controls.</summary>
+    public static string SanitizeSingleLineForReview(string text) => SanitizeSingleLineForReviewWithStatus(text).Text;
+
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeSingleLineForReviewWithStatus(string text)
+    {
+        var result = SanitizeInternal(text, commandReviewLayout: true);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
     private static SanitizedDisplayText SanitizeInternal(
         string text,
         bool preserveLineBreaks = false,
-        string? oversizedMarker = null)
+        string? oversizedMarker = null,
+        bool commandReviewLayout = false)
     {
         if (text.Length > MaxInput)
         {
@@ -92,7 +124,7 @@ public static class ExecApprovalCommandDisplaySanitizer
 
         if (strippedRedacted == strippedView.Text)
             return TruncateForDisplay(
-                EscapeInvisibles(rawRedacted, preserveLineBreaks),
+                EscapeInvisibles(rawRedacted, preserveLineBreaks, commandReviewLayout),
                 redacted,
                 unsafeConcealment);
 
@@ -108,7 +140,7 @@ public static class ExecApprovalCommandDisplaySanitizer
 
         if (!bypassDetected)
             return TruncateForDisplay(
-                EscapeInvisibles(rawRedacted, preserveLineBreaks),
+                EscapeInvisibles(rawRedacted, preserveLineBreaks, commandReviewLayout),
                 redacted,
                 unsafeConcealment);
 
@@ -120,7 +152,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         }
 
         return TruncateForDisplay(
-            RenderUnionMask(text, unionMask, preserveLineBreaks),
+            RenderUnionMask(text, unionMask, preserveLineBreaks, commandReviewLayout),
             redacted: true,
             unsafeConcealment);
     }
@@ -137,7 +169,7 @@ public static class ExecApprovalCommandDisplaySanitizer
             .Replace("\u2029", "\n", StringComparison.Ordinal);
     }
 
-    private static string EscapeInvisibles(string text, bool preserveLineBreaks)
+    private static string EscapeInvisibles(string text, bool preserveLineBreaks, bool commandReviewLayout)
     {
         if (string.IsNullOrEmpty(text))
             return text;
@@ -146,13 +178,13 @@ public static class ExecApprovalCommandDisplaySanitizer
         for (var i = 0; i < text.Length;)
         {
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if (preserveLineBreaks && codePoint == '\n')
+            if (preserveLineBreaks && (codePoint == '\n' || (commandReviewLayout && codePoint == '\t')))
             {
-                sanitized.Append('\n');
+                sanitized.Append((char)codePoint);
             }
-            else if (IsInvisible(codePoint))
+            else if (IsInvisible(codePoint, commandReviewLayout))
             {
-                AppendCodePointEscape(sanitized, codePoint);
+                AppendCodePointEscape(sanitized, codePoint, commandReviewLayout);
             }
             else
             {
@@ -173,7 +205,9 @@ public static class ExecApprovalCommandDisplaySanitizer
         for (var i = 0; i < original.Length;)
         {
             var codePoint = ReadCodePoint(original, i, out var codeUnitLength);
-            if (!IsInvisible(codePoint))
+            // Private-use glyphs can also split a credential key. Strip them for detection
+            // in every mode, without changing legacy inline/warning glyph presentation.
+            if (!IsInvisible(codePoint, commandReviewLayout: true))
             {
                 stripped.Append(original, i, codeUnitLength);
                 for (var k = 0; k < codeUnitLength; k++)
@@ -186,7 +220,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         return new StrippedView(stripped.ToString(), strippedToOriginal.ToArray());
     }
 
-    private static string RenderUnionMask(string text, bool[] unionMask, bool preserveLineBreaks)
+    private static string RenderUnionMask(string text, bool[] unionMask, bool preserveLineBreaks, bool commandReviewLayout)
     {
         var rendered = new StringBuilder(text.Length);
         for (var i = 0; i < text.Length;)
@@ -203,13 +237,13 @@ public static class ExecApprovalCommandDisplaySanitizer
             }
 
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if (preserveLineBreaks && codePoint == '\n')
+            if (preserveLineBreaks && (codePoint == '\n' || (commandReviewLayout && codePoint == '\t')))
             {
-                rendered.Append('\n');
+                rendered.Append((char)codePoint);
             }
-            else if (IsInvisible(codePoint))
+            else if (IsInvisible(codePoint, commandReviewLayout))
             {
-                AppendCodePointEscape(rendered, codePoint);
+                AppendCodePointEscape(rendered, codePoint, commandReviewLayout);
             }
             else
             {
@@ -263,9 +297,11 @@ public static class ExecApprovalCommandDisplaySanitizer
         return input[..end];
     }
 
-    private static bool IsInvisible(int codePoint)
+    private static bool IsInvisible(int codePoint, bool commandReviewLayout)
     {
         var category = GetUnicodeCategory(codePoint);
+        if (commandReviewLayout && category == UnicodeCategory.PrivateUse)
+            return true;
         if (category is UnicodeCategory.Control
             or UnicodeCategory.Format
             or UnicodeCategory.Surrogate
@@ -304,9 +340,9 @@ public static class ExecApprovalCommandDisplaySanitizer
         return current;
     }
 
-    private static void AppendCodePointEscape(StringBuilder builder, int codePoint)
+    private static void AppendCodePointEscape(StringBuilder builder, int codePoint, bool commandReviewLayout)
     {
-        builder.Append("\\u{").Append(codePoint.ToString("X")).Append('}');
+        builder.Append("\\u{").Append(codePoint.ToString(commandReviewLayout ? "X4" : "X", CultureInfo.InvariantCulture)).Append('}');
     }
 
     private sealed record SanitizedDisplayText(

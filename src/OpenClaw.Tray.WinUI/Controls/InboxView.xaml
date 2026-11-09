@@ -115,25 +115,101 @@
                                 </Grid>
                             </Expander.Header>
                             <StackPanel Spacing="8">
-                                <TextBlock Text="{Binding Details}" TextWrapping="WrapWholeWords"
-                                           IsTextSelectionEnabled="True"/>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding ExpiryText}" Visibility="{Binding ExpiryVisibility}"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                                <TextBlock Text="{Binding ScopeText}" Visibility="{Binding ScopeVisibility}"
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="{Binding WarningText}" Visibility="{Binding WarningVisibility}"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="{Binding Details}" Visibility="{Binding DetailsVisibility}"
+                                           TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                <Border Visibility="{Binding CommandVisibility}"
+                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" CornerRadius="4">
+                                    <!-- The complete command stays reviewable: no trimming or line cap, it scrolls instead. -->
+                                    <ScrollViewer MaxHeight="200"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  Padding="8,6">
+                                        <TextBlock Text="{Binding CommandText}" FontFamily="Consolas"
+                                                   TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                    </ScrollViewer>
+                                </Border>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
                                     <TextBlock Text="{Binding Metadata}"
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                                VerticalAlignment="Center"/>
-                                    <Border Visibility="{Binding OccurrenceVisibility}"
+                                    <Border Grid.Column="1" Visibility="{Binding OccurrenceVisibility}"
                                             Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
                                             CornerRadius="10" Padding="7,1" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding OccurrenceText}"
                                                    Style="{StaticResource CaptionTextBlockStyle}"/>
                                     </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding DecisionNoteText}" Visibility="{Binding DecisionNoteVisibility}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                                <TextBlock Text="{Binding PermissionText}" Visibility="{Binding PermissionVisibility}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="WrapWholeWords"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8"
+                                            AutomationProperties.Name="{Binding DecisionGroupName}">
+                                    <Button Content="{Binding AllowOnceLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding AllowOnceVisibility}"
+                                            IsEnabled="{Binding DecisionsEnabled}"
+                                            AutomationProperties.Name="{Binding AllowOnceAutomationName}"
+                                            AutomationProperties.AutomationId="InboxApprovalAllowOnce"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="OnAllowOnceClick"/>
+                                    <Button Content="{Binding AllowAlwaysLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding AllowAlwaysVisibility}"
+                                            IsEnabled="{Binding DecisionsEnabled}"
+                                            AutomationProperties.Name="{Binding AllowAlwaysAutomationName}"
+                                            AutomationProperties.AutomationId="InboxApprovalAllowAlways"
+                                            Click="OnAllowAlwaysClick"/>
+                                    <Button Content="{Binding DenyLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding DenyVisibility}"
+                                            IsEnabled="{Binding DecisionsEnabled}"
+                                            AutomationProperties.Name="{Binding DenyAutomationName}"
+                                            AutomationProperties.AutomationId="InboxApprovalDeny"
+                                            Click="OnDenyClick"/>
                                 </StackPanel>
-                                <Button Content="{Binding ActionLabel}"
-                                        Tag="{Binding}"
-                                        Visibility="{Binding ActionVisibility}"
-                                        Style="{StaticResource AccentButtonStyle}"
-                                        Click="OnActionClick"/>
+                                <TextBlock Text="{Binding DecisionErrorText}" Visibility="{Binding DecisionErrorVisibility}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                           AutomationProperties.LiveSetting="Assertive"
+                                           TextWrapping="WrapWholeWords"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="{Binding ActionLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding ActionVisibility}"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="OnActionClick"/>
+                                    <Button x:Uid="Inbox_AskOpenClaw"
+                                            Content="Ask OpenClaw"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding AskVisibility}"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Click="OnAskClick"/>
+                                    <Button Content="{Binding SecondaryActionLabel}"
+                                            Tag="{Binding}"
+                                            Visibility="{Binding SecondaryActionVisibility}"
+                                            Click="OnSecondaryActionClick"/>
+                                </StackPanel>
                             </StackPanel>
                         </Expander>
                         <Button Grid.Column="1"
