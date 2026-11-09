@@ -114,17 +114,20 @@ public sealed class ReactorMarkdownTableProofTests
         }
         finally
         {
-            if (host is not null)
+            await _ui.RunOnUIAsync(() =>
             {
-                await _ui.RunOnUIAsync(() =>
+                try
                 {
-                    _ui.Container.Children.Remove(proofSurface);
-                    proofSurface!.Child = null;
-                    host.Content = null;
-                    host.Dispose();
-                    themeScope?.Dispose();
-                });
-            }
+                    if (host is not null)
+                    {
+                        _ui.Container.Children.Remove(proofSurface);
+                        proofSurface!.Child = null;
+                        host.Content = null;
+                        host.Dispose();
+                    }
+                }
+                finally { themeScope?.Dispose(); }
+            });
         }
     }
 

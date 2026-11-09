@@ -115,8 +115,8 @@ internal enum InitialTailLanding
 // the top. Initial positioning stays pending until the settled view is at the tail.
 internal sealed class InitialTailConfirmation
 {
-    // ItemsView retains its bring target as an anchor for four rendering callbacks
-    // after ScrollCompleted. Do not interrupt that native layout stabilization.
+    // Allow native geometry to settle after ScrollCompleted before deciding
+    // whether the direct container bring needs a bounded retry.
     public const int SettledFramesBeforeDecision = 4;
     public const int MaxRetries = 3;
     public const int MaxObservedFrames = 120;

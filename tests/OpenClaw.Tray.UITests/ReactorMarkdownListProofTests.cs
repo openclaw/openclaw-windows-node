@@ -73,14 +73,19 @@ public sealed class ReactorMarkdownListProofTests
         }
         finally
         {
-            if (host is not null)
-                await _ui.RunOnUIAsync(() =>
+            await _ui.RunOnUIAsync(() =>
+            {
+                try
                 {
-                    _ui.Container.Children.Remove(host);
-                    host.Content = null;
-                    host.Dispose();
-                });
-            await _ui.RunOnUIAsync(() => themeScope?.Dispose());
+                    if (host is not null)
+                    {
+                        _ui.Container.Children.Remove(host);
+                        host.Content = null;
+                        host.Dispose();
+                    }
+                }
+                finally { themeScope?.Dispose(); }
+            });
         }
     }
 
@@ -125,14 +130,19 @@ public sealed class ReactorMarkdownListProofTests
         }
         finally
         {
-            if (host is not null)
-                await _ui.RunOnUIAsync(() =>
+            await _ui.RunOnUIAsync(() =>
+            {
+                try
                 {
-                    _ui.Container.Children.Remove(host);
-                    host.Content = null;
-                    host.Dispose();
-                });
-            await _ui.RunOnUIAsync(() => themeScope?.Dispose());
+                    if (host is not null)
+                    {
+                        _ui.Container.Children.Remove(host);
+                        host.Content = null;
+                        host.Dispose();
+                    }
+                }
+                finally { themeScope?.Dispose(); }
+            });
         }
     }
 

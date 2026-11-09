@@ -85,9 +85,12 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
             gateway.Reply.TrySetResult("answered");
             await ui.RunOnUIAsync(() =>
             {
-                ui.Container.Children.Clear();
-                host?.Dispose();
-                scope?.Dispose();
+                try
+                {
+                    ui.Container.Children.Clear();
+                    host?.Dispose();
+                }
+                finally { scope?.Dispose(); }
             });
         }
     }
@@ -174,15 +177,21 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         }
         finally
         {
-            await client.DisconnectAsync();
-            await ui.RunOnUIAsync(() =>
+            try { await client.DisconnectAsync(); }
+            finally
             {
-                session?.Dispose();
-                if (surface is not null) surface.Child = null;
-                host?.Dispose();
-                window?.Close();
-                scope?.Dispose();
-            });
+                await ui.RunOnUIAsync(() =>
+                {
+                    try
+                    {
+                        session?.Dispose();
+                        if (surface is not null) surface.Child = null;
+                        host?.Dispose();
+                        window?.Close();
+                    }
+                    finally { scope?.Dispose(); }
+                });
+            }
         }
     }
 
@@ -311,10 +320,13 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         {
             await ui.RunOnUIAsync(() =>
             {
-                if (surface is not null) surface.Child = null;
-                host?.Dispose();
-                window?.Close();
-                scope?.Dispose();
+                try
+                {
+                    if (surface is not null) surface.Child = null;
+                    host?.Dispose();
+                    window?.Close();
+                }
+                finally { scope?.Dispose(); }
             });
         }
     }
@@ -390,9 +402,12 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         {
             await ui.RunOnUIAsync(() =>
             {
-                if (surface is not null) surface.Child = null;
-                window?.Close();
-                scope?.Dispose();
+                try
+                {
+                    if (surface is not null) surface.Child = null;
+                    window?.Close();
+                }
+                finally { scope?.Dispose(); }
             });
         }
     }
@@ -545,10 +560,13 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         {
             await ui.RunOnUIAsync(() =>
             {
-                if (surface is not null) surface.Child = null;
-                host?.Dispose();
-                window?.Close();
-                scope?.Dispose();
+                try
+                {
+                    if (surface is not null) surface.Child = null;
+                    host?.Dispose();
+                    window?.Close();
+                }
+                finally { scope?.Dispose(); }
             });
         }
     }
