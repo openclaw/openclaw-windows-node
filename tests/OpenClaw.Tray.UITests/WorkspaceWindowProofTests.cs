@@ -230,6 +230,45 @@ public sealed class WorkspaceWindowProofTests
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
         var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var ownedWindow = app.HubWindowHandle;
+        var ownedProcessId = root.Current.ProcessId;
+
+        async Task<AutomationElement> WaitForSettingsForwardAsync(string pageMarkerId, bool expectedEnabled)
+        {
+            AutomationElement? readyForward = null;
+            // A page marker does not establish sibling history-button readiness. Keep one
+            // joint observation under the original owned root, within the existing wait budget.
+            await WaitUntilAsync(() =>
+            {
+                try
+                {
+                    var rootInfo = root.Current;
+                    if (app.HubWindowHandle != ownedWindow || rootInfo.ProcessId != ownedProcessId ||
+                        new IntPtr(rootInfo.NativeWindowHandle) != ownedWindow)
+                        return false;
+                    var page = FindOrNull(root, pageMarkerId);
+                    var button = FindOrNull(root, "SettingsForward");
+                    if (page is null || button is null) return false;
+                    var pageInfo = page.Current;
+                    var buttonInfo = button.Current;
+                    if (pageInfo.ProcessId != ownedProcessId || pageInfo.IsOffscreen ||
+                        !HasVisibleBounds(pageInfo.BoundingRectangle) ||
+                        buttonInfo.ProcessId != ownedProcessId || buttonInfo.ControlType != ControlType.Button ||
+                        buttonInfo.IsOffscreen || !HasVisibleBounds(buttonInfo.BoundingRectangle) ||
+                        buttonInfo.IsEnabled != expectedEnabled)
+                        return false;
+                    readyForward = button;
+                    return true;
+                }
+                catch (ElementNotAvailableException) { return false; }
+            }, () => $"Owned {pageMarkerId} and SettingsForward (enabled={expectedEnabled}) did not become ready.");
+            return readyForward!;
+        }
+
+        static bool HasVisibleBounds(System.Windows.Rect bounds) =>
+            !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+            double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) && bounds.Width > 0 && bounds.Height > 0;
+
         Assert.Null(root.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavigation")));
         var title = Find(root, "WorkspaceTitleBar").Current.BoundingRectangle;
@@ -249,11 +288,11 @@ public sealed class WorkspaceWindowProofTests
         await VerifySettingsFooterAsync(root, compact: false);
         await app.NavigateAsync("permissions", "PermissionsPage", "PermissionsPageMarker");
         Invoke(Find(root, "SettingsBack"));
-        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
-        Assert.True(Find(root, "SettingsForward").Current.IsEnabled);
-        Invoke(Find(root, "SettingsForward"));
-        await WaitUntilAsync(() => IsVisible(root, "PermissionsPageMarker"));
-        Assert.False(Find(root, "SettingsForward").Current.IsEnabled);
+        var forwardAfterBack = await WaitForSettingsForwardAsync("SettingsPageMarker", expectedEnabled: true);
+        Assert.True(forwardAfterBack.Current.IsEnabled);
+        Invoke(forwardAfterBack);
+        var forwardAfterForward = await WaitForSettingsForwardAsync("PermissionsPageMarker", expectedEnabled: false);
+        Assert.False(forwardAfterForward.Current.IsEnabled);
 
         AutomationElement? SearchBox() => ProcessWindows(root.Current.ProcessId).Cast<AutomationElement>()
             .Select(window => window.FindFirst(TreeScope.Descendants,
@@ -267,9 +306,9 @@ public sealed class WorkspaceWindowProofTests
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
-        await WaitUntilAsync(() => IsVisible(root, "SettingsPageMarker"));
+        var forwardAfterSearch = await WaitForSettingsForwardAsync("SettingsPageMarker", expectedEnabled: false);
         await WaitUntilAsync(() => SearchBox() is null);
-        Assert.False(Find(root, "SettingsForward").Current.IsEnabled);
+        Assert.False(forwardAfterSearch.Current.IsEnabled);
         Invoke(Find(root, "SettingsTogglePane"));
         await WaitUntilAsync(() => !IsVisible(root, "SettingsSearch"));
         await VerifySettingsFooterAsync(root, compact: true);
@@ -378,6 +417,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         var workspace = AutomationElement.FromHandle(app.HubWindowHandle);
         var workspaceHandle = app.HubWindowHandle;
+        var workspaceProcessId = workspace.Current.ProcessId;
         var composer = Find(workspace, "ChatComposerInput");
         var identity = composer.GetRuntimeId();
         const string draft = "Keep this draft when going back to the app from Settings";
@@ -411,39 +451,105 @@ public sealed class WorkspaceWindowProofTests
         Capture(app, "System", $"settings-back-to-app-{activation}");
 
         // Back to app returns to the app page Settings was opened from, not always to chat.
-        // Seed via the real notification producer; a capable host has no containment warning.
-        const string notificationTitle = "Settings return focus fixture";
+        // Seed an error through the shipped MCP producer: informational notifications intentionally stay out of Inbox.
+        const string notificationTitle = "Settings return focus error fixture";
         await app.SendNotificationAsync(notificationTitle, "Keep this reminder while visiting Settings.");
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
-        await WaitUntilAsync(() => Find(workspace, "ClearButton").Current.IsEnabled &&
-            workspace.FindFirst(TreeScope.Descendants,
+        AutomationElement? readyInboxPage = null;
+        AutomationElement? readyInboxHeading = null;
+        AutomationElement[] readyInboxControls = [];
+        await WaitUntilAsync(() => InboxPageReady() && IsVisible(readyInboxPage!, "WorkspaceNotificationsClear") &&
+            Find(readyInboxPage!, "WorkspaceNotificationsClear").Current.IsEnabled &&
+            IsVisible(readyInboxPage!, "WorkspaceNotificationsList") &&
+            readyInboxPage!.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.NameProperty, "Dismiss " + notificationTitle)) is not null);
-        Assert.True(Find(workspace, "ClearButton").Current.IsEnabled, "The fixture must first prove populated Notifications.");
+        var inboxPage = readyInboxPage!;
+        Assert.True(Find(inboxPage, "WorkspaceNotificationsClear").Current.IsEnabled,
+            "The real producer must first populate the shared Inbox.");
+        AssertNamedInboxPage();
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         settings = AutomationElement.FromHandle(app.HubWindowHandle);
         ActivateBackToApp();
-        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        await WaitUntilAsync(InboxPageReady);
         Assert.False(IsVisible(workspace, "ConnectionPageMarker"));
-        // WorkspaceNavigation includes the page, and its layout Grid has no automation peer.
-        // Require focus on a Notifications control in this exact window, not outside sidebar IDs.
+        // Require a visible, enabled Inbox control in this exact named page, including the
+        // empty case whose Settings/tabs remain usable. A hidden Settings button is not a destination.
+        AssertNamedInboxPage();
         await WaitUntilAsync(
             () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
             () => $"Notifications did not receive focus. Expected workspace foreground: {GetForegroundWindow() == workspaceHandle}. " +
                 $"Target controls: {DescribeNotificationFocus(workspace)}");
         Capture(app, "System", $"settings-back-to-notifications-populated-{activation}");
 
-        Invoke(Find(workspace, "ClearButton"));
-        await WaitUntilAsync(() => !Find(workspace, "ClearButton").Current.IsEnabled &&
-            !IsVisible(workspace, "NotificationsList"));
+        inboxPage = readyInboxPage!;
+        Invoke(Find(inboxPage, "WorkspaceNotificationsClear"));
+        await WaitUntilAsync(() => InboxPageReady() && !IsVisible(readyInboxPage!, "WorkspaceNotificationsClear") &&
+            !IsVisible(readyInboxPage!, "WorkspaceNotificationsList") && IsVisible(readyInboxPage!, "WorkspaceNotificationsEmpty"));
+        AssertNamedInboxPage();
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         settings = AutomationElement.FromHandle(app.HubWindowHandle);
         ActivateBackToApp();
-        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        await WaitUntilAsync(InboxPageReady);
+        AssertNamedInboxPage();
+        Assert.True(IsVisible(readyInboxPage!, "WorkspaceNotificationsEmpty"));
         Capture(app, "System", $"settings-back-to-notifications-empty-{activation}");
         await WaitUntilAsync(
             () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
             () => $"Empty Notifications did not receive focus. Expected workspace foreground: {GetForegroundWindow() == workspaceHandle}. " +
                 $"Target controls: {DescribeNotificationFocus(workspace)}");
+
+        void AssertNamedInboxPage()
+        {
+            var page = readyInboxPage!;
+            Assert.Equal(ControlType.Pane, page.Current.ControlType);
+            Assert.False(string.IsNullOrWhiteSpace(page.Current.Name));
+            Assert.Equal(readyInboxHeading!.Current.Name, page.Current.Name);
+            Assert.Equal(2, readyInboxControls.Length);
+            foreach (var control in readyInboxControls)
+                Assert.True(UsableInboxControl(control, page.Current.BoundingRectangle),
+                    "Inbox must retain enabled native focus destinations even without rows.");
+        }
+
+        bool InboxPageReady()
+        {
+            readyInboxPage = null;
+            readyInboxHeading = null;
+            readyInboxControls = [];
+            try
+            {
+                var owner = workspace.Current;
+                if (app.HubWindowHandle != workspaceHandle || new IntPtr(owner.NativeWindowHandle) != workspaceHandle ||
+                    !UsableInboxControl(workspace, owner.BoundingRectangle)) return false;
+                // Returning from Settings rebuilds the page. Resolve a fresh page in
+                // the retained owner, then keep all peers from the same successful poll.
+                var page = FindOrNull(workspace, "NotificationsPage");
+                if (!UsableInboxControl(page, owner.BoundingRectangle)) return false;
+                var bounds = page!.Current.BoundingRectangle;
+                var heading = FindOrNull(page, "NotificationsPageMarker");
+                var settingsControl = FindOrNull(page, "WorkspaceNotificationsSettings");
+                var tabs = FindOrNull(page, "WorkspaceNotificationsTabs");
+                if (!UsableInboxControl(heading, bounds) || !UsableInboxControl(settingsControl, bounds) ||
+                    !UsableInboxControl(tabs, bounds)) return false;
+                readyInboxPage = page;
+                readyInboxHeading = heading;
+                readyInboxControls = [settingsControl!, tabs!];
+                return true;
+            }
+            catch (ElementNotAvailableException) { return false; }
+        }
+
+        bool UsableInboxControl(AutomationElement? element, System.Windows.Rect viewport)
+        {
+            if (element is null) return false;
+            var info = element.Current;
+            var bounds = info.BoundingRectangle;
+            return info.ProcessId == workspaceProcessId && !info.IsOffscreen && info.IsEnabled &&
+                HasInboxBounds(viewport) && HasInboxBounds(bounds) && viewport.Contains(bounds);
+        }
+
+        static bool HasInboxBounds(System.Windows.Rect bounds) =>
+            !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+            double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) && bounds.Width > 0 && bounds.Height > 0;
 
         void ActivateBackToApp()
         {
@@ -953,22 +1059,23 @@ public sealed class WorkspaceWindowProofTests
     {
         try
         {
-            if (AutomationElement.FocusedElement is not { } focused || focused.Current.IsOffscreen)
+            var page = FindOrNull(workspace, "NotificationsPage");
+            if (page is null || page.Current.IsOffscreen ||
+                AutomationElement.FocusedElement is not { } focused || focused.Current.IsOffscreen ||
+                !focused.Current.IsEnabled || focused.Current.BoundingRectangle.Width <= 0 ||
+                focused.Current.BoundingRectangle.Height <= 0)
                 return false;
-            // These are the page's focusable controls. Resolve the current peers after each rebuild;
-            // exact element identity also rejects another window with the same automation IDs.
-            var clear = FindOrNull(workspace, "ClearButton");
-            var list = FindOrNull(workspace, "NotificationsList");
-            if (clear is { Current.IsEnabled: false } &&
-                (list is null || list.Current.IsOffscreen) &&
-                FindOrNull(workspace, "NotificationsPage") is { } emptyPage &&
-                Automation.Compare(focused, emptyPage))
-                return true;
+            // Resolve peers inside the current page, not a footer flyout or another window
+            // with the same IDs. Empty Inbox still has enabled Settings and category controls.
+            var targets = new[] { "WorkspaceNotificationsClear", "WorkspaceNotificationsSettings",
+                "WorkspaceNotificationsTabs", "WorkspaceNotificationsList" }
+                .Select(id => FindOrNull(page, id)).OfType<AutomationElement>()
+                .Where(element => !element.Current.IsOffscreen && element.Current.IsEnabled)
+                .ToArray();
             for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
             {
-                if ((clear is not null && Automation.Compare(current, clear)) ||
-                    (list is not null && Automation.Compare(current, list)))
-                    return true;
+                if (Automation.Compare(current, page)) return false;
+                if (targets.Any(target => Automation.Compare(current, target))) return true;
             }
             return false;
         }
@@ -979,7 +1086,8 @@ public sealed class WorkspaceWindowProofTests
     {
         // Only report known fixture controls and boolean state. UI names, data-derived IDs and
         // the focused element in another application must never enter failure logs.
-        return string.Join("; ", new[] { "NotificationsPage", "ClearButton", "NotificationsList", "SettingsBackToApp" }.Select(id =>
+        return string.Join("; ", new[] { "NotificationsPage", "WorkspaceNotificationsClear", "WorkspaceNotificationsList",
+            "WorkspaceNotificationsSettings", "WorkspaceNotificationsTabs", "WorkspaceNotificationsEmpty", "SettingsBackToApp" }.Select(id =>
         {
             try
             {

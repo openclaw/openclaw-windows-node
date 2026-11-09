@@ -295,6 +295,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchCatalog.cs" Link="Presentation\HubSearchCatalog.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchController.cs" Link="Presentation\HubSearchController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PageResponsiveLayout.cs" Link="Presentation\PageResponsiveLayout.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSettingsLayout.cs" Link="Presentation\WorkspaceSettingsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />
@@ -314,6 +316,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ModelProviderGatewayService.cs" Link="Services\ModelProviderGatewayService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\InboxProjection.cs" Link="Presentation\InboxProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>

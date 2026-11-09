@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Win32.SafeHandles;
 
 namespace OpenClaw.Shared.Capabilities;
 
@@ -13,6 +11,7 @@ namespace OpenClaw.Shared.Capabilities;
 /// </summary>
 public class CanvasCapability : NodeCapabilityBase
 {
+    private readonly Func<string, long, CancellationToken, Task<byte[]?>>? _readFile;
     public override string Category => "canvas";
     
     private static readonly string[] _commands = new[]
@@ -91,8 +90,10 @@ public class CanvasCapability : NodeCapabilityBase
         if (ReferenceEquals(slot, value)) slot = null;
     }
     
-    public CanvasCapability(IOpenClawLogger logger) : base(logger)
+    public CanvasCapability(IOpenClawLogger logger,
+        Func<string, long, CancellationToken, Task<byte[]?>>? readFile = null) : base(logger)
     {
+        _readFile = readFile;
     }
 
     private static int Clamp(int value, int min, int max)
@@ -104,7 +105,10 @@ public class CanvasCapability : NodeCapabilityBase
         return value < MinPosition ? MinPosition : (value > MaxPosition ? MaxPosition : value);
     }
     
-    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+    public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+        ExecuteAsync(request, CancellationToken.None);
+
+    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
     {
         return request.Command switch
         {
@@ -113,8 +117,8 @@ public class CanvasCapability : NodeCapabilityBase
             "canvas.navigate" => await HandleNavigateAsync(request),
             "canvas.eval" => await HandleEvalAsync(request),
             "canvas.snapshot" => await HandleSnapshotAsync(request),
-            "canvas.a2ui.push" => HandleA2UIPush(request),
-            "canvas.a2ui.pushJSONL" => HandleA2UIPush(request),
+            "canvas.a2ui.push" => await HandleA2UIPushAsync(request, cancellationToken),
+            "canvas.a2ui.pushJSONL" => await HandleA2UIPushAsync(request, cancellationToken),
             "canvas.a2ui.reset" => HandleA2UIReset(request),
             "canvas.a2ui.dump" => await HandleA2UIDumpAsync(),
             "canvas.caps" => await HandleCapsAsync(),
@@ -293,7 +297,7 @@ public class CanvasCapability : NodeCapabilityBase
         }
     }
     
-    private NodeInvokeResponse HandleA2UIPush(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleA2UIPushAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
     {
         var jsonl = GetStringArg(request.Args, "jsonl");
         var jsonlPath = GetStringArg(request.Args, "jsonlPath");
@@ -303,9 +307,11 @@ public class CanvasCapability : NodeCapabilityBase
         {
             try
             {
-                jsonl = ReadValidatedJsonlPath(jsonlPath, request.Command);
+                jsonl = await ReadValidatedJsonlPathAsync(jsonlPath, cancellationToken);
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or
+                ArgumentException or FileTransfer.FileCommandException or Mxc.NodeSandboxExecutionException)
             {
                 Logger.Error($"{request.Command}: failed to read jsonlPath", ex);
                 return Error("Failed to read jsonlPath");
@@ -368,7 +374,7 @@ public class CanvasCapability : NodeCapabilityBase
         return count;
     }
 
-    private string ReadValidatedJsonlPath(string jsonlPath, string command)
+    private async Task<string> ReadValidatedJsonlPathAsync(string jsonlPath, CancellationToken cancellationToken)
     {
         string fullPath;
         string tempRoot;
@@ -384,61 +390,21 @@ public class CanvasCapability : NodeCapabilityBase
 
         if (!IsPathWithinRoot(fullPath, tempRoot))
         {
-            Logger.Warn($"{command}: jsonlPath outside temp directory: {fullPath}");
             throw new InvalidOperationException("jsonlPath must be within the system temp directory");
         }
-
-        var fi = new FileInfo(fullPath);
-        if (fi.Exists && fi.Attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            FileSystemInfo? resolved;
-            try
-            {
-                resolved = fi.ResolveLinkTarget(returnFinalTarget: true);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"{command}: jsonlPath reparse point could not be resolved: {ex.Message}");
-                throw new InvalidOperationException("jsonlPath contains an unresolvable reparse point", ex);
-            }
-
-            if (resolved == null)
-            {
-                Logger.Warn($"{command}: jsonlPath reparse point could not be resolved");
-                throw new InvalidOperationException("jsonlPath contains an unresolvable reparse point");
-            }
-
-            if (!IsPathWithinRoot(resolved.FullName, tempRoot))
-            {
-                Logger.Warn($"{command}: jsonlPath reparse point resolves outside temp directory: {resolved.FullName}");
-                throw new InvalidOperationException("jsonlPath reparse point must resolve within the system temp directory");
-            }
-        }
-
-        using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        // GetFinalPathFromHandle is a Windows-only guard (returns "" on non-Windows); skip the
-        // containment check when no resolved path is available — prior symlink resolution covers that case.
-        var finalPath = GetFinalPathFromHandle(stream.SafeFileHandle);
-        if (!string.IsNullOrEmpty(finalPath) && !IsPathWithinRoot(finalPath, tempRoot))
-        {
-            Logger.Warn($"{command}: jsonlPath file handle resolves outside temp directory: {finalPath}");
-            throw new InvalidOperationException("jsonlPath must resolve within the system temp directory");
-        }
-
-        if (stream.Length > MaxA2UIJsonlBytes)
-        {
-            Logger.Warn($"{command}: jsonlPath file too large ({stream.Length} > {MaxA2UIJsonlBytes})");
-            throw new InvalidOperationException($"jsonlPath exceeds maximum size of {MaxA2UIJsonlBytes} bytes");
-        }
-
+        if (_readFile is null) throw new InvalidOperationException("The shared Sandbox file reader is unavailable.");
+        var bytes = await _readFile(fullPath, MaxA2UIJsonlBytes, cancellationToken).ConfigureAwait(false)
+            ?? throw new IOException("The JSONL file does not exist.");
+        if (bytes.LongLength > MaxA2UIJsonlBytes) throw new IOException("The JSONL file exceeds its byte limit.");
+        using var stream = new MemoryStream(bytes, writable: false);
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();
     }
 
     private static bool IsPathWithinRoot(string path, string root)
     {
-        var normalizedPath = Path.GetFullPath(NormalizeFinalPath(path));
-        var normalizedRoot = EnsureTrailingSeparator(Path.GetFullPath(NormalizeFinalPath(root)));
+        var normalizedPath = Path.GetFullPath(path);
+        var normalizedRoot = EnsureTrailingSeparator(Path.GetFullPath(root));
         return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -449,42 +415,6 @@ public class CanvasCapability : NodeCapabilityBase
         return path + Path.DirectorySeparatorChar;
     }
 
-    private static string GetFinalPathFromHandle(SafeFileHandle handle)
-    {
-        if (!OperatingSystem.IsWindows())
-            return string.Empty;
-
-        var capacity = 512;
-        while (capacity <= 32768)
-        {
-            var sb = new StringBuilder(capacity);
-            var length = GetFinalPathNameByHandle(handle, sb, (uint)sb.Capacity, 0);
-            if (length == 0)
-                throw new IOException($"GetFinalPathNameByHandle failed with Win32 error {Marshal.GetLastWin32Error()}");
-            if (length < sb.Capacity)
-                return NormalizeFinalPath(sb.ToString());
-            capacity = (int)length + 1;
-        }
-        throw new IOException("GetFinalPathNameByHandle returned an unexpectedly long path");
-    }
-
-    private static string NormalizeFinalPath(string path)
-    {
-        const string extendedPrefix = @"\\?\";
-        const string extendedUncPrefix = @"\\?\UNC\";
-        if (path.StartsWith(extendedUncPrefix, StringComparison.OrdinalIgnoreCase))
-            return @"\\" + path.Substring(extendedUncPrefix.Length);
-        if (path.StartsWith(extendedPrefix, StringComparison.OrdinalIgnoreCase))
-            return path.Substring(extendedPrefix.Length);
-        return path;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern uint GetFinalPathNameByHandle(
-        SafeFileHandle hFile,
-        StringBuilder lpszFilePath,
-        uint cchFilePath,
-        uint dwFlags);
     
     private NodeInvokeResponse HandleA2UIReset(NodeInvokeRequest request)
     {

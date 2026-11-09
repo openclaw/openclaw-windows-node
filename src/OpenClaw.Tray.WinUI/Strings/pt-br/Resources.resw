@@ -3251,24 +3251,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>Falha ao executar {0}: {1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Notificações</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Revise e limpe as notificações ativas do OpenClaw.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Limpar</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>Nenhuma notificação</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>Novas notificações do aplicativo aparecerão aqui até que você as dispense ou limpe.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>Dispensar {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Aprovação de execução</value>
   </data>
@@ -4539,7 +4521,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) são contidos pelas configurações abaixo.</value>
+    <value>) e as ações de arquivo usam as configurações do Sandbox abaixo.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Comandos que o agente executa diretamente no Gateway não são. Se o Gateway estiver no WSL neste PC, eles podem acessar seus arquivos do Windows, área de transferência e rede: use as aprovações de execução do Gateway.</value>
@@ -5735,10 +5717,10 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Revisar notificações ativas do aplicativo</value>
+    <value>Revisar solicitações e alertas que precisam de você</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Ir para Notificações</value>
+    <value>Ir para a caixa de entrada</value>
   </data>
 <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6437,18 +6419,6 @@ Certifique-se de que o Gateway está em execução.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7656,8 +7626,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notificações</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Caixa de entrada</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Caixa de entrada</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Abrir painel</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Abrir painel (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Avançar</value></data>
@@ -7908,6 +7878,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>A limpeza de uploads está bloqueada</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Revise o acesso às pastas e as permissões dos dados privados. Uploads antigos podem permanecer até que a limpeza seja restabelecida. Não repita automaticamente uploads concluídos.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remover item</value>
   </data>
@@ -7926,6 +7898,28 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Caixa de entrada</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Dispensar exibidos</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Configurações de notificação</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Configurações de notificação</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Categorias da caixa de entrada</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>Tudo</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Aprovações</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Menções</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automações</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>Sistema</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Nada pendente</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Nada pendente</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Novas solicitações e alertas aparecem aqui.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Abrir caixa de entrada</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>Pendentes: {0}</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Dispensar {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>agora</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} h</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} d</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>Voltar ao app</value>
   </data>

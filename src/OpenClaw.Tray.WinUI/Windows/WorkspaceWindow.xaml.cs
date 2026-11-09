@@ -407,7 +407,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         else
         {
             var notifications = new NotificationsPage();
-            notifications.Initialize(_notifications);
+            notifications.Initialize(_notifications, InboxCommands(openPage: null));
             ContentHost.Children.Add(notifications);
         }
 
@@ -435,6 +435,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _preparedSettings = null;
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
+        view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.ExitRequested = ExitSettings;
         view.PruneRequested = PruneSettingsHistory;
@@ -494,6 +495,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
+        _settings?.SetHostContentTopInset(0);
         SettingsSection.Margin = new Thickness(0);
         EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
@@ -1130,7 +1132,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// <summary>Wires one footer to the window-owned state and commands, then applies current state.</summary>
     private void ConfigureFooter(WorkspacePaneFooter footer)
     {
-        footer.BindNotifications(_notifications, () => Navigate(new(WorkspacePageId.Notifications)));
+        footer.BindNotifications(_notifications, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
         footer.DashboardRequested += (_, _) => OpenDashboard();
         if (footer.Layout != WorkspacePaneFooterLayout.TitleBar)
             footer.SetOwnerMenu(BuildOwnerMenu(footer));
@@ -1243,11 +1245,20 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var count = _notifications.Snapshot.ActiveNotifications.Count;
-        var helpText = LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", count);
+        var badge = InboxProjection.Build(_notifications.Snapshot.ActiveNotifications).Badge;
+        var helpText = badge.IsVisible
+            ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
+            : LocalizationHelper.GetString("Inbox_NothingWaiting");
         foreach (var footer in Footers)
-            footer.ApplyNotificationCount(count, helpText);
+            footer.ApplyInboxBadge(badge, helpText);
     }
+
+    /// <summary>Inbox actions use app-wide navigation admission; settings/page callbacks remain host-owned.</summary>
+    private InboxViewCommands InboxCommands(Action? openPage) => new(
+        ((IAppCommands)CurrentApp).TryNavigateAsync,
+        () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
+        openPage);
+
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
     private void OnTogglePane(object sender, RoutedEventArgs e)
@@ -1291,15 +1302,26 @@ public sealed partial class WorkspaceWindow : WindowEx
         NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
-        SettingsSection.Margin = embedded
-            ? (paneOpen ? new Thickness(NavView.OpenPaneLength, 0, 0, 0) : new Thickness(0, 56, 0, 0))
-            : new Thickness(0);
+        UpdateEmbeddedPageTopAllocation(view);
         EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
         EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
         UpdateTitleBarActions();
+    }
+
+    private void UpdateEmbeddedPageTopAllocation(SettingsShellView view)
+    {
+        var embedded = IsSettingsVisible && Destination.Embedded;
+        var paneOpen = NavView.IsPaneOpen;
+        var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(
+            embedded, paneOpen, view.CurrentPage is ISettingsPageContentInset);
+        view.SetHostContentTopInset(allocation.PageTopInset);
+        SettingsSection.Margin = embedded
+            ? new Thickness(paneOpen ? NavView.OpenPaneLength : 0, allocation.HostMarginTop, 0, 0)
+            : new Thickness(0);
+        EmbeddedOperationInfo.Margin = new Thickness(0, allocation.PageTopInset, 0, 0);
     }
 
     private void UpdateTitleBarActions()

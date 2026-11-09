@@ -896,7 +896,14 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("56", (string?)slot.Attribute("Height"));
         var collapse = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CollapsePaneButton");
         Assert.Same(reopen.Parent, collapse.Parent);
-        Assert.Same(reopen.Parent, navigation.Parent);
+        var chrome = reopen.Parent!;
+        var settings = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SettingsSection");
+        Assert.Same(settings.Parent, chrome.Parent);
+        Assert.Equal("{Binding Visibility, ElementName=NavigationSection}", (string?)chrome.Attribute("Visibility"));
+        Assert.Equal("48", (string?)chrome.Attribute("Width"));
+        Assert.Equal("56", (string?)chrome.Attribute("Height"));
+        Assert.True(settings.ElementsAfterSelf().Contains(chrome),
+            "Pane buttons must stay above full-frame page backdrops.");
         Assert.Equal((string?)collapse.Attribute("Margin"), (string?)reopen.Attribute("Margin"));
         Assert.Equal("2", (string?)content.Attribute("Grid.Row"));
         Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "NavigationView.FooterMenuItems");
@@ -1081,7 +1088,12 @@ public sealed class WorkspaceNavigationTests
         var bellGlyph = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "FontIcon");
         Assert.Equal("\uEA8F", (string?)bellGlyph.Attribute("Glyph"));
         Assert.Null(bellGlyph.Attribute("Foreground"));
-        Assert.Single(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
+        // The Inbox badge keeps both tones as ThemeResource-bound borders: accent, and caution while an approval waits.
+        var badges = bell.Descendants().Where(element => element.Name.LocalName == "Border").ToList();
+        Assert.Equal(["NotificationsBadge", "NotificationsAttentionBadge"], badges.Select(element => (string?)element.Attribute(x + "Name")));
+        Assert.Equal("{ThemeResource AccentFillColorDefaultBrush}", (string?)badges[0].Attribute("Background"));
+        Assert.Equal("{ThemeResource SystemFillColorCautionBrush}", (string?)badges[1].Attribute("Background"));
+        Assert.DoesNotContain(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
         Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName is "ImageIcon" or "SvgImageSource");
         Assert.Equal(new[] { "OwnerAvatarStatusDot", "OwnerStatusDot" },
             owner.Descendants().Where(element => element.Name.LocalName == "FontIcon")

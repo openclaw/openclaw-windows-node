@@ -363,8 +363,35 @@ For the delayed-history test, a passive `ChatComposerInput` UI Automation
 consumed. It contains no messages, is empty outside explicit fixture mode,
 and never changes chat state. The test waits for this render acknowledgement
 before checking that the previously selected session is still visible.
-Each UI test also has an outer deadline so a blocked synchronous UI Automation
-call cannot prevent failure reporting and owned-process cleanup.
+Each UI test retains its 150-second body deadline (or its existing explicit
+case budget). Failure capture, including synchronous entry into UI Automation
+and PrintWindow, runs on a separate bounded worker. The failure owner releases
+pending response gates, cancels late failure-screenshot publication, stops only its
+owned app, and joins body/capture workers before disposing the server/profile.
+It does not start another UIA capture when the original body is still running.
+
+Failure phases are bounded to 10 seconds each. Set
+`OPENCLAW_GATEWAY_FIXTURE_FAILURE_PHASE_SECONDS` to an integer from 1 through 10
+to shorten that limit; other values retain 10 seconds. These teardown budgets
+do not increase the body deadline or the fixture runner's 900-second limit.
+If a native worker cannot unwind after owned app termination, or termination
+cannot be confirmed, the fixture test worker exits nonzero instead of continuing
+with stale UIA or deleting a live worker's profile. It does not use FailFast,
+collect dumps, or kill unrelated processes. Such a worker exit is failed proof,
+not an accepted missing TRX. Catchable capture/cleanup errors retain the original
+assertion. A cached, redacted `failure-lifecycle.json` records the original failure
+and phase outcomes without post-failure UIA reads; the usual full run report and
+failure screenshot remain best-effort bounded diagnostics.
+
+The repeated 12-cycle session-switch proof also saves
+`session-switch-stages.jsonl` as transitions occur: cycle number, timestamp,
+fixed fixture agent IDs (or unavailable/other markers), and row
+presence/offscreen/selection flags. It waits for the selected-agent UIA
+acknowledgement using the existing readiness budget after any needed native activation,
+without reissuing selection or bypassing the sidebar. Repeated identical
+observations are omitted. These cached observations do not establish the cause
+of a missing row; all visible-history, native-selection and screenshot assertions
+remain required.
 
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.

@@ -285,6 +285,7 @@ public class SetupConfigTests : IDisposable
         var enabled = caps.GetEnabledCapabilities();
         var categories = enabled.Select(c => c.Category).ToList();
 
+        Assert.Contains("file", categories);
         Assert.Contains("system", categories);
         Assert.Contains("canvas", categories);
         Assert.Contains("screen", categories);
@@ -299,8 +300,27 @@ public class SetupConfigTests : IDisposable
         var caps = new CapabilitiesConfig();
 
         Assert.Equal(
-            ["system", "canvas", "screen", "camera", "location", "tts", "stt", "device", "browser"],
+            ["file", "system", "canvas", "screen", "camera", "location", "tts", "stt", "device", "browser"],
             caps.GetEnabledCapabilities().Select(c => c.Category).ToArray());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CapabilitiesConfig_AdvertisesFilesIndependentlyOfSystemTools(bool systemToolsEnabled)
+    {
+        var caps = new CapabilitiesConfig { System = systemToolsEnabled };
+        string[] expectedCommands =
+        [
+            "file.stat", "file.fetch", "dir.list", "dir.fetch",
+            "file.write", "file.create", "fs.listDir", "terminal.upload"
+        ];
+
+        var file = Assert.Single(caps.GetEnabledCapabilities(), capability => capability.Category == "file");
+
+        Assert.Equal(expectedCommands, file.Commands);
+        var allowedCommands = caps.GetEnabledCommandIds();
+        Assert.All(expectedCommands, command => Assert.Contains(command, allowedCommands));
     }
 
     [Fact]
