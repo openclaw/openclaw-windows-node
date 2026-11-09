@@ -40,8 +40,8 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         if (progress.OutputTokens is { } tokens)
         {
             text += ", " + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
-            visibleText += (visibleText.Length > 0 ? " \u00b7 " : "")
-                + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
+            visibleText = string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens)
+                + (elapsed.Length > 0 ? " \u00b7 " + elapsed : "");
         }
         if (visibleText.Length == 0)
             visibleText = label;
@@ -52,22 +52,20 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             Grid([GridSize.Star()], [GridSize.Star()],
                 NativeWorkingClawElement.NativeWorkingClaw()
                     .Set(claw => claw.Update(progress.Active, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
-                    .Size(18, 18))
+                    .Size(18, 18).Opacity(1))
                 .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
                 .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatRunProgressClaw"),
             TextBlock(visibleText).FontSize(12)
-                .Set(text =>
-                {
-                    ChatVisuals.StyleSecondaryText(text);
-                    ChatVisuals.TextShimmer(text, progress.Active && !progress.Waiting);
-                })
+                .Set(ChatVisuals.StyleSecondaryText)
+                .TextWrapping(TextWrapping.Wrap)
                 .Grid(column: 1).Margin(8, 0, 0, 0)
                 .VAlign(VerticalAlignment.Center).AutomationName(text)
-                .TextWrapping(TextWrapping.Wrap).AutomationId("ChatRunProgressText"))
-            .MinHeight(28).Margin(0, 4, 0, 2).AutomationId("ChatRunProgress").AutomationName(text)
+                .AutomationId("ChatRunProgressText"))
+            .MinHeight(28).Margin(0, 4, 0, 2).Opacity(1).AutomationId("ChatRunProgress").AutomationName(text)
             .OnMount(row =>
             {
-                if (progress.Active && new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                if (entrance.Current is null && progress.Active &&
+                    new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
                     entrance.Current = AnimateEntrance(row);
             })
             .OnUnmount(_ => entrance.Current?.Stop())
@@ -98,7 +96,6 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             Storyboard.SetTargetProperty(animation, property);
             storyboard.Children.Add(animation);
         }
-        Add(row, "Opacity", 0, 1, 1);
         Add(transform, "TranslateY", 4, -1, 0);
         Add(transform, "ScaleX", .96, 1.01, 1);
         Add(transform, "ScaleY", .96, 1.01, 1);

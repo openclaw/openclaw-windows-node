@@ -12,7 +12,7 @@ param(
     [string]$ArtifactsDirectory,
     [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots')]
     [string]$Scenario = 'multi-session-browse',
-    [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
+    [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'tool-powershell', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
     [string]$Interaction,
     [ValidateRange(0, 86400)]
     [int]$DurationSeconds = 0,

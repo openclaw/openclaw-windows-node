@@ -8295,10 +8295,6 @@
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>显示完整输出</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>重试</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
-  <data name="Chat_Search_Placeholder" xml:space="preserve"><value>搜索此对话</value></data>
-  <data name="Chat_Search_Open" xml:space="preserve"><value>在对话中查找</value></data>
-  <data name="Chat_Search_Close" xml:space="preserve"><value>关闭搜索</value></data>
-  <data name="Chat_Search_Count" xml:space="preserve"><value>已加载历史中有 {0} 条匹配消息</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新消息。跳到最新消息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳到最新消息</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 个子代理，{1} 个正在工作，{2} 个需要关注</value></data>

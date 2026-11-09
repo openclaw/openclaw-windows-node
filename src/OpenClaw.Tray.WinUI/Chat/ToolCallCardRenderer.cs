@@ -54,19 +54,22 @@ internal static class ToolCallCardRenderer
         {
             details.Add(BuildDetailSection(
                 LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
-                displayArgs).WithKey("input"));
+                displayArgs, entry).WithKey("input"));
         }
         else if (entry.ToolName != "sessions_yield" && !string.IsNullOrWhiteSpace(entry.Text) &&
             !string.Equals(entry.Text, entry.ToolName, StringComparison.Ordinal))
         {
             details.Add(BuildDetailSection(
                 LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
-                entry.Text).WithKey("input"));
+                entry.Text, entry).WithKey("input"));
         }
 
         var output = recovered?.Output ?? entry.ToolOutput;
         if (!string.IsNullOrWhiteSpace(output))
         {
+            if (details.Count > 0)
+                details.Add(Border(Empty()).Height(1).Background(Theme.Ref("ChatStrokeBrush"))
+                    .AccessibilityView(AccessibilityView.Raw).WithKey("input-output-divider"));
             details.Add(BuildDetailSection(
                 LocalizedOrDefault(
                     entry.ToolResult == ChatToolCallStatus.Error
@@ -121,9 +124,9 @@ internal static class ToolCallCardRenderer
         {
             ChatToolCallStatus.Success => null,
             ChatToolCallStatus.Error => TextBlock(LocalizedOrDefault("Chat_Tool_FailedInline", "failed"))
-                .FontSize(12)
+                .FontSize(ChatVisuals.ToolRowFontSize)
                 .Foreground(Theme.Ref("SystemFillColorCriticalBrush")),
-            _ => TextBlock(statusLabel).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+            _ => TextBlock(statusLabel).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
         };
         var expansionKey = ChatToolActivityPresentation.ToolRowKey(props.SessionId, props.TimelineGeneration, entry.Id);
         var isExpanded = props.ToolExpansionState?.IsExpanded(expansionKey, props.ToolCallsCollapseVersion) ?? false;
@@ -132,11 +135,11 @@ internal static class ToolCallCardRenderer
             showChevron,
             isExpanded,
             TextBlock(title)
-                .FontSize(12)
+                .FontSize(ChatVisuals.ToolRowFontSize)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
                 .TextWrapping(TextWrapping.NoWrap)
                 .TextTrimming(TextTrimming.CharacterEllipsis)
-                .Set(text => ChatVisuals.TextShimmer(text, entry.ToolResult is null or ChatToolCallStatus.InProgress))
+                .WithTextShimmer(entry.ToolResult is null or ChatToolCallStatus.InProgress)
                 .WithKey("preview"),
             inlineStatus,
             onHeaderHover);
@@ -162,7 +165,8 @@ internal static class ToolCallCardRenderer
                     onExpansionChanged?.Invoke();
                 })
             .HeaderTemplate(header)
-            .MinHeight(28)
+            .OnUnmount(ChatVisuals.StopToolRowShimmers)
+            .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -181,8 +185,8 @@ internal static class ToolCallCardRenderer
         if (isNested)
         {
             expander = expander
-                .FontSize(12)
-                .MinHeight(28)
+                .FontSize(ChatVisuals.ToolRowFontSize)
+                .MinHeight(ChatVisuals.ToolRowMinHeight)
                 .Padding(0);
         }
 
@@ -242,11 +246,11 @@ internal static class ToolCallCardRenderer
                     FluentIconCatalog.ChevronR,
                     showChevron: true,
                     inputExpanded,
-                    TextBlock(label).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                    TextBlock(label).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
                     null,
                     null))
-                .FontSize(12)
-                .MinHeight(28)
+                .FontSize(ChatVisuals.ToolRowFontSize)
+                .MinHeight(ChatVisuals.ToolRowMinHeight)
                 .Padding(0)
                 .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
                 .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -267,36 +271,30 @@ internal static class ToolCallCardRenderer
                 VStack(0, rows.ToArray()).Grid(column: 1));
     }
 
-    private static Element BuildDetailSection(string label, string content)
+    private static Element BuildDetailSection(string label, string content, ChatTimelineItem? input = null)
     {
         var body = RichTextBlock(content)
             .Set(text =>
             {
-                text.Style = (Style)Application.Current.Resources["ChatRichTextStyle"];
+                text.Style = (Style)Application.Current.Resources[
+                    input is null ? "ChatSecondaryRichTextStyle" : "ChatRichTextStyle"];
                 text.TextWrapping = TextWrapping.Wrap;
                 text.FontSize = 12;
                 text.FontWeight = FontWeights.Normal;
                 text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
                 text.IsTextSelectionEnabled = true;
+                ChatToolInputSyntax.Apply(text, content, input);
             });
 
-        // A web tool-card block: small-caps label over selectable monospace text.
-        // The surrounding card owns the border, so blocks stay transparent.
-        return Border(VStack(
-                4,
-                TextBlock(label.ToUpper(System.Globalization.CultureInfo.CurrentCulture))
-                    .FontSize(11)
-                    .FontWeight(FontWeights.SemiBold)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                    .AutomationName(label),
-                ScrollViewer(body)
-                    .Set(scrollViewer =>
-                    {
-                        scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-                        scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                    })
-                    .MaxHeight(240)))
-            .Padding(12, 10);
+        return Border(ScrollViewer(body)
+                .AutomationName(label)
+                .Set(scrollViewer =>
+                {
+                    scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                    scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                })
+                .MaxHeight(240))
+            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset);
     }
 
     private static string FormatToolDisplayArgs(System.Text.Json.Nodes.JsonObject args)
@@ -394,10 +392,10 @@ internal static class ToolCallCardRenderer
                 summary.ToolCount)
             : summaryText;
         var headline = TextBlock(headlineText)
-            .FontSize(12)
+            .FontSize(ChatVisuals.ToolRowFontSize)
             .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
             .TextWrapping(TextWrapping.Wrap)
-            .Set(text => ChatVisuals.TextShimmer(text, summary.IsRunning))
+            .WithTextShimmer(summary.IsRunning)
             .WithKey($"activity-headline:{summary.NewestRunningTool?.Id ?? "settled"}");
         if (!reducedMotion && summary.IsRunning)
             headline = headline.Transition(
@@ -410,13 +408,14 @@ internal static class ToolCallCardRenderer
             headline,
             runningStatus is null
                 ? null
-                : TextBlock(runningStatus).FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                : TextBlock(runningStatus).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
             onHeaderHover);
         var expander = Expander(
                 summaryText,
                 details)
             .HeaderTemplate(header)
-            .MinHeight(28)
+            .OnUnmount(ChatVisuals.StopToolRowShimmers)
+            .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -464,13 +463,16 @@ internal static class ToolCallCardRenderer
             NativeToolProjector.FirstToolDisplayValue(entry.ToolArgs));
     }
 
+    // A fixed width keeps the title column the same for the 14pt glyph and the 12pt chevron. No
+    // fixed height: a taller box draws the glyph at its top, above the title's centre line.
     private static Element ToolIcon(string glyph, double fontSize = 14) =>
         TextBlock(glyph)
             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
             .FontSize(fontSize)
             .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
             .AccessibilityView(AccessibilityView.Raw)
-            .Size(16, 16);
+            .Set(text => text.IsTextScaleFactorEnabled = false)
+            .Width(16);
 
     /// <summary>
     /// Tool row header: leading icon (a chevron while hovered or focused), the title, then an
@@ -490,9 +492,10 @@ internal static class ToolCallCardRenderer
             : ToolIcon(glyph);
         return Border(
                 Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    icon.Grid(column: 0).Margin(0, 0, 8, 0),
-                    title.Grid(column: 1),
-                    status is null ? Empty() : status.Grid(column: 2).Margin(6, 0, 0, 0))
+                    icon.Grid(column: 0).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center),
+                    title.Grid(column: 1).VAlign(VerticalAlignment.Center),
+                    status is null ? Empty() : status.Grid(column: 2).Margin(6, 0, 0, 0)
+                        .VAlign(VerticalAlignment.Center))
                 .HAlign(HorizontalAlignment.Left))
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .OnPointerEntered((_, _) => onHover?.Invoke(true))

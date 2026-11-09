@@ -73,6 +73,7 @@ public sealed partial class GatewayFixtureProtocolTests
     [Theory]
     [InlineData("tools", "final")]
     [InlineData("tool-error", "final")]
+    [InlineData("tool-powershell", "final")]
     [InlineData("agent-activity", "final")]
     [InlineData("nested-tools", "final")]
     [InlineData("chat-deltas", "final")]
@@ -93,6 +94,12 @@ public sealed partial class GatewayFixtureProtocolTests
             var tools = frames.Where(e => e.GetProperty("event").GetString() == "agent" && e.GetProperty("payload").GetProperty("stream").GetString() == "tool").ToArray();
             Assert.Equal(2, tools.Length);
             Assert.Equal(scenario == "tool-error", tools[1].GetProperty("payload").GetProperty("data").GetProperty("isError").GetBoolean());
+            if (scenario == "tool-powershell")
+            {
+                var input = tools[0].GetProperty("payload").GetProperty("data");
+                Assert.Equal("powershell", input.GetProperty("name").GetString());
+                Assert.Contains("Get-ChildItem -Path $env:TEMP", input.GetProperty("args").GetProperty("command").GetString());
+            }
         }
         if (scenario == "agent-activity")
         {

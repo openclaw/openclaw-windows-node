@@ -1,4 +1,36 @@
-# Third-party icon attribution
+# Third-party notices
+
+## Tool input syntax highlighting
+
+`Chat/ChatToolInputSyntax.cs` uses **ColorCode.Core 2.0.15** to tokenize
+PowerShell and JSON display text. Rendering and theme resources are native
+Windows-owned code; input is never executed.
+
+- Source: <https://github.com/CommunityToolkit/ColorCode-Universal/tree/e6c2701c365a7a91d74d7ef38a6b60075008ce94>
+- Copyright (c) .NET Foundation and Contributors. All rights reserved.
+- License: MIT
+
+```
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Sidebar icon attribution
 
 The colorful sidebar SVG files in `Assets/SidebarIcons/` are derived from the
 **Fluent UI System Icons** project by Microsoft, color variant
@@ -86,6 +118,19 @@ calculation from OpenClaw's published Control UI at commit
 
 The vector is rendered with native WinUI shapes. OpenClaw identifies the shared
 stroke-icon shell as Lucide; both notices are retained here.
+
+## Chat pending queue icons
+
+`Chat/ReactorChatPendingMessages.cs` adapts the list/return and trash geometry
+and queue proportions from OpenClaw commit
+`fe12d0af7389290693346e816bc345e756168115`:
+
+- [Queue waiting icon](https://github.com/openclaw/openclaw/blob/fe12d0af7389290693346e816bc345e756168115/ui/src/pages/chat/components/chat-composer-queue.tsx)
+- [Trash icon](https://github.com/openclaw/openclaw/blob/fe12d0af7389290693346e816bc345e756168115/ui/src/components/icon-data-tools.ts)
+- [Queue styling](https://github.com/openclaw/openclaw/blob/fe12d0af7389290693346e816bc345e756168115/ui/src/styles/chat/composer-queue-content.css)
+
+The paths render as native WinUI geometry. No web script or runtime asset fetch
+is used. The OpenClaw MIT, Feather MIT and Lucide ISC notices below apply.
 
 ## Chat working claw and question presentation
 

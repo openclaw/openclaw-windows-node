@@ -462,11 +462,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 timeline.TurnActive));
         return Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
+            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
-            composerArea.Grid(row: 2),
-            statsElement.Grid(row: 3))
+            ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
+                .WithKey("chat-pending-messages").Grid(row: 2),
+            composerArea.Grid(row: 3),
+            statsElement.Grid(row: 4))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .Set(grid =>
             {

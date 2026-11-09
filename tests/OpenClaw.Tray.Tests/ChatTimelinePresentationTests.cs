@@ -821,7 +821,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("WithKey(\"nested-guide\")", renderer);
         // Rows start on the prose edge: every tool Expander drops the built-in header inset.
         Assert.Equal(3, CountOccurrences(renderer, "ChatVisuals.FlushToolRowExpander"));
-        Assert.Contains("expander.Resources[\"ExpanderHeaderPadding\"] = new Thickness(0);", visuals);
+        Assert.Contains("header.Padding = new Thickness(0);", visuals);
+        Assert.Contains("expander.Resources[\"ExpanderChevronMargin\"] = new Thickness(0);", visuals);
         Assert.Contains("Border(Empty()).Width(1).Margin(7, 0, 16, 0)", renderer);
 
         // Web tool card: transparent sections inside one thin-bordered, transparent
@@ -853,16 +854,19 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("UISettings().AnimationsEnabled", shimmer);
         Assert.Contains("AccessibilitySettings().HighContrast", shimmer);
         Assert.Contains("RepeatBehavior.Forever", shimmer);
-        Assert.Contains("TimeSpan.FromMilliseconds(2200)", shimmer);
+        Assert.Contains("TimeSpan.FromMilliseconds(TextShimmerDurationMilliseconds)", shimmer);
+        Assert.Contains("TextShimmerDurationMilliseconds = 2400", visuals);
         Assert.Contains("text.Unloaded += OnShimmerUnloaded", shimmer);
+        Assert.Contains(".OnUnmount(control => TextShimmer((TextBlock)control, false))", visuals);
 
         var renderer = File.ReadAllText(Path.Combine(chat, "ToolCallCardRenderer.cs"));
-        Assert.Contains("ChatVisuals.TextShimmer(text, entry.ToolResult is null or ChatToolCallStatus.InProgress)", renderer);
-        Assert.Contains("ChatVisuals.TextShimmer(text, summary.IsRunning)", renderer);
+        Assert.Contains(".WithTextShimmer(entry.ToolResult is null or ChatToolCallStatus.InProgress)", renderer);
+        Assert.Contains(".WithTextShimmer(summary.IsRunning)", renderer);
+        Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
         var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
-        Assert.Contains("ChatVisuals.TextShimmer(text, progress.Active && !progress.Waiting)", progress);
+        Assert.DoesNotContain("TextShimmer", progress);
         var timeline = File.ReadAllText(Path.Combine(chat, "ReactorChatTimeline.cs"));
-        Assert.Contains("ChatVisuals.TextShimmer(text, entry.IsStreaming)", timeline);
+        Assert.Contains(".WithTextShimmer(entry.IsStreaming)", timeline);
     }
 
     private static int CountOccurrences(string text, string normalizedValue)
@@ -1017,7 +1021,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_OwnsQueuedMessagesOutsideComposer()
+    public void PendingQueue_HasOnePresentationOwnerOutsideTranscriptAndComposer()
     {
         var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -1033,39 +1037,31 @@ public sealed class ChatTimelinePresentationTests
 
         Assert.DoesNotContain("queuedPanel", composer);
         Assert.DoesNotContain("queuedRows", composer);
-        Assert.Contains("ReactorTimelineRow.FromQueuedMessage(props, message)", timeline);
-        Assert.Contains("Chat_Timeline_Pending", timeline);
-        Assert.Contains("AutomationLiveSetting.Polite", timeline);
+        var pending = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatPendingMessages.cs"));
+        Assert.DoesNotContain("FromQueuedMessage", timeline);
+        Assert.DoesNotContain("ChatQueuedMessage_", timeline);
+        Assert.Contains("ReactorChatPendingMessages.Render(timelineProps", root);
+        Assert.Contains("Chat_Timeline_Pending", pending);
+        Assert.Contains("AutomationLiveSetting.Polite", pending);
         Assert.Contains("queuedMessages.Count == 0", root);
         Assert.Contains("props.ComposerSession.Controller.CancelQueuedMessage", root);
-    }
-
-    [Fact]
-    public void PendingMessages_RevealFooterOnHoverOrFocusWithoutCollapsingLayout()
-    {
-        var timeline = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
-        Assert.Contains(".OnPointerEntered((_, _) => SetEntryHovered(HoverKey(row), true))", timeline);
-        Assert.Contains(".OnPointerExited((_, _) => SetEntryHovered(HoverKey(row), false))", timeline);
-        Assert.Contains(".OnGotFocus((_, _) => setFocusedRowKey(row.Key))", timeline);
-        Assert.Contains(".OnLostFocus((_, _) => setFocusedRowKey(null))", timeline);
-        Assert.Contains("var showFooter = queuedMessage is null || failed || isHovered || isFocused", timeline);
-        Assert.Contains(".Opacity(showFooter ? 1 : 0)", timeline);
-        Assert.Contains(".Set(panel => panel.IsHitTestVisible = showFooter)", timeline);
     }
 
     [Theory]
     [InlineData("Default")]
     [InlineData("Light")]
     [InlineData("HighContrast")]
-    public void PendingMessages_UseTransparentBubbleFill(string theme)
+    public void PendingMessages_UseNativeCardFill(string theme)
     {
         var document = System.Xml.Linq.XDocument.Load(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var dictionary = document.Descendants().Single(element => (string?)element.Attribute(x + "Key") == theme);
-        var pending = dictionary.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatPendingUserBrush");
-        Assert.Equal("Transparent", (string?)pending.Attribute("Color"));
+        var pending = dictionary.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatCardBrush");
+        Assert.Equal(theme == "HighContrast"
+            ? "{ThemeResource SystemColorWindowColor}"
+            : "{ThemeResource CardBackgroundFillColorDefault}", (string?)pending.Attribute("Color"));
         Assert.Null(pending.Attribute("Opacity"));
     }
 
@@ -1367,7 +1363,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
-        Assert.Contains(".Padding(12, 10)", renderer);
+        Assert.Contains(".Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)", renderer);
         Assert.Contains("var body = RichTextBlock(content)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);

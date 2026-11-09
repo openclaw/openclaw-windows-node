@@ -8347,10 +8347,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Mostrar saída completa</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancelar</value></data>
-  <data name="Chat_Search_Placeholder" xml:space="preserve"><value>Pesquisar nesta conversa</value></data>
-  <data name="Chat_Search_Open" xml:space="preserve"><value>Localizar na conversa</value></data>
-  <data name="Chat_Search_Close" xml:space="preserve"><value>Fechar pesquisa</value></data>
-  <data name="Chat_Search_Count" xml:space="preserve"><value>{0} mensagens correspondentes no histórico carregado</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Ir para as mais recentes</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagentes, {1} trabalhando, {2} precisam de atenção</value></data>

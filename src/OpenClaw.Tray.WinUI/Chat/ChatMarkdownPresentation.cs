@@ -18,22 +18,45 @@ internal static class ChatMarkdownPresentation
     /// background. Reactor rebuilds inlines during reconcile, so the pass runs after
     /// it on the dispatcher. High contrast keeps the system's own link and text styles.
     /// </summary>
-    internal static Element WithInlineStyling(Element element) =>
+    internal static Element WithInlineStyling(Element element, bool compactSecondaryReading = false) =>
         Border(element).Set(border =>
             border.DispatcherQueue?.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                () => StyleInlines(border)));
+                () => StyleInlines(border, compactSecondaryReading)));
 
-    private static void StyleInlines(DependencyObject root)
+    private static void StyleInlines(DependencyObject root, bool compactSecondaryReading)
     {
         if (root is RichTextBlock rich)
         {
+            if (compactSecondaryReading && !IsCodeText(rich))
+            {
+                rich.Style = (Style)Application.Current.Resources["ChatSecondaryRichTextStyle"];
+                rich.ClearValue(Microsoft.UI.Xaml.Controls.RichTextBlock.ForegroundProperty);
+                rich.FontSize = ChatVisuals.ReasoningSize;
+                rich.LineHeight = ChatVisuals.ReasoningLineHeight;
+                rich.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+            }
             StyleRichText(rich);
             return;
         }
+        if (compactSecondaryReading && root is TextBlock text && !IsCodeText(text))
+        {
+            ChatVisuals.StyleSecondaryText(text);
+            text.FontSize = ChatVisuals.ReasoningSize;
+            text.LineHeight = ChatVisuals.ReasoningLineHeight;
+            text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+        }
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-            StyleInlines(VisualTreeHelper.GetChild(root, index));
+            StyleInlines(VisualTreeHelper.GetChild(root, index), compactSecondaryReading);
     }
+
+    private static bool IsCodeText(FrameworkElement element) =>
+        element switch
+        {
+            TextBlock text => text.FontFamily?.Source.Equals(ChatVisuals.CodeFontFamily, StringComparison.OrdinalIgnoreCase) == true,
+            RichTextBlock rich => rich.FontFamily?.Source.Equals(ChatVisuals.CodeFontFamily, StringComparison.OrdinalIgnoreCase) == true,
+            _ => false,
+        };
 
     private static void StyleRichText(RichTextBlock rich)
     {

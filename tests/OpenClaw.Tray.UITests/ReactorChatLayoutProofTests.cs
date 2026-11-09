@@ -1023,16 +1023,16 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.NotNull(FindControl<StackPanel>(host, "ChatQueuedMessage_empty-queue"));
+                Assert.NotNull(FindControl<Border>(host, "ChatQueuedMessage_empty-queue"));
                 Assert.Contains(FindDescendants<TextBlock>(host), text => text.Text == visibleText);
-                Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == "Another session's message");
+                Assert.DoesNotContain(FindDescendants<TextBlock>(host), text => text.Text == "Another session's message");
                 Assert.True(session.Controller.TrySelectSession("other"));
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.NotNull(FindControl<StackPanel>(host, "ChatQueuedMessage_other-queue"));
-                Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == visibleText);
+                Assert.NotNull(FindControl<Border>(host, "ChatQueuedMessage_other-queue"));
+                Assert.DoesNotContain(FindDescendants<TextBlock>(host), text => text.Text == visibleText);
                 Invoke(FindControl<Button>(host, "ChatQueuedMessageCancel_other-queue"));
                 Assert.Equal(("other", "other-queue"), provider.LastCanceledMessage);
                 Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
@@ -1041,16 +1041,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
-    [InlineData(320)]
-    [InlineData(800)]
-    public async Task QueuedMessages_RenderPendingBubblesAndPreserveSendLifecycle(int width)
+    [InlineData(320, "Please add a lunch break.\nKeep the afternoon flexible.", "Then summarize the plan.")]
+    [InlineData(800, "yes", "what is missing on the other one?")]
+    public async Task QueuedMessages_RenderCompactPanelAndPreserveSendLifecycle(int width, string first, string second)
     {
-        const string first = "Please add a lunch break.\nKeep the afternoon flexible.";
-        const string second = "Then summarize the plan.";
-        string? copied = null;
         await WithChatAsync(width, async (surface, host, session, provider) =>
         {
-            Rect pendingBounds = default;
+            TextBox? composer = null;
             await ui.RunOnUIAsync(async () =>
             {
                 var scale = surface.XamlRoot.RasterizationScale;
@@ -1069,37 +1066,75 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Collection(provider.SentMessages,
                     sent => Assert.Equal(("proof", first), sent),
                     sent => Assert.Equal(("proof", second), sent));
-                Assert.Empty(FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                composer = FindControl<TextBox>(surface, "ChatComposerInput");
+                Assert.Empty(composer.Text);
                 var transcript = Assert.Single(FindDescendants<ItemsView>(host));
-                var firstRow = FindControl<StackPanel>(transcript, "ChatQueuedMessage_pending-1");
-                var secondRow = FindControl<StackPanel>(transcript, "ChatQueuedMessage_pending-2");
+                var panel = FindControl<Border>(host, "ChatPendingMessages");
+                var firstRow = FindControl<Border>(panel, "ChatQueuedMessage_pending-1");
+                var secondRow = FindControl<Border>(panel, "ChatQueuedMessage_pending-2");
                 Assert.Equal("Pending", AutomationProperties.GetItemStatus(firstRow));
                 Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(firstRow));
-                Assert.Equal("Pending", FindControl<TextBlock>(firstRow, "ChatQueuedMessageStatus_pending-1").Text);
-                Assert.Equal(0, FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").Opacity);
-                Assert.Equal(0, FindControl<StackPanel>(secondRow, "ChatQueuedMessageFooter_pending-2").Opacity);
-                Assert.Equal(3, FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").Children.Count);
-                Assert.False(FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").IsHitTestVisible);
+                Assert.DoesNotContain(FindDescendants<Border>(transcript), row =>
+                    AutomationProperties.GetAutomationId(row).StartsWith("ChatQueuedMessage_", StringComparison.Ordinal));
                 Assert.True(Bounds(firstRow, surface).Top < Bounds(secondRow, surface).Top);
-                Assert.True(Bounds(firstRow, surface).Top >= Bounds(transcript, surface).Top);
-                Assert.True(Bounds(secondRow, surface).Bottom <= Bounds(transcript, surface).Bottom + 1);
+                Assert.True(Bounds(panel, surface).Top >= Bounds(transcript, surface).Bottom);
+                Assert.True(Bounds(panel, surface).Bottom <= Bounds(composer, surface).Top);
+                Assert.True(Bounds(panel, surface).Left >= 0);
+                Assert.True(Bounds(panel, surface).Right <= surface.ActualWidth);
+                Assert.True(Assert.Single(FindDescendants<ScrollViewer>(panel)).ActualHeight <= 160);
+                Assert.Equal(new Thickness(0, 1, 0, 0), secondRow.BorderThickness);
                 var text = Assert.Single(FindDescendants<TextBlock>(firstRow), text => text.Text == first);
                 Assert.True(text.IsTextSelectionEnabled);
-                var bubble = Ancestors(text).OfType<Border>().First();
-                pendingBounds = Bounds(bubble, surface);
-                Assert.Equal(ChatVisuals.SurfaceRadius, bubble.CornerRadius.TopLeft);
-                Assert.Equal(1, bubble.Opacity);
-                Assert.Equal(0, Assert.IsType<SolidColorBrush>(bubble.Background).Color.A);
-                Assert.Equal(new Thickness(1), bubble.BorderThickness);
+                Assert.Equal(13, text.FontSize);
+                Assert.Equal(18, text.LineHeight);
+                Assert.Equal(Microsoft.UI.Text.FontWeights.Normal.Weight, text.FontWeight.Weight);
+                Assert.Equal(new CornerRadius(20), panel.CornerRadius);
+                Assert.Equal(new Thickness(13, 6, 4, 6), firstRow.Padding);
+                var cancel = FindControl<Button>(firstRow, "ChatQueuedMessageCancel_pending-1");
+                Assert.True(cancel.IsEnabled);
+                Assert.True(cancel.IsHitTestVisible);
+                Assert.Equal(1, cancel.Opacity);
+                Assert.Equal(32, cancel.MinWidth);
+                Assert.Equal(32, cancel.MinHeight);
+                var removeIcon = FindControl<Viewbox>(firstRow, "ChatQueueRemoveIcon_pending-1");
+                var waitingIcon = FindControl<Viewbox>(firstRow, "ChatQueueWaitingIcon_pending-1");
+                foreach (var icon in new[] { waitingIcon, removeIcon })
+                {
+                    Assert.Equal(14, icon.ActualWidth);
+                    Assert.Equal(14, icon.ActualHeight);
+                    var path = Assert.IsType<Microsoft.UI.Xaml.Shapes.Path>(icon.Child);
+                    Assert.Equal(1.75, path.StrokeThickness);
+                    Assert.Equal(PenLineCap.Round, path.StrokeStartLineCap);
+                    Assert.Equal(PenLineCap.Round, path.StrokeEndLineCap);
+                    Assert.Equal(PenLineJoin.Round, path.StrokeLineJoin);
+                }
+                var waiting = Assert.IsType<PathGeometry>(
+                    Assert.IsType<Microsoft.UI.Xaml.Shapes.Path>(waitingIcon.Child).Data);
+                Assert.Equal(5, waiting.Figures.Count);
+                Assert.Equal(new Point(16, 5), waiting.Figures[0].StartPoint);
+                Assert.Equal(new Rect(3, 5, 18, 17), waiting.Bounds);
+                Assert.Equal(new Point(16, 16), waiting.Figures[3].StartPoint);
+                var trash = Assert.IsType<PathGeometry>(
+                    Assert.IsType<Microsoft.UI.Xaml.Shapes.Path>(removeIcon.Child).Data);
+                Assert.Equal(5, trash.Figures.Count);
+                Assert.Equal(new Point(3, 6), trash.Figures[0].StartPoint);
+                Assert.Equal(new Rect(3, 2, 18, 20), trash.Bounds);
+                var avatar = FindControl<Border>(firstRow, "ChatQueueAvatar_pending-1");
+                Assert.Equal(width <= 560 ? 18 : 20, avatar.ActualWidth);
+                Assert.Equal(avatar.ActualWidth, avatar.ActualHeight);
+                Assert.Equal(width <= 560 ? 6 : 8, avatar.Margin.Right);
+                Assert.True(Bounds(cancel, surface).Right <= Bounds(panel, surface).Right);
+                Assert.InRange(Bounds(panel, surface).Right - (Bounds(removeIcon, surface).Left + 7), 20, 22);
+                Assert.Contains(FindDescendants<TextBlock>(firstRow), label => label.Text == "\uE77B");
                 var reference = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
-                    """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ChatPendingUserBrush}" Width="0" Height="0"><TextBlock Foreground="{ThemeResource ChatSecondaryTextBrush}" /></Border>""");
+                    """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ChatCardBrush}" Width="0" Height="0"><TextBlock Foreground="{ThemeResource ChatTextBrush}" /></Border>""");
                 var layout = Assert.IsType<Grid>(Assert.IsType<Border>(host.Content).Child);
                 layout.Children.Add(reference);
                 try
                 {
                     Assert.Equal(Assert.IsType<SolidColorBrush>(reference.Background).Color,
-                        Assert.IsType<SolidColorBrush>(bubble.Background).Color);
-                    Assert.Equal(reference.Background.Opacity, bubble.Background.Opacity);
+                        Assert.IsType<SolidColorBrush>(panel.Background).Color);
+                    Assert.Equal(reference.Background.Opacity, panel.Background.Opacity);
                     Assert.Equal(Assert.IsType<SolidColorBrush>(Assert.IsType<TextBlock>(reference.Child).Foreground).Color,
                         Assert.IsType<SolidColorBrush>(text.Foreground).Color);
                 }
@@ -1109,49 +1144,38 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 }
                 AssertComposerBounds(surface);
             });
-            await CaptureAsync(surface, $"PendingChat-Idle-{width}");
-            await ui.RunOnUIAsync(() =>
-            {
-                var firstRow = FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1");
-                var copy = Assert.Single(FindDescendants<Button>(firstRow), button =>
-                    AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal));
-                Assert.True(copy.Focus(FocusState.Keyboard));
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var firstRow = FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1");
-                Assert.Equal(1, FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").Opacity);
-                Assert.True(FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").IsHitTestVisible);
-                Assert.Equal(0, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-2").Opacity);
-                var text = Assert.Single(FindDescendants<TextBlock>(firstRow), text => text.Text == first);
-                Assert.Equal(pendingBounds, Bounds(Ancestors(text).OfType<Border>().First(), surface));
-            });
-            await CaptureAsync(surface, $"PendingChat-Revealed-{width}");
-            await ui.RunOnUIAsync(() =>
-            {
-                var firstRow = FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1");
-                Invoke(Assert.Single(FindDescendants<Button>(firstRow), button =>
-                    AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal)));
-                Assert.Equal(first, copied);
-                Assert.True(FindControl<Button>(firstRow, "ChatQueuedMessageCancel_pending-1").Focus(FocusState.Keyboard));
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(1, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
-                Assert.True(FindControl<TextBox>(surface, "ChatComposerInput").Focus(FocusState.Keyboard));
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(0, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
-                Assert.Equal("Pending", AutomationProperties.GetItemStatus(
-                    FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1")));
-            });
+            await CaptureAsync(surface, $"PendingChat-Panel-{width}");
 
             var snapshot = await provider.LoadAsync();
             var queue = snapshot.QueuedMessagesByThread!["proof"];
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>
+                {
+                    ["proof"] = queue.Concat(Enumerable.Range(1, 12).Select(index =>
+                        new ChatQueuedMessage($"overflow-{index}", $"Queued follow-up {index}",
+                            DateTimeOffset.UnixEpoch, $"overflow-nonce-{index}"))).ToArray(),
+                },
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var panel = FindControl<Border>(host, "ChatPendingMessages");
+                var scroll = Assert.Single(FindDescendants<ScrollViewer>(panel));
+                Assert.True(scroll.ScrollableHeight > 0);
+                Assert.True(scroll.ActualHeight <= 160);
+                Assert.True(Bounds(panel, surface).Bottom <= Bounds(composer!, surface).Top);
+                scroll.ChangeView(null, scroll.ScrollableHeight, null, disableAnimation: true);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var panel = FindControl<Border>(host, "ChatPendingMessages");
+                var last = FindControl<Border>(panel, "ChatQueuedMessage_overflow-12");
+                Assert.True(Bounds(last, surface).Bottom <= Bounds(panel, surface).Bottom);
+                Assert.True(Bounds(last, surface).Top >= Bounds(panel, surface).Top);
+            });
+            await CaptureAsync(surface, $"PendingChat-Overflow-{width}");
             await ui.RunOnUIAsync(() =>
             {
                 session.ViewModel.SetDraft("An unsubmitted draft");
@@ -1166,10 +1190,10 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Equal("Pending", FindControl<TextBlock>(host, "ChatQueuedMessageStatus_pending-1").Text);
-                Assert.Equal(2, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Children.Count);
-                Assert.DoesNotContain(FindDescendants<Button>(host), button =>
-                    AutomationProperties.GetAutomationId(button) == "ChatQueuedMessageCancel_pending-1");
+                Assert.Equal("Pending", AutomationProperties.GetItemStatus(
+                    FindControl<Border>(host, "ChatQueuedMessage_pending-1")));
+                Assert.False(FindControl<Button>(host, "ChatQueuedMessageCancel_pending-1").IsEnabled);
+                Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 provider.Publish(snapshot with
                 {
                     QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>
@@ -1181,10 +1205,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Equal("Failed", FindControl<TextBlock>(host, "ChatQueuedMessageStatus_pending-1").Text);
                 Assert.Equal("Failed", AutomationProperties.GetItemStatus(
-                    FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1")));
-                Assert.Equal(1, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
+                    FindControl<Border>(host, "ChatQueuedMessage_pending-1")));
+                Assert.True(FindControl<Button>(host, "ChatQueuedMessageRemoveFailed_pending-1").IsEnabled);
                 Assert.Contains(FindDescendants<TextBlock>(host), text => text.Text == "Could not send.");
                 Invoke(FindControl<Button>(host, "ChatQueuedMessageRemoveFailed_pending-1"));
                 Assert.Equal(("proof", "pending-1"), provider.LastCanceledMessage);
@@ -1208,9 +1231,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Single(RealizedTimelineText(host), text => text.Text == second);
                 Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == first || text.Text == "Pending");
                 Assert.Equal("An unsubmitted draft", FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.DoesNotContain(FindDescendants<Border>(host), panel =>
+                    AutomationProperties.GetAutomationId(panel) == "ChatPendingMessages");
             });
             await CaptureAsync(surface, $"SentChat-{width}");
-        }, scenario: "pending", tryCopy: text => { copied = text; return true; });
+        }, scenario: "pending");
     }
 
     [Fact]
@@ -2639,7 +2665,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var nested = VStack(2, TextBlock("Nested list content").Margin(8)).Margin(3, 7, 5, 9);
                 var before = VStack(8, TextBlock("Before").Margin(0, 8), nested);
                 var normalized = Assert.IsType<StackElement>(ChatMarkdownPresentation.MessageBlocks(before));
-                Assert.Equal(12, normalized.Spacing);
+                Assert.Equal(8, normalized.Spacing);
                 Assert.Equal(new Thickness(3, 0, 5, 0), normalized.Children[1].Modifiers?.Margin);
                 Assert.Same(nested.Children, Assert.IsType<StackElement>(normalized.Children[1]).Children);
                 Assert.Equal(new Thickness(8), nested.Children[0].Modifiers?.Margin);
@@ -2649,7 +2675,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                var stack = Assert.IsType<StackPanel>(host.Content);
+                var stack = Assert.IsType<StackPanel>(Assert.IsType<Border>(host.Content).Child);
                 var blocks = stack.Children.OfType<FrameworkElement>().ToArray();
                 Assert.Equal(4, blocks.Length);
                 Assert.All(blocks, block =>
@@ -2659,7 +2685,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 });
                 for (var index = 1; index < blocks.Length; index++)
                     Assert.InRange(Bounds(blocks[index], surface).Top - Bounds(blocks[index - 1], surface).Bottom,
-                        11, 13);
+                        7, 9);
             });
         });
     }
@@ -2788,6 +2814,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
         finally
         {
+            if (!renderErrors.Errors.IsEmpty)
+                Console.Error.WriteLine(string.Join("\n", renderErrors.Errors));
             Console.WriteLine("chat-proof: teardown begin");
             await CloseOpenPopupsAsync(surface);
             await SettleAsync();

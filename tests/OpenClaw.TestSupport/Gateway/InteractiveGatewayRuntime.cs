@@ -185,12 +185,21 @@ public sealed class InteractiveGatewayRuntime : IAsyncDisposable
             if (run.Scenario == "slow")
                 for (var i = 0; i < 12; i++)
                     if (!await StepAsync(run, () => ChatAsync(run, "status", new { phase = "starting_model" }))) return;
-            if (run.Scenario is "tools" or "tool-error")
+            if (run.Scenario is "tools" or "tool-error" or "tool-powershell")
             {
                 var id = $"{run.Id}-tool";
-                if (!await StepAsync(run, () => ToolStartAsync(run, id, "read", new { path = "fixture.txt" }))) return;
-                if (!await StepAsync(run, () => ToolResultAsync(run, id, "read",
-                    run.Scenario == "tool-error" ? "Synthetic tool failure." : "Synthetic file contents.",
+                var name = run.Scenario == "tool-powershell" ? "powershell" : "read";
+                object input = run.Scenario == "tool-powershell"
+                    ? new { command = "$files = Get-ChildItem -Path $env:TEMP\nif ($files) { Write-Output 'Synthetic preview only' }" }
+                    : new { path = "fixture.txt" };
+                var output = run.Scenario switch
+                {
+                    "tool-error" => "Synthetic tool failure.",
+                    "tool-powershell" => "Name\n----\nfixture.txt\n\nSynthetic preview only. Nothing executed.",
+                    _ => "Synthetic file contents.",
+                };
+                if (!await StepAsync(run, () => ToolStartAsync(run, id, name, input))) return;
+                if (!await StepAsync(run, () => ToolResultAsync(run, id, name, output,
                     run.Scenario == "tool-error"))) return;
             }
             if (run.Scenario == "agent-activity")

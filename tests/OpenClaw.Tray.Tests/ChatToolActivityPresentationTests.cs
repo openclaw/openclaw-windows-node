@@ -128,16 +128,15 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Theory]
-    [InlineData("main", false, false, false)]
-    [InlineData("agent:a:dashboard:d:extra", false, false, false)]
-    [InlineData("agent:a:dashboard:d", true, false, false)]
-    [InlineData("agent:a:dashboard:d", false, true, false)]
-    [InlineData("agent:a:dashboard:d", false, false, true)]
-    public void Dashboard_GatesLeaveNarrationVisible(string session, bool working, bool bubble, bool search)
+    [InlineData("main", false, false)]
+    [InlineData("agent:a:dashboard:d:extra", false, false)]
+    [InlineData("agent:a:dashboard:d", true, false)]
+    [InlineData("agent:a:dashboard:d", false, true)]
+    public void Dashboard_GatesLeaveNarrationVisible(string session, bool working, bool bubble)
     {
         var rows = ChatToolActivityPresentation.Project(
             [Reply("narration"), Reply("answer")], session, 0,
-            runWorking: working, bubbleMode: bubble, searchActive: search);
+            runWorking: working, bubbleMode: bubble);
         Assert.All(rows, row => Assert.False(row.IsCompletedWork));
     }
 

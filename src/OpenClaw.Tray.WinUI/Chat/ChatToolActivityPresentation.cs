@@ -58,12 +58,11 @@ public static class ChatToolActivityPresentation
         IReadOnlyDictionary<string, ChatEntryMetadata>? metadata = null,
         bool runWorking = false,
         bool bubbleMode = false,
-        bool searchActive = false,
         ChatThread? session = null)
     {
         var scope = sessionId?.Trim().ToLowerInvariant().Split(':');
         if (scope is not ["agent", { Length: > 0 }, "dashboard", { Length: > 0 }] ||
-            bubbleMode || searchActive)
+            bubbleMode)
             return ProjectActivity(entries, sessionId, timelineGeneration, showToolCalls);
 
         ChatMessagePresentation? Facts(ChatTimelineItem entry) =>

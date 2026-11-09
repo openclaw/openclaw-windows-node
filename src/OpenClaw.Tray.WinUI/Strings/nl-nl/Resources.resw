@@ -8296,10 +8296,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Volledige uitvoer tonen</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
-  <data name="Chat_Search_Placeholder" xml:space="preserve"><value>Zoeken in dit gesprek</value></data>
-  <data name="Chat_Search_Open" xml:space="preserve"><value>Zoeken in gesprek</value></data>
-  <data name="Chat_Search_Close" xml:space="preserve"><value>Zoeken sluiten</value></data>
-  <data name="Chat_Search_Count" xml:space="preserve"><value>{0} overeenkomende berichten in geladen geschiedenis</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>

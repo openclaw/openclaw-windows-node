@@ -21,7 +21,7 @@ blanket completion claim. Implementation and current native proof are separate.
 | Approval/question waits, compaction, retry countdown and terminal settlement | Implemented; current proof pending | Progress projection, existing native question/approval owners |
 | Direct child-agent activity and explicit parent wait | Implemented; current proof pending | Session snapshot, timeline progress |
 | Dashboard-only completed-work rollups and preserved final answer | Implemented; current proof pending | Tool activity presentation |
-| Loaded transcript search, older history and new-message awareness | Partial; explicit Jump to latest landed in native proof; other scroll behavior remains unproven | History owners, timeline, scroll controller |
+| Older history and new-message awareness | Partial; explicit Jump to latest landed in native proof; other scroll behavior remains unproven; in-conversation search is intentionally absent | History owners, timeline, scroll controller |
 | Expansion, reading position, focus/selection, accessibility and six locales | Partial; broader native scroll and selection proof remains pending | Native renderers and scroll controller |
 
 The isolated native test
@@ -48,12 +48,14 @@ visible.
 
 No reasoning text is fabricated. A working animation is activity feedback, not
 proof that a provider supplied visible reasoning. Hidden reasoning and private
-continuation input must remain hidden in search and child activity too.
+continuation input must remain hidden in child activity too.
 
-The native adaptation deliberately uses literal, selectable search snippets over
-loaded, visible messages instead of modifying the rendered Markdown to highlight
-matches. Search temporarily disables completed-work grouping; explicit tool
-disclosures survive filtering. Earlier history prefers the Gateway's opaque
+The imported in-conversation search control and its loaded-history filtering
+were removed by user request. Global search remains separate. Current feedback
+coverage is
+`ReactorChatLayoutProofTests.ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch`;
+the earlier test name and results above are historical.
+Earlier history prefers the Gateway's opaque
 cursor and falls back to its canonical message/session boundary, with a disabled
 loading action and visible failure notification. Missing boundaries are not
 replaced with guessed offsets. New-message feedback does not pull a reader away

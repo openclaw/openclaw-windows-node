@@ -8362,10 +8362,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Show full output</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancel</value></data>
-  <data name="Chat_Search_Placeholder" xml:space="preserve"><value>Search this conversation</value></data>
-  <data name="Chat_Search_Open" xml:space="preserve"><value>Find in conversation</value></data>
-  <data name="Chat_Search_Close" xml:space="preserve"><value>Close search</value></data>
-  <data name="Chat_Search_Count" xml:space="preserve"><value>{0} matching messages in loaded history</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>New messages. Jump to latest</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Jump to latest</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagents, {1} working, {2} need attention</value></data>
