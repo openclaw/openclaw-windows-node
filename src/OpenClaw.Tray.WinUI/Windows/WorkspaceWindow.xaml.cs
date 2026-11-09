@@ -1540,8 +1540,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         help.Items.Add(MenuItem("GetApps", null, null, () => _ = OpenLinkAsync("https://docs.openclaw.ai/platforms")));
         help.Items.Add(MenuItem("ConnectionTimeline", null, null, OpenTimeline));
         help.Items.Add(new MenuFlyoutSeparator());
-        var about = MenuItem("About", "WorkspaceOwnerAbout", null, () => OpenCompanion(CompanionPageId.About));
-        about.KeyboardAcceleratorTextOverride = AppVersionInfo.Version;
+        var about = MenuItem("About", "WorkspaceOwnerAbout", null, () => OpenCompanion(CompanionPageId.About),
+            metadata: AppVersionInfo.Version);
         AutomationProperties.SetHelpText(about, AppVersionInfo.Version);
         help.Items.Add(about);
         menu.Items.Add(help);
@@ -1556,15 +1556,21 @@ public sealed partial class WorkspaceWindow : WindowEx
             var saved = model.Gateways[index];
             // Plain items keep one icon column like the parent menu; a radio check column would add a
             // second empty column before every row. The current Gateway carries its live status dot.
-            var item = new MenuFlyoutItem
+            var item = new AccountMenuItem
             {
+                Style = AccountMenuItem.ItemStyle,
                 Text = saved.Name,
-                KeyboardAcceleratorTextOverride = saved.IsActive ? statusLabel : saved.Host,
+                Metadata = saved.IsActive ? statusLabel : saved.Host,
             };
             if (saved.IsActive)
+            {
                 item.Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) };
+                AutomationProperties.SetItemStatus(item, Text("AccountCurrentGateway"));
+            }
             AutomationProperties.SetAutomationId(item, $"WorkspaceOwnerGateway_{index}");
-            AutomationProperties.SetHelpText(item, item.KeyboardAcceleratorTextOverride);
+            AutomationProperties.SetHelpText(item, saved.IsActive
+                ? LocalizationHelper.Format("WorkspaceShell_AccountCurrentGatewayStatusFormat", statusLabel)
+                : saved.Host);
             if (!saved.IsActive)
                 item.Click += (_, _) => AsyncEventHandlerGuard.Run(
                     () => SwitchGatewayAsync(saved.Id), new AppLogger(), nameof(PopulateGatewayMenu));
@@ -1577,11 +1583,12 @@ public sealed partial class WorkspaceWindow : WindowEx
         reconnect.IsEnabled = model.ActiveGatewayName is not null;
         menu.Items.Add(reconnect);
         var title = LocalizationHelper.GetString("ConnectionStatusWindow.Title");
-        var status = new MenuFlyoutItem
+        var status = new AccountMenuItem
         {
+            Style = AccountMenuItem.ItemStyle,
             Text = title,
             Icon = FluentIconCatalog.Build(FluentIconCatalog.About),
-            KeyboardAcceleratorTextOverride = statusLabel,
+            Metadata = statusLabel,
         };
         AutomationProperties.SetAutomationId(status, "WorkspaceOwnerConnectionStatus");
         AutomationProperties.SetName(status, $"{title}: {statusLabel}");
@@ -1595,9 +1602,12 @@ public sealed partial class WorkspaceWindow : WindowEx
         menu.Items.Add(dashboard);
     }
 
-    private static MenuFlyoutItem MenuItem(string key, string? automationId, string? glyph, Action action)
+    private static MenuFlyoutItem MenuItem(string key, string? automationId, string? glyph, Action action, string? metadata = null)
     {
-        var item = new MenuFlyoutItem { Text = Text(key) };
+        MenuFlyoutItem item = metadata is null
+            ? new MenuFlyoutItem()
+            : new AccountMenuItem { Style = AccountMenuItem.ItemStyle, Metadata = metadata };
+        item.Text = Text(key);
         if (glyph is not null) item.Icon = FluentIconCatalog.Build(glyph);
         if (automationId is not null) AutomationProperties.SetAutomationId(item, automationId);
         item.Click += (_, _) => action();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Account menu item styles. Copies of the WinUI 2.6 DefaultMenuFlyoutItemStyle and
-     DefaultMenuFlyoutSubItemStyle templates that add an optional secondary line, an accent badge
+     DefaultMenuFlyoutSubItemStyle templates that add optional secondary text, metadata, an accent badge
      and a profile picture. Named parts keep every native visual state target. -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -58,6 +58,7 @@
                                         <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPointerOver}"/>
                                         <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPointerOver}"/>
                                         <Setter Target="KeyboardAcceleratorTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver}"/>
+                                        <Setter Target="MetadataTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver}"/>
                                         <Setter Target="BadgeTextBlock.Foreground" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
                                         <Setter Target="BadgeRoot.BorderBrush" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
                                     </VisualState.Setters>
@@ -69,6 +70,7 @@
                                         <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPressed}"/>
                                         <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPressed}"/>
                                         <Setter Target="KeyboardAcceleratorTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPressed}"/>
+                                        <Setter Target="MetadataTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPressed}"/>
                                         <Setter Target="BadgeTextBlock.Foreground" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
                                         <Setter Target="BadgeRoot.BorderBrush" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
                                     </VisualState.Setters>
@@ -79,6 +81,7 @@
                                         <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}"/>
                                         <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}"/>
                                         <Setter Target="KeyboardAcceleratorTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundDisabled}"/>
+                                        <Setter Target="MetadataTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundDisabled}"/>
                                         <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}"/>
                                     </VisualState.Setters>
                                 </VisualState>
@@ -127,6 +130,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Viewbox x:Name="IconRoot" HorizontalAlignment="Left" VerticalAlignment="Center"
                                  Width="16" Height="16" Visibility="Collapsed">
@@ -146,7 +150,11 @@
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        AutomationProperties.AccessibilityView="Raw"/>
                         </Border>
-                        <TextBlock x:Name="KeyboardAcceleratorTextBlock" Grid.Column="2" Style="{ThemeResource CaptionTextBlockStyle}"
+                        <TextBlock x:Name="MetadataTextBlock" Grid.Column="2" Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Margin="24,0,0,0" Foreground="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForeground}"
+                                   TextAlignment="Right" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Name="KeyboardAcceleratorTextBlock" Grid.Column="3" Style="{ThemeResource CaptionTextBlockStyle}"
                                    Text="{TemplateBinding KeyboardAcceleratorTextOverride}"
                                    MinWidth="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=TemplateSettings.KeyboardAcceleratorTextMinWidth}"
                                    Margin="24,0,0,0" Foreground="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForeground}"

@@ -1135,6 +1135,25 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void AccountMenuMetadata_IsNotExposedAsKeyboardShortcuts()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var menu = code[code.IndexOf("private void PopulateOwnerMenu(", StringComparison.Ordinal)..];
+        menu = menu[..menu.IndexOf("private void OpenAddGateway()", StringComparison.Ordinal)];
+        Assert.DoesNotMatch(@"KeyboardAcceleratorTextOverride\s*=\s*(saved\.|statusLabel|AppVersionInfo\.)", menu);
+    }
+
+    [Fact]
+    public void AccountMenuCurrentGateway_HasExplicitAccessibleStateAndDescription()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var gateways = code[code.IndexOf("private void PopulateGatewayMenu(", StringComparison.Ordinal)..];
+        gateways = gateways[..gateways.IndexOf("private static MenuFlyoutItem MenuItem(", StringComparison.Ordinal)];
+        Assert.Contains("AutomationProperties.SetItemStatus(item, Text(\"AccountCurrentGateway\"));", gateways);
+        Assert.Contains("\"WorkspaceShell_AccountCurrentGatewayStatusFormat\"", gateways);
+    }
+
+    [Fact]
     public void AccountMenuAddGateway_KeepsAnAddOrEditFormAlreadyInProgress()
     {
         var page = File.ReadAllText(Source("Pages", "ConnectionPage.xaml.cs"));

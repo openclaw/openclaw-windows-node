@@ -7580,6 +7580,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
   <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>Geen gateway</value></data>
   <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Huidige gateway</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Huidige gateway. {0}</value></data>
   <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Gateway toevoegen…</value></data>
   <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Opnieuw verbinden</value></data>
   <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Verbindingsinstellingen</value></data>

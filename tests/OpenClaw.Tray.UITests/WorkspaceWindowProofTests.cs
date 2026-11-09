@@ -1140,6 +1140,7 @@ public sealed class WorkspaceWindowProofTests
         ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerGateway")!
             .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
+        Assert.Empty(FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.AcceleratorKey);
     }
 
     /// <summary>Expands the account menu's Help &amp; about submenu (docs, apps, timeline, About).</summary>
@@ -1149,6 +1150,7 @@ public sealed class WorkspaceWindowProofTests
         ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerHelp")!
             .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerAbout") is not null);
+        Assert.Empty(FindPopup(root, "WorkspaceOwnerAbout")!.Current.AcceleratorKey);
     }
 
     private static void CaptureFlyout(AutomationElement root, string theme, string name)

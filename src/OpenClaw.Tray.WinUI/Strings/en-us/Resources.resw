@@ -7648,6 +7648,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
   <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>No gateway</value></data>
   <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Current gateway</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Current gateway. {0}</value></data>
   <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Add gateway…</value></data>
   <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Reconnect</value></data>
   <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Connection settings</value></data>
