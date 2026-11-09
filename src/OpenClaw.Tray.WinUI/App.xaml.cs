@@ -4069,15 +4069,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void OpenDashboard(string? path = null)
     {
-        AsyncEventHandlerGuard.Run(async () =>
-        {
-            var launcher = CreateDashboardLauncher(
-                () => AsyncEventHandlerGuard.Run(
-                    () => _windowManager?.ShowDashboardLaunchFailureAsync(
-                        () => OpenDashboard(path))
-                        ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"));
-            await launcher.OpenAsync(path);
-        }, new AppLogger(), nameof(OpenDashboard));
+        AsyncEventHandlerGuard.Run(async () => await TryOpenDashboardAsync(path),
+            new AppLogger(), nameof(OpenDashboard));
+    }
+
+    private Task<bool> TryOpenDashboardAsync(string? path)
+    {
+        var launcher = CreateDashboardLauncher(
+            () => AsyncEventHandlerGuard.Run(
+                () => _windowManager?.ShowDashboardLaunchFailureAsync(
+                    () => OpenDashboard(path))
+                    ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"));
+        return launcher.OpenAsync(path);
     }
 
     private bool IsSetupDashboardCredentialAllowed(SetupNativeCompletion completion, GatewayRecord record)
@@ -4110,7 +4113,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     // ── IAppCommands implementation ─────────────────────────────────────
 
     void IAppCommands.OpenDashboard(string? path) => OpenDashboard(path);
+    Task<bool> IAppCommands.TryOpenDashboardAsync(string? path) => TryOpenDashboardAsync(path);
     void IAppCommands.Navigate(string pageTag) => ShowHub(pageTag);
+    Task<bool> IAppCommands.TryNavigateAsync(string pageTag, string? chatSessionKey) =>
+        _windowManager?.TryShowHubAsync(pageTag, chatSessionKey) ?? Task.FromResult(false);
     void IAppCommands.Reconnect() => ReconnectWithSyncedBrowserProxyForward();
     void IAppCommands.Disconnect()
     {

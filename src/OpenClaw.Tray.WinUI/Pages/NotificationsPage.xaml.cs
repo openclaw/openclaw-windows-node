@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation.Peers;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 using OpenClawTray.ViewModels;
 using System.Collections.ObjectModel;
@@ -93,18 +94,9 @@ public sealed partial class NotificationsPage : Page
         if (sender is not FrameworkElement { Tag: NotificationItemViewModel item })
             return;
 
-        if (string.IsNullOrWhiteSpace(item.ActionRoute))
-            return;
-
-        if (AppNotificationActionRoutes.TryGetChatSessionKey(item.ActionRoute, out var sessionKey))
-        {
-            CurrentApp.PendingChatSessionKey = sessionKey;
-            ((IAppCommands)CurrentApp).Navigate("chat");
-            _notificationService?.Dismiss(item.Id);
-            return;
-        }
-
-        ((IAppCommands)CurrentApp).Navigate(item.ActionRoute);
-        _notificationService?.Dismiss(item.Id);
+        if (_notificationService is { } notifications)
+            AsyncEventHandlerGuard.Run(
+                () => notifications.NavigateActionAsync(item.Id, ((IAppCommands)CurrentApp).TryNavigateAsync),
+                new AppLogger(), nameof(OnNotificationActionClick));
     }
 }
