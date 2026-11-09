@@ -4502,7 +4502,7 @@
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) 受下方設定隔離。</value>
+    <value>) 和檔案操作使用下方的 Sandbox 設定。</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>代理直接在閘道上執行的命令則不受隔離。如果閘道位於這台電腦的 WSL 上,它們可能會存取您的 Windows 檔案、剪貼簿和網路: 請使用閘道的執行核准。</value>
@@ -7816,6 +7816,8 @@
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上傳檔案清理受阻</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>請檢查資料夾存取權和私人狀態資料的權限。恢復清理前，舊上傳檔案可能會繼續保留。請勿自動重試已完成的上傳。</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>移除項目</value>
   </data>

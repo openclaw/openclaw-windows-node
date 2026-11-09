@@ -4503,7 +4503,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) worden ingesloten door onderstaande instellingen.</value>
+    <value>) en bestandsacties gebruiken de onderstaande Sandbox-instellingen.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert niet. Als de gateway op WSL op deze pc draait, kunnen ze uw Windows-bestanden, klembord en netwerk bereiken: gebruik de exec-goedkeuringen van de gateway.</value>
@@ -7817,6 +7817,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Uploads opruimen is geblokkeerd</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Controleer de maptoegang en machtigingen voor privégegevens. Oude uploads kunnen blijven staan totdat opruimen weer mogelijk is. Probeer voltooide uploads niet automatisch opnieuw.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Item verwijderen</value>
   </data>

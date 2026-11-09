@@ -45,6 +45,8 @@ internal static class TestHostDpiInitializer
 ///     across all UI tests).
 ///   - Application.Start blocks the calling thread (it pumps the message loop),
 ///     so we spin a dedicated thread and call Application.Start there.
+///     Collection cleanup hides the window but leaves this background thread
+///     running until process exit so late native finalizers retain a dispatcher.
 ///   - Renderers like <see cref="OpenClawTray.A2UI.Rendering.Renderers.TextRenderer"/>
 ///     call Application.Current.Resources["BodyTextBlockStyle"], so a real
 ///     Application instance must exist.
@@ -353,41 +355,25 @@ public sealed class UIThreadFixture : IDisposable
         }
     }
 
+    /// <summary>Retire the test surface without ending the process-wide XAML lifetime.</summary>
     public void Dispose()
     {
         Diagnostics.SetPhase(NativeUiPhase.UiStopping);
         if (Dispatcher is not null && _uiThread.IsAlive)
         {
-            ResetContainerAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-            // Release projected XAML objects while their dispatcher and native
-            // reference trackers still exist, not after Application.Exit.
+            RunOnUIAsync(() =>
+            {
+                Container.Children.Clear();
+                TestWindow.AppWindow.Hide();
+            }).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+            // A drain cannot release objects still held by test results or interop wrappers.
+            // Keep the hidden window and background dispatcher alive for those later releases:
+            // closing the last window or calling Application.Exit tears down their XAML core.
             Console.WriteLine("UIThreadFixture: dispose finalizer drain begin");
             GC.Collect();
             GC.WaitForPendingFinalizers();
             Console.WriteLine("UIThreadFixture: dispose finalizer drain end");
             YieldToRenderAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-        }
-        try
-        {
-            // Ask the UI thread to exit. Application.Current.Exit() unwinds
-            // Application.Start; the thread then completes naturally.
-            if (Dispatcher != null)
-            {
-                Dispatcher.TryEnqueue(() =>
-                {
-                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-                    try { TestWindow?.Close(); } catch { }
-                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-                    try { Application.Current?.Exit(); } catch { }
-                });
-            }
-            // Don't block the test process forever if the UI thread misbehaves.
-            _uiThread.Join(TimeSpan.FromSeconds(5));
-        }
-        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-        catch
-        {
-            // Disposal is best-effort.
         }
     }
 }

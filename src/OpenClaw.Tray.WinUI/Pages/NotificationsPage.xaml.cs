@@ -48,7 +48,7 @@ public sealed partial class NotificationsPage : Page
         }
 
         Inbox.Initialize(inbox, commands ?? new InboxViewCommands(
-            OpenAppRoute,
+            OpenGatewayRoute,
             ((IAppCommands)CurrentApp).TryNavigateAsync,
             () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings),
             () => ((IAppCommands)CurrentApp).OpenDashboard(),
@@ -58,16 +58,16 @@ public sealed partial class NotificationsPage : Page
     private static void AskOpenClaw(string question)
     {
         if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
-            OpenAppRoute(AppNotificationActionRoutes.Chat(sessionKey));
+            OpenGatewayRoute(AppNotificationActionRoutes.Chat(sessionKey));
         else
             ((IAppCommands)CurrentApp).Navigate("connection");
     }
 
-    private static void OpenAppRoute(string route)
+    private static void OpenGatewayRoute(string route)
     {
         var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
         AsyncEventHandlerGuard.Run(
             () => ((IAppCommands)CurrentApp).TryNavigateAsync(isChat ? "chat" : route, sessionKey),
-            new AppLogger(), nameof(OpenAppRoute));
+            new AppLogger(), nameof(OpenGatewayRoute));
     }
 }
