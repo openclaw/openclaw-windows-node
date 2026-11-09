@@ -295,6 +295,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchCatalog.cs" Link="Presentation\HubSearchCatalog.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchController.cs" Link="Presentation\HubSearchController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PageResponsiveLayout.cs" Link="Presentation\PageResponsiveLayout.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSettingsLayout.cs" Link="Presentation\WorkspaceSettingsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />
@@ -302,6 +304,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceFooterPlacement.cs" Link="Presentation\WorkspaceFooterPlacement.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredFlyoutShowState.cs" Link="Presentation\DeferredFlyoutShowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AgentAvatarPresentation.cs" Link="Presentation\AgentAvatarPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionOrder.cs" Link="Presentation\WorkspaceSessionOrder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceItemsSync.cs" Link="Presentation\WorkspaceItemsSync.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionMenu.cs" Link="Presentation\WorkspaceSessionMenu.cs" />

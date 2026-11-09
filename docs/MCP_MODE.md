@@ -234,9 +234,9 @@ Local MCP changes that. Concrete benefits:
 
 - **Manual smoke tests in seconds.** `curl -s -X POST http://127.0.0.1:8765/ -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` validates that the capability dispatch path works, the WinUI dispatcher marshaling is correct, the result shape matches expectations. No gateway, no gateway token, no pairing, no SSH tunnel.
 - **Reproducible bug reports.** A repro becomes a `tools/call` body the bug filer can paste verbatim. No "what was the gateway doing at the time."
-- **Integration tests against a real instance.** A future `tests/integration/` project can spin up the tray in MCP-only mode, fire JSON-RPC, assert results. The same test bodies a developer runs by hand are the same ones CI runs. (Harnessing WinUI itself in CI is harder, but the bridge logic - `McpToolBridge` - is already covered by `McpToolBridgeTests` with no UI involvement.)
+- **Integration tests against a real instance.** `tests/OpenClaw.Tray.IntegrationTests` (for example `McpHttpServerIntegrationTests`) spawns the tray and drives MCP JSON-RPC over HTTP when `OPENCLAW_RUN_INTEGRATION=1`. The same requests a developer runs by hand are the ones these tests send. The bridge logic - `McpToolBridge` - is also covered by `McpToolBridgeTests` with no UI involvement.
 - **Coverage for the dispatch path itself.** `WindowsNodeClient`'s capability-routing logic (`CanHandle` → `ExecuteAsync`) was previously only exercised against a live gateway. The MCP server hits the same code paths, so any local MCP test is implicit coverage of the gateway dispatch.
-- **Bridge unit tests already exist.** `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` (9 cases) covers initialize, tools/list, runtime capability registration, tool calls, unknown tools, capability failures, JSON-RPC unknown method, notifications, and parse errors. These are pure C# unit tests with fake capabilities - no HTTP, no UI, no gateway.
+- **Bridge unit tests already exist.** `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` covers initialize, tools/list, runtime capability registration, tool calls, unknown tools, capability failures, JSON-RPC unknown method, notifications, and parse errors. These are pure C# unit tests with fake capabilities - no HTTP, no UI, no gateway.
 
 ### Access from CLIs and agents
 
@@ -410,7 +410,7 @@ These are reasonable next steps but explicitly out of scope for the initial impl
 | `src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs` | In-memory settings model + load/save. Migrates legacy `McpOnlyMode`. |
 | `src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml(.cs)` | Settings UI surface hosted by `HubWindow`. |
 | `src/OpenClaw.Tray.WinUI/App.xaml.cs` | Bootstraps `NodeService` based on the new mode matrix. |
-| `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | 9 unit tests for the bridge. |
+| `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | Unit tests for the bridge. |
 
 ## Quick verification
 

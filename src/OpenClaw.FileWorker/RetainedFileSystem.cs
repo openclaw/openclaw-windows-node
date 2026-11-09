@@ -137,7 +137,7 @@ internal sealed class RetainedFileSystem : IDisposable
             handle.Dispose();
             Native.ThrowError(error, "traversal anchor open");
         }
-        try { return Retain(new NativeEntry(start, handle)); }
+        try { return Retain(new NativeEntry(start, handle, Contained)); }
         catch { handle.Dispose(); throw; }
     }
 
@@ -174,10 +174,7 @@ internal sealed class RetainedFileSystem : IDisposable
                 handle.Dispose();
                 handle = pinned;
             }
-            var entry = new NativeEntry(path, handle);
-            if (Contained && !entry.IsDirectory && entry.Links > 1)
-                throw new FileCommandException("HARDLINK_TARGET_DENIED", "Contained file operations cannot prove access to all hard-link aliases.");
-            return entry;
+            return new NativeEntry(path, handle, Contained);
         }
         catch { handle.Dispose(); throw; }
     }
@@ -274,7 +271,7 @@ internal sealed class NativeEntry : IDisposable
     internal DateTimeOffset Modified => DateTimeOffset.FromFileTime(Native.Info<Native.BasicInfo>(Handle, 0).LastWrite);
     internal FileBinding Binding => new("existing", Device, Inode);
 
-    internal NativeEntry(string path, SafeFileHandle handle)
+    internal NativeEntry(string path, SafeFileHandle handle, bool contained)
     {
         Path = path;
         Handle = handle;
@@ -294,6 +291,9 @@ internal sealed class NativeEntry : IDisposable
         Device = id.Volume.ToString(CultureInfo.InvariantCulture);
         Inode = (((UInt128)id.High << 64) | id.Low).ToString(CultureInfo.InvariantCulture);
         if (id.Low == 0 && id.High == 0) throw new FileCommandException("UNSUPPORTED_FILE_TYPE", "The filesystem did not supply a stable file identity.");
+        // Absolute traversal anchors and relative children share the same alias admission.
+        if (contained && !IsDirectory && Links > 1)
+            throw new FileCommandException("HARDLINK_TARGET_DENIED", "Contained file operations cannot prove access to all hard-link aliases.");
     }
 
     internal int Read(Span<byte> buffer, long offset) => RandomAccess.Read(Handle, buffer, offset);

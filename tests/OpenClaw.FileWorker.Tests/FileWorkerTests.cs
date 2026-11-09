@@ -7,6 +7,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
 using OpenClaw.FileWorker;
 using OpenClaw.Shared.FileTransfer;
 
@@ -691,6 +692,61 @@ public sealed class FileWorkerTests : IDisposable
         Good(Run("file.fetch", new { path }));
         var admission = Host with { ExecutionMode = "sandbox", Reason = null, DataAccess = new([], [_root], [], []) };
         Assert.Equal("HARDLINK_TARGET_DENIED", Run("file.fetch", new { path }, admission: admission).Outcome.Code);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeEntryRejectsContainedHardlinksButPreservesHostCompatibility(bool useAlias)
+    {
+        var original = PathOf("entry-original");
+        var alias = PathOf("entry-alias");
+        File.WriteAllText(original, "abc");
+        Assert.True(CreateHardLinkW(alias, original, IntPtr.Zero));
+        var path = useAlias ? alias : original;
+
+        using (var handle = OpenEntryFixtureHandle(path))
+        using (var entry = new NativeEntry(path, handle, contained: false))
+        {
+            Assert.False(entry.IsDirectory);
+            Assert.Equal(2u, entry.Links);
+        }
+        using var containedHandle = OpenEntryFixtureHandle(path);
+        var error = Assert.Throws<FileCommandException>(() =>
+            new NativeEntry(path, containedHandle, contained: true));
+        Assert.Equal("HARDLINK_TARGET_DENIED", error.Code);
+        Assert.Equal("abc", File.ReadAllText(original));
+        Assert.Equal("abc", File.ReadAllText(alias));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeEntryAcceptsContainedSingleLinkFilesAndDirectoryAnchors(bool directory)
+    {
+        var path = PathOf(directory ? "entry-directory" : "entry-single");
+        if (directory) Directory.CreateDirectory(path);
+        else File.WriteAllText(path, "abc");
+
+        using var handle = OpenEntryFixtureHandle(path);
+        using var entry = new NativeEntry(path, handle, contained: true);
+        Assert.Equal(directory, entry.IsDirectory);
+        if (!directory) Assert.Equal(1u, entry.Links);
+        Assert.Equal(path, entry.Path);
+    }
+
+    private static SafeFileHandle OpenEntryFixtureHandle(string path)
+    {
+        var handle = Native.CreateFileW(@"\\?\" + path,
+            Native.ReadAttributes | Native.ReadControl | Native.Synchronize | Native.Traverse,
+            FileShare.ReadWrite, IntPtr.Zero, 3, Native.OpenReparsePoint | Native.BackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            var error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new IOException($"Cannot open the test-owned native entry (Win32 {error}).");
+        }
+        return handle;
     }
 
     [Fact]

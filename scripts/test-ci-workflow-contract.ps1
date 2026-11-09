@@ -156,21 +156,56 @@ function Get-YamlBlockList {
         ForEach-Object { $_.Groups["value"].Value })
 }
 
+function ConvertTo-GitHubPathRegex {
+    param([Parameter(Mandatory)][string]$Glob)
+
+    # Models the GitHub filter subset used here: `*` stays within one path
+    # segment, `**` crosses segments and `**/` also matches zero directories.
+    if ($Glob -match '[?+\[\]!]') {
+        throw "Unsupported GitHub path glob syntax in '$Glob'."
+    }
+
+    $regex = [System.Text.StringBuilder]::new("^")
+    for ($i = 0; $i -lt $Glob.Length; $i++) {
+        if ($Glob[$i] -ne "*") {
+            [void]$regex.Append([regex]::Escape([string]$Glob[$i]))
+            continue
+        }
+        if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq "*") {
+            $i++
+            if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq "/") {
+                $i++
+                [void]$regex.Append("(?:.*/)?")
+            }
+            else {
+                [void]$regex.Append(".*")
+            }
+            continue
+        }
+        [void]$regex.Append("[^/]*")
+    }
+
+    return $regex.Append("$").ToString()
+}
+
 function Test-PathMatches {
     param(
         [Parameter(Mandatory)][string[]]$Patterns,
         [Parameter(Mandatory)][string]$Path
     )
 
+    # GitHub evaluates path patterns in order: a later `!` match excludes a
+    # path and a later positive match includes it again.
+    $matched = $false
     foreach ($pattern in $Patterns) {
-        if ([System.Management.Automation.WildcardPattern]::new(
-                $pattern,
-                [System.Management.Automation.WildcardOptions]::None).IsMatch($Path)) {
-            return $true
+        $negated = $pattern.StartsWith("!", [StringComparison]::Ordinal)
+        $glob = if ($negated) { $pattern.Substring(1) } else { $pattern }
+        if ([regex]::IsMatch($Path, (ConvertTo-GitHubPathRegex -Glob $glob))) {
+            $matched = -not $negated
         }
     }
 
-    return $false
+    return $matched
 }
 
 function Test-CodeQlTrigger {
@@ -223,7 +258,9 @@ $expectedCodeQlPaths = @(
     "global.json",
     "NuGet.Config",
     "package.json",
-    "package-lock.json"
+    "package-lock.json",
+    "!src/**/*.md",
+    "!tests/**/*.md"
 )
 if (($codeQlPushBranches -join ",") -ne "master") {
     throw "CodeQL branch pushes must be limited to master; main uses scheduled scans."
@@ -248,9 +285,16 @@ $codeQlTriggerCases = @(
     @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
     @{ Name = "root attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "nested attributes pull request"; Event = "pull_request"; Ref = "main"; Path = "src/.gitattributes"; Expected = $true },
+    @{ Name = "nested build props pull request"; Event = "pull_request"; Ref = "main"; Path = "eng/Directory.Build.props"; Expected = $false },
     @{ Name = "hidden attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/.gitattributes"; Expected = $true },
     @{ Name = "master attributes push"; Event = "push"; Ref = "master"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
+    @{ Name = "scoped source instructions pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Tray.WinUI/AGENTS.md"; Expected = $false },
+    @{ Name = "test Markdown pull request"; Event = "pull_request"; Ref = "main"; Path = "tests/README.md"; Expected = $false },
+    @{ Name = "master source Markdown push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/README.md"; Expected = $false },
+    @{ Name = "workflow pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/workflows/ci.yml"; Expected = $true },
+    @{ Name = "Markdown workflow source pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/workflows/example.md"; Expected = $true },
+    @{ Name = "master Markdown workflow source push"; Event = "push"; Ref = "master"; Path = ".github/workflows/example.md"; Expected = $true },
     @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
     @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
     @{ Name = "manual scan"; Event = "workflow_dispatch"; Ref = ""; Path = ""; Expected = $true }
@@ -462,6 +506,26 @@ foreach ($lane in $testLanes.GetEnumerator()) {
     }
 }
 
+$overlapLanes = [ordered]@{
+    "core-tests" = "core_tests"
+    "tray-tests" = "tray_tests"
+    "ui-tests" = "ui_tests"
+    "setup-e2e" = "setup_e2e"
+    "revocation-e2e" = "revocation_e2e"
+    "network-e2e" = "network_e2e"
+}
+foreach ($lane in $overlapLanes.GetEnumerator()) {
+    $job = Get-JobBlock $lane.Key
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-Contains -Text $jobHeader -Expected "    needs: change-classification" `
+        -Message "Lane '$($lane.Key)' must start after classification without waiting for fast validation."
+    Assert-Contains -Text $jobHeader `
+        -Expected ("    if: " + '${{ ' + "!cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.$($lane.Value) == 'true' }}") `
+        -Message "Lane '$($lane.Key)' must preserve cancellation, classification success, and selected-lane admission."
+    Assert-NotContains -Text $jobHeader -Unexpected "fast-validation" `
+        -Message "Lane '$($lane.Key)' must overlap fast validation; CI Gate still requires its success."
+}
+
 $coreJob = Get-JobBlock "core-tests"
 $sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
 Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
@@ -571,8 +635,32 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"' `
-    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding and strict Gateway fixture lanes."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"' `
+    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding, Gateway fixture and animation-preference lanes."
+Assert-NotContains -Text $trayUiStep -Unexpected '-AnimationPreference ' `
+    -Message 'The ordinary UI suite must retain its original Windows animation preference.'
+$enabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animation-enabled reveal proof'
+foreach ($token in @(
+        './scripts/Invoke-CiTest.ps1',
+        '-AnimationPreference Enabled',
+        '-RequireAllTestsPassed',
+        '-Filter "Category=AnimationPreferenceEnabled"',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $enabledAnimationStep -Expected $token -Message "Enabled animation proof lost required contract '$token'."
+}
+$disabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animations-disabled behavior proof'
+foreach ($token in @(
+        './scripts/Invoke-CiTest.ps1',
+        '-AnimationPreference Disabled',
+        '-RequireAllTestsPassed',
+        '-Filter "FullyQualifiedName~PageHeroAnimationsDisabledTests"',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $disabledAnimationStep -Expected $token -Message "Disabled animation proof lost required contract '$token'."
+}
+Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
+    -Message 'Native animation prerequisite failures and restoration must be tested.'
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
@@ -580,11 +668,16 @@ Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
 $trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
 Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
     -Message "Tray UI crash metadata must be bounded by an explicit start time."
+Assert-NotContains -Text $uiJob -Unexpected 'path: .ci-pipeline' `
+    -Message 'Nested pipeline checkout must not enter the product source manifest.'
 $trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
 foreach ($token in @(
         "if: always()",
         "steps.tray-ui-crash-window.outcome == 'success'",
-        "./scripts/Capture-CiTestHostCrashMetadata.ps1",
+        'git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"',
+        '$LASTEXITCODE -ne 0',
+        'Join-Path $env:RUNNER_TEMP',
+        '& $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
         "TRAY_UI_TEST_STARTED_UTC"
     )) {
     Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
@@ -741,8 +834,8 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 9) {
-    throw "Expected all 9 non-E2E test projects to use Invoke-CiTest.ps1, found $runnerUses."
+if ($runnerUses -ne 11) {
+    throw "Expected 9 non-E2E project runs plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."
@@ -1132,7 +1225,8 @@ foreach ($token in @(
 
 $releasePreparationJob = Get-JobBlock "prepare-release-assets"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs.fast-validation.result == 'success'",
         "needs.reserve-msix-version.result == 'success'",
         "needs.proof-pool-contracts.result == 'success'",
         "needs.core-tests.result == 'success'",

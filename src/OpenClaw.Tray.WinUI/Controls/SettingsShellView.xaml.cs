@@ -55,12 +55,17 @@ internal sealed partial class SettingsShellView : UserControl
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
+    private double _hostContentTopInset;
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageContentChanged { get; set; }
 
-    /// <summary>Raised when the rail's Chat item or a notification route leaves Settings.</summary>
+    /// <summary>Raised when a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
+
+    /// <summary>Raised by Back to app; the host returns to the app destination Settings was opened from.</summary>
+    internal Action? ExitRequested { get; set; }
 
     /// <summary>
     /// Asks the host to drop unavailable Settings sections from history. The second argument is the
@@ -90,6 +95,14 @@ internal sealed partial class SettingsShellView : UserControl
         var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
         AutomationProperties.SetName(SettingsSearchButton, searchLabel);
         ToolTipService.SetToolTip(SettingsSearchButton, searchLabel);
+        var backToApp = LocalizationHelper.GetString("SettingsShell_BackToApp");
+        var escapeKey = LocalizationHelper.GetString("SettingsShell_BackToAppKeyHint");
+        BackToAppLabel.Text = backToApp;
+        BackToAppKeyHintText.Text = escapeKey;
+        AutomationProperties.SetName(BackToAppButton, backToApp);
+        AutomationProperties.SetAcceleratorKey(BackToAppButton, escapeKey);
+        _backToAppToolTip = $"{backToApp} ({escapeKey})";
+        SettingsTitle.Text = LocalizationHelper.GetString("SettingsShell_Title");
         NavView.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdatePaneChrome());
         UpdatePaneChrome();
         RefreshDiagnosticsNavVisibility();
@@ -99,6 +112,7 @@ internal sealed partial class SettingsShellView : UserControl
     }
 
     private readonly FlyoutShowRequest _commandSearchShow;
+    private readonly string _backToAppToolTip;
 
     /// <summary>The shared account, Dashboard and bell footer; <c>WorkspaceWindow</c> applies its state.</summary>
     internal WorkspacePaneFooter Footer => PaneFooterControl;
@@ -152,6 +166,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageContentChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
         _gatewayNavHideTimer?.Stop();
@@ -267,19 +282,15 @@ internal sealed partial class SettingsShellView : UserControl
         }
 
         if (_currentAppNotificationPresentation.Action is
-            { Kind: AppNotificationInfoBarActionKind.NotificationRoute, Route.Length: > 0 } action)
+            { Kind: AppNotificationInfoBarActionKind.NotificationRoute, Route.Length: > 0 })
         {
-            var route = action.Route;
-            if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
+            if (_appNotificationService is { } notifications)
             {
-                CurrentApp.PendingChatSessionKey = sessionKey;
-                NavigateTo("chat");
+                var notificationId = _currentAppNotificationPresentation.Notification!.Id;
+                AsyncEventHandlerGuard.Run(
+                    () => notifications.NavigateActionAsync(notificationId, ((IAppCommands)CurrentApp).TryNavigateAsync),
+                    new AppLogger(), nameof(OnAppNotificationActionButtonClick));
             }
-            else
-            {
-                NavigateTo(route);
-            }
-            _appNotificationService?.Dismiss(_currentAppNotificationPresentation.Notification!.Id);
             return;
         }
     }
@@ -372,7 +383,18 @@ internal sealed partial class SettingsShellView : UserControl
 
     private void UpdatePaneChrome()
     {
-        SettingsNavigationActions.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        var open = NavView.IsPaneOpen;
+        SettingsNavigationActions.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        // The compact rail keeps Back to app as an arrow aligned with the item icons, like NavigationView
+        // items, which show their label as a tooltip only while compact.
+        var headerText = open ? Visibility.Visible : Visibility.Collapsed;
+        BackToAppLabel.Visibility = headerText;
+        BackToAppKeyHint.Visibility = headerText;
+        SettingsTitle.Visibility = headerText;
+        BackToAppButton.Width = open ? double.NaN : 40;
+        BackToAppButton.HorizontalAlignment = open ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        ToolTipService.SetToolTip(BackToAppButton, open ? null : _backToAppToolTip);
+        UpdatePageAllocation();
         // Footer popups are anchored to buttons that move when the rail opens or closes.
         if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
             PaneFooterControl.HideFlyouts();
@@ -396,11 +418,32 @@ internal sealed partial class SettingsShellView : UserControl
             // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
             if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
                 ApplyNavPaneState(settings);
+            UpdatePageAllocation();
         }
+    }
+
+    private void UpdatePageAllocation()
+    {
+        // Existing pages retain their own padding. Only opted-in pages allocate shell chrome.
+        if (ContentFrame.Content is ISettingsPageContentInset page)
+            page.ApplyTopInset(ContentOnly ? _hostContentTopInset
+                : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen));
+    }
+
+    internal void SetHostContentTopInset(double inset)
+    {
+        if (!double.IsFinite(inset) || inset < 0)
+            throw new ArgumentOutOfRangeException(nameof(inset));
+        _hostContentTopInset = inset;
+        UpdatePageAllocation();
     }
 
     /// <summary>Returns the currently displayed page in the content frame.</summary>
     public object? CurrentPage => ContentFrame?.Content;
+
+    internal bool IsSectionShown(string tag) =>
+        !_disposed && _active && ContentFrame.Content is not null &&
+        _currentNavTag == tag;
 
     /// <summary>The canonical tag of the section currently shown, or null while deactivated.</summary>
     internal string? CurrentSectionTag => _currentNavTag;
@@ -692,18 +735,11 @@ internal sealed partial class SettingsShellView : UserControl
 
     public System.Text.Json.JsonElement? LastAgentsData => AppModel?.AgentsList;
 
-    private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    private void OnBackToAppClick(object sender, RoutedEventArgs e)
     {
-        if (args.InvokedItemContainer is not NavigationViewItem { Tag: "chat" })
-            return;
-
-        // NavigationView finishes focusing its item after ItemInvoked returns.
-        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (!_disposed && _active)
-                    NavigateTo("chat");
-            }))
-            Logger.Warn("Could not queue the Chat navigation because Settings is shutting down.");
+        if (_disposed || !_active) return;
+        if (ExitRequested is { } exit) exit();
+        else NavigateTo("chat");
     }
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -746,6 +782,8 @@ internal sealed partial class SettingsShellView : UserControl
         SyncNavSelection(tag);
 
         InitializeCurrentPage();
+        PageContentChanged?.Invoke();
+        UpdatePageAllocation();
         UpdateAppNotificationActionEnabledState();
         ArmContentReady(
             e.Content as FrameworkElement,
@@ -892,7 +930,6 @@ internal sealed partial class SettingsShellView : UserControl
     // constructing or subscribing to the legacy WinRT accessibility API.
     private static readonly Dictionary<string, string> s_highContrastGlyphFallback = new()
     {
-        { "chat",        "\uE8BD" },
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
         { "instances",   "\uE977" },
