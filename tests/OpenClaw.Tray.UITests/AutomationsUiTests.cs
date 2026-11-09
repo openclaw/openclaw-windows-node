@@ -591,7 +591,9 @@ public sealed partial class GatewayFixtureUiTests
                 scenario.QueueCronRunsOnly = true;
                 var runsBefore = CronRunRequests(run);
                 await InvokeWhenEnabledAsync(run, () => FindCommand(run, "Run now"), "invoked Run now after save");
-                await WaitUiAsync(run, () => FindText(run, "Run queued · queued-morning-brief") is not null, "queued result toast");
+                await WaitUiAsync(run, () => scenario.GetQueuedCronRunIds("morning-brief").Length == 1, "accepted fixture invocation");
+                var queuedId = Assert.Single(scenario.GetQueuedCronRunIds("morning-brief"));
+                await WaitUiAsync(run, () => FindText(run, $"Run queued · {queuedId}") is not null, "queued result toast");
                 Assert.Equal(runsBefore + 1, CronRunRequests(run));
                 Capture(run, "automations-run-queued.png", "AutomationsNotice");
                 await WaitUiAsync(run, () => FindById(run, "AutomationsNotice") is null, "auto-dismissed queued result toast");

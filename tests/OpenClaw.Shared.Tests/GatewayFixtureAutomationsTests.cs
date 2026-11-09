@@ -443,6 +443,34 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task Automations_RunIdsDistinguishSuccessiveInvocationsWithStaleInventory()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations(sparse: true);
+        scenario.QueueCronRunsOnly = true;
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var before = await client.GetCronJobAsync("morning-brief");
+        var at = before.State.LastRunAtMs!.Value + 60_000;
+        var first = await client.RunCronJobDetailedAsync("morning-brief");
+        Assert.True(first.Accepted && first.Enqueued);
+        Assert.Equal(first.RunId, Assert.Single(scenario.GetQueuedCronRunIds("morning-brief")));
+        scenario.CompleteQueuedCronRun("morning-brief", first.RunId!, at, updateListState: false);
+        var second = await client.RunCronJobDetailedAsync("morning-brief");
+        Assert.NotEqual(first.RunId, second.RunId);
+        Assert.Equal(before.State.LastRunAtMs, (await client.GetCronJobAsync("morning-brief")).State.LastRunAtMs);
+        Assert.Empty((await client.ListCronRunsAsync(new CronRunsQuery { JobId = "morning-brief", RunId = second.RunId })).Entries);
+        Assert.Equal(first.RunId, Assert.Single((await client.ListCronRunsAsync(
+            new CronRunsQuery { JobId = "morning-brief", RunId = first.RunId })).Entries).RunId);
+        // Equal timestamps still describe distinct invocations. Only the accepted ID is authoritative.
+        scenario.CompleteQueuedCronRun("morning-brief", second.RunId!, at);
+        Assert.Equal(second.RunId, Assert.Single((await client.ListCronRunsAsync(
+            new CronRunsQuery { JobId = "morning-brief", RunId = second.RunId })).Entries).RunId);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task AutomationsStore_ScopesRunsAndLatchesRunNowUntilHistoryReportsIt()
     {
         var token = CreateToken();
@@ -474,6 +502,41 @@ public sealed partial class GatewayFixtureProtocolTests
         await WaitForAsync(() => store.State.Notice?.Kind == AutomationsNoticeKind.RunNotStarted);
         Assert.Equal("not-due", store.State.Notice?.Reason);
         Assert.False(store.State.IsRunning("inbox-sweep"));
+    }
+
+    [Fact]
+    public async Task AutomationsStore_MainSessionCreateAndUpdateUseReleasedPayloadShape()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations(sparse: true);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => connected.Client, ui.Post);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded);
+        var form = (CronJobForm.CreateDefault("main") with
+            { Name = "Main timeline message", PayloadText = "Keep the entered task", SessionTarget = "main" }).Normalize(true);
+        var saved = Assert.IsType<AutomationsSaveResult.Saved>(await await ui.InvokeAsync(() => store.SaveAsync(form, null))).Job;
+        Assert.Equal("main", saved.SessionTarget);
+        Assert.Equal(CronPayloadKind.SystemEvent, saved.Payload.Kind);
+        Assert.Equal("Keep the entered task", saved.Payload.Text);
+        var retargeted = (CronJobForm.FromJob(saved) with { SessionTarget = "isolated" }).Normalize(true);
+        var updated = Assert.IsType<AutomationsSaveResult.Saved>(await await ui.InvokeAsync(() => store.SaveAsync(retargeted, saved))).Job;
+        Assert.Equal(CronPayloadKind.AgentTurn, updated.Payload.Kind);
+        Assert.Equal("Keep the entered task", updated.Payload.Text);
+        var returnToMain = (CronJobForm.FromJob(updated) with { SessionTarget = "main" }).Normalize(true);
+        var restored = Assert.IsType<AutomationsSaveResult.Saved>(await await ui.InvokeAsync(() => store.SaveAsync(returnToMain, updated))).Job;
+        Assert.Equal("main", restored.SessionTarget);
+        Assert.Equal(CronPayloadKind.SystemEvent, restored.Payload.Kind);
+        Assert.Equal("Keep the entered task", restored.Payload.Text);
+        // The fixture rejects the pre-fix request rather than supplying a successful result.
+        var invalid = retargeted.BuildDefinition();
+        invalid["sessionTarget"] = "main";
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => connected.Client.AddCronJobDetailedAsync(invalid));
+        var successfulWrites = server.Requests.Where(r => r.Method is "cron.add" or "cron.update").Take(3).ToArray();
+        Assert.Equal(3, successfulWrites.Length);
+        Assert.All(successfulWrites, r => Assert.Equal("ok", r.Outcome));
     }
 
     [Fact]
@@ -543,18 +606,6 @@ public sealed partial class GatewayFixtureProtocolTests
         // Rebasing onto the latest definition (what the editor does) lets the retry succeed.
         var retried = await await ui.InvokeAsync(() => store.SaveAsync(CronJobForm.FromJob(latest!) with { Name = "Mine" }, latest));
         Assert.Equal("Mine", Assert.IsType<AutomationsSaveResult.Saved>(retried).Job.Name);
-
-        // A filter change drops old rows so a concurrent Load more cannot mix two filters.
-        await ui.InvokeAsync(() => store.Select("morning-brief"));
-        await WaitForAsync(() => store.State.RunsLoaded && store.State.RunsQuery.JobId == "morning-brief" && !store.State.RunsLoading);
-        await ui.InvokeAsync(() => store.SetRunsFilter(store.State.RunsQuery with { Limit = 5 }));
-        await WaitForAsync(() => store.State.RunsHasMore && !store.State.RunsLoading);
-        await ui.InvokeAsync(() => store.SetRunsFilter(store.State.RunsQuery with { Statuses = ["error"] }));
-        Assert.Empty(store.State.Runs);
-        await await ui.InvokeAsync(() => store.LoadRunsAsync(append: true));
-        await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading);
-        Assert.All(store.State.Runs, run => Assert.Equal("error", run.Status));
-        Assert.Single(store.State.Runs);
     }
 
     [Fact]
@@ -580,7 +631,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal("main", store.State.DefaultAgentId);
         Assert.Contains(server.Requests, r => r.Method == "cron.list" && r.AgentId is null && r.Outcome == "ok");
 
-        await ui.InvokeAsync(() => store.SetView(AutomationsView.RunHistory));
+        await ui.InvokeAsync(() => store.Select(GatewayScenario.AutomationsOtherAgentJobId));
         await WaitForAsync(() => store.State.RunsLoaded && !store.State.RunsLoading
             && store.State.Runs.Any(run => run.JobId == GatewayScenario.AutomationsOtherAgentJobId));
 
@@ -700,7 +751,7 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
-    public async Task AutomationsStore_RunningStateSurvivesFiltersAndReselectLeavesRunHistory()
+    public async Task AutomationsStore_RunningStateSurvivesFiltersAndSelectionKeepsRecentResults()
     {
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
@@ -717,10 +768,12 @@ public sealed partial class GatewayFixtureProtocolTests
         await WaitForAsync(() => !store.State.ListLoading && store.State.Jobs.All(j => j.Id != "inbox-sweep"));
         Assert.True(store.State.IsRunning("inbox-sweep"));
 
-        await ui.InvokeAsync(() => store.SetView(AutomationsView.RunHistory));
+        await ui.InvokeAsync(() => store.Select("dentist"));
+        await WaitForAsync(() => store.State.RunsLoaded && store.State.RunsQuery.JobId == "dentist");
         await ui.InvokeAsync(() => store.Select("inbox-sweep"));
-        Assert.Equal(AutomationsView.Jobs, store.State.View);
-        Assert.Equal("inbox-sweep", store.State.RunsQuery.JobId);
+        await WaitForAsync(() => store.State.RunsLoaded && store.State.RunsQuery.JobId == "inbox-sweep");
+        Assert.All(store.State.Runs, run => Assert.Equal("inbox-sweep", run.JobId));
+        Assert.True(store.State.IsRunning("inbox-sweep"));
     }
 
     [Fact]

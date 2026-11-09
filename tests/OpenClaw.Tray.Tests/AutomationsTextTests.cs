@@ -332,6 +332,14 @@ public sealed class AutomationsTextTests
         var detail = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationDetail.cs"));
         Assert.Contains("CommandBar(primaryCommands:", detail);
         Assert.DoesNotContain("SelectorBar(", detail);
+        Assert.Contains("runs.Take(3)", detail);
+        Assert.Contains("AutomationRunResult.Render(", detail);
+        Assert.Contains("host.OpenWeb(job.Id)", detail);
+        // Ledger closure: retire when mounted navigation covers absence of the full-history surface.
+        Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationRuns.cs")));
+        var store = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "Cron", "AutomationsStore.cs"));
+        foreach (var retired in new[] { "enum AutomationsView", "SetRunsFilter(", "RunsLoadingMore", "RunsHasMore", "RunsTotal" })
+            Assert.DoesNotContain(retired, store);
     }
 
     [Fact]

@@ -431,6 +431,27 @@ public sealed class CronJobFormTests
     }
 
     [Fact]
+    public void MainSessionSelectionSerializesSystemEventTextAndRetargetsWithoutLosingThePrompt()
+    {
+        var main = (Valid with { SessionTarget = "main", DeliveryMode = "announce" }).Normalize(sessionTargetChanged: true);
+        Assert.Equal(CronPayloadKind.SystemEvent, main.PayloadKind);
+        Assert.Equal("Do it", main.PayloadText);
+        var request = JsonDocument.Parse(main.BuildDefinition().ToJsonString()).RootElement;
+        Assert.Equal("main", request.GetProperty("sessionTarget").GetString());
+        var payload = request.GetProperty("payload");
+        Assert.Equal(new[] { "kind", "text" }, payload.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal("systemEvent", payload.GetProperty("kind").GetString());
+        Assert.Equal("Do it", payload.GetProperty("text").GetString());
+        Assert.Equal("none", request.GetProperty("delivery").GetProperty("mode").GetString());
+        var isolated = (main with { SessionTarget = "isolated" }).Normalize(sessionTargetChanged: true);
+        Assert.Equal(CronPayloadKind.AgentTurn, isolated.PayloadKind);
+        Assert.Equal("Do it", isolated.BuildDefinition()["payload"]!["message"]!.GetValue<string>());
+        // A locked web-managed script is not converted merely because its target is Main.
+        var locked = (Valid with { PayloadKind = CronPayloadKind.Script, PayloadLocked = true, SessionTarget = "main" }).Normalize(true);
+        Assert.Equal(CronPayloadKind.Script, locked.PayloadKind);
+    }
+
+    [Fact]
     public void WithScheduleKind_AppliesOneShotDefaults()
     {
         var once = Valid.WithScheduleKind(CronScheduleKind.At);

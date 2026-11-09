@@ -255,6 +255,8 @@ public sealed record CronJobForm
     public CronJobForm Normalize(bool sessionTargetChanged = false)
     {
         var form = this;
+        if (!form.PayloadLocked && form.PayloadKind == CronPayloadKind.AgentTurn && form.SessionTarget == "main")
+            form = form with { PayloadKind = CronPayloadKind.SystemEvent };
         if (!form.PayloadLocked && form.PayloadKind == CronPayloadKind.SystemEvent && form.SessionTarget != "main")
         {
             form = sessionTargetChanged

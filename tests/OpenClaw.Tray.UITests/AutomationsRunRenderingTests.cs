@@ -21,11 +21,9 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
         + "<script>alert('not executed')</script>";
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task ExpandedResultKeepsFormattingAndInertLinksOrSelectableErrors(bool inline, bool error)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExpandedResultKeepsFormattingAndInertLinksOrSelectableErrors(bool error)
     {
         Assert.True(ui.UsesProductionResources,
             $"Run Category=ProductionResources with {TestAppResourceLoader.ProfileVariable}=Production.");
@@ -55,8 +53,8 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
                     JobId = "job", RunId = "run", Status = error ? "error" : "ok", Raw = raw.RootElement.Clone(),
                 };
                 renderer = new ReactorHostControl { Width = 600 };
-                var root = renderer.Reconciler.Mount(AutomationRuns.RenderRun(host, run,
-                    showJob: false, expanded: true, toggleExpanded: () => { }, first: true, last: true, inline: inline),
+                var root = renderer.Reconciler.Mount(AutomationRunResult.Render(host, run,
+                    expanded: true, toggleExpanded: () => { }),
                     static () => { });
                 renderer.Content = root;
                 ui.Container.Children.Add(renderer);
@@ -65,13 +63,10 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var root = Assert.IsAssignableFrom<Microsoft.UI.Xaml.DependencyObject>(renderer!.Content);
-                if (inline)
-                {
-                    Assert.IsType<Border>(root);
-                    var disclosure = Assert.Single(FindLogical<HyperlinkButton>(root),
-                        button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "AutomationRunExpand:run");
-                    Assert.Equal(catalog["Automations_Runs_ShowLess"], disclosure.Content);
-                }
+                Assert.IsType<Border>(root);
+                var disclosure = Assert.Single(FindLogical<HyperlinkButton>(root),
+                    button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "AutomationRunExpand:run");
+                Assert.Equal(catalog["Automations_Runs_ShowLess"], disclosure.Content);
                 if (error)
                 {
                     var literal = Assert.Single(FindLogical<TextBlock>(root), text => text.Text.Contains("## Summary"));

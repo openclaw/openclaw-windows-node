@@ -18,6 +18,7 @@ public sealed partial class GatewayScenario
     private readonly Dictionary<string, List<JsonObject>> _cronRuns = new(StringComparer.Ordinal);
     private int _cronRunCount;
     private int _cronCreated;
+    private readonly Dictionary<string, string> _queuedCronRuns = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Opt-in, in-memory Automations data for the native page. Jobs are never
@@ -131,6 +132,37 @@ public sealed partial class GatewayScenario
 
     /// <summary>When set, <c>cron.run</c> is accepted but stays queued: no history or last-run state yet.</summary>
     public bool QueueCronRunsOnly { get; set; }
+
+    /// <summary>Pending synthetic invocation IDs, for explicit completion during owned proof.</summary>
+    public string[] GetQueuedCronRunIds(string jobId)
+    {
+        var jobs = _cronJobs ?? throw new InvalidOperationException("Automations are not enabled.");
+        lock (jobs) return _queuedCronRuns.Where(run => run.Value == jobId).Select(run => run.Key).ToArray();
+    }
+
+    /// <summary>Completes one previously accepted synthetic invocation. Optional list lag models stale inventory.</summary>
+    public void CompleteQueuedCronRun(string jobId, string runId, long runAtMs, bool updateListState = true)
+    {
+        var jobs = _cronJobs ?? throw new InvalidOperationException("Automations are not enabled.");
+        lock (jobs)
+        {
+            if (!_queuedCronRuns.TryGetValue(runId, out var owner) || owner != jobId)
+                throw new InvalidOperationException("No matching synthetic queued invocation.");
+            var job = jobs[jobId];
+            var run = Run(jobId, job["name"]!.GetValue<string>(), runAtMs, "ok", FixtureRunSummary, null,
+                "not-requested", 1_000, "browse", "fixture", 10, 5);
+            run["runId"] = runId;
+            if (!_cronRuns.TryGetValue(jobId, out var runs)) _cronRuns[jobId] = runs = [];
+            runs.Insert(0, run);
+            _queuedCronRuns.Remove(runId);
+            if (updateListState)
+            {
+                job["state"]!["lastRunAtMs"] = runAtMs;
+                job["state"]!["lastRunStatus"] = "ok";
+                job["state"]!.AsObject().Remove("runningAtMs");
+            }
+        }
+    }
 
     public void SetCronJobOwner(string id, string? agentId)
     {
@@ -384,6 +416,7 @@ public sealed partial class GatewayScenario
         job["configRevision"] = "rev-1";
         job["state"] = new JsonObject { ["nextRunAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 3_600_000 };
         RemoveNulls(job);
+        ValidateSupportedJobSpec(job);
         jobs[id] = job;
         return job;
     }
@@ -417,6 +450,7 @@ public sealed partial class GatewayScenario
                 updated[field.Name] = value;
             }
         }
+        ValidateSupportedJobSpec(updated);
         if (patch.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == JsonValueKind.True)
             updated["state"]!.AsObject().Remove("autoDisabled");
         var revision = int.Parse(job["configRevision"]!.GetValue<string>()["rev-".Length..]) + 1;
@@ -424,6 +458,15 @@ public sealed partial class GatewayScenario
         updated["updatedAtMs"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         jobs[job["id"]!.GetValue<string>()] = updated;
         return updated;
+    }
+
+    private static void ValidateSupportedJobSpec(JsonObject job)
+    {
+        // Independent released Gateway invariant (v2026.11.2 jobs-validation.ts).
+        var target = job["sessionTarget"]?.GetValue<string>();
+        var kind = job["payload"]?["kind"]?.GetValue<string>();
+        if ((target == "main" && kind == "agentTurn") || (target != "main" && kind == "systemEvent"))
+            throw new FixtureRequestException("INVALID_REQUEST", "Session target and payload kind are incompatible.");
     }
 
     private void ValidateCronCompatibilityProperties(JsonElement parameters)
@@ -447,7 +490,11 @@ public sealed partial class GatewayScenario
         if (job["state"]?["runningAtMs"]?.GetValue<long>() is > 0)
             return new { ok = true, ran = false, reason = "already-running" };
         if (QueueCronRunsOnly)
-            return new { ok = true, enqueued = true, runId = $"queued-{id}" };
+        {
+            var queuedId = $"queued-{id}-{++_cronRunCount}";
+            _queuedCronRuns.Add(queuedId, id);
+            return new { ok = true, enqueued = true, runId = queuedId };
+        }
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var run = Run(id, job["name"]!.GetValue<string>(), now, "ok", FixtureRunSummary, null, "not-requested", 1_000, "browse", "fixture", 10, 5);
         if (!_cronRuns.TryGetValue(id, out var runs)) _cronRuns[id] = runs = [];

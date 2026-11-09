@@ -65,8 +65,8 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
             state.RunsError is { } error ? ErrorText(error, "AutomationRunsError")
                 : !state.RunsLoaded || state.RunsQuery.JobId != job.Id ? Secondary(t["Runs_Loading"])
                 : runs.Count == 0 ? Secondary(t["Runs_EmptyHint"]) : Empty(),
-            VStack(8, runs.Take(3).Select((run, index) => AutomationRuns.RenderRun(host, run, false, expandedRun == run.Key,
-                () => setExpandedRun(expandedRun == run.Key ? null : run.Key), false, false, inline: true, runOrder: index).WithKey(run.Key)).ToArray()),
+            VStack(8, runs.Take(3).Select((run, index) => AutomationRunResult.Render(host, run, expandedRun == run.Key,
+                () => setExpandedRun(expandedRun == run.Key ? null : run.Key), runOrder: index).WithKey(run.Key)).ToArray()),
             GlyphButton(GlyphOpenInBrowser, t["Redesign_AllRunsWeb"], () => host.OpenWeb(job.Id), $"AutomationAllRunsWeb:{job.Id}", state.Connected));
         Element details = (Props.Narrow ? (Element)VStack(16, left, right)
             : Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto], left.Margin(0, 0, 8, 0).Grid(column: 0), right.Margin(8, 0, 0, 0).Grid(column: 1)))

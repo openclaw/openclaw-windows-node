@@ -3,8 +3,6 @@ using System.Text.Json.Nodes;
 
 namespace OpenClaw.Shared.Cron;
 
-public enum AutomationsView { Jobs, RunHistory }
-
 public enum AutomationsNoticeKind
 {
     JobCompleted,
@@ -49,7 +47,6 @@ public sealed record AutomationsSnapshot
     public bool CanManage { get; init; }
     /// <summary>Retains disabled offline controls only for a previously authorized operator.</summary>
     public bool LastKnownCanManage { get; init; }
-    public AutomationsView View { get; init; } = AutomationsView.Jobs;
 
     public CronListQuery ListQuery { get; init; } = new();
     public IReadOnlyList<CronJob> Jobs { get; init; } = Array.Empty<CronJob>();
@@ -84,10 +81,7 @@ public sealed record AutomationsSnapshot
     public CronRunsQuery RunsQuery { get; init; } = new();
     public IReadOnlyList<CronRunEntry> Runs { get; init; } = Array.Empty<CronRunEntry>();
     public bool RunsLoading { get; init; }
-    public bool RunsLoadingMore { get; init; }
     public bool RunsLoaded { get; init; }
-    public bool RunsHasMore { get; init; }
-    public int? RunsTotal { get; init; }
     public string? RunsError { get; init; }
 
     public AutomationsNotice? Notice { get; init; }
@@ -127,7 +121,7 @@ public abstract record AutomationsSaveResult
 
 /// <summary>
 /// Owns the automation inventory (one agent or every agent), scoped stats, selection,
-/// run history, run-now latching and mutations. UI-agnostic: every state change is
+/// selected-job recent results, run-now latching and mutations. UI-agnostic: every state change is
 /// published through <see cref="Changed"/> on the <c>post</c> dispatcher.
 /// </summary>
 public sealed class AutomationsStore : IDisposable
@@ -145,7 +139,12 @@ public sealed class AutomationsStore : IDisposable
     private readonly bool _ownsOverviewSource;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, CancellationTokenSource> _runWatchers = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, long> _runBaseline = new(StringComparer.Ordinal);
+    // The local owner exists before acknowledgement, so an old list/response cannot retire a pending run.
+    private sealed class RunInvocation
+    {
+        public string? RunId { get; set; }
+    }
+    private readonly Dictionary<string, RunInvocation> _localRuns = new(StringComparer.Ordinal);
     private readonly HashSet<string> _removedByUser = new(StringComparer.Ordinal);
     private AutomationsSnapshot _state;
     private long _listGeneration;
@@ -227,7 +226,7 @@ public sealed class AutomationsStore : IDisposable
             ++_statsGeneration;
             ++_listGeneration;
             CancelAllRunWatchers();
-            _runBaseline.Clear();
+            _localRuns.Clear();
             Set(s => s with
             {
                 ListLoading = false,
@@ -242,7 +241,7 @@ public sealed class AutomationsStore : IDisposable
         _ = LoadStatsAsync();
         if (_state.SelectedJobId is { } selected)
             _ = LoadSelectedAsync(selected);
-        if (_state.View == AutomationsView.RunHistory || _state.SelectedJobId is not null || _state.RunsLoaded)
+        if (_state.SelectedJobId is not null || _state.RunsLoaded)
             _ = LoadRunsAsync();
     }
 
@@ -316,21 +315,11 @@ public sealed class AutomationsStore : IDisposable
                 SelectedJobId = null, SelectedJob = null, SelectedError = null,
                 RunsQuery = new CronRunsQuery { AgentId = agent },
                 Runs = Array.Empty<CronRunEntry>(), RunsLoaded = false, RunsLoading = false,
-                RunsLoadingMore = false, RunsHasMore = false, RunsTotal = null, RunsError = null,
+                RunsError = null,
             };
         });
         if (reloadList) _ = LoadListAsync();
         _ = LoadStatsAsync();
-        if (_state.View == AutomationsView.RunHistory)
-            ShowRuns(new CronRunsQuery());
-    }
-
-    public void SetView(AutomationsView view)
-    {
-        if (_state.View == view) return;
-        Set(s => s with { View = view });
-        if (view == AutomationsView.RunHistory)
-            ShowRuns(new CronRunsQuery());
     }
 
     public async Task LoadListAsync(bool append = false)
@@ -421,15 +410,9 @@ public sealed class AutomationsStore : IDisposable
         {
             // Runs started here are tracked by their watcher (with its safety timeout).
             // Runs only observed in the list stay latched only while a visible row says so.
-            if (IsTrackedRun(id))
-            {
-                if (rows.TryGetValue(id, out var tracked) && !tracked.IsRunning && HasCompletedSinceBaseline(tracked))
-                {
-                    running = running.Remove(id);
-                    ForgetRun(id);
-                }
-            }
-            else if (!rows.TryGetValue(id, out var observed) || !observed.IsRunning)
+            // Job-list timestamps identify neither the accepted invocation nor its result.
+            // Keep locally owned runs until matching history, confirmed removal or their own timeout.
+            if (!IsTrackedRun(id) && (!rows.TryGetValue(id, out var observed) || !observed.IsRunning))
             {
                 running = running.Remove(id);
             }
@@ -458,12 +441,6 @@ public sealed class AutomationsStore : IDisposable
     /// <summary>List rows carry live state; the exact definition stays authoritative for config.</summary>
     private static CronJob MergeRow(CronJob? exact, CronJob row) =>
         exact is null ? row : exact with { State = row.State, Enabled = row.Enabled };
-
-    private bool HasCompletedSinceBaseline(CronJob job)
-    {
-        var baseline = _runBaseline.TryGetValue(job.Id, out var b) ? b : 0;
-        return job.State.LastRunAtMs is { } last && last > baseline;
-    }
 
     /// <summary>
     /// A delete-after-run job that disappears from the list may simply be filtered
@@ -701,12 +678,12 @@ public sealed class AutomationsStore : IDisposable
 
     public void Select(string? jobId)
     {
-        if (jobId == _state.SelectedJobId && (jobId is null || _state.View == AutomationsView.Jobs)) return;
+        if (jobId == _state.SelectedJobId) return;
         var row = jobId is null ? null : _state.Jobs.FirstOrDefault(j => j.Id == jobId);
-        Set(s => s with { SelectedJobId = jobId, SelectedJob = row, SelectedError = null, View = AutomationsView.Jobs });
+        Set(s => s with { SelectedJobId = jobId, SelectedJob = row, SelectedError = null });
         if (jobId is null) return;
         _ = LoadSelectedAsync(jobId);
-        ShowRuns(new CronRunsQuery { JobId = jobId });
+        ShowRecentRuns(jobId);
     }
 
     public async Task LoadSelectedAsync(string jobId, bool quiet = false)
@@ -743,47 +720,34 @@ public sealed class AutomationsStore : IDisposable
 
     // ─── Runs ───
 
-    public void ShowRuns(CronRunsQuery query)
+    private void ShowRecentRuns(string jobId)
     {
         Set(s => s with
         {
-            RunsQuery = query with { AgentId = s.AgentFilter, Offset = 0 },
+            RunsQuery = new CronRunsQuery { JobId = jobId },
             Runs = Array.Empty<CronRunEntry>(),
             RunsLoaded = false,
-            RunsHasMore = false,
             RunsError = null,
         });
         _ = LoadRunsAsync();
     }
 
-    public void SetRunsFilter(CronRunsQuery query)
-    {
-        Set(s => s with
-        {
-            RunsQuery = query with { AgentId = s.AgentFilter, JobId = s.RunsQuery.JobId, Offset = 0 },
-            Runs = Array.Empty<CronRunEntry>(),
-            RunsHasMore = false,
-        });
-        _ = LoadRunsAsync();
-    }
-
-    public async Task LoadRunsAsync(bool append = false, bool quiet = false)
+    public async Task LoadRunsAsync(bool quiet = false)
     {
         var client = _client();
         if (client is null || !_state.Connected) return;
-        // Appending while a first page is in flight would mix two filters.
-        if (append && (!_state.RunsHasMore || _state.RunsLoadingMore || _state.RunsLoading)) return;
+        // Only the selected job's recent results are native. Full history/filtering stays on the web.
+        if (!_state.RunsQuery.IsJobScope) return;
         var generation = ++_runsGeneration;
-        var query = _state.RunsQuery with { Offset = append ? _state.Runs.Count : 0 };
-        Set(s => append ? s with { RunsLoadingMore = true } : quiet ? s : s with { RunsLoading = true, RunsError = null });
+        var query = _state.RunsQuery with { Offset = 0 };
+        if (!quiet) Set(s => s with { RunsLoading = true, RunsError = null });
         try
         {
             var page = await client.ListCronRunsAsync(query).ConfigureAwait(false);
             Post(() =>
             {
                 if (generation != _runsGeneration) return;
-                var runs = append ? _state.Runs.Concat(page.Entries.Where(e => _state.Runs.All(r => r.Key != e.Key))).ToList() : page.Entries.ToList();
-                Set(s => s with { Runs = runs, RunsHasMore = page.HasMore, RunsTotal = page.Total, RunsLoaded = true, RunsError = null });
+                Set(s => s with { Runs = page.Entries.ToList(), RunsLoaded = true, RunsError = null });
             });
         }
         catch (Exception ex)
@@ -799,7 +763,7 @@ public sealed class AutomationsStore : IDisposable
             Post(() =>
             {
                 if (generation != _runsGeneration) return;
-                Set(s => s with { RunsLoading = false, RunsLoadingMore = false });
+                Set(s => s with { RunsLoading = false });
             });
         }
     }
@@ -819,19 +783,21 @@ public sealed class AutomationsStore : IDisposable
 
     private void EndMutation(string jobId) => Set(s => s with { BusyJobIds = s.BusyJobIds.Remove(jobId) });
 
-    /// <summary>Starts a run. The running latch clears when history or the list reports a newer run.</summary>
+    /// <summary>Starts a run. Only its accepted RunId can correlate history completion; list timestamps cannot.</summary>
     public async Task RunNowAsync(string jobId, CronRunMode mode = CronRunMode.Force)
     {
         var client = _client();
         var job = FindJob(jobId);
         if (client is null || job is null || _state.RunningJobIds.Contains(jobId) || !BeginMutation(jobId)) return;
-        _runBaseline[jobId] = job.State.LastRunAtMs ?? 0;
+        var invocation = new RunInvocation();
+        _localRuns[jobId] = invocation;
         Set(s => s with { RunningJobIds = s.RunningJobIds.Add(jobId) });
         try
         {
             var result = await client.RunCronJobDetailedAsync(jobId, mode == CronRunMode.Force).ConfigureAwait(false);
             Post(() =>
             {
+                if (!OwnsRun(jobId, invocation)) return;
                 EndMutation(jobId);
                 if (!result.Accepted || !result.Enqueued)
                 {
@@ -843,13 +809,15 @@ public sealed class AutomationsStore : IDisposable
                     return;
                 }
                 Notify(new AutomationsNotice(AutomationsNoticeKind.RunQueued, job.Title, RunId: result.RunId));
-                StartRunWatcher(jobId);
+                invocation.RunId = string.IsNullOrWhiteSpace(result.RunId) ? null : result.RunId;
+                StartRunWatcher(jobId, invocation);
             });
         }
         catch (Exception ex)
         {
             Post(() =>
             {
+                if (!OwnsRun(jobId, invocation)) return;
                 EndMutation(jobId);
                 ClearRunning(jobId);
                 Notify(new AutomationsNotice(AutomationsNoticeKind.RunFailed, job.Title, Detail: ex.Message));
@@ -857,14 +825,15 @@ public sealed class AutomationsStore : IDisposable
         }
     }
 
-    private void StartRunWatcher(string jobId)
+    private void StartRunWatcher(string jobId, RunInvocation invocation)
     {
+        if (!OwnsRun(jobId, invocation)) return;
         CancelRunWatcher(jobId);
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _runWatchers[jobId] = cts;
         var token = cts.Token;
-        // Captured on the dispatcher; the background loop never touches store fields.
-        var baseline = _runBaseline.TryGetValue(jobId, out var b) ? b : 0;
+        // Accepted identity is immutable for this watcher, including an explicitly ID-less acknowledgement.
+        var runId = invocation.RunId;
         _ = Task.Run(async () =>
         {
             var started = DateTimeOffset.UtcNow;
@@ -873,7 +842,7 @@ public sealed class AutomationsStore : IDisposable
                 for (var attempt = 0; attempt < RunPollAttempts && !token.IsCancellationRequested; attempt++)
                 {
                     await _delay(RunPollInterval, token).ConfigureAwait(false);
-                    if (await PollRunCompletedAsync(jobId, baseline, cts).ConfigureAwait(false))
+                    if (await PollRunCompletedAsync(jobId, runId, cts).ConfigureAwait(false))
                         return;
                     if (DateTimeOffset.UtcNow - started >= RunSafetyTimeout)
                         break;
@@ -892,14 +861,16 @@ public sealed class AutomationsStore : IDisposable
         });
     }
 
-    private async Task<bool> PollRunCompletedAsync(string jobId, long baseline, CancellationTokenSource watcher)
+    private async Task<bool> PollRunCompletedAsync(string jobId, string? runId, CancellationTokenSource watcher)
     {
         var client = _client();
-        if (client is null) return false;
+        // Legacy acknowledgements carry no invocation identity. Neither newer history nor a list
+        // timestamp can safely complete them; retain the existing owner-bound safety timeout.
+        if (client is null || runId is null) return false;
         try
         {
-            var page = await client.ListCronRunsAsync(new CronRunsQuery { JobId = jobId, Limit = RunPollLimit }).ConfigureAwait(false);
-            if (!page.Entries.Any(e => e.EffectiveRunAtMs > baseline))
+            var page = await client.ListCronRunsAsync(new CronRunsQuery { JobId = jobId, RunId = runId, Limit = RunPollLimit }).ConfigureAwait(false);
+            if (!page.Entries.Any(e => e.JobId == jobId && string.Equals(e.RunId, runId, StringComparison.Ordinal)))
                 return false;
             Post(() =>
             {
@@ -909,7 +880,7 @@ public sealed class AutomationsStore : IDisposable
                 _ = LoadStatsAsync();
                 if (_state.SelectedJobId == jobId)
                     _ = LoadSelectedAsync(jobId, quiet: true);
-                if (_state.RunsLoaded && (_state.RunsQuery.JobId == jobId || !_state.RunsQuery.IsJobScope))
+                if (_state.RunsLoaded && _state.RunsQuery.JobId == jobId)
                     _ = LoadRunsAsync(quiet: true);
             });
             return true;
@@ -924,13 +895,16 @@ public sealed class AutomationsStore : IDisposable
     private bool OwnsWatcher(string jobId, CancellationTokenSource watcher) =>
         _runWatchers.TryGetValue(jobId, out var current) && ReferenceEquals(current, watcher);
 
-    /// <summary>A run started here: its baseline lives from Run now until history or the list reports it.</summary>
-    private bool IsTrackedRun(string jobId) => _runBaseline.ContainsKey(jobId);
+    private bool OwnsRun(string jobId, RunInvocation invocation) =>
+        _localRuns.TryGetValue(jobId, out var current) && ReferenceEquals(current, invocation);
+
+    /// <summary>Locally requested runs cannot be settled by uncorrelated job-list state.</summary>
+    private bool IsTrackedRun(string jobId) => _localRuns.ContainsKey(jobId);
 
     private void ForgetRun(string jobId)
     {
         CancelRunWatcher(jobId);
-        _runBaseline.Remove(jobId);
+        _localRuns.Remove(jobId);
     }
 
     private void ClearRunning(string jobId)
@@ -1106,7 +1080,7 @@ public sealed class AutomationsStore : IDisposable
                 ApplyUpdated(saved);
                 Notify(new AutomationsNotice(editing is null ? AutomationsNoticeKind.Created : AutomationsNoticeKind.Saved, saved.Title));
                 Set(s => s with { SelectedJobId = saved.Id, SelectedJob = saved });
-                ShowRuns(new CronRunsQuery { JobId = saved.Id });
+                ShowRecentRuns(saved.Id);
                 _ = LoadListAsync();
                 _ = LoadStatsAsync();
                 if (runAfterCreate && editing is null)

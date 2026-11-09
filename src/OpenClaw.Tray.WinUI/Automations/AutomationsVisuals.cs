@@ -72,7 +72,6 @@ internal static class AutomationsVisuals
     internal const string GlyphAdd = "\uE710";
     internal const string GlyphCalendar = "\uE787";
     internal const string GlyphClock = "\uE823";
-    internal const string GlyphHistory = "\uE81C";
     internal const string GlyphChat = "\uE8BD";
     internal const string GlyphSend = "\uE724";
     internal const string GlyphAlert = "\uE7BA";
@@ -106,9 +105,6 @@ internal static class AutomationsVisuals
     internal static TextBlockElement SingleLine(string text, double size = 12) =>
         TextBlock(text).FontSize(size).TextWrapping(TextWrapping.NoWrap).MaxLines(1)
             .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(text);
-
-    internal static TextBlockElement SectionTitle(string text) =>
-        TextBlock(text).FontSize(14).FontWeight(FontWeights.SemiBold).Foreground(Theme.PrimaryText);
 
     internal static Element GlyphButton(string glyph, string label, Action onClick, string automationId, bool enabled = true, bool accent = false)
     {
@@ -248,14 +244,7 @@ internal static class AutomationsVisuals
     internal const string GlyphRepeat = "\uE8EE";
     internal const string GlyphStopwatch = "\uE916";
     internal const string GlyphCommand = "\uE756";
-    internal const string GlyphHeart = "\uEB51";
     internal const string AutomationsIcon = "ms-appx:///Assets/SidebarIcons/Cron.svg";
-
-    /// <summary>Fluent motion: short, decelerating, no bounce (DESIGN.md).</summary>
-    internal static readonly Microsoft.UI.Reactor.Animation.Curve EnterCurve =
-        Microsoft.UI.Reactor.Animation.Curve.Ease(200, Microsoft.UI.Reactor.Animation.Easing.Decelerate);
-
-    internal static readonly TimeSpan StaggerStep = TimeSpan.FromMilliseconds(28);
 
     /// <summary>Hue, tinted fill and glyph for a schedule kind (Themes/AutomationsResources.xaml).</summary>
     internal readonly record struct KindTone(ThemeRef Brush, ThemeRef Fill, string Glyph);
@@ -384,12 +373,3 @@ internal static class AutomationsVisuals
 
 /// <summary>Rendering preferences read once at the root and threaded to static builders.</summary>
 internal readonly record struct AutomationsLook(bool ReduceMotion, bool HighContrast);
-
-internal static class AutomationsMotion
-{
-    /// <summary>Fade-in on mount (outgoing content leaves at once); nothing when the user prefers reduced motion.</summary>
-    internal static T Enter<T>(this T element, bool reduceMotion) where T : Element =>
-        reduceMotion
-            ? element
-            : element.Transition(Microsoft.UI.Reactor.Animation.Transition.Enter(Microsoft.UI.Reactor.Animation.Transition.Fade), AutomationsVisuals.EnterCurve);
-}
