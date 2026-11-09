@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
 using OpenClaw.TestSupport.Gateway;
@@ -16,14 +17,27 @@ public sealed partial class GatewayFixtureUiTests
             for (var iteration = 0; iteration < 12; iteration++)
             {
                 var cycle = System.Diagnostics.Stopwatch.StartNew();
-                await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+                SessionSelectionStage? previous = null;
+                void RecordStage(SessionSelectionStage stage)
+                {
+                    if (stage == previous) return;
+                    previous = stage;
+                    // Persist as the transition happens; failure handling never makes fresh
+                    // UIA reads. Only fixed fixture IDs and native state flags are retained.
+                    File.AppendAllText(Path.Combine(run.ArtifactsDirectory, "session-switch-stages.jsonl"),
+                        JsonSerializer.Serialize(new { cycle = iteration + 1, observedAt = DateTimeOffset.UtcNow, stage })
+                        + Environment.NewLine);
+                }
+                await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey,
+                    observe: RecordStage);
                 // Tail placement has its own strict test. A missed final row must
                 // not prevent this independent crash/responsiveness exercise.
                 await WaitUiAsync(run, () => HasVisibleLongHistory(run), "visible mixed-height long history");
                 Assert.False(IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker));
                 await ScrollToAsync(run, 0);
                 await ScrollToAsync(run, 100);
-                await SelectSessionAsync(run, GatewayScenario.OtherSessionTitle, GatewayScenario.OtherSessionKey);
+                await SelectSessionAsync(run, GatewayScenario.OtherSessionTitle, GatewayScenario.OtherSessionKey,
+                    observe: RecordStage);
                 await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker),
                     "other session's visible history after scrolling");
                 Assert.False(HasVisibleLongHistory(run));
