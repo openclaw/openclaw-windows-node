@@ -778,6 +778,14 @@ public sealed class ChatTimelinePresentationTests
         var getItem = binding[item..binding.IndexOf("private static bool IsNearBottom(", item, StringComparison.Ordinal)];
         Assert.Contains("repeater.ItemsSourceView is { } source", getItem);
         Assert.Contains("request.Index < source.Count", getItem);
+        // An empty or stale native source must not confirm the initial landing.
+        var observeLanding = binding[binding.IndexOf("private void ObserveInitialLanding(", StringComparison.Ordinal)
+            ..binding.IndexOf("private void QueueInitialTailRetry(", StringComparison.Ordinal)];
+        Assert.Contains("IsAtCurrentTail(scrollView)", observeLanding);
+        Assert.DoesNotContain("IsNearBottom(", observeLanding);
+        var currentTail = binding[binding.IndexOf("private bool IsAtCurrentTail(", StringComparison.Ordinal)
+            ..binding.IndexOf("private void OnUnloaded(", StringComparison.Ordinal)];
+        Assert.Contains("source.Count == _itemCount", currentTail);
     }
 
     [Fact]

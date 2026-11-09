@@ -348,7 +348,7 @@ file sealed class InitialTailPositioner : IDisposable
             }
 
             switch (_confirmation.Observe(
-                scrollView.State == ScrollingInteractionState.Idle, IsNearBottom(scrollView)))
+                scrollView.State == ScrollingInteractionState.Idle, IsAtCurrentTail(scrollView)))
             {
                 case InitialTailLanding.Landed:
                     CompleteInitialLanding();
@@ -687,6 +687,13 @@ file sealed class InitialTailPositioner : IDisposable
 
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
         scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
+
+    // A missing or stale native source leaves a short view that reads as the
+    // bottom. Only the current rows can confirm an initial landing.
+    private bool IsAtCurrentTail(WinUIScrollView scrollView) =>
+        IsNearBottom(scrollView)
+        && scrollView.Content is ItemsRepeater { ItemsSourceView: { } source }
+        && source.Count == _itemCount;
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {

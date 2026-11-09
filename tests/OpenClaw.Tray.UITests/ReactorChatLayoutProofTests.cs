@@ -1563,15 +1563,17 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
-    [Fact]
-    public async Task TailNavigation_InitialLandingRetriesWhenSourceStaysMissingThroughPreparation()
+    // Both holds outlast the preparation passes. The shorter one restores the source
+    // within the first confirmation attempt. The longer one outlasts that attempt's
+    // missing-bring decision, so an empty view must not count as a landing.
+    [Theory]
+    [InlineData(InitialTailConfirmation.MissingBringFramesBeforeDecision / 2)]
+    [InlineData(InitialTailConfirmation.MissingBringFramesBeforeDecision + 15)]
+    public async Task TailNavigation_InitialLandingRetriesWhenSourceStaysMissingThroughPreparation(int missingFrames)
     {
         await WithChatAsync(800, async (_, host, _, provider) =>
         {
             const int count = 240;
-            // Outlasts both preparation passes, but restores the source within one
-            // confirmation attempt so a retry, not abandonment, must land the tail.
-            const int missingFrames = InitialTailConfirmation.MissingBringFramesBeforeDecision / 2;
             var snapshot = await provider.LoadAsync();
             ItemsView? timeline = null;
             var missingFrameCount = 0;
@@ -1583,13 +1585,24 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 timeline = Assert.Single(FindDescendants<ItemsView>(host));
                 var repeater = Assert.IsType<ItemsRepeater>(timeline.ScrollView.Content);
                 object? source = null;
+                var holdToken = 0L;
+                // Reactor reasserts its source on a later render. Clear it again while
+                // held, keeping the latest value for the restore.
+                void KeepSourceMissing(DependencyObject sender, DependencyProperty property)
+                {
+                    if (restoredSource || timeline.ItemsSource is not { } latest)
+                        return;
+                    source = latest;
+                    timeline.ItemsSource = null;
+                }
                 void HoldSourceMissing(object? sender, object args)
                 {
                     if (++missingFrameCount < missingFrames)
                         return;
                     CompositionTarget.Rendering -= HoldSourceMissing;
-                    timeline.ItemsSource = source;
                     restoredSource = true;
+                    timeline.UnregisterPropertyChangedCallback(Microsoft.UI.Xaml.Controls.ItemsView.ItemsSourceProperty, holdToken);
+                    timeline.ItemsSource = source;
                 }
                 void RemoveSource(object? sender, object args)
                 {
@@ -1598,6 +1611,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     timeline.LayoutUpdated -= RemoveSource;
                     source = timeline.ItemsSource;
                     timeline.ItemsSource = null;
+                    holdToken = timeline.RegisterPropertyChangedCallback(
+                        Microsoft.UI.Xaml.Controls.ItemsView.ItemsSourceProperty, KeepSourceMissing);
                     // Far-edge anchoring would carry the empty view to the restored
                     // tail by itself. Disable it so only a production bring can land.
                     timeline.ScrollView.VerticalAnchorRatio = double.NaN;
