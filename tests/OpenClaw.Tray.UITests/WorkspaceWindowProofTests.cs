@@ -1028,8 +1028,7 @@ public sealed class WorkspaceWindowProofTests
         ((ExpandCollapsePattern)help.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         Invoke(WaitForMenuItem(pid, "Settings"));
         Assert.NotNull(await WaitForMarkerAsync(pid, "SettingsPageMarker", IntPtr.Zero));
-        await WaitUntilAsync(() => IsVisible(workspaceElement, "SettingsBack"));
-        Invoke(Find(workspaceElement, "SettingsBack"));
+        await InvokeWhenEnabledAsync(workspaceElement, "SettingsBack");
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceTogglePane"));
         await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceTogglePane");
         System.Windows.Forms.SendKeys.SendWait(" ");
@@ -1190,12 +1189,26 @@ public sealed class WorkspaceWindowProofTests
 
     private static async Task InvokeWhenEnabledAsync(AutomationElement root, string id)
     {
+        InvokePattern? readyInvoke = null;
         await WaitUntilAsync(() =>
         {
-            try { return FindOrNull(root, id) is { Current.IsEnabled: true }; }
+            try
+            {
+                var element = FindOrNull(root, id);
+                if (element is null) return false;
+                var info = element.Current;
+                if (!info.IsEnabled || info.IsOffscreen ||
+                    info.BoundingRectangle.Width <= 0 || info.BoundingRectangle.Height <= 0 ||
+                    !element.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern))
+                    return false;
+                readyInvoke = (InvokePattern)pattern;
+                return true;
+            }
             catch (ElementNotAvailableException) { return false; }
         });
-        Invoke(Find(root, id));
+        // A fresh tree traversal can miss this still-live peer while WinUI updates its UIA tree.
+        // Invoke the observed pattern once; never retry an action whose outcome may be unknown.
+        readyInvoke!.Invoke();
     }
 
     private static AutomationElement WaitForMenuItem(int pid, string name)
