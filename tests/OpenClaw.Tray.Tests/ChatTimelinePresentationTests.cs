@@ -388,6 +388,230 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void InitialTailDiagnostics_ReadsDoNotChangeCorrelationSettlingOrGeneration()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        var generation = confirmation.Reset(target);
+        Assert.Equal(new InitialTailDiagnosticSnapshot(0, 0, 0, true, false, false, true), confirmation.Diagnostics);
+        confirmation.BringingIntoView(17, new object());
+        confirmation.ScrollCompleted(17);
+        Assert.False(confirmation.Diagnostics.HasCorrelation);
+        confirmation.BringingIntoView(18, target);
+        confirmation.ScrollCompleted(17);
+        Assert.False(confirmation.Diagnostics.BringCompleted);
+        confirmation.ScrollCompleted(18);
+        for (var frame = 1; frame <= 3; frame++)
+        {
+            Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: true, nearBottom: true));
+            var expected = new InitialTailDiagnosticSnapshot(frame, 0, frame, true, true, true, true);
+            Assert.Equal(expected, confirmation.Diagnostics);
+            Assert.Equal(expected, confirmation.Diagnostics);
+            Assert.True(confirmation.IsCurrent(generation));
+        }
+        Assert.Equal(InitialTailLanding.Landed, confirmation.Observe(idle: true, nearBottom: true));
+        var landed = confirmation.Diagnostics;
+        Assert.Equal(new InitialTailDiagnosticSnapshot(4, 0, 4, true, true, true, false), landed);
+        confirmation.Invalidate();
+        Assert.False(confirmation.IsCurrent(generation));
+        Assert.False(confirmation.Diagnostics.HasExpectedTarget);
+        Assert.True(landed.HasExpectedTarget); // Value copy survives cleanup without retaining the target.
+    }
+
+    [Fact]
+    public void InitialTailDiagnostics_ReadsPreserveThreeRetriesAndMissingBringFrameBudget()
+    {
+        var confirmation = new InitialTailConfirmation();
+        confirmation.Reset();
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            for (var frame = 1; frame <= 30; frame++)
+            {
+                _ = confirmation.Diagnostics;
+                var decision = confirmation.Observe(idle: true, nearBottom: false);
+                Assert.Equal(frame < 30 ? InitialTailLanding.Wait
+                    : attempt < 3 ? InitialTailLanding.Retry : InitialTailLanding.GiveUp, decision);
+                var snapshot = confirmation.Diagnostics;
+                Assert.Equal(attempt * 30 + frame, snapshot.ObservedFrames);
+                Assert.Equal(frame == 30 && attempt < 3 ? attempt + 1 : attempt, snapshot.Retries);
+                Assert.False(snapshot.HasExpectedTarget);
+                Assert.False(snapshot.HasCorrelation);
+                Assert.False(snapshot.BringCompleted);
+            }
+            if (attempt < 3) confirmation.BeginAttempt();
+        }
+        Assert.Equal(new InitialTailDiagnosticSnapshot(120, 3, 30, false, false, false, false), confirmation.Diagnostics);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InitialTailDiagnostics_ReadsDoNotExtendTheUnsettledOrInFlightBudget(bool inFlight)
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        if (inFlight) confirmation.BringingIntoView(17, target);
+        for (var frame = 1; frame <= 120; frame++)
+        {
+            _ = confirmation.Diagnostics;
+            Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: inFlight, nearBottom: false));
+            Assert.Equal(new InitialTailDiagnosticSnapshot(frame, 0, 0, true, inFlight, false, true), confirmation.Diagnostics);
+        }
+        Assert.Equal(InitialTailLanding.GiveUp, confirmation.Observe(idle: inFlight, nearBottom: false));
+        Assert.Equal(new InitialTailDiagnosticSnapshot(121, 0, 0, true, inFlight, false, true), confirmation.Diagnostics);
+    }
+
+    [Fact]
+    public void InitialTailDiagnostics_ExposeOnlyAllowlistedCountsAndBooleans()
+    {
+        var fields = typeof(InitialTailDiagnosticSnapshot).GetProperties()
+            .ToDictionary(property => property.Name, property => property.PropertyType);
+        Assert.Equal(7, fields.Count);
+        foreach (var name in new[] { "ObservedFrames", "Retries", "SettledFrames" })
+            Assert.Equal(typeof(int), fields[name]);
+        foreach (var name in new[] { "HasExpectedTarget", "HasCorrelation", "BringCompleted", "AttemptActive" })
+            Assert.Equal(typeof(bool), fields[name]);
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 2410)]
+    public void InitialTailAttemptDiagnostics_DistinguishNoOpFromRecoilWithoutDeclaringLanding(bool moved, double expectedMaximum)
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        confirmation.BringingIntoView(17, target, (moved ? 2410 : 0, 0, 2410), targetIndex: 29);
+        if (moved) confirmation.ObserveOffset(2410);
+        confirmation.ScrollCompleted(17, (moved ? 2410 : 0, 2410), target, sourceReadSucceeded: true);
+        confirmation.ObserveOffset(0);
+        Assert.Equal(new InitialTailAttemptDiagnostics(moved ? 2410 : 0, 0, 2410, 29,
+            moved ? 2410 : 0, 2410, true, expectedMaximum), confirmation.AttemptDiagnostics);
+        for (var frame = 0; frame < 3; frame++)
+            Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: true, nearBottom: false));
+        Assert.Equal(InitialTailLanding.Retry, confirmation.Observe(idle: true, nearBottom: false));
+        confirmation.ObserveOffset(9999); // A finished attempt cannot absorb later movement.
+        Assert.Equal(expectedMaximum, confirmation.AttemptDiagnostics.MaxObservedOffset);
+    }
+
+    [Fact]
+    public void InitialTailAttemptDiagnostics_RejectWrongTargetAndCompletionCorrelation()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        confirmation.BringingIntoView(17, new object(), (200, 100, 200), 9);
+        confirmation.BringingIntoView(-1, target, (200, 100, 200), 9);
+        confirmation.ObserveOffset(100);
+        Assert.Equal(default(InitialTailAttemptDiagnostics), confirmation.AttemptDiagnostics);
+        confirmation.BringingIntoView(17, target, (2410, 0, 2410), 29);
+        var accepted = confirmation.AttemptDiagnostics;
+        confirmation.BringingIntoView(18, new object(), (9999, 9999, 9999), 999);
+        confirmation.ScrollCompleted(18, (9999, 9999), target, true);
+        Assert.Equal(accepted, confirmation.AttemptDiagnostics);
+        Assert.False(confirmation.Diagnostics.BringCompleted);
+        confirmation.ScrollCompleted(17, (100, 2410), target, true);
+        confirmation.BringingIntoView(19, target, (2500, 100, 2500), 30);
+        Assert.Null(confirmation.AttemptDiagnostics.CompletedOffset);
+        Assert.Null(confirmation.AttemptDiagnostics.CompletionSourceItemMatches);
+        confirmation.ScrollCompleted(17, (9999, 9999), target, true);
+        Assert.Null(confirmation.AttemptDiagnostics.CompletedOffset);
+        Assert.Equal(100d, confirmation.AttemptDiagnostics.MaxObservedOffset);
+    }
+
+    [Fact]
+    public void InitialTailAttemptDiagnostics_ResetPerAttemptReplacementAndInvalidation()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var oldTarget = new object();
+        var generation = confirmation.Reset(oldTarget);
+        confirmation.BringingIntoView(17, oldTarget, (300, 0, 300), 2);
+        confirmation.BeginAttempt(oldTarget);
+        Assert.True(confirmation.IsCurrent(generation));
+        Assert.Equal(default(InitialTailAttemptDiagnostics), confirmation.AttemptDiagnostics);
+        confirmation.ScrollCompleted(17, (300, 300), oldTarget, true);
+        confirmation.ObserveOffset(300);
+        Assert.Equal(default(InitialTailAttemptDiagnostics), confirmation.AttemptDiagnostics);
+        var newTarget = new object();
+        confirmation.Reset(newTarget);
+        Assert.False(confirmation.IsCurrent(generation));
+        confirmation.BringingIntoView(17, oldTarget, (300, 0, 300), 2);
+        Assert.Equal(default(InitialTailAttemptDiagnostics), confirmation.AttemptDiagnostics);
+        confirmation.BringingIntoView(18, newTarget, (500, 0, 500), 4);
+        var captured = confirmation.AttemptDiagnostics;
+        confirmation.Invalidate();
+        confirmation.BringingIntoView(18, newTarget, (500, 500, 500), 4);
+        confirmation.ScrollCompleted(18, (500, 500), newTarget, true);
+        confirmation.ObserveOffset(500);
+        Assert.Equal(default(InitialTailAttemptDiagnostics), confirmation.AttemptDiagnostics);
+        Assert.Equal(500d, captured.ProposedOffset); // Value copy survives cleanup.
+    }
+
+    [Theory]
+    [InlineData(false, true, null)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void InitialTailAttemptDiagnostics_SeparateUnavailableSourceFromMismatch(bool available, bool matches, bool? expected)
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        confirmation.BringingIntoView(17, target);
+        confirmation.ScrollCompleted(17, currentSourceItem: matches ? target : new object(), sourceReadSucceeded: available);
+        Assert.Equal(expected, confirmation.AttemptDiagnostics.CompletionSourceItemMatches);
+        Assert.Null(confirmation.AttemptDiagnostics.CompletedOffset);
+        Assert.Null(confirmation.AttemptDiagnostics.TargetIndex);
+        Assert.True(confirmation.Diagnostics.BringCompleted);
+    }
+
+    [Fact]
+    public void InitialTailAttemptDiagnostics_NonFiniteReadsStayUnknownAndDoNotEraseFiniteMaximum()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        confirmation.BringingIntoView(17, target, (double.NaN, 0, double.PositiveInfinity), -1);
+        confirmation.ObserveOffset(100);
+        confirmation.ObserveOffset(double.NaN);
+        confirmation.ObserveOffset(double.NegativeInfinity);
+        confirmation.ScrollCompleted(17, (double.PositiveInfinity, 500));
+        Assert.Equal(new InitialTailAttemptDiagnostics(null, 0, null, -1, null, 500, null, 100), confirmation.AttemptDiagnostics);
+    }
+
+    [Fact]
+    public void InitialTailAttemptDiagnostics_DoNotChangeThreeRetriesOrFourFrameDecisions()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            confirmation.BringingIntoView(17 + attempt, target, (10000, 10000, 10000), 29);
+            confirmation.ScrollCompleted(17 + attempt, (10000, 10000), target, true);
+            for (var frame = 0; frame < 3; frame++)
+                Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: true, nearBottom: false));
+            Assert.Equal(attempt < 3 ? InitialTailLanding.Retry : InitialTailLanding.GiveUp,
+                confirmation.Observe(idle: true, nearBottom: false));
+            if (attempt < 3) confirmation.BeginAttempt(target);
+        }
+        Assert.Equal(new InitialTailDiagnosticSnapshot(16, 3, 4, true, true, true, false), confirmation.Diagnostics);
+    }
+
+    [Fact]
+    public void InitialTailAttemptDiagnostics_ContainOnlyNullableNumbersAndBoolean()
+    {
+        var fields = typeof(InitialTailAttemptDiagnostics).GetProperties()
+            .ToDictionary(property => property.Name, property => property.PropertyType);
+        Assert.Equal(8, fields.Count);
+        foreach (var name in new[] { "ProposedOffset", "BringOffset", "BringScrollableHeight",
+            "CompletedOffset", "CompletedScrollableHeight", "MaxObservedOffset" })
+            Assert.Equal(typeof(double?), fields[name]);
+        Assert.Equal(typeof(int?), fields["TargetIndex"]);
+        Assert.Equal(typeof(bool?), fields["CompletionSourceItemMatches"]);
+    }
+
+    [Fact]
     public void InitialTailConfirmation_LandsOnlyAfterSettledFramesAtTheTail()
     {
         var confirmation = new InitialTailConfirmation();
@@ -723,8 +947,20 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ReferenceEquals(sender, _scrollView)", binding);
         Assert.Contains("_confirmation.Reset(GetRequestItem(request))", binding);
         Assert.Contains("_confirmation.BeginAttempt(GetRequestItem(request))", binding);
-        Assert.Contains("_confirmation.BringingIntoView(args.CorrelationId, target.DataContext)", binding);
-        Assert.Contains("_confirmation.ScrollCompleted(args.CorrelationId)", binding);
+        var bringStart = binding.IndexOf("private void OnBringingIntoView(", StringComparison.Ordinal);
+        var completeStart = binding.IndexOf("private void OnScrollCompleted(", bringStart, StringComparison.Ordinal);
+        var nextHandler = binding.IndexOf("private void OnScrollStateChanged(", completeStart, StringComparison.Ordinal);
+        var bring = binding[bringStart..completeStart];
+        var complete = binding[completeStart..nextHandler];
+        Assert.Contains("!ReferenceEquals(sender, _scrollView)", bring);
+        Assert.Contains("var correlationId = args.CorrelationId;", bring);
+        Assert.Contains("var targetItem = target.DataContext;", bring);
+        Assert.Contains("_confirmation.BringingIntoView(correlationId, targetItem, geometry, targetIndex)", bring);
+        Assert.Contains("_initialPending && ReferenceEquals(sender, _scrollView)", complete);
+        Assert.Contains("var correlationId = args.CorrelationId;", complete);
+        Assert.Contains("_confirmation.ScrollCompleted(correlationId, geometry, currentSourceItem, sourceReadSucceeded)", complete);
+        Assert.DoesNotContain("GetOrCreateElement(", bring + complete);
+        Assert.DoesNotContain("UpdateLayout(", bring + complete);
     }
 
     [Fact]

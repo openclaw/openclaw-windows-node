@@ -10,7 +10,8 @@ param(
     [Parameter(Mandatory)][string]$TrxFileName,
     [string]$Runtime,
     [string]$Filter,
-    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0
+    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
+    [switch]$CaptureHostExit
 )
 
 Set-StrictMode -Version Latest
@@ -59,7 +60,51 @@ if ($HangTimeoutSeconds -gt 0) {
 }
 
 $collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
-if ($collectCoverage) {
+if ($CaptureHostExit) {
+    . (Join-Path $PSScriptRoot "CiTestHostExit.ps1")
+    if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -or -not [IO.Path]::IsPathFullyQualified($env:RUNNER_TEMP)) {
+        throw 'Host-exit diagnostics require an absolute RUNNER_TEMP outside the checkout.'
+    }
+    $tempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([char[]]"\/") + [IO.Path]::DirectorySeparatorChar
+    $checkout = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd([char[]]"\/") + [IO.Path]::DirectorySeparatorChar
+    if ($tempRoot.StartsWith($checkout, [StringComparison]::OrdinalIgnoreCase)) { throw 'Raw diagnostics must stay outside the checkout and its artifacts.' }
+    $rawRoot = Join-Path $tempRoot ("ci-testhost-exit-" + $invocation.id)
+    $testArguments.Add('--diag')
+    $testArguments.Add((Join-Path $rawRoot 'testplatform.log') + ';tracelevel=info')
+    New-Item -ItemType Directory -Path $rawRoot -ErrorAction Stop | Out-Null
+    $testExit = $null; $nativeErrorType = $null
+    # Only the existing ordinary-UI CaptureHostExit lane opts in. The invocation
+    # owns this curated, content-free file under the already-uploaded TestResults.
+    $previousMetadataPath = $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH
+    $previousMetadataInvocation = $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID
+    try {
+        $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH = Join-Path $ResultsDirectory 'native-ui-exceptions.jsonl'
+        $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID = $invocation.id
+        Invoke-CiNativeWithExit -ExitCode ([ref]$testExit) -Command {
+            if ($collectCoverage) {
+                $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
+                & dotnet-coverage collect --output $coverageOutput --output-format cobertura dotnet @testArguments
+            } else {
+                & dotnet @testArguments
+            }
+        }
+    }
+    catch { $nativeErrorType = $_.Exception.GetType().FullName }
+    finally {
+        try {
+            $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH = $previousMetadataPath
+            $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID = $previousMetadataInvocation
+        } catch {
+            # Diagnostic cleanup must not replace the observed native result.
+            try { Write-Host 'CI native UI metadata: environmentRestoreFailed=true' } catch { }
+        }
+        $diagnostic = Complete-CiHostExitTrace -Root $rawRoot -NativeExitCode $testExit -NativeErrorType $nativeErrorType
+        Write-Host ('CI host exit metadata: ' + ($diagnostic | ConvertTo-Json -Depth 5 -Compress))
+    }
+    if ($null -ne $testExit -and $testExit -ne 0) { exit $testExit }
+    if ($null -eq $testExit -or $nativeErrorType) { throw 'Test command failed without a successful native exit.' }
+    if ($diagnostic.diagnosticErrorType -or -not $diagnostic.rawTraceRemoved) { throw 'Host-exit diagnostic extraction or cleanup failed.' }
+} elseif ($collectCoverage) {
     $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
     & dotnet-coverage collect `
         --output $coverageOutput `
@@ -69,7 +114,7 @@ if ($collectCoverage) {
     & dotnet @testArguments
 }
 
-if ($LASTEXITCODE -ne 0) {
+if (-not $CaptureHostExit -and $LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped
