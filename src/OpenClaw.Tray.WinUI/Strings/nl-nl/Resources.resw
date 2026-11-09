@@ -7859,6 +7859,34 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
   <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} u</value></data>
   <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Vraag het OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Automatiseringen openen</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Mislukt</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>Achterstallig</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>Deze automatisering is mislukt: {0}. Leg uit waarom en hoe ik dit oplos.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>Deze automatisering is achterstallig: {0}, gepland voor {1}. Leg uit waarom deze niet is uitgevoerd en hoe ik dit oplos.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>Deze inloggegevens van de modelprovider vragen aandacht: {0}. Leg uit wat er is verlopen en hoe ik opnieuw kan verifiëren.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Goedkeuring voor opdracht nodig</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Goedkeuring voor plug-in nodig</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Goedkeuring nodig</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Verloopt over {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Verlopen</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gatewaydienst</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Apparaat</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox-omgeving</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, totdat dit wordt ingetrokken (herroepbaar)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, gedurende {1} dagen (herroepbaar)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Verzendt naar {0} ontvanger(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Betaalt {0} {1} aan {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Plaatst extern op {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Account vraagt aandacht: {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Aanmelden vereist</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API-sleutel vraagt aandacht</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Account vraagt aandacht</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Aanmelden</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>API-sleutel bijwerken</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Account controleren</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>Terug naar app</value>
   </data>
