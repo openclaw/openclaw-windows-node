@@ -56,7 +56,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     {
         var props = Props;
         var (speakingEntryId, setSpeakingEntryId) = UseState<string?>(null, threadSafe: true);
-        var (hoveredEntryId, setHoveredEntryId) = UseState<string?>(null, threadSafe: true);
+        var (hoveredEntryKey, setHoveredEntryKey) = UseState<string?>(null, threadSafe: true);
+        // Enter and exit can both arrive before the preceding state update renders.
+        var hoverTarget = UseRef<string?>(null);
         var (focusedEntryKey, setFocusedEntryKey) = UseState<string?>(null);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (navigationVisible, setNavigationVisible) = UseState(false);
@@ -188,16 +190,20 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var contentRevision = props.Timeline.Entries;
         if (atTail)
             lastReadTail.Current = contentRevision;
-        void SetEntryHovered(string entryId, bool isHovered)
+        void SetEntryHovered(string entryKey, bool isHovered)
         {
             if (isHovered)
             {
-                if (!string.Equals(hoveredEntryId, entryId, StringComparison.Ordinal))
-                    setHoveredEntryId(entryId);
+                if (!string.Equals(hoverTarget.Current, entryKey, StringComparison.Ordinal))
+                {
+                    hoverTarget.Current = entryKey;
+                    setHoveredEntryKey(entryKey);
+                }
             }
-            else if (string.Equals(hoveredEntryId, entryId, StringComparison.Ordinal))
+            else if (string.Equals(hoverTarget.Current, entryKey, StringComparison.Ordinal))
             {
-                setHoveredEntryId(null);
+                hoverTarget.Current = null;
+                setHoveredEntryKey(null);
             }
         }
 
@@ -208,7 +214,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     Border(BuildRow(
                             row,
                             speakingEntryId,
-                            hoveredEntryId,
+                            hoveredEntryKey,
                             focusedEntryKey,
                             ToggleSpeechAsync,
                             SetEntryHovered,
@@ -408,7 +414,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     private static Element BuildRow(
         ReactorTimelineRow row,
         string? speakingEntryId,
-        string? hoveredEntryId,
+        string? hoveredEntryKey,
         string? focusedEntryKey,
         Func<ChatTimelineItem, Task> toggleSpeechAsync,
         Action<string, bool> setEntryHovered,
@@ -428,7 +434,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 toolActivityExpansionState,
                 entry => BuildEntry(
                     ReactorTimelineRow.FromEntry(row.Props, entry, false, default),
-                    entry, speakingEntryId, hoveredEntryId, focusedEntryKey, toggleSpeechAsync,
+                    entry, speakingEntryId, hoveredEntryKey, focusedEntryKey, toggleSpeechAsync,
                     setEntryHovered, setFocusedEntryKey,
                     includeAvatar: false),
                 animateEntrance: animateWorkEntrance),
@@ -436,7 +442,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             row,
             entry,
             speakingEntryId,
-            hoveredEntryId,
+            hoveredEntryKey,
             focusedEntryKey,
             toggleSpeechAsync,
             setEntryHovered,
@@ -610,14 +616,14 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         ReactorTimelineRow row,
         ChatTimelineItem entry,
         string? speakingEntryId,
-        string? hoveredEntryId,
+        string? hoveredEntryKey,
         string? focusedEntryKey,
         Func<ChatTimelineItem, Task> toggleSpeechAsync,
         Action<string, bool> setEntryHovered,
         Action<string?> setFocusedEntryKey,
         bool includeAvatar = true)
     {
-        var isHovered = string.Equals(hoveredEntryId, entry.Id, StringComparison.Ordinal);
+        var isHovered = string.Equals(hoveredEntryKey, row.Key, StringComparison.Ordinal);
         var isFocused = string.Equals(focusedEntryKey, row.Key, StringComparison.Ordinal);
         var content = entry.Kind switch
         {
@@ -640,8 +646,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
         return Border(content)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
-            .OnPointerEntered((_, _) => setEntryHovered(entry.Id, true))
-            .OnPointerExited((_, _) => setEntryHovered(entry.Id, false))
+            .OnPointerEntered((_, _) => setEntryHovered(row.Key, true))
+            .OnPointerExited((_, _) => setEntryHovered(row.Key, false))
             .OnGotFocus((_, _) => setFocusedEntryKey(row.Key))
             .OnLostFocus((_, _) => setFocusedEntryKey(null));
     }

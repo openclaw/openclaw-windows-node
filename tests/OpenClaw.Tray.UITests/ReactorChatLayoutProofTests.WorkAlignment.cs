@@ -364,6 +364,9 @@ public sealed partial class ReactorChatLayoutProofTests
                     await SettleAsync();
                     await ui.RunOnUIAsync(() => AssertVisible(entry.Id));
                     await CaptureAsync(surface, $"NestedMessageFooters-{theme}-{entry.Id}-hovered");
+                    await ui.RunOnUIAsync(MoveToComposer);
+                    await SettleAsync();
+                    await ui.RunOnUIAsync(() => AssertVisible(null));
                 }
 
                 await ui.RunOnUIAsync(() => Assert.True(Copy(entry.Id).Focus(FocusState.Keyboard)));
