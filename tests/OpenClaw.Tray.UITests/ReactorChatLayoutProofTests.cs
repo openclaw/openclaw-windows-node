@@ -1410,6 +1410,208 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     private static IEnumerable<TextBlock> RealizedTimelineText(DependencyObject root) =>
         RealizedTimelineElements<TextBlock>(root);
 
+    [Fact]
+    public async Task TailNavigation_ReacquiresContainerRecycledDuringNativeMeasure()
+    {
+        await WithChatAsync(800, async (surface, host, _, provider) =>
+        {
+            const int count = 240;
+            var snapshot = await provider.LoadAsync();
+            ItemsRepeater? repeater = null;
+            ItemsView? timeline = null;
+            RecyclingTailLayout? layout = null;
+            var broughtAfterRecycle = false;
+            var broughtCurrentContainer = false;
+            var broughtIndex = -1;
+            var nominatedOutsideMeasure = false;
+            await ui.RunOnUIAsync(() =>
+            {
+                timeline = Assert.Single(FindDescendants<ItemsView>(host));
+                repeater = Assert.IsType<ItemsRepeater>(timeline.ScrollView.Content);
+                layout = new RecyclingTailLayout(repeater);
+                repeater.ElementPrepared += (_, args) =>
+                {
+                    if (args.Index == count - 1 && !layout.IsMeasuring)
+                        nominatedOutsideMeasure = true;
+                };
+                timeline.Layout = layout;
+                timeline.ScrollView.BringingIntoView += (_, args) =>
+                {
+                    if (!layout.Recycled)
+                        return;
+                    var target = args.RequestEventArgs.TargetElement;
+                    broughtCurrentContainer = target is ItemContainer
+                        && ReferenceEquals(repeater.TryGetElement(count - 1), target);
+                    broughtIndex = repeater.GetElementIndex(target);
+                    broughtAfterRecycle = true;
+                };
+                provider.Publish(snapshot with
+                {
+                    Timelines = new Dictionary<string, ChatTimelineState>
+                    {
+                        ["proof"] = snapshot.Timelines["proof"] with
+                        {
+                            Entries = Enumerable.Range(0, count)
+                                .Select(index => new ChatTimelineItem($"recycle-{index}",
+                                    ChatTimelineItemKind.User, $"Message {index}"))
+                                .ToImmutableList(),
+                        },
+                    },
+                    HistoryRevisions = new Dictionary<string, long> { ["proof"] = 1 },
+                });
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => broughtAfterRecycle
+                    && timeline!.ScrollView.State == ScrollingInteractionState.Idle
+                    && timeline.ScrollView.ScrollableHeight - timeline.ScrollView.VerticalOffset <= 1,
+                "production tail landing after target recycling",
+                () => $"recycled={layout!.Recycled}, brought={broughtAfterRecycle}, offset={timeline!.ScrollView.VerticalOffset}, extent={timeline.ScrollView.ScrollableHeight}, itemType={repeater!.ItemsSourceView.GetAt(count - 1)?.GetType()}, dataType={(repeater.TryGetElement(count - 1) as FrameworkElement)?.DataContext?.GetType()}"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(nominatedOutsideMeasure);
+                Assert.Equal(count - 1, layout!.NominatedIndex);
+                Assert.Equal(count - 1, layout.IndexBeforeRecycle);
+                Assert.True(layout!.Recycled);
+                Assert.Equal(-1, layout.RecycledIndex);
+                Assert.True(broughtCurrentContainer);
+                Assert.Equal(count - 1, broughtIndex);
+                var target = Assert.IsType<ItemContainer>(repeater!.TryGetElement(count - 1));
+                Assert.True(Bounds(target, surface).Bottom <= Bounds(timeline!, surface).Bottom + 1);
+                Assert.True(VisualTreeHelper.GetChildrenCount(repeater) < count,
+                    "The production owner must keep native virtualization.");
+            });
+        });
+    }
+
+    [Fact]
+    public async Task TailNavigation_RecoversWhenNativeSourceDisappearsBeforePreparation()
+    {
+        await WithChatAsync(800, async (_, host, _, provider) =>
+        {
+            const int count = 240;
+            var snapshot = await provider.LoadAsync();
+            ItemsView? timeline = null;
+            var sawMissingSource = false;
+            var restoredSource = false;
+            var broughtRestoredTail = false;
+            await ui.RunOnUIAsync(() =>
+            {
+                timeline = Assert.Single(FindDescendants<ItemsView>(host));
+                var repeater = Assert.IsType<ItemsRepeater>(timeline.ScrollView.Content);
+                void InterruptPreparation(object? sender, object args)
+                {
+                    if (repeater.ItemsSourceView?.Count != count)
+                        return;
+                    timeline.LayoutUpdated -= InterruptPreparation;
+                    var source = timeline.ItemsSource;
+                    timeline.ItemsSource = null;
+                    // The owner enqueues preparation from this layout notification.
+                    // A second dispatcher turn restores the source after that callback,
+                    // without calling the production navigation method ourselves.
+                    timeline.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        sawMissingSource = repeater.ItemsSourceView is null
+                            || repeater.ItemsSourceView.Count == 0;
+                        timeline.DispatcherQueue.TryEnqueue(() =>
+                        {
+                            timeline.ItemsSource = source;
+                            restoredSource = true;
+                        });
+                    });
+                }
+                timeline.LayoutUpdated += InterruptPreparation;
+                timeline.ScrollView.BringingIntoView += (_, args) =>
+                {
+                    if (restoredSource)
+                        broughtRestoredTail = repeater.GetElementIndex(args.RequestEventArgs.TargetElement) == count - 1;
+                };
+                provider.Publish(snapshot with
+                {
+                    Timelines = new Dictionary<string, ChatTimelineState>
+                    {
+                        ["proof"] = snapshot.Timelines["proof"] with
+                        {
+                            Entries = Enumerable.Range(0, count)
+                                .Select(index => new ChatTimelineItem($"restore-{index}",
+                                    ChatTimelineItemKind.User, $"Restored message {index}"))
+                                .ToImmutableList(),
+                        },
+                    },
+                    HistoryRevisions = new Dictionary<string, long> { ["proof"] = 1 },
+                });
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => restoredSource && broughtRestoredTail
+                    && timeline!.ScrollView.State == ScrollingInteractionState.Idle
+                    && timeline.ScrollView.ScrollableHeight - timeline.ScrollView.VerticalOffset <= 1,
+                "tail preparation after the native source returns",
+                () => $"missing={sawMissingSource}, restored={restoredSource}, brought={broughtRestoredTail}"));
+            Assert.True(sawMissingSource);
+        });
+    }
+
+    // Controlled native-layout input, not a navigation fake. The real production
+    // layout leaves the tail unrealized until production nominates it outside
+    // measure. RecommendedAnchorIndex identifies that nomination. Native callback
+    // facts are recorded here and asserted later on the managed test boundary.
+    private sealed class RecyclingTailLayout(ItemsRepeater repeater) : VirtualizingLayout
+    {
+        private const double RowHeight = 96;
+        private readonly List<(int Index, UIElement Element)> _realized = [];
+        public bool IsMeasuring { get; private set; }
+        public int NominatedIndex { get; private set; } = -1;
+        public int IndexBeforeRecycle { get; private set; } = -1;
+        public bool Recycled { get; private set; }
+        public int RecycledIndex { get; private set; }
+
+        protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
+        {
+            IsMeasuring = true;
+            try
+            {
+                var anchor = context.RecommendedAnchorIndex;
+                if (!Recycled && context.ItemCount == 240 && anchor == context.ItemCount - 1
+                    && repeater.TryGetElement(anchor) is { } target)
+                {
+                    NominatedIndex = anchor;
+                    IndexBeforeRecycle = repeater.GetElementIndex(target);
+                    context.RecycleElement(target);
+                    RecycledIndex = repeater.GetElementIndex(target);
+                    Recycled = true;
+                }
+                _realized.Clear();
+                var start = Math.Max(0, (int)(context.RealizationRect.Top / RowHeight));
+                var end = Math.Min(context.ItemCount - 1,
+                    (int)(context.RealizationRect.Bottom / RowHeight));
+                for (var index = start; index <= end; index++)
+                    Realize(index);
+                if (anchor >= 0 && (anchor < start || anchor > end))
+                    Realize(anchor);
+                return new Size(availableSize.Width, context.ItemCount * RowHeight);
+
+                void Realize(int index)
+                {
+                    if (context.ItemCount == 240 && index == context.ItemCount - 1 && !Recycled)
+                        return;
+                    var element = context.GetOrCreateElementAt(index);
+                    element.Measure(new Size(availableSize.Width, RowHeight));
+                    _realized.Add((index, element));
+                }
+            }
+            finally
+            {
+                IsMeasuring = false;
+            }
+        }
+
+        protected override Size ArrangeOverride(VirtualizingLayoutContext context, Size finalSize)
+        {
+            foreach (var (index, element) in _realized)
+                element.Arrange(new Rect(0, index * RowHeight, finalSize.Width, RowHeight));
+            return finalSize;
+        }
+    }
+
     private static IEnumerable<T> RealizedTimelineElements<T>(DependencyObject root) where T : DependencyObject =>
         FindDescendants<T>(Assert.Single(FindDescendants<ItemsView>(root)))
             .Where(element => Ancestors(element).OfType<ItemContainer>().FirstOrDefault() is { } container

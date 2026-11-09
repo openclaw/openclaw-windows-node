@@ -114,7 +114,11 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _initialPending;
     private bool _awaitingInitialRows;
     private readonly TailNavigationQueue _tailNavigationQueue = new();
+    private PendingTailBring? _pendingBring;
     private bool _disposed;
+
+    private sealed record PendingTailBring(
+        int Version, bool RequiresFollowing, Action? Started, bool NeedsRealization);
 
     public InitialTailPositioner(WinUIItemsView itemsView)
     {
@@ -137,9 +141,9 @@ file sealed class InitialTailPositioner : IDisposable
         _version++;
         _reflowCorrection.Clear();
         DetachLayout();
-        // A bring still running from the previous conversation can complete after the new rows are arranged,
-        // leaving the offset past the new extent; starting the next bring then can hang ItemsView's layout.
-        // Wait for that bring to complete before positioning the new conversation.
+        // Serialize positioning against a previous conversation's native scroll.
+        // This is ordering/cancellation bookkeeping, not a cure for the ItemsView
+        // wrapper's recycled-target loop. Tail navigation bypasses that wrapper.
         _deferredBringCorrelation = _inFlightBringCorrelation;
         if (_deferredBringCorrelation is null)
             RestoreFarEdgeAnchoring();
@@ -235,6 +239,15 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnLayoutUpdated(object? sender, object args)
     {
+        if (_pendingBring is { } pending)
+        {
+            itemsView.LayoutUpdated -= OnLayoutUpdated;
+            _awaitingLayout = false;
+            _renderAfterLayout = false;
+            DispatchPreparedBring(pending);
+            return;
+        }
+
         var renderAfterLayout = _renderAfterLayout;
         DetachLayout();
         if (itemsView.ScrollView is not { IsLoaded: true })
@@ -292,8 +305,8 @@ file sealed class InitialTailPositioner : IDisposable
 
             if (!renderAfterLayout)
                 ConfirmInitialLanding(initialRequest.Version, request);
-            else if (!StartTailRequest(request))
-                AwaitLayout(renderAfterLayout);
+            else
+                StartTailRequest(request);
         }))
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
     }
@@ -302,14 +315,10 @@ file sealed class InitialTailPositioner : IDisposable
     {
         DetachConfirmation();
         var generation = _confirmation.Reset(GetRequestItem(request));
-        if (!StartTailRequest(request))
+        if (!StartTailRequest(request, () => ObserveInitialLanding(version, generation)))
         {
-            _confirmation.Invalidate();
-            AwaitLayout();
-            return;
+            CompleteInitialLanding();
         }
-
-        ObserveInitialLanding(version, generation);
     }
 
     private bool IsInitialConfirmationCurrent(int version, int generation) =>
@@ -359,7 +368,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void QueueInitialTailRetry(int version, int generation)
     {
-        // Starting a native bring from Rendering can deadlock the WinUI layout pass.
+        // Realization and bring requests belong outside the rendering/layout callback.
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
         {
             if (!IsInitialConfirmationCurrent(version, generation))
@@ -374,14 +383,12 @@ file sealed class InitialTailPositioner : IDisposable
             }
 
             _confirmation.BeginAttempt(GetRequestItem(request));
-            if (!StartTailRequest(request))
+            if (!StartTailRequest(request, () => ObserveInitialLanding(version, generation)))
             {
                 CompleteInitialLanding();
                 OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not start.");
                 return;
             }
-
-            ObserveInitialLanding(version, generation);
         }))
         {
             if (IsInitialConfirmationCurrent(version, generation))
@@ -451,9 +458,8 @@ file sealed class InitialTailPositioner : IDisposable
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not resume after the previous scroll.");
     }
 
-    // For a few frames after StartBringItemIntoView completes, ItemsView anchors to that row at a 0.5 ratio.
-    // A conversation swap in that window can strand the view at the top, so restore far-edge anchoring
-    // before the new rows are arranged.
+    // Keep the chat's far-edge anchor when a previous native scroll completes.
+    // Direct container brings do not use ItemsView's temporary centered anchor.
     private void RestoreFarEdgeAnchoring()
     {
         if (_scrollView is not null)
@@ -514,6 +520,7 @@ file sealed class InitialTailPositioner : IDisposable
         _version++;
         _initialPending = false;
         _awaitingInitialRows = false;
+        _deferredBringCorrelation = null;
         // Input without movement (copy, focus, wheel at the tail) keeps follow;
         // input that already left the tail stops it so the reader is not pulled back.
         _following = _scrollView is { } scrollView && IsNearBottom(scrollView);
@@ -549,36 +556,123 @@ file sealed class InitialTailPositioner : IDisposable
         {
             _tailNavigationQueue.SchedulingFailed();
             _following = false;
+            OpenClawTray.Services.Logger.Warn("Chat tail follow could not be dispatched.");
         }
     }
 
-    private bool StartTailRequest(TailNavigationRequest request)
+    private bool StartTailRequest(
+        TailNavigationRequest request, Action? started = null, bool allowPreparationRetry = true)
     {
-        if (itemsView.ScrollView is not { IsLoaded: true })
+        // A superseded queued follow request is cancellation, not a native failure.
+        if (!TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount))
             return false;
 
-        if (!TailNavigationPolicy.CanExecute(
-                request,
-                _tailIndex,
-                _displayedTailKey,
-                _itemCount))
+        var repeater = itemsView.ScrollView is { IsLoaded: true, Content: ItemsRepeater owner }
+            && IsCurrentTail(request, owner) ? owner : null;
+        if (repeater is null && !allowPreparationRetry)
         {
+            OpenClawTray.Services.Logger.Warn("Chat tail navigation could not realize the current tail.");
             return false;
         }
 
-        _following = true;
-        itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
+        // Nominate the owning repeater's anchor outside layout. Never retain this
+        // element: native measure can recycle it before the bring is dispatched.
+        if (repeater is not null)
+            repeater.GetOrCreateElement(request.Index);
+
+        // A temporarily missing/replaced source gets one preparation retry after
+        // native layout (or the current ScrollView's Loaded event), not a loop.
+        _pendingBring = new(_version, !_initialPending, started, NeedsRealization: repeater is null);
+        // Supersede an older reflow render gate without invalidating confirmation.
+        DetachRendering();
+        _renderAfterLayout = false;
+        if (_awaitingScrollView is { } previous && !ReferenceEquals(previous, itemsView.ScrollView))
         {
-            AnimationDesired = false,
-            VerticalAlignmentRatio = 1.0,
-        });
+            previous.Loaded -= OnScrollViewLoaded;
+            _awaitingScrollView = null;
+        }
+        AwaitLayout();
+        if (!_awaitingLayout && _awaitingScrollView is null)
+        {
+            _pendingBring = null;
+            OpenClawTray.Services.Logger.Warn("Chat tail navigation could not await native layout.");
+            return false;
+        }
+
+        if (repeater is not null)
+            repeater.InvalidateMeasure();
+        else
+            itemsView.InvalidateMeasure();
         return true;
     }
 
+    private bool IsCurrentTail(TailNavigationRequest request, ItemsRepeater repeater) =>
+        TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+        && repeater.ItemsSourceView is { } source && source.Count == _itemCount;
+
+    private void DispatchPreparedBring(PendingTailBring pending)
+    {
+        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!ReferenceEquals(_pendingBring, pending))
+                return;
+            _pendingBring = null;
+            if (_disposed || !_valid || !itemsView.IsLoaded || pending.Version != _version
+                || (pending.RequiresFollowing && !_following))
+                return;
+
+            if (pending.NeedsRealization)
+            {
+                if (!TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var retry)
+                    || !StartTailRequest(retry, pending.Started, allowPreparationRetry: false))
+                {
+                    if (!pending.RequiresFollowing)
+                        CompleteInitialLanding();
+                    OpenClawTray.Services.Logger.Warn("Chat tail navigation preparation retry could not start.");
+                }
+                return;
+            }
+
+            // Resolve the live tail again, then reacquire once after native layout.
+            // A missing/recycled target is a bounded failure, not another layout loop.
+            if (itemsView.ScrollView is not { IsLoaded: true, Content: ItemsRepeater repeater }
+                || !TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var request)
+                || !IsCurrentTail(request, repeater)
+                || repeater.TryGetElement(request.Index) is not ItemContainer target
+                || repeater.GetElementIndex(target) != request.Index
+                || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
+            {
+                if (!pending.RequiresFollowing)
+                    CompleteInitialLanding();
+                OpenClawTray.Services.Logger.Warn("Chat tail navigation could not reacquire the current tail after layout.");
+                return;
+            }
+
+            AttachScrollView();
+            _following = true;
+            // Confirmation must correlate the live item, not the pre-layout row.
+            if (_initialPending)
+                _confirmation.BeginAttempt(GetRequestItem(request));
+            target.StartBringIntoView(new BringIntoViewOptions
+            {
+                AnimationDesired = false,
+                VerticalAlignmentRatio = 1.0,
+            });
+            pending.Started?.Invoke();
+        }))
+        {
+            _pendingBring = null;
+            if (!pending.RequiresFollowing)
+                CompleteInitialLanding();
+            OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched after layout.");
+        }
+    }
+
     private object? GetRequestItem(TailNavigationRequest request) =>
-        itemsView.ItemsSource is System.Collections.IList items
-        && request.Index >= 0 && request.Index < items.Count
-            ? items[request.Index]
+        itemsView.ScrollView?.Content is ItemsRepeater repeater
+        && repeater.ItemsSourceView is { } source
+        && request.Index >= 0 && request.Index < source.Count
+            ? source.GetAt(request.Index)
             : null;
 
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
@@ -596,6 +690,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachLayout()
     {
+        _pendingBring = null;
         DetachRendering();
         DetachConfirmation();
         _confirmation.Invalidate();

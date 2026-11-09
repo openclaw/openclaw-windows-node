@@ -108,7 +108,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.Loaded += OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
-        Assert.Contains("itemsView.StartBringItemIntoView(", binding);
+        Assert.DoesNotContain("StartBringItemIntoView(", binding);
+        Assert.Contains("target.StartBringIntoView(", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = IsNearBottom(sender)", binding);
@@ -616,6 +617,31 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorTimeline_InputCancelsDeferredBringWithoutClearingNativeTracking()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+
+        var cancelStart = binding.IndexOf("private void CancelPendingNavigation(", StringComparison.Ordinal);
+        var cancelEnd = binding.IndexOf("private void OnViewChanged(", cancelStart, StringComparison.Ordinal);
+        Assert.True(cancelStart >= 0 && cancelEnd > cancelStart);
+        var cancel = binding[cancelStart..cancelEnd];
+        Assert.Contains("_deferredBringCorrelation = null;", cancel);
+        Assert.DoesNotContain("_inFlightBringCorrelation = null;", cancel);
+        Assert.Contains("_version++;", cancel);
+
+        var resumeStart = binding.IndexOf("private void ResumeAfterDeferredBring(", StringComparison.Ordinal);
+        var resumeEnd = binding.IndexOf("private void RestoreFarEdgeAnchoring(", resumeStart, StringComparison.Ordinal);
+        Assert.True(resumeStart >= 0 && resumeEnd > resumeStart);
+        var resume = binding[resumeStart..resumeEnd];
+        var enqueue = resume.IndexOf("DispatcherQueue.TryEnqueue(", StringComparison.Ordinal);
+        var versionCheck = resume.IndexOf("version != _version", StringComparison.Ordinal);
+        var restore = resume.IndexOf("RestoreFarEdgeAnchoring();", StringComparison.Ordinal);
+        Assert.True(enqueue >= 0 && versionCheck > enqueue && restore > versionCheck);
+    }
+
+    [Fact]
     public void ReactorTimeline_InitialTailStaysPendingUntilLandingIsConfirmed()
     {
         var binding = File.ReadAllText(Path.Combine(
@@ -636,7 +662,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("CompositionTarget.Rendering += _confirming", confirm);
         Assert.Contains("case InitialTailLanding.Landed:", confirm);
         Assert.Contains("QueueInitialTailRetry(version, generation)", confirm);
-        Assert.Contains("StartTailRequest(request)", confirm);
+        Assert.Contains("StartTailRequest(request, () => ObserveInitialLanding(version, generation))", confirm);
 
         var detachLayoutStart = binding.IndexOf("private void DetachLayout(", StringComparison.Ordinal);
         var detachRenderingStart = binding.IndexOf("private void DetachRendering(", detachLayoutStart, StringComparison.Ordinal);
@@ -677,12 +703,74 @@ public sealed class ChatTimelinePresentationTests
         var completeStart = binding.IndexOf("private void CompleteInitialLanding(", retryStart, StringComparison.Ordinal);
         Assert.True(retryStart > handlerEnd && completeStart > retryStart);
         var retry = binding[retryStart..completeStart];
-        var bring = retry.IndexOf("StartTailRequest(request)", StringComparison.Ordinal);
+        var bring = retry.IndexOf("StartTailRequest(request, () => ObserveInitialLanding(version, generation))", StringComparison.Ordinal);
         Assert.True(bring > 0);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", retry[..bring]);
         Assert.Contains("IsInitialConfirmationCurrent(version, generation)", retry[..bring]);
         Assert.Contains("TailNavigationPolicy.TryCapture(", retry[..bring]);
-        Assert.Contains("ObserveInitialLanding(version, generation);", retry[bring..]);
+        Assert.DoesNotContain("\n            ObserveInitialLanding(version, generation);", retry[bring..]);
+    }
+
+    [Fact]
+    public void ReactorTimeline_BypassesItemsViewWrapperAndReacquiresAfterNativeLayout()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        Assert.DoesNotContain("StartBringItemIntoView(", binding);
+        var start = binding.IndexOf("private bool StartTailRequest(", StringComparison.Ordinal);
+        var dispatch = binding.IndexOf("private void DispatchPreparedBring(", start, StringComparison.Ordinal);
+        var end = binding.IndexOf("private object? GetRequestItem(", dispatch, StringComparison.Ordinal);
+        var preparation = binding[start..dispatch];
+        Assert.Contains("Content: ItemsRepeater owner", preparation);
+        Assert.Contains("repeater.GetOrCreateElement(request.Index);", preparation);
+        Assert.DoesNotContain("= repeater.GetOrCreateElement", preparation);
+        Assert.Contains("AwaitLayout();", preparation);
+        var bring = binding[dispatch..end];
+        Assert.Contains("DispatcherQueue.TryEnqueue", bring);
+        Assert.Contains("pending.Version != _version", bring);
+        Assert.Contains("pending.RequiresFollowing && !_following", bring);
+        Assert.Contains("IsCurrentTail(request, repeater)", bring);
+        Assert.Contains("repeater.TryGetElement(request.Index)", bring);
+        Assert.Contains("repeater.GetElementIndex(target) != request.Index", bring);
+        Assert.Contains("target.StartBringIntoView(", bring);
+        Assert.DoesNotContain("GetOrCreateElement(", bring);
+        Assert.DoesNotContain("AwaitLayout(", bring);
+        Assert.Contains("_pendingBring = null;", binding[binding.IndexOf("private void DetachLayout(", StringComparison.Ordinal)..]);
+    }
+
+    [Fact]
+    public void ReactorTimeline_PreparationRecoveryIsBoundedAndOwnsItsLayoutGate()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var start = binding.IndexOf("private bool StartTailRequest(", StringComparison.Ordinal);
+        var dispatch = binding.IndexOf("private void DispatchPreparedBring(", start, StringComparison.Ordinal);
+        var item = binding.IndexOf("private object? GetRequestItem(", dispatch, StringComparison.Ordinal);
+        var preparation = binding[start..dispatch];
+        Assert.Contains("repeater is null && !allowPreparationRetry", preparation);
+        Assert.Contains("NeedsRealization: repeater is null", preparation);
+        Assert.True(preparation.IndexOf("DetachRendering();", StringComparison.Ordinal)
+            < preparation.IndexOf("AwaitLayout();", StringComparison.Ordinal));
+        Assert.Contains("!ReferenceEquals(previous, itemsView.ScrollView)", preparation);
+        Assert.Contains("previous.Loaded -= OnScrollViewLoaded;", preparation);
+        Assert.Contains("if (!_awaitingLayout && _awaitingScrollView is null)", preparation);
+        Assert.Contains("_pendingBring = null;", preparation);
+        Assert.Contains("repeater.ItemsSourceView is { } source", preparation);
+        var retry = binding[dispatch..item];
+        Assert.Contains("if (pending.NeedsRealization)", retry);
+        Assert.Contains("StartTailRequest(retry, pending.Started, allowPreparationRetry: false)", retry);
+        Assert.DoesNotContain("allowPreparationRetry: true", retry);
+        Assert.Contains("if (!pending.RequiresFollowing)", retry);
+        var layout = binding[binding.IndexOf("private void OnLayoutUpdated(", StringComparison.Ordinal)
+            ..binding.IndexOf("var renderAfterLayout = _renderAfterLayout;", StringComparison.Ordinal)];
+        Assert.Contains("_renderAfterLayout = false;", layout);
+        Assert.DoesNotContain("DetachLayout();", layout);
+        Assert.DoesNotContain("_confirmation.Invalidate();", layout);
+        var getItem = binding[item..binding.IndexOf("private static bool IsNearBottom(", item, StringComparison.Ordinal)];
+        Assert.Contains("repeater.ItemsSourceView is { } source", getItem);
+        Assert.Contains("request.Index < source.Count", getItem);
     }
 
     [Fact]
