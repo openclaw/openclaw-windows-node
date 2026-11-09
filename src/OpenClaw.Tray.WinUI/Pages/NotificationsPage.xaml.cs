@@ -48,16 +48,7 @@ public sealed partial class NotificationsPage : Page
         }
 
         Inbox.Initialize(notificationService, commands ?? new InboxViewCommands(
-            OpenAppRoute,
             ((IAppCommands)CurrentApp).TryNavigateAsync,
             () => ((IAppCommands)CurrentApp).Navigate(InboxRoutes.NotificationSettings)));
-    }
-
-    private static void OpenAppRoute(string route)
-    {
-        var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
-        AsyncEventHandlerGuard.Run(
-            () => ((IAppCommands)CurrentApp).TryNavigateAsync(isChat ? "chat" : route, sessionKey),
-            new AppLogger(), nameof(OpenAppRoute));
     }
 }

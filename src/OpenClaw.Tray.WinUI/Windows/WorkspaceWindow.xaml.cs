@@ -1247,34 +1247,12 @@ public sealed partial class WorkspaceWindow : WindowEx
             footer.ApplyInboxBadge(badge, helpText);
     }
 
-    /// <summary>Window navigation for Inbox rows: chat routes select the session; other routes use Settings routing.</summary>
+    /// <summary>Inbox actions use app-wide navigation admission; settings/page callbacks remain host-owned.</summary>
     private InboxViewCommands InboxCommands(Action? openPage) => new(
-        OpenInboxRoute,
         ((IAppCommands)CurrentApp).TryNavigateAsync,
         () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
         openPage);
 
-    private void OpenInboxRoute(string route)
-    {
-        if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey) && sessionKey is not null)
-        {
-            SelectSession(sessionKey);
-            return;
-        }
-        if (string.Equals(route, "chat", StringComparison.OrdinalIgnoreCase))
-        {
-            NavigateHome();
-            return;
-        }
-        try
-        {
-            OnSettingsWorkspaceRoute(route);
-        }
-        catch (ArgumentException ex)
-        {
-            new AppLogger().Warn($"[Inbox] Ignored unknown notification route: {ex.Message}");
-        }
-    }
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
     private void OnTogglePane(object sender, RoutedEventArgs e)
