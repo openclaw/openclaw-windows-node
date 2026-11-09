@@ -6,6 +6,32 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SessionTitleFormatterTests
 {
     [Fact]
+    public async Task Format_OnWorkerUsesStartupResourceSnapshot()
+    {
+        var startupThread = Environment.CurrentManagedThreadId;
+        var lookups = 0;
+        try
+        {
+            SessionTitleFormatter.ConfigureLocalization(key =>
+            {
+                Assert.Equal(startupThread, Environment.CurrentManagedThreadId);
+                lookups++;
+                return key == "SessionTitle_Main" ? "Localized main" : key;
+            });
+            var startupLookups = lookups;
+            Assert.True(startupLookups > 0);
+            var titles = await Task.Run(() => SessionTitleFormatter.FormatUnique(
+                [new SessionInfo { Key = "agent:main:main", IsMain = true }]));
+            Assert.Equal("Localized main", Assert.Single(titles));
+            Assert.Equal(startupLookups, lookups);
+        }
+        finally
+        {
+            SessionTitleFormatter.ConfigureLocalization(key => key);
+        }
+    }
+
+    [Fact]
     public void Format_DistinguishesForkFromCanonicalSessionWithSameDisplayName()
     {
         var canonical = new SessionInfo
