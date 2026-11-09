@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Xml.Linq;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -394,6 +395,84 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void BackToApp_ReturnsToRetainedChatAcrossSettingsSections_AsOneHistoryEntry()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "agent:main:a"));
+        history.Navigate(WorkspaceDestination.Settings("connection"));
+        history.Navigate(WorkspaceDestination.Settings("permissions"));
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:a"), history.AppDestination);
+
+        // A composer-created conversation that completes while Settings is visible is the retained chat.
+        Assert.True(history.SelectChatSession("agent:main:b"));
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:b"), history.AppDestination);
+
+        Assert.True(history.Navigate(history.AppDestination));
+        Assert.True(history.GoBack());
+        Assert.Equal(WorkspaceDestination.Settings("permissions"), history.Current);
+    }
+
+    [Fact]
+    public void BackToApp_ReturnsToTheAppDestinationSettingsWasOpenedFrom()
+    {
+        var history = new WorkspaceNavigationHistory();
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home), history.AppDestination);
+
+        history.Navigate(new(WorkspacePageId.Notifications));
+        history.Navigate(WorkspaceDestination.Settings("settings"));
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Notifications), history.AppDestination);
+
+        // A pinned page beside the sidebar is part of the app; its in-page links open full Settings.
+        var pinned = WorkspaceDestination.Settings("usage", embedded: true);
+        history.Navigate(pinned);
+        history.Navigate(WorkspaceDestination.Settings("config"));
+        Assert.Equal(pinned, history.AppDestination);
+
+        // An unavailable pinned page is never the return target; the retained chat is.
+        history.PruneSettings(tag => tag == "usage", history.Current);
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home), history.AppDestination);
+    }
+
+    [Fact]
+    public void BackToApp_SkipsPinnedGatewayPageAfterDisconnect_WhileCurrentConfigStaysVisible()
+    {
+        // Pinned Usage -> full Config -> disconnect: Config is kept visible, so only history is pruned.
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "agent:main:a"));
+        history.Navigate(WorkspaceDestination.Settings("usage", embedded: true));
+        history.Navigate(WorkspaceDestination.Settings("config"));
+
+        // The window passes the current page as the fallback, so Config stays and nothing re-renders.
+        history.PruneSettings(HubPageRegistry.IsGatewayPageTag, history.Current);
+
+        Assert.Equal(WorkspaceDestination.Settings("config"), history.Current);
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:a"), history.AppDestination);
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false, false, true)]
+    [InlineData(true, false, false, false, false, false)]
+    [InlineData(false, true, false, false, false, false)]
+    [InlineData(false, false, true, false, false, false)]
+    [InlineData(false, false, false, true, false, false)]
+    [InlineData(false, false, false, false, true, false)]
+    public void SettingsEscape_LeavesFullSettingsOnlyWhenNothingElseOwnsEscape(
+        bool embedded, bool handled, bool isRepeat, bool overlayOpen, bool focusInEditor, bool exits)
+    {
+        Assert.Equal(exits, SettingsEscapePolicy.ExitsSettings(
+            WorkspaceDestination.Settings("connection", embedded), handled, isRepeat, overlayOpen, focusInEditor));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SettingsEscape_DoesNothingOutsideSettings(bool notifications)
+    {
+        var page = notifications ? WorkspacePageId.Notifications : WorkspacePageId.Home;
+        Assert.False(SettingsEscapePolicy.ExitsSettings(new(page), false, false, false, false));
+    }
+
+    [Fact]
     public void SettingsHistory_BackAndForwardWorkWithoutAnyGatewayState()
     {
         // The unconfigured path uses the same history: Settings opens, Back reaches chat, Forward returns.
@@ -417,8 +496,8 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("typeof(ChatPage)", view);
         Assert.DoesNotContain("new ChatPage", view);
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        var core = manager[manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)..];
-        core = core[..core.IndexOf("private void ShowWorkspace", StringComparison.Ordinal)];
+        var core = manager[manager.IndexOf("private Task<bool> ShowHubCoreAsync", StringComparison.Ordinal)..];
+        core = core[..core.IndexOf("private bool ShowWorkspace", StringComparison.Ordinal)];
         var settingsRoute = core[core.IndexOf("}, tag =>", StringComparison.Ordinal)..];
         Assert.DoesNotContain("RequiresSetup", settingsRoute);
         Assert.Contains("settingsTag: tag", settingsRoute);
@@ -758,8 +837,11 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("destination = _navigation.ChatDestination;", source);
         Assert.Contains("preserveConversation: false", source);
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        Assert.Contains("_workspaceWindow.SelectSession(sessionKey);\n            else\n                _workspaceWindow.Navigate(destination);",
-            manager.Replace("\r\n", "\n"));
+        var navigate = manager[manager.IndexOf("else if (!preserveCurrent)", StringComparison.Ordinal)..
+            manager.IndexOf("if (_workspaceWindow.AppWindow.Presenter", StringComparison.Ordinal)];
+        Assert.Contains("destination = destination with { SessionKey = sessionKey };", navigate);
+        Assert.Contains("admitted = _workspaceWindow.TryNavigate(destination);", navigate);
+        Assert.DoesNotContain("_workspaceWindow.Navigate(", navigate);
     }
 
     [Fact]
@@ -1233,7 +1315,7 @@ public sealed class WorkspaceNavigationTests
     public void WindowManager_OwnsOneWorkspaceWindowForChatAndSettings_AndResetsScopeOnClose()
     {
         var code = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo", code);
+        Assert.Contains("WorkspaceNavigation.DispatchAsync(navigateTo", code);
         Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", code);
         Assert.Contains("_callbacks.ApplyTheme(_workspaceWindow)", code);
         Assert.Contains("TryClose(\"Workspace window\"", code);
@@ -1258,17 +1340,44 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("settings.Dispose();", workspace);
 
         var viewMarkup = File.ReadAllText(Source("Controls", "SettingsShellView.xaml"));
-        var chatLink = XDocument.Parse(viewMarkup).Descendants()
-            .Single(element => (string?)element.Attribute("Tag") == "chat");
-        Assert.Equal("False", (string?)chatLink.Attribute("SelectsOnInvoked"));
-        Assert.Equal("SettingsNavChat", (string?)chatLink.Attribute("AutomationProperties.AutomationId"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var document = XDocument.Parse(viewMarkup);
+        // Back to app replaced the rail's Chat item, matching the macOS Settings sidebar.
+        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute("Tag") == "chat");
+        var header = Assert.Single(document.Descendants(), element => element.Name.LocalName == "NavigationView.PaneCustomContent");
+        var backToApp = Assert.Single(header.Descendants(), element => (string?)element.Attribute(x + "Name") == "BackToAppButton");
+        Assert.Equal("SettingsBackToApp", (string?)backToApp.Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal("OnBackToAppClick", (string?)backToApp.Attribute("Click"));
+        Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)backToApp.Attribute("Style"));
+        var title = Assert.Single(header.Descendants(), element => (string?)element.Attribute(x + "Name") == "SettingsTitle");
+        Assert.Equal("Level1", (string?)title.Attribute("AutomationProperties.HeadingLevel"));
         var view = File.ReadAllText(Source("Controls", "SettingsShellView.xaml.cs"));
-        var invoked = view[view.IndexOf("private void NavView_ItemInvoked", StringComparison.Ordinal)..
+        Assert.DoesNotContain("NavView_ItemInvoked", view + viewMarkup);
+        var click = view[view.IndexOf("private void OnBackToAppClick", StringComparison.Ordinal)..
             view.IndexOf("private void NavView_SelectionChanged", StringComparison.Ordinal)];
-        Assert.Contains("NavigateTo(\"chat\")", invoked);
-        Assert.Contains("DispatcherQueuePriority.Low", invoked);
-        Assert.Contains("_active", invoked);
-        Assert.DoesNotContain("NavigateInternal", invoked);
+        Assert.Contains("_active", click);
+        Assert.Contains("ExitRequested", click);
+        Assert.DoesNotContain("NavigateInternal", click);
+        Assert.Contains("view.ExitRequested = ExitSettings;", workspace);
+        var exit = workspace[workspace.IndexOf("private void ExitSettings", StringComparison.Ordinal)..
+            workspace.IndexOf("private void OnRootKeyDown", StringComparison.Ordinal)];
+        Assert.Contains("var destination = _navigation.AppDestination;", exit);
+        Assert.Contains("Navigate(destination);", exit);
+        // A deferred exit resolves its target after the dialog; unavailable pinned pages are pruned first.
+        AssertInOrder(exit, "if (DeferWhileModalOpen(ExitSettings)) return;",
+            "PruneUnavailableGatewayHistory();", "var destination = _navigation.AppDestination;");
+
+        static void AssertInOrder(string source, params string[] fragments)
+        {
+            var cursor = 0;
+            foreach (var fragment in fragments)
+            {
+                var index = source.IndexOf(fragment, cursor, StringComparison.Ordinal);
+                Assert.True(index >= 0, $"Expected '{fragment}' after position {cursor}.");
+                cursor = index + fragment.Length;
+            }
+        }
+        Assert.Contains("KeyDown=\"OnRootKeyDown\"", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml")));
         Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", view);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
         Assert.Contains("Initialize(Window ownerWindow)", chat);
@@ -1284,8 +1393,9 @@ public sealed class WorkspaceNavigationTests
         var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
         Assert.Contains("preserveCurrent: navigateTo is null or \"hub\"", manager);
         Assert.Contains("if (!preserveCurrent)", manager);
-        Assert.Contains("_workspaceWindow.Navigate(destination)", manager);
-        Assert.Contains("_workspaceWindow.SelectSession(sessionKey)", manager);
+        Assert.Contains("_workspaceWindow.TryNavigate(destination)", manager);
+        Assert.Contains("destination = destination with { SessionKey = sessionKey };", manager);
+        Assert.Contains("usePendingChatSession ? _callbacks.GetPendingChatSessionKey() : null", manager);
         var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("if (!_navigation.Navigate(destination)", workspace);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
@@ -1354,7 +1464,7 @@ public sealed class WorkspaceNavigationTests
             """);
         var agents = WorkspaceProjection.Agents(json.RootElement, []);
         Assert.Equal(3, agents.Count);
-        Assert.Equal("Configured assistant", agents[0].Name);
+        Assert.Equal("Roster alias", agents[0].Name);
         Assert.Equal("C", agents[0].Emoji);
         Assert.Equal("data:image/png;base64,AQID", agents[0].AvatarUrl);
         Assert.Equal("Other assistant", agents[1].Name);
@@ -1364,6 +1474,34 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("main", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, null));
         Assert.Equal("other", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "other"));
         Assert.Equal("main", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "removed"));
+    }
+
+    [Fact]
+    public void Projection_FillsUnconfiguredDefaultAgentFromGatewayIdentity()
+    {
+        // agents.list omits the built-in default identity; agent.identity.get supplies "Assistant".
+        using var json = JsonDocument.Parse("""
+            {"defaultId":"main","agents":[
+              {"id":"main"},
+              {"id":"named","name":"Roster name","identity":{"avatarUrl":"https://images.example/stale.png"}},
+              {"id":"plain"}
+            ]}
+            """);
+        var identities = new Dictionary<string, ChatAgentIdentity>(StringComparer.Ordinal)
+        {
+            ["main"] = new("main", "Assistant", null, null),
+            ["named"] = new("named", "Gateway name", null, "\U0001F916"),
+            ["plain"] = new("other", "Wrong agent", "https://images.example/wrong.png", "W")
+        };
+
+        var agents = WorkspaceProjection.Agents(json.RootElement, [], identities);
+
+        Assert.Equal(("Assistant", (string?)null, (string?)null), (agents[0].Name, agents[0].Emoji, agents[0].AvatarUrl));
+        Assert.Equal("Roster name", agents[1].Name);
+        Assert.Equal("\U0001F916", agents[1].Emoji);
+        Assert.Null(agents[1].AvatarUrl);
+        Assert.Equal(("plain", (string?)null, (string?)null), (agents[2].Name, agents[2].Emoji, agents[2].AvatarUrl));
+        Assert.Equal("main", WorkspaceProjection.Agents(json.RootElement, [])[0].Name);
     }
 
     [Fact]
@@ -1440,7 +1578,6 @@ public sealed class WorkspaceNavigationTests
             File.ReadAllText(Source("Services", "WindowManager.cs")));
         var avatar = File.ReadAllText(Source("Controls", "AgentIdentityBadge.xaml.cs"));
         Assert.Contains("new MediaResolver(", avatar);
-        Assert.Contains("Picture.Initials = agent.Emoji", avatar);
         Assert.Contains("cancellation.IsCancellationRequested", avatar);
         Assert.DoesNotContain("File.Read", avatar);
     }

@@ -288,10 +288,11 @@ buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
 `PersonPicture` avatar rather than a font glyph.
 
 `WindowManager` owns Workspace and `HubWindow` independently. The latter is the
-Settings companion and reuses the existing native Settings pages. Its Chat rail
-item opens or focuses Workspace without selecting a Settings page or replacing
-the retained composer. Its activation is queued after NavigationView completes its
-own focus handling. WindowManager restores a minimized Workspace and explicitly
+Settings companion and reuses the existing native Settings pages. Its sidebar
+starts with Back to app (Escape when nothing focused owns Escape) and the
+Settings title, matching macOS. Back to app returns to the chat, Notifications
+or pinned page Settings was opened from, reusing the retained composer and
+draft. WindowManager restores a minimized Workspace and explicitly
 requests foreground activation, including when Workspace is already open.
 The Gateway dashboard action and its channels/integrations
 description live in their own Connection settings card, not above chat.

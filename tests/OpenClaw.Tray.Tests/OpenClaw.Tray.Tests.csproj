@@ -303,6 +303,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceAccountMenu.cs" Link="Presentation\WorkspaceAccountMenu.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredFlyoutShowState.cs" Link="Presentation\DeferredFlyoutShowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AgentAvatarPresentation.cs" Link="Presentation\AgentAvatarPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionOrder.cs" Link="Presentation\WorkspaceSessionOrder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceItemsSync.cs" Link="Presentation\WorkspaceItemsSync.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionMenu.cs" Link="Presentation\WorkspaceSessionMenu.cs" />

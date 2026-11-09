@@ -35,8 +35,8 @@ public sealed class AppSurfaceCharacterizationTests
         Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", source);
         Assert.Contains("new WorkspaceWindow(state, notifications, ShowConnectionStatus)", source);
         Assert.Contains("_callbacks.ApplyTheme(_workspaceWindow)", source);
-        Assert.Contains("_workspaceWindow.OpenSettings(settingsTag)", source);
-        Assert.Contains("_workspaceWindow.Navigate(destination)", source);
+        Assert.Contains("_workspaceWindow.TryOpenSettings(settingsTag)", source);
+        Assert.Contains("_workspaceWindow.TryNavigate(destination)", source);
         Assert.Contains("_workspaceWindow.Activate()", source);
         Assert.Contains("Show(activateWindow: false)", source);
         Assert.Contains("_callbacks.GetPageActivator()?.Reset()", source);

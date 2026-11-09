@@ -107,7 +107,7 @@ public sealed partial class GatewayScenario
         ReadMethods = Array.AsReadOnly(new[]
         {
             "sessions.list", "sessions.search", "sessions.subscribe", "sessions.preview", "chat.history",
-            "models.list", "usage.cost"
+            "models.list", "usage.cost", "agent.identity.get"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
@@ -133,6 +133,22 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    /// <summary>Read-only health data that lets the real app publish an actionable channel reminder.</summary>
+    public static GatewayScenario CreateChannelIssue(string error)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(error);
+        var browse = CreateBrowse();
+        var reads = new Dictionary<string, JsonElement>(browse._reads, StringComparer.Ordinal);
+        var health = JsonNode.Parse(reads["health"].GetRawText())!.AsObject();
+        health["channels"] = JsonSerializer.SerializeToNode(new
+        {
+            slack = new { configured = true, running = false, lastError = error }
+        });
+        health["channelOrder"] = JsonSerializer.SerializeToNode(new[] { "slack" });
+        reads["health"] = JsonSerializer.SerializeToElement(health);
+        return new(browse._sessions, reads);
     }
 
     public static GatewayScenario CreateSearchNavigation(bool includeUnrenderableSection = false)
@@ -476,6 +492,8 @@ public sealed partial class GatewayScenario
                 };
             }
         }
+        if (method == "agent.identity.get")
+            return AgentIdentity(parameters);
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
         if (_allowSessionMutations && method == "sessions.create")
@@ -526,6 +544,24 @@ public sealed partial class GatewayScenario
         if (decision is not ("allow-once" or "allow-always" or "deny"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unsupported approval decision.");
         return new { ok = true, decision };
+    }
+
+    // Name only, like a configured agent without an avatar: the app then renders its generated face.
+    private object AgentIdentity(JsonElement p)
+    {
+        ValidateProperties(p, "agentId");
+        var agentId = RequiredString(p, "agentId");
+        var roster = new List<JsonElement>();
+        if (_reads.TryGetValue("agents.list", out var list))
+            roster.AddRange(list.GetProperty("agents").EnumerateArray());
+        lock (_createdAgents)
+            roster.AddRange(_createdAgents.Select(agent => JsonSerializer.SerializeToElement(agent)));
+        foreach (var agent in roster)
+        {
+            if (agent.GetProperty("id").GetString() == agentId)
+                return new { agentId, name = agent.GetProperty("name").GetString() };
+        }
+        throw new FixtureRequestException("INVALID_REQUEST", $"Unknown agent id \"{agentId}\"");
     }
 
     private object ListSessions(JsonElement p)
