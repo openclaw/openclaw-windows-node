@@ -8,7 +8,10 @@ namespace OpenClawTray.Presentation;
 /// <param name="Tag">Canonical Settings route tag, resolved through the single Workspace history at click time.</param>
 /// <param name="LabelKey">Existing Settings navigation label resource, so pins never carry a competing vocabulary.</param>
 /// <param name="IconAsset">File name (without extension) under Assets/SidebarIcons shared with the Settings navigation.</param>
-internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset);
+internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset)
+{
+    public string IconUri => $"ms-appx:///Assets/SidebarIcons/{IconAsset}.svg";
+}
 
 /// <summary>
 /// Owner of the pinnable native page catalog and of pin list rules. Home (fixed), Settings, the

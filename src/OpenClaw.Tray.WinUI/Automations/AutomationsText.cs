@@ -50,6 +50,13 @@ internal sealed class AutomationsText(Func<string, string> lookup, Func<DateTime
         return $"{CalendarDate(at, false)}, {Clock(at)}";
     }
 
+    public string NextUpTime(long at)
+    {
+        var today = TimeZoneInfo.ConvertTime(_now(), _timeZone).Date;
+        var local = Local(at);
+        return local.Date == today ? Clock(at) : $"{CalendarDate(at, false)}, {Clock(at)}";
+    }
+
     public string RunTimestamp(long at)
     {
         if (Local(at).Date == TimeZoneInfo.ConvertTime(_now(), _timeZone).Date) return Format("Review_Today", Clock(at));
@@ -232,7 +239,7 @@ internal sealed class AutomationsText(Func<string, string> lookup, Func<DateTime
         "ok" => this["RunStatus_Ok"],
         "error" => this["RunStatus_Error"],
         "skipped" => this["RunStatus_Skipped"],
-        _ => this["RunStatus_Unknown"],
+        _ => this["Unknown"],
     };
 
     public string DeliveryStatus(string? status) => status switch
@@ -266,7 +273,7 @@ internal sealed class AutomationsText(Func<string, string> lookup, Func<DateTime
     {
         CronPayloadKind.SystemEvent => this["Payload_SystemEvent"],
         CronPayloadKind.AgentTurn => this["Payload_AgentTurn"],
-        CronPayloadKind.Command => this["Payload_Command"],
+        CronPayloadKind.Command => this["Field_Command"],
         CronPayloadKind.Script => this["Payload_Script"],
         _ => this["Payload_Unknown"],
     };
@@ -319,7 +326,8 @@ internal sealed class AutomationsText(Func<string, string> lookup, Func<DateTime
     /// <summary>Shares the Hub search wording, so it is also the heading: the page shows only the message.</summary>
     private string JobUnavailableMessage => lookup("Search_TargetUnavailable");
 
-    public string FormError(CronFormError error) => this["Error_" + error];
+    public string FormError(CronFormError error) =>
+        error == CronFormError.WebhookUrlInvalid ? this["Error_WebhookUrlRequired"] : this["Error_" + error];
 
     /// <summary>"All agents" or "Agent: id"; a status filter never implies every agent.</summary>
     public string AgentScope(string? agentFilter) =>

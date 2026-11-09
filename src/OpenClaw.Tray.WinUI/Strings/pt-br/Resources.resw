@@ -7514,9 +7514,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agente: {0}</value>
   </data>
-  <data name="Automations_Back" xml:space="preserve">
-    <value>Voltar</value>
-  </data>
   <data name="Automations_Cancel" xml:space="preserve">
     <value>Cancelar</value>
   </data>
@@ -7571,12 +7568,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
     <value>Gateway desconectado</value>
   </data>
-  <data name="Automations_Disconnected_Body" xml:space="preserve">
-    <value>As automações são executadas no seu Gateway do OpenClaw. Abra Conexão para emparelhar este PC e volte aqui para vê-las e gerenciá-las.</value>
-  </data>
-  <data name="Automations_Disconnected_Title" xml:space="preserve">
-    <value>Conecte-se a um Gateway para gerenciar automações</value>
-  </data>
   <data name="Automations_Duration_Hours" xml:space="preserve">
     <value>{0} h {1} min</value>
   </data>
@@ -7603,15 +7594,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Automations_Editor_EditTitle" xml:space="preserve">
     <value>Editar {0}</value>
-  </data>
-  <data name="Automations_Editor_FixMany" xml:space="preserve">
-    <value>Corrija {0} campos para continuar.</value>
-  </data>
-  <data name="Automations_Editor_FixOne" xml:space="preserve">
-    <value>Corrija 1 campo para continuar.</value>
-  </data>
-  <data name="Automations_Editor_NewTitle" xml:space="preserve">
-    <value>Nova automação</value>
   </data>
   <data name="Automations_Editor_Save" xml:space="preserve">
     <value>Salvar alterações</value>
@@ -7693,9 +7675,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
     <value>O script de gatilho é obrigatório quando o gatilho de condição está ativado.</value>
-  </data>
-  <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Informe uma URL de webhook HTTPS.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
     <value>Informe uma URL de webhook HTTPS.</value>
@@ -7937,9 +7916,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Payload_AgentTurn" xml:space="preserve">
     <value>Executar uma tarefa do assistente</value>
   </data>
-  <data name="Automations_Payload_Command" xml:space="preserve">
-    <value>Comando</value>
-  </data>
   <data name="Automations_Payload_Script" xml:space="preserve">
     <value>Script</value>
   </data>
@@ -7951,9 +7927,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
     <value>ID do canal</value>
-  </data>
-  <data name="Automations_Placeholder_Prompt" xml:space="preserve">
-    <value>Descreva o que o OpenClaw deve fazer...</value>
   </data>
   <data name="Automations_Placeholder_Timezone" xml:space="preserve">
     <value>Fuso horário IANA</value>
@@ -8015,9 +7988,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_RunHistory_Title" xml:space="preserve">
     <value>Histórico de execuções</value>
   </data>
-  <data name="Automations_Running" xml:space="preserve">
-    <value>Em execução</value>
-  </data>
   <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
     <value>Esta automação já está em execução.</value>
   </data>
@@ -8065,9 +8035,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Automations_Runs_DeliveryError" xml:space="preserve">
     <value>Erro de entrega: {0}</value>
-  </data>
-  <data name="Automations_Runs_EmptyConditionTitle" xml:space="preserve">
-    <value>Nenhuma execução ainda</value>
   </data>
   <data name="Automations_Runs_EmptyHint" xml:space="preserve">
     <value>As execuções aparecem aqui quando uma automação é disparada.</value>
@@ -8134,9 +8101,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Automations_RunStatus_Skipped" xml:space="preserve">
     <value>Ignorada</value>
-  </data>
-  <data name="Automations_RunStatus_Unknown" xml:space="preserve">
-    <value>Desconhecido</value>
   </data>
   <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
     <value>Agendamento Cron {0}</value>
@@ -8261,12 +8225,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_State_Running" xml:space="preserve">
     <value>Em execução</value>
   </data>
-  <data name="Automations_Tab_Overview" xml:space="preserve">
-    <value>Visão geral</value>
-  </data>
-  <data name="Automations_Thread" xml:space="preserve">
-    <value>Thread {0}</value>
-  </data>
   <data name="Automations_Title" xml:space="preserve">
     <value>Automações</value>
   </data>
@@ -8290,9 +8248,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Automations_Wake_Now" xml:space="preserve">
     <value>Agora</value>
-  </data>
-  <data name="Automations_Yes" xml:space="preserve">
-    <value>Sim</value>
   </data>
   <data name="Automations_Runs_SuccessRate" xml:space="preserve">
     <value>{0}% bem-sucedidas</value>
@@ -8468,17 +8423,11 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>Não foi possível atualizar. Exibindo as últimas automações conhecidas.</value></data>
   <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>Desativada pelo agendador</value></data>
   <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>Falhou {0} vezes seguidas</value></data>
-  <data name="Automations_Redesign_RetryNow" xml:space="preserve"><value>Tentar novamente agora</value></data>
   <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>Ver execuções</value></data>
-  <data name="Automations_Redesign_TurnOn" xml:space="preserve"><value>Ativar novamente</value></data>
-  <data name="Automations_Redesign_MoreAttention" xml:space="preserve"><value>Mais {0} precisam de atenção</value></data>
-  <data name="Automations_Redesign_NeedsYou" xml:space="preserve"><value>Precisa de você</value></data>
-  <data name="Automations_Redesign_Group_Running" xml:space="preserve"><value>Em execução agora</value></data>
   <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>Na próxima hora</value></data>
   <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>Mais tarde hoje</value></data>
   <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>Amanhã</value></data>
   <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>Falhou na última vez</value></data>
-  <data name="Automations_Redesign_ShowMore" xml:space="preserve"><value>Mostrar mais {0}</value></data>
   <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>Nada mais agendado até amanhã à noite.</value></data>
   <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} automações recorrentes</value></data>
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} aguardam eventos</value></data>
@@ -8493,7 +8442,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Redesign_On" xml:space="preserve"><value>Ativadas</value></data>
   <data name="Automations_Redesign_Off" xml:space="preserve"><value>Pausadas ou desativadas</value></data>
   <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>Agendadas</value></data>
-  <data name="Automations_Redesign_Paused" xml:space="preserve"><value>Pausadas ou desativadas</value></data>
   <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>Todas as automações</value></data>
   <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>Avançada</value></data>
   <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>Abrir conversa: {0}</value></data>
@@ -8510,14 +8458,12 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>Remover “{0}”?</value></data>
   <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>Ela é removida de {0} junto com o agendamento e o histórico de execuções. Isso não pode ser desfeito.</value></data>
   <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>Gateway conectado</value></data>
-  <data name="Automations_Popup_Schedule" xml:space="preserve"><value>Agendamento</value></data>
   <data name="Automations_Popup_AlertType" xml:space="preserve"><value>Diálogo de alerta</value></data>
   <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>Execução na fila</value></data>
   <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>Execução na fila · {0}</value></data>
   <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>Não iniciada: “{0}” já está em execução.</value></data>
   <data name="Automations_Toast_Removed" xml:space="preserve"><value>“{0}” removida</value></data>
   <data name="Automations_Review_Today" xml:space="preserve"><value>Hoje {0}</value></data>
-  <data name="Automations_Review_TurnedOff" xml:space="preserve"><value>{0} foi desativada</value></data>
   <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>O agendador a interrompeu.</value></data>
   <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>Agendador ativado</value></data>
   <data name="Automations_Review_RunningNow" xml:space="preserve"><value>Em execução agora</value></data>
@@ -8540,7 +8486,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>Copiar “{0}” como nova</value></data>
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>Repete</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>Não foi possível iniciar “{0}”. Esta conexão não tem a permissão operator.admin.</value></data>
-  <data name="Automations_Review_Close" xml:space="preserve"><value>Fechar</value></data>
   <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Obrigatório)</value></data>
   <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Preencha os campos obrigatórios antes de salvar.</value></data>
   <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Escolha uma data.</value></data>

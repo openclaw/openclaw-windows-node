@@ -83,7 +83,7 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
                         : job.State.LastError) with
                 { Severity = InfoBarSeverity.Error, IsClosable = false }).AutomationId(job.IsAutoDisabled ? "AutomationAutoDisabled" : "AutomationLastError") : Empty(),
             job.State.StreamError is { } streamError ? ErrorText(streamError, "AutomationStreamError") : Empty(),
-            details).Padding(16).AutomationId("AutomationDetail");
+            details).AutomationId("AutomationDetail");
     }
 
     private static Element Section(string title, params Element?[] children) =>
@@ -110,7 +110,7 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
                 Facts =
                 [
                     new(t["Field_Agent"], job.Owner ?? t["Unknown"]),
-                    new(t["Popup_Schedule"], t.Schedule(job.Schedule)),
+                    new(t["Section_Schedule"], t.Schedule(job.Schedule)),
                     new(t["NextRun"], job.Enabled && job.State.NextRunAtMs is { } next ? t.DateTime(next) : t["NotScheduled"]),
                 ],
             }))
@@ -130,9 +130,9 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
         }
         else
             primary.Add(AppBarButton(t["CopyId"], copyId, "Copy"));
-        var secondary = new List<AppBarItemBase>();
         if (lastSession is not null)
-            secondary.Add(AppBarButton(t["Redesign_LastRunChat"], () => host.OpenChat(lastSession), "Message"));
+            primary.Add(AppBarButton(t["Redesign_LastRunChat"], () => host.OpenChat(lastSession), "Message"));
+        var secondary = new List<AppBarItemBase>();
         secondary.Add(AppBarButton(t["OpenInWeb"], () => host.OpenWeb(job.Id), "OpenInNewWindow") with { IsEnabled = state.Connected });
         secondary.Add(AppBarButton(t["CopyId"], copyId, "Copy"));
         if (state.CanManage || (!state.Connected && state.LastKnownCanManage))
@@ -146,7 +146,6 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
         return Border(Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
             (CommandBar(primaryCommands: primary.ToArray()) with { DefaultLabelPosition = CommandBarDefaultLabelPosition.Right })
                 .Set(native => { native.OverflowButtonVisibility = CommandBarOverflowButtonVisibility.Auto; native.IsDynamicOverflowEnabled = true; })
-                .Background(Theme.Ref("SubtleFillColorTransparentBrush")).BorderThickness(0)
                 .HAlign(HorizontalAlignment.Stretch).AutomationId($"CronCommands:{job.Id}").WithKey($"CronCommands:{job.Id}").Grid(column: 0),
             CommandBar(secondaryCommands: secondary.ToArray())
                 .Set(native =>
@@ -158,7 +157,6 @@ internal sealed class AutomationDetail : Component<AutomationDetailProps>
                             FontFamily = FluentIconCatalog.SymbolThemeFontFamily
                         };
                 })
-                .Background(Theme.Ref("SubtleFillColorTransparentBrush")).BorderThickness(0)
                 .AutomationName(t.Format("MoreActionsFor", job.Title)).AutomationId($"CronMore:{job.Id}").WithKey($"CronMore:{job.Id}").Grid(column: 1)))
             .Padding(0, 0, 0, 8).BorderBrush(Theme.DividerStroke).BorderThickness(0, 0, 0, 1);
     }

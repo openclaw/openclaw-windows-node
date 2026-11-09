@@ -103,7 +103,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         else if (state.Runs.Count == 0)
         {
             rows.Add(job is { HasTrigger: true }
-                ? Hero(GlyphBranch, t["Runs_EmptyConditionTitle"], ConditionHint(t, job), "AutomationRunsEmpty")
+                ? Hero(GlyphBranch, t["Runs_EmptyTitle"], ConditionHint(t, job), "AutomationRunsEmpty")
                 : Hero(GlyphHistory, query.HasFilters ? t["Runs_NoMatch"] : t["Runs_EmptyTitle"], t["Runs_EmptyHint"], "AutomationRunsEmpty"));
         }
         else
@@ -178,7 +178,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         var isError = run.Status == "error";
         var display = CronRunHistoryDisplay.ExtractText(run.Raw, isError);
         var text = string.IsNullOrWhiteSpace(display.PreviewText) ? t["Runs_NoSummary"] : display.PreviewText;
-        var full = expanded && display.HasExpandableFullText ? display.FullText! : text;
+        var full = expanded && (inline || display.HasExpandableFullText) ? display.FullText ?? text : text;
 
         var at = run.EffectiveRunAtMs;
         var statusLine = HStack(Gap,
@@ -212,7 +212,7 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
 
         var details = new List<Element?>
         {
-            inline && expanded ? Empty() : expanded && run.Status == "ok"
+            expanded && run.Status == "ok"
                 ? ReactorChatTimeline.BuildSafeMarkdown(full, host.CopyText).AutomationId($"AutomationRunSummary:{run.Key}")
                 : TextBlock(full).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true)
                 .Foreground(isError ? Theme.SystemCritical : Theme.PrimaryText)
@@ -225,21 +225,18 @@ internal sealed class AutomationRuns : Component<AutomationRunsProps>
         };
 
         var actions = new List<Element>();
-        if (!inline && (display.HasExpandableFullText || (display.FullText?.Length ?? 0) > 200))
-            actions.Add(HyperlinkButton(expanded ? t["Runs_ShowLess"] : t["Runs_ShowMore"], null, toggleExpanded).AutomationId($"AutomationRunExpand:{run.Key}"));
+        var canExpand = inline
+            ? !string.IsNullOrWhiteSpace(display.FullText ?? text)
+            : display.HasExpandableFullText || (display.FullText?.Length ?? 0) > 200;
+        if (canExpand)
+            actions.Add(HyperlinkButton(inline && !expanded ? t["Redesign_Response"]
+                    : expanded ? t["Runs_ShowLess"] : t["Runs_ShowMore"], null, toggleExpanded)
+                .AutomationId($"AutomationRunExpand:{run.Key}"));
 
         var body = VStack(Gap,
                 headline,
                 chips.Count == 0 ? Empty() : (FlexRow(chips.ToArray()) with { Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap, ColumnGap = 6, RowGap = 6 }),
                 VStack(4, details.ToArray()),
-                inline ? Expander(t["Redesign_Response"],
-                        run.Status == "ok"
-                            ? ReactorChatTimeline.BuildSafeMarkdown(display.FullText ?? text, host.CopyText)
-                            : TextBlock(display.FullText ?? text).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true),
-                        expanded, _ => toggleExpanded())
-                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                    .Background(Theme.Ref("SubtleFillColorTransparentBrush")).BorderThickness(0)
-                    .AutomationName(t["Redesign_Response"]).AutomationId($"AutomationRunExpand:{run.Key}") : Empty(),
                 actions.Count == 0 ? Empty() : HStack(4, actions.ToArray()));
         Element card = inline
             ? Border(body).Padding(0, 8, 0, 12).BorderBrush(Theme.CardStroke).BorderThickness(0, 0, 0, 1)

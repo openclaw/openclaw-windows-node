@@ -122,10 +122,8 @@ internal static class AutomationsVisuals
     internal static Element IconButton(string glyph, string label, Action onClick, string automationId, bool enabled = true) =>
         Button(Glyph(glyph, 14, Theme.PrimaryText), onClick)
             .IsEnabled(enabled)
-            .Padding(8, 6)
             .ToolTip(label)
-            .BorderThickness(0)
-            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .ApplyStyle("SubtleButtonStyle")
             .AutomationId(automationId)
             .AutomationName(label).WithKey(automationId);
 
@@ -332,7 +330,7 @@ internal static class AutomationsVisuals
                         AutomationsVisuals.SingleLine(Props.Title, 14).FontWeight(FontWeights.SemiBold)
                             .AutomationId($"CronJobTitle:{Props.JobId}").Grid(column: 0),
                         titleBadge.VAlign(VerticalAlignment.Center).Grid(column: 1))
-                        .Grid(row: 0).Set(native => Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(native, 2)),
+                        .Grid(column: 0, row: 0, columnSpan: 2),
                     AutomationsVisuals.SingleLine(Props.Subtitle).Foreground(Theme.SecondaryText).Margin(0, 4, 0, 0).Grid(row: 1),
                     (showTag ? AutomationsVisuals.Pill(Props.Tag!, Theme.SecondaryText, Theme.SystemNeutralBackground).Margin(8, 4, 0, 0) : Empty())
                         .Grid(column: 1, row: 1)),

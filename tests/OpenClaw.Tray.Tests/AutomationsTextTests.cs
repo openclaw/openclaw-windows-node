@@ -68,6 +68,30 @@ public sealed class AutomationsTextTests
         Assert.Equal(expected, WithCulture(() => t.FriendlyDateTime(DateTimeOffset.Parse(instant, CultureInfo.InvariantCulture).ToUnixTimeMilliseconds())));
     }
 
+    [Theory]
+    [InlineData("2030-01-07T14:30:00Z", "2:30 PM")]
+    [InlineData("2030-01-08T15:00:00Z", "Jan 8, 3:00 PM")]
+    [InlineData("2030-02-15T16:00:00Z", "Feb 15, 4:00 PM")]
+    public void NextUpTime_UsesClockTodayAndCalendarDateForOtherDays(string instant, string expected)
+    {
+        var t = new AutomationsText(key => EnUs.Value[key], () => Now, TimeZoneInfo.Utc);
+        var value = WithCulture(() => t.NextUpTime(DateTimeOffset.Parse(instant, CultureInfo.InvariantCulture).ToUnixTimeMilliseconds()));
+
+        Assert.Equal(expected, value);
+        Assert.DoesNotContain("in ", value, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(" min", value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NextUpHeader_PassesAbsoluteLocalTimeToLocalizedCopy()
+    {
+        var page = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
+
+        Assert.Contains("t.Format(\"Redesign_Next\", next.Title, t.NextUpTime(at))", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("t.Format(\"Redesign_Next\", next.Title, t.Relative(at))", page, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void OneTimeSchedule_UsesLocalizedWeekdayMonthAndPcZone()
     {
@@ -243,6 +267,7 @@ public sealed class AutomationsTextTests
         var t = Text();
         foreach (var error in Enum.GetValues<CronFormError>())
             Assert.False(string.IsNullOrWhiteSpace(t.FormError(error)));
+        Assert.Equal(t.FormError(CronFormError.WebhookUrlRequired), t.FormError(CronFormError.WebhookUrlInvalid));
     }
 
     [Fact]

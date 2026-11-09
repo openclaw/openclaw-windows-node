@@ -7461,9 +7461,6 @@
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>代理程式：{0}</value>
   </data>
-  <data name="Automations_Back" xml:space="preserve">
-    <value>返回</value>
-  </data>
   <data name="Automations_Cancel" xml:space="preserve">
     <value>取消</value>
   </data>
@@ -7518,12 +7515,6 @@
   <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
     <value>閘道已中斷連線</value>
   </data>
-  <data name="Automations_Disconnected_Body" xml:space="preserve">
-    <value>自動化會在您的 OpenClaw 閘道上執行。請開啟連線以配對此電腦，然後回到這裡檢視及管理自動化。</value>
-  </data>
-  <data name="Automations_Disconnected_Title" xml:space="preserve">
-    <value>連線至閘道以管理自動化</value>
-  </data>
   <data name="Automations_Duration_Hours" xml:space="preserve">
     <value>{0} 小時 {1} 分</value>
   </data>
@@ -7550,15 +7541,6 @@
   </data>
   <data name="Automations_Editor_EditTitle" xml:space="preserve">
     <value>編輯 {0}</value>
-  </data>
-  <data name="Automations_Editor_FixMany" xml:space="preserve">
-    <value>請修正 {0} 個欄位以繼續。</value>
-  </data>
-  <data name="Automations_Editor_FixOne" xml:space="preserve">
-    <value>請修正 1 個欄位以繼續。</value>
-  </data>
-  <data name="Automations_Editor_NewTitle" xml:space="preserve">
-    <value>新增自動化</value>
   </data>
   <data name="Automations_Editor_Save" xml:space="preserve">
     <value>儲存變更</value>
@@ -7640,9 +7622,6 @@
   </data>
   <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
     <value>開啟條件觸發程序時，觸發指令碼為必填。</value>
-  </data>
-  <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>請輸入 HTTPS Webhook URL。</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
     <value>請輸入 HTTPS Webhook URL。</value>
@@ -7884,9 +7863,6 @@
   <data name="Automations_Payload_AgentTurn" xml:space="preserve">
     <value>執行助理工作</value>
   </data>
-  <data name="Automations_Payload_Command" xml:space="preserve">
-    <value>命令</value>
-  </data>
   <data name="Automations_Payload_Script" xml:space="preserve">
     <value>指令碼</value>
   </data>
@@ -7898,9 +7874,6 @@
   </data>
   <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
     <value>通道 ID</value>
-  </data>
-  <data name="Automations_Placeholder_Prompt" xml:space="preserve">
-    <value>描述 OpenClaw 應該做什麼...</value>
   </data>
   <data name="Automations_Placeholder_Timezone" xml:space="preserve">
     <value>IANA 時區</value>
@@ -7962,9 +7935,6 @@
   <data name="Automations_RunHistory_Title" xml:space="preserve">
     <value>執行歷史記錄</value>
   </data>
-  <data name="Automations_Running" xml:space="preserve">
-    <value>執行中</value>
-  </data>
   <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
     <value>此自動化已在執行中。</value>
   </data>
@@ -8012,9 +7982,6 @@
   </data>
   <data name="Automations_Runs_DeliveryError" xml:space="preserve">
     <value>傳遞錯誤：{0}</value>
-  </data>
-  <data name="Automations_Runs_EmptyConditionTitle" xml:space="preserve">
-    <value>尚無執行</value>
   </data>
   <data name="Automations_Runs_EmptyHint" xml:space="preserve">
     <value>自動化觸發後，執行會顯示在這裡。</value>
@@ -8081,9 +8048,6 @@
   </data>
   <data name="Automations_RunStatus_Skipped" xml:space="preserve">
     <value>已略過</value>
-  </data>
-  <data name="Automations_RunStatus_Unknown" xml:space="preserve">
-    <value>未知</value>
   </data>
   <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
     <value>Cron 排程 {0}</value>
@@ -8208,12 +8172,6 @@
   <data name="Automations_State_Running" xml:space="preserve">
     <value>執行中</value>
   </data>
-  <data name="Automations_Tab_Overview" xml:space="preserve">
-    <value>概觀</value>
-  </data>
-  <data name="Automations_Thread" xml:space="preserve">
-    <value>討論串 {0}</value>
-  </data>
   <data name="Automations_Title" xml:space="preserve">
     <value>自動化</value>
   </data>
@@ -8237,9 +8195,6 @@
   </data>
   <data name="Automations_Wake_Now" xml:space="preserve">
     <value>立即</value>
-  </data>
-  <data name="Automations_Yes" xml:space="preserve">
-    <value>是</value>
   </data>
   <data name="Automations_Runs_SuccessRate" xml:space="preserve">
     <value>{0}% 成功</value>
@@ -8415,17 +8370,11 @@
   <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>無法重新整理。正在顯示上次已知的自動化。</value></data>
   <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>已被排程器關閉</value></data>
   <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>連續失敗 {0} 次</value></data>
-  <data name="Automations_Redesign_RetryNow" xml:space="preserve"><value>立即重試</value></data>
   <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>查看執行記錄</value></data>
-  <data name="Automations_Redesign_TurnOn" xml:space="preserve"><value>重新開啟</value></data>
-  <data name="Automations_Redesign_MoreAttention" xml:space="preserve"><value>還有 {0} 個需要處理</value></data>
-  <data name="Automations_Redesign_NeedsYou" xml:space="preserve"><value>需要您處理</value></data>
-  <data name="Automations_Redesign_Group_Running" xml:space="preserve"><value>正在執行</value></data>
   <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>未來一小時內</value></data>
   <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>今天稍後</value></data>
   <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>明天</value></data>
   <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>上次執行失敗</value></data>
-  <data name="Automations_Redesign_ShowMore" xml:space="preserve"><value>再顯示 {0} 個</value></data>
   <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>到明晚前沒有其他排程。</value></data>
   <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} 個重複執行的自動化</value></data>
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} 個正在等待事件</value></data>
@@ -8440,7 +8389,6 @@
   <data name="Automations_Redesign_On" xml:space="preserve"><value>已開啟</value></data>
   <data name="Automations_Redesign_Off" xml:space="preserve"><value>已暫停或關閉</value></data>
   <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>已排程</value></data>
-  <data name="Automations_Redesign_Paused" xml:space="preserve"><value>已暫停或關閉</value></data>
   <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>全部自動化</value></data>
   <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>進階</value></data>
   <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>開啟聊天：{0}</value></data>
@@ -8457,14 +8405,12 @@
   <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>移除「{0}」？</value></data>
   <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>它將連同排程和執行歷程記錄一起從 {0} 移除。此操作無法復原。</value></data>
   <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>已連線的 Gateway</value></data>
-  <data name="Automations_Popup_Schedule" xml:space="preserve"><value>排程</value></data>
   <data name="Automations_Popup_AlertType" xml:space="preserve"><value>警告對話方塊</value></data>
   <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>執行已排入佇列</value></data>
   <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>執行已排入佇列 · {0}</value></data>
   <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>未啟動：「{0}」已在執行。</value></data>
   <data name="Automations_Toast_Removed" xml:space="preserve"><value>已移除「{0}」</value></data>
   <data name="Automations_Review_Today" xml:space="preserve"><value>今天 {0}</value></data>
-  <data name="Automations_Review_TurnedOff" xml:space="preserve"><value>{0} 已被關閉</value></data>
   <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>排程器已將其停止。</value></data>
   <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>排程器已開啟</value></data>
   <data name="Automations_Review_RunningNow" xml:space="preserve"><value>正在執行</value></data>
@@ -8487,7 +8433,6 @@
   <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>將「{0}」複製為新的自動化</value></data>
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>重複</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>無法啟動「{0}」。此連線缺少 operator.admin 權限。</value></data>
-  <data name="Automations_Review_Close" xml:space="preserve"><value>關閉</value></data>
   <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0}（必填）</value></data>
   <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>請填寫必填欄位後再儲存。</value></data>
   <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>請選擇日期。</value></data>

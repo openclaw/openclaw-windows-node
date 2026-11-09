@@ -40,8 +40,8 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             Assert.Contains("Standard test resource profile", failure.Message);
         });
         await OutcomeToast_UsesNeutralInformationAndKeepsErrorsUntilClosed();
-        await Page_UsesHostWidthWithoutOverlappingActionsOrRows(1400, 2, 1, 2);
-        await Page_UsesHostWidthWithoutOverlappingActionsOrRows(1000, 2, 1, 2);
+        await Page_UsesHostWidthWithoutOverlappingActionsOrRows(1400, false, 1, 2, true);
+        await Page_UsesHostWidthWithoutOverlappingActionsOrRows(1000, false, 1, 2, true);
     }
 
     [Fact]
@@ -70,23 +70,28 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 window.Activate();
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                Controls(surface!).OfType<TextBlock>().Any(label => label.Text == "\uE946"), "neutral information glyph"));
+                Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationsNotice"),
+                "native informational InfoBar"));
             await ui.RunOnUIAsync(() =>
             {
-                var glyph = Assert.Single(Controls(surface!).OfType<TextBlock>(), label => label.Text == "\uE946");
-                Assert.Equal(((SolidColorBrush)Application.Current.Resources["TextFillColorSecondaryBrush"]).Color,
-                    Assert.IsType<SolidColorBrush>(glyph.Foreground).Color);
+                var info = Assert.IsType<InfoBar>(Find(surface!, "AutomationsNotice"));
+                Assert.Equal(InfoBarSeverity.Informational, info.Severity);
+                Assert.False(info.IsClosable);
                 renderer!.Mount(_ => Component<AutomationToast, AutomationToastProps>(new(
                     new(AutomationsNoticeKind.RunNotStarted, "Dentist reminder", "FORBIDDEN", "operator.admin") { Id = 2 },
                     text, true, id => dismissed.Add(id))).WithKey("error"));
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationToastClose"), "persistent error close action"));
+                Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationsNotice"),
+                "persistent error InfoBar"));
             await Task.Delay(ToastPersistenceBoundary);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Empty(dismissed);
-                var close = Assert.IsType<Button>(Find(surface!, "AutomationToastClose"));
+                var info = Assert.IsType<InfoBar>(Find(surface!, "AutomationsNotice"));
+                Assert.Equal(InfoBarSeverity.Error, info.Severity);
+                Assert.True(info.IsClosable);
+                var close = Assert.Single(Controls(info).OfType<Button>());
                 var peer = new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(close);
                 var invoke = Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider>(
                     peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke));
@@ -107,22 +112,22 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
     }
 
     [Theory]
-    [InlineData(1400, 3, 1, 2)]
-    [InlineData(1000, 3, 1, 2)]
-    [InlineData(760, 3, 2, 1)]
-    [InlineData(759, 3, 2, 1)]
-    [InlineData(937, 3, 2, 1)]
-    [InlineData(520, 2, 3, 1)]
-    [InlineData(380, 2, 3, 1)]
-    [InlineData(379, 2, 3, 1)]
-    public async Task Page_UsesHostWidthWithoutOverlappingActionsOrRows(double width, int mastColumns, int filterRows, int detailColumns)
-        => await RunMountedPageAsync(width, mastColumns, filterRows, detailColumns, retainActionFocus: false);
+    [InlineData(1400, false, 1, 2, true)]
+    [InlineData(1000, false, 1, 2, true)]
+    [InlineData(760, false, 2, 1, false)]
+    [InlineData(759, false, 2, 1, false)]
+    [InlineData(937, false, 2, 1, true)]
+    [InlineData(520, true, 3, 1, false)]
+    [InlineData(380, true, 3, 1, false)]
+    [InlineData(379, true, 3, 1, false)]
+    public async Task Page_UsesHostWidthWithoutOverlappingActionsOrRows(double width, bool actionsBelowTitle, int filterRows, int detailColumns, bool agendaSideBySide)
+        => await RunMountedPageAsync(width, actionsBelowTitle, filterRows, detailColumns, agendaSideBySide, retainActionFocus: false);
 
     [Fact]
     public async Task Page_RetainsOriginalAddAndParentsAndFocusAcross760560760()
-        => await RunMountedPageAsync(760, 3, 2, 1, retainActionFocus: true);
+        => await RunMountedPageAsync(760, false, 2, 1, false, retainActionFocus: true);
 
-    private async Task RunMountedPageAsync(double width, int mastColumns, int filterRows, int detailColumns, bool retainActionFocus)
+    private async Task RunMountedPageAsync(double width, bool actionsBelowTitle, int filterRows, int detailColumns, bool agendaSideBySide, bool retainActionFocus)
     {
         RequireProductionResources();
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
@@ -313,7 +318,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     "operator admin admission inserts the populated New action"));
             }
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                Controls(Find(surface!, "AutomationDetail")).Any(element => element is Expander
+                Controls(Find(surface!, "AutomationDetail")).Any(element => element is HyperlinkButton
                     && AutomationProperties.GetAutomationId(element).StartsWith("AutomationRunExpand:", StringComparison.Ordinal))
                 && Find(surface!, "AutomationsSummaryTiles") is Grid,
                 "inline run summary and shared page tiles"));
@@ -321,11 +326,13 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             ScrollView? retainedScroll = null;
             FrameworkElement? retainedMast = null;
             double originalMastTop = 0;
+            double originalSurfaceWidth = 0;
             await ui.RunOnUIAsync(() =>
             {
                 retainedScroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
                 retainedMast = Find(surface!, "AutomationsMast");
                 originalMastTop = Bounds(retainedMast, surface!).Top;
+                originalSurfaceWidth = surface!.ActualWidth;
                 viewport.ApplyTopInset(56);
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
@@ -336,20 +343,45 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             {
                 Assert.Same(retainedScroll, Find(surface!, "AutomationsList"));
                 Assert.Same(retainedMast, Find(surface!, "AutomationsMast"));
-                Assert.Equal(width, surface!.ActualWidth);
+                AssertWithinOnePhysicalPixel(surface!.ActualWidth, originalSurfaceWidth, surface.XamlRoot.RasterizationScale);
                 Assert.True(Bounds(retainedMast!, surface).Top >= 56);
                 viewport.ApplyTopInset(0);
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 0,
                 "removing inset restores the retained page viewport"));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var header = Bounds(Find(surface!, "AutomationRowHeader:morning-brief"), surface!);
+                var chat = Bounds(Find(surface!, "AutomationRowChat:morning-brief"), surface!);
+                return Math.Abs(chat.Top + chat.Height / 2 - header.Top - header.Height / 2) <= 1;
+            }, "measured chat placement centered on its header"));
             await ui.RunOnUIAsync(() =>
             {
                 surface!.UpdateLayout();
                 AssertGatewayFieldLabels(Find(surface, "AutomationDetail"));
                 AssertNewButton(surface, artifacts, width);
-                var mast = Assert.IsType<Grid>(Find(surface, "AutomationsMastGrid"));
-                Assert.Equal(mastColumns, mast.ColumnDefinitions.Count);
+                var mastBounds = Bounds(Find(surface, "AutomationsMast"), surface);
+                var headerActions = Bounds(Find(surface, "AutomationsHeaderActions"), surface);
+                var headerText = new[] { "AutomationsHeadline", "AutomationsHeroAnswer", "AutomationsAgentScope" }
+                    .Select(id => Bounds(Find(surface, id), surface)).ToArray();
+                var pixel = 1 / surface.XamlRoot.RasterizationScale;
+                foreach (var bounds in headerText.Append(headerActions))
+                {
+                    Assert.True(bounds.Width > 0 && bounds.Height > 0);
+                    Assert.True(bounds.Left >= mastBounds.Left - pixel && bounds.Right <= mastBounds.Right + pixel
+                        && bounds.Top >= mastBounds.Top - pixel && bounds.Bottom <= mastBounds.Bottom + pixel,
+                        $"Header content {bounds} must fit inside {mastBounds}.");
+                }
+                for (var index = 1; index < headerText.Length; index++)
+                    Assert.True(headerText[index].Top >= headerText[index - 1].Bottom - pixel);
+                if (actionsBelowTitle)
+                {
+                    Assert.True(headerActions.Top >= headerText.Max(bounds => bounds.Bottom) - pixel);
+                    AssertWithinOnePhysicalPixel(headerActions.Left, headerText[0].Left, surface.XamlRoot.RasterizationScale);
+                }
+                else
+                    Assert.True(headerActions.Left >= headerText.Max(bounds => bounds.Right) - pixel);
                 Assert.DoesNotContain(Controls(surface), element =>
                     AutomationProperties.GetAutomationId(element) is "AutomationsBackdrop" or "AutomationsAttention"
                     || AutomationProperties.GetAutomationId(element).StartsWith("AutomationAttention:", StringComparison.Ordinal));
@@ -358,21 +390,32 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationsAgentScope"), surface).Left
                     - Bounds(Find(surface, "AutomationsHeadline"), surface).Left), 0, 1);
                 AssertTextAlignment(surface);
-                AssertSeparatedInventoryCards(surface, artifacts, width);
+                AssertSeparatedInventoryRows(surface, artifacts, width);
+                if (actionsBelowTitle)
+                    Assert.True(Find(surface, "AutomationRowHeader:morning-brief").ActualHeight > 48,
+                        "Narrow coverage must exercise a header taller than the stock collapsed minimum.");
                 var filters = Assert.IsType<Grid>(Find(surface, "AutomationsFilters"));
                 Assert.Equal(filterRows, filters.RowDefinitions.Count);
+                AssertSearchFilterGeometry(surface, filterRows);
                 var detail = Find(surface, "AutomationDetailColumns");
                 Assert.Equal(detailColumns, detail is Grid columns ? columns.ColumnDefinitions.Count : 1);
-                var agenda = Find(surface, "AutomationsAgendaBody");
-                Assert.Equal(detailColumns, agenda is Grid agendaColumns ? agendaColumns.ColumnDefinitions.Count : 1);
                 var agendaListBounds = Bounds(Find(surface, "AutomationsAgendaList"), surface);
+                var earlierHeading = Bounds(Find(surface, "AutomationEarlierHeading"), surface);
+                if (agendaSideBySide)
+                {
+                    Assert.True(earlierHeading.Left >= agendaListBounds.Right - pixel);
+                    Assert.True(earlierHeading.Top < agendaListBounds.Bottom && earlierHeading.Bottom > agendaListBounds.Top);
+                }
+                else
+                {
+                    AssertWithinOnePhysicalPixel(earlierHeading.Left, agendaListBounds.Left, surface.XamlRoot.RasterizationScale);
+                    Assert.True(earlierHeading.Top >= agendaListBounds.Bottom - pixel);
+                }
                 var agendaHeaders = Controls(surface).Where(element =>
                     AutomationProperties.GetAutomationId(element).StartsWith("AutomationAgendaGroup:", StringComparison.Ordinal)).ToArray();
                 Assert.NotEmpty(agendaHeaders);
                 foreach (var header in agendaHeaders)
                     Assert.InRange(Math.Abs(Bounds(header, surface).Left - agendaListBounds.Left), 0, 1);
-                if (detailColumns == 1)
-                    Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationEarlierHeading"), surface).Left - agendaListBounds.Left), 0, 1);
                 var tiles = Assert.IsType<Grid>(Find(surface, "AutomationsSummaryTiles"));
                 Assert.Equal(width >= 760 ? 4 : width < 380 ? 1 : 2, tiles.ColumnDefinitions.Count);
                 Assert.Equal(width >= 760 ? 1 : width < 380 ? 4 : 2, tiles.RowDefinitions.Count);
@@ -397,7 +440,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     Assert.InRange(Math.Abs(actionBounds[index].Top + actionBounds[index].Height / 2
                         - actionBounds[0].Top - actionBounds[0].Height / 2), 0, 1);
                 }
-                foreach (var id in new[] { "AutomationsMast", "AutomationsFilters", "AutomationRow:morning-brief", "AutomationsHeaderActions" })
+                foreach (var id in new[] { "AutomationsMast", "AutomationsFilters", "AutomationExpander:morning-brief", "AutomationsHeaderActions" })
                 {
                     var bounds = Bounds(Find(surface, id), surface);
                     Assert.True(bounds.Left >= -1 && bounds.Right <= width + 1, $"{id}: {bounds} outside host {width}.");
@@ -440,6 +483,49 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             await AssertPageScrollAsync(surface!, width, capture
                 ? name => OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, name)
                 : null);
+            if (capture && (actionsBelowTitle || width == 937))
+            {
+                var rowOffset = await ui.RunOnUIAsync(() =>
+                {
+                    var scroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
+                    var row = Bounds(Find(surface!, "AutomationExpander:morning-brief"), surface!);
+                    return Task.FromResult(Math.Clamp(scroll.VerticalOffset + row.Top - Bounds(scroll, surface!).Top,
+                        0, scroll.ScrollableHeight));
+                });
+                await ScrollPageAsync(surface!, rowOffset);
+                await ui.RunOnUIAsync(async () =>
+                {
+                    var scroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
+                    var targets = new[] { "AutomationRowHeader:morning-brief", "AutomationRowChat:morning-brief",
+                        "CronCommands:morning-brief", "CronMore:morning-brief", "AutomationScheduleSummary" };
+                    await WaitForRenderedConditionAsync(() =>
+                    {
+                        var viewportBounds = Bounds(scroll, surface!);
+                        var pixel = 1 / surface!.XamlRoot.RasterizationScale;
+                        return targets.All(id =>
+                        {
+                            var element = Find(surface, id);
+                            var bounds = Bounds(element, surface);
+                            return element.IsLoaded && bounds.Width > 0 && bounds.Height > 0
+                                && bounds.Left >= viewportBounds.Left - pixel && bounds.Right <= viewportBounds.Right + pixel
+                                && bounds.Top >= viewportBounds.Top - pixel && bounds.Bottom <= viewportBounds.Bottom + pixel;
+                        });
+                    }, "complete Morning brief header, chat and leading detail actions visible");
+                    File.WriteAllText(Path.Combine(artifacts, $"automations-header-action-{width}.json"),
+                        JsonSerializer.Serialize(new
+                        {
+                            width,
+                            offset = scroll.VerticalOffset,
+                            viewport = Bounds(scroll, surface!),
+                            headerHeightDip = Find(surface!, "AutomationRowHeader:morning-brief").ActualHeight,
+                            targets = targets.Select(id => new { id, bounds = Bounds(Find(surface!, id), surface!) }),
+                        }));
+                });
+                await CaptureViewportFrameAsync(surface!, rowOffset,
+                    name => OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, name),
+                    $"automations-header-action-{width}-Light.png");
+                await ScrollPageAsync(surface!, 0);
+            }
             if (width == 1400)
             {
                 Button? retiredMore = null;
@@ -473,9 +559,20 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     });
                 }
                 await ui.RunOnUIAsync(() => store!.SetAgentFilter("research"));
+                Button? emptyNew = null;
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                    Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationsEmptyNew"),
-                    "same populated page enters the empty state"));
+                {
+                    emptyNew = Controls(surface!).OfType<Button>().SingleOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "AutomationsEmptyNew");
+                    return emptyNew is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0,
+                        Content: FrameworkElement { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } }
+                        && Controls(emptyNew).OfType<TextBlock>().Any(text => text.IsLoaded && text.ActualWidth > 0);
+                }, "same populated page enters the empty state with arranged button content",
+                    () => emptyNew is null ? "Empty-state button absent."
+                        : $"button loaded={emptyNew.IsLoaded}, size={emptyNew.ActualWidth}x{emptyNew.ActualHeight}; "
+                            + $"content={emptyNew.Content?.GetType().Name}; "
+                            + $"text visuals={Controls(emptyNew).OfType<TextBlock>().Count()}; "
+                            + $"add glyphs={Controls(emptyNew).OfType<TextBlock>().Count(text => text.Text == "\uE710")}"));
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.Empty(store!.State.Jobs);
@@ -491,7 +588,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     store!.SetAgentFilter("main");
                 });
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                    Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationRow:morning-brief"),
+                    Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationExpander:morning-brief"),
                     "same page returns from empty to populated"));
                 await ui.RunOnUIAsync(() => AssertNewButton(surface!, artifacts, 937));
             }
@@ -647,9 +744,9 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
         Assert.Equal("Delivery", SectionTitle(Find(detail, "AutomationFactDeliveryMode")));
         Assert.Equal("Session target", FactLabel(Find(detail, "AutomationFactSession")));
         Assert.Equal("Mode", FactLabel(Find(detail, "AutomationFactDeliveryMode")));
-        var summary = Assert.IsType<Expander>(Controls(detail).First(element =>
+        var summary = Assert.IsType<HyperlinkButton>(Controls(detail).First(element =>
             AutomationProperties.GetAutomationId(element).StartsWith("AutomationRunExpand:", StringComparison.Ordinal)));
-        Assert.Equal("Summary", summary.Header);
+        Assert.Equal("Summary", summary.Content);
         Assert.Equal("Summary", AutomationProperties.GetName(summary));
     }
 
@@ -673,42 +770,56 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             - Bounds(Find(surface, "AutomationsHeadline"), surface).Left), 0, 1);
     }
 
-    // Measures arranged card edges, so a margin added on top of panel spacing fails as a doubled gap.
-    private static void AssertSeparatedInventoryCards(Border surface, string artifacts, double width)
+    // Measures arranged row edges, so a margin added on top of panel spacing fails as a doubled gap.
+    private static void AssertSeparatedInventoryRows(Border surface, string artifacts, double width)
     {
-        var reference = Assert.IsType<Border>(Controls(surface).First(element =>
-            AutomationProperties.GetAutomationId(element).StartsWith("AutomationCard:", StringComparison.Ordinal)));
-        var cardBackground = Assert.IsType<SolidColorBrush>(reference.Background).Color;
-        var cardStroke = Assert.IsType<SolidColorBrush>(reference.BorderBrush).Color;
         var measured = new List<(string List, string Above, string Below, double AboveHeight, double Gap)>();
         foreach (var listId in new[] { "AutomationsScheduledList", "AutomationsPausedList" })
         {
             var list = Find(surface, listId);
             var listBounds = Bounds(list, surface);
-            var cards = Controls(list)
+            var rows = Controls(list)
                 .Where(element => AutomationProperties.GetAutomationId(element).StartsWith("AutomationCard:", StringComparison.Ordinal))
-                .Select(element => (Card: Assert.IsType<Border>(element), Bounds: Bounds(element, surface)))
-                .OrderBy(card => card.Bounds.Top).ToArray();
-            Assert.True(cards.Length >= 2, $"{listId} needs adjacent cards to prove separation; found {cards.Length}.");
-            foreach (var (card, bounds) in cards)
+                .Select(element => (Row: Assert.IsType<Grid>(element), Bounds: Bounds(element, surface)))
+                .OrderBy(row => row.Bounds.Top).ToArray();
+            Assert.True(rows.Length >= 2, $"{listId} needs adjacent rows to prove separation; found {rows.Length}.");
+            double? rightEdge = null;
+            foreach (var (row, bounds) in rows)
             {
-                var id = AutomationProperties.GetAutomationId(card)["AutomationCard:".Length..];
-                Assert.Equal(new CornerRadius(AutomationsVisuals.CardRadius), card.CornerRadius);
-                Assert.Equal(new Thickness(1), card.BorderThickness);
-                Assert.Equal(cardBackground, Assert.IsType<SolidColorBrush>(card.Background).Color);
-                Assert.Equal(cardStroke, Assert.IsType<SolidColorBrush>(card.BorderBrush).Color);
+                var id = AutomationProperties.GetAutomationId(row)["AutomationCard:".Length..];
+                Assert.Null(row.Background);
                 Assert.InRange(Math.Abs(bounds.Left - listBounds.Left), 0, 1);
                 Assert.InRange(Math.Abs(bounds.Width - listBounds.Width), 0, 1);
-                Assert.Contains(Controls(card), element => AutomationProperties.GetAutomationId(element) == $"AutomationRow:{id}");
+                var expander = Assert.Single(Controls(row).OfType<Expander>(), element =>
+                    AutomationProperties.GetAutomationId(element) == $"AutomationExpander:{id}");
+                AssertNoPaintedAncestorBetween(expander, list);
+                var chat = Controls(row).FirstOrDefault(element =>
+                    AutomationProperties.GetAutomationId(element) == $"AutomationRowChat:{id}");
+                var expanderBounds = Bounds(expander, surface);
+                var availableRight = bounds.Left + row.ColumnDefinitions[0].ActualWidth;
+                var pixel = 1 / surface.XamlRoot.RasterizationScale;
+                AssertWithinOnePhysicalPixel(expanderBounds.Left, bounds.Left, surface.XamlRoot.RasterizationScale);
+                AssertWithinOnePhysicalPixel(expanderBounds.Right, availableRight, surface.XamlRoot.RasterizationScale);
+                if (rightEdge is { } previousRight)
+                    AssertWithinOnePhysicalPixel(expanderBounds.Right, previousRight, surface.XamlRoot.RasterizationScale);
+                rightEdge = expanderBounds.Right;
+                if (chat is not null)
+                {
+                    Assert.True(Bounds(chat, surface).Left >= expanderBounds.Right - pixel,
+                        $"{id} chat action must remain a sibling of its Expander.");
+                    var header = Bounds(Find(row, $"AutomationRowHeader:{id}"), surface);
+                    var chatBounds = Bounds(chat, surface);
+                    Assert.InRange(Math.Abs(chatBounds.Top + chatBounds.Height / 2 - header.Top - header.Height / 2), 0, 1);
+                }
                 Assert.Equal(id == "morning-brief",
-                    Controls(card).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationDetailColumns"));
+                    Controls(row).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationDetailColumns"));
             }
-            for (var index = 1; index < cards.Length; index++)
-                measured.Add((listId, AutomationProperties.GetAutomationId(cards[index - 1].Card),
-                    AutomationProperties.GetAutomationId(cards[index].Card), cards[index - 1].Bounds.Height,
-                    cards[index].Bounds.Top - cards[index - 1].Bounds.Bottom));
+            for (var index = 1; index < rows.Length; index++)
+                measured.Add((listId, AutomationProperties.GetAutomationId(rows[index - 1].Row),
+                    AutomationProperties.GetAutomationId(rows[index].Row), rows[index - 1].Bounds.Height,
+                    rows[index].Bounds.Top - rows[index - 1].Bounds.Bottom));
         }
-        File.WriteAllText(Path.Combine(artifacts, $"automations-card-gaps-{width}.json"),
+        File.WriteAllText(Path.Combine(artifacts, $"automations-row-gaps-{width}.json"),
             System.Text.Json.JsonSerializer.Serialize(new
             {
                 width,
@@ -718,6 +829,61 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
         foreach (var pair in measured)
             Assert.True(Math.Abs(pair.Gap - PageResponsiveLayout.GapInner) <= 0.5, $"{pair.Above} -> {pair.Below}: gap {pair.Gap}.");
         Assert.Contains(measured, pair => pair.Above == "AutomationCard:morning-brief" || pair.Below == "AutomationCard:morning-brief");
+    }
+
+    private static void AssertSearchFilterGeometry(Border surface, int filterRows)
+    {
+        var filters = Assert.IsType<Grid>(Find(surface, "AutomationsFilters"));
+        var status = Assert.IsType<SelectorBar>(Find(surface, "AutomationsStatusFilter"));
+        var agent = Assert.IsType<ComboBox>(Find(surface, "AutomationsAgentFilter"));
+        var search = Assert.IsType<AutoSuggestBox>(Find(surface, "AutomationsSearch"));
+        var scale = surface.XamlRoot!.RasterizationScale;
+        Assert.Equal(VerticalAlignment.Center, search.VerticalAlignment);
+        Assert.True(search.DesiredSize.Height > 0);
+        AssertWithinOnePhysicalPixel(search.ActualHeight,
+            search.DesiredSize.Height - search.Margin.Top - search.Margin.Bottom, scale);
+        AssertWithinOnePhysicalPixel(search.ActualHeight,
+            agent.DesiredSize.Height - agent.Margin.Top - agent.Margin.Bottom, scale);
+
+        var searchBounds = Bounds(search, surface);
+        var row = Microsoft.UI.Xaml.Controls.Grid.GetRow(search);
+        Assert.Equal(filterRows - 1, row);
+        var rowTop = Bounds(filters, surface).Top
+            + filters.RowDefinitions.Take(row).Sum(definition => definition.ActualHeight);
+        var rowHeight = filters.RowDefinitions[row].ActualHeight;
+        var expectedCenter = rowTop + search.Margin.Top
+            + (rowHeight - search.Margin.Top - search.Margin.Bottom) / 2;
+        AssertWithinOnePhysicalPixel(searchBounds.Top + searchBounds.Height / 2, expectedCenter, scale);
+
+        if (filterRows == 1)
+        {
+            var searchCenter = searchBounds.Top + searchBounds.Height / 2;
+            foreach (var filter in new FrameworkElement[] { status, agent })
+            {
+                var bounds = Bounds(filter, surface);
+                AssertWithinOnePhysicalPixel(searchCenter, bounds.Top + bounds.Height / 2, scale);
+            }
+        }
+    }
+
+    // WinUI exposes float layout coordinates; compare their rendered device-pixel positions.
+    private static void AssertWithinOnePhysicalPixel(double actual, double expected, double scale) =>
+        Assert.InRange(Math.Abs(Math.Round(actual * scale) - Math.Round(expected * scale)), 0, 1);
+
+    private static void AssertNoPaintedAncestorBetween(DependencyObject child, DependencyObject list)
+    {
+        var ancestor = VisualTreeHelper.GetParent(child);
+        while (ancestor is not null && !ReferenceEquals(ancestor, list))
+        {
+            if (ancestor is Border border)
+            {
+                Assert.Null(border.Background);
+                Assert.Equal(new Thickness(0), border.BorderThickness);
+            }
+            if (ancestor is Panel panel) Assert.Null(panel.Background);
+            ancestor = VisualTreeHelper.GetParent(ancestor);
+        }
+        Assert.Same(list, ancestor);
     }
 
     private static void AssertNewButton(Border surface, string artifacts, double width, string id = "AutomationsNew")

@@ -31,7 +31,7 @@ public sealed partial class GatewayFixtureUiTests
             Invoke(FindById(run, "WorkspacePagesToggle:cron")!);
             await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:cron") is not null, "Automations pin");
             Invoke(FindById(run, "WorkspacePinnedPage:cron")!);
-            await WaitUiAsync(run, () => FindById(run, "AutomationRow:morning-brief")?.Current.IsOffscreen == false,
+            await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief")?.Current.IsOffscreen == false,
                 "populated pinned Automations");
             var scroll = PageScrollPeer(run);
             var scrollIdentity = scroll.GetRuntimeId();
@@ -155,7 +155,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.True(toggleBounds.Right <= Bounds(FindById(run, id)!).Left,
                     $"Reopen overlaps {id}.");
             Capture(run, $"automations-pinned-{theme}-collapsed.png", "WorkspaceReopenPane",
-                "SettingsBack", "AutomationRow:morning-brief");
+                "SettingsBack", "AutomationExpander:morning-brief");
 
             reopen.SetFocus();
             await WaitUiAsync(run, () => reopen.Current.HasKeyboardFocus, "Reopen keyboard focus");
@@ -182,7 +182,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => AllocationSettled(collapsed: false), "settled reopened allocation");
             AssertAllocation(collapsed: false);
             HitToggle("WorkspaceTogglePane");
-            Capture(run, $"automations-pinned-{theme}-reopened.png", "WorkspaceTogglePane", "AutomationRow:morning-brief");
+            Capture(run, $"automations-pinned-{theme}-reopened.png", "WorkspaceTogglePane", "AutomationExpander:morning-brief");
 
             // Session creation is rejected by the fixture through the normal Workspace operation owner.
             Invoke(FindById(run, "WorkspaceSessionsAdd")!);
@@ -204,7 +204,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.True(Bounds(FindById(run, id)!).Bottom <= Bounds(feedback).Top,
                     $"Banner overlaps {id}.");
             Capture(run, $"automations-pinned-{theme}-collapsed-banner.png", "WorkspaceReopenPane",
-                "WorkspaceEmbeddedOperationFeedback", "AutomationRow:morning-brief");
+                "WorkspaceEmbeddedOperationFeedback", "AutomationExpander:morning-brief");
             Invoke(HitToggle("WorkspaceReopenPane"));
             await WaitUiAsync(run, () => FindById(run, "WorkspaceTogglePane")?.Current.IsOffscreen == false,
                 "Chat reopened with banner");
@@ -214,7 +214,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.False(FindById(run, "WorkspaceEmbeddedOperationFeedback")!.Current.IsOffscreen);
             Assert.True(BannerSettled("WorkspaceTogglePane"), "Reopened banner overlaps navigation chrome.");
             Capture(run, $"automations-pinned-{theme}-reopened-banner.png", "WorkspaceTogglePane",
-                "WorkspaceEmbeddedOperationFeedback", "AutomationRow:morning-brief");
+                "WorkspaceEmbeddedOperationFeedback", "AutomationExpander:morning-brief");
         }, scenario: GatewayScenario.CreateAutomations());
     }
 }

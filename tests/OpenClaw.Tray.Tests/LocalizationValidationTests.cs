@@ -644,7 +644,6 @@ public class LocalizationValidationTests
         ["Automations_Schedule_WithTimezone"] = ["fr-fr", "nl-nl", "pt-br", "zh-tw"],
         ["Automations_Session_Named"] = ["fr-fr"],
         ["Automations_State_Active"] = ["fr-fr"],
-        ["Automations_Thread"] = ["nl-nl", "pt-br"],
         ["Automations_Unit_Minutes"] = ["fr-fr"],
     };
 

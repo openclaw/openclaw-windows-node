@@ -177,7 +177,7 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
         {
             EditorMode.Edit => t.Format("Editor_EditTitle", session.Source?.Title ?? form.Name),
             EditorMode.Clone => t.Format("Review_CopyAsNewTitle", source?.Title ?? form.Name),
-            _ => t["Editor_NewTitle"],
+            _ => t["NewAutomation"],
         };
 
         var sections = new List<Element?>

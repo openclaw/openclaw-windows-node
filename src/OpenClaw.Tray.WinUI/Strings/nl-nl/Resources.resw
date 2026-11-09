@@ -7462,9 +7462,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>
-  <data name="Automations_Back" xml:space="preserve">
-    <value>Terug</value>
-  </data>
   <data name="Automations_Cancel" xml:space="preserve">
     <value>Annuleren</value>
   </data>
@@ -7519,12 +7516,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
     <value>Gateway losgekoppeld</value>
   </data>
-  <data name="Automations_Disconnected_Body" xml:space="preserve">
-    <value>Automatiseringen worden uitgevoerd op je OpenClaw Gateway. Open Verbinding om deze pc te koppelen en kom daarna hier terug om ze te bekijken en te beheren.</value>
-  </data>
-  <data name="Automations_Disconnected_Title" xml:space="preserve">
-    <value>Maak verbinding met een Gateway om automatiseringen te beheren</value>
-  </data>
   <data name="Automations_Duration_Hours" xml:space="preserve">
     <value>{0} u {1} min</value>
   </data>
@@ -7551,15 +7542,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Editor_EditTitle" xml:space="preserve">
     <value>{0} bewerken</value>
-  </data>
-  <data name="Automations_Editor_FixMany" xml:space="preserve">
-    <value>Corrigeer {0} velden om door te gaan.</value>
-  </data>
-  <data name="Automations_Editor_FixOne" xml:space="preserve">
-    <value>Corrigeer 1 veld om door te gaan.</value>
-  </data>
-  <data name="Automations_Editor_NewTitle" xml:space="preserve">
-    <value>Nieuwe automatisering</value>
   </data>
   <data name="Automations_Editor_Save" xml:space="preserve">
     <value>Wijzigingen opslaan</value>
@@ -7641,9 +7623,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
     <value>Triggerscript is vereist wanneer de voorwaardetrigger is ingeschakeld.</value>
-  </data>
-  <data name="Automations_Error_WebhookUrlInvalid" xml:space="preserve">
-    <value>Voer een HTTPS-webhook-URL in.</value>
   </data>
   <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
     <value>Voer een HTTPS-webhook-URL in.</value>
@@ -7885,9 +7864,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Payload_AgentTurn" xml:space="preserve">
     <value>Een assistenttaak uitvoeren</value>
   </data>
-  <data name="Automations_Payload_Command" xml:space="preserve">
-    <value>Opdracht</value>
-  </data>
   <data name="Automations_Payload_Script" xml:space="preserve">
     <value>Script</value>
   </data>
@@ -7899,9 +7875,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
     <value>Kanaal-ID</value>
-  </data>
-  <data name="Automations_Placeholder_Prompt" xml:space="preserve">
-    <value>Beschrijf wat OpenClaw moet doen...</value>
   </data>
   <data name="Automations_Placeholder_Timezone" xml:space="preserve">
     <value>IANA-tijdzone</value>
@@ -7963,9 +7936,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_RunHistory_Title" xml:space="preserve">
     <value>Uitvoeringsgeschiedenis</value>
   </data>
-  <data name="Automations_Running" xml:space="preserve">
-    <value>Wordt uitgevoerd</value>
-  </data>
   <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
     <value>Deze automatisering wordt al uitgevoerd.</value>
   </data>
@@ -8013,9 +7983,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Runs_DeliveryError" xml:space="preserve">
     <value>Leveringsfout: {0}</value>
-  </data>
-  <data name="Automations_Runs_EmptyConditionTitle" xml:space="preserve">
-    <value>Nog geen uitvoeringen</value>
   </data>
   <data name="Automations_Runs_EmptyHint" xml:space="preserve">
     <value>Uitvoeringen verschijnen hier zodra een automatisering wordt geactiveerd.</value>
@@ -8082,9 +8049,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_RunStatus_Skipped" xml:space="preserve">
     <value>Overgeslagen</value>
-  </data>
-  <data name="Automations_RunStatus_Unknown" xml:space="preserve">
-    <value>Onbekend</value>
   </data>
   <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
     <value>Cron-planning {0}</value>
@@ -8209,12 +8173,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_State_Running" xml:space="preserve">
     <value>Wordt uitgevoerd</value>
   </data>
-  <data name="Automations_Tab_Overview" xml:space="preserve">
-    <value>Overzicht</value>
-  </data>
-  <data name="Automations_Thread" xml:space="preserve">
-    <value>Thread {0}</value>
-  </data>
   <data name="Automations_Title" xml:space="preserve">
     <value>Automatiseringen</value>
   </data>
@@ -8238,9 +8196,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Automations_Wake_Now" xml:space="preserve">
     <value>Nu</value>
-  </data>
-  <data name="Automations_Yes" xml:space="preserve">
-    <value>Ja</value>
   </data>
   <data name="Automations_Runs_SuccessRate" xml:space="preserve">
     <value>{0}% geslaagd</value>
@@ -8416,17 +8371,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>Vernieuwen mislukt. De laatst bekende automatiseringen worden getoond.</value></data>
   <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>Uitgeschakeld door de planner</value></data>
   <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>{0} keer achter elkaar mislukt</value></data>
-  <data name="Automations_Redesign_RetryNow" xml:space="preserve"><value>Nu opnieuw proberen</value></data>
   <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>Uitvoeringen bekijken</value></data>
-  <data name="Automations_Redesign_TurnOn" xml:space="preserve"><value>Weer inschakelen</value></data>
-  <data name="Automations_Redesign_MoreAttention" xml:space="preserve"><value>Nog {0} vragen aandacht</value></data>
-  <data name="Automations_Redesign_NeedsYou" xml:space="preserve"><value>Heeft je nodig</value></data>
-  <data name="Automations_Redesign_Group_Running" xml:space="preserve"><value>Wordt nu uitgevoerd</value></data>
   <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>In het komende uur</value></data>
   <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>Later vandaag</value></data>
   <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>Morgen</value></data>
   <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>Vorige keer mislukt</value></data>
-  <data name="Automations_Redesign_ShowMore" xml:space="preserve"><value>Nog {0} tonen</value></data>
   <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>Niets anders gepland voor morgenavond.</value></data>
   <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} herhalende automatiseringen</value></data>
   <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} wachten op gebeurtenissen</value></data>
@@ -8441,7 +8390,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Redesign_On" xml:space="preserve"><value>Aan</value></data>
   <data name="Automations_Redesign_Off" xml:space="preserve"><value>Gepauzeerd of uit</value></data>
   <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>Gepland</value></data>
-  <data name="Automations_Redesign_Paused" xml:space="preserve"><value>Gepauzeerd of uit</value></data>
   <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>Alle automatiseringen</value></data>
   <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>Geavanceerd</value></data>
   <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>Chat openen: {0}</value></data>
@@ -8458,14 +8406,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>“{0}” verwijderen?</value></data>
   <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>Deze wordt samen met het schema en de uitvoeringsgeschiedenis verwijderd van {0}. Dit kan niet ongedaan worden gemaakt.</value></data>
   <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>de verbonden Gateway</value></data>
-  <data name="Automations_Popup_Schedule" xml:space="preserve"><value>Schema</value></data>
   <data name="Automations_Popup_AlertType" xml:space="preserve"><value>Waarschuwingsdialoog</value></data>
   <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>Uitvoering in wachtrij</value></data>
   <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>Uitvoering in wachtrij · {0}</value></data>
   <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>Niet gestart: “{0}” wordt al uitgevoerd.</value></data>
   <data name="Automations_Toast_Removed" xml:space="preserve"><value>“{0}” verwijderd</value></data>
   <data name="Automations_Review_Today" xml:space="preserve"><value>Vandaag {0}</value></data>
-  <data name="Automations_Review_TurnedOff" xml:space="preserve"><value>{0} is uitgeschakeld</value></data>
   <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>De planner heeft deze gestopt.</value></data>
   <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>Planner aan</value></data>
   <data name="Automations_Review_RunningNow" xml:space="preserve"><value>Wordt nu uitgevoerd</value></data>
@@ -8488,7 +8434,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>“{0}” als nieuw kopiëren</value></data>
   <data name="Automations_Review_Repeats" xml:space="preserve"><value>Herhaalt</value></data>
   <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>“{0}” kon niet worden gestart. Deze verbinding mist de machtiging operator.admin.</value></data>
-  <data name="Automations_Review_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Verplicht)</value></data>
   <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Vul de verplichte velden in voordat u opslaat.</value></data>
   <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Kies een datum.</value></data>

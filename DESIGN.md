@@ -1272,13 +1272,18 @@ Wide/Medium and 20 on Narrow; usable content is capped at 1200 DIPs.
 Two-column bodies appear only on Wide, retain at least 320 DIPs per column,
 and otherwise stack in reading order with a 16-DIP gap.
 Inventory expansion never becomes a split pane or adds a Back
-button. Each All automations row is its own rounded card (shared card
-background, stroke and `md` radius), stacked with spacing step `2` (8 DIPs,
-`PageResponsiveLayout.GapInner`) and no joining group surface. An expanded
-row keeps its detail inside that card. Stacked Needs you cards and loading
-placeholders use the same gap; Coming up and inline recent runs stay divider lists inside
-one surface. Actions use a native CommandBar with borderless, right-labelled
-AppBarButtons and native overflow.
+button. Each All automations row uses one stock WinUI `Expander`, stacked
+with spacing step `2` (8 DIPs, `PageResponsiveLayout.GapInner`); its
+non-interactive header keeps the agent avatar, title, schedule, status and
+last-run hierarchy, while its sole native disclosure owns hover, focus and
+keyboard behavior. The row's chat action remains a sibling of the Expander
+so it is available while collapsed. Every row reserves the same 48-DIP action
+column (40-DIP button plus 8-DIP gap), even without a chat target; the button
+stays centered on the measured header content as details expand. Do not wrap the Expander in another card
+surface or put interactive controls inside its header. Stacked Needs you
+cards and loading placeholders use the same gap; Coming up and inline recent
+runs stay divider lists inside one surface. Actions use a native CommandBar
+with borderless, right-labelled AppBarButtons and native overflow.
 An empty Gateway inventory stays empty: retain explicit guidance and New automation,
 Open chat and web handoffs, without client-authored starter cards or example payloads.
 New automation names and prompts are blank until the user supplies them.
