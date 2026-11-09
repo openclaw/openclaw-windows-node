@@ -108,7 +108,7 @@ public sealed partial class GatewayScenario
         ReadMethods = Array.AsReadOnly(new[]
         {
             "sessions.list", "sessions.search", "sessions.subscribe", "sessions.preview", "chat.history",
-            "models.list", "usage.cost"
+            "models.list", "usage.cost", "agent.identity.get"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
@@ -497,6 +497,8 @@ public sealed partial class GatewayScenario
                 };
             }
         }
+        if (method == "agent.identity.get")
+            return AgentIdentity(parameters);
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
         if (_allowSessionMutations && method == "sessions.create")
@@ -547,6 +549,24 @@ public sealed partial class GatewayScenario
         if (decision is not ("allow-once" or "allow-always" or "deny"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unsupported approval decision.");
         return new { ok = true, decision };
+    }
+
+    // Name only, like a configured agent without an avatar: the app then renders its generated face.
+    private object AgentIdentity(JsonElement p)
+    {
+        ValidateProperties(p, "agentId");
+        var agentId = RequiredString(p, "agentId");
+        var roster = new List<JsonElement>();
+        if (_reads.TryGetValue("agents.list", out var list))
+            roster.AddRange(list.GetProperty("agents").EnumerateArray());
+        lock (_createdAgents)
+            roster.AddRange(_createdAgents.Select(agent => JsonSerializer.SerializeToElement(agent)));
+        foreach (var agent in roster)
+        {
+            if (agent.GetProperty("id").GetString() == agentId)
+                return new { agentId, name = agent.GetProperty("name").GetString() };
+        }
+        throw new FixtureRequestException("INVALID_REQUEST", $"Unknown agent id \"{agentId}\"");
     }
 
     private object ListSessions(JsonElement p)

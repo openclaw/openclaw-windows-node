@@ -29,7 +29,8 @@ public sealed record OpenClawReactorChatRootProps(
     Action? OnStopSpeaking = null,
     Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
-    bool InitialThreadIsExplicitSelection = true);
+    bool InitialThreadIsExplicitSelection = true,
+    IChatAgentRosterSource? AgentRosterSource = null);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -289,6 +290,71 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     prompt.Request.Status == "pending" && ChatQuestionCoordinator.Matches(
                         prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true),
             fileDownloader);
+        var identitySource = props.Provider as IChatAgentIdentitySource;
+        var assistantAgentId = effectiveThread?.AgentId ?? "main";
+        var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
+        var avatarCache = avatarCacheRef.Current ??= new AgentAvatarImageCache();
+        UseEffect((Func<Action>)(() => () => avatarCache.Dispose()), avatarCache);
+        var rosterSource = props.AgentRosterSource;
+        var (rosterAgent, setRosterAgent) =
+            UseState<ChatAgentPresentation?>(rosterSource?.FindAgent(assistantAgentId), threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (rosterSource is null)
+            {
+                setRosterAgent(null);
+                return static () => { };
+            }
+
+            void RefreshRoster()
+            {
+                avatarCache.Clear();
+                setRosterAgent(rosterSource.FindAgent(assistantAgentId));
+            }
+
+            rosterSource.AgentRosterChanged += OnAgentRosterChanged;
+            RefreshRoster();
+            return () => rosterSource.AgentRosterChanged -= OnAgentRosterChanged;
+
+            void OnAgentRosterChanged(object? sender, EventArgs args) => RefreshRoster();
+        }), assistantAgentId, (object?)rosterSource ?? this);
+        var selectedRosterAgent = string.Equals(rosterAgent?.AgentId, assistantAgentId, StringComparison.Ordinal)
+            ? rosterAgent
+            : null;
+        var (loadedAssistantIdentity, setLoadedAssistantIdentity) =
+            UseState<ChatAgentIdentity?>(null, threadSafe: true);
+        // One Gateway identity serves the welcome header and transcript avatars for the current agent.
+        UseEffect((Func<Action>)(() =>
+        {
+            if (!isGatewayConnected || identitySource is null || selectedRosterAgent is not null)
+            {
+                setLoadedAssistantIdentity(null);
+                return static () => { };
+            }
+
+            var cancelled = false;
+            _ = LoadIdentityAsync();
+            return () => cancelled = true;
+
+            async Task LoadIdentityAsync()
+            {
+                try
+                {
+                    var identity = await identitySource.LoadAgentIdentityAsync(assistantAgentId);
+                    if (!cancelled)
+                        setLoadedAssistantIdentity(identity);
+                }
+                catch (Exception ex)
+                {
+                    if (!cancelled)
+                        OpenClawTray.Services.Logger.Warn($"[Chat] Agent identity unavailable: {ex.GetType().Name}");
+                }
+            }
+        }), assistantAgentId, isGatewayConnected, (object?)identitySource ?? this, selectedRosterAgent ?? (object)this);
+        var assistantIdentity = selectedRosterAgent?.ToChatAgentIdentity() ??
+            (string.Equals(loadedAssistantIdentity?.AgentId, assistantAgentId, StringComparison.Ordinal)
+                ? loadedAssistantIdentity
+                : null);
 
         void SelectThread(string threadId)
         {
@@ -335,7 +401,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             timelineProps,
             OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision,
-            TryCopyText: props.TryCopyText));
+            TryCopyText: props.TryCopyText,
+            AssistantIdentity: assistantIdentity,
+            AssistantAgentId: assistantAgentId,
+            AssistantCatalog: props.ComposerSession.Placement?.State.Catalog,
+            AssistantAvatarImageSource: avatarCache,
+            AssistantRosterAgent: selectedRosterAgent));
 
         var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
             prompt.Request.Status == "pending"
@@ -367,7 +438,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
                 PlacementTargetIsEmpty = isEmptyConversation,
                 PlacementHistoryReady = placementHistoryReady,
-                PlacementTargetIsNew = isComposeOnly
+                PlacementTargetIsNew = isComposeOnly,
+                AgentIdentity = assistantIdentity,
+                AgentRosterPresentation = selectedRosterAgent
             };
             composerElement = Component<ReactorChatComposer, ReactorChatComposerViewProps>(new(
                 props.ComposerSession,

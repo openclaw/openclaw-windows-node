@@ -6,6 +6,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 #if !OPENCLAW_TRAY_TESTS
 using Microsoft.UI.Dispatching;
 #endif
@@ -17,8 +19,10 @@ namespace OpenClawTray.Services;
 /// must happen on the UI thread (enforced by <see cref="SetField{T}"/>).
 /// Pages and HubWindow observe changes via <see cref="INotifyPropertyChanged"/>.
 /// </summary>
-internal sealed class AppState : INotifyPropertyChanged
+internal sealed class AppState : INotifyPropertyChanged, IChatAgentRosterSource
 {
+    private long _agentRosterRevision;
+
 #if !OPENCLAW_TRAY_TESTS
     private readonly DispatcherQueue? _dispatcher;
     public AppState(DispatcherQueue? dispatcher = null) => _dispatcher = dispatcher;
@@ -27,6 +31,7 @@ internal sealed class AppState : INotifyPropertyChanged
 #endif
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler? AgentRosterChanged;
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
@@ -39,6 +44,11 @@ internal sealed class AppState : INotifyPropertyChanged
         if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        if (name is nameof(AgentsList) or nameof(AgentIdentities))
+        {
+            Interlocked.Increment(ref _agentRosterRevision);
+            AgentRosterChanged?.Invoke(this, EventArgs.Empty);
+        }
         return true;
     }
 
@@ -105,6 +115,30 @@ internal sealed class AppState : INotifyPropertyChanged
 
     private JsonElement? _agentsList;
     public JsonElement? AgentsList { get => _agentsList; set => SetField(ref _agentsList, value); }
+
+    // Gateway-resolved identities (agent.identity.get) for roster entries, keyed by agent ID.
+    private IReadOnlyDictionary<string, ChatAgentIdentity> _agentIdentities = EmptyAgentIdentities;
+    public IReadOnlyDictionary<string, ChatAgentIdentity> AgentIdentities
+    {
+        get => _agentIdentities;
+        set => SetField(ref _agentIdentities, value);
+    }
+
+    public ChatAgentPresentation? FindAgent(string agentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        var agent = WorkspaceProjection.Agents(AgentsList, Sessions, AgentIdentities)
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, agentId, StringComparison.Ordinal));
+        return agent is null
+            ? null
+            : new ChatAgentPresentation(agent.Id, agent.Name, agent.AvatarUrl, agent.Emoji,
+                Interlocked.Read(ref _agentRosterRevision));
+    }
+
+    internal void ClearAgentIdentities() => AgentIdentities = EmptyAgentIdentities;
+
+    private static readonly IReadOnlyDictionary<string, ChatAgentIdentity> EmptyAgentIdentities =
+        new Dictionary<string, ChatAgentIdentity>(StringComparer.Ordinal);
 
     private bool _agentsListUnsupported;
     public bool AgentsListUnsupported { get => _agentsListUnsupported; set => SetField(ref _agentsListUnsupported, value); }
@@ -229,6 +263,7 @@ internal sealed class AppState : INotifyPropertyChanged
         ModelsList = null;
         Presence = null;
         AgentsList = null;
+        AgentIdentities = EmptyAgentIdentities;
         AgentsListUnsupported = false;
         Config = null;
         ConfigSchema = null;
