@@ -161,6 +161,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-desktop-resolution.ps1
 
+    - name: Test native animation prerequisite
+      shell: pwsh
+      run: ./scripts/test-native-animation-preference.ps1
+
     - name: Validate documentation
       shell: pwsh
       run: ./scripts/validate-docs.ps1
@@ -762,7 +766,7 @@ jobs:
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
         -HangTimeoutSeconds 300
         -CaptureHostExit
 
@@ -778,6 +782,34 @@ jobs:
         $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
         $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
         & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+
+    - name: Run animation-enabled reveal proof
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AnimationsEnabled
+        -TrxFileName AnimationsEnabled.trx
+        -Runtime win-x64
+        -Filter "Category=AnimationPreferenceEnabled"
+        -AnimationPreference Enabled
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
+
+    - name: Run animations-disabled behavior proof
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AnimationsDisabled
+        -TrxFileName AnimationsDisabled.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~PageHeroAnimationsDisabledTests"
+        -AnimationPreference Disabled
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
 
     - name: Run mock Gateway application scenarios
       id: gateway-fixture
