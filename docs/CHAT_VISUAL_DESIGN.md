@@ -327,6 +327,10 @@ may inform the gauge without becoming a persisted override. The icon remains
 decorative; the button keeps the textual accessible name and tooltip.
 The source is pinned to 2026.9.4 and credited in `THIRD_PARTY_NOTICES.md`.
 
+`ChatReasoningPicker` retires its native slider handlers and pending value changes
+on both element unmount and host disposal. Disposal uses component effect cleanup,
+because Reactor host disposal does not guarantee element `OnUnmount` callbacks.
+
 The model picker uses the standard native flyout presenter and an `AutoSuggestBox`
 above one grouped, single-selection `ListView`. Native list-item templates own
 hover, pressed, selected, selected-hover, disabled and keyboard-focus visuals,

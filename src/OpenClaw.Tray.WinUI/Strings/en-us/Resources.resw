@@ -3246,24 +3246,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>{0}: {1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Notifications</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Review and clear active OpenClaw notifications.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Clear</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>New app notifications will appear here until you dismiss or clear them.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>Dismiss {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Exec approval</value>
   </data>
@@ -4534,7 +4516,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) are contained by the settings below.</value>
+    <value>) and file actions use the Sandbox settings below.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network: use the gateway's exec approvals.</value>
@@ -5724,10 +5706,10 @@ Make sure the gateway is running.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Review active app notifications</value>
+    <value>Review requests and alerts that need you</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Go to Notifications</value>
+    <value>Go to Inbox</value>
   </data>
 <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
     <value>Gateway instances</value>
@@ -6424,18 +6406,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7624,8 +7594,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Inbox</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Inbox</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open Dashboard</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Open Dashboard (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Forward</value></data>
@@ -8002,6 +7972,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>The requested item is no longer available here.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Some Dashboard destinations are unavailable for this Gateway version.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: choose an assistant first.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Upload cleanup is blocked</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Review folder access and private-state permissions. Old uploads may remain until cleanup is restored. Do not retry completed uploads automatically.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remove item</value>
   </data>
@@ -8020,6 +7992,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+
   <data name="Usage_AllowanceWarningFormat" xml:space="preserve"><value>{0} allowance is {1} used</value></data>
   <data name="Usage_Automation" xml:space="preserve"><value>automation</value></data>
   <data name="Usage_BusiestDayFormat" xml:space="preserve"><value>Busiest day: {0}, {1}</value></data>
@@ -8077,6 +8050,58 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Last 30 days</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
+
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Inbox</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Dismiss shown</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notification settings</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notification settings</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Inbox categories</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>All</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Approvals</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Mentions</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automations</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>System</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Nothing waiting</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Nothing waiting</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>New requests and alerts land here.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Open Inbox</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} waiting</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Dismiss {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>now</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0}m</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0}h</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0}d</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Ask OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Open Automations</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>Overdue</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>This automation failed: {0}. Explain why it failed and how to fix it.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>This automation is overdue: {0}, scheduled for {1}. Explain why it has not run and how to fix it.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>These model-provider credentials need attention: {0}. Explain what expired and how to re-authenticate them.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Command approval needed</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Plugin approval needed</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approval needed</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expires in {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expired</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gateway</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Device</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Always allow runs this exact command for "{0}" without asking, until revoked (revocable)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Always allow runs this exact command for "{0}" without asking, for {1} days (revocable)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Sends to {0} recipient(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Pays {0} {1} to {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Posts externally to {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Account needs attention: {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Sign-in required</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API key needs attention</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Account needs attention</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Sign in</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Update API key</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Review account</value></data>
+
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>Back to app</value>
     <comment>Settings sidebar button that leaves Settings for the app destination it was opened from.</comment>

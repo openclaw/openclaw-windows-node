@@ -457,7 +457,8 @@ $testLanes = [ordered]@{
         Projects = @(
             "tests/OpenClaw.Shared.Tests",
             "tests/OpenClaw.Connection.Tests",
-            "tests/OpenClaw.WinNode.Cli.Tests"
+            "tests/OpenClaw.WinNode.Cli.Tests",
+            "tests/OpenClaw.FileWorker.Tests"
         )
         Artifact = "test-results-core"
     }
@@ -551,11 +552,13 @@ foreach ($token in @(
         "'src/OpenClaw.Connection/OpenClaw.Connection.csproj'",
         "'src/OpenClaw.Cli/OpenClaw.Cli.csproj'",
         "'src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj'",
+        "'src/OpenClaw.FileWorker/OpenClaw.FileWorker.csproj'",
         "'tests/OpenClaw.TestSupport/OpenClaw.TestSupport.csproj'",
         "'tests/OpenClaw.Shared.TestHost/OpenClaw.Shared.TestHost.csproj'",
         "'tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj'",
         "'tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj'",
-        "'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'"
+        "'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'",
+        "'tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj'"
     )) {
     Assert-Contains -Text $coreJob -Expected $token -Message "Core NuGet cache is missing '$token'."
 }
@@ -831,8 +834,8 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 10) {
-    throw "Expected 8 non-E2E project runs plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
+if ($runnerUses -ne 11) {
+    throw "Expected 9 non-E2E project runs plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."

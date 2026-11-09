@@ -2040,7 +2040,8 @@ public class CanvasCapabilityTests
     [Fact]
     public async Task A2UIPush_WithJsonlPath_ReadsFile()
     {
-        var cap = new CanvasCapability(NullLogger.Instance);
+        var cap = new CanvasCapability(NullLogger.Instance,
+            async (path, _, stop) => await File.ReadAllBytesAsync(path, stop));
         CanvasA2UIArgs? received = null;
         cap.A2UIPushRequested += (s, a) => received = a;
 

@@ -7,34 +7,36 @@ public sealed class AdaptiveAuxiliaryRoutesSourceTests
     // Native pages cannot be mounted in Tray.Tests. Retire these narrow-measurement
     // source guards when native route tests cover populated rows and focused actions.
     [Fact]
-    public void NotificationsConstrainTextAndStackActionsWithoutRebuildingItems()
+    public void NotificationsUseTheSharedInboxLayoutWithoutReintroducingTheRetiredList()
     {
         var markup = Load("NotificationsPage");
-        var content = Named(markup, "NotificationContent");
-        Assert.Equal("Grid", content.Elements().First().Name.LocalName);
-        Assert.Contains(content.Descendants(), element =>
-            element.Attribute("Text")?.Value == "{Binding Metadata}" &&
-            element.Attribute("TextWrapping")?.Value == "WrapWholeWords");
-        Assert.Contains(markup.Descendants(), element =>
+        Assert.Equal("InboxView", Named(markup, "Inbox").Name.LocalName);
+        Assert.Equal("Stretch", Named(markup, "Inbox").Attribute("HorizontalAlignment")?.Value);
+        Assert.DoesNotContain(markup.Descendants(), element => element.Name.LocalName == "ListView");
+
+        var source = Read("NotificationsPage");
+        Assert.Contains("Inbox.UsePageLayout();", source);
+        Assert.DoesNotContain("OnNotificationLayoutSizeChanged", source);
+        Assert.DoesNotContain("_notificationItems", source);
+
+        // Main replaced the old notification rows with the shared Inbox owner.
+        // Guard its width allocation and readable expanded text, not retired page handlers.
+        var controls = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Controls");
+        var inbox = XDocument.Load(Path.Combine(controls, "InboxView.xaml"));
+        Assert.Contains(inbox.Descendants(), element =>
             element.Name.LocalName == "Setter" &&
             element.Attribute("Property")?.Value == "HorizontalContentAlignment" &&
             element.Attribute("Value")?.Value == "Stretch");
-        Assert.Equal("OnNotificationLayoutSizeChanged",
-            Named(markup, "NotificationActions").Parent!.Attribute("SizeChanged")?.Value);
-
-        var source = Read("NotificationsPage");
-        var resize = source[source.IndexOf("private void OnLayoutSizeChanged", StringComparison.Ordinal)..
-            source.IndexOf("internal void Initialize", StringComparison.Ordinal)];
-        Assert.Contains("Grid.SetRow(actions, compact ? 1 : 0)", resize);
-        Assert.Contains("Grid.SetColumnSpan(content, compact ? 2 : 1)", resize);
-        Assert.Contains("actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal", resize);
-        Assert.Contains("e.NewSize.Width", resize);
-        Assert.DoesNotMatch(@"Render\(|_notificationItems\.|\.Dismiss\(|ClearAll\(|\.Navigate\(|\.Focus\(", resize);
-        Assert.Equal("OnNotificationActionClick",
-            Named(markup, "NotificationActions").Elements().First().Attribute("Click")?.Value);
-        Assert.Equal("{Binding DismissAutomationName}",
-            Named(markup, "NotificationActions").Elements().Last().Attribute(
-                "AutomationProperties.Name")?.Value);
+        foreach (var binding in new[] { "{Binding Details}", "{Binding Metadata}", "{Binding CommandText}" })
+            Assert.Contains(inbox.Descendants(), element =>
+                element.Attribute("Text")?.Value == binding &&
+                element.Attribute("TextWrapping")?.Value == "Wrap");
+        var owner = File.ReadAllText(Path.Combine(controls, "InboxView.xaml.cs"));
+        var pageLayout = owner[owner.IndexOf("internal void UsePageLayout", StringComparison.Ordinal)..
+            owner.IndexOf("internal void Initialize", StringComparison.Ordinal)];
+        Assert.Contains("RootGrid.Width = double.NaN", pageLayout);
+        Assert.Contains("RootGrid.MaxHeight = double.PositiveInfinity", pageLayout);
+        Assert.DoesNotMatch(@".Dismiss\(|ClearAll\(|.Navigate\(|.Focus\(", pageLayout);
     }
 
     [Fact]

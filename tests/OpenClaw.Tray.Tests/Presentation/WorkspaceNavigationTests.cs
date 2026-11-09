@@ -1096,7 +1096,12 @@ public sealed class WorkspaceNavigationTests
         var bellGlyph = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "FontIcon");
         Assert.Equal("\uEA8F", (string?)bellGlyph.Attribute("Glyph"));
         Assert.Null(bellGlyph.Attribute("Foreground"));
-        Assert.Single(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
+        // The Inbox badge keeps both tones as ThemeResource-bound borders: accent, and caution while an approval waits.
+        var badges = bell.Descendants().Where(element => element.Name.LocalName == "Border").ToList();
+        Assert.Equal(["NotificationsBadge", "NotificationsAttentionBadge"], badges.Select(element => (string?)element.Attribute(x + "Name")));
+        Assert.Equal("{ThemeResource AccentFillColorDefaultBrush}", (string?)badges[0].Attribute("Background"));
+        Assert.Equal("{ThemeResource SystemFillColorCautionBrush}", (string?)badges[1].Attribute("Background"));
+        Assert.DoesNotContain(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
         Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName is "ImageIcon" or "SvgImageSource");
         Assert.Equal(new[] { "OwnerAvatarStatusDot", "OwnerStatusDot" },
             owner.Descendants().Where(element => element.Name.LocalName == "FontIcon")
