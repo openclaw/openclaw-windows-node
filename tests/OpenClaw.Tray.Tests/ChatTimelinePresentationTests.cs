@@ -762,7 +762,14 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("if (pending.NeedsRealization)", retry);
         Assert.Contains("StartTailRequest(retry, pending.Started, allowPreparationRetry: false)", retry);
         Assert.DoesNotContain("allowPreparationRetry: true", retry);
-        Assert.Contains("if (!pending.RequiresFollowing)", retry);
+        // Failed initial attempts continue under InitialTailConfirmation's retry budget.
+        var observeFailed = retry.IndexOf("private void ObserveFailedInitialAttempt(", StringComparison.Ordinal);
+        Assert.True(observeFailed > 0);
+        Assert.Equal(2, retry[..observeFailed].Split("ObserveFailedInitialAttempt(pending);").Length - 1);
+        var observeHelper = retry[observeFailed..];
+        Assert.Contains("if (pending.RequiresFollowing)", observeHelper);
+        Assert.Contains("pending.Started is { } observe", observeHelper);
+        Assert.Contains("observe();", observeHelper);
         var layout = binding[binding.IndexOf("private void OnLayoutUpdated(", StringComparison.Ordinal)
             ..binding.IndexOf("var renderAfterLayout = _renderAfterLayout;", StringComparison.Ordinal)];
         Assert.Contains("_renderAfterLayout = false;", layout);

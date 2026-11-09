@@ -1494,6 +1494,14 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             var sawMissingSource = false;
             var restoredSource = false;
             var broughtRestoredTail = false;
+            var framesAfterRestore = 0;
+            void CountFramesAfterRestore(object? sender, object args)
+            {
+                if (broughtRestoredTail)
+                    CompositionTarget.Rendering -= CountFramesAfterRestore;
+                else
+                    framesAfterRestore++;
+            }
             await ui.RunOnUIAsync(() =>
             {
                 timeline = Assert.Single(FindDescendants<ItemsView>(host));
@@ -1516,6 +1524,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                         {
                             timeline.ItemsSource = source;
                             restoredSource = true;
+                            CompositionTarget.Rendering += CountFramesAfterRestore;
                         });
                     });
                 }
@@ -1547,6 +1556,87 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 "tail preparation after the native source returns",
                 () => $"missing={sawMissingSource}, restored={restoredSource}, brought={broughtRestoredTail}"));
             Assert.True(sawMissingSource);
+            // Preparation recovery lands promptly. Reaching the slower missing-bring
+            // retry instead means this harness did not interrupt preparation as intended.
+            Assert.True(framesAfterRestore < InitialTailConfirmation.MissingBringFramesBeforeDecision,
+                $"Tail landed after {framesAfterRestore} frames, which is the confirmation retry path, not preparation recovery.");
+        });
+    }
+
+    [Fact]
+    public async Task TailNavigation_InitialLandingRetriesWhenSourceStaysMissingThroughPreparation()
+    {
+        await WithChatAsync(800, async (_, host, _, provider) =>
+        {
+            const int count = 240;
+            // Outlasts both preparation passes, but restores the source within one
+            // confirmation attempt so a retry, not abandonment, must land the tail.
+            const int missingFrames = InitialTailConfirmation.MissingBringFramesBeforeDecision / 2;
+            var snapshot = await provider.LoadAsync();
+            ItemsView? timeline = null;
+            var missingFrameCount = 0;
+            var restoredSource = false;
+            var broughtRestoredTail = false;
+            var distanceAtBring = double.NaN;
+            await ui.RunOnUIAsync(() =>
+            {
+                timeline = Assert.Single(FindDescendants<ItemsView>(host));
+                var repeater = Assert.IsType<ItemsRepeater>(timeline.ScrollView.Content);
+                object? source = null;
+                void HoldSourceMissing(object? sender, object args)
+                {
+                    if (++missingFrameCount < missingFrames)
+                        return;
+                    CompositionTarget.Rendering -= HoldSourceMissing;
+                    timeline.ItemsSource = source;
+                    restoredSource = true;
+                }
+                void RemoveSource(object? sender, object args)
+                {
+                    if (repeater.ItemsSourceView?.Count != count)
+                        return;
+                    timeline.LayoutUpdated -= RemoveSource;
+                    source = timeline.ItemsSource;
+                    timeline.ItemsSource = null;
+                    // Far-edge anchoring would carry the empty view to the restored
+                    // tail by itself. Disable it so only a production bring can land.
+                    timeline.ScrollView.VerticalAnchorRatio = double.NaN;
+                    CompositionTarget.Rendering += HoldSourceMissing;
+                }
+                timeline.LayoutUpdated += RemoveSource;
+                timeline.ScrollView.BringingIntoView += (_, args) =>
+                {
+                    if (!restoredSource || broughtRestoredTail)
+                        return;
+                    broughtRestoredTail = repeater.GetElementIndex(args.RequestEventArgs.TargetElement) == count - 1;
+                    if (broughtRestoredTail)
+                        distanceAtBring = timeline.ScrollView.ScrollableHeight - timeline.ScrollView.VerticalOffset;
+                };
+                provider.Publish(snapshot with
+                {
+                    Timelines = new Dictionary<string, ChatTimelineState>
+                    {
+                        ["proof"] = snapshot.Timelines["proof"] with
+                        {
+                            Entries = Enumerable.Range(0, count)
+                                .Select(index => new ChatTimelineItem($"held-{index}",
+                                    ChatTimelineItemKind.User, $"Held message {index}"))
+                                .ToImmutableList(),
+                        },
+                    },
+                    HistoryRevisions = new Dictionary<string, long> { ["proof"] = 1 },
+                });
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => restoredSource && broughtRestoredTail
+                    && timeline!.ScrollView.State == ScrollingInteractionState.Idle
+                    && timeline.ScrollView.ScrollableHeight - timeline.ScrollView.VerticalOffset <= 1,
+                "initial tail retry after preparation could not recover",
+                () => $"missingFrames={missingFrameCount}, restored={restoredSource}, brought={broughtRestoredTail}, offset={timeline!.ScrollView.VerticalOffset}, extent={timeline.ScrollView.ScrollableHeight}"));
+            // The restored view must have been stranded away from the tail, so the
+            // landing proves a confirmation retry rather than native anchoring.
+            Assert.True(distanceAtBring > 1,
+                $"The restored view was already {distanceAtBring}px from the tail before the retry.");
         });
     }
 

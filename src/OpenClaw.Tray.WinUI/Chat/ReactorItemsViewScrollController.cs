@@ -626,9 +626,8 @@ file sealed class InitialTailPositioner : IDisposable
                 if (!TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var retry)
                     || !StartTailRequest(retry, pending.Started, allowPreparationRetry: false))
                 {
-                    if (!pending.RequiresFollowing)
-                        CompleteInitialLanding();
                     OpenClawTray.Services.Logger.Warn("Chat tail navigation preparation retry could not start.");
+                    ObserveFailedInitialAttempt(pending);
                 }
                 return;
             }
@@ -642,9 +641,8 @@ file sealed class InitialTailPositioner : IDisposable
                 || repeater.GetElementIndex(target) != request.Index
                 || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
             {
-                if (!pending.RequiresFollowing)
-                    CompleteInitialLanding();
                 OpenClawTray.Services.Logger.Warn("Chat tail navigation could not reacquire the current tail after layout.");
+                ObserveFailedInitialAttempt(pending);
                 return;
             }
 
@@ -666,6 +664,18 @@ file sealed class InitialTailPositioner : IDisposable
                 CompleteInitialLanding();
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched after layout.");
         }
+    }
+
+    // An initial attempt that could not bring is observed like a missing native
+    // bring, so InitialTailConfirmation's retry budget decides when to give up.
+    private void ObserveFailedInitialAttempt(PendingTailBring pending)
+    {
+        if (pending.RequiresFollowing)
+            return;
+        if (pending.Started is { } observe)
+            observe();
+        else
+            CompleteInitialLanding();
     }
 
     private object? GetRequestItem(TailNavigationRequest request) =>
