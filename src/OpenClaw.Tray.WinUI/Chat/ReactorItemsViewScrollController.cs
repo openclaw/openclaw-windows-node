@@ -339,15 +339,17 @@ file sealed class InitialTailPositioner : IDisposable
                     break;
                 case InitialTailLanding.GiveUp:
                     var diagnostics = _confirmation.Diagnostics;
+                    var attemptDiagnostics = _confirmation.AttemptDiagnostics;
                     CompleteInitialLanding();
-                    LogInitialTailFailure(diagnostics, scrollView);
+                    LogInitialTailFailure(diagnostics, attemptDiagnostics, scrollView);
                     break;
             }
         };
         CompositionTarget.Rendering += _confirming;
     }
 
-    private void LogInitialTailFailure(InitialTailDiagnosticSnapshot diagnostics, WinUIScrollView scrollView)
+    private void LogInitialTailFailure(InitialTailDiagnosticSnapshot diagnostics,
+        InitialTailAttemptDiagnostics attempt, WinUIScrollView scrollView)
     {
         // This runs only after the existing GiveUp cleanup. Native reads and the
         // local logger are best effort: neither can interrupt navigation cleanup.
@@ -362,7 +364,10 @@ file sealed class InitialTailPositioner : IDisposable
         try
         {
             OpenClawTray.Services.Logger.Warn(FormattableString.Invariant(
-                $"Chat initial tail navigation did not land at the tail. frames={diagnostics.ObservedFrames} retries={diagnostics.Retries} settledFrames={diagnostics.SettledFrames} hasExpectedTarget={diagnostics.HasExpectedTarget} hasCorrelation={diagnostics.HasCorrelation} bringCompleted={diagnostics.BringCompleted} attemptActive={diagnostics.AttemptActive} itemCount={_itemCount} tailIndex={_tailIndex} {native}"));
+                $"Chat initial tail navigation did not land at the tail. frames={diagnostics.ObservedFrames} retries={diagnostics.Retries} settledFrames={diagnostics.SettledFrames} hasExpectedTarget={diagnostics.HasExpectedTarget} hasCorrelation={diagnostics.HasCorrelation} bringCompleted={diagnostics.BringCompleted} attemptActive={diagnostics.AttemptActive} itemCount={_itemCount} tailIndex={_tailIndex} {native} ") +
+                FormattableString.Invariant($"bringReadSucceeded={attempt.ProposedOffset.HasValue && attempt.BringOffset.HasValue && attempt.BringScrollableHeight.HasValue} proposedOffset={attempt.ProposedOffset} bringOffset={attempt.BringOffset} bringScrollableHeight={attempt.BringScrollableHeight} targetIndexAvailable={attempt.TargetIndex.HasValue} targetIndex={attempt.TargetIndex} ") +
+                FormattableString.Invariant($"completionReadSucceeded={attempt.CompletedOffset.HasValue && attempt.CompletedScrollableHeight.HasValue} completedOffset={attempt.CompletedOffset} completedScrollableHeight={attempt.CompletedScrollableHeight} completionSourceReadSucceeded={attempt.CompletionSourceItemMatches.HasValue} completionSourceItemMatches={attempt.CompletionSourceItemMatches} ") +
+                FormattableString.Invariant($"maxOffsetAvailable={attempt.MaxObservedOffset.HasValue} maxObservedOffset={attempt.MaxObservedOffset}"));
         }
         catch (Exception) { }
     }
@@ -453,13 +458,44 @@ file sealed class InitialTailPositioner : IDisposable
             || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
             return;
 
-        _confirmation.BringingIntoView(args.CorrelationId, target.DataContext);
+        var correlationId = args.CorrelationId;
+        var targetItem = target.DataContext;
+        (double ProposedOffset, double Offset, double ScrollableHeight)? geometry = null;
+        int? targetIndex = null;
+        // Public getters only. Do not realize a row or force layout to diagnose it.
+        try { geometry = (args.TargetVerticalOffset, sender.VerticalOffset, sender.ScrollableHeight); }
+        catch (Exception) { }
+        try
+        {
+            if (sender.Content is Microsoft.UI.Xaml.Controls.ItemsRepeater repeater
+                && ReferenceEquals(VisualTreeHelper.GetParent(target), repeater))
+                targetIndex = repeater.GetElementIndex(target);
+        }
+        catch (Exception) { }
+        _confirmation.BringingIntoView(correlationId, targetItem, geometry, targetIndex);
     }
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
     {
         if (_initialPending && ReferenceEquals(sender, _scrollView))
-            _confirmation.ScrollCompleted(args.CorrelationId);
+        {
+            var correlationId = args.CorrelationId;
+            (double Offset, double ScrollableHeight)? geometry = null;
+            object? currentSourceItem = null;
+            var sourceReadSucceeded = false;
+            try { geometry = (sender.VerticalOffset, sender.ScrollableHeight); }
+            catch (Exception) { }
+            try
+            {
+                if (itemsView.ItemsSource is System.Collections.IList items)
+                {
+                    currentSourceItem = _tailIndex >= 0 && _tailIndex < items.Count ? items[_tailIndex] : null;
+                    sourceReadSucceeded = true;
+                }
+            }
+            catch (Exception) { }
+            _confirmation.ScrollCompleted(correlationId, geometry, currentSourceItem, sourceReadSucceeded);
+        }
     }
 
     private void OnScrollStateChanged(WinUIScrollView sender, object args)
@@ -500,6 +536,11 @@ file sealed class InitialTailPositioner : IDisposable
     {
         _following = IsNearBottom(sender);
         _confirmation.GeometryChanged();
+        if (_initialPending && ReferenceEquals(sender, _scrollView))
+        {
+            try { _confirmation.ObserveOffset(sender.VerticalOffset); }
+            catch (Exception) { }
+        }
     }
 
     private void QueueTailRequest(int version, TailNavigationRequest request)
