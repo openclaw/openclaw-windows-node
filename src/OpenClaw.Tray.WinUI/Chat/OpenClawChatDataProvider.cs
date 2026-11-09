@@ -1616,7 +1616,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 _telemetry.ObserveInboundOutput(threadId, runId, ChatResponseOutputKind.Tool);
                 foreach (var part in contentTools)
                     foreach (var toolEvent in ChatEventMapper.MapContentTool(
-                        part.Tool!, message.Presentation.RunId ?? message.RunId ?? runId))
+                        part.Tool!, message.Presentation.RunId ?? message.RunId ?? runId,
+                        _state.GetSessionId(threadId)))
                         ApplyEventAndPublish(threadId, toolEvent, metadata);
                 return;
             }

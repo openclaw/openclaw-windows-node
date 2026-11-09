@@ -14,6 +14,21 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData("\"true\"", false)]
+    [InlineData("null", false)]
+    public void ParseHistory_PreservesOnlyExplicitWindowReset(string value, bool expected)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var history = helper.ParseChatHistoryPayload(
+            """{"sessionId":"instance","messages":[],"windowReset":""" + value + "}");
+        Assert.Equal(expected, history.WindowReset);
+        Assert.False(helper.ParseChatHistoryPayload("""{"messages":[]}""").WindowReset);
+    }
+
     [Fact]
     public void ParseHistory_RetainsOpaqueOlderCursorNotAnOffsetGuess()
     {

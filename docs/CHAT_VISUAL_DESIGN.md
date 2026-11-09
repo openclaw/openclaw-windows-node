@@ -160,6 +160,13 @@ and exact result identity before dispatch and after completion. Collapse,
 cancel, disposal and scope replacement retire the view's pending result.
 Input and output controls retain their existing keys during hydration.
 
+Live structured tool results retain the loaded session identity too. When older
+history splits an invocation from its result, exact run/call matches reunite the
+input with the existing result row without changing its identity, outcome,
+recovery locator or active-run state. A Gateway `windowReset` keeps cached
+messages visible and exposes the existing history Retry action; an invalidated
+cursor is not treated as the end of history.
+
 The shared `ChatToolDetailsProfile` reader guard defaults to unknown/unavailable.
 It reuses the authenticated, epoch-bound `users.self` read and existing identity
 parser without loading avatars or exposing profile IDs. Every verification

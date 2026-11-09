@@ -47,7 +47,8 @@ internal sealed class ChatHistoryState
         _olderPages.Keys.Where(key => OlderPage(key) is not null).ToImmutableHashSet(StringComparer.Ordinal);
 
     internal ChatHistoryPageRequest? OlderPage(string threadId) =>
-        _loadedThreads.Contains(threadId) && _olderPages.TryGetValue(threadId, out var page)
+        _loadedThreads.Contains(threadId) && !_failedThreads.Contains(threadId) &&
+            _olderPages.TryGetValue(threadId, out var page)
             && ResolveSessionId(threadId) == page.SessionId ? page : null;
 
     /// <summary>Records that history retries for the thread are exhausted until the next commit or retry.</summary>
@@ -222,12 +223,28 @@ internal sealed class ChatHistoryState
             .Select(value => value.GatewayMessageId!).ToHashSet(StringComparer.Ordinal);
         var entries = ImmutableList.CreateBuilder<ChatTimelineItem>();
         var metadata = new Dictionary<string, ChatEntryMetadata>(priorMetadata);
+        var reunitedTools = new HashSet<string>(StringComparer.Ordinal);
         var nextId = prior.NextId;
         foreach (var entry in plan.Timeline.Entries)
         {
             plan.Metadata.TryGetValue(entry.Id, out var detail);
             if (detail?.GatewayMessageId is { Length: > 0 } messageId && known.Contains(messageId))
                 continue;
+            if (entry.Kind == ChatTimelineItemKind.ToolCall && entry.ToolName is { } toolName &&
+                entry.ToolRunId is { Length: > 0 } runId && entry.ToolCallId is { Length: > 0 } callId &&
+                prior.Entries.FirstOrDefault(existing => existing.Kind == ChatTimelineItemKind.ToolCall &&
+                    existing.ToolRunId == runId && existing.ToolCallId == callId) is { } current)
+            {
+                var enriched = ChatTimelineReducer.Apply(
+                    ChatTimelineState.Initial() with { Entries = ImmutableList.Create(current) },
+                    new ChatToolStartEvent(entry.Text, toolName, entry.ToolArgs, callId,
+                        IdentityStrength: entry.ToolIdentityStrength, RunId: runId,
+                        HandoffInput: entry.HandoffInput, InputDetails: entry.ToolInputDetails,
+                        ParentCallId: entry.ToolParentCallId));
+                entries.Add(enriched.Entries.Single());
+                reunitedTools.Add(current.Id);
+                continue;
+            }
             if (detail?.Timestamp is { } timestamp && prior.Entries.Any(existing =>
                 existing.Kind == entry.Kind && existing.Text == entry.Text &&
                 priorMetadata.TryGetValue(existing.Id, out var existingDetail) && existingDetail.Timestamp == timestamp))
@@ -237,7 +254,7 @@ internal sealed class ChatHistoryState
             if (detail is not null)
                 metadata[id] = detail;
         }
-        entries.AddRange(prior.Entries);
+        entries.AddRange(prior.Entries.Where(entry => !reunitedTools.Contains(entry.Id)));
         // A page is historical only. Preserve every active-run identity and live receipt.
         return (prior with { Entries = entries.ToImmutable(), NextId = nextId }, metadata);
     }

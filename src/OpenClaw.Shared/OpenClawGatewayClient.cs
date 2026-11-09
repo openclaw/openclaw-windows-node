@@ -1005,6 +1005,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (payload.TryGetProperty("sessionId", out var sidProp) && sidProp.ValueKind == JsonValueKind.String)
             info.SessionId = sidProp.GetString();
         info.HasMore = payload.TryGetProperty("hasMore", out var more) && more.ValueKind == JsonValueKind.True;
+        info.WindowReset = payload.TryGetProperty("windowReset", out var reset) && reset.ValueKind == JsonValueKind.True;
         if (payload.TryGetProperty("olderCursor", out var cursor) &&
             cursor.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(cursor.GetString()))
         {

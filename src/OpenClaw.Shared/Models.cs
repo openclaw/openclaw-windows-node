@@ -2062,6 +2062,8 @@ public class ChatHistoryInfo
 {
     public string? OlderCursor { get; set; }
     public bool HasMore { get; set; }
+    /// <summary>The Gateway invalidated the paging snapshot; reload history rather than treating it as exhausted.</summary>
+    public bool WindowReset { get; set; }
     /// <summary>Immutable session UUID assigned by the gateway.</summary>
     public string? SessionId { get; set; }
 

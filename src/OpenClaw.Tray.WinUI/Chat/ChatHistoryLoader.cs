@@ -368,6 +368,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         var outcome = ChatTelemetryOutcome.Success;
         Exception? failure = null;
         Task<ChatHistoryInfo>? request = null;
+        var requiresReload = false;
         try
         {
             request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
@@ -381,6 +382,11 @@ internal sealed class ChatHistoryLoader : IDisposable
                 return;
             }
 
+            if (olderPage is not null && history.WindowReset)
+            {
+                requiresReload = true;
+                throw new InvalidDataException(LocalizationHelper.GetString("Chat_History_CursorStalled"));
+            }
             var olderMessageId = history.HasMore && string.IsNullOrEmpty(history.OlderCursor)
                 ? history.Messages.FirstOrDefault()?.OpenClawId : null;
             if (olderPage is not null &&
@@ -445,7 +451,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                         _retryCounts[commitToken] = retryCount + 1;
                 }
             }
-            var failedTerminally = olderPage is null && !shouldRetry && _state.MarkHistoryFailed(commitToken);
+            var failedTerminally = (requiresReload || olderPage is null && !shouldRetry)
+                && _state.MarkHistoryFailed(commitToken);
             if (_state.IsHistoryRequestCurrent(commitToken))
             {
                 Completed?.Invoke(
