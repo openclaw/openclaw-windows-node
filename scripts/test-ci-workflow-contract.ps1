@@ -84,7 +84,8 @@ function Get-StepBlock {
     if (-not $startMatch.Success) {
         throw "Could not find CI step '$Name'."
     }
-    $stepHeadingPattern = [regex]::new("(?m)^    - (?:name:|uses:)")
+    # Every peer sequence entry ends the step, regardless of its first property.
+    $stepHeadingPattern = [regex]::new("(?m)^    -(?:[ \t]|\r?$)")
     $nextMatch = $stepHeadingPattern.Match(
         $Text,
         $startMatch.Index + $startMatch.Length)
@@ -918,7 +919,19 @@ Assert-CiTestInvocationInventory -Text $workflow
 
 # Exercise rejection on in-memory workflow mutations, never by changing CI files.
 # These cases must reach the named inventory guard, not fail unrelated setup.
+$borrowedSharedIdStep = $sharedTestStep.Replace('      run: >', @'
+      run: Write-Host 'named lane did not run'
+    - id: moved_shared_tests
+      if: ${{ false }}
+      run: >
+'@)
+$borrowedSharedRunStep = $sharedTestStep.Replace('      run: >', @'
+      run: Write-Host 'named lane did not run'
+    - run: >
+'@) + '      if: ${{ false }}' + [Environment]::NewLine
 $inventoryMutations = @(
+    @{ Name = 'id-first step cannot lend its call'; Text = $workflow.Replace($sharedTestStep, $borrowedSharedIdStep); Failure = "requires one Invoke-CiTest.ps1 call in 'Run Shared Tests'" },
+    @{ Name = 'run-first step cannot lend its call'; Text = $workflow.Replace($sharedTestStep, $borrowedSharedRunStep); Failure = "requires one Invoke-CiTest.ps1 call in 'Run Shared Tests'" },
     @{ Name = 'missing lane'; Text = $workflow.Replace($productionUiStep, ''); Failure = "requires one 'Run steady-resource Automations UI tests' step in 'ui-tests'" },
     @{ Name = 'duplicate lane'; Text = $workflow.Replace($productionUiStep, $productionUiStep + $productionUiStep); Failure = "requires one 'Run steady-resource Automations UI tests' step in 'ui-tests'" },
     @{ Name = 'wrong project'; Text = $workflow.Replace($productionUiStep, $productionUiStep.Replace('-Project tests/OpenClaw.Tray.UITests', '-Project tests/OpenClaw.Shared.Tests')); Failure = "unexpected -Project route in 'Run steady-resource Automations UI tests'" },
