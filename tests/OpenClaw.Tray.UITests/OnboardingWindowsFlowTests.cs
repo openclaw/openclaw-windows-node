@@ -9,7 +9,7 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
+using Ellipse = Microsoft.UI.Xaml.Shapes.Ellipse;
 using Microsoft.Windows.ApplicationModel.Resources;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;

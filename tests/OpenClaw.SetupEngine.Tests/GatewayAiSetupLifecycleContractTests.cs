@@ -147,7 +147,16 @@ public sealed class GatewayAiSetupLifecycleContractTests
         Assert.Contains("ChoicesScroller.VerticalOffset, ++_backdropVersion", page);
         Assert.Contains("await showing;", page);
         Assert.Contains("backdrop.Version != _backdropVersion", page);
-        Assert.Contains("ChoicesScroller.ChangeView(null, backdrop.VerticalOffset, null, disableAnimation: true)", page);
+        // Resizing may invalidate the captured offset; restoration must keep the returned focus visible.
+        var focusVisibleOffset = page.IndexOf(
+            "_providerRestoreOffset = GetFocusVisibleOffset(ChoicesScroller, focus, backdrop.VerticalOffset)",
+            StringComparison.Ordinal);
+        Assert.True(focusVisibleOffset >= 0, "Provider restoration must calculate a focus-visible offset.");
+        var restoreViewport = page.IndexOf(
+            "ChoicesScroller.ChangeView(null, _providerRestoreOffset, null, disableAnimation: true)",
+            focusVisibleOffset, StringComparison.Ordinal);
+        Assert.True(restoreViewport > focusVisibleOffset,
+            "Provider restoration must compute a focus-visible offset before applying it.");
         Assert.Contains("status, _providerError, _operationTitle", page);
         Assert.DoesNotContain("Frame.Navigate", page);
     }
