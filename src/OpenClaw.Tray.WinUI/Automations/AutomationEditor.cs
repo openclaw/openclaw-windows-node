@@ -113,8 +113,8 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
             updateSession(current => current with { Submitted = true, Errors = validation });
             if (validation.Count > 0)
             {
-                var message = validation.Count == 1 && validation.TryGetValue(CronFormField.Timing, out var timingError)
-                    ? t.FormError(timingError) : t["Designer_ValidationSummary"];
+                var message = validation.Count == 1 && validation.Values.Single() is (CronFormError.TimingWebManaged or CronFormError.DeliveryWebManaged)
+                    ? t.FormError(validation.Values.Single()) : t["Designer_ValidationSummary"];
                 updateSession(current => current with
                 {
                     Banner = (t["Editor_CantSave"], message, InfoBarSeverity.Error),
@@ -192,7 +192,7 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
             RenderBasics(host, form, Update, Err, editing?.Owner ?? agentId, editing is not null),
             RenderAction(host, form, Update, Err, source),
             RenderSchedule(host, form, Update, Err, source),
-            RenderDelivery(t, form, Update, Err, SavedTargets(host.Store.State.Jobs)),
+            RenderDelivery(host, form, source, Update, Err, SavedTargets(host.Store.State.Jobs)),
             session.RestoredDraft ? HStack(8, Secondary(t["Designer_DraftKept"]),
                 HyperlinkButton(t["Designer_DiscardDraft"], null, () => updateSession(current => current with
                 {
@@ -559,9 +559,20 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
         jobs.Select(j => j.Delivery?.To?.Trim()).OfType<string>().Where(to => to.Length > 0)
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
 
-    private static Element RenderDelivery(AutomationsText t, CronJobForm form, Action<Func<CronJobForm, CronJobForm>, bool> update,
-        Func<CronFormField, string?> err, string[] savedTargets)
+    private static Element RenderDelivery(AutomationsHost host, CronJobForm form, CronJob? source,
+        Action<Func<CronJobForm, CronJobForm>, bool> update, Func<CronFormField, string?> err, string[] savedTargets)
     {
+        var t = host.Text;
+        Element OwnerGuidance() => (InfoBar(null, t.FormError(CronFormError.DeliveryWebManaged)) with
+        {
+            IsClosable = false,
+            ActionButtonContent = t["OpenInWeb"],
+            OnActionButtonClick = () => host.OpenWeb(source?.Id),
+        }).AutomationId("AutomationEditorDeliveryWebManaged");
+        if (form.HasWebManagedDelivery(source))
+            return Section(t["Section_Delivery"],
+                Secondary(form.DeliveryTarget == "owner" ? t["Destination_Owner"] : form.DeliveryTarget),
+                OwnerGuidance());
         var modes = new List<string> { "none", "announce", "webhook" };
         var labels = modes.Select(t.DeliveryMode).ToList();
         var modeIndex = modes.IndexOf(form.DeliveryMode);
@@ -583,18 +594,12 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
 
         if (form.DeliveryMode == "announce")
         {
-            children.Add(RadioButtons([t["Destination_Channel"], t["Destination_Owner"]], form.DeliveryTarget == "owner" ? 1 : 0,
-                    i => update(f => f with { DeliveryTarget = i == 1 ? "owner" : "" }, false))
-                .AutomationId("AutomationEditorDestination"));
-            if (form.DeliveryTarget == "owner")
-                children.Add(Secondary(t["Help_Owner"]));
+            children.Add(OwnerGuidance());
             children.Add(Row(
                 Field(Text(t["Field_Channel"], form.DeliveryChannel == CronProtocol.ChannelLast ? "" : form.DeliveryChannel,
                     v => update(f => f with { DeliveryChannel = string.IsNullOrWhiteSpace(v) ? CronProtocol.ChannelLast : v }, false),
                     "AutomationEditorChannel", t["Placeholder_ChannelLast"]), null, t["Help_Channel"]),
-                form.DeliveryTarget == "owner"
-                    ? Empty()
-                    : Field(Suggest(t["Field_To"], form.DeliveryTo, savedTargets, v => update(f => f with { DeliveryTo = v }, false),
+                Field(Suggest(t["Field_To"], form.DeliveryTo, savedTargets, v => update(f => f with { DeliveryTo = v }, false),
                         "AutomationEditorTo", t["Placeholder_To"]), err(CronFormField.DeliveryTo), t["Help_ToSaved"])));
         }
         else if (form.DeliveryMode == "webhook")

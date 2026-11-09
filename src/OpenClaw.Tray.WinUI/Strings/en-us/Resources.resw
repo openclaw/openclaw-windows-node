@@ -7607,6 +7607,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Enter a valid IANA time zone, local, or user.</value>
   </data>
+  <data name="Automations_Error_DeliveryWebManaged" xml:space="preserve">
+    <value>Owner delivery is managed in the web app for Gateway compatibility. Use Open in web to create, copy or change it. Basic edits keep the saved routing.</value>
+  </data>
   <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
     <value>Use Open in web to copy or change active hours or wait-until-idle settings. Basic edits keep the saved settings.</value>
   </data>

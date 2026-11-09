@@ -648,6 +648,57 @@ public sealed class CronJobFormTests
         Assert.False(copy.IdleOnly);
     }
 
+    [Theory]
+    [InlineData("announce")]
+    [InlineData("none")]
+    public void NativeOwnerDelivery_RejectsCreationCopiesAndRoutingChangesButPreservesBasicEdits(string mode)
+    {
+        var job = CronJsonReader.ParseJob(JsonDocument.Parse("""
+        {"id":"j","name":"J","enabled":true,"configRevision":"r",
+         "schedule":{"kind":"every","everyMs":600000},
+         "payload":{"kind":"agentTurn","message":"m"},
+         "delivery":{"mode":"announce","target":"owner","channel":"slack","accountId":"work",
+           "threadId":"saved-thread","directPolicy":"block","bestEffort":true,
+           "failureDestination":{"mode":"announce","channel":"slack","to":"#ops"}}}
+        """).RootElement)!;
+        job = job with { Delivery = job.Delivery! with { Mode = mode } };
+        var form = CronJobForm.FromJob(job);
+        var renamed = form with { Name = "Renamed", PayloadText = "New prompt" };
+        Assert.Empty(renamed.ValidateForNative(job));
+        Assert.False(renamed.BuildDefinition(job).ContainsKey("delivery"));
+        Assert.Equal("owner", form.DeliveryTarget);
+        Assert.Equal("saved-thread", form.DeliveryThreadId);
+        Assert.Equal("block", form.DeliveryDirectPolicy);
+
+        var created = Valid with { DeliveryMode = mode, DeliveryTarget = "owner" };
+        Assert.Equal(CronFormError.DeliveryWebManaged, created.ValidateForNative(null)[CronFormField.DeliveryRouting]);
+        var copy = CronJobForm.FromClone(job, "Copied");
+        Assert.Equal(CronFormError.DeliveryWebManaged, copy.ValidateForNative(null, job)[CronFormField.DeliveryRouting]);
+        Assert.Equal("owner", copy.DeliveryTarget);
+        foreach (var changed in new[]
+        {
+            form with { DeliveryTarget = "" }, form with { DeliveryChannel = "telegram" },
+            form with { DeliveryTo = "different" }, form with { DeliveryAccountId = "personal" },
+            form with { DeliveryMode = "webhook", DeliveryTo = "https://example.test/hook" },
+            form with { DeliveryBestEffort = false }, form with { DeliveryThreadId = null },
+        })
+            Assert.Equal(CronFormError.DeliveryWebManaged, changed.ValidateForNative(job)[CronFormField.DeliveryRouting]);
+    }
+
+    [Fact]
+    public void NativeDelivery_ChannelAndWebhookCreationRemainAvailable()
+    {
+        foreach (var form in new[]
+        {
+            Valid with { DeliveryMode = "announce", DeliveryChannel = "slack", DeliveryTo = "#daily" },
+            Valid with { DeliveryMode = "webhook", DeliveryTo = "https://example.test/hook" },
+        })
+        {
+            Assert.Empty(form.ValidateForNative(null));
+            Assert.False(form.BuildDefinition()["delivery"]!.AsObject().ContainsKey("target"));
+        }
+    }
+
     [Fact]
     public void LegacyDelivery_IsKeptOnEditButMustBeChosenForACopy()
     {

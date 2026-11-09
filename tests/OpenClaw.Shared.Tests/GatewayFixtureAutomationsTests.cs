@@ -477,6 +477,45 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task AutomationsStore_OwnerDeliveryKeepsSavedRoutingAndBlocksUnsupportedWrites()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateAutomations(sparse: true);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        // Seed a job saved by a newer Gateway, then enforce the published stable write contract.
+        var saved = await client.UpdateCronJobDetailedAsync("morning-brief", "rev-1", new JsonObject
+        {
+            ["delivery"] = new JsonObject { ["target"] = "owner", ["threadId"] = "preserved", ["futureSetting"] = "kept" },
+        });
+        var originalDelivery = Assert.Single(scenario.GetCronJobs()).GetProperty("delivery").GetRawText();
+        scenario.RejectUnsupportedCronDeliveryTarget = true;
+        using var ui = new SingleThreadDispatcher();
+        using var store = new AutomationsStore("main", () => client, ui.Post);
+        await ui.InvokeAsync(store.Refresh);
+        await WaitForAsync(() => store.State.ListLoaded && !store.State.ListLoading);
+        var form = CronJobForm.FromJob(saved) with { Name = "Renamed Owner job" };
+        var result = await await ui.InvokeAsync(() => store.SaveAsync(form, saved));
+        var updated = Assert.IsType<AutomationsSaveResult.Saved>(result).Job;
+        Assert.Equal(originalDelivery, Assert.Single(scenario.GetCronJobs()).GetProperty("delivery").GetRawText());
+        Assert.Equal("Renamed Owner job", updated.Name);
+
+        var mutations = server.Requests.Count(request => request.Method is "cron.add" or "cron.update");
+        var copy = CronJobForm.FromClone(updated, "Owner copy");
+        Assert.IsType<AutomationsSaveResult.Invalid>(await await ui.InvokeAsync(() => store.SaveAsync(copy, null, updated)));
+        Assert.IsType<AutomationsSaveResult.Invalid>(await await ui.InvokeAsync(() => store.SaveAsync(
+            CronJobForm.FromJob(updated) with { DeliveryChannel = "telegram" }, updated)));
+        Assert.IsType<AutomationsSaveResult.Invalid>(await await ui.InvokeAsync(() => store.SaveAsync(copy, null)));
+        Assert.Equal(mutations, server.Requests.Count(request => request.Method is "cron.add" or "cron.update"));
+        Assert.Equal("owner", copy.DeliveryTarget);
+        // The fixture guard itself rejects the historical request, even if native validation is bypassed.
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => client.UpdateCronJobDetailedAsync(updated.Id,
+            updated.ConfigRevision, new JsonObject { ["delivery"] = new JsonObject { ["target"] = "owner" } }));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task AutomationsStore_SaveRejectsInvalidFormsAndRecoversFromRevisionConflicts()
     {
         var token = CreateToken();

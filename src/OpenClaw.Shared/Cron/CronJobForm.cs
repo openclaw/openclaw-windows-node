@@ -28,6 +28,7 @@ public enum CronFormField
     FailureAlertAfter,
     FailureAlertCooldown,
     Timing,
+    DeliveryRouting,
 }
 
 /// <summary>Validation outcomes; the UI owns their localized wording.</summary>
@@ -58,6 +59,7 @@ public enum CronFormError
     FailureAlertAfterInvalid,
     FailureAlertCooldownInvalid,
     TimingWebManaged,
+    DeliveryWebManaged,
 }
 
 /// <summary>
@@ -414,7 +416,27 @@ public sealed record CronJobForm
             : hours is not null || IdleOnly || cloneSource?.ActiveHours is not null || cloneSource?.IdleOnly is not null;
         if (unsupported)
             errors[CronFormField.Timing] = CronFormError.TimingWebManaged;
+        // Released Gateway schemas do not accept delivery.target, and cron.* method
+        // advertisement does not negotiate individual fields. Keep Owner routing on the web.
+        if (HasWebManagedDelivery(editing ?? cloneSource) &&
+            (editing is null || !PreservesSavedDelivery(editing)))
+            errors[CronFormField.DeliveryRouting] = CronFormError.DeliveryWebManaged;
         return errors;
+    }
+
+    /// <summary>True when delivery uses a target outside the native released-Gateway contract.</summary>
+    public bool HasWebManagedDelivery(CronJob? source = null) =>
+        !string.IsNullOrEmpty(DeliveryTarget) || !string.IsNullOrEmpty(source?.Delivery?.Target);
+
+    private bool PreservesSavedDelivery(CronJob editing)
+    {
+        var saved = FromJob(editing);
+        return DeliveryMode == saved.DeliveryMode && DeliveryTarget == saved.DeliveryTarget
+            && DeliveryChannel == saved.DeliveryChannel && DeliveryTo == saved.DeliveryTo
+            && DeliveryAccountId == saved.DeliveryAccountId && DeliveryThreadId == saved.DeliveryThreadId
+            && DeliveryBestEffort == saved.DeliveryBestEffort && DeliveryDirectPolicy == saved.DeliveryDirectPolicy
+            && DeliveryCompletionDestination.Equals(saved.DeliveryCompletionDestination)
+            && DeliveryFailureDestination.Equals(saved.DeliveryFailureDestination);
     }
 
     /// <summary>
@@ -476,7 +498,11 @@ public sealed record CronJobForm
         if (isUpdate ? form.IdleOnly != (editing!.IdleOnly == true) : form.IdleOnly)
             job["idleOnly"] = form.IdleOnly;
 
-        if (form.BuildDelivery(editing) is { } delivery)
+        // An unrelated edit must neither resend unsupported target fields nor rewrite
+        // saved routing (including fields this client cannot represent).
+        var keepSavedRouting = editing is not null && form.HasWebManagedDelivery(editing)
+            && form.PreservesSavedDelivery(editing);
+        if (!keepSavedRouting && form.BuildDelivery(editing) is { } delivery)
             job["delivery"] = delivery;
 
         var (writeAlert, alertValue) = form.BuildFailureAlert(source?.FailureAlert, isUpdate);

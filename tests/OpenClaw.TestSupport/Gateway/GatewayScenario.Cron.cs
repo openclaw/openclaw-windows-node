@@ -120,6 +120,7 @@ public sealed partial class GatewayScenario
     /// <summary>Models older list responses that omit resolved-owner metadata.</summary>
     public bool OmitCronEffectiveAgentId { get; set; }
     public bool RejectUnsupportedCronTimingFields { get; set; }
+    public bool RejectUnsupportedCronDeliveryTarget { get; set; }
 
     /// <summary>Supplies explicit agenda instants without implementing client grouping or layout.</summary>
     public void SetCronJobNextRun(string id, long atMs)
@@ -366,7 +367,7 @@ public sealed partial class GatewayScenario
     private JsonObject AddJob(Dictionary<string, JsonObject> jobs, JsonElement p)
     {
         ValidateProperties(p, JobFields);
-        ValidateCronTimingProperties(p);
+        ValidateCronCompatibilityProperties(p);
         _ = RequiredString(p, "name");
         if (!p.TryGetProperty("schedule", out var schedule)) throw new FixtureRequestException("INVALID_REQUEST", "schedule is required.");
         ValidateSchedule(schedule);
@@ -394,7 +395,7 @@ public sealed partial class GatewayScenario
         CheckRevision(job, p);
         if (!p.TryGetProperty("patch", out var patch)) throw new FixtureRequestException("INVALID_REQUEST", "Missing patch.");
         ValidateProperties(patch, [.. JobFields, "state"]);
-        ValidateCronTimingProperties(patch);
+        ValidateCronCompatibilityProperties(patch);
         if (patch.TryGetProperty("schedule", out var schedule)) ValidateSchedule(schedule);
         var updated = job.DeepClone().AsObject();
         foreach (var field in patch.EnumerateObject())
@@ -425,11 +426,15 @@ public sealed partial class GatewayScenario
         return updated;
     }
 
-    private void ValidateCronTimingProperties(JsonElement parameters)
+    private void ValidateCronCompatibilityProperties(JsonElement parameters)
     {
         if (RejectUnsupportedCronTimingFields &&
             (parameters.TryGetProperty("activeHours", out _) || parameters.TryGetProperty("idleOnly", out _)))
             throw new FixtureRequestException("INVALID_PARAMS", "Unsupported automation timing property.");
+        // v2026.11.2 closed create/update delivery schemas do not contain target, including null clears.
+        if (RejectUnsupportedCronDeliveryTarget && parameters.TryGetProperty("delivery", out var delivery) &&
+            delivery.ValueKind == JsonValueKind.Object && delivery.TryGetProperty("target", out _))
+            throw new FixtureRequestException("INVALID_PARAMS", "Unsupported automation delivery target.");
     }
 
     private object RunJob(Dictionary<string, JsonObject> jobs, JsonElement p)

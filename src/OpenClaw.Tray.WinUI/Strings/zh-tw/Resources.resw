@@ -7539,6 +7539,9 @@
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>請輸入有效的 IANA 時區、local 或 user。</value>
   </data>
+  <data name="Automations_Error_DeliveryWebManaged" xml:space="preserve">
+    <value>為確保與 Gateway 相容，傳送給擁有者的設定由網頁應用程式管理。請使用「在網頁中開啟」來建立、複製或變更此設定。基本編輯會保留已儲存的路由。</value>
+  </data>
   <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
     <value>請使用「在網頁中開啟」來複製或變更活動時段或等待閒置設定。基本編輯會保留已儲存的設定。</value>
   </data>

@@ -7592,6 +7592,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Insira um fuso horário IANA válido, local ou user.</value>
   </data>
+  <data name="Automations_Error_DeliveryWebManaged" xml:space="preserve">
+    <value>A entrega ao proprietário é gerenciada no aplicativo web para manter a compatibilidade com o Gateway. Use Abrir na web para criar, copiar ou alterar essa entrega. Edições básicas preservam o roteamento salvo.</value>
+  </data>
   <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
     <value>Use Abrir na Web para copiar ou alterar horários ativos ou a espera por inatividade. Edições básicas mantêm as configurações salvas.</value>
   </data>

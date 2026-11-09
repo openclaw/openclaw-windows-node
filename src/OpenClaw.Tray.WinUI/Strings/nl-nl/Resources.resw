@@ -7540,6 +7540,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
     <value>Voer een geldige IANA-tijdzone, local of user in.</value>
   </data>
+  <data name="Automations_Error_DeliveryWebManaged" xml:space="preserve">
+    <value>Bezorging aan de eigenaar wordt voor Gateway-compatibiliteit in de webapp beheerd. Gebruik Openen in web om deze te maken, te kopiëren of te wijzigen. Eenvoudige wijzigingen behouden de opgeslagen routering.</value>
+  </data>
   <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
     <value>Gebruik Openen op het web om actieve uren of wachten tot inactiviteit te kopiëren of wijzigen. Eenvoudige wijzigingen behouden de opgeslagen instellingen.</value>
   </data>
