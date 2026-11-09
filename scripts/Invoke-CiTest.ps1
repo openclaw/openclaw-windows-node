@@ -11,11 +11,19 @@ param(
     [string]$Runtime,
     [string]$Filter,
     [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
-    [switch]$CollectNativeFailureMetadata
+    [switch]$CollectNativeFailureMetadata,
+    [ValidateSet('Unchanged', 'Enabled', 'Disabled')][string]$AnimationPreference = 'Unchanged',
+    [switch]$AllowUserAnimationPreferenceChange,
+    [switch]$RequireAllTestsPassed
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if ($AnimationPreference -ne 'Unchanged' -and
+    -not ($env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted') -and
+    -not $AllowUserAnimationPreferenceChange) {
+    throw 'Changing the native animation preference requires a disposable GitHub-hosted runner or explicit -AllowUserAnimationPreferenceChange.'
+}
 . (Join-Path $PSScriptRoot "TestResultContract.ps1")
 $invocation = New-TestInvocation -ResultsDirectory $ResultsDirectory -TrxFileName $TrxFileName
 $ResultsDirectory = $invocation.directory
@@ -59,33 +67,51 @@ if ($HangTimeoutSeconds -gt 0) {
     ) | ForEach-Object { $testArguments.Add($_) }
 }
 
-$collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
-if ($collectCoverage) {
-    $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
-    & dotnet-coverage collect `
-        --output $coverageOutput `
-        --output-format cobertura `
-        dotnet @testArguments
+$script:testExitCode = $null
+$runTests = {
+    $collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
+    if ($collectCoverage) {
+        $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
+        & dotnet-coverage collect `
+            --output $coverageOutput `
+            --output-format cobertura `
+            dotnet @testArguments
+    } else {
+        & dotnet @testArguments
+    }
+    $script:testExitCode = $LASTEXITCODE
+}
+$projectPath = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Project))
+$projectName = [IO.Path]::GetFileName($projectPath.TrimEnd([char[]]'\/'))
+$isNativeUiProject = $projectName -in @('OpenClaw.Tray.UITests', 'OpenClaw.Tray.UITests.csproj')
+if ($AnimationPreference -ne 'Unchanged' -or $isNativeUiProject) {
+    . (Join-Path $PSScriptRoot 'NativeAnimationPreference.ps1')
+    # The parent survives a failed/crashed testhost and restores the preference before result admission.
+    if ($AnimationPreference -eq 'Unchanged') {
+        Invoke-WithNativeAnimationPreference -PreservePreference -Action $runTests
+    } else {
+        Invoke-WithNativeAnimationPreference -Enabled ($AnimationPreference -eq 'Enabled') -Action $runTests
+    }
 } else {
-    & dotnet @testArguments
+    & $runTests
 }
 
-$testExitCode = $LASTEXITCODE
-if ($testExitCode -ne 0) {
+if ($null -eq $script:testExitCode) { throw 'The test command did not return an exit code.' }
+if ($script:testExitCode -ne 0) {
     if ($CollectNativeFailureMetadata) {
         try {
             . (Join-Path $PSScriptRoot "NativeTestFailureMetadata.ps1")
             Write-CiNativeFailureMetadata -StartedUtc $invocation.startedUtc `
-                -TestCommandExitCode $testExitCode `
+                -TestCommandExitCode $script:testExitCode `
                 -OutputPath (Join-Path $ResultsDirectory "native-failure.json")
         } catch {
             Write-Warning ("Secondary native diagnostic failure ({0}); preserving test exit code {1}." -f
-                $_.Exception.GetType().Name, $testExitCode)
+                $_.Exception.GetType().Name, $script:testExitCode)
         }
     }
-    exit $testExitCode
+    exit $script:testExitCode
 }
-$result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped
+$result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped:(-not $RequireAllTestsPassed)
 Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))
 Write-Host "CI TRX: $($invocation.report)"
 # Ordinary CI retains environment-gated skips. This is not native/custom proof.

@@ -8162,4 +8162,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Systems_Badge_Permission" xml:space="preserve"><value>Autorisation Windows requise</value></data>
   <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Erreur signalée</value></data>
   <data name="Systems_Badge_Join" xml:space="preserve"><value>Souhaite rejoindre</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Retour à l'application</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Échap</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
 </root>

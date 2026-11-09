@@ -93,6 +93,27 @@ backgrounds so `Theme.Ref` fills survive reuse (microsoft/microsoft-ui-reactor#9
 On the `systems-inventory` fixture, switch between machines and confirm that every
 statistics tile keeps its fill and usage meter.
 
+The published preview.17 train also replaces the task-local dialog-theme and
+pooled-Background backports. This is a runtime dependency, not just an API
+upgrade: Systems' Add/Rename/Forget dialogs are side-mounted by Reactor, and
+its feedback, resource tiles and Forget facts use `Theme.Ref` backgrounds.
+Preview.17 includes [ContentDialog theme forwarding](https://github.com/microsoft/microsoft-ui-reactor/pull/1389),
+[host-inherited theme resolution](https://github.com/microsoft/microsoft-ui-reactor/pull/1417),
+[dialog retirement on host disposal](https://github.com/microsoft/microsoft-ui-reactor/pull/1444),
+and [Border background precedence](https://github.com/microsoft/microsoft-ui-reactor/pull/1449)
+with [record-background restoration](https://github.com/microsoft/microsoft-ui-reactor/pull/1450).
+Stock preview.16 is not equivalent to the earlier patched preview.16 outputs.
+
+After integrating a new Windows App SDK, rerun
+`SystemsPageProofTests.AddAndForgetDialogs_ExposeConsequencesAndSafeDefaults`
+in Light and Dark, the stale-epoch Forget regression, and the full Systems
+mounted suite. Also verify current-app dialog theme, retirement during navigation,
+and feedback/resource fills after reconciliation and pooled reuse. Retain the
+shared `PageHeroTests` theme and highlight-background ownership regressions.
+Geometry-only or non-null-brush assertions do not prove the painted theme;
+current visible proof remains required. Earlier package or SDK results are
+historical, not acceptance for the newly integrated dependency graph.
+
 Before release, also exercise repeated session switching
 while a bring-into-view request is pending, using 240 mixed-height messages.
 `GatewayFixtureUiTests.RepeatedSessionSwitchingKeepsNativeTimelineResponsive`
@@ -529,7 +550,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 
 - `src/OpenClaw.Shared/WindowsNodeClient.cs` - Node protocol client
 - `src/OpenClaw.Shared/Capabilities/*.cs` - Capability handlers
-- `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayRegistry.cs` - persistent gateway records
+- `src/OpenClaw.Connection/GatewayRegistry.cs` - persistent gateway records
 - `src/OpenClaw.Connection/GatewayConnectionManager.cs` - public lifecycle façade, operator/state/tunnel orchestration
 - `src/OpenClaw.Connection/NodeConnectionCoordinator.cs` - node generation, start/recovery, connector events, and telemetry
 - `src/OpenClaw.Connection/BootstrapTokenLifecycle.cs` - bootstrap/device-token handoff and durable clear timing

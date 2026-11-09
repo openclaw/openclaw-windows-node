@@ -1,11 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
+// Shared page presentation. Example: PageHero.Header(...), then PageHero.SummaryTiles(...).
 using Microsoft.UI.Reactor;
+using System.Runtime.CompilerServices;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -18,11 +16,6 @@ using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Presentation;
 
-// Shared page-level hero, metrics, and status presentation.
-// Example: PageHero.Header(id, glyph, title, titleId, answer, detail, actions, narrow, reduceMotion)
-//          PageHero.SummaryTiles(id, pageName, tiles, hostWidth, reduceMotion)
-//          PageHero.AttentionBadge(id, text, reason, glyph, tone, reduceMotion)
-//          PageHero.RevealAndHighlight(target, reduceMotion)
 public enum PageHeroTone
 {
     Neutral,
@@ -44,14 +37,15 @@ public sealed record PageHeroTile(
     string? AutomationName = null,
     bool IsEnabled = true);
 
-/// <summary>Shared Fluent hero, summary tiles, attention badges, and reduced-motion-aware page transitions.</summary>
+/// <summary>Shared Fluent hero, summary tiles, attention badges, and reduced-motion-aware transitions.</summary>
 public static class PageHero
 {
     private const double HeaderRadius = 8;
-    private const double TileGap = 12;
+    private const double TileGap = PageResponsiveLayout.GapGroup;
     private const double HighlightDurationMs = 1200;
+    private static readonly ConditionalWeakTable<FrameworkElement, Storyboard> Highlights = new();
 
-    /// <summary>Builds a page hero while leaving all rich text, actions, and accessibility IDs with the caller.</summary>
+    /// <summary>Builds a hero; callers own localized text, actions, accessibility IDs and page state.</summary>
     public static Element Header(
         string automationId,
         string glyph,
@@ -79,8 +73,8 @@ public static class PageHero
             detailLine ?? Empty(),
             captionLine ?? Empty());
         var animatedActions = WithMotion(
-            Grid([GridSize.Auto], [GridSize.Auto], actions),
-            reducedMotion);
+            Grid([GridSize.Auto], [GridSize.Auto], actions), reducedMotion);
+        // Change placement, not ancestry, so actions retain native focus and flyout state.
         var content = WithMotion(Grid(
             [GridSize.Px(48), GridSize.Star(), GridSize.Auto],
             [GridSize.Auto, GridSize.Auto],
@@ -98,15 +92,12 @@ public static class PageHero
         var hero = Border(Grid([GridSize.Star()], [GridSize.Star()], AccentWash(highContrast), content))
             .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
             .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-            .BorderThickness(1)
-            .CornerRadius(HeaderRadius)
-            .AutomationName(title)
-            .AutomationId(automationId);
-
+            .BorderThickness(1).CornerRadius(HeaderRadius)
+            .AutomationName(title).AutomationId(automationId);
         return WithMotion(hero, reducedMotion);
     }
 
-    /// <summary>Builds two to four responsive, accessible summary tiles. Width is the page host width in DIPs.</summary>
+    /// <summary>Builds two to four tiles. Width is the page host width in DIPs; pageName is localized.</summary>
     public static Element SummaryTiles(
         string automationId,
         string pageName,
@@ -138,11 +129,10 @@ public static class PageHero
 
         return WithMotion(Grid(Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
                 Enumerable.Repeat(GridSize.Auto, rows).ToArray(), children.ToArray())
-            .AutomationName($"{pageName} summary")
-            .AutomationId(automationId), reducedMotion);
+            .AutomationName(pageName).AutomationId(automationId), reducedMotion);
     }
 
-    /// <summary>Builds a compact failure or auto-disabled badge. A stable key lets recycled rows avoid replaying entry motion.</summary>
+    /// <summary>Builds an accessible status badge with a stable reconciliation key.</summary>
     public static Element AttentionBadge(
         string automationId,
         string text,
@@ -157,23 +147,18 @@ public static class PageHero
                 Glyph(glyph, 12, glyphForeground),
                 TextBlock(text).FontSize(12).FontWeight(FontWeights.SemiBold)
                     .Foreground(textForeground).TextWrapping(TextWrapping.NoWrap)))
-            .Height(20)
-            .Padding(8, 0)
-            .CornerRadius(10)
-            .Background(background)
+            .Height(20).Padding(8, 0).CornerRadius(10).Background(background)
             .ToolTip(accessibleReason)
             .AutomationName(string.IsNullOrWhiteSpace(accessibleReason) ? text : $"{text}. {accessibleReason}")
-            .ItemStatus(accessibleReason)
-            .AutomationId(automationId);
-        var keyedBadge = badge.WithKey(reconciliationKey ?? automationId);
-        // Reactor plays this only when the keyed element enters or leaves the tree.
+            .ItemStatus(accessibleReason).AutomationId(automationId)
+            .WithKey(reconciliationKey ?? automationId);
         return AnimationsEnabled(reducedMotion)
-            ? keyedBadge.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade,
+            ? badge.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade,
                 Microsoft.UI.Reactor.Animation.Curve.Ease(160, Microsoft.UI.Reactor.Animation.Easing.Decelerate))
-            : keyedBadge;
+            : badge;
     }
 
-    /// <summary>Applies shared entrance, reflow, and exit transitions to a caller-owned container.</summary>
+    /// <summary>Applies entrance, reflow and exit transitions to a caller-owned container.</summary>
     public static Element WithMotion(Element element, bool reducedMotion, bool staggerChildren = true)
     {
         ArgumentNullException.ThrowIfNull(element);
@@ -200,41 +185,58 @@ public static class PageHero
     public static void RevealAndHighlight(FrameworkElement target, bool reducedMotion)
     {
         ArgumentNullException.ThrowIfNull(target);
+        StopHighlight(target);
         var animate = AnimationsEnabled(reducedMotion);
         target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = animate });
-        FindFocusable(target)?.Focus(FocusState.Programmatic);
+        TryFocus(target);
         if (!animate || new AccessibilitySettings().HighContrast) return;
-
-        var original = GetBackground(target);
-        if (original is null) return;
+        if (GetBackground(target) is null) return;
         var accent = FunctionalTheme.ResolveColor("AccentFillColorDefault", target.ActualTheme);
         var highlight = new SolidColorBrush(Color.FromArgb(0x2E, accent.R, accent.G, accent.B));
-        SetBackground(target, highlight);
-
+        var duration = TimeSpan.FromMilliseconds(HighlightDurationMs);
+        // Animation precedence leaves the underlying style, resource expression or binding intact.
+        var background = new ObjectAnimationUsingKeyFrames
+        {
+            Duration = duration,
+            FillBehavior = FillBehavior.Stop,
+        };
+        background.KeyFrames.Add(new DiscreteObjectKeyFrame { KeyTime = TimeSpan.Zero, Value = highlight });
+        Storyboard.SetTarget(background, target);
+        Storyboard.SetTargetProperty(background, nameof(Control.Background));
         var animation = new DoubleAnimation
         {
             From = 1,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(HighlightDurationMs),
+            Duration = duration,
         };
         var storyboard = new Storyboard();
+        Highlights.Add(target, storyboard);
         Storyboard.SetTarget(animation, highlight);
         Storyboard.SetTargetProperty(animation, nameof(Brush.Opacity));
+        storyboard.Children.Add(background);
         storyboard.Children.Add(animation);
-        storyboard.Completed += (_, _) => RestoreBackgroundIfCurrent(target, highlight, original);
+        storyboard.Completed += (_, _) =>
+        {
+            if (Highlights.TryGetValue(target, out var current) && ReferenceEquals(current, storyboard))
+                StopHighlight(target);
+        };
         storyboard.Begin();
+    }
+
+    private static void StopHighlight(FrameworkElement target)
+    {
+        if (!Highlights.TryGetValue(target, out var storyboard)) return;
+        Highlights.Remove(target);
+        storyboard.Stop();
     }
 
     private static Element AccentWash(bool highContrast)
     {
         if (highContrast) return Empty();
-        var wash = Border(Empty())
-            .CornerRadius(HeaderRadius)
+        return Border(Empty()).CornerRadius(HeaderRadius)
             .Set(native => FunctionalTheme.EnsureThemeCallback(native, () => native.Background = AccentGradient(native.ActualTheme)))
-            .IsHitTestVisible(false)
-            .AccessibilityView(AccessibilityView.Raw)
+            .IsHitTestVisible(false).AccessibilityView(AccessibilityView.Raw)
             .AutomationId("PageHeroAccentWash");
-        return wash;
     }
 
     private static void ConfigureMotion(FrameworkElement native, bool reducedMotion, bool staggerChildren)
@@ -263,10 +265,7 @@ public static class PageHero
                         new EntranceThemeTransition { IsStaggeringEnabled = true },
                         new AddDeleteThemeTransition(),
                     }
-                    : new TransitionCollection
-                    {
-                        new AddDeleteThemeTransition(),
-                    };
+                    : new TransitionCollection { new AddDeleteThemeTransition() };
             }
         }
         else if (panel.ChildrenTransitions is not { Count: 0 })
@@ -290,37 +289,26 @@ public static class PageHero
             TextBlock(tile.Value).FontSize(20).FontWeight(FontWeights.SemiBold)
                 .Foreground(!highContrast && tile.Tone == PageHeroTone.Critical ? foreground : Theme.PrimaryText)
                 .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2));
-        var content = Grid([GridSize.Px(48), GridSize.Star()], [GridSize.Auto],
-            icon.Grid(column: 0).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top),
-            copy.Grid(column: 1).VAlign(VerticalAlignment.Center));
         var name = tile.AutomationName ?? $"{tile.Label}: {tile.Value}";
-
-        if (tile.OnInvoked is null)
-            return Border(content)
-                .Padding(16, 14)
-                .CornerRadius(8)
-                .Background(Theme.CardBackground)
-                .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-                .BorderThickness(1)
-                .AutomationName(name)
-                .AutomationId(tile.AutomationId);
-
-        var buttonContent = Grid([GridSize.Px(48), GridSize.Star(), GridSize.Px(16)], [GridSize.Auto],
+        var content = Grid(
+            tile.OnInvoked is null
+                ? [GridSize.Px(48), GridSize.Star()]
+                : [GridSize.Px(48), GridSize.Star(), GridSize.Px(16)],
+            [GridSize.Auto],
             icon.Grid(column: 0).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top),
             copy.Grid(column: 1).VAlign(VerticalAlignment.Center),
-            Glyph("\uE76C", 12, Theme.SecondaryText).Center().Grid(column: 2).VAlign(VerticalAlignment.Center));
-        return Button(buttonContent, tile.OnInvoked)
-            .Padding(16, 14)
-            .HAlign(HorizontalAlignment.Stretch)
-            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .CornerRadius(8)
-            .Background(Theme.CardBackground)
-            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-            .BorderThickness(1)
-            .IsEnabled(tile.IsEnabled)
-            .ToolTip(name)
-            .AutomationName(name)
-            .AutomationId(tile.AutomationId);
+            tile.OnInvoked is null ? Empty()
+                : Glyph("\uE76C", 12, Theme.SecondaryText).Center().Grid(column: 2));
+        if (tile.OnInvoked is null)
+            return Border(content).Padding(16, 14).CornerRadius(8)
+                .Background(Theme.CardBackground).BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
+                .BorderThickness(1).AutomationName(name).AutomationId(tile.AutomationId);
+
+        return Button(content, tile.OnInvoked).Padding(16, 14)
+            .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .CornerRadius(8).Background(Theme.CardBackground)
+            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush")).BorderThickness(1)
+            .IsEnabled(tile.IsEnabled).ToolTip(name).AutomationName(name).AutomationId(tile.AutomationId);
     }
 
     private static (ThemeRef Foreground, ThemeRef Background) Tone(PageHeroTone tone) => tone switch
@@ -364,16 +352,18 @@ public static class PageHero
 
     private static TextBlockElement Glyph(string glyph, double size, ThemeRef foreground) =>
         TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-            .FontSize(size).Foreground(foreground)
-            .AccessibilityView(AccessibilityView.Raw)
+            .FontSize(size).Foreground(foreground).AccessibilityView(AccessibilityView.Raw)
             .VAlign(VerticalAlignment.Center);
 
-    private static Control? FindFocusable(DependencyObject root)
+    private static bool TryFocus(DependencyObject root)
     {
-        if (root is Control { IsEnabled: true, IsTabStop: true } control) return control;
+        if (root is UIElement { Visibility: Visibility.Collapsed }) return false;
+        if (root is Control { IsEnabled: true, IsTabStop: true } control
+            && control.Focus(FocusState.Programmatic))
+            return true;
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-            if (FindFocusable(VisualTreeHelper.GetChild(root, index)) is { } child) return child;
-        return null;
+            if (TryFocus(VisualTreeHelper.GetChild(root, index))) return true;
+        return false;
     }
 
     private static Brush? GetBackground(FrameworkElement target) => target switch
@@ -383,18 +373,4 @@ public static class PageHero
         _ => null,
     };
 
-    private static void SetBackground(FrameworkElement target, Brush? brush)
-    {
-        switch (target)
-        {
-            case Control control: control.Background = brush; break;
-            case Border border: border.Background = brush; break;
-        }
-    }
-
-    private static void RestoreBackgroundIfCurrent(FrameworkElement target, Brush current, Brush? original)
-    {
-        if (ReferenceEquals(GetBackground(target), current))
-            SetBackground(target, original);
-    }
 }

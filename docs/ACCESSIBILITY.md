@@ -26,6 +26,21 @@ names directly to the standard error stream. This bypasses per-test console
 buffering that can lose the last diagnostic on native fail-fast. Exception messages,
 data, file paths and locals are not included, and exceptions remain unhandled.
 
+Failure diagnostics retain rule IDs, bounded rule descriptions and canonical
+control types with scan-result ordinals. They omit UIA names, automation IDs
+(which can be data-derived), arbitrary properties and desktop focus state.
+Only the first 20 violations are printed; the total count remains visible.
+Missing or inconsistent scan metadata fails validation, including incomplete
+results for excluded rules. Test-authored context labels are bounded to 128
+characters; use static page/scenario labels, never user content.
+
+The data-only `FullyQualifiedName~AxeHelperTests` filter exercises failure
+reporting and the one-retry workflow without launching Companion or a native UI
+fixture. Scripted scan results and a small UI Automation adapter cover refusal
+for missing automation IDs, foreign processes, missing/offscreen/empty elements,
+and incomplete results, including the second scan. These tests do not replace
+real accessibility scans or prove native UI Automation behavior.
+
 ## Running locally
 
 From the repository root:
@@ -82,20 +97,21 @@ pairing.
 
 ### Settings navigation keyboard contract
 
-The Settings pane toggle exposes **Expand navigation** or **Collapse navigation**
-according to its state. Escape closes an expanded pane only while focus is in
-its navigation controls and returns focus to the toggle. Page controls keep
-their own Escape behavior; native search flyouts, menus and ContentDialogs
-handle dismissal before the shell. Collapsing the pane does not change the page.
-`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`
-checks the mounted Settings boundary in Light and Dark themes.
+Back to app and an unhandled Escape leave full Settings for the retained app
+destination. Window-owned `SettingsEscapePolicy` preserves native editors,
+flyouts, menus and dialogs as the first Escape owners; it does not collapse the
+Settings rail. The pane toggle retains the user's saved preference.
+`WorkspaceWindowProofTests.SettingsBackToApp_ReturnsToAppDestinationInSameWindow`
+covers mouse, Enter and Escape activation, retained chat and notification focus.
+`WorkspaceNavigationTests.SettingsEscape_LeavesFullSettingsOnlyWhenNothingElseOwnsEscape`
+covers the policy exclusions.
 
 Workspace still has an 800-DIP minimum width. The below-720-DIP rail is not a
-supported window-size claim. `WorkspaceSettingsLayout` uses the host window
-width, not an embedded page's smaller content width, and prepares compact
-Settings navigation without the Chat sidebar. Narrow expansion is temporary;
-returning to wide restores the saved pane preference and requested embedding.
-This branch is unreachable through normal resizing while the minimum remains 800.
+supported window-size claim. Width-driven shell embedding and temporary narrow
+rail preferences are superseded by the canonical shared foundation. Page-owned
+responsive layouts still use their allocated content width.
+`SettingsPageInsetTests.Shell_DeliversFullAndEmbeddedInsetsWithoutMovingBackdropOrReplacingContent`
+covers the optional content inset and preserves ordinary pages' existing padding.
 
 The integrated Config, Local AI, Default Model, Voice, Notifications, Event
 Stream and Diagnostics source adapts to allocated width after rail/sidebar

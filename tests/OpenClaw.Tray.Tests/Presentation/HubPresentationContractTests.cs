@@ -4,6 +4,63 @@ namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class HubPresentationContractTests
 {
+    [Theory]
+    [InlineData("Pages", "NotificationsPage.xaml.cs", "private void OnNotificationActionClick")]
+    [InlineData("Controls", "SettingsShellView.xaml.cs", "private void OnAppNotificationActionButtonClick")]
+    public void NotificationActions_UseAdmissionWithoutPublishingPendingChatIntent(
+        string folder, string file, string handler)
+    {
+        var source = ReadSource(folder, file);
+        var start = source.IndexOf(handler, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var end = source.IndexOf("\n    private ", start + handler.Length, StringComparison.Ordinal);
+        var action = end < 0 ? source[start..] : source[start..end];
+
+        Assert.Contains("notifications.NavigateActionAsync(", action);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", action);
+        Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync", action);
+        Assert.DoesNotContain("PendingChatSessionKey", action);
+        Assert.DoesNotContain(".Dismiss(", action);
+    }
+
+    [Fact]
+    public void NotificationAdmission_PreservesAboutIdentityAndAwaitsDashboardLaunchResult()
+    {
+        var view = ReadSource("Controls", "SettingsShellView.xaml.cs");
+        var shown = view[view.IndexOf("internal bool IsSectionShown", StringComparison.Ordinal)..
+            view.IndexOf("internal string? CurrentSectionTag", StringComparison.Ordinal)];
+        Assert.Contains("_currentNavTag == tag", shown);
+        Assert.DoesNotContain("\"settings\"", shown);
+        var section = view[view.IndexOf("internal void ShowSection(", StringComparison.Ordinal)..
+            view.IndexOf("internal void Deactivate()", StringComparison.Ordinal)];
+        Assert.Contains("NavigateInternal(tag)", section);
+        Assert.DoesNotContain("\"about\"", section);
+
+        var manager = ReadSource("Services", "WindowManager.cs");
+        Assert.Contains("return WorkspaceNavigation.DispatchAsync(navigateTo", manager);
+        Assert.Contains("path => ((IAppCommands)Application.Current).TryOpenDashboardAsync(path)", manager);
+        var app = ReadSource("", "App.xaml.cs");
+        Assert.Contains("return launcher.OpenAsync(path)", app);
+        Assert.Contains("_windowManager?.TryShowHubAsync(pageTag, chatSessionKey)", app);
+    }
+
+    [Fact]
+    public void NavigationAdmission_RejectsDeferredAndUnmountedDestinations()
+    {
+        var workspace = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
+        var start = workspace.IndexOf("internal bool TryNavigate(", StringComparison.Ordinal);
+        var end = workspace.IndexOf("internal void OpenCompanion(", start, StringComparison.Ordinal);
+        var admission = workspace[start..end];
+        Assert.Contains("if (IsClosed) return false;", admission);
+        Assert.Matches(@"DeferWhileModalOpen\([^\r\n]+\)\)\s+return false;", admission);
+        Assert.Contains("Root.XamlRoot is not null && Destination == destination", admission);
+        Assert.Contains("_settings?.IsSectionShown(", admission);
+        var manager = ReadSource("Services", "WindowManager.cs");
+        Assert.Contains("chatSessionKey, usePendingChatSession: false", manager);
+        Assert.Contains("admitted = _workspaceWindow.TryNavigate(destination)", manager);
+        Assert.Contains("admitted = _workspaceWindow.TryOpenSettings(settingsTag)", manager);
+    }
+
     [Fact]
     public void SearchPopup_HasNoFooterOrVisibleStatusBlock_AndKeepsActionsBesideInput()
     {

@@ -36,8 +36,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsController.cs" Link="Systems\SystemsController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsLayout.cs" Link="Systems\SystemsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsViewport.cs" Link="Systems\SystemsViewport.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PageResponsiveLayout.cs" Link="Presentation\PageResponsiveLayout.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSettingsLayout.cs" Link="Presentation\WorkspaceSettingsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatTimelineReducer.cs" Link="Chat\ChatTimelineReducer.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\NativeGatewayEmphasisRanges.cs" Link="NativeGatewayEmphasisRanges.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\LogFileLauncher.cs" Link="Setup\LogFileLauncher.cs" />
@@ -300,6 +298,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchCatalog.cs" Link="Presentation\HubSearchCatalog.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchController.cs" Link="Presentation\HubSearchController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PageResponsiveLayout.cs" Link="Presentation\PageResponsiveLayout.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSettingsLayout.cs" Link="Presentation\WorkspaceSettingsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />

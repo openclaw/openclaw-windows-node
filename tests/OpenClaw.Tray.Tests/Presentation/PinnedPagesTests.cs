@@ -362,10 +362,10 @@ public sealed class PinnedPagesTests
         Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
         var operation = window[window.IndexOf("private void ShowOperation(", StringComparison.Ordinal)..];
         operation = operation[..operation.IndexOf("private void OnEmbeddedOperationClosed(", StringComparison.Ordinal)];
-        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && _settings is { ContentOnly: true }", operation);
+        Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", operation);
         Assert.Contains("EmbeddedOperationInfo.Severity = severity", operation);
         Assert.Contains("EmbeddedOperationInfo.Message = message", operation);
-        Assert.DoesNotContain("Destination.Embedded", operation);
+        Assert.DoesNotContain("_settings is { ContentOnly: true }", operation);
         Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);

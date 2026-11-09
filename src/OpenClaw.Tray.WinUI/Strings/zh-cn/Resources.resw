@@ -8162,4 +8162,13 @@
   <data name="Systems_Badge_Permission" xml:space="preserve"><value>需要 Windows 权限</value></data>
   <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>已报告错误</value></data>
   <data name="Systems_Badge_Join" xml:space="preserve"><value>请求加入</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>返回应用</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>设置</value>
+  </data>
 </root>
