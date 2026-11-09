@@ -412,11 +412,16 @@ that scope; hosted cross-process and unknown providers retain their rule checks.
 Do not treat a `ProviderDescription` PID as the element's owning process: it can
 identify the client-side proxy. Accessibility failures are saved and asserted
 after the behavior sequence so they do not prevent remaining popup/toast captures.
-Per-violation diagnostics record the client PID, native ownership, exact runtime
-identity, editor ancestry and child content. The only empty-proxy exception is
-`BoundingRectangleNotNull` on a nameless, untyped zero-size nested/HWND proxy
-whose exact live peer is proven to contain no content. Named, typed, hosted-content
-and unresolved peers retain their checks, as do all other rules.
+Diagnostics are bounded and sanitized: scan/item ordinals, rule identifiers,
+process/window ownership, scope decisions, fixed reasons and numeric geometry or
+scroll state. They do not log names, raw property/provider dumps, editor ancestry
+or child content. Scope filtering follows scan metadata/count validation and
+never excludes incomplete results. It excludes only positively identified
+unhosted foreign windows or a verified owned scroll-viewport edge clip for
+`BoundingRectangleSizeReasonable`; unknown ownership or geometry retains the check.
+The empty-proxy predicate remains covered by unit tests but is inactive in live
+scans: content absence is unknown, so no `BoundingRectangleNotNull` violation is
+excluded as an empty proxy.
 `AutomationsResponsiveLayoutTests` separately mounts the real Reactor page at
 page-host widths 1400, 1000, 937, 760 and 520 DIPs, with a synthetic Gateway socket.
 It checks responsive column/row counts, horizontal bounds, one-row mast actions,
