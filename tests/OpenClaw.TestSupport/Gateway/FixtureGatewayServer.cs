@@ -38,6 +38,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     /// </summary>
     public const int OwnerAvatarRgb = 0x2ECC40;
 
+    public const string InboxLostAckApprovalId = "fixture-inbox-lost-ack";
+    private bool _dropInboxApprovalAcknowledgement;
+
     private const string AvatarRoutePrefix = "/api/users/";
     private const string AvatarRouteSuffix = "/avatar";
     private const int MaximumRequestHeadBytes = 16 * 1024;
@@ -57,6 +60,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly List<int> _unexpectedIndices = [];
     private readonly HashSet<int> _subscriptions = [];
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _issuedPluginApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
@@ -537,6 +541,119 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Drops only the next accepted acknowledgement for the fixed Inbox proof approval.
+    /// Call after PublishExecApprovalRequestedAsync. Invalid decisions do not consume the fault.
+    /// </summary>
+    public void DropInboxApprovalAcknowledgement()
+    {
+        lock (_sync)
+        {
+            if (!_scenario.ReadMethods.Contains("exec.approval.resolve", StringComparer.Ordinal) ||
+                !_issuedApprovalIds.Contains(InboxLostAckApprovalId) || _dropInboxApprovalAcknowledgement)
+                throw new InvalidOperationException("The issued Inbox approval-review request is required.");
+            _dropInboxApprovalAcknowledgement = true;
+        }
+    }
+
+    private static readonly TimeSpan DefaultApprovalLifetime = TimeSpan.FromMinutes(5);
+
+    /// <summary>Publishes the canonical pending event that the operator decision owner observes.</summary>
+    public Task PublishExecApprovalRequestedAsync(string sessionKey, string approvalId, string command,
+        TimeSpan? lifetime = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        ArgumentNullException.ThrowIfNull(command);
+        if (string.IsNullOrEmpty(approvalId) || approvalId.Length > 64 ||
+            !approvalId.StartsWith("fixture-", StringComparison.Ordinal))
+            throw new ArgumentException("A bounded fixture approval id is required.", nameof(approvalId));
+        var created = DateTimeOffset.UtcNow;
+        lock (_sync)
+            _issuedApprovalIds.Add(approvalId);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "exec.approval.requested",
+            payload = new
+            {
+                id = approvalId, request = new { command, sessionKey, host = "gateway" },
+                createdAtMs = created.ToUnixTimeMilliseconds(),
+                expiresAtMs = created.Add(lifetime ?? DefaultApprovalLifetime).ToUnixTimeMilliseconds(),
+            },
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Publishes a canonical plugin approval for mounted Inbox review, only in CreateApprovalReview.
+    /// IDs remain bounded fixture-owned identities; decisions are fixed and no plugin is executed.
+    /// Optional scope is producer data, including explicitly adversarial test inputs, not a
+    /// fixture reviewability decision. Scoped requests include the required plugin description.
+    /// </summary>
+    public async Task PublishPluginApprovalRequestedAsync(string approvalId, string title, string detail,
+        string? warningText = null, CancellationToken cancellationToken = default, JsonElement? scope = null)
+    {
+        if (!_scenario.ReadMethods.Contains("plugin.approval.resolve", StringComparer.Ordinal))
+            throw new InvalidOperationException("Plugin approval publication requires the approval-review fixture.");
+        if (approvalId is not { Length: <= 64 } ||
+            !approvalId.StartsWith("fixture-inbox-plugin-", StringComparison.Ordinal))
+            throw new ArgumentException("A bounded Inbox fixture approval id is required.", nameof(approvalId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentNullException.ThrowIfNull(detail);
+        var targets = AcquireConnections(onlyOpen: true);
+        try
+        {
+            if (targets.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
+            var created = DateTimeOffset.UtcNow;
+            lock (_sync)
+                if (!_issuedPluginApprovalIds.Add(approvalId))
+                    throw new InvalidOperationException("The fixture plugin approval is already pending.");
+            try
+            {
+                var request = new Dictionary<string, object?>
+                {
+                    ["title"] = title, ["detail"] = detail, ["warningText"] = warningText,
+                    ["sessionKey"] = GatewayScenario.MainSessionKey,
+                    ["allowedDecisions"] = new[] { "allow-once", "deny" },
+                };
+                if (scope is { } suppliedScope)
+                {
+                    request["scope"] = suppliedScope;
+                    request["description"] = "Review the complete fixture scope before deciding.";
+                    if (warningText is null) request.Remove("warningText");
+                }
+                await PublishEventAsync(targets, new
+                {
+                    type = "event", @event = "plugin.approval.requested",
+                    payload = new
+                    {
+                        id = approvalId, request,
+                        createdAtMs = created.ToUnixTimeMilliseconds(),
+                        expiresAtMs = created.Add(DefaultApprovalLifetime).ToUnixTimeMilliseconds(),
+                    },
+                }, cancellationToken);
+            }
+            catch
+            {
+                lock (_sync) _issuedPluginApprovalIds.Remove(approvalId);
+                throw;
+            }
+        }
+        finally { ReleaseConnections(targets); }
+    }
+
+    /// <summary>Retires an issued fixture approval and broadcasts the canonical resolved event.</summary>
+    public Task PublishExecApprovalResolvedAsync(string sessionKey, string approvalId, string decision,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_sync)
+            _issuedApprovalIds.Remove(approvalId);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "exec.approval.resolved",
+            payload = new { id = approvalId, decision, request = new { sessionKey } },
+        }, cancellationToken);
+    }
+
     /// <summary>One canonical top-level exec request for the read-only Inbox scenario.
     /// The authenticated transport is unchanged. This never issues a resolvable approval ID.</summary>
     public async Task PublishInboxFeedApprovalAsync(CancellationToken cancellationToken = default)
@@ -872,16 +989,18 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         try
         {
             object payload;
+            var dropAcknowledgement = false;
             try
             {
                 if (parameters.ValueKind != JsonValueKind.Object)
                     throw new FixtureRequestException("INVALID_PARAMS", "params must be an object.");
-                if (method == "exec.approval.resolve" && Interactive is null)
+                if ((method is "exec.approval.resolve" or "plugin.approval.resolve") && Interactive is null)
                 {
                     var approvalId = ReadString(parameters, "id");
                     lock (_sync)
                     {
-                        if (approvalId is null || !_issuedApprovalIds.Contains(approvalId))
+                        var issued = method == "plugin.approval.resolve" ? _issuedPluginApprovalIds : _issuedApprovalIds;
+                        if (approvalId is null || !issued.Contains(approvalId))
                             throw new FixtureRequestException(
                                 "INVALID_PARAMS",
                                 "Approval ID was not issued by the fixture.");
@@ -906,15 +1025,21 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
                         Interactive is null ? null : Interactive.ContainsSession);
-                if (method == "exec.approval.resolve" && Interactive is null)
+                if ((method is "exec.approval.resolve" or "plugin.approval.resolve") && Interactive is null)
                 {
                     var approvalId = ReadString(parameters, "id");
                     lock (_sync)
                     {
-                        if (approvalId is null || !_issuedApprovalIds.Remove(approvalId))
+                        var issued = method == "plugin.approval.resolve" ? _issuedPluginApprovalIds : _issuedApprovalIds;
+                        if (approvalId is null || !issued.Remove(approvalId))
                             throw new FixtureRequestException(
                                 "INVALID_PARAMS",
                                 "Approval ID was already consumed by the fixture.");
+                        if (method == "exec.approval.resolve" && approvalId == InboxLostAckApprovalId && _dropInboxApprovalAcknowledgement)
+                        {
+                            _dropInboxApprovalAcknowledgement = false;
+                            dropAcknowledgement = true;
+                        }
                     }
                 }
             }
@@ -932,6 +1057,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 Complete(requestIndex, "error:INTERNAL", unexpected: true);
                 await SendErrorAsync(socket, sendLock, id, "INTERNAL", "Interactive fixture failed. Check fixture playback diagnostics.", cancellationToken);
+                return;
+            }
+            if (dropAcknowledgement)
+            {
+                // The fixture already validated and consumed the approval above. Only the outbound
+                // acknowledgement is lost: keep the socket healthy and let the real client time out.
+                Complete(requestIndex, "accepted:ack-dropped");
                 return;
             }
             if (method == "sessions.subscribe")
@@ -1052,7 +1184,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static string? SafeApprovalDecision(string method, JsonElement parameters)
     {
-        if (method != "exec.approval.resolve")
+        if (method is not ("exec.approval.resolve" or "plugin.approval.resolve"))
             return null;
         var decision = ReadString(parameters, "decision");
         return decision is "allow-once" or "allow-always" or "deny"
@@ -1062,7 +1194,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
     private static string? SafeApprovalId(string method, JsonElement parameters)
     {
-        if (method != "exec.approval.resolve")
+        if (method is not ("exec.approval.resolve" or "plugin.approval.resolve"))
             return null;
         var approvalId = ReadString(parameters, "id");
         return approvalId is { Length: <= 64 } && approvalId.StartsWith("fixture-", StringComparison.Ordinal)

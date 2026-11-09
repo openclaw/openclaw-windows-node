@@ -140,6 +140,13 @@ public sealed class OpenClawChatCoordinator : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sends the chat banner's exec approval decisions through the app's single decision owner
+    /// (<see cref="OperatorApprovalDecisions"/>). Set before an operator client is attached.
+    /// </summary>
+    internal Func<IOperatorGatewayClient, string, string?, string, Task>? ResolveExecApproval { get; set; }
+    internal Func<string, bool>? IsApprovalDecisionUncertain { get; set; }
+
     public void SetOperatorClient(OpenClawGatewayClient? client)
     {
         OpenClawChatDataProvider? oldProvider;
@@ -160,7 +167,9 @@ public sealed class OpenClawChatCoordinator : IDisposable
             return;
         }
 
-        var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post);
+        var newProvider = new OpenClawChatDataProvider(
+            new GatewayClientChatBridge(client, resolveExecApproval: ResolveExecApproval), _post)
+        { IsApprovalDecisionUncertain = IsApprovalDecisionUncertain };
         lock (_gate)
         {
             if (_disposed)
