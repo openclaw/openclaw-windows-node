@@ -317,6 +317,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\InboxGatewayItems.cs" Link="Presentation\InboxGatewayItems.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\InboxGatewaySource.cs" Link="Services\InboxGatewaySource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\InboxFeed.cs" Link="Services\InboxFeed.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OperatorApprovalDecisions.cs" Link="Services\OperatorApprovalDecisions.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ApprovalToastPresenter.cs" Link="Services\ApprovalToastPresenter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ApprovalToastPlan.cs" Link="Presentation\ApprovalToastPlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>

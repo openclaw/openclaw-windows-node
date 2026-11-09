@@ -7875,8 +7875,15 @@
   <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，直到撤銷（可撤銷）</value></data>
   <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>「一律允許」會為「{0}」執行此確切命令而不再詢問，持續 {1} 天（可撤銷）</value></data>
   <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>透過 {1} 傳送給 {0} 位收件者</value></data>
+  <data name="Inbox_ApprovalScopeRecipientsFormat" xml:space="preserve"><value>列出的收件者：
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeNoRecipientsListed" xml:space="preserve"><value>未列出</value></data>
+  <data name="Inbox_ApprovalScopeAudienceFormat" xml:space="preserve"><value>對象：{0}</value></data>
   <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>向 {2} 支付 {0} {1}</value></data>
   <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>對外發布到 {0}</value></data>
+  <data name="Inbox_ApprovalScopeCommandFormat" xml:space="preserve"><value>命令：
+{0}</value></data>
+  <data name="Inbox_ApprovalScopeVisibilityFormat" xml:space="preserve"><value>可見性：{0}</value></data>
   <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>帳戶需要處理：{0}</value></data>
   <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>需要登入</value></data>
   <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API 金鑰需要處理</value></data>
@@ -7884,6 +7891,22 @@
   <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>登入</value></data>
   <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>更新 API 金鑰</value></data>
   <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>檢視帳戶</value></data>
+  <data name="Inbox_ApprovalAllowOnce" xml:space="preserve"><value>允許一次</value></data>
+  <data name="Inbox_ApprovalAllowAlways" xml:space="preserve"><value>一律允許</value></data>
+  <data name="Inbox_ApprovalDeny" xml:space="preserve"><value>拒絕</value></data>
+  <data name="Inbox_ApprovalDecisions" xml:space="preserve"><value>核准決定</value></data>
+  <data name="Inbox_ApprovalNoPermission" xml:space="preserve"><value>你需要核准權限才能核准。</value></data>
+  <data name="Inbox_ApprovalNoCommand" xml:space="preserve"><value>未包含命令</value></data>
+  <data name="Inbox_ApprovalMissingCommand" xml:space="preserve"><value>此核准未包含命令，因此只能拒絕。</value></data>
+  <data name="Inbox_ApprovalUnreviewableCommand" xml:space="preserve"><value>此核准無法完整顯示，因此只能拒絕。</value></data>
+  <data name="Inbox_ApprovalDecisionFailed" xml:space="preserve"><value>無法確認你的決定。請先檢查其狀態，再重試。</value></data>
+  <data name="Inbox_ApprovalNoLongerPending" xml:space="preserve"><value>此核准已不再等待決定。</value></data>
+  <data name="Inbox_ApprovalDecisionUnavailable" xml:space="preserve"><value>此核准不提供該決定。</value></data>
+  <data name="Toast_ApprovalReview" xml:space="preserve"><value>檢閱</value></data>
+  <data name="Chat_Permission_NoApprovalAccess" xml:space="preserve"><value>你需要核准權限才能核准。</value></data>
+  <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>無法在此應用程式中處理此要求。</value></data>
+  <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>在此電腦上執行</value></data>
+  <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>無法確認此決定。在結果明確之前，將禁止傳送其他決定。</value></data>
   <data name="SettingsShell_BackToApp" xml:space="preserve">
     <value>返回應用程式</value>
   </data>

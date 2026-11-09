@@ -1,7 +1,8 @@
 // The Inbox list shared by the footer bell flyout and the full Inbox page: tabs,
-// action-first rows that expand in place, "Dismiss shown", the empty state and the
-// notification settings shortcut. Data comes from InboxFeed (app notifications plus
-// live Gateway facts); navigation and "Ask OpenClaw" are supplied by the hosting window.
+// action-first rows that expand in place, approval decisions (Allow once / Always allow /
+// Deny, sent through InboxFeed to OperatorApprovalDecisions), "Dismiss shown", the empty
+// state and the notification settings shortcut. Data comes from InboxFeed (app notifications
+// plus live Gateway facts); navigation and "Ask OpenClaw" are supplied by the hosting window.
 //
 // Usage:
 //   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
@@ -240,19 +241,68 @@ public sealed partial class InboxView : UserControl
         }
 
         // Navigation for a Gateway fact never dismisses or decides the underlying item.
-        item.OpenAction(commands.OpenRoute, commands.OpenDashboard);
+        if (!string.IsNullOrWhiteSpace(item.ActionRoute))
+            commands.OpenRoute(item.ActionRoute);
     }
 
     private void OnSecondaryActionClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: InboxItemViewModel { SecondaryActionRoute: { Length: > 0 } route } })
-            _commands?.OpenRoute(route);
+        if (sender is FrameworkElement { Tag: InboxItemViewModel item } && _commands is { } commands)
+            item.OpenSecondaryAction(commands.OpenRoute, commands.OpenDashboard);
     }
 
     private void OnAskClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: InboxItemViewModel { AskQuestion: { Length: > 0 } question } })
             _commands?.AskOpenClaw?.Invoke(question);
+    }
+
+    private void OnAllowOnceClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.AllowOnce);
+
+    private void OnAllowAlwaysClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.AllowAlways);
+
+    private void OnDenyClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.Deny);
+
+    // A sent or already-resolved decision removes the row through the feed; anything else stays for retry.
+    private void Decide(object sender, string decision)
+    {
+        if (sender is not FrameworkElement { Tag: InboxItemViewModel { GatewayItem: { } gatewayItem } item } ||
+            _feed is not { } feed ||
+            !item.DecisionsEnabled)
+            return;
+
+        AsyncEventHandlerGuard.Run(
+            () => DecideAsync(feed, item, gatewayItem, decision),
+            new AppLogger(),
+            nameof(Decide),
+            _ =>
+            {
+                item.IsDeciding = false;
+                item.DecisionErrorText = LocalizationHelper.GetString("Inbox_ApprovalDecisionFailed");
+            });
+    }
+
+    private static async Task DecideAsync(InboxFeed feed, InboxItemViewModel item, InboxGatewayItem gatewayItem, string decision)
+    {
+        item.IsDeciding = true;
+        item.DecisionErrorText = "";
+        try
+        {
+            var outcome = await feed.DecideApprovalAsync(gatewayItem, decision);
+            item.DecisionErrorText = outcome switch
+            {
+                ApprovalDecisionOutcome.Failed => LocalizationHelper.GetString("Inbox_ApprovalDecisionFailed"),
+                // The source-backed uncertainty note survives rerender and reopening the Inbox.
+                ApprovalDecisionOutcome.Uncertain => "",
+                ApprovalDecisionOutcome.NotPending => LocalizationHelper.GetString("Inbox_ApprovalNoLongerPending"),
+                ApprovalDecisionOutcome.NotAllowed => LocalizationHelper.GetString("Inbox_ApprovalDecisionUnavailable"),
+                _ => "",
+            };
+        }
+        finally
+        {
+            item.IsDeciding = false;
+        }
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => _commands?.OpenSettings();
