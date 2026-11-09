@@ -632,8 +632,32 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"' `
-    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding and strict Gateway fixture lanes."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"' `
+    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding, Gateway fixture and animation-preference lanes."
+Assert-NotContains -Text $trayUiStep -Unexpected '-AnimationPreference ' `
+    -Message 'The ordinary UI suite must retain its original Windows animation preference.'
+$enabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animation-enabled reveal proof'
+foreach ($token in @(
+        './scripts/Invoke-CiTest.ps1',
+        '-AnimationPreference Enabled',
+        '-RequireAllTestsPassed',
+        '-Filter "Category=AnimationPreferenceEnabled"',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $enabledAnimationStep -Expected $token -Message "Enabled animation proof lost required contract '$token'."
+}
+$disabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animations-disabled behavior proof'
+foreach ($token in @(
+        './scripts/Invoke-CiTest.ps1',
+        '-AnimationPreference Disabled',
+        '-RequireAllTestsPassed',
+        '-Filter "FullyQualifiedName~PageHeroAnimationsDisabledTests"',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $disabledAnimationStep -Expected $token -Message "Disabled animation proof lost required contract '$token'."
+}
+Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
+    -Message 'Native animation prerequisite failures and restoration must be tested.'
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
@@ -807,8 +831,8 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 8) {
-    throw "Expected all 8 non-E2E test projects to use Invoke-CiTest.ps1, found $runnerUses."
+if ($runnerUses -ne 10) {
+    throw "Expected 8 non-E2E project runs plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."
