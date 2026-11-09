@@ -105,6 +105,19 @@ not evidence that the binary matches the current source.
 
 ### Collect the selected proof
 
+Use the [WinApp CLI guide](../../../docs/WINAPP_CLI.md) proactively when choosing
+native evidence: UIA state plus visible capture, stowed-exception diagnostics,
+DevTools inspection, bounded WinUI ETW, or owned Sandbox app runs. Discover
+the installed version and command schema instead of assuming those tools are
+absent. Preserve the runtime-selection rules above and the host's computer-use
+policy; WinApp does not bypass consent or substitute for existing proof pools.
+Record trace coverage and capture completeness, not just a successful command.
+For clean artifact/installer proof, consult the
+[sandbox-mcp versus WinApp decision table](../../../docs/WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp).
+Preserve missing-prerequisite findings, label explicitly provisioned runs, and
+inspect reports/screenshots rather than equating a startup PASS with acceptance.
+The two tools must not compete for the same guest's lifecycle.
+
 | Surface | Proof to collect |
 |---|---|
 | UI / WinUI | On an authorized isolated desktop, use the runtime selected above, exercise the changed path with computer-use or developer-provided screenshots/output, and include visible evidence or blocker. If the developer captures manually, provide exact steps and confirm screenshot/artifact links resolve after an authorized PR body update. |
