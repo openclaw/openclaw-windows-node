@@ -408,6 +408,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         var workspace = AutomationElement.FromHandle(app.HubWindowHandle);
         var workspaceHandle = app.HubWindowHandle;
+        var workspaceProcessId = workspace.Current.ProcessId;
         var composer = Find(workspace, "ChatComposerInput");
         var identity = composer.GetRuntimeId();
         const string draft = "Keep this draft when going back to the app from Settings";
@@ -445,19 +446,22 @@ public sealed class WorkspaceWindowProofTests
         const string notificationTitle = "Settings return focus error fixture";
         await app.SendNotificationAsync(notificationTitle, "Keep this reminder while visiting Settings.");
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
-        var inboxPage = Find(workspace, "NotificationsPage");
-        await WaitUntilAsync(() => IsVisible(inboxPage, "WorkspaceNotificationsClear") &&
-            Find(inboxPage, "WorkspaceNotificationsClear").Current.IsEnabled &&
-            IsVisible(inboxPage, "WorkspaceNotificationsList") &&
-            inboxPage.FindFirst(TreeScope.Descendants,
+        AutomationElement? readyInboxPage = null;
+        AutomationElement? readyInboxHeading = null;
+        AutomationElement[] readyInboxControls = [];
+        await WaitUntilAsync(() => InboxPageReady() && IsVisible(readyInboxPage!, "WorkspaceNotificationsClear") &&
+            Find(readyInboxPage!, "WorkspaceNotificationsClear").Current.IsEnabled &&
+            IsVisible(readyInboxPage!, "WorkspaceNotificationsList") &&
+            readyInboxPage!.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.NameProperty, "Dismiss " + notificationTitle)) is not null);
+        var inboxPage = readyInboxPage!;
         Assert.True(Find(inboxPage, "WorkspaceNotificationsClear").Current.IsEnabled,
             "The real producer must first populate the shared Inbox.");
         AssertNamedInboxPage();
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         settings = AutomationElement.FromHandle(app.HubWindowHandle);
         ActivateBackToApp();
-        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        await WaitUntilAsync(InboxPageReady);
         Assert.False(IsVisible(workspace, "ConnectionPageMarker"));
         // Require a visible, enabled Inbox control in this exact named page, including the
         // empty case whose Settings/tabs remain usable. A hidden Settings button is not a destination.
@@ -468,17 +472,17 @@ public sealed class WorkspaceWindowProofTests
                 $"Target controls: {DescribeNotificationFocus(workspace)}");
         Capture(app, "System", $"settings-back-to-notifications-populated-{activation}");
 
-        inboxPage = Find(workspace, "NotificationsPage");
+        inboxPage = readyInboxPage!;
         Invoke(Find(inboxPage, "WorkspaceNotificationsClear"));
-        await WaitUntilAsync(() => !IsVisible(inboxPage, "WorkspaceNotificationsClear") &&
-            !IsVisible(inboxPage, "WorkspaceNotificationsList") && IsVisible(inboxPage, "WorkspaceNotificationsEmpty"));
+        await WaitUntilAsync(() => InboxPageReady() && !IsVisible(readyInboxPage!, "WorkspaceNotificationsClear") &&
+            !IsVisible(readyInboxPage!, "WorkspaceNotificationsList") && IsVisible(readyInboxPage!, "WorkspaceNotificationsEmpty"));
         AssertNamedInboxPage();
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         settings = AutomationElement.FromHandle(app.HubWindowHandle);
         ActivateBackToApp();
-        await WaitUntilAsync(() => IsVisible(workspace, "NotificationsPageMarker"));
+        await WaitUntilAsync(InboxPageReady);
         AssertNamedInboxPage();
-        Assert.True(IsVisible(Find(workspace, "NotificationsPage"), "WorkspaceNotificationsEmpty"));
+        Assert.True(IsVisible(readyInboxPage!, "WorkspaceNotificationsEmpty"));
         Capture(app, "System", $"settings-back-to-notifications-empty-{activation}");
         await WaitUntilAsync(
             () => GetForegroundWindow() == workspaceHandle && HasVisibleNotificationsFocus(workspace),
@@ -487,14 +491,56 @@ public sealed class WorkspaceWindowProofTests
 
         void AssertNamedInboxPage()
         {
-            var page = Find(workspace, "NotificationsPage");
+            var page = readyInboxPage!;
             Assert.Equal(ControlType.Pane, page.Current.ControlType);
             Assert.False(string.IsNullOrWhiteSpace(page.Current.Name));
-            Assert.Equal(Find(page, "NotificationsPageMarker").Current.Name, page.Current.Name);
-            foreach (var id in new[] { "WorkspaceNotificationsSettings", "WorkspaceNotificationsTabs" })
-                Assert.True(IsVisible(page, id) && Find(page, id).Current.IsEnabled,
+            Assert.Equal(readyInboxHeading!.Current.Name, page.Current.Name);
+            Assert.Equal(2, readyInboxControls.Length);
+            foreach (var control in readyInboxControls)
+                Assert.True(UsableInboxControl(control, page.Current.BoundingRectangle),
                     "Inbox must retain enabled native focus destinations even without rows.");
         }
+
+        bool InboxPageReady()
+        {
+            readyInboxPage = null;
+            readyInboxHeading = null;
+            readyInboxControls = [];
+            try
+            {
+                var owner = workspace.Current;
+                if (app.HubWindowHandle != workspaceHandle || new IntPtr(owner.NativeWindowHandle) != workspaceHandle ||
+                    !UsableInboxControl(workspace, owner.BoundingRectangle)) return false;
+                // Returning from Settings rebuilds the page. Resolve a fresh page in
+                // the retained owner, then keep all peers from the same successful poll.
+                var page = FindOrNull(workspace, "NotificationsPage");
+                if (!UsableInboxControl(page, owner.BoundingRectangle)) return false;
+                var bounds = page!.Current.BoundingRectangle;
+                var heading = FindOrNull(page, "NotificationsPageMarker");
+                var settingsControl = FindOrNull(page, "WorkspaceNotificationsSettings");
+                var tabs = FindOrNull(page, "WorkspaceNotificationsTabs");
+                if (!UsableInboxControl(heading, bounds) || !UsableInboxControl(settingsControl, bounds) ||
+                    !UsableInboxControl(tabs, bounds)) return false;
+                readyInboxPage = page;
+                readyInboxHeading = heading;
+                readyInboxControls = [settingsControl!, tabs!];
+                return true;
+            }
+            catch (ElementNotAvailableException) { return false; }
+        }
+
+        bool UsableInboxControl(AutomationElement? element, System.Windows.Rect viewport)
+        {
+            if (element is null) return false;
+            var info = element.Current;
+            var bounds = info.BoundingRectangle;
+            return info.ProcessId == workspaceProcessId && !info.IsOffscreen && info.IsEnabled &&
+                HasInboxBounds(viewport) && HasInboxBounds(bounds) && viewport.Contains(bounds);
+        }
+
+        static bool HasInboxBounds(System.Windows.Rect bounds) =>
+            !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+            double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) && bounds.Width > 0 && bounds.Height > 0;
 
         void ActivateBackToApp()
         {
