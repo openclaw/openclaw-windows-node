@@ -236,9 +236,12 @@ public sealed class NativeUiExceptionDiagnosticsTests
         Assert.True(duplicate.WriteFailed);
         Assert.Equal(1, failures);
         Assert.Equal(before, ReadBytes(path));
+        const string secondInvocation = "ffeeddccbbaa99887766554433221100";
+        Assert.True(Guid.TryParseExact(secondInvocation, "N", out _));
         var secondPath = directory.Combine("second.jsonl");
-        using var second = NativeUiExceptionDiagnostics.Open(secondPath, "ffeeddccbbaa9988776655443322110000", Revision);
-        Assert.Equal("ffeeddccbbaa9988776655443322110000", Assert.Single(Read(secondPath)).GetProperty("invocationId").GetString());
+        using var second = NativeUiExceptionDiagnostics.Open(secondPath, secondInvocation, Revision);
+        Assert.False(second.WriteFailed);
+        Assert.Equal(secondInvocation, Assert.Single(Read(secondPath)).GetProperty("invocationId").GetString());
         first.Dispose();
         second.RecordException(NativeUiExceptionSource.WinUiUnhandled, () => null);
         Assert.Equal(2, Read(secondPath).Length);
