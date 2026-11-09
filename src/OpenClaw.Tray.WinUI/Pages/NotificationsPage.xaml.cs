@@ -48,8 +48,6 @@ public sealed partial class NotificationsPage : Page
 
     private static void OpenAppRoute(string route)
     {
-        if (ThisPcAlertSource.TryOpenPrivacySettings(route))
-            return;
         if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
         {
             CurrentApp.PendingChatSessionKey = sessionKey;

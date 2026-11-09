@@ -64,14 +64,6 @@ controls. It verifies their saved values after page reactivation without
 enabling node capabilities. This is disposable-profile persistence proof, not
 an installed-profile upgrade or Store migration.
 
-Fixture mode never reads this PC's Windows privacy settings for the Inbox's "This
-PC" alerts, so default fixture runs show none (the fixture profile also turns off
-camera, microphone and location capabilities). A manually launched fixture app
-whose profile enables one of those capabilities can set
-`OPENCLAW_FIXTURE_DEVICE_ACCESS` (for example `camera=denied-by-user` or
-`location=denied-by-system`) to render a synthetic blocked device. The fixture
-launcher strips this variable like every other inherited `OPENCLAW_*` flag.
-
 ## Build and explore
 
 ### Assistant continuity capture
