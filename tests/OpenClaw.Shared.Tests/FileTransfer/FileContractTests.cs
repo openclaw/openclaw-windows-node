@@ -197,9 +197,12 @@ public sealed class FileContractTests
         settings.SandboxMaxTransferBytes = 900 * 1024 * 1024;
         var resources = new NodeSandboxResources(new([@"C:\read"], [@"C:\write"], [@"C:\write\deny"], [@"C:\protected"]),
             new([@"C:\worker"], [@"C:\scratch"]));
-        var io = new NodeSandboxProcessIo(null, null, null, Task.FromResult(0), NodeToolExecutionMode.Sandbox, policy, resources);
+        var io = new NodeSandboxProcessIo(null, null, null, Task.FromResult(0), NodeToolExecutionMode.Sandbox, policy, resources)
+        { FileInvocation = new(FileOperation.Upload, @"C:\managed-uploads", null) };
         var admission = FileOperations.CreateAdmission(io, null);
-        Assert.Equal(@"C:\uploads", admission.UploadRoot);
+        Assert.Equal(@"C:\managed-uploads", admission.UploadRoot);
+        Assert.Equal(FileOperation.Upload, admission.ExpectedOperation);
+        Assert.Throws<IOException>(() => FileOperations.CreateAdmission(io with { FileInvocation = null }, null));
         Assert.Equal(7 * 1024 * 1024, admission.TransferBytes);
         Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\worker\coreclr.dll", false));
         Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\scratch\file", true));

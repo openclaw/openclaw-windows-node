@@ -134,7 +134,9 @@ winnode --command file.fetch --params '{"path":"C:\\Data\\sample.bin","maxBytes"
 ### dir.list
 `{ "path": "C:\\Data", "maxEntries": 200, "pageToken": "0" }`.
 Returns entries, `nextPageToken`, path and binding. Page size caps at 5000.
-Optional `preflightOnly`, `followSymlinks` and shared identity fields.
+Children blocked by the current Sandbox policy are omitted, and paging counts
+only visible entries. A blocked target directory still returns a permission
+error. Optional `preflightOnly`, `followSymlinks` and shared identity fields.
 
 ### dir.fetch
 `{ "path": "C:\\Data", "maxBytes": 16777216 }`.
@@ -165,7 +167,8 @@ winnode --command file.create --params '{"path":"C:\\Data\\new.bin"}' --input-fi
 ### fs.listDir
 Directory navigation, with optional `{ "path": "C:\\Data" }`. Remote calls are
 Gateway-admin-gated; local calls use the existing MCP bearer. Neither grants
-elevation or bypasses contained data access.
+elevation or bypasses contained data access. Children blocked by the current
+Sandbox policy are omitted; requesting a blocked directory itself still fails.
 
 ### terminal.upload
 `{ "name": "sample.txt", "contentBase64": "YWJj" }`.
@@ -173,6 +176,28 @@ Requires canonical padded standard base64. Returns `{path,size}`.
 The raw node command stages an upload without a terminal session. Remote calls
 require genuine Gateway admin authorization. The app schedules retained cleanup;
 the same mode-selected worker scans and deletes only identity-owned upload data.
+New uploads use automatic private storage belonging to the current Companion
+profile, outside its settings and runtime-code folders. Downloads and the legacy
+upload-location setting receive no automatic grant. Contained ordinary commands
+can read all retained uploads in that profile after ownership verification, but
+cannot modify them through the automatic grant. Only upload/cleanup operations
+receive managed-storage write access. Explicit read-only/No access restrictions
+still apply, including an inherited read-only policy. This is profile-scoped
+sharing, not per-file or per-conversation isolation.
+
+The app establishes only the exact private profile boundary as trusted metadata
+before launching the contained worker. It checks current policy and reserves
+cleanup ownership first. Uploaded bytes and cleanup still run inside the worker,
+without granting write access to the boundary's parent. Cancellation or launch
+failure can leave an owned empty boundary for later safe reuse. Unbound or
+unrecognized ownership requires review, not automatic adoption or deletion.
+
+The committed transfer budget defaults to 50 MiB and cannot exceed 1024 MiB;
+valid existing settings remain effective. This command still has the tighter
+16 MiB decoded unary limit. Retention remains bounded to 24 hours, 64 upload
+directories and 256 MiB. Cleanup of remembered legacy roots still requires their
+current folder permissions and ownership identity. A blocked cleanup is not a
+reason to retry a completed upload.
 
 **Error semantics:** the six plugin commands retain the Gateway outer success
 envelope with inner `{ok:false,code,message}`. The two admin commands use outer

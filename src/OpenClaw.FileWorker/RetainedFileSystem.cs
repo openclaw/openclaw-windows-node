@@ -428,8 +428,8 @@ internal static class Native
         }
     }
 
-    private const string OwnershipEaName = "OPENCLAW.UPLOAD.V1";
-    private const int OwnershipEaBytes = 4096;
+    private const string OwnershipEaName = ManagedUploadRootLease.OwnershipEaName;
+    private const int OwnershipEaBytes = ManagedUploadRootLease.OwnershipEaBytes;
     private static byte[] OwnershipEa(byte[] value)
     {
         if (value.Length > OwnershipEaBytes) throw new IOException("Upload ownership exceeds its native bound.");
@@ -494,28 +494,7 @@ internal static class Native
         return path;
     }
 
-    internal static void RequirePrivate(SafeFileHandle handle)
-    {
-        var error = GetSecurityInfo(handle, 1, 5, out var owner, out _, out _, out _, out var descriptor);
-        if (error != 0) ThrowError((int)error);
-        try
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            var sid = identity.User ?? throw new IOException("Missing Windows owner identity.");
-            if (new SecurityIdentifier(owner) != sid) throw new FileCommandException("PERMISSION_DENIED", "Upload storage has a different owner.");
-            var length = GetSecurityDescriptorLength(descriptor);
-            if (length > FileLimits.MetadataBytes) throw new IOException("Oversized upload security descriptor.");
-            var bytes = new byte[length];
-            Marshal.Copy(descriptor, bytes, 0, bytes.Length);
-            var security = new RawSecurityDescriptor(bytes, 0);
-            if (!security.ControlFlags.HasFlag(ControlFlags.DiscretionaryAclProtected) || security.DiscretionaryAcl is null ||
-                security.DiscretionaryAcl.Cast<GenericAce>().Any(ace => ace is not CommonAce common ||
-                    common.AceQualifier != AceQualifier.AccessAllowed ||
-                    (common.SecurityIdentifier != sid && !common.SecurityIdentifier.IsWellKnown(WellKnownSidType.LocalSystemSid))))
-                throw new FileCommandException("PERMISSION_DENIED", "Upload storage must have a private owner-only access list.");
-        }
-        finally { LocalFree(descriptor); }
-    }
+    internal static void RequirePrivate(SafeFileHandle handle) => ManagedUploadRootLease.RequirePrivate(handle);
 
     internal static void InheritParentAcl(SafeFileHandle handle)
     {

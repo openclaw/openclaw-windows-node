@@ -67,10 +67,12 @@ public sealed record FileCommandRequest(
 public sealed record FileWorkerAdmission(
     string ExecutionMode, string? Reason, long PolicyRevision, string PolicyFingerprint,
     FileDataAccess? DataAccess, string Home, string UploadRoot, UploadRootIdentity? ExpectedUploadRoot = null,
-    long TransferBytes = FileLimits.DefaultCreateBytes)
+    long TransferBytes = FileLimits.DefaultCreateBytes, FileOperation? ExpectedOperation = null)
 {
     public void Validate()
     {
+        if (ExpectedOperation is { } operation && !Enum.IsDefined(operation))
+            throw new FileCommandException("SANDBOX_UNAVAILABLE", "The admitted file operation is invalid.");
         if (TransferBytes is < 1 or > FileLimits.MaximumTransferBytes)
             throw new FileCommandException("SANDBOX_UNAVAILABLE", "The committed Sandbox transfer budget is invalid.");
         if (ExecutionMode == "sandbox" && DataAccess is not null && Reason is null) return;

@@ -28,4 +28,9 @@ public abstract class FixedFileWorkerLease : IDisposable
 /// </summary>
 public sealed record FixedFileWorkload<T>(
     Func<NodeSandboxProcessIo, CancellationToken, Task<T>> Protocol, int TimeoutMs, bool Streaming = false,
-    Action? ProcessSettled = null);
+    Action? ProcessSettled = null)
+{
+    internal FixedFileInvocation? Invocation { get; init; }
+    internal Func<string, FileTransfer.UploadRootIdentity?>? ReserveUpload { get; init; }
+    internal Action? UploadReservationSettled { get; init; }
+}

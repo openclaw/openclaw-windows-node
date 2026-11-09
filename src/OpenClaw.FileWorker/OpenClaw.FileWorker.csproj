@@ -15,6 +15,8 @@
   <ItemGroup>
     <PackageReference Remove="VCRuntime.CefSharp.140" />
     <Compile Include="..\OpenClaw.Shared\NodeCommandException.cs" Link="Protocol\NodeCommandException.cs" />
+    <Compile Include="..\OpenClaw.Shared\FileTransfer\ManagedUploadRootRecord.cs" Link="Protocol\ManagedUploadRootRecord.cs" />
+    <Compile Include="..\OpenClaw.Shared\FileTransfer\ManagedUploadRootLease.cs" Link="Protocol\ManagedUploadRootLease.cs" />
     <Compile Include="..\OpenClaw.Shared\FileTransfer\FileContracts.cs" Link="Protocol\FileContracts.cs" />
     <Compile Include="..\OpenClaw.Shared\FileTransfer\FileCommandParser.cs" Link="Protocol\FileCommandParser.cs" />
     <Compile Include="..\OpenClaw.Shared\FileTransfer\FileWorkerProtocol.cs" Link="Protocol\FileWorkerProtocol.cs" />

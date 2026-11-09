@@ -10,6 +10,7 @@ public sealed record NodeSandboxProcessIo(
     Task<int> RootExit, NodeToolExecutionMode ExecutionMode,
     NodeSandboxPolicy Policy, NodeSandboxResources? Resources)
 {
+    internal AdmittedFileInvocation? FileInvocation { get; init; }
     private readonly List<Task> _pipeWorkers = [];
     internal Action? InputCloser { get; init; }
     internal void CloseInput()

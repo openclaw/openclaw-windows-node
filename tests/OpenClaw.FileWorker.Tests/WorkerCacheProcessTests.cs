@@ -62,7 +62,7 @@ public sealed class WorkerCacheProcessTests(Xunit.Abstractions.ITestOutputHelper
                     AppData = start.Environment.TryGetValue("OPENCLAW_TRAY_APPDATA_DIR", out var appDataRoot) ? appDataRoot : null,
                     LocalAppData = start.Environment.TryGetValue("OPENCLAW_TRAY_LOCALAPPDATA_DIR", out var localDataRoot) ? localDataRoot : null }));
             FileWorkerProtocol.WriteJson(worker.StandardInput.BaseStream, FilePacketKind.Request,
-                new FileWorkerRequest(1, admission, new(FileOperation.Fetch, data, Binary: true,
+                new FileWorkerRequest(FileWorkerProtocol.Version, admission, new(FileOperation.Fetch, data, Binary: true,
                     ExpectedBinding: binding, ExpectedCanonicalPath: data)));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var ready = await FileWorkerProtocol.ReadAsync(worker.StandardOutput.BaseStream, timeout.Token);

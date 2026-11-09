@@ -2,7 +2,6 @@
 <Page x:Class="OpenClawTray.Pages.SandboxPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:helpers="using:OpenClawTray.Helpers">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
@@ -35,35 +34,11 @@
 
             </Grid>
 
-            <TextBlock x:Uid="SandboxPage_SharedFilePolicy"
-                       Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
-
-            <toolkit:SettingsCard x:Uid="SandboxPage_UploadStorage">
-                <toolkit:SettingsCard.Description>
-                    <StackPanel Spacing="8">
-                        <TextBlock x:Uid="SandboxPage_UploadStorageHelp" TextWrapping="Wrap"
-                                   Style="{StaticResource CaptionTextBlockStyle}" />
-                        <TextBlock x:Name="UploadStoragePath" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                                   Style="{StaticResource CaptionTextBlockStyle}" />
-                    </StackPanel>
-                </toolkit:SettingsCard.Description>
-                <Button x:Uid="SandboxPage_ChooseUploadParent" Click="OnChooseUploadParent" />
-            </toolkit:SettingsCard>
-
-            <toolkit:SettingsCard x:Uid="SandboxPage_TransferBudget">
-                <NumberBox x:Name="TransferBudgetBox" Minimum="1" Maximum="1024" SmallChange="1"
-                           SpinButtonPlacementMode="Compact" ValueChanged="OnTransferBudgetChanged"
-                           AutomationProperties.LabeledBy="{Binding ElementName=TransferBudgetLabel}" />
-                <toolkit:SettingsCard.Header>
-                    <TextBlock x:Uid="SandboxPage_TransferBudgetLabel" x:Name="TransferBudgetLabel"
-                               Style="{StaticResource BodyTextBlockStyle}" />
-                </toolkit:SettingsCard.Header>
-            </toolkit:SettingsCard>
-
             <InfoBar x:Name="UploadCleanupWarning" x:Uid="SandboxPage_UploadCleanupWarning"
                      Severity="Warning" IsOpen="False" IsClosable="False" />
 
             <Expander x:Name="ScopeExpander"
+                      AutomationProperties.AutomationId="ScopeExpander"
                       AutomationProperties.LabeledBy="{Binding ElementName=ScopeExpanderLabel}"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch"
@@ -101,10 +76,10 @@
                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}"
                                   VerticalAlignment="Top"
                                   Margin="0,2,0,0" />
-                        <TextBlock Grid.Column="1" TextWrapping="Wrap">
+                        <TextBlock Grid.Column="1" AutomationProperties.AutomationId="SandboxContainedOperations" TextWrapping="Wrap">
                             <Run x:Uid="SandboxPage_CommandsTheAgentRuns" Text="Commands the agent runs through the Windows node (" />
                             <Run x:Uid="SandboxPage_SystemRun" Text="system.run" FontFamily="Consolas" />
-                            <Run x:Uid="SandboxPage_AreContainedByThe" Text=") are contained by the settings below." />
+                            <Run x:Uid="SandboxPage_AreContainedByThe" Text=") and file actions use the Sandbox settings below." />
                         </TextBlock>
                     </Grid>
 

@@ -46,7 +46,8 @@ public static class MxcRequestBuilder
         string scratchDirectory,
         MxcRequestContext? context,
         Func<string, MxcFolderAdmission.Metadata?> readMetadata,
-        Func<string, MxcFolderAdmission.Metadata?>? readPhysicalMetadata = null)
+        Func<string, MxcFolderAdmission.Metadata?>? readPhysicalMetadata = null,
+        NodeSandboxResources? admittedResources = null)
     {
         context ??= MxcRequestContext.Capture(settingsDirectory);
         if (command.Env is { Count: > 0 })
@@ -60,7 +61,7 @@ public static class MxcRequestBuilder
             Path.GetExtension(image).Equals(".bat", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Batch files require an explicitly approved canonical cmd carrier.");
 
-        var resources = ComposeResources(settings, settingsDirectory, scratchDirectory, context,
+        var resources = admittedResources ?? ComposeResources(settings, settingsDirectory, scratchDirectory, context,
             readMetadata, readPhysicalMetadata);
         var cwd = string.IsNullOrWhiteSpace(command.Cwd) ? Normalize(scratchDirectory) : Normalize(command.Cwd);
         if ((!string.IsNullOrWhiteSpace(command.Cwd) &&

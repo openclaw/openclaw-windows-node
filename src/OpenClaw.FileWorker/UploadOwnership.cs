@@ -16,7 +16,14 @@ internal sealed record UploadOwnership(
         new(1, kind, parent.Device, parent.Inode, name, FileName: fileName);
 
     internal UploadOwnership Bind(NativeEntry entry) => this with { Device = entry.Device, Inode = entry.Inode };
-    internal byte[] Bytes() => JsonSerializer.SerializeToUtf8Bytes(this, FileJson.Options);
+    internal byte[] Bytes()
+    {
+        if (Kind != "root") return JsonSerializer.SerializeToUtf8Bytes(this, FileJson.Options);
+        if (FileName is not null || FileDevice is not null || FileInode is not null || Expires is not null ||
+            LegacyMarkerDevice is not null || LegacyMarkerInode is not null)
+            throw Blocked("A root ownership record cannot carry payload fields.");
+        return new ManagedUploadRootRecord(Version, Kind, ParentDevice, ParentInode, Name, Device, Inode, State).Bytes();
+    }
     internal void Save(NativeEntry entry) => Native.WriteOwnership(entry.Handle, Bytes());
 
     internal static UploadOwnership? Read(NativeEntry entry)

@@ -563,6 +563,67 @@ public sealed class FileWorkerTests : IDisposable
         Assert.Equal("c", Assert.Single(admin.Payload.GetProperty("entries").EnumerateArray()).GetProperty("name").GetString());
     }
 
+    [Theory]
+    [InlineData("dir.list")]
+    [InlineData("fs.listDir")]
+    public void AllowedDirectoryListingOmitsDeniedAndProtectedChildren(string command)
+    {
+        var allowed = Directory.CreateDirectory(PathOf("allowed")).FullName;
+        var readOnly = Directory.CreateDirectory(PathOf("readonly")).FullName;
+        var denied = Directory.CreateDirectory(PathOf(".ssh")).FullName;
+        var protectedPath = Directory.CreateDirectory(PathOf(".openclaw")).FullName;
+        var deniedFile = PathOf("blocked.txt");
+        File.WriteAllText(deniedFile, "keep private");
+        File.WriteAllText(PathOf("visible.txt"), "visible");
+        var data = new FileDataAccess([readOnly], [_root, protectedPath], [denied, deniedFile], [protectedPath]);
+        var admission = Host with { ExecutionMode = "sandbox", Reason = null, DataAccess = data };
+
+        var listing = Run(command, new { path = _root }, admission: admission);
+        Good(listing);
+        string[] expected = command == "dir.list" ? ["allowed", "readonly", "visible.txt"] : ["allowed", "readonly"];
+        Assert.Equal(expected, listing.Payload.GetProperty("entries").EnumerateArray()
+            .Select(entry => entry.GetProperty("name").GetString()).ToArray());
+        Good(Run(command, new { path = allowed }, admission: admission));
+        Good(Run(command, new { path = readOnly }, admission: admission));
+        Assert.Equal("PERMISSION_DENIED", Run(command, new { path = denied }, admission: admission).Outcome.Code);
+        Assert.Equal("PERMISSION_DENIED", Run(command, new { path = protectedPath }, admission: admission).Outcome.Code);
+        Assert.Equal("PERMISSION_DENIED", Run("file.stat", new { path = deniedFile }, admission: admission).Outcome.Code);
+        Assert.Equal("PERMISSION_DENIED", Run(command, new { path = _root }, admission: admission with
+            { DataAccess = data with { ProtectedPaths = [_root] } }).Outcome.Code);
+        Assert.Equal("keep private", File.ReadAllText(deniedFile));
+    }
+
+    [Fact]
+    public void DirectoryPagingCountsOnlyVisibleChildren()
+    {
+        var deniedFile = PathOf("00-denied.txt");
+        File.WriteAllText(deniedFile, "private");
+        File.WriteAllText(PathOf("01-visible.txt"), "one");
+        var deniedDirectory = Directory.CreateDirectory(PathOf("02-denied")).FullName;
+        Directory.CreateDirectory(PathOf("03-visible"));
+        var protectedDirectory = Directory.CreateDirectory(PathOf("04-protected")).FullName;
+        File.WriteAllText(PathOf("05-visible.txt"), "five");
+        var admission = Host with { ExecutionMode = "sandbox", Reason = null,
+            DataAccess = new([], [_root], [deniedFile, deniedDirectory], [protectedDirectory]) };
+        string[] expected = ["01-visible.txt", "03-visible", "05-visible.txt"];
+        string? token = null;
+        for (var index = 0; index < expected.Length; index++)
+        {
+            var result = Run("dir.list", new { path = _root, maxEntries = 1, pageToken = token }, admission: admission);
+            Good(result);
+            Assert.Equal(expected[index], Assert.Single(result.Payload.GetProperty("entries").EnumerateArray())
+                .GetProperty("name").GetString());
+            var more = index < expected.Length - 1;
+            Assert.Equal(more, result.Payload.GetProperty("truncated").GetBoolean());
+            if (more)
+            {
+                token = result.Payload.GetProperty("nextPageToken").GetString();
+                Assert.Equal((index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), token);
+            }
+            else Assert.False(result.Payload.TryGetProperty("nextPageToken", out _));
+        }
+    }
+
     [Fact]
     public void ArchiveIsGzipTarWithOneRootAndDeclaredContent()
     {
@@ -630,6 +691,164 @@ public sealed class FileWorkerTests : IDisposable
         Good(Run("file.fetch", new { path }));
         var admission = Host with { ExecutionMode = "sandbox", Reason = null, DataAccess = new([], [_root], [], []) };
         Assert.Equal("HARDLINK_TARGET_DENIED", Run("file.fetch", new { path }, admission: admission).Outcome.Code);
+    }
+
+    [Fact]
+    public void TrustedBootstrapCreatesOnlyPrivateIdentityBoundMetadataAndWorkerConsumesIt()
+    {
+        using var lease = ManagedUploadRootLease.Open(Host.UploadRoot);
+        Assert.Null(lease.Identity);
+        lease.Bootstrap(null, CancellationToken.None);
+        Assert.True(lease.Complete);
+        Assert.Empty(Directory.GetFileSystemEntries(Host.UploadRoot));
+        var acl = new DirectoryInfo(Host.UploadRoot).GetAccessControl();
+        Assert.True(acl.AreAccessRulesProtected);
+        using var owner = WindowsIdentity.GetCurrent();
+        Assert.Equal(owner.User, acl.GetOwner(typeof(SecurityIdentifier)));
+        Assert.All(acl.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>(), rule =>
+            Assert.True(rule.IdentityReference == owner.User || ((SecurityIdentifier)rule.IdentityReference).IsWellKnown(WellKnownSidType.LocalSystemSid)));
+        using (var fs = new RetainedFileSystem(Host))
+        using (var parent = fs.Open(_root))
+        using (var root = fs.OpenChild(parent, "uploads", ownership: true))
+        {
+            var record = UploadOwnership.Read(root)!;
+            Assert.Equal("root", record.Kind);
+            Assert.Equal("retained", record.State);
+            Assert.Equal(parent.Device, record.ParentDevice);
+            Assert.Equal(parent.Inode, record.ParentInode);
+            Assert.Equal(root.Device, record.Device);
+            Assert.Equal(root.Inode, record.Inode);
+        }
+        var upload = Run("terminal.upload", new { name = "payload", contentBase64 = "YWJj" },
+            admission: Host with { ExpectedUploadRoot = lease.Identity, ExpectedOperation = FileOperation.Upload });
+        Good(upload);
+        Assert.Equal(lease.Identity, upload.Retention!.Root);
+        Assert.Equal("abc", File.ReadAllText(upload.Payload.GetProperty("path").GetString()!));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void BootstrapRecoversOnlyBoundEmptyCreatingRoot(bool unbound, bool hasForeignChild)
+    {
+        UploadRootIdentity identity;
+        using (var first = ManagedUploadRootLease.Open(Host.UploadRoot))
+        { first.Bootstrap(null, CancellationToken.None); identity = first.Identity!; }
+        using (var fs = new RetainedFileSystem(Host))
+        using (var parent = fs.Open(_root))
+        using (var root = fs.OpenChild(parent, "uploads", ownership: true))
+        {
+            var record = UploadOwnership.Read(root)! with { State = "creating" };
+            if (unbound) record = record with { Device = null, Inode = null };
+            record.Save(root);
+        }
+        if (hasForeignChild) File.WriteAllText(Path.Combine(Host.UploadRoot, "foreign"), "keep");
+        using var next = ManagedUploadRootLease.Open(Host.UploadRoot);
+        Assert.False(next.Complete);
+        if (unbound || hasForeignChild)
+        {
+            Assert.Throws<FileCommandException>(() => next.Bootstrap(identity, CancellationToken.None));
+            Assert.False(next.Complete);
+            if (hasForeignChild) Assert.Equal("keep", File.ReadAllText(Path.Combine(Host.UploadRoot, "foreign")));
+        }
+        else { next.Bootstrap(identity, CancellationToken.None); Assert.True(next.Complete); Assert.Equal(identity, next.Identity); }
+    }
+
+    [Fact]
+    public void BootstrapCancellationAndMissingRememberedIdentityDoNotCreateAReplacement()
+    {
+        using var lease = ManagedUploadRootLease.Open(Host.UploadRoot);
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+        Assert.Throws<OperationCanceledException>(() => lease.Bootstrap(null, cancel.Token));
+        Assert.False(Directory.Exists(Host.UploadRoot));
+        Assert.Throws<FileCommandException>(() => lease.Bootstrap(new(Host.UploadRoot, "17", "23"), CancellationToken.None));
+        Assert.False(Directory.Exists(Host.UploadRoot));
+    }
+
+    [Fact]
+    public void ManagedRootReadLeaseRequiresAtomicOwnershipAndPinsAncestryWithoutCreatingStorage()
+    {
+        using (var missing = ManagedUploadRootLease.Open(Host.UploadRoot))
+        {
+            Assert.Null(missing.Identity);
+            Assert.False(missing.Complete);
+            Assert.False(Directory.Exists(Host.UploadRoot));
+        }
+        var upload = Run("terminal.upload", new { name = "data.txt", contentBase64 = "YWJj" });
+        Good(upload);
+        using (var lease = ManagedUploadRootLease.Open(Host.UploadRoot))
+        {
+            Assert.True(lease.Complete);
+            Assert.Equal(upload.Retention!.Root, lease.Identity);
+            Assert.Throws<IOException>(() => Directory.Move(Host.UploadRoot, PathOf("moved")));
+            Assert.Throws<IOException>(() => Directory.Move(_root, _root + "-moved"));
+        }
+        Directory.Move(Host.UploadRoot, PathOf("moved"));
+        using (var fs = new RetainedFileSystem(Host))
+        using (var parent = fs.Open(_root))
+        using (var replacement = fs.OpenChild(parent, "uploads", write: true, create: true,
+            directory: true, privateAcl: true, ownership: true))
+        {
+            // Establish private ACL and absent ownership independently of the rejection below.
+            Native.RequirePrivate(replacement.Handle);
+            Assert.Null(UploadOwnership.Read(replacement));
+        }
+        Assert.Equal("UPLOAD_CLEANUP_BLOCKED", Assert.Throws<FileCommandException>(() =>
+            ManagedUploadRootLease.Open(Host.UploadRoot)).Code);
+        Assert.True(File.Exists(Path.Combine(PathOf("moved"),
+            Path.GetFileName(Path.GetDirectoryName(upload.Payload.GetProperty("path").GetString()!))!, "data.txt")));
+    }
+
+    [Fact]
+    public void ManagedRootReadLeaseRejectsAReparseAncestorBeforeOpeningItsTarget()
+    {
+        var target = Directory.CreateDirectory(PathOf("ordinary")).FullName;
+        File.WriteAllText(Path.Combine(target, "sentinel"), "keep");
+        var alias = PathOf("alias");
+        Directory.CreateSymbolicLink(alias, target);
+        Assert.Equal("UPLOAD_CLEANUP_BLOCKED", Assert.Throws<FileCommandException>(() =>
+            ManagedUploadRootLease.Open(Path.Combine(alias, "uploads"))).Code);
+        Assert.Equal("keep", File.ReadAllText(Path.Combine(target, "sentinel")));
+        Assert.False(Directory.Exists(Path.Combine(target, "uploads")));
+    }
+
+    [Fact]
+    public void ManagedRootReadLeaseRejectsOwnershipBoundToAnotherNativeIdentity()
+    {
+        Good(Run("terminal.upload", new { name = "data", contentBase64 = "YWJj" }));
+        using (var fs = new RetainedFileSystem(Host))
+        using (var parent = fs.Open(_root))
+        using (var writable = fs.OpenChild(parent, "uploads", ownership: true))
+            (UploadOwnership.Read(writable)! with { Inode = "1" }).Save(writable);
+        Assert.Equal("UPLOAD_CLEANUP_BLOCKED", Assert.Throws<FileCommandException>(() =>
+            ManagedUploadRootLease.Open(Host.UploadRoot)).Code);
+    }
+
+    [Theory]
+    [InlineData(FileOperation.Write)]
+    [InlineData(FileOperation.Create)]
+    [InlineData(FileOperation.Fetch)]
+    [InlineData(FileOperation.ReapUploads)]
+    public void UploadAdmissionCannotBeReusedForAnotherWorkerOperation(FileOperation operation)
+    {
+        var path = PathOf("unchanged");
+        File.WriteAllText(path, "keep");
+        var result = new FileWorkerEngine().Execute(Host with { ExpectedOperation = FileOperation.Upload },
+            new(operation, path, ContentBase64: "YWJj", Overwrite: true));
+        Assert.Equal("PERMISSION_DENIED", result.Outcome.Code);
+        Assert.Equal("keep", File.ReadAllText(path));
+        Assert.False(Directory.Exists(Host.UploadRoot));
+    }
+
+    [Fact]
+    public void OrdinaryReadAdmissionCannotSwitchToUploadEvenWithBroadDataRights()
+    {
+        var command = FileCommandParser.Parse("terminal.upload", FileJson.Element(new { name = "data", contentBase64 = "YWJj" }));
+        var result = new FileWorkerEngine().Execute(Host with { ExpectedOperation = FileOperation.Fetch }, command);
+        Assert.Equal("PERMISSION_DENIED", result.Outcome.Code);
+        Assert.False(Directory.Exists(Host.UploadRoot));
     }
 
     [Fact]

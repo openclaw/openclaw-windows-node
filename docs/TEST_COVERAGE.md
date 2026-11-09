@@ -567,9 +567,15 @@ blocks rollback of otherwise owned children, rather than deleting an entry
 whose publication is no longer disproven. A matching no-obstacle control
 requires ordinary cancellation, successful rollback and same-version retry;
 the oplock fixture itself must not manufacture a cleanup failure.
-Native EA notifications observe the atomic `preparing` to `published` transition
-and trigger cancellation after commit, which must retain the published file
-identity for verified reuse. A read-only child handle held across completion
+Post-publication cancellation uses a read adapter over real pinned streams.
+The fixture independently observes the published native EA and matches the
+stream's full identity before holding read completion. A handshake requests
+cancellation before verification resumes, without replacing publication or the
+digest. Assertions require the original token, no inner exception, unchanged
+entry and child identities, and verified reuse by the default reader. A separate
+no-cancellation control proves that the held read can complete successfully.
+
+A read-only child handle held across completion
 must not block publication or weaken the lease's write/delete veto. The
 corresponding pre-fix owner case failed with the directory-rename publisher.
 Other owner cases inspect the non-executable initial EA in an unowned legacy

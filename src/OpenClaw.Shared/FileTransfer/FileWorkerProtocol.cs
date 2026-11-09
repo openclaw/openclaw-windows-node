@@ -9,7 +9,7 @@ public sealed record FilePacket(FilePacketKind Kind, byte[] Bytes);
 /// <summary>Private process protocol. Exactly one request/result; opaque messages are never text-captured.</summary>
 public static class FileWorkerProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
     private const uint Magic = 0x3146434F; // OCF1, little endian
     public const int HeaderBytes = 9;
 

@@ -112,6 +112,30 @@ boundaries with synthetic capabilities. They do not prove the fixed worker's
 native filesystem behavior, MXC isolation, actual pairing, packaging, or a
 launched Companion. Those still require the applicable authorized proof pools.
 
+Automatic uploads use a profile-specific, executor-owned sibling of its runtime
+roots, not Downloads or the legacy configured upload path. In contained mode,
+ordinary commands can read the current profile's retained uploads only after
+native ownership verification. Upload/Reap alone receive operation-scoped write
+authority, and the worker rejects an operation different from its admission.
+Explicit read-only/No access restrictions and protected/runtime-private roots
+remain enforced. The profile is the sharing boundary, not an individual upload
+or conversation. Existing valid transfer budgets remain in force without the
+former Sandbox configuration cards.
+
+The exact managed boundary is established as trusted metadata before SDK launch,
+under the committed policy epoch and a durable retention reservation. It is not
+a general host file operation: only the derived profile root can be created,
+with an atomic private owner/System ACL and native ownership EA. All uploaded
+bytes, child creation and reaping remain in the fixed worker. Reap never creates
+a missing managed boundary. Failed launch/cancellation may retain an owned empty
+root; unknown or identity-unbound roots require review rather than adoption or
+blind deletion.
+
+Native proof must cover first creation under Strict with no personal-folder
+grants, readback through approved system.run, denied ordinary writes and
+sibling/protected reads, restrictive saved policy, and identity-safe recovery.
+The host compatibility fixture is not evidence for these MXC assertions.
+
 Setup's `CapabilitiesConfig` uses the same file command IDs as the live handler
 for initial node pairing and the Gateway command allowlist. This does not enable
 the Gateway's `file-transfer` plugin, grant its path rules, or bypass node trust.
@@ -130,16 +154,15 @@ does not fall back to reading caller files in the host process. Executable-name
 resolution used by exec approval remains trusted image metadata, not permission
 to fetch the executable's contents through file commands.
 
-The Sandbox page also owns **Upload storage location** and **File transfer
-budget (MiB)** in the existing settings store. The default upload location is
-`Downloads\OpenClaw-upload-staging`, not the protected `.openclaw\tmp` tree.
-Selecting a location never grants access. Contained uploads require a matching
-read/write folder grant; positively unsupported Windows uses the same explicit
-uncontained compatibility route as `system.run`. Storage and byte-budget
-controls remain available on those hosts.
+The Sandbox page exposes permissions and blocked-cleanup status, not upload
+location or transfer-budget controls. Storage is automatic; remembered legacy
+roots remain eligible only for identity-checked cleanup under current rights.
+On positively unsupported Windows, file commands retain the same explicitly
+uncontained compatibility route as `system.run`.
 
-The committed transfer budget defaults to 50 MiB and is configurable from
-1 to 1024 MiB. It bounds binary fetch/create and unary content before mutation;
+The committed transfer budget defaults to 50 MiB and cannot exceed 1024 MiB.
+Valid saved byte values remain effective.
+It bounds binary fetch/create and unary content before mutation;
 individual command limits can be lower. Archives additionally bound expanded
 bytes by this budget and the 64 MiB archive ceiling. Binary fetch and streaming
 create have a ten-minute executor ceiling, independent of the general Sandbox

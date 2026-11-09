@@ -32,34 +32,40 @@ public sealed class FileOperations(NodeSandboxExecutor executor) : IUploadRetent
             (command.Operation == FileOperation.Create || command.Operation == FileOperation.Fetch && command.Binary);
         string? admittedUploadRoot = null;
         var result = await executor.RunFileAsync(new FixedFileWorkload<FileOperationResult>(
-            (io, stop) => ExchangeAsync(io, command, channel, null, stop, uploadAdmitted: root => admittedUploadRoot = root),
+            (io, stop) => ExchangeAsync(io, command, channel, null, stop),
             streaming ? FileLimits.TransferTimeoutMs : command.Operation == FileOperation.Archive ? FileLimits.OperationTimeoutMs : 0,
-            Streaming: streaming, ProcessSettled: () =>
+            Streaming: streaming)
+        {
+            Invocation = new(command.Operation, UploadBytes: command.Operation == FileOperation.Upload
+                ? StrictFileBase64.Inspect(command.ContentBase64!, FileLimits.UnaryBytes, standardPadded: true) : 0),
+            ReserveUpload = root =>
+            {
+                var reserve = UploadAdmission ?? throw new FileCommandException("UPLOAD_CLEANUP_BLOCKED",
+                    "Upload retention must be started before accepting uploads.");
+                var expected = reserve(root);
+                admittedUploadRoot = root;
+                return expected;
+            },
+            UploadReservationSettled = () =>
             {
                 if (admittedUploadRoot is not null) UploadSettled?.Invoke(admittedUploadRoot);
-            }), cancellationToken).ConfigureAwait(false);
+            },
+        }, cancellationToken).ConfigureAwait(false);
         if (result.Retention is { } retained) RetentionChanged?.Invoke(retained);
         return result;
     }
 
     public Task<FileOperationResult> RecoverUploadsAsync(string rootPath, UploadRootIdentity? identity, CancellationToken stop) =>
         executor.RunFileAsync(new FixedFileWorkload<FileOperationResult>(
-            (io, token) => ExchangeAsync(io, new(FileOperation.ReapUploads, ""), null, identity, token, rootPath),
-            0), stop);
+            (io, token) => ExchangeAsync(io, new(FileOperation.ReapUploads, ""), null, identity, token),
+            0) { Invocation = new(FileOperation.ReapUploads, rootPath, identity) }, stop);
 
     private async Task<FileOperationResult> ExchangeAsync(NodeSandboxProcessIo io, FileCommandRequest command,
-        IFileInvocationChannel? channel, UploadRootIdentity? reapRoot, CancellationToken stop, string? recoveryPath = null,
-        Action<string>? uploadAdmitted = null)
+        IFileInvocationChannel? channel, UploadRootIdentity? reapRoot, CancellationToken stop)
     {
         var input = io.StandardInput ?? throw new IOException("The fixed worker has no input pipe.");
         var output = io.StandardOutput ?? throw new IOException("The fixed worker has no output pipe.");
         var admission = CreateAdmission(io, reapRoot, command.Operation is FileOperation.Upload or FileOperation.ReapUploads);
-        if (recoveryPath is not null) admission = admission with { UploadRoot = recoveryPath };
-        if (command.Operation == FileOperation.Upload && UploadAdmission is { } authorizeInventory)
-        {
-            admission = admission with { ExpectedUploadRoot = authorizeInventory(admission.UploadRoot) };
-            uploadAdmitted?.Invoke(admission.UploadRoot);
-        }
         var writes = Channel.CreateBounded<FilePacket>(new BoundedChannelOptions(1) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
         var reads = Channel.CreateBounded<FilePacket>(new BoundedChannelOptions(1) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
         using var sessionStop = CancellationTokenSource.CreateLinkedTokenSource(stop);
@@ -159,15 +165,16 @@ public sealed class FileOperations(NodeSandboxExecutor executor) : IUploadRetent
             io.ExecutionMode == NodeToolExecutionMode.Host && io.Resources is not null)
             throw new IOException("The file operation has an invalid admitted execution mode.");
         var data = io.Resources?.DataAccess;
-        var setting = io.Policy.Settings.SandboxUploadStagingPath;
-        var uploadRoot = !resolveUploadRoot ? "" : root?.Path ?? (string.IsNullOrWhiteSpace(setting)
-            ? Path.Combine(MxcRequestContext.Downloads(), "OpenClaw-upload-staging") : setting);
+        var invocation = io.FileInvocation;
+        if (resolveUploadRoot && invocation is null)
+            throw new IOException("Upload storage was not selected by the executor.");
+        var uploadRoot = resolveUploadRoot ? invocation!.UploadRoot : "";
         return new(io.ExecutionMode == NodeToolExecutionMode.Host ? "host" : "sandbox",
             io.ExecutionMode == NodeToolExecutionMode.Host ? "windows_unsupported" : null,
             io.Policy.Revision, io.Policy.Fingerprint,
             data is null ? null : new(data.ReadonlyPaths.ToArray(), data.ReadwritePaths.ToArray(), data.DeniedPaths.ToArray(),
                 data.ProtectedPaths.Concat(data.ExecutorPrivatePaths).ToArray()),
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), uploadRoot, root,
-            io.Policy.Settings.SandboxMaxTransferBytes);
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), uploadRoot, invocation?.ExpectedRoot ?? root,
+            io.Policy.Settings.SandboxMaxTransferBytes, invocation?.Operation);
     }
 }

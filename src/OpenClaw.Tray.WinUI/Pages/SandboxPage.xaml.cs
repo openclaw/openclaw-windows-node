@@ -88,10 +88,6 @@ public sealed partial class SandboxPage : Page
         try
         {
             NetInternetToggle.IsOn = settings.SystemRunAllowOutbound;
-            TransferBudgetBox.Value = settings.SandboxMaxTransferBytes / (double)OpenClaw.Shared.FileTransfer.FileLimits.MessageBytes;
-            UploadStoragePath.Text = string.IsNullOrWhiteSpace(settings.SandboxUploadStagingPath)
-                ? System.IO.Path.Combine(MxcRequestBuilder.ResolveDownloadsFolder(), "OpenClaw-upload-staging")
-                : settings.SandboxUploadStagingPath;
             LoadFolders();
             (settings.SandboxClipboard switch
             {
@@ -379,42 +375,6 @@ public sealed partial class SandboxPage : Page
         if (long.TryParse((string?)((ComboBoxItem?)MaxOutputCombo.SelectedItem)?.Tag, out var bytes))
         { settings.SandboxMaxOutputBytes = bytes; Save(); }
     }
-
-    private void OnTransferBudgetChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
-    {
-        if (_suppress || CurrentApp.Settings is not { } settings || !double.IsFinite(args.NewValue)) return;
-        var bytes = (long)Math.Clamp(Math.Round(args.NewValue), 1, 1024) * OpenClaw.Shared.FileTransfer.FileLimits.MessageBytes;
-        try
-        {
-            settings.UpdateAndSave(() => settings.SandboxMaxTransferBytes = bytes);
-        }
-        catch
-        {
-            _suppress = true;
-            try
-            {
-                sender.Value = settings.SandboxMaxTransferBytes / (double)OpenClaw.Shared.FileTransfer.FileLimits.MessageBytes;
-            }
-            finally { _suppress = false; }
-            throw;
-        }
-        ((IAppCommands)CurrentApp).NotifySettingsSaved();
-    }
-
-    private void OnChooseUploadParent(object sender, RoutedEventArgs e) =>
-        AsyncEventHandlerGuard.Run(async () =>
-        {
-            if (CurrentApp.ActiveHubWindow is not { } window || CurrentApp.Settings is not { } settings) return;
-            var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.Downloads };
-            picker.FileTypeFilter.Add("*");
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
-            var folder = await picker.PickSingleFolderAsync();
-            if (folder is null) return;
-            var path = System.IO.Path.Combine(folder.Path, "OpenClaw-upload-staging");
-            settings.UpdateAndSave(() => settings.SandboxUploadStagingPath = path);
-            ((IAppCommands)CurrentApp).NotifySettingsSaved();
-            UploadStoragePath.Text = path;
-        }, new AppLogger(), nameof(OnChooseUploadParent));
 
     public sealed class CustomFolderRow
     {

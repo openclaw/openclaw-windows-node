@@ -9,6 +9,48 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task SandboxPageKeepsPermissionControlsWithoutTransferConfigurationCards()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "sandbox" });
+            await WaitUiAsync(run, () => FindById(run, "SandboxPageMarker") is { Current.IsOffscreen: false },
+                "visible Sandbox page");
+            var marker = FindById(run, "SandboxPageMarker")!;
+            var window = AppWindows(run).Single(candidate => candidate.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxPageMarker")) is not null);
+            AutomationElement? Named(string name) => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, name));
+            await WaitUiAsync(run, () => Named("Security level") is { Current.IsOffscreen: false },
+                "visible Sandbox permission presets");
+            Assert.Null(FindById(run, "TransferBudgetBox"));
+            Assert.Null(Named("Upload storage location"));
+            Assert.Null(Named("File transfer budget (MiB)"));
+            Assert.Null(Named("Choose parent folder…"));
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            {
+                await WaitForStablePageGeometryAsync(run, window, marker.Current.BoundingRectangle.Left);
+                OwnedWindowCapture.Save(run, window, "sandbox-managed-staging.png", marker, Named("Security level")!);
+            }
+            Assert.False(FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false });
+            var scope = FindById(run, "ScopeExpander")!;
+            ((ExpandCollapsePattern)scope.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false },
+                "contained operations in the expanded scope section");
+            var operations = FindById(run, "SandboxContainedOperations")!;
+            Assert.Null(FindById(run, "SandboxContainmentDetails"));
+            Assert.Contains("system.run", operations.Current.Name);
+            Assert.Contains("file actions", operations.Current.Name);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            {
+                await WaitForStablePageGeometryAsync(run, window, marker.Current.BoundingRectangle.Left);
+                OwnedWindowCapture.Save(run, window, "sandbox-containment-scope.png", operations);
+            }
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
     public async Task SettingsPages_GroupPreferencesInGeneral_AndKeepConnectionAboutAndConsentSeparate()
     {

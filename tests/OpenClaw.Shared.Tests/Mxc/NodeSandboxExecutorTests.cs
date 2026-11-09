@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Mxc.Sdk.V1;
 using Microsoft.Win32.SafeHandles;
 using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.FileTransfer;
 using OpenClaw.Shared.Telemetry;
 using Xunit;
 
@@ -43,6 +44,208 @@ public sealed class NodeSandboxExecutorTests : IDisposable
         new(policy, () => SettingsDirectory, availability ?? (() => Supported), spawn: spawn,
             probe: probe ?? (_ => MxcAvailabilityTests.BaseProbe()), scratchRoot: Runs,
             contextProvider: () => _context, fileWorker: _worker, logger: logger);
+
+    [Fact]
+    public async Task ManagedWriteIsAdmittedBeforeLaunchWithoutGrantingLegacyPathOrParent()
+    {
+        var legacy = Path.Combine(_root, "configured-but-unused");
+        var settings = new SettingsData { SandboxUploadStagingPath = legacy };
+        ContainerRequest? launched = null;
+        using var executor = Executor(new(settings), request =>
+        {
+            launched = request;
+            return Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess());
+        });
+        string? managed = null;
+        await executor.RunFileAsync(new FixedFileWorkload<bool>((io, _) =>
+        {
+            managed = io.FileInvocation!.UploadRoot;
+            Assert.Equal(FileOperation.Upload, io.FileInvocation!.Operation);
+            Assert.Equal(Path.GetDirectoryName(Runs), Path.GetDirectoryName(managed));
+            Assert.Matches("^Uploads-[a-f0-9]{64}$", Path.GetFileName(managed));
+            Assert.NotEqual(legacy, managed);
+            Assert.Contains(managed, launched!.Filesystem!.ReadwritePaths);
+            Assert.DoesNotContain(Path.GetDirectoryName(managed)!, launched!.Filesystem!.ReadwritePaths);
+            Assert.Equal(SandboxFolderAccess.ReadWrite, io.Resources!.DataAccess.EffectiveAccess(managed));
+            Assert.Null(io.Resources!.DataAccess.EffectiveAccess(legacy));
+            Assert.DoesNotContain(legacy, launched!.Filesystem!.ReadwritePaths);
+            return Task.FromResult(true);
+        }, 10_000) { Invocation = new(FileOperation.Upload), ReserveUpload = _ => null });
+        Assert.True(Directory.Exists(managed));
+        Assert.Empty(Directory.GetFileSystemEntries(managed!));
+        using (var owned = ManagedUploadRootLease.Open(managed!)) Assert.True(owned.Complete);
+        await executor.RunFileAsync(new FixedFileWorkload<bool>((io, _) =>
+        {
+            Assert.Equal(FileOperation.Fetch, io.FileInvocation!.Operation);
+            Assert.Equal(SandboxFolderAccess.ReadOnly, io.Resources!.DataAccess.EffectiveAccess(managed!));
+            Assert.DoesNotContain(managed!, launched!.Filesystem!.ReadwritePaths);
+            return Task.FromResult(true);
+        }, 10_000) { Invocation = new(FileOperation.Fetch) });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReservedUploadCannotMutateAfterPolicyReplacementOrCancellation(bool cancelBeforeCreate)
+    {
+        using var cancel = new CancellationTokenSource();
+        var policies = new NodeSandboxPolicyStore(new SettingsData());
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reservations = 0;
+        var settlements = 0;
+        using var executor = Executor(policies, _ => throw new Exception("Refused bootstrap must not spawn."));
+        var run = executor.RunFileAsync(new FixedFileWorkload<bool>((_, _) => Task.FromResult(true), 10_000)
+        {
+            Invocation = new(FileOperation.Upload),
+            ReserveUpload = _ =>
+            {
+                reservations++;
+                Assert.False(Directory.Exists(root));
+                if (cancelBeforeCreate) cancel.Cancel();
+                else policies.Persist(new SettingsData { SystemRunAllowOutbound = true }, () => { });
+                return null;
+            },
+            UploadReservationSettled = () => { settlements++; settled.TrySetResult(); },
+        }, cancel.Token);
+        if (cancelBeforeCreate) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        else Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied,
+            (await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => run)).Category);
+        await settled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, reservations);
+        Assert.Equal(1, settlements);
+        Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
+    public async Task MetadataCollisionSettlesReservationWithoutAdoptingOrLaunching()
+    {
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        var settled = 0;
+        using var executor = Executor(new(new SettingsData()), _ => throw new Exception("A collision must not spawn."));
+        await Assert.ThrowsAsync<FileCommandException>(() => executor.RunFileAsync(new FixedFileWorkload<bool>(
+            (_, _) => Task.FromResult(true), 10_000)
+        {
+            Invocation = new(FileOperation.Upload),
+            ReserveUpload = _ => { Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "foreign"), "keep"); return null; },
+            UploadReservationSettled = () => settled++,
+        }));
+        Assert.Equal(1, settled);
+        Assert.Equal("keep", File.ReadAllText(Path.Combine(root, "foreign")));
+        Assert.Throws<FileCommandException>(() => ManagedUploadRootLease.Open(root));
+    }
+
+    [Fact]
+    public async Task PostBootstrapProbeFailureRetainsEmptyOwnedRootAndSettlesWithoutSpawning()
+    {
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        var settled = 0;
+        using var executor = Executor(new(new SettingsData()), _ => throw new Exception("A rejected post-bootstrap probe cannot spawn."),
+            probe: _ => Directory.Exists(root) ? throw new NotSupportedException("Controlled probe refusal.") : MxcAvailabilityTests.BaseProbe());
+        await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => executor.RunFileAsync(
+            new FixedFileWorkload<bool>((_, _) => Task.FromResult(true), 10_000)
+            { Invocation = new(FileOperation.Upload), ReserveUpload = _ => null, UploadReservationSettled = () => settled++ }));
+        Assert.Equal(1, settled);
+        using var retained = ManagedUploadRootLease.Open(root);
+        Assert.True(retained.Complete);
+        Assert.Empty(Directory.GetFileSystemEntries(root));
+    }
+
+    [Fact]
+    public async Task UncertainLaunchRetainsRootPinsAndDoesNotReleaseUploadReservation()
+    {
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        var settled = 0;
+        var executor = Executor(new(new SettingsData()), _ => Task.FromException<IMxcProcess>(new IOException("Uncertain SDK launch.")));
+        try
+        {
+            await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => executor.RunFileAsync(
+                new FixedFileWorkload<bool>((_, _) => Task.FromResult(true), 10_000)
+                { Invocation = new(FileOperation.Upload), ReserveUpload = _ => null, UploadReservationSettled = () => settled++ }));
+            Assert.Equal(0, settled);
+            Assert.Throws<IOException>(() => Directory.Move(root, root + ".moved"));
+        }
+        finally { executor.Dispose(); }
+        Directory.Move(root, root + ".moved");
+        Assert.True(Directory.Exists(root + ".moved"));
+        Assert.Equal(0, settled);
+    }
+
+    [Fact]
+    public async Task ManagedReapCannotCreateAMissingBoundary()
+    {
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        using var executor = Executor(new(new SettingsData()), _ => Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess()));
+        await executor.RunFileAsync(new FixedFileWorkload<bool>((io, _) =>
+        {
+            Assert.Equal(root, io.FileInvocation!.UploadRoot);
+            Assert.False(Directory.Exists(root));
+            return Task.FromResult(true);
+        }, 10_000) { Invocation = new(FileOperation.ReapUploads, root) });
+        Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
+    public async Task UploadWithoutInventoryOrWithInvalidBudgetCannotCreateBoundary()
+    {
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        using var executor = Executor(new(new SettingsData { SandboxMaxTransferBytes = 2 }),
+            _ => throw new Exception("Invalid upload must not spawn."));
+        var invalid = await Assert.ThrowsAsync<FileCommandException>(() => executor.RunFileAsync(
+            new FixedFileWorkload<bool>((_, _) => Task.FromResult(true), 10_000)
+            { Invocation = new(FileOperation.Upload, UploadBytes: 3), ReserveUpload = _ => throw new Exception("Budget must precede reservation.") }));
+        Assert.Equal("FILE_TOO_LARGE", invalid.Code);
+        var missing = await Assert.ThrowsAsync<FileCommandException>(() => executor.RunFileAsync(
+            new FixedFileWorkload<bool>((_, _) => Task.FromResult(true), 10_000) { Invocation = new(FileOperation.Upload) }));
+        Assert.Equal("UPLOAD_CLEANUP_BLOCKED", missing.Code);
+        Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
+    public async Task ExistingUnownedManagedNameCannotAuthorizeAnUploadLaunch()
+    {
+        var root = ManagedUploadPolicy.ResolvePath(Runs, SettingsDirectory);
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "sentinel"), "keep");
+        using var executor = Executor(new(new SettingsData()), _ =>
+            throw new Exception("An unowned staging name must not authorize launch."));
+        await Assert.ThrowsAsync<FileCommandException>(() => executor.RunFileAsync(
+            new FixedFileWorkload<bool>((_, _) => throw new Exception("No IO before ownership admission."), 10_000)
+            { Invocation = new(FileOperation.Upload) }));
+        Assert.Equal("keep", File.ReadAllText(Path.Combine(root, "sentinel")));
+        Assert.Single(Directory.GetFiles(root));
+    }
+
+    [Fact]
+    public async Task RememberedLegacyReapDoesNotReceiveManagedWriteAuthority()
+    {
+        var legacy = Path.Combine(_root, "legacy");
+        var expected = new UploadRootIdentity(legacy, "17", "23");
+        using var executor = Executor(new(new SettingsData()), _ =>
+            Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess()));
+        await executor.RunFileAsync(new FixedFileWorkload<bool>((io, _) =>
+        {
+            Assert.Equal(legacy, io.FileInvocation!.UploadRoot);
+            Assert.Equal(expected, io.FileInvocation!.ExpectedRoot);
+            Assert.Null(io.Resources!.DataAccess.EffectiveAccess(legacy));
+            Assert.Empty(io.Resources!.DataAccess.ReadwritePaths);
+            return Task.FromResult(true);
+        }, 10_000) { Invocation = new(FileOperation.ReapUploads, legacy, expected) });
+        Assert.False(Directory.Exists(legacy));
+    }
+
+    [Theory]
+    [InlineData(SandboxFolderAccess.ReadOnly)]
+    [InlineData(SandboxFolderAccess.NoAccess)]
+    public async Task ManagedUploadCannotOverrideAnExplicitAncestorRestriction(SandboxFolderAccess access)
+    {
+        var settings = new SettingsData { SandboxCustomFolders = [new() { Path = _root, Access = access }] };
+        using var executor = Executor(new(settings), _ => throw new Exception("A restricted upload must not launch."));
+        var error = await Assert.ThrowsAsync<FileCommandException>(() => executor.RunFileAsync(
+            new FixedFileWorkload<bool>((_, _) => throw new Exception("No file IO before admission."), 10_000)
+            { Invocation = new(FileOperation.Upload) }));
+        Assert.Equal("PERMISSION_DENIED", error.Code);
+    }
 
     [Theory]
     [InlineData(false)]
@@ -133,6 +336,7 @@ public sealed class NodeSandboxExecutorTests : IDisposable
         try
         {
             await Assert.ThrowsAsync<NodeSandboxExecutionException>(() => executor.RunFileAsync(Noop()));
+            await executor.WaitForOwnedOperationsAsync();
             Assert.False(_worker.LastLease!.Disposed);
             var retained = Assert.Single(Directory.GetDirectories(Runs));
             Assert.Throws<IOException>(() => Directory.Move(Runs, Runs + ".moved"));
@@ -476,6 +680,50 @@ public sealed class NodeSandboxExecutorTests : IDisposable
         await process.DisposedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await _worker.LastLease.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(process.Killed);
+    }
+
+    [Fact]
+    public async Task OwnedWorkJoinIncludesCanceledPreparationBeforeScratchCreation()
+    {
+        var timeout = TimeSpan.FromMilliseconds(Command.TimeoutMs);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        using var cancel = new CancellationTokenSource();
+        Directory.CreateDirectory(Runs);
+        using var executor = Executor(new(new SettingsData()),
+            _ => throw new InvalidOperationException("Canceled preparation must not launch."),
+            availability: () =>
+            {
+                entered.TrySetResult();
+                Assert.True(release.Wait(timeout), "The preparation gate was not released.");
+                return Supported;
+            });
+        var run = executor.RunFileAsync(Noop(), cancel.Token);
+        try
+        {
+            await entered.Task.WaitAsync(timeout);
+            Assert.Empty(Directory.GetDirectories(Runs));
+            cancel.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+            var joined = executor.WaitForOwnedOperationsAsync();
+            Assert.False(joined.IsCompleted, "The owned preparation is still held before scratch creation.");
+
+            using var other = Executor(new(new SettingsData()),
+                _ => throw new InvalidOperationException("The other executor has no work."));
+            Assert.True(other.WaitForOwnedOperationsAsync().IsCompleted);
+            using var waitStop = new CancellationTokenSource();
+            waitStop.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => executor.WaitForOwnedOperationsAsync(waitStop.Token));
+            Assert.False(joined.IsCompleted);
+        }
+        finally
+        {
+            cancel.Cancel();
+            release.Set();
+            await executor.WaitForOwnedOperationsAsync().WaitAsync(timeout);
+        }
+        Assert.Empty(Directory.GetDirectories(Runs));
     }
 
     [Fact]

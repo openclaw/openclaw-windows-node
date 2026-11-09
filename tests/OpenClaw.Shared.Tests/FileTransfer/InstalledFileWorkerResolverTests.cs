@@ -623,55 +623,152 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
     }
 
     [Fact]
-    public async Task CancellationAfterPublicationRetainsPublishedIdentityAndRetryReusesIt()
+    public Task CancellationAfterPublicationRetainsPublishedIdentityAndRetryReusesIt() =>
+        AssertPublishedReadCompletionAsync(existingCache: false, requestCancellation: true);
+
+    [Fact]
+    public Task CancellationDuringPublishedCacheReuseRetainsItsCompleteNativeIdentity() =>
+        AssertPublishedReadCompletionAsync(existingCache: true, requestCancellation: true);
+
+    [Fact]
+    public Task HeldPublishedReadWithoutCancellationReturnsARealVerifiedLease() =>
+        AssertPublishedReadCompletionAsync(existingCache: false, requestCancellation: false);
+
+    private async Task AssertPublishedReadCompletionAsync(bool existingCache, bool requestCancellation)
     {
-        var product = CreateProcessPayload();
-        var resolver = ProcessResolver(product);
+        // Use the ordinary three-byte payload, not a copy-size scheduling window.
         Directory.CreateDirectory(Cache);
+        var path = Path.Combine(Cache, PublishedName());
+        Assert.False(Directory.Exists(path));
+        if (existingCache)
+            using (var warm = Resolver.Resolve(Cache)) Assert.Equal(path, warm.PayloadDirectory);
+
         using var cancel = new CancellationTokenSource();
-        var path = ProcessPreparation(product);
-        var observation = ObserveActiveCopy(path, () =>
+        using var reader = new PublishedPayloadReadGate(path, "payload-manifest.json");
+        var resolver = new InstalledFileWorkerResolver(typeof(InstalledFileWorkerResolverTests).Assembly, _product, reader);
+        var resolving = Task.Factory.StartNew(() => Record.Exception(() =>
         {
-            using (var state = System.Text.Json.JsonDocument.Parse(ReadCacheEa(path)))
-                Assert.Equal("preparing", state.RootElement.GetProperty("state").GetString());
-            using var entry = CreateFileW(@"\\?\" + Cache, 1, 3, IntPtr.Zero, 3, 0x42200000, IntPtr.Zero);
-            Assert.False(entry.IsInvalid);
-            // FILE_NOTIFY_CHANGE_EA observes the native commit, not an incidental
-            // name change. The real runtime copy keeps this wait ahead of commit.
-            using var signal = new ManualResetEvent(false);
-            var io = Marshal.AllocHGlobal(Marshal.SizeOf<EaIoStatus>());
-            var buffer = Marshal.AllocHGlobal(4096);
-            try
+            using var lease = resolver.Resolve(Cache, cancel.Token);
+        }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        byte[]? receiptBytes = null;
+        (ulong Volume, ulong Low, ulong High) entryIdentity = default;
+        Dictionary<string, (ulong Volume, ulong Low, ulong High)>? childIdentities = null;
+        Exception? error;
+        try
+        {
+            var first = await Task.WhenAny(reader.Reached.Task, resolving).WaitAsync(ActiveCopyTimeout);
+            if (!ReferenceEquals(first, reader.Reached.Task))
             {
-                var status = NtNotifyChangeDirectoryFile(entry, signal.SafeWaitHandle.DangerousGetHandle(),
-                    IntPtr.Zero, IntPtr.Zero, io, buffer, 4096, 0x80, false);
-                Assert.True(status >= 0);
-                if (status == 0x103)
-                {
-                    if (!signal.WaitOne(TimeSpan.FromSeconds(15)))
-                    {
-                        CancelIoEx(entry, IntPtr.Zero);
-                        signal.WaitOne();
-                        Assert.Fail("Native EA publication notification did not complete.");
-                    }
-                    Assert.Equal(0, Marshal.ReadInt32(io));
-                }
+                var early = await resolving;
+                Assert.Fail("Resolve ended before the actual published-read barrier: " +
+                    (early?.ToString() ?? "returned a lease"));
             }
-            finally { Marshal.FreeHGlobal(buffer); Marshal.FreeHGlobal(io); }
-            using var receipt = System.Text.Json.JsonDocument.Parse(ReadCacheEa(path));
-            Assert.Equal("published", receipt.RootElement.GetProperty("state").GetString());
-            Assert.Equal(4, receipt.RootElement.GetProperty("children").EnumerateObject().Count());
-            Assert.Equal(64L * 1024 * 1024, new FileInfo(Path.Combine(path, "coreclr.dll")).Length);
-            cancel.Cancel();
-        });
-        var error = Record.Exception(() => { using var lease = resolver.Resolve(Cache, cancel.Token); });
-        await observation.WaitAsync(TimeSpan.FromSeconds(15));
-        Assert.IsType<OperationCanceledException>(error);
+            await reader.Reached.Task;
+            Assert.False(resolving.IsCompleted, "The verifier must remain blocked until the test releases its real read.");
+            Assert.True(reader.ReadBytes > 0);
+            receiptBytes = Assert.IsType<byte[]>(reader.PublishedReceipt);
+            Assert.Equal(receiptBytes, ReadCacheEa(path));
+            using (var receipt = System.Text.Json.JsonDocument.Parse(receiptBytes))
+            {
+                var record = receipt.RootElement;
+                Assert.Equal(1, record.GetProperty("version").GetInt32());
+                Assert.Equal(Path.GetFileName(path), record.GetProperty("name").GetString());
+                Assert.Equal("published", record.GetProperty("state").GetString());
+                AssertCacheIdentity(Cache, record.GetProperty("parent"));
+                AssertCacheIdentity(path, record.GetProperty("identity"));
+                var children = record.GetProperty("children").EnumerateObject().ToArray();
+                string[] expectedNames = ["OpenClaw.FileWorker.exe", "OpenClaw.FileWorker.runtimeconfig.json",
+                    "coreclr.dll", "payload-manifest.json"];
+                Assert.Equal(expectedNames.Order(), children.Select(child => child.Name).Order());
+                Assert.Equal(expectedNames.Order(), Directory.GetFiles(path).Select(Path.GetFileName).Order());
+                foreach (var child in children) AssertCacheIdentity(Path.Combine(path, child.Name), child.Value);
+                entryIdentity = ReadFullCacheIdentity(path);
+                childIdentities = expectedNames.ToDictionary(name => name,
+                    name => ReadFullCacheIdentity(Path.Combine(path, name)), StringComparer.Ordinal);
+            }
+            Assert.Equal(childIdentities!["payload-manifest.json"], reader.StreamIdentity);
+            Assert.NotEqual(ReadFullCacheIdentity(Path.Combine(_payload, "payload-manifest.json")), reader.StreamIdentity);
+            Assert.Equal(3L, new FileInfo(Path.Combine(path, "coreclr.dll")).Length);
+            // The read adapter must not weaken the real publication/verification pins.
+            Assert.Throws<IOException>(() => File.WriteAllText(Path.Combine(path, "coreclr.dll"), "tamper"));
+            Assert.Throws<IOException>(() => Directory.Move(path, path + ".moved"));
+            if (requestCancellation)
+            {
+                cancel.Cancel();
+                Assert.True(cancel.IsCancellationRequested);
+            }
+            reader.Release();
+            error = await resolving.WaitAsync(ActiveCopyTimeout);
+        }
+        finally
+        {
+            reader.Release();
+            await resolving.WaitAsync(ActiveCopyTimeout);
+        }
+        if (requestCancellation)
+        {
+            var cancellation = Assert.IsType<OperationCanceledException>(error);
+            Assert.Equal(cancel.Token, cancellation.CancellationToken);
+            // A mistaken rollback can itself be vetoed and wrapped as an OCE.
+            // That is not the successful published-retention branch under test.
+            Assert.Null(cancellation.InnerException);
+        }
+        else Assert.Null(error);
         Assert.Equal(path, Assert.Single(Directory.GetDirectories(Cache)));
-        var identity = NativeIdentity(Path.Combine(path, "OpenClaw.FileWorker.exe"));
-        using var retry = resolver.Resolve(Cache);
+        Assert.Equal(receiptBytes, ReadCacheEa(path));
+        Assert.Equal(entryIdentity, ReadFullCacheIdentity(path));
+        Assert.NotNull(childIdentities);
+        Assert.Equal(childIdentities.Keys.Order(), Directory.GetFiles(path).Select(Path.GetFileName).Order());
+        foreach (var (name, identity) in childIdentities)
+            Assert.Equal(identity, ReadFullCacheIdentity(Path.Combine(path, name)));
+        using var retry = Resolver.Resolve(Cache); // Default production reader, no retained test gate.
         Assert.Equal(path, retry.PayloadDirectory);
-        Assert.Equal(identity, NativeIdentity(retry.ImagePath));
+        Assert.Equal(entryIdentity, ReadFullCacheIdentity(path));
+        foreach (var (name, identity) in childIdentities)
+            Assert.Equal(identity, ReadFullCacheIdentity(Path.Combine(path, name)));
+    }
+
+    private static (ulong Volume, ulong Low, ulong High) ReadFullCacheIdentity(string path)
+    {
+        using var handle = CreateFileW(@"\\?\" + path, 0x80, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+        Assert.False(handle.IsInvalid);
+        Assert.True(GetFileInformationByHandleEx(handle, 18, out CacheFileIdentity identity, 24));
+        return (identity.Volume, identity.Low, identity.High);
+    }
+
+    private sealed class PublishedPayloadReadGate(string entryPath, string targetName) : IFileWorkerPayloadReader, IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new(false);
+        private int _held;
+        internal TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal byte[]? PublishedReceipt { get; private set; }
+        internal (ulong Volume, ulong Low, ulong High) StreamIdentity { get; private set; }
+        internal int ReadBytes { get; private set; }
+        public int Read(Stream pinnedStream, Span<byte> buffer)
+        {
+            // Always read the actual pinned stream. Only completion timing is controlled.
+            var count = pinnedStream.Read(buffer);
+            if (Volatile.Read(ref _held) != 0 || count == 0 || !Directory.Exists(entryPath)) return count;
+            var file = Assert.IsType<FileStream>(pinnedStream);
+            var bytes = ReadCacheEa(entryPath);
+            using var receipt = System.Text.Json.JsonDocument.Parse(bytes);
+            if (receipt.RootElement.GetProperty("state").GetString() != "published") return count;
+            var target = receipt.RootElement.GetProperty("children").GetProperty(targetName);
+            Assert.True(GetFileInformationByHandleEx(file.SafeFileHandle, 18, out CacheFileIdentity identity, 24));
+            if (identity.Volume != target.GetProperty("volume").GetUInt64() ||
+                identity.Low != target.GetProperty("low").GetUInt64() ||
+                identity.High != target.GetProperty("high").GetUInt64()) return count;
+            if (Interlocked.CompareExchange(ref _held, 1, 0) != 0) return count;
+            PublishedReceipt = bytes;
+            StreamIdentity = (identity.Volume, identity.Low, identity.High);
+            ReadBytes = count;
+            Reached.TrySetResult();
+            if (!_release.Wait(ActiveCopyTimeout))
+                throw new TimeoutException("The published payload read was not released by its test owner.");
+            return count;
+        }
+        internal void Release() => _release.Set();
+        public void Dispose() => _release.Dispose();
     }
 
     private static Task ObserveActiveCopy(string preparation, Action action) =>
@@ -942,8 +1039,8 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             : await Assert.ThrowsAsync<FileCommandException>(() => executor.RunFileAsync(new FixedFileWorkload<bool>((_, _) => throw failure, 10_000)));
         Assert.Same(failure, observed);
         Assert.Equal(!uploadAdmission, observed.InvalidRequest);
-        Assert.True(process.Finalized);
-        Assert.True(process.Disposed);
+        Assert.Equal(!uploadAdmission, process.Finalized);
+        Assert.Equal(!uploadAdmission, process.Disposed);
         Assert.Empty(Directory.GetDirectories(Path.Combine(_root, "runs")));
     }
 

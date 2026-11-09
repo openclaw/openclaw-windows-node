@@ -71,8 +71,13 @@ public sealed class FileWorkerProcessTests
         var upload = await fixture.Call("terminal.upload", new { name = "fixture.txt", contentBase64 = "YWJj" });
         Assert.Equal(3, upload.GetProperty("size").GetInt64());
         Assert.Equal("abc", await File.ReadAllTextAsync(upload.GetProperty("path").GetString()!));
+        var uploadRoot = Path.GetDirectoryName(Path.GetDirectoryName(upload.GetProperty("path").GetString()!)!)!;
+        Assert.Equal(fixture.Root, Path.GetDirectoryName(uploadRoot));
+        Assert.Matches("^Uploads-[a-f0-9]{64}$", Path.GetFileName(uploadRoot));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "uploads"))); // The legacy setting is not used.
         string[] expectedCommands = ["file.stat", "file.fetch", "file.write", "file.create", "dir.list", "dir.fetch", "fs.listDir", "terminal.upload"];
         Assert.Equal(expectedCommands.Order(), fixture.Discovered.Order());
+        await fixture.QuiesceRetentionAsync();
         Assert.Empty(Directory.GetDirectories(fixture.Scratch));
     }
 
@@ -89,6 +94,7 @@ public sealed class FileWorkerProcessTests
         var missing = await fixture.Run("file.fetch", new { path = Path.Combine(fixture.Data, "missing") });
         Assert.Equal(1, missing.Exit);
         Assert.Contains("NOT_FOUND", missing.Error);
+        await fixture.QuiesceRetentionAsync();
         Assert.Empty(Directory.GetDirectories(fixture.Scratch));
     }
 
@@ -96,6 +102,8 @@ public sealed class FileWorkerProcessTests
     {
         private readonly TempDirectory _directory = new("openclaw-file-process-");
         private readonly McpHttpServer _server;
+        private readonly NodeSandboxExecutor _executor;
+        private readonly UploadRetentionCoordinator _retention;
         public string Root => _directory.Path;
         public string Data { get; }
         public string Scratch { get; }
@@ -111,12 +119,15 @@ public sealed class FileWorkerProcessTests
                 SandboxUploadStagingPath = _directory.Combine("uploads")
             });
             // This selects the documented compatibility path, not an actual host-support assertion.
-            var executor = new NodeSandboxExecutor(policies, () => _directory.Combine("settings"),
+            _executor = new NodeSandboxExecutor(policies, () => _directory.Combine("settings"),
                 availabilityProvider: () => new MxcAvailability(false, false, false, [], isWindowsUnsupported: true),
                 spawn: _ => throw new InvalidOperationException("Compatibility execution must not invoke MXC."),
                 probe: _ => throw new InvalidOperationException("Compatibility execution must not probe MXC."),
                 scratchRoot: Scratch, fileWorker: new Resolver());
-            var capability = new FileCapability(NullLogger.Instance, new FileOperations(executor));
+            var operations = new FileOperations(_executor);
+            _retention = new UploadRetentionCoordinator(operations, _directory.Combine("settings", "upload-roots.json"));
+            _retention.Start();
+            var capability = new FileCapability(NullLogger.Instance, operations);
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -159,6 +170,14 @@ public sealed class FileWorkerProcessTests
             return (exit, output.ToString(), error.ToString());
         }
 
+        public async Task QuiesceRetentionAsync()
+        {
+            // Stop admission before joining work, including operations without scratch yet.
+            using var timeout = new CancellationTokenSource(OperationTimeoutMs);
+            await _retention.DisposeAsync().AsTask().WaitAsync(timeout.Token);
+            await _executor.WaitForOwnedOperationsAsync(timeout.Token);
+        }
+
         private string? EnvironmentValue(string key) => key switch
         {
             "OPENCLAW_MCP_TOKEN" => "fixture-token",
@@ -169,6 +188,8 @@ public sealed class FileWorkerProcessTests
         public async ValueTask DisposeAsync()
         {
             await _server.DisposeAsync();
+            await QuiesceRetentionAsync();
+            _executor.Dispose();
             _directory.Dispose();
         }
     }

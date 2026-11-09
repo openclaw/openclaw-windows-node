@@ -25,6 +25,8 @@ internal sealed class FileWorkerEngine
         try
         {
             admission.Validate();
+            if (admission.ExpectedOperation is { } operation && operation != request.Operation)
+                throw new FileCommandException("PERMISSION_DENIED", "The file command differs from its admitted operation.");
             if (request.FollowSymlinks)
                 throw new FileCommandException("UNSUPPORTED_FILE_TYPE", "followSymlinks is not supported. Use an ordinary local Windows path.");
             request = ApplyTransferBudget(admission, request);
@@ -122,7 +124,8 @@ internal sealed class FileWorkerEngine
         RequireDirectory(directory);
         if (request.PreflightOnly)
             return Ok(new { ok = true, path = directory.Path, entries = Array.Empty<object>(), truncated = false, preflight = true, binding = directory.Binding });
-        var names = fs.Enumerate(directory, FileLimits.DirectoryInventoryEntries).OrderBy(entry => entry.Name, StringComparer.Ordinal).ToArray();
+        var names = VisibleEntries(fs, directory, FileLimits.DirectoryInventoryEntries, stop)
+            .OrderBy(entry => entry.Name, StringComparer.Ordinal).ToArray();
         var entries = new List<object>();
         var metadataBytes = Encoding.UTF8.GetByteCount(directory.Path) * 2L;
         foreach (var entry in names.Skip((int)Math.Min(request.Offset, names.Length)).Take(request.MaxEntries))
@@ -130,7 +133,6 @@ internal sealed class FileWorkerEngine
             stop.ThrowIfCancellationRequested();
             var name = entry.Name;
             var path = Path.Combine(directory.Path, name);
-            fs.Demand(path);
             var item = new
             {
                 name, path, size = entry.IsDirectory ? 0 : entry.Size,
@@ -155,12 +157,12 @@ internal sealed class FileWorkerEngine
         RequireDirectory(directory);
         var entries = new List<object>();
         var metadataBytes = Encoding.UTF8.GetByteCount(directory.Path) * 2L + Encoding.UTF8.GetByteCount(home);
-        foreach (var entry in fs.Enumerate(directory).OrderBy(e => e.Name.StartsWith('.')).ThenBy(e => e.Name, StringComparer.Ordinal))
+        foreach (var entry in VisibleEntries(fs, directory, FileLimits.TreeEntries, stop)
+            .OrderBy(e => e.Name.StartsWith('.')).ThenBy(e => e.Name, StringComparer.Ordinal))
         {
             stop.ThrowIfCancellationRequested();
             var name = entry.Name;
             var path = Path.Combine(directory.Path, name);
-            fs.Demand(path);
             if (entry.IsDirectory)
             {
                 var item = new { name, path, hidden = name.StartsWith('.') ? true : (bool?)null,
@@ -171,6 +173,20 @@ internal sealed class FileWorkerEngine
         }
         var parent = Path.GetDirectoryName(directory.Path);
         return Metadata(new { path = directory.Path, parent, home, entries });
+    }
+
+    private static IEnumerable<RetainedFileSystem.DirectoryEntry> VisibleEntries(
+        RetainedFileSystem fs, NativeEntry directory, int limit, CancellationToken stop)
+    {
+        foreach (var entry in fs.Enumerate(directory, limit))
+        {
+            stop.ThrowIfCancellationRequested();
+            // A readable directory can contain protected children. Filter policy
+            // denials before pagination without hiding IO or metadata failures.
+            try { fs.Demand(Path.Combine(directory.Path, entry.Name)); }
+            catch (FileCommandException ex) when (ex.Code == "PERMISSION_DENIED") { continue; }
+            yield return entry;
+        }
     }
 
     private static FileOperationResult Archive(RetainedFileSystem fs, NativeEntry directory, FileCommandRequest request,

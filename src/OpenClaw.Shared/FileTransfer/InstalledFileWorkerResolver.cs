@@ -14,11 +14,16 @@ public sealed partial class InstalledFileWorkerResolver : IFixedFileWorkerResolv
 {
     private readonly Assembly _productAssembly;
     private readonly string _productDirectory;
+    private readonly IFileWorkerPayloadReader _payloadReader;
     public InstalledFileWorkerResolver(Assembly productAssembly) : this(productAssembly, AppContext.BaseDirectory) { }
     internal InstalledFileWorkerResolver(Assembly productAssembly, string productDirectory)
+        : this(productAssembly, productDirectory, new FileWorkerPayloadReader()) { }
+    internal InstalledFileWorkerResolver(Assembly productAssembly, string productDirectory,
+        IFileWorkerPayloadReader payloadReader)
     {
         _productAssembly = productAssembly;
         _productDirectory = productDirectory;
+        _payloadReader = payloadReader ?? throw new ArgumentNullException(nameof(payloadReader));
     }
     private const int MaximumPayloadFiles = 512;
     private const long MaximumPayloadFileBytes = 256L * FileLimits.MessageBytes;
@@ -84,6 +89,7 @@ public sealed partial class InstalledFileWorkerResolver : IFixedFileWorkerResolv
                     CacheOwnership.DemandExecutable(entryHandle, rootHandle, destination);
                     VerifyPayload(lease, destination, manifest, productManifest, ct);
                     lease.SelectExecutableDirectory(destination);
+                    ct.ThrowIfCancellationRequested();
                     return lease;
                 }
                 AdmitCachePayload(root, rootHandle, ownership, destination, source.Values.Sum(s => s.Length), ct);
@@ -150,6 +156,7 @@ public sealed partial class InstalledFileWorkerResolver : IFixedFileWorkerResolv
                     throw;
                 }
             }
+            ct.ThrowIfCancellationRequested();
             return lease;
         }
         catch (NotSupportedException ex) when (payloadCacheRoot is not null)
@@ -228,7 +235,7 @@ public sealed partial class InstalledFileWorkerResolver : IFixedFileWorkerResolv
             string.Join(" ", refusals.Distinct()));
     }
 
-    private static Dictionary<string, FileStream> VerifyPayload(PayloadLease lease, string directory,
+    private Dictionary<string, FileStream> VerifyPayload(PayloadLease lease, string directory,
         PayloadManifest manifest, byte[] productManifest, CancellationToken ct)
     {
         if (Directory.EnumerateDirectories(directory).Any())
@@ -248,13 +255,13 @@ public sealed partial class InstalledFileWorkerResolver : IFixedFileWorkerResolv
             totalBytes = checked(totalBytes + stream.Length);
             if (totalBytes > MaximumPayloadBytes)
                 throw new NotSupportedException("The fixed-worker payload exceeds the 128 MiB entry bound.");
-            if (stream.Length > MaximumPayloadFileBytes || !Convert.ToHexString(SHA256.HashData(stream)).Equals(expected, StringComparison.OrdinalIgnoreCase))
+            if (stream.Length > MaximumPayloadFileBytes || !Convert.ToHexString(FileWorkerPayloadHash.Compute(stream, _payloadReader, ct)).Equals(expected, StringComparison.OrdinalIgnoreCase))
                 throw new NotSupportedException("A fixed-worker payload digest changed. Do not execute this payload.");
             files.Add(name, stream);
         }
         var installedManifest = lease.PinFile(Path.Combine(directory, "payload-manifest.json"));
         if (installedManifest.Length != productManifest.Length ||
-            !SHA256.HashData(installedManifest).AsSpan().SequenceEqual(SHA256.HashData(productManifest)))
+            !FileWorkerPayloadHash.Compute(installedManifest, _payloadReader, ct).AsSpan().SequenceEqual(SHA256.HashData(productManifest)))
             throw new NotSupportedException("The worker payload manifest differs from this product build.");
         files.Add("payload-manifest.json", installedManifest);
         return files;

@@ -329,9 +329,6 @@ public sealed partial class InstalledFileWorkerResolverTests
         [Out] byte[] buffer, uint size, [MarshalAs(UnmanagedType.U1)] bool singleEntry, byte[] query, uint querySize,
         IntPtr index, [MarshalAs(UnmanagedType.U1)] bool restart);
     [DllImport("ntdll.dll")] private static extern int NtSetEaFile(SafeFileHandle handle, out EaIoStatus io, byte[] buffer, uint size);
-    [DllImport("ntdll.dll")] private static extern int NtNotifyChangeDirectoryFile(SafeFileHandle handle,
-        IntPtr signal, IntPtr routine, IntPtr context, IntPtr io, IntPtr buffer, uint size,
-        uint filter, [MarshalAs(UnmanagedType.U1)] bool tree);
     [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CancelIoEx(SafeFileHandle handle, IntPtr overlapped);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

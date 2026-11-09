@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Mxc.Sdk.V1;
+using OpenClaw.Shared.FileTransfer;
 using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mxc;
@@ -28,6 +29,8 @@ public sealed class NodeSandboxExecutor : IDisposable
     private readonly string _scratchRoot;
     private readonly IOpenClawLogger _logger;
     private readonly MxcOperationCleanup _cleanup;
+    private readonly object _ownedTasksGate = new();
+    private readonly HashSet<Task> _ownedTasks = [];
     internal Func<ProcessStartInfo, MxcProcessLifetime.OwnedProcess> StartHost { get; init; } =
         info => new MxcProcessLifetime.HostProcess(Process.Start(info) ??
             throw new IOException("The approved process could not be started."));
@@ -68,6 +71,32 @@ public sealed class NodeSandboxExecutor : IDisposable
     public string CapturePolicy() => _policies.Capture().Fingerprint;
     public void Dispose() => _cleanup.Dispose();
 
+    /// <summary>
+    /// After stopping producers, waits for this executor's admitted managed work,
+    /// including preparation and cleanup. Canceling the wait does not cancel work.
+    /// This does not prove an uncertain native child exited or reclaim retained leases.
+    /// Operations admitted after this snapshot are not included.
+    /// </summary>
+    public Task WaitForOwnedOperationsAsync(CancellationToken cancellationToken = default)
+    {
+        Task[] pending;
+        lock (_ownedTasksGate) pending = _ownedTasks.ToArray();
+        return Task.WhenAll(pending).WaitAsync(cancellationToken);
+    }
+
+    private TaskCompletionSource TrackOwnedOperation()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_ownedTasksGate) _ownedTasks.Add(completion.Task);
+        return completion;
+    }
+
+    private void CompleteOwnedOperation(TaskCompletionSource completion)
+    {
+        lock (_ownedTasksGate) _ownedTasks.Remove(completion.Task);
+        completion.TrySetResult();
+    }
+
     public Task<T> RunFileAsync<T>(FixedFileWorkload<T> workload, CancellationToken ct = default) =>
         RunAsync(new FileWorkload<T>(workload, _fileWorker), ct);
 
@@ -101,19 +130,35 @@ public sealed class NodeSandboxExecutor : IDisposable
         var mode = (int)NodeToolExecutionMode.Sandbox;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(timeout);
-        var owned = Task.Run(async () =>
+        var admissionStop = deadline.Token;
+        // Register before scheduling: canceled callers can return before scratch exists.
+        var completion = TrackOwnedOperation();
+        Task<T> owned;
+        try
         {
-            try
+            owned = Task.Run(async () =>
             {
-                return await ExecuteOwnedAsync(workload, policy, stop.Token,
-                    selected => Volatile.Write(ref mode, (int)selected)).ConfigureAwait(false);
-            }
-            finally
-            {
-                stop.Dispose();
-                OwnedOperations.Release();
-            }
-        });
+                try
+                {
+                    return await ExecuteOwnedAsync(workload, policy, stop.Token,
+                        selected => Volatile.Write(ref mode, (int)selected), admissionStop).ConfigureAwait(false);
+                }
+                finally
+                {
+                    stop.Dispose();
+                    OwnedOperations.Release();
+                    CompleteOwnedOperation(completion);
+                }
+            });
+        }
+        catch
+        {
+            stop.Dispose();
+            _cleanup.ReleaseUncreated();
+            OwnedOperations.Release();
+            CompleteOwnedOperation(completion);
+            throw;
+        }
         try { return await owned.WaitAsync(deadline.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
@@ -132,11 +177,13 @@ public sealed class NodeSandboxExecutor : IDisposable
     }
 
     private async Task<T> ExecuteOwnedAsync<T>(Workload<T> workload, NodeSandboxPolicy policy,
-        CancellationToken stop, Action<NodeToolExecutionMode> selectMode)
+        CancellationToken stop, Action<NodeToolExecutionMode> selectMode, CancellationToken admissionStop)
     {
         MxcOwnedOperation? operation = null;
         FixedFileWorkerLease? image = null;
+        ManagedUploadRootLease? uploadRootLease = null;
         var processSettled = true;
+        var uploadReserved = false;
         var mode = NodeToolExecutionMode.Sandbox;
         try
         {
@@ -161,21 +208,56 @@ public sealed class NodeSandboxExecutor : IDisposable
             NodeSandboxResources? resources = null;
             ContainerRequest? request = null;
             ProcessStartInfo? host = null;
+            var managedRoot = ManagedUploadPolicy.ResolvePath(_scratchRoot, _settingsDirectory());
+            var fileInvocation = workload.FileInvocation;
+            var uploadMutation = fileInvocation?.Operation == FileOperation.Upload ||
+                fileInvocation is { Operation: FileOperation.ReapUploads, RecoveryRoot: { } recovery } &&
+                MxcFolderPermissions.SamePath(recovery, managedRoot);
+            var selectedRoot = fileInvocation?.Operation == FileOperation.Upload ? managedRoot :
+                fileInvocation?.Operation == FileOperation.ReapUploads ? fileInvocation.RecoveryRoot! : "";
+            var admittedFile = fileInvocation is null ? null : new AdmittedFileInvocation(
+                fileInvocation.Operation, selectedRoot, fileInvocation.ExpectedRoot);
             if (mode == NodeToolExecutionMode.Host)
+            {
+                if (uploadMutation)
+                {
+                    var context = _context();
+                    context = context with { ExecutorPrivatePaths = [.. context.ExecutorPrivatePaths, _scratchRoot, payloadCacheRoot] };
+                    var metadataPolicy = MxcRequestBuilder.ComposeResources(policy.Settings, _settingsDirectory(), scratch,
+                        context, MxcFolderAdmission.ReadMetadata, ReadPhysicalMetadata);
+                    _ = ManagedUploadPolicy.Apply(metadataPolicy, managedRoot, owned: false, mutate: true);
+                    uploadRootLease = ManagedUploadRootLease.Open(managedRoot);
+                }
                 host = UnsupportedWindowsCommandExecutor.CreateStartInfo(command, scratch);
+            }
             else
             {
                 var physicalScratch = MxcPhysicalPaths.ResolveDirectory(scratch, ReadPhysicalMetadata, requireExisting: true);
                 var settings = policy.Settings;
                 var context = _context();
                 context = context with { ExecutorPrivatePaths = [.. context.ExecutorPrivatePaths, _scratchRoot, payloadCacheRoot] };
+                resources = MxcRequestBuilder.ComposeResources(settings, _settingsDirectory(), physicalScratch,
+                    context, MxcFolderAdmission.ReadMetadata, ReadPhysicalMetadata, image?.PayloadDirectory);
+                ManagedUploadPolicy.ValidateBoundary(resources.DataAccess, managedRoot);
+                // Restrictive saved access is checked before a generated child grant can outrank it.
+                if (uploadMutation && resources.DataAccess.EffectiveAccess(managedRoot) is
+                    SandboxFolderAccess.ReadOnly or SandboxFolderAccess.NoAccess)
+                    throw new FileCommandException("PERMISSION_DENIED", "The current Sandbox policy restricts managed upload storage.");
+                try { uploadRootLease = ManagedUploadRootLease.Open(managedRoot); }
+                catch (Exception ex) when (!uploadMutation &&
+                    ex is FileCommandException or IOException or UnauthorizedAccessException or NotSupportedException)
+                {
+                    // Unknown storage never becomes readable through a name-only automatic grant.
+                    // Other commands can still run with this managed namespace explicitly denied.
+                    _logger.Warn("[files] operation=managed-storage-admission outcome=denied");
+                }
+                resources = ManagedUploadPolicy.Apply(resources, managedRoot,
+                    uploadRootLease?.Complete == true, uploadMutation);
                 if (image is null)
                     request = MxcRequestBuilder.Build(command, settings, _settingsDirectory(), physicalScratch, context,
-                        MxcFolderAdmission.ReadMetadata, ReadPhysicalMetadata);
+                        MxcFolderAdmission.ReadMetadata, ReadPhysicalMetadata, resources);
                 else
                 {
-                    resources = MxcRequestBuilder.ComposeResources(settings, _settingsDirectory(), physicalScratch,
-                        context, MxcFolderAdmission.ReadMetadata, ReadPhysicalMetadata, image.PayloadDirectory);
                     if (resources.DataAccess.ProtectedPaths.Any(p => MxcRequestBuilder.Within(image.ImagePath, p)) ||
                         MxcFolderPermissions.EffectiveAccess(image.ImagePath, resources.ReadonlyPaths,
                             resources.ReadwritePaths, resources.DeniedPaths) != SandboxFolderAccess.ReadOnly)
@@ -185,18 +267,34 @@ public sealed class NodeSandboxExecutor : IDisposable
                         throw new NotSupportedException("The operation scratch conflicts with Node Sandbox permissions.");
                     request = MxcRequestBuilder.CreateRequest(command.Argv!, physicalScratch, settings, resources);
                 }
-                var admission = _probe(request);
-                if (admission.Error is not null || admission.Tier != IsolationTier.BaseContainer ||
-                    admission.NeedsDaclAugmentation != false || !admission.Probes.BaseContainerSupportsDenyPaths)
-                    throw Failure("This complete permission policy requires unsupported containment. " +
-                        "MXC BaseContainer with native protected-folder denies and no host ACL mutation is required. Update Windows or select a supported policy.",
-                        NodeToolErrorCategory.SandboxDenied, mode);
+                ProbeContainedRequest(request);
             }
+            if (fileInvocation?.Operation == FileOperation.ReapUploads && uploadMutation &&
+                uploadRootLease is { Identity: not null, Complete: false })
+                throw new FileCommandException("UPLOAD_CLEANUP_BLOCKED", "Incomplete managed root metadata requires an admitted upload recovery.");
             stop.ThrowIfCancellationRequested();
             await workload.RevalidateAsync(stop, mode).ConfigureAwait(false);
             stop.ThrowIfCancellationRequested();
+            if (fileInvocation?.Operation == FileOperation.Upload)
+            {
+                // Private inventory callbacks run outside the policy dispatcher;
+                // any settings commit they trigger is fenced by Submit below.
+                admissionStop.ThrowIfCancellationRequested();
+                var expected = workload.ReserveUploadRoot(managedRoot);
+                uploadReserved = true;
+                admittedFile = admittedFile! with { ExpectedRoot = expected };
+            }
             var launch = _policies.Submit(policy, async () =>
             {
+                if (fileInvocation?.Operation == FileOperation.Upload)
+                {
+                    // Submit has checked the exact epoch. No await separates that
+                    // check, reserved metadata publication and synchronous SDK start.
+                    uploadRootLease!.Bootstrap(admittedFile!.ExpectedRoot, admissionStop);
+                    admittedFile = admittedFile! with { ExpectedRoot = uploadRootLease!.Identity };
+                    if (mode == NodeToolExecutionMode.Sandbox) ProbeContainedRequest(request!);
+                }
+                admissionStop.ThrowIfCancellationRequested();
                 // Cancellation after submission cannot discard a native result.
                 processSettled = false;
                 MxcProcessLifetime.OwnedProcess process;
@@ -210,9 +308,10 @@ public sealed class NodeSandboxExecutor : IDisposable
                 // Even a synchronous start must release the ordered dispatcher before
                 // the protocol, stream disposal or root observation can execute.
                 await Task.Yield();
-                return await MxcProcessLifetime.RunAsync(process, policy, resources, workload.StartIo, stop,
+                return await MxcProcessLifetime.RunAsync(process, policy, resources,
+                    (io, token) => workload.StartIo(io with { FileInvocation = admittedFile }, token), stop,
                     () => { processSettled = true; workload.ProcessSettled(); }).ConfigureAwait(false);
-            }, stop, () => workload.RevalidateAsync(stop, mode));
+            }, admissionStop, () => workload.RevalidateAsync(stop, mode));
             if (mode == NodeToolExecutionMode.Host)
                 _logger.Warn("[mxc] operation=compatibility executionMode=host reason=windows_unsupported sandboxControlsEnforced=false");
             return await launch.ConfigureAwait(false);
@@ -241,10 +340,42 @@ public sealed class NodeSandboxExecutor : IDisposable
         }
         finally
         {
-            if (processSettled || operation is null) image?.Dispose();
-            else operation.RetainPayload(image);
-            if (operation is null) _cleanup.ReleaseUncreated();
-            else await _cleanup.CompleteAsync(operation, processSettled).ConfigureAwait(false);
+            try
+            {
+                if (processSettled || operation is null)
+                {
+                    uploadRootLease?.Dispose();
+                    image?.Dispose();
+                }
+                else operation.RetainPayload(new ExecutionLeases(image, uploadRootLease));
+                if (operation is null) _cleanup.ReleaseUncreated();
+                else await _cleanup.CompleteAsync(operation, processSettled).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Includes stale/canceled admission and metadata/probe failures
+                // before launch. Never release a reservation for an uncertain child.
+                if (processSettled && uploadReserved) workload.UploadReservationSettled();
+            }
+        }
+    }
+
+    private void ProbeContainedRequest(ContainerRequest request)
+    {
+        var admission = _probe(request);
+        if (admission.Error is not null || admission.Tier != IsolationTier.BaseContainer ||
+            admission.NeedsDaclAugmentation != false || !admission.Probes.BaseContainerSupportsDenyPaths)
+            throw Failure("This complete permission policy requires unsupported containment. " +
+                "MXC BaseContainer with native protected-folder denies and no host ACL mutation is required. Update Windows or select a supported policy.",
+                NodeToolErrorCategory.SandboxDenied, NodeToolExecutionMode.Sandbox);
+    }
+
+    private sealed class ExecutionLeases(IDisposable? image, IDisposable? uploads) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { uploads?.Dispose(); }
+            finally { image?.Dispose(); }
         }
     }
 
@@ -267,6 +398,10 @@ public sealed class NodeSandboxExecutor : IDisposable
         internal virtual int ExecutionTimeout(int setting) => EffectiveTimeout(TimeoutMs, setting);
         internal virtual void ProcessSettled() { }
         internal virtual string? ExpectedPolicy => null;
+        internal virtual FixedFileInvocation? FileInvocation => null;
+        internal virtual UploadRootIdentity? ReserveUploadRoot(string root) =>
+            throw new FileCommandException("UPLOAD_CLEANUP_BLOCKED", "No upload inventory admission is configured.");
+        internal virtual void UploadReservationSettled() { }
         internal virtual void Initialize(NodeSandboxPolicy policy) { }
         internal virtual FixedFileWorkerLease? ResolveImage(string? payloadCacheRoot, CancellationToken stop) => null;
         internal abstract CommandRequest Command(FixedFileWorkerLease? image);
@@ -280,6 +415,19 @@ public sealed class NodeSandboxExecutor : IDisposable
     private sealed class FileWorkload<T>(FixedFileWorkload<T> workload, IFixedFileWorkerResolver? resolver) : Workload<T>
     {
         internal override int TimeoutMs => workload.TimeoutMs;
+        internal override FixedFileInvocation? FileInvocation => workload.Invocation;
+        internal override void Initialize(NodeSandboxPolicy policy)
+        {
+            if (workload.Invocation is not { Operation: FileOperation.Upload } upload) return;
+            var budget = policy.Settings.SandboxMaxTransferBytes;
+            if (budget is < 1 or > FileLimits.MaximumTransferBytes)
+                throw new FileCommandException("SANDBOX_UNAVAILABLE", "The committed Sandbox transfer budget is invalid.");
+            if (upload.UploadBytes < 0 || upload.UploadBytes > budget || upload.UploadBytes > FileLimits.UnaryBytes)
+                throw new FileCommandException("FILE_TOO_LARGE", "The upload exceeds the committed transfer budget.");
+        }
+        internal override UploadRootIdentity? ReserveUploadRoot(string root) => workload.ReserveUpload is { } reserve
+            ? reserve(root) : base.ReserveUploadRoot(root);
+        internal override void UploadReservationSettled() => workload.UploadReservationSettled?.Invoke();
         internal override int ExecutionTimeout(int setting) => workload.Streaming
             ? Math.Clamp(workload.TimeoutMs, 1, FileTransfer.FileLimits.TransferTimeoutMs)
             : base.ExecutionTimeout(setting);
