@@ -25,244 +25,10 @@
             <TextBlock Grid.Column="1" Text="{Binding}" FontSize="20" FontWeight="SemiBold" TextWrapping="WrapWholeWords" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding}" VerticalAlignment="Center" />
         </Grid>
     </DataTemplate>
-    <Style x:Key="SystemsSpokeStyle" TargetType="Line">
-        <Setter Property="Stroke" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-    </Style>
-    <Style x:Key="SystemsOfflineSpokeStyle" TargetType="Line">
-        <Setter Property="Stroke" Value="{ThemeResource TextFillColorTertiaryBrush}" />
-    </Style>
-    <Style x:Key="SystemsPendingSpokeStyle" TargetType="Line">
-        <Setter Property="Stroke" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-    </Style>
-    <Style x:Key="SystemsHaloStyle" TargetType="Ellipse">
-        <Setter Property="Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-        <Setter Property="StrokeThickness" Value="0" />
-    </Style>
-    <Style x:Key="SystemsSelectionRingStyle" TargetType="Ellipse">
-        <Setter Property="Fill" Value="Transparent" />
-        <Setter Property="Stroke" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-        <Setter Property="StrokeThickness" Value="4" />
-    </Style>
-    <Style x:Key="SystemsOfflineHubStyle" TargetType="Ellipse">
-        <Setter Property="Fill" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
-        <Setter Property="StrokeThickness" Value="0" />
-    </Style>
-    <Style x:Key="SystemsNodeCircleStyle" TargetType="Ellipse">
-        <Setter Property="Fill" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-        <Setter Property="Stroke" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-        <Setter Property="StrokeThickness" Value="1" />
-    </Style>
-    <Style x:Key="SystemsOwnCircleStyle" TargetType="Ellipse" BasedOn="{StaticResource SystemsNodeCircleStyle}">
-        <Setter Property="Stroke" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-        <Setter Property="StrokeThickness" Value="2" />
-    </Style>
-    <Style x:Key="SystemsOfflineCircleStyle" TargetType="Ellipse">
-        <Setter Property="Fill" Value="Transparent" />
-        <Setter Property="Stroke" Value="{ThemeResource TextFillColorTertiaryBrush}" />
-        <Setter Property="StrokeThickness" Value="1" />
-    </Style>
-    <Style x:Key="SystemsGhostCircleStyle" TargetType="Ellipse" BasedOn="{StaticResource SystemsOfflineCircleStyle}">
-        <Setter Property="StrokeThickness" Value="2" />
-    </Style>
-    <Style x:Key="SystemsPendingCircleStyle" TargetType="Ellipse" BasedOn="{StaticResource SystemsOwnCircleStyle}">
-        <Setter Property="Fill" Value="{ThemeResource SystemsPendingTintBrush}" />
-    </Style>
-    <!--
-        Map orb buttons. The whole circle-and-label area stays clickable, but hover, pressed and keyboard
-        focus light a circular plate concentric with the glyph circle (circle diameter + the 4 px selection
-        band) instead of the default rectangle. Each orb kind has its own circle size, so each has its own
-        template; the plate and ring sizes below are circle diameter + 8. High contrast swaps the wash for a ring.
-    -->
-    <ControlTemplate x:Key="SystemsOrbNodeTemplate" TargetType="Button">
-        <Grid Background="Transparent">
-            <VisualStateManager.VisualStateGroups>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbHoverBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Pressed">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbPressedBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
-                <VisualStateGroup x:Name="FocusStates">
-                    <VisualState x:Name="Focused">
-                        <VisualState.Setters>
-                            <Setter Target="FocusRing.Visibility" Value="Visible" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Unfocused" />
-                    <VisualState x:Name="PointerFocused" />
-                </VisualStateGroup>
-            </VisualStateManager.VisualStateGroups>
-            <Ellipse x:Name="Plate" Width="64" Height="64" Margin="0,-4,0,0" HorizontalAlignment="Center"
-                     VerticalAlignment="Top" StrokeThickness="2" IsHitTestVisible="False" />
-            <Ellipse x:Name="FocusRing" Width="64" Height="64" Margin="0,-4,0,0" HorizontalAlignment="Center"
-                     VerticalAlignment="Top" Stroke="{ThemeResource SystemsOrbFocusBrush}" StrokeThickness="2"
-                     Visibility="Collapsed" IsHitTestVisible="False" />
-            <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                              FontFamily="{TemplateBinding FontFamily}" Padding="{TemplateBinding Padding}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                              AutomationProperties.AccessibilityView="Raw" />
-        </Grid>
-    </ControlTemplate>
-    <ControlTemplate x:Key="SystemsOrbHubTemplate" TargetType="Button">
-        <Grid Background="Transparent">
-            <VisualStateManager.VisualStateGroups>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbHoverBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Pressed">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbPressedBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
-                <VisualStateGroup x:Name="FocusStates">
-                    <VisualState x:Name="Focused">
-                        <VisualState.Setters>
-                            <Setter Target="FocusRing.Visibility" Value="Visible" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Unfocused" />
-                    <VisualState x:Name="PointerFocused" />
-                </VisualStateGroup>
-            </VisualStateManager.VisualStateGroups>
-            <Ellipse x:Name="Plate" Width="84" Height="84" Margin="0,-4,0,0" HorizontalAlignment="Center"
-                     VerticalAlignment="Top" StrokeThickness="2" IsHitTestVisible="False" />
-            <Ellipse x:Name="FocusRing" Width="84" Height="84" Margin="0,-4,0,0" HorizontalAlignment="Center"
-                     VerticalAlignment="Top" Stroke="{ThemeResource SystemsOrbFocusBrush}" StrokeThickness="2"
-                     Visibility="Collapsed" IsHitTestVisible="False" />
-            <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                              FontFamily="{TemplateBinding FontFamily}" Padding="{TemplateBinding Padding}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                              AutomationProperties.AccessibilityView="Raw" />
-        </Grid>
-    </ControlTemplate>
-    <ControlTemplate x:Key="SystemsOrbCountTemplate" TargetType="Button">
-        <Grid Background="Transparent">
-            <VisualStateManager.VisualStateGroups>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbHoverBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Pressed">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbPressedBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
-                <VisualStateGroup x:Name="FocusStates">
-                    <VisualState x:Name="Focused">
-                        <VisualState.Setters>
-                            <Setter Target="FocusRing.Visibility" Value="Visible" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Unfocused" />
-                    <VisualState x:Name="PointerFocused" />
-                </VisualStateGroup>
-            </VisualStateManager.VisualStateGroups>
-            <Ellipse x:Name="Plate" Width="80" Height="80" Margin="0,-4,0,0" HorizontalAlignment="Center"
-                     VerticalAlignment="Top" StrokeThickness="2" IsHitTestVisible="False" />
-            <Ellipse x:Name="FocusRing" Width="80" Height="80" Margin="0,-4,0,0" HorizontalAlignment="Center"
-                     VerticalAlignment="Top" Stroke="{ThemeResource SystemsOrbFocusBrush}" StrokeThickness="2"
-                     Visibility="Collapsed" IsHitTestVisible="False" />
-            <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                              FontFamily="{TemplateBinding FontFamily}" Padding="{TemplateBinding Padding}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                              AutomationProperties.AccessibilityView="Raw" />
-        </Grid>
-    </ControlTemplate>
-    <ControlTemplate x:Key="SystemsOrbSideTemplate" TargetType="Button">
-        <Grid Background="Transparent">
-            <VisualStateManager.VisualStateGroups>
-                <VisualStateGroup x:Name="CommonStates">
-                    <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbHoverBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Pressed">
-                        <VisualState.Setters>
-                            <Setter Target="Plate.Fill" Value="{ThemeResource SystemsOrbPressedBrush}" />
-                            <Setter Target="Plate.Stroke" Value="{ThemeResource SystemsOrbHoverStrokeBrush}" />
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
-                <VisualStateGroup x:Name="FocusStates">
-                    <VisualState x:Name="Focused">
-                        <VisualState.Setters>
-                            <Setter Target="FocusRing.Visibility" Value="Visible" />
-                        </VisualState.Setters>
-                    </VisualState>
-                    <VisualState x:Name="Unfocused" />
-                    <VisualState x:Name="PointerFocused" />
-                </VisualStateGroup>
-            </VisualStateManager.VisualStateGroups>
-            <Ellipse x:Name="Plate" Width="52" Height="52" Margin="-4,-4,0,0" HorizontalAlignment="Left"
-                     VerticalAlignment="Top" StrokeThickness="2" IsHitTestVisible="False" />
-            <Ellipse x:Name="FocusRing" Width="52" Height="52" Margin="-4,-4,0,0" HorizontalAlignment="Left"
-                     VerticalAlignment="Top" Stroke="{ThemeResource SystemsOrbFocusBrush}" StrokeThickness="2"
-                     Visibility="Collapsed" IsHitTestVisible="False" />
-            <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
-                              FontFamily="{TemplateBinding FontFamily}" Padding="{TemplateBinding Padding}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                              AutomationProperties.AccessibilityView="Raw" />
-        </Grid>
-    </ControlTemplate>
-    <Style x:Key="SystemsOrbButtonStyle" TargetType="Button">
-        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="HorizontalAlignment" Value="Left" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="VerticalContentAlignment" Value="Top" />
-        <Setter Property="UseSystemFocusVisuals" Value="False" />
-    </Style>
-    <Style x:Key="SystemsOrbNodeStyle" TargetType="Button" BasedOn="{StaticResource SystemsOrbButtonStyle}">
-        <Setter Property="Template" Value="{StaticResource SystemsOrbNodeTemplate}" />
-    </Style>
-    <Style x:Key="SystemsOrbHubStyle" TargetType="Button" BasedOn="{StaticResource SystemsOrbButtonStyle}">
-        <Setter Property="Template" Value="{StaticResource SystemsOrbHubTemplate}" />
-    </Style>
-    <Style x:Key="SystemsOrbCountStyle" TargetType="Button" BasedOn="{StaticResource SystemsOrbButtonStyle}">
-        <Setter Property="Template" Value="{StaticResource SystemsOrbCountTemplate}" />
-    </Style>
-    <Style x:Key="SystemsOrbSideStyle" TargetType="Button" BasedOn="{StaticResource SystemsOrbButtonStyle}">
-        <Setter Property="Template" Value="{StaticResource SystemsOrbSideTemplate}" />
-        <Setter Property="HorizontalContentAlignment" Value="Left" />
-    </Style>
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
             <SolidColorBrush x:Key="SystemsPendingTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.10" />
             <SolidColorBrush x:Key="SystemsLoadBrush" Color="{ThemeResource SystemAccentColorLight2}" />
-            <SolidColorBrush x:Key="SystemsOrbHoverBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.16" />
-            <SolidColorBrush x:Key="SystemsOrbPressedBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.28" />
-            <SolidColorBrush x:Key="SystemsOrbHoverStrokeBrush" Color="Transparent" />
-            <SolidColorBrush x:Key="SystemsOrbFocusBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="SystemsMemoryBrush" Color="#B9A4FF" />
             <SolidColorBrush x:Key="SystemsDiskBrush" Color="#5FD4D9" />
             <SolidColorBrush x:Key="SystemsNeutralBrush" Color="{ThemeResource TextFillColorSecondary}" />
@@ -274,18 +40,10 @@
             <SolidColorBrush x:Key="SystemsCautionTintBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.16" />
             <SolidColorBrush x:Key="SystemsCriticalTintBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.16" />
             <SolidColorBrush x:Key="SystemsMeterTrackBrush" Color="{ThemeResource ControlStrongFillColorDisabled}" Opacity="0.35" />
-            <LinearGradientBrush x:Key="SystemsHeroBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.10">
-                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColorLight2}" />
-                <GradientStop Offset="1" Color="Transparent" />
-            </LinearGradientBrush>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="SystemsPendingTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.10" />
             <SolidColorBrush x:Key="SystemsLoadBrush" Color="{ThemeResource SystemAccentColorDark1}" />
-            <SolidColorBrush x:Key="SystemsOrbHoverBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.10" />
-            <SolidColorBrush x:Key="SystemsOrbPressedBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.20" />
-            <SolidColorBrush x:Key="SystemsOrbHoverStrokeBrush" Color="Transparent" />
-            <SolidColorBrush x:Key="SystemsOrbFocusBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="SystemsMemoryBrush" Color="#6B4FBB" />
             <SolidColorBrush x:Key="SystemsDiskBrush" Color="#00747A" />
             <SolidColorBrush x:Key="SystemsNeutralBrush" Color="{ThemeResource TextFillColorSecondary}" />
@@ -297,18 +55,10 @@
             <SolidColorBrush x:Key="SystemsCautionTintBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.12" />
             <SolidColorBrush x:Key="SystemsCriticalTintBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.10" />
             <SolidColorBrush x:Key="SystemsMeterTrackBrush" Color="{ThemeResource ControlStrongFillColorDisabled}" Opacity="0.25" />
-            <LinearGradientBrush x:Key="SystemsHeroBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.08">
-                <GradientStop Offset="0" Color="{ThemeResource SystemAccentColorLight1}" />
-                <GradientStop Offset="1" Color="Transparent" />
-            </LinearGradientBrush>
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="SystemsPendingTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="SystemsLoadBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="SystemsOrbHoverBrush" Color="Transparent" />
-            <SolidColorBrush x:Key="SystemsOrbPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="SystemsOrbHoverStrokeBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="SystemsOrbFocusBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="SystemsMemoryBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="SystemsDiskBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="SystemsNeutralBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -320,7 +70,6 @@
             <SolidColorBrush x:Key="SystemsCautionTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="SystemsCriticalTintBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="SystemsMeterTrackBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
-            <SolidColorBrush x:Key="SystemsHeroBrush" Color="{ThemeResource SystemColorWindowColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

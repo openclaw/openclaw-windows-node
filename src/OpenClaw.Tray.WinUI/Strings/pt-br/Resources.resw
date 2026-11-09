@@ -7829,10 +7829,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Systems_Pairing_TitleOne" xml:space="preserve">
     <value>1 dispositivo quer entrar</value>
   </data>
-  <data name="Systems_Pairing_NamedTitle" xml:space="preserve"><value>{0} quer entrar</value></data>
-  <data name="Systems_Pairing_TitleMany" xml:space="preserve">
-    <value>{0} dispositivos querem entrar</value>
-  </data>
   <data name="Systems_Pairing_Message" xml:space="preserve">
     <value>Aprove somente se você iniciou isso nesse dispositivo.</value>
   </data>
@@ -8140,14 +8136,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
-  <data name="Systems_Mast_Unreachable" xml:space="preserve"><value>Não foi possível acessar {0}</value></data>
-  <data name="Systems_Mast_JustUs" xml:space="preserve"><value>Este PC e o Gateway estão online</value></data>
-  <data name="Systems_Mast_AllOnline" xml:space="preserve"><value>Todos os {0} sistemas estão online</value></data>
-  <data name="Systems_Mast_Online" xml:space="preserve"><value>{0} de {1} sistemas estão online</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Adicionar sistema</value></data>
-  <data name="Systems_NeedsYou" xml:space="preserve"><value>Precisa de você</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>Copiar comando de atualização</value></data>
-  <data name="Systems_ShowSystem" xml:space="preserve"><value>Mostrar sistema</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>Recolher detalhes do sistema</value></data>
   <data name="Systems_ExpandSystem" xml:space="preserve"><value>Expandir detalhes do sistema</value></data>
   <data name="Systems_NotSeen" xml:space="preserve"><value>Visto pela última vez {0}</value></data>
@@ -8167,7 +8157,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Notificações</value></data>
   <data name="Systems_Capability_Audio" xml:space="preserve"><value>Entrada de áudio</value></data>
   <data name="Systems_ManagePermissions" xml:space="preserve"><value>Gerenciar permissões</value></data>
-  <data name="Systems_AllDevices" xml:space="preserve"><value>Todos os dispositivos</value></data>
   <data name="Systems_Connection" xml:space="preserve"><value>Conexão</value></data>
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Conecte-se ao Gateway para usar esta ação.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Apps conectados</value></data>
@@ -8177,15 +8166,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Último estado conhecido: offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Último estado conhecido: online</value></data>
   <data name="Systems_LoadFailed" xml:space="preserve"><value>Falha ao carregar.</value></data>
-  <data name="Systems_NeedsYou_More" xml:space="preserve"><value>Mais {0} precisam de você</value></data>
-  <data name="Systems_NeedsYou_ReviewAllIssues" xml:space="preserve"><value>Revisar todos os problemas</value></data>
-  <data name="Systems_NeedsYou_ReviewEveryIssue" xml:space="preserve"><value>Revise todos os problemas, incluindo dispositivos, pareamento e workers.</value></data>
-  <data name="Systems_NothingNeedsYou" xml:space="preserve"><value>Nada precisa da sua atenção no momento.</value></data>
   <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>Esta solicitação de pareamento não está mais disponível.</value></data>
-  <data name="Systems_PermissionAttention_Title" xml:space="preserve"><value>{0} precisa de uma revisão de permissões</value></data>
   <data name="Systems_RequestTimeout" xml:space="preserve"><value>A solicitação expirou após {0} s.</value></data>
-  <data name="Systems_Attention_ErrorTitle" xml:space="preserve"><value>{0} precisa de atenção</value></data>
-  <data name="Systems_WorkerError_Title" xml:space="preserve"><value>{0} apresenta um erro de worker</value></data>
   <data name="Systems_ForgetTitle" xml:space="preserve"><value>Esquecer {0}?</value></data>
   <data name="Systems_Forgotten" xml:space="preserve"><value>{0} foi esquecido.</value></data>
   <data name="Systems_RenameSucceeded" xml:space="preserve"><value>O nó foi renomeado.</value></data>
@@ -8207,13 +8189,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
   <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} h</value></data>
   <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
-  <data name="Systems_Mast_ThisNodeConnected" xml:space="preserve"><value>Este PC está conectado como nó.</value></data>
-  <data name="Systems_Mast_NodeOfflineSince" xml:space="preserve"><value>{0} foi visto há {1}.</value></data>
-  <data name="Systems_Mast_NodeOffline" xml:space="preserve"><value>{0} está offline.</value></data>
-  <data name="Systems_Mast_Pending" xml:space="preserve"><value>{0} dispositivos aguardam aprovação.</value></data>
-  <data name="Systems_Mast_ConnectedTo" xml:space="preserve"><value>Conectado a {0}.</value></data>
-  <data name="Systems_Attention_OfflineTitle" xml:space="preserve"><value>{0} está offline</value></data>
-  <data name="Systems_Attention_OfflineMessage" xml:space="preserve"><value>{0}. Os agentes não podem usá-lo até que se reconecte.</value></data>
   <data name="Systems_HowToReconnect" xml:space="preserve"><value>Como reconectar</value></data>
   <data name="Systems_ForgetConsequence" xml:space="preserve"><value>Ele é desemparelhado de {0}. Para voltar, precisa pedir aprovação novamente.</value></data>
   <data name="Systems_Field_Paired" xml:space="preserve"><value>Pareado</value></data>

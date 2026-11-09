@@ -7777,10 +7777,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_Pairing_TitleOne" xml:space="preserve">
     <value>1 apparaat wil deelnemen</value>
   </data>
-  <data name="Systems_Pairing_NamedTitle" xml:space="preserve"><value>{0} wil deelnemen</value></data>
-  <data name="Systems_Pairing_TitleMany" xml:space="preserve">
-    <value>{0} apparaten willen deelnemen</value>
-  </data>
   <data name="Systems_Pairing_Message" xml:space="preserve">
     <value>Keur alleen goed als je dit op dat apparaat hebt gestart.</value>
   </data>
@@ -8088,14 +8084,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
-  <data name="Systems_Mast_Unreachable" xml:space="preserve"><value>Kan {0} niet bereiken</value></data>
-  <data name="Systems_Mast_JustUs" xml:space="preserve"><value>Deze pc en Gateway zijn online</value></data>
-  <data name="Systems_Mast_AllOnline" xml:space="preserve"><value>Alle {0} systemen zijn online</value></data>
-  <data name="Systems_Mast_Online" xml:space="preserve"><value>{0} van {1} systemen zijn online</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Systeem toevoegen</value></data>
-  <data name="Systems_NeedsYou" xml:space="preserve"><value>Aandacht nodig</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>Updateopdracht kopiëren</value></data>
-  <data name="Systems_ShowSystem" xml:space="preserve"><value>Systeem tonen</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>Systeemdetails samenvouwen</value></data>
   <data name="Systems_ExpandSystem" xml:space="preserve"><value>Systeemdetails uitvouwen</value></data>
   <data name="Systems_NotSeen" xml:space="preserve"><value>Laatst gezien {0}</value></data>
@@ -8115,7 +8105,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Meldingen</value></data>
   <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio-invoer</value></data>
   <data name="Systems_ManagePermissions" xml:space="preserve"><value>Machtigingen beheren</value></data>
-  <data name="Systems_AllDevices" xml:space="preserve"><value>Alle apparaten</value></data>
   <data name="Systems_Connection" xml:space="preserve"><value>Verbinding</value></data>
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Maak verbinding met de Gateway om deze actie te gebruiken.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Verbonden apps</value></data>
@@ -8125,15 +8114,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Laatst bekend offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Laatst bekend online</value></data>
   <data name="Systems_LoadFailed" xml:space="preserve"><value>Laden mislukt.</value></data>
-  <data name="Systems_NeedsYou_More" xml:space="preserve"><value>Nog {0} waarvoor je nodig bent</value></data>
-  <data name="Systems_NeedsYou_ReviewAllIssues" xml:space="preserve"><value>Alle problemen bekijken</value></data>
-  <data name="Systems_NeedsYou_ReviewEveryIssue" xml:space="preserve"><value>Bekijk alle problemen, ook met apparaten, koppelingen en workers.</value></data>
-  <data name="Systems_NothingNeedsYou" xml:space="preserve"><value>Er is nu niets dat aandacht nodig heeft.</value></data>
   <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>Dit koppelingsverzoek is niet meer beschikbaar.</value></data>
-  <data name="Systems_PermissionAttention_Title" xml:space="preserve"><value>{0} moet op machtigingen worden gecontroleerd</value></data>
   <data name="Systems_RequestTimeout" xml:space="preserve"><value>Verzoek verlopen na {0} s.</value></data>
-  <data name="Systems_Attention_ErrorTitle" xml:space="preserve"><value>{0} heeft aandacht nodig</value></data>
-  <data name="Systems_WorkerError_Title" xml:space="preserve"><value>{0} heeft een workerfout</value></data>
   <data name="Systems_ForgetTitle" xml:space="preserve"><value>{0} vergeten?</value></data>
   <data name="Systems_Forgotten" xml:space="preserve"><value>{0} vergeten.</value></data>
   <data name="Systems_RenameSucceeded" xml:space="preserve"><value>De node is hernoemd.</value></data>
@@ -8155,13 +8137,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
   <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} u</value></data>
   <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
-  <data name="Systems_Mast_ThisNodeConnected" xml:space="preserve"><value>Deze pc is verbonden als node.</value></data>
-  <data name="Systems_Mast_NodeOfflineSince" xml:space="preserve"><value>{0} is {1} geleden voor het laatst gezien.</value></data>
-  <data name="Systems_Mast_NodeOffline" xml:space="preserve"><value>{0} is offline.</value></data>
-  <data name="Systems_Mast_Pending" xml:space="preserve"><value>{0} apparaten wachten op goedkeuring.</value></data>
-  <data name="Systems_Mast_ConnectedTo" xml:space="preserve"><value>Verbonden met {0}.</value></data>
-  <data name="Systems_Attention_OfflineTitle" xml:space="preserve"><value>{0} is offline</value></data>
-  <data name="Systems_Attention_OfflineMessage" xml:space="preserve"><value>{0}. Agents kunnen het pas gebruiken nadat het opnieuw verbinding maakt.</value></data>
   <data name="Systems_HowToReconnect" xml:space="preserve"><value>Opnieuw verbinden</value></data>
   <data name="Systems_ForgetConsequence" xml:space="preserve"><value>Het is ontkoppeld van {0}. Om terug te komen, moet het opnieuw om goedkeuring vragen.</value></data>
   <data name="Systems_Field_Paired" xml:space="preserve"><value>Gekoppeld</value></data>

@@ -141,25 +141,6 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task SystemsHero_LightFixtureCapture()
-    {
-        var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
-            ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the current build.");
-        await using var run = await GatewayFixtureRun.StartAsync(app,
-            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
-            scenario: GatewayScenario.CreateSystems(empty: false), appTheme: "Light");
-        await run.InvokeAsync("app.navigate", new { page = "systems" });
-        await WaitUiAsync(run, () => FindById(run, "SystemsDevicesAndGatewayHeading") is not null &&
-            FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false }, "loaded Systems hero");
-        var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageMarker")) is not null);
-        OwnedWindowCapture.Save(run, window, "Light-systems-hero.png", FindById(run, "SystemsPageMarker")!);
-        await run.WriteReportAsync("passed");
-        output.WriteLine($"Systems hero screenshot: {run.ArtifactsDirectory}\\Light-systems-hero.png");
-    }
-
-    [GatewayFixtureUiFact]
-    [Trait("Category", "GatewayFixture")]
     public async Task SystemsHero_FullHostLightAndDark()
     {
         var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")

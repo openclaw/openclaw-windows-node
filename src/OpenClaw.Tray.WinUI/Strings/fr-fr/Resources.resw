@@ -7776,10 +7776,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Systems_Pairing_TitleOne" xml:space="preserve">
     <value>1 appareil souhaite rejoindre</value>
   </data>
-  <data name="Systems_Pairing_NamedTitle" xml:space="preserve"><value>{0} souhaite rejoindre le réseau</value></data>
-  <data name="Systems_Pairing_TitleMany" xml:space="preserve">
-    <value>{0} appareils souhaitent rejoindre</value>
-  </data>
   <data name="Systems_Pairing_Message" xml:space="preserve">
     <value>Approuvez uniquement si vous avez lancé cette demande sur cet appareil.</value>
   </data>
@@ -8087,14 +8083,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
-  <data name="Systems_Mast_Unreachable" xml:space="preserve"><value>Impossible de joindre {0}</value></data>
-  <data name="Systems_Mast_JustUs" xml:space="preserve"><value>Ce PC et la passerelle sont en ligne</value></data>
-  <data name="Systems_Mast_AllOnline" xml:space="preserve"><value>Les {0} systèmes sont en ligne</value></data>
-  <data name="Systems_Mast_Online" xml:space="preserve"><value>{0} systèmes sur {1} sont en ligne</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Ajouter un système</value></data>
-  <data name="Systems_NeedsYou" xml:space="preserve"><value>À traiter</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>Copier la commande de mise à jour</value></data>
-  <data name="Systems_ShowSystem" xml:space="preserve"><value>Afficher le système</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>Réduire les détails du système</value></data>
   <data name="Systems_ExpandSystem" xml:space="preserve"><value>Développer les détails du système</value></data>
   <data name="Systems_NotSeen" xml:space="preserve"><value>Vu pour la dernière fois {0}</value></data>
@@ -8114,7 +8104,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="Systems_Capability_Audio" xml:space="preserve"><value>Entrée audio</value></data>
   <data name="Systems_ManagePermissions" xml:space="preserve"><value>Gérer les autorisations</value></data>
-  <data name="Systems_AllDevices" xml:space="preserve"><value>Tous les appareils</value></data>
   <data name="Systems_Connection" xml:space="preserve"><value>Connexion</value></data>
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connectez-vous à la Gateway pour utiliser cette action.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Applications connectées</value></data>
@@ -8124,15 +8113,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Dernier état connu : hors ligne</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Dernier état connu : en ligne</value></data>
   <data name="Systems_LoadFailed" xml:space="preserve"><value>Échec du chargement.</value></data>
-  <data name="Systems_NeedsYou_More" xml:space="preserve"><value>{0} autres éléments nécessitent votre attention</value></data>
-  <data name="Systems_NeedsYou_ReviewAllIssues" xml:space="preserve"><value>Examiner tous les problèmes</value></data>
-  <data name="Systems_NeedsYou_ReviewEveryIssue" xml:space="preserve"><value>Examiner tous les problèmes, y compris ceux des appareils, de l’association et des workers.</value></data>
-  <data name="Systems_NothingNeedsYou" xml:space="preserve"><value>Rien ne nécessite votre attention pour le moment.</value></data>
   <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>Cette demande d’association n’est plus disponible.</value></data>
-  <data name="Systems_PermissionAttention_Title" xml:space="preserve"><value>{0} nécessite une vérification des autorisations</value></data>
   <data name="Systems_RequestTimeout" xml:space="preserve"><value>Délai de la demande dépassé après {0} s.</value></data>
-  <data name="Systems_Attention_ErrorTitle" xml:space="preserve"><value>{0} nécessite votre attention</value></data>
-  <data name="Systems_WorkerError_Title" xml:space="preserve"><value>{0} présente une erreur de worker</value></data>
   <data name="Systems_ForgetTitle" xml:space="preserve"><value>Oublier {0} ?</value></data>
   <data name="Systems_Forgotten" xml:space="preserve"><value>{0} a été oublié.</value></data>
   <data name="Systems_RenameSucceeded" xml:space="preserve"><value>Le nœud a été renommé.</value></data>
@@ -8154,13 +8136,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
   <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} h</value></data>
   <data name="Systems_Age_Days" xml:space="preserve"><value>{0} j</value></data>
-  <data name="Systems_Mast_ThisNodeConnected" xml:space="preserve"><value>Ce PC est connecté en tant que nœud.</value></data>
-  <data name="Systems_Mast_NodeOfflineSince" xml:space="preserve"><value>{0} a été vu il y a {1}.</value></data>
-  <data name="Systems_Mast_NodeOffline" xml:space="preserve"><value>{0} est hors ligne.</value></data>
-  <data name="Systems_Mast_Pending" xml:space="preserve"><value>{0} appareils attendent une approbation.</value></data>
-  <data name="Systems_Mast_ConnectedTo" xml:space="preserve"><value>Connecté à {0}.</value></data>
-  <data name="Systems_Attention_OfflineTitle" xml:space="preserve"><value>{0} est hors ligne</value></data>
-  <data name="Systems_Attention_OfflineMessage" xml:space="preserve"><value>{0}. Les agents ne peuvent pas l'utiliser avant sa reconnexion.</value></data>
   <data name="Systems_HowToReconnect" xml:space="preserve"><value>Comment se reconnecter</value></data>
   <data name="Systems_ForgetConsequence" xml:space="preserve"><value>Il est dissocié de {0}. Pour revenir, il devra demander une nouvelle approbation.</value></data>
   <data name="Systems_Field_Paired" xml:space="preserve"><value>Appairé</value></data>

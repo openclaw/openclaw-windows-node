@@ -11,6 +11,7 @@ namespace OpenClawTray.Systems;
 internal readonly record struct SystemsLayout(bool Stacked, int StatColumns)
 {
     public const double StatTileMinWidth = 160;
+    public const double HeaderMetadataWidth = 180;
     /// <summary>Fixed width of the Capabilities column in the two-column inline details.</summary>
     public const double CapabilitiesWidth = 340;
     /// <summary>Gap between the Capabilities column and the statistics, desktop and sessions column (DESIGN spacing token 6).</summary>

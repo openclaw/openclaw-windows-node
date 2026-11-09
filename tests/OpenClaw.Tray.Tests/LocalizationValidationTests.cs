@@ -1139,7 +1139,7 @@ public class LocalizationValidationTests
                     "Systems_Age_Days" => ["nl-nl", "pt-br"],
                     "Systems_Age_Hours" => ["fr-fr", "pt-br"],
                     "Systems_Age_Minutes" or "Systems_Age_Seconds" => ["fr-fr", "nl-nl", "pt-br"],
-                    "Systems_Attention_OfflineTitle" or "Systems_Mast_NodeOffline" or "Systems_Stats_Title" => ["nl-nl"],
+                    "Systems_Stats_Title" => ["nl-nl"],
                     "Systems_Number_0" => ["pt-br"],
                     "Systems_Number_6" => ["fr-fr"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or

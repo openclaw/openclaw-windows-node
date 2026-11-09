@@ -7844,10 +7844,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Pairing_TitleOne" xml:space="preserve">
     <value>1 device wants to join</value>
   </data>
-  <data name="Systems_Pairing_NamedTitle" xml:space="preserve"><value>{0} wants to join</value></data>
-  <data name="Systems_Pairing_TitleMany" xml:space="preserve">
-    <value>{0} devices want to join</value>
-  </data>
   <data name="Systems_Pairing_Message" xml:space="preserve">
     <value>Approve only if you started this on that device.</value>
   </data>
@@ -8155,14 +8151,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
-  <data name="Systems_Mast_Unreachable" xml:space="preserve"><value>Can't reach {0}</value></data>
-  <data name="Systems_Mast_JustUs" xml:space="preserve"><value>This PC and Gateway are online</value></data>
-  <data name="Systems_Mast_AllOnline" xml:space="preserve"><value>All {0} systems are online</value></data>
-  <data name="Systems_Mast_Online" xml:space="preserve"><value>{0} of {1} systems are online</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Add a system</value></data>
-  <data name="Systems_NeedsYou" xml:space="preserve"><value>Needs you</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>Copy update command</value></data>
-  <data name="Systems_ShowSystem" xml:space="preserve"><value>Show system</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>Collapse system details</value></data>
   <data name="Systems_ExpandSystem" xml:space="preserve"><value>Expand system details</value></data>
   <data name="Systems_NotSeen" xml:space="preserve"><value>Last seen {0}</value></data>
@@ -8182,7 +8172,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio input</value></data>
   <data name="Systems_ManagePermissions" xml:space="preserve"><value>Manage permissions</value></data>
-  <data name="Systems_AllDevices" xml:space="preserve"><value>All devices</value></data>
   <data name="Systems_Connection" xml:space="preserve"><value>Connection</value></data>
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connect to the Gateway to use this action.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Connected apps</value></data>
@@ -8192,15 +8181,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Last known offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Last known online</value></data>
   <data name="Systems_LoadFailed" xml:space="preserve"><value>Load failed.</value></data>
-  <data name="Systems_NeedsYou_More" xml:space="preserve"><value>{0} more need you</value></data>
-  <data name="Systems_NeedsYou_ReviewAllIssues" xml:space="preserve"><value>Review all issues</value></data>
-  <data name="Systems_NeedsYou_ReviewEveryIssue" xml:space="preserve"><value>Review every issue, including devices, pairing and workers.</value></data>
-  <data name="Systems_NothingNeedsYou" xml:space="preserve"><value>Nothing needs you right now.</value></data>
   <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>This pairing request is no longer available.</value></data>
-  <data name="Systems_PermissionAttention_Title" xml:space="preserve"><value>{0} needs permission review</value></data>
   <data name="Systems_RequestTimeout" xml:space="preserve"><value>Request timed out after {0} s.</value></data>
-  <data name="Systems_Attention_ErrorTitle" xml:space="preserve"><value>{0} needs attention</value></data>
-  <data name="Systems_WorkerError_Title" xml:space="preserve"><value>{0} has a worker error</value></data>
   <data name="Systems_ForgetTitle" xml:space="preserve"><value>Forget {0}?</value></data>
   <data name="Systems_Forgotten" xml:space="preserve"><value>Forgot {0}.</value></data>
   <data name="Systems_RenameSucceeded" xml:space="preserve"><value>The node was renamed.</value></data>
@@ -8222,13 +8204,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
   <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} h</value></data>
   <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
-  <data name="Systems_Mast_ThisNodeConnected" xml:space="preserve"><value>This PC is connected as a node.</value></data>
-  <data name="Systems_Mast_NodeOfflineSince" xml:space="preserve"><value>{0} was last seen {1} ago.</value></data>
-  <data name="Systems_Mast_NodeOffline" xml:space="preserve"><value>{0} is offline.</value></data>
-  <data name="Systems_Mast_Pending" xml:space="preserve"><value>{0} devices are waiting for approval.</value></data>
-  <data name="Systems_Mast_ConnectedTo" xml:space="preserve"><value>Connected to {0}.</value></data>
-  <data name="Systems_Attention_OfflineTitle" xml:space="preserve"><value>{0} is offline</value></data>
-  <data name="Systems_Attention_OfflineMessage" xml:space="preserve"><value>{0}. Agents can't use it until it reconnects.</value></data>
   <data name="Systems_HowToReconnect" xml:space="preserve"><value>How to reconnect</value></data>
   <data name="Systems_ForgetConsequence" xml:space="preserve"><value>It's unpaired from {0}. To come back, it has to ask for approval again.</value></data>
   <data name="Systems_Field_Paired" xml:space="preserve"><value>Paired</value></data>

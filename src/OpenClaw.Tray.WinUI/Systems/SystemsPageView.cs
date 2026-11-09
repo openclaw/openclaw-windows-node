@@ -207,7 +207,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     .FirstOrDefault(row => RowIssues(row, state, actions, now).Count > 0)?.Id;
             if (first is not null && rowControls.Current.TryGetValue(first, out var target) && target.IsLoaded)
             {
-                PageHero.RevealAndHighlight(target, reducedMotion);
+                target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = !reducedMotion });
+                target.Focus(FocusState.Programmatic);
             }
         }
         return Grid([GridSize.Star()], [GridSize.Star()],
@@ -333,7 +334,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             ], layout.HostWidth, reducedMotion, highContrast)
             .AutomationName(S("Hero_Summary"));
         return VStack(12, PageHero.Header("SystemsHero", "\uE977", S("Title"), "SystemsPageMarker",
-            answer, null, buttons, layout.CompactHeader, reducedMotion, highContrast), tiles)
+            answer, null, buttons, layout.CompactHeader, reducedMotion, highContrast, pageTag: "instances"), tiles)
             .AutomationId("SystemsMastGrid");
     }
 
@@ -479,9 +480,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 content.Grid(column: 0), review.Margin(16, 0, 0, 0).Grid(column: 1));
         // Review only opens Connection. It does not approve or require a decision id.
-        return Button(header, () => actions.Navigate("connection")).Padding(12)
+        return Button(header, () => actions.Navigate("connection"))
             .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .BorderThickness(1).CornerRadius(8)
             .AutomationName(name + ", " + S("Badge_Join") + ", " + S("Pairing_Review"))
             .HelpText(reason)
             .AutomationId("SystemsPairing_" + request.Key)
@@ -573,10 +573,9 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
     {
         var heading = $"{title} ({Count(rows.Count)})";
         var content = PageHero.WithMotion(VStack(PageResponsiveLayout.GapInner, rows.Select(row =>
-                Expander("", Details(row, state, actions, open, now, layout).Padding(16, 0, 16, 16),
+                Expander("", Details(row, state, actions, open, now, layout),
                         expandedRows.Contains(row.Id), expanded => toggleExpanded(row.Id, expanded))
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                    .BorderThickness(1).CornerRadius(8)
                     .HeaderTemplate(InventoryItem(row, state, actions, layout))
                     .AutomationName(Join(DisplayName(row), StatusLabel(row, state),
                         string.Join(", ", RowIssues(row, state, actions, now).Select(issue => issue.Label))) ?? DisplayName(row))
@@ -614,14 +613,15 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         var statusLabel = StatusLabel(row, state);
         var helpText = row.Platform is { Length: > 0 } platform ? $"{statusLabel}, {platform}" : statusLabel;
         var issue = IssueLine(row, state, DateTimeOffset.UtcNow - state.GatewayClockOffset);
+        var summary = issues.FirstOrDefault(value => value.Key == "update")?.Label ?? issue;
         var meta = VStack(4, StatusBadge(status, statusLabel),
-                issue is not null ? TextBlock(issue).FontSize(12).TextWrapping(TextWrapping.NoWrap)
-                    .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(issue)
+                summary is not null ? TextBlock(summary).FontSize(12).TextWrapping(TextWrapping.Wrap)
+                    .AutomationId("SystemsIssueSummary_" + row.Id).ToolTip(issue ?? summary)
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush")) : Empty())
-            .MaxWidth(layout.CompactHeader ? 300 : 180)
-            .HAlign(layout.CompactHeader ? HorizontalAlignment.Left : HorizontalAlignment.Right)
+            .MaxWidth(300)
+            .HAlign(layout.CompactHeader ? HorizontalAlignment.Left : HorizontalAlignment.Stretch)
             .AutomationId("SystemsMeta_" + row.Id);
-        return Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto],
+        return Grid([GridSize.Auto, GridSize.Star(), layout.CompactHeader ? GridSize.Auto : GridSize.Px(SystemsLayout.HeaderMetadataWidth)],
                 layout.CompactHeader ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
                 MachineAvatar(row, status, 36, 18).VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
                 VStack(2,
@@ -644,7 +644,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                         .WithKey("SystemsRowBadges-" + row.Id)).VAlign(VerticalAlignment.Center).Grid(column: 1),
                 meta.VAlign(VerticalAlignment.Center).Margin(layout.CompactHeader ? 0 : 12, layout.CompactHeader ? 8 : 0, 0, 0)
                     .Grid(row: layout.CompactHeader ? 1 : 0, column: layout.CompactHeader ? 1 : 2))
-            .Padding(12)
+            .Padding(0, PageResponsiveLayout.GapInner)
             .AutomationName(name)
             .HelpText(helpText)
             .ToolTip(name)

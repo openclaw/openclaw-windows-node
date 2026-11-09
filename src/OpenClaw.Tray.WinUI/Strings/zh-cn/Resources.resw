@@ -7776,10 +7776,6 @@
   <data name="Systems_Pairing_TitleOne" xml:space="preserve">
     <value>1 台设备想要加入</value>
   </data>
-  <data name="Systems_Pairing_NamedTitle" xml:space="preserve"><value>{0} 请求加入</value></data>
-  <data name="Systems_Pairing_TitleMany" xml:space="preserve">
-    <value>{0} 台设备想要加入</value>
-  </data>
   <data name="Systems_Pairing_Message" xml:space="preserve">
     <value>仅当你在该设备上发起了此请求时才批准。</value>
   </data>
@@ -8087,14 +8083,8 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
-  <data name="Systems_Mast_Unreachable" xml:space="preserve"><value>无法连接到 {0}</value></data>
-  <data name="Systems_Mast_JustUs" xml:space="preserve"><value>此电脑和网关均在线</value></data>
-  <data name="Systems_Mast_AllOnline" xml:space="preserve"><value>全部 {0} 个系统均在线</value></data>
-  <data name="Systems_Mast_Online" xml:space="preserve"><value>{1} 个系统中有 {0} 个在线</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>添加系统</value></data>
-  <data name="Systems_NeedsYou" xml:space="preserve"><value>需要处理</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>复制更新命令</value></data>
-  <data name="Systems_ShowSystem" xml:space="preserve"><value>显示系统</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>折叠系统详情</value></data>
   <data name="Systems_ExpandSystem" xml:space="preserve"><value>展开系统详情</value></data>
   <data name="Systems_NotSeen" xml:space="preserve"><value>上次在线：{0}</value></data>
@@ -8114,7 +8104,6 @@
   <data name="Systems_Capability_Notifications" xml:space="preserve"><value>通知</value></data>
   <data name="Systems_Capability_Audio" xml:space="preserve"><value>音频输入</value></data>
   <data name="Systems_ManagePermissions" xml:space="preserve"><value>管理权限</value></data>
-  <data name="Systems_AllDevices" xml:space="preserve"><value>所有设备</value></data>
   <data name="Systems_Connection" xml:space="preserve"><value>连接</value></data>
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>连接到 Gateway 后才能使用此操作。</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>已连接的应用</value></data>
@@ -8124,15 +8113,8 @@
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>上次已知状态：离线</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>上次已知状态：在线</value></data>
   <data name="Systems_LoadFailed" xml:space="preserve"><value>加载失败。</value></data>
-  <data name="Systems_NeedsYou_More" xml:space="preserve"><value>还有 {0} 项需要你处理</value></data>
-  <data name="Systems_NeedsYou_ReviewAllIssues" xml:space="preserve"><value>查看所有问题</value></data>
-  <data name="Systems_NeedsYou_ReviewEveryIssue" xml:space="preserve"><value>查看所有问题，包括设备、配对和工作进程。</value></data>
-  <data name="Systems_NothingNeedsYou" xml:space="preserve"><value>目前没有需要你处理的事项。</value></data>
   <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>此配对请求已不可用。</value></data>
-  <data name="Systems_PermissionAttention_Title" xml:space="preserve"><value>{0} 需要检查权限</value></data>
   <data name="Systems_RequestTimeout" xml:space="preserve"><value>请求在 {0} 秒后超时。</value></data>
-  <data name="Systems_Attention_ErrorTitle" xml:space="preserve"><value>{0} 需要关注</value></data>
-  <data name="Systems_WorkerError_Title" xml:space="preserve"><value>{0} 的工作进程出错</value></data>
   <data name="Systems_ForgetTitle" xml:space="preserve"><value>忘记 {0}？</value></data>
   <data name="Systems_Forgotten" xml:space="preserve"><value>已忘记 {0}。</value></data>
   <data name="Systems_RenameSucceeded" xml:space="preserve"><value>已重命名节点。</value></data>
@@ -8154,13 +8136,6 @@
   <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} 分钟</value></data>
   <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} 小时</value></data>
   <data name="Systems_Age_Days" xml:space="preserve"><value>{0} 天</value></data>
-  <data name="Systems_Mast_ThisNodeConnected" xml:space="preserve"><value>此电脑已作为节点连接。</value></data>
-  <data name="Systems_Mast_NodeOfflineSince" xml:space="preserve"><value>上次看到 {0} 是 {1}前。</value></data>
-  <data name="Systems_Mast_NodeOffline" xml:space="preserve"><value>{0} 已离线。</value></data>
-  <data name="Systems_Mast_Pending" xml:space="preserve"><value>{0} 台设备正在等待批准。</value></data>
-  <data name="Systems_Mast_ConnectedTo" xml:space="preserve"><value>已连接到 {0}。</value></data>
-  <data name="Systems_Attention_OfflineTitle" xml:space="preserve"><value>{0} 已离线</value></data>
-  <data name="Systems_Attention_OfflineMessage" xml:space="preserve"><value>{0}。重新连接之前，智能体无法使用它。</value></data>
   <data name="Systems_HowToReconnect" xml:space="preserve"><value>如何重新连接</value></data>
   <data name="Systems_ForgetConsequence" xml:space="preserve"><value>它将与 {0} 取消配对。要重新加入，必须再次请求批准。</value></data>
   <data name="Systems_Field_Paired" xml:space="preserve"><value>配对时间</value></data>

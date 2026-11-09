@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Reactor.Hosting;
@@ -91,7 +90,6 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Same(initialActionHost, VisualTreeHelper.GetParent(initialAddButton));
             Assert.Same(initialHeroGrid, VisualTreeHelper.GetParent(initialActionGrid));
             Assert.Same(focusTarget, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot));
-            RecordHeroResizeDiagnostics(surface, initialAddButton, focusTarget, scenario, dark, -1, surface.Width, "mounted");
             var initialOfflineBadge = issues || scenario == "disconnected"
                 ? Find<FrameworkElement>(surface, "SystemsBadge_node:hero-2_0") : null;
             var initialBadgeHost = initialOfflineBadge is null ? null
@@ -106,14 +104,12 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             var resizeStep = 0;
             foreach (var width in new[] { 1100d, 760d, 560d, 480d, 760d, 1100d })
             {
-                RecordHeroResizeDiagnostics(surface, initialAddButton, focusTarget, scenario, dark, resizeStep, width, "before");
                 surface.Width = width;
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                     Math.Abs(Find<FrameworkElement>(surface, "SystemsPageRoot").ActualWidth - width) <= .5 &&
                     Math.Abs(Find<FrameworkElement>(surface, "SystemsContentColumn").ActualWidth -
                         PageResponsiveLayout.ContentWidth(width)) <= .5,
                     "retained mounted Systems viewport resized");
-                RecordHeroResizeDiagnostics(surface, initialAddButton, focusTarget, scenario, dark, resizeStep, width, "after");
                 Assert.Same(initialAddButton, Find<Button>(surface, "SystemsAddSystem"));
                 Assert.Same(initialActionHost, Find<FrameworkElement>(surface, "SystemsMastActions"));
                 Assert.Same(initialActionHost, VisualTreeHelper.GetParent(initialAddButton));
@@ -139,6 +135,22 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 var summary = Find<Grid>(surface, "SystemsSummary");
                 Assert.Equal(2, summary.ColumnDefinitions.Count);
                 AssertSiblingsDoNotOverlap(summary);
+                var onlineTile = Find<FrameworkElement>(summary, "SystemsOnlineTile");
+                var issuesTile = Find<FrameworkElement>(summary, "SystemsIssuesTile");
+                var onlineBounds = Bounds(onlineTile, summary);
+                var issuesBounds = Bounds(issuesTile, summary);
+                Assert.InRange(Math.Abs(onlineBounds.Width - issuesBounds.Width), 0, 1);
+                Assert.InRange(onlineBounds.Left, -.5, .5);
+                Assert.InRange(issuesBounds.Right, summary.ActualWidth - .5, summary.ActualWidth + .5);
+                Assert.InRange(issuesBounds.Left - onlineBounds.Right, 11, 13);
+                foreach (var tile in new[] { onlineTile, issuesTile })
+                {
+                    var icon = Find<Border>(tile, AutomationProperties.GetAutomationId(tile) + ":IconWell");
+                    Assert.InRange(icon.ActualWidth, 35.5, 36.5);
+                    Assert.InRange(icon.ActualHeight, 35.5, 36.5);
+                    var iconBounds = Bounds(icon, tile);
+                    Assert.True(iconBounds.Left >= 0 && iconBounds.Right <= tile.ActualWidth);
+                }
                 foreach (var id in new[] { "SystemsHero", "SystemsSummary", "SystemsMastOpenWeb", "SystemsAddSystem" })
                 {
                     var bounds = Bounds(Find<FrameworkElement>(surface, id), content);
@@ -233,81 +245,6 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             output.WriteLine($"{scenario}, {(dark ? "Dark" : "Light")}: live mounted 1100/760/560/480/760/1100; " +
                 "synthetic external inventory, retained focus/scroll, no production minimum change.");
         }), inventory: inventory, width: 1100, theme: dark ? ElementTheme.Dark : ElementTheme.Light, fitNativeViewport: true);
-    }
-
-    private void RecordHeroResizeDiagnostics(FrameworkElement surface, Button initialAddButton, Button focusTarget,
-        string scenario, bool dark, int step, double width, string phase)
-    {
-        object Describe(FrameworkElement element)
-        {
-            var parents = new List<object>();
-            for (var parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
-            {
-                parents.Add(new
-                {
-                    type = parent.GetType().FullName,
-                    runtimeIdentity = RuntimeHelpers.GetHashCode(parent),
-                    automationId = AutomationProperties.GetAutomationId(parent),
-                });
-            }
-            return new
-            {
-                type = element.GetType().FullName,
-                runtimeIdentity = RuntimeHelpers.GetHashCode(element),
-                automationId = AutomationProperties.GetAutomationId(element),
-                loaded = element.IsLoaded,
-                visibility = element.Visibility.ToString(),
-                width = element.ActualWidth,
-                height = element.ActualHeight,
-                focus = (element as Control)?.FocusState.ToString(),
-                parents,
-            };
-        }
-
-        var candidates = TestSupport.FindDescendants<Button>(surface)
-            .Where(element => AutomationProperties.GetAutomationId(element) == "SystemsAddSystem").ToArray();
-        var banners = TestSupport.FindDescendants<FrameworkElement>(surface)
-            .Where(element => AutomationProperties.GetAutomationId(element) == "SystemsDisconnectedBanner").ToArray();
-        var offlineBadges = TestSupport.FindDescendants<FrameworkElement>(surface)
-            .Where(element => AutomationProperties.GetAutomationId(element) == "SystemsBadge_node:hero-2_0").ToArray();
-        var focusedElement = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot);
-        var diagnostic = new
-        {
-            test = nameof(Hero_StateMatrixRetainsFocusAndGeometryAcrossMountedWidths),
-            scenario,
-            dark,
-            step,
-            targetWidth = width,
-            phase,
-            capturedUtc = DateTimeOffset.UtcNow,
-            source = Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_HEAD"),
-            originalAddButton = Describe(initialAddButton),
-            focusTarget = Describe(focusTarget),
-            actualFocusedElement = focusedElement is FrameworkElement focused ? Describe(focused)
-                : focusedElement is null ? null : new
-                {
-                    type = focusedElement.GetType().FullName,
-                    runtimeIdentity = RuntimeHelpers.GetHashCode(focusedElement),
-                    automationId = focusedElement is DependencyObject dependency
-                        ? AutomationProperties.GetAutomationId(dependency) : null,
-                },
-            addButtons = candidates.Select(element => new
-            {
-                sameAsOriginal = ReferenceEquals(element, initialAddButton),
-                native = Describe(element),
-            }).ToArray(),
-            disconnectedBanners = banners.Select(Describe).ToArray(),
-            offlineBadges = offlineBadges.Select(Describe).ToArray(),
-        };
-        var json = JsonSerializer.Serialize(diagnostic, new JsonSerializerOptions { WriteIndented = true });
-        output.WriteLine(json);
-        var directory = Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR");
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(Path.Combine(directory,
-                $"systems-hero-{scenario}-{(dark ? "dark" : "light")}-{step}-{width}-{phase}.diagnostics.json"), json);
-        }
     }
 
     [Fact]
@@ -430,10 +367,13 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsBadge_node:permission_0"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsWorkersGroup"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsConnectedAppsGroup"));
+            var pairing = Find<Button>(surface, "SystemsPairing_NodePair:join");
+            var background = pairing.Background;
             Invoke(Find<Button>(surface, "SystemsIssuesTile"));
             await TestSupport.WaitForRenderedConditionAsync(
                 () => Find<Button>(surface, "SystemsPairing_NodePair:join").FocusState != FocusState.Unfocused,
                 "issues summary focuses the first badged pairing row");
+            Assert.Same(background, pairing.Background);
             Assert.DoesNotContain(AutomationIds(surface), id => id is "SystemsNeedsYou" or "SystemsIssuesView");
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsWorkersGroup"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsConnectedAppsGroup"));
@@ -745,14 +685,19 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task Hero_UsesSharedTitleAndDecorativeFluentGlyph()
+    public async Task Hero_UsesSharedTitleAndDecorativeSidebarIcon()
     {
         await WithPageAsync(900, _ => { }, async (surface, _, _) => await ui.RunOnUIAsync(async () =>
         {
             var hero = Find<Border>(surface, "SystemsHero");
-            await TestSupport.WaitForRenderedConditionAsync(() => hero.ActualHeight > 0, "Systems hero laid out");
-            var glyph = Assert.Single(TestSupport.FindDescendants<TextBlock>(hero), text => text.Text == "\uE977");
-            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(glyph));
+            await TestSupport.WaitForRenderedConditionAsync(() => hero.ActualHeight > 0 &&
+                Math.Abs(Find<FrameworkElement>(surface, "SystemsContentColumn").ActualWidth -
+                    PageResponsiveLayout.ContentWidth(surface.Width)) <= .5,
+                "Systems hero uses the measured responsive width");
+            var icon = Assert.IsType<Image>(Find<Border>(hero, "SystemsHero:Glyph").Child);
+            Assert.Equal("ms-appx:///Assets/SidebarIcons/Instances.svg",
+                Assert.IsType<Microsoft.UI.Xaml.Media.Imaging.SvgImageSource>(icon.Source).UriSource.AbsoluteUri);
+            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(icon));
             var title = Find<TextBlock>(hero, "SystemsPageMarker");
             Assert.Equal(SystemsText.S("Title"), title.Text);
             Assert.Equal(28, title.FontSize);
@@ -1665,7 +1610,13 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(row));
                 Assert.Equal(HorizontalAlignment.Stretch, row.HorizontalContentAlignment);
+                Assert.Same(DependencyProperty.UnsetValue, row.ReadLocalValue(Control.BorderThicknessProperty));
+                Assert.Same(DependencyProperty.UnsetValue, row.ReadLocalValue(Control.CornerRadiusProperty));
                 var header = Find<Grid>(row, "SystemsItem_" + id);
+                Assert.Empty(TestSupport.FindDescendants<Button>(header));
+                var subtitleBounds = Bounds(Find<TextBlock>(header, "SystemsSubtitle_" + id), header);
+                Assert.True(header.ActualHeight - subtitleBounds.Bottom >= 7.5,
+                    "Header content keeps at least eight DIPs of bottom breathing room.");
                 Assert.Equal(3, header.ColumnDefinitions.Count);
                 Assert.DoesNotContain(TestSupport.FindDescendants<FontIcon>(header),
                     glyph => glyph.Glyph is "\uE70D" or "\uE70E");
@@ -1673,6 +1624,83 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.InRange(Math.Abs(Bounds(Find<FrameworkElement>(gateway, "SystemsMeta_gateway"), gateway).Right -
                 Bounds(Find<FrameworkElement>(studio, "SystemsMeta_node:studio"), studio).Right), 0, 1);
         }), width: 1000);
+    }
+
+    [Theory]
+    [InlineData(480)]
+    [InlineData(760)]
+    [InlineData(1100)]
+    public async Task InventoryHeaders_KeepPaddedBadgesAndAlignedCompactStatus(double width)
+    {
+        var inventory = new SystemsInventorySnapshot
+        {
+            Environments =
+            [
+                new SystemEnvironment
+                {
+                    Id = "node:update", Type = "node", Label = "Fixture Raspberry Pi",
+                    Status = SystemStatus.Online, Issues = [new RuntimeTargetIssue("update-required", null)],
+                },
+                new SystemEnvironment { Id = "node:plain", Type = "node", Label = "Fixture online", Status = SystemStatus.Online },
+                new SystemEnvironment
+                {
+                    Id = "node:offline", Type = "node", Label = "Fixture offline",
+                    Status = SystemStatus.Offline, LastSeenAt = DateTimeOffset.UtcNow.AddHours(-2),
+                },
+            ],
+        };
+        await WithPageAsync(900, _ => { }, async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
+        {
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+                controller.State.HasLoaded &&
+                TryFind<TextBlock>(surface, "SystemsIssueSummary_node:update") is { ActualWidth: > 0, ActualHeight: > 0 } &&
+                Math.Abs(Find<FrameworkElement>(surface, "SystemsContentColumn").ActualWidth -
+                    PageResponsiveLayout.ContentWidth(width)) <= .5,
+                "inventory issue summary is rendered");
+            var item = Find<Grid>(surface, "SystemsItem_node:update");
+            var meta = Find<FrameworkElement>(surface, "SystemsMeta_node:update");
+            var summary = Find<TextBlock>(surface, "SystemsIssueSummary_node:update");
+            var name = Assert.Single(TestSupport.FindDescendants<TextBlock>(item),
+                text => text.Text == "Fixture Raspberry Pi");
+            var badge = Find<FrameworkElement>(surface, "SystemsBadge_node:update_0");
+            Assert.Equal(SystemsText.S("Badge_Update"), summary.Text);
+            Assert.Equal(SystemsText.S("Issue_UpdateRequired"), ToolTipService.GetToolTip(summary));
+            Assert.Equal(TextWrapping.Wrap, summary.TextWrapping);
+            Assert.Equal(TextTrimming.None, summary.TextTrimming);
+            var summaryBounds = Bounds(summary, item);
+            var metaBounds = Bounds(meta, item);
+            Assert.InRange(summaryBounds.Left, -.5, item.ActualWidth);
+            Assert.InRange(summaryBounds.Right, 0, item.ActualWidth + .5);
+            Assert.InRange(summaryBounds.Bottom, 0, item.ActualHeight + .5);
+            foreach (var other in new FrameworkElement[] { name, badge })
+            {
+                var otherBounds = Bounds(other, item);
+                Assert.True(metaBounds.Right <= otherBounds.Left + .5 || metaBounds.Left >= otherBounds.Right - .5 ||
+                    metaBounds.Bottom <= otherBounds.Top + .5 || metaBounds.Top >= otherBounds.Bottom - .5,
+                    $"width={width}, metadata={metaBounds}, other={otherBounds}");
+            }
+            var statusLeft = Bounds(Find<FrameworkElement>(item, "SystemsStatusBadge"), surface).Left;
+            foreach (var id in new[] { "node:update", "node:plain", "node:offline" })
+            {
+                var header = Find<Grid>(surface, "SystemsItem_" + id);
+                var status = Find<FrameworkElement>(header, "SystemsStatusBadge");
+                Assert.InRange(Math.Abs(Bounds(status, surface).Left - statusLeft), 0, 1);
+                foreach (var pill in TestSupport.FindDescendants<Border>(header).Where(element =>
+                    AutomationProperties.GetAutomationId(element).StartsWith("SystemsBadge_", StringComparison.Ordinal)))
+                {
+                    var bounds = Bounds(pill, header);
+                    Assert.True(bounds.Top >= 7.5 && header.ActualHeight - bounds.Bottom >= 7.5,
+                        $"Badge needs vertical breathing room: header={header.ActualHeight}, badge={bounds}");
+                }
+                if (TryFind<TextBlock>(header, "SystemsIssueSummary_" + id) is { } caption)
+                    Assert.InRange(Math.Abs(Bounds(caption, surface).Left - statusLeft), 0, 1);
+            }
+            Find<Expander>(surface, "SystemsRow_node:update").IsExpanded = true;
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+                TestSupport.FindDescendants<TextBlock>(Find<Expander>(surface, "SystemsRow_node:update"))
+                    .Any(text => text.Text == SystemsText.S("Issue_UpdateRequired") && text.ActualHeight > 0),
+                "expanded update details retain the full guidance");
+        }), inventory: inventory, width: width);
     }
 
     [Fact]

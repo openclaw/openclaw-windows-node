@@ -64,7 +64,8 @@ public static class PageHero
         bool reducedMotion,
         bool highContrast = false,
         string? glyphAutomationId = null,
-        Element? captionLine = null)
+        Element? captionLine = null,
+        string? pageTag = null)
     {
         var titleLine = VStack(4,
             TextBlock(title)
@@ -83,10 +84,7 @@ public static class PageHero
         var content = WithMotion(Grid(
             [GridSize.Px(48), GridSize.Star(), GridSize.Auto],
             [GridSize.Auto, GridSize.Auto],
-            Border(Glyph(glyph, 24, Theme.Ref("TextOnAccentFillColorPrimaryBrush")).Center())
-                .Size(48, 48).CornerRadius(8).Background(Theme.Ref("AccentFillColorDefaultBrush"))
-                .AutomationId(glyphAutomationId ?? $"{automationId}:Glyph")
-                .Grid(column: 0).VAlign(VerticalAlignment.Top),
+            PageHeroIcon.Marker(automationId, glyph, pageTag, highContrast, glyphAutomationId),
             titleLine.Margin(16, 0, narrow ? 0 : 16, 0)
                 .Grid(column: 1, row: 0, columnSpan: narrow ? 2 : 1),
             animatedActions
@@ -292,7 +290,7 @@ public static class PageHero
             TextBlock(tile.Value).FontSize(20).FontWeight(FontWeights.SemiBold)
                 .Foreground(!highContrast && tile.Tone == PageHeroTone.Critical ? foreground : Theme.PrimaryText)
                 .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2));
-        var content = Grid([GridSize.Px(36), GridSize.Star()], [GridSize.Auto],
+        var content = Grid([GridSize.Px(48), GridSize.Star()], [GridSize.Auto],
             icon.Grid(column: 0).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top),
             copy.Grid(column: 1).VAlign(VerticalAlignment.Center));
         var name = tile.AutomationName ?? $"{tile.Label}: {tile.Value}";
@@ -307,12 +305,13 @@ public static class PageHero
                 .AutomationName(name)
                 .AutomationId(tile.AutomationId);
 
-        var buttonContent = Grid([GridSize.Px(36), GridSize.Star(), GridSize.Px(16)], [GridSize.Auto],
+        var buttonContent = Grid([GridSize.Px(48), GridSize.Star(), GridSize.Px(16)], [GridSize.Auto],
             icon.Grid(column: 0).Margin(0, 0, 12, 0).VAlign(VerticalAlignment.Top),
             copy.Grid(column: 1).VAlign(VerticalAlignment.Center),
             Glyph("\uE76C", 12, Theme.SecondaryText).Center().Grid(column: 2).VAlign(VerticalAlignment.Center));
         return Button(buttonContent, tile.OnInvoked)
             .Padding(16, 14)
+            .HAlign(HorizontalAlignment.Stretch)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .CornerRadius(8)
             .Background(Theme.CardBackground)
