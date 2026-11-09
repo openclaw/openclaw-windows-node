@@ -245,6 +245,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private static GatewayErrorKind ClassifyTransportObservation(Exception error)
     {
+        // A wrapper's text cannot override a typed transport cause deeper in the chain.
         GatewayErrorKind? httpStatusKind = null;
         var hasNetworkCause = false;
         for (Exception? current = error; current is not null; current = current.InnerException)

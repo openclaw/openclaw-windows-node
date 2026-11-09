@@ -39,7 +39,8 @@ public sealed record ChatPlacementCatalog(
     ChatWorkspace[] Workspaces,
     string? AgentName = null,
     string? AgentEmoji = null,
-    string? AgentAvatarUrl = null);
+    string? AgentAvatarUrl = null,
+    string? AgentAvatar = null);
 
 public sealed record ChatWorkspaceDirectory(
     string Path,
@@ -245,9 +246,11 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
         }
         var identity = agent.ValueKind == JsonValueKind.Object && agent.TryGetProperty("identity", out var value)
             && value.ValueKind == JsonValueKind.Object ? value : default;
-        var name = OptionalString(identity, "name") ?? OptionalString(agent, "name") ?? agentId;
+        // Roster labels own operator target identity; clients fill gaps from agent.identity.get.
+        var name = OptionalString(agent, "name") ?? OptionalString(identity, "name");
         return new(epoch, agentId, ParseEnvironments(environments, ReadRuntime(agents, agentId)), workspace, workspaces.ToArray(),
-            name, OptionalString(identity, "emoji"), OptionalString(identity, "avatarUrl") ?? OptionalString(identity, "avatar"));
+            name, OptionalString(identity, "emoji"), OptionalString(identity, "avatarUrl"),
+            OptionalString(identity, "avatar"));
     }
 
     internal sealed record RuntimeRequirement(

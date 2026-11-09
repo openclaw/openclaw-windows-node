@@ -461,6 +461,26 @@ foreach ($lane in $testLanes.GetEnumerator()) {
     }
 }
 
+$overlapLanes = [ordered]@{
+    "core-tests" = "core_tests"
+    "tray-tests" = "tray_tests"
+    "ui-tests" = "ui_tests"
+    "setup-e2e" = "setup_e2e"
+    "revocation-e2e" = "revocation_e2e"
+    "network-e2e" = "network_e2e"
+}
+foreach ($lane in $overlapLanes.GetEnumerator()) {
+    $job = Get-JobBlock $lane.Key
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-Contains -Text $jobHeader -Expected "    needs: change-classification" `
+        -Message "Lane '$($lane.Key)' must start after classification without waiting for fast validation."
+    Assert-Contains -Text $jobHeader `
+        -Expected ("    if: " + '${{ ' + "!cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.$($lane.Value) == 'true' }}") `
+        -Message "Lane '$($lane.Key)' must preserve cancellation, classification success, and selected-lane admission."
+    Assert-NotContains -Text $jobHeader -Unexpected "fast-validation" `
+        -Message "Lane '$($lane.Key)' must overlap fast validation; CI Gate still requires its success."
+}
+
 $coreJob = Get-JobBlock "core-tests"
 $sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
 Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
@@ -574,6 +594,82 @@ Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+$trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
+Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
+    -Message "Tray UI crash metadata must be bounded by an explicit start time."
+Assert-NotContains -Text $uiJob -Unexpected 'path: .ci-pipeline' `
+    -Message 'Nested pipeline checkout must not enter the product source manifest.'
+$trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
+foreach ($token in @(
+        "if: always()",
+        "steps.tray-ui-crash-window.outcome == 'success'",
+        'git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"',
+        '$LASTEXITCODE -ne 0',
+        'Join-Path $env:RUNNER_TEMP',
+        '& $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
+        "TRAY_UI_TEST_STARTED_UTC"
+    )) {
+    Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
+        -Message "Tray UI crash metadata capture is missing '$token'."
+}
+if ($uiJob.IndexOf('name: Mark Tray UI crash metadata window', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Run Tray UI Tests', [StringComparison]::Ordinal) -or
+    $uiJob.IndexOf('name: Run Tray UI Tests', [StringComparison]::Ordinal) -ge
+    $uiJob.IndexOf('name: Capture non-memory Tray UI crash metadata', [StringComparison]::Ordinal)) {
+    throw 'Tray UI crash metadata must bracket only the Tray UI test run.'
+}
+$crashMetadataScript = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Capture-CiTestHostCrashMetadata.ps1') -Raw
+foreach ($token in @(
+        'LogName = "Application"',
+        'Id = 1000',
+        'ExceptionCode',
+        'FaultingOffset',
+        'ModuleName',
+        'Get-WinEvent'
+    )) {
+    Assert-Contains -Text $crashMetadataScript -Expected $token `
+        -Message "Non-memory Tray UI crash metadata must include '$token'."
+}
+foreach ($token in @('LocalDumps', 'MiniDumpWriteDump', 'Get-WinEvent -LogName "Security"')) {
+    Assert-NotContains -Text $crashMetadataScript -Unexpected $token `
+        -Message "Tray UI crash metadata must not collect memory dumps or unrelated event logs: '$token'."
+}
+. (Join-Path $repoRootPath 'scripts\Capture-CiTestHostCrashMetadata.ps1')
+$syntheticCrashEvent = @'
+<Event><EventData>
+  <Data Name="AppName">testhost.exe</Data>
+  <Data Name="AppPath">C:\runner\temp\testhost.exe</Data>
+  <Data Name="ModuleName">C:\Windows\System32\KERNELBASE.dll</Data>
+  <Data Name="ExceptionCode">0xc0000005</Data>
+  <Data Name="FaultingOffset">0x0000000000001234</Data>
+  <Data Name="Message">must-not-be-emitted</Data>
+</EventData></Event>
+'@
+$syntheticMetadata = ConvertTo-CiTestHostCrashMetadata `
+    -EventXml $syntheticCrashEvent `
+    -EventId 1000 `
+    -TimeCreated ([DateTimeOffset]::UtcNow)
+if ($syntheticMetadata.application -ne 'testhost.exe' -or
+    $syntheticMetadata.faultingModule -ne 'KERNELBASE.dll' -or
+    $syntheticMetadata.exceptionCode -ne '0xc0000005' -or
+    $syntheticMetadata.faultingOffset -ne '0x0000000000001234' -or
+    $syntheticMetadata.PSObject.Properties.Name -contains 'Message' -or
+    $syntheticMetadata.PSObject.Properties.Name -contains 'path') {
+    throw 'Tray UI crash metadata must retain only the whitelisted process-failure fields.'
+}
+$syntheticNonTestEvent = @'
+<Event><EventData>
+  <Data Name="AppName">notepad.exe</Data>
+  <Data Name="ModuleName">C:\Windows\System32\KERNELBASE.dll</Data>
+  <Data Name="ExceptionCode">0xc0000005</Data>
+</EventData></Event>
+'@
+if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
+            -EventXml $syntheticNonTestEvent `
+            -EventId 1000 `
+            -TimeCreated ([DateTimeOffset]::UtcNow))) {
+    throw 'Tray UI crash metadata must exclude unrelated application failures.'
+}
 
 $fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
 foreach ($token in @(
@@ -867,6 +963,26 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Message "Release builds must start in parallel with tests and E2E."
 }
 
+foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
+    $job = Get-JobBlock $jobName
+    $jobEnvironment = [regex]::Match($job, '(?ms)^    env:\r?\n.*?(?=^    \S|\z)')
+    if (-not $jobEnvironment.Success) {
+        throw "Release build '$jobName' is missing its job environment."
+    }
+    Assert-NotContains -Text $jobEnvironment.Value -Unexpected 'runner.' `
+        -Message "Release build '$jobName' must not use the unavailable runner context in job-level env."
+    $download = Get-StepBlock -Text $job -Name 'Download signed cleanup host'
+    Assert-Contains -Text $download `
+        -Expected 'path: ${{ runner.temp }}\signed-cleanup-host' `
+        -Message "Release build '$jobName' must download the signed helper outside the checkout to preserve clean-source provenance."
+    $binding = Get-StepBlock -Text $job -Name 'Bind signed cleanup host path'
+    Assert-Contains -Text $binding -Expected "if: needs.sign-cleanup-host.result == 'success'" `
+        -Message "Release build '$jobName' must bind its helper only after successful signing."
+    Assert-Contains -Text $binding `
+        -Expected '"OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV' `
+        -Message "Release build '$jobName' must export the runner-temporary helper path for subsequent build steps."
+}
+
 $buildMsixJob = Get-JobBlock "build-msix"
 Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(
@@ -1038,7 +1154,8 @@ foreach ($token in @(
 
 $releasePreparationJob = Get-JobBlock "prepare-release-assets"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs.fast-validation.result == 'success'",
         "needs.reserve-msix-version.result == 'success'",
         "needs.proof-pool-contracts.result == 'success'",
         "needs.core-tests.result == 'success'",

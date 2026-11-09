@@ -558,7 +558,10 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var entry = ExtractMethod(source, "OpenDashboard");
+        Assert.Contains("TryOpenDashboardAsync(path)", entry);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", entry);
+        var method = ExtractMethod(source, "TryOpenDashboardAsync");
 
         Assert.Contains("CreateDashboardLauncher(", method);
         var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
@@ -1827,7 +1830,9 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", code);
         Assert.Contains("GatewayHostAccessClassifier.Classify(activeGateway)", code);
+        Assert.Contains("SetupExistingGatewayClassifier.HasWslInstallationForSettings(", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);

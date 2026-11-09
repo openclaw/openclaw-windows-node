@@ -77,7 +77,7 @@ Run links point to `https://github.com/openclaw/openclaw-windows-node/actions/ru
 - [ ] **Shared tests with wall-clock limits fail on an overloaded runner.** All of these failed in the same run, so they share a likely cause:
   - `BoundedProcessWaitTests.WaitAsync_TimesOutAndKillsProcess`: `Timeout cleanup took 3171 ms.`
   - `TokenSanitizerTests.SanitizeLogMessage_PercentEncodedControlChars_DoNotAppearInOutput`: output was `[REDACTED_SANITIZER_TIMEOUT]` instead of containing `<host>`, so the sanitizer regex timed out.
-  - `Mxc.MxcExecutorTests.RunAsync_OutputDrainIsBoundedAndPreservesFinalFragments_WhenDescendantRetainsHandles` and `RunAsync_OutputDrainPreservesExactPipeBufferFragments_WhenDescendantRetainsHandles`: `Test descendant did not report its process ID within the expected time.`
+  - `Mxc.MxcExecutorTests.RunAsync_OutputDrainIsBoundedAndPreservesFinalFragments_WhenDescendantRetainsHandles` and `RunAsync_OutputDrainPreservesExactPipeBufferFragments_WhenDescendantRetainsHandles`: `Test descendant did not report its process ID within the expected time.` Both tests were removed with the old executor in #1726 (feat: upgrade Windows node sandboxing to MXC 1.0 .NET SDK).
   - `MarkdownParserFuzzTests.Build_ManyListItems_ScalingCurve`: `Curve: 10k=180 20k=370 30k=880ms` against a `<500ms` limit.
   - Runs: [36910516055](https://github.com/openclaw/openclaw-windows-node/actions/runs/36910516055).
   - Next: for each test, decide whether the limit protects real behavior. If it does, measure it relative to a baseline from the same run, or isolate the test from parallel load. If it doesn't, drop the absolute limit.

@@ -355,7 +355,7 @@ x-colophon:
       tooling:
         name: winapp (WinAppCli)
         source: https://github.com/microsoft/WinAppCli
-        role: The Windows App Development CLI is the single build/packaging tool for both port targets below. Both the WinUI 3 (XAML) shell and the Reactor chat surface now build, package, and generate app identity, manifests, and certificates through winapp, so treat it as the port authority's build toolchain.
+        role: Use the Windows App Development CLI proactively for Windows API/sample discovery, native UI automation, crash diagnostics, WinUI DevTools, performance recording, and authorized Sandbox experiments. Repository build.ps1, project files, and packaging scripts remain the build/release authority for both port targets; see docs/WINAPP_CLI.md for supported workflows and limits.
       port:
         authoritySource: Native WinUI 3 / C# (Windows Fluent)
         syncSource: https://github.com/microsoft/win-dev-skills
@@ -1051,7 +1051,18 @@ text-bearing notifications; there is no visible status or keyboard-help/footer
 region covering result text. These are implementation dimensions, not a claim
 of current-head visible or accessibility proof.
 
-The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. Settings remains an independent native companion window.
+Page aliases share one search result with their canonical destination. Searching
+for notification preferences finds General, separately from notification history;
+About is a distinct result. Removed Event Stream routes do not appear.
+
+The Models page retains the `model` route and its default-model selector. Its
+sidebar artwork uses Fluent's filled cube silhouette with the existing purple
+gradient. Native search and High Contrast retain their existing theme-aware
+glyphs rather than substituting a package/archive symbol for a cube.
+
+The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. That historical screenshot predates the current embedded Settings surface: `Controls/SettingsShellView` is retained inside `WorkspaceWindow`, sharing its navigation history rather than opening another window.
+
+Current Settings keeps Gateway administration together: Connection first, followed by Systems, Automations, Usage, and Config as direct entries; there is no Gateway Advanced group. Channels is managed in the Gateway Dashboard, including legacy Channels/activity routes. Connection and its group header/separator stay visible while disconnected. Agents and Tools contains the existing Agents subtree, Sessions, Models, and Local AI. Agents and Sessions retain their Gateway availability rules, while Models and Local AI remain reachable offline. This Computer retains its existing tools. System contains General, conditional Diagnostics, and About, with Fluent glyph fallbacks for its colorful sidebar icons in High Contrast. About uses the colorful book-and-lightbulb icon. General contains notification preferences alongside managed-Gateway setup/onboarding/removal and its always-reachable Advanced diagnostics switch. About owns updates and app/Gateway information; notification history remains in the bell flyout and its existing history route, separate from preferences. Permissions contains a distinct app-access consent section, not a replacement for node capability permissions.
 
 - **Pane and toolbar.** The `NavigationViewExpandedPaneBackground` reveals Mica; there is no extra pane border or general 8px inset. PaneHeader margin is 4,8,4,8. The 40x40 pane button sits at x=4, y=8 below the title bar. Back/Forward align to the right of the same 40px toolbar with an 8px gap and the default SubtleButton padding, yielding 40px widths. Their disabled state represents empty navigation history. The selector sits 8px below the toolbar, with 4,8,28,8 padding and a trailing 12px U+E70D glyph. It shows No agents loaded until production has a roster; selected agents use `AgentIdentityBadge`.
 - **Menu.** Home is a 36px row with 4px horizontal and 2px vertical outer margins, a 3x16 accent indicator and the original `Chat.svg` at 22px centered in a 24px column. The iconless native presenter reserves 8px before that column, followed by a 16px gap to Home. The Sessions header is 40px tall with 16px leading and 4px trailing insets, 14px semibold text, and a 40x36 add button. No conversations to show replaces session rows in the supplied state; add is disabled while disconnected.
@@ -1091,7 +1102,7 @@ The named `flyout` shadow uses an 8px downward offset, 16px CSS blur and 14% bla
 ## Components
 
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
-Optional click-through flows live in `.agents/design/prototypes.jsonc`.
+Optional click-through flows would live in `.agents/design/prototypes.jsonc`; none are defined yet.
 
 The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 39 definitions has exactly one standalone page assignment: Components 15, Setup 6, Chat 7, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
 
@@ -1217,6 +1228,6 @@ The design files are the source of truth for design, and are framework-agnostic.
 
 - **Default:** surfaces ship as **native WinUI 3 / C#** (Windows Fluent). Port the design into XAML/C# via [win-dev-skills](https://github.com/microsoft/win-dev-skills).
 - **Chat surface** (`ChatBubble`, `ChatComposer`, `ChatThread`): ships via **[Reactor](https://github.com/microsoft/microsoft-ui-reactor)**, the React-style framework for this app's chat. Reactor has no dedicated porting agent yet.
-- Both port targets build and package through **[winapp (WinAppCli)](https://github.com/microsoft/WinAppCli)**, the Windows App Development CLI, which also generates app identity, manifests, and certificates.
+- Both port targets use the repository's `build.ps1`, project files and packaging scripts. Developers and agents should use **[WinApp CLI](docs/WINAPP_CLI.md)** actively for API/sample discovery, native inspection, debugging and performance evidence. Its development identity/packaging tools complement those owners; they do not replace the release pipeline.
 
 Colors are preview swatches: bind their mapped `resource` keys rather than hard-coding hex values. Preserve the light, dark, and high-contrast mappings. The shipping implementation is canonical; component patterns are not shipping code. When you need a value the design doesn't cover, add it here first, then port it into the native/Reactor implementation via the matching reference above.

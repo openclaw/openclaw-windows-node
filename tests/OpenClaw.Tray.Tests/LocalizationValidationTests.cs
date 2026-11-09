@@ -116,11 +116,9 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_NodeStatus_Disabled",
-        // About / Gateway info strings added as part of the Windows-native
-        // settings reorg are seeded in English across locales until the next
-        // translation pass lands. They are still present in every locale file
-        // so key parity stays strict; this set only documents deferred copy.
-        "SettingsPage_About.Text",
+        // Gateway info strings remain seeded in English across locales until
+        // the next translation pass; they are still present everywhere so
+        // resource-key parity remains strict.
         "SettingsPage_GatewayInfoExpander.Header",
         "SettingsPage_GatewayInfoLabel_Version.Text",
         "SettingsPage_GatewayInfoLabel_Protocol.Text",
@@ -265,8 +263,8 @@ public class LocalizationValidationTests
         "ConfigPage_ConfigIsReadOnly",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
-        // same deferred-translation pattern as the AgentEventsPage
-        // / CronPage entries above. The Description_Format key takes the WSL
+        // same deferred-translation pattern as the CronPage entries above.
+        // The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
         "ConnectionPage_GatewayHostControlsDescription_Format",
         // GatewayHostAccess plan strings (terminal label / tooltip / disabled
@@ -285,8 +283,6 @@ public class LocalizationValidationTests
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
-        "Command_GoToAgentEvents_Title",
-        "Command_GoToAgentEvents_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -1144,6 +1140,8 @@ public class LocalizationValidationTests
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],
+                    // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
+                    "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&
