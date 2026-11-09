@@ -163,8 +163,44 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task OpenInboxFeedPageAsync(GatewayFixtureRun run, string tab)
     {
         await run.InvokeAsync("app.navigate", new { page = "workspace:notifications" });
-        await WaitUiAsync(run, () => InboxFeedVisibleId(run, "NotificationsPageMarker") is not null, "full Inbox page");
-        Invoke(InboxFeedVisibleId(run, $"WorkspaceNotificationsTab{tab}")!);
+        AutomationElement? readyTab = null;
+        // The title can be visible before the header's category peers. Keep the
+        // successful page-scoped peer and activate once, outside the existing wait.
+        await WaitUiAsync(run, () =>
+        {
+            readyTab = null;
+            foreach (var window in AppWindows(run))
+            {
+                var windowBounds = window.Current.BoundingRectangle;
+                if (!HeaderControlReady(window, windowBounds)) continue;
+                var page = window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "NotificationsPage"));
+                if (!HeaderControlReady(page, windowBounds)) continue;
+                var pageBounds = page!.Current.BoundingRectangle;
+                var heading = page.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "NotificationsPageMarker"));
+                var candidate = page.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, $"WorkspaceNotificationsTab{tab}"));
+                if (!HeaderControlReady(heading, pageBounds) || !HeaderControlReady(candidate, pageBounds)) continue;
+                readyTab = candidate;
+                return true;
+            }
+            return false;
+        }, $"visible enabled Inbox page tab: {tab}");
+        Invoke(readyTab!);
+
+        bool HeaderControlReady(AutomationElement? element, System.Windows.Rect viewport)
+        {
+            if (element is null) return false;
+            var info = element.Current;
+            var bounds = info.BoundingRectangle;
+            return info.ProcessId == run.AppProcessId && !info.IsOffscreen && info.IsEnabled &&
+                HasBounds(viewport) && HasBounds(bounds) && viewport.Contains(bounds);
+        }
+
+        static bool HasBounds(System.Windows.Rect bounds) =>
+            !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+            double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) && bounds.Width > 0 && bounds.Height > 0;
     }
 
     private static AutomationElement? InboxFeedVisibleId(GatewayFixtureRun run, string id) =>
