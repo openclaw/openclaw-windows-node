@@ -158,26 +158,29 @@ public sealed class ReactorToolActivityProofTests
         }
         finally
         {
-            if (host is not null)
+            await _ui.RunOnUIAsync(() =>
             {
-                await _ui.RunOnUIAsync(() =>
+                try
                 {
-                    disposing = true;
-                    if (root is not null && currentElement is not null)
+                    if (host is not null)
                     {
-                        var empty = Empty();
-                        root = host.Reconciler.Reconcile(
-                            currentElement,
-                            empty,
-                            root,
-                            static () => { });
-                        currentElement = empty;
+                        disposing = true;
+                        if (root is not null && currentElement is not null)
+                        {
+                            var empty = Empty();
+                            root = host.Reconciler.Reconcile(
+                                currentElement,
+                                empty,
+                                root,
+                                static () => { });
+                            currentElement = empty;
+                        }
+                        host.Content = null;
+                        host.Dispose();
                     }
-                    host.Content = null;
-                    host.Dispose();
-                    themeScope?.Dispose();
-                });
-            }
+                }
+                finally { themeScope?.Dispose(); }
+            });
         }
     }
 

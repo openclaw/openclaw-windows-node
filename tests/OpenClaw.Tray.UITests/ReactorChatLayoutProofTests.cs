@@ -41,6 +41,36 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "```text\n09:00  Focus time\n11:00  Messages and reviews\n14:00  Collaborative work\n```\n\n" +
         "Would you like me to turn this into a schedule?";
 
+    [Fact]
+    public async Task ThemeResources_RetainsNativeTemplateResourcesAcrossMounts()
+    {
+        ResourceDictionary? original = null;
+        await ui.RunOnUIAsync(() =>
+        {
+            original = Application.Current.Resources;
+            Assert.True(original.ContainsKey("LobsterAccentBrush"), "The fixture resource root must be active before a proof scope.");
+        });
+        foreach (var theme in new[] { "Light", "Dark", "HighContrast", "Light" })
+        {
+            using var environment = new EnvironmentScope("OPENCLAW_PROOF_THEME", theme);
+            WeakReference? resources = null;
+            await WithChatAsync(320, async (_, host, _, _) =>
+            {
+                await ui.RunOnUIAsync(() => resources = new WeakReference(Application.Current.Resources));
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => FindDescendants<ItemContainer>(host).Any(row => row.IsLoaded && row.ActualHeight > 0),
+                    "native timeline rows after resource scope replacement"));
+                await ui.RunOnUIAsync(() =>
+                    Assert.Single(FindDescendants<ItemsView>(host)));
+            });
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            Assert.True(resources!.IsAlive, "Resources referenced by cached native templates must outlive a proof mount.");
+            await ui.RunOnUIAsync(() => Assert.Same(original, Application.Current.Resources));
+        }
+    }
+
     [Theory]
     [InlineData("en-us", "Pick where this session works, then say what to do.", "What can you do?")]
     [InlineData("fr-fr", "Choisissez où cette session s’exécute, puis indiquez quoi faire.", "Que pouvez-vous faire ?")]
@@ -3243,24 +3273,31 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
         finally
         {
-            Console.WriteLine("chat-proof: teardown begin");
-            await CloseOpenPopupsAsync(surface);
-            await SettleAsync();
-            Console.WriteLine("chat-proof: popups closed");
-            await ui.RunOnUIAsync(() =>
+            try
             {
-                session?.Dispose();
-                if (surface is not null)
+                Console.WriteLine("chat-proof: teardown begin");
+                await CloseOpenPopupsAsync(surface);
+                await SettleAsync();
+                Console.WriteLine("chat-proof: popups closed");
+                await ui.RunOnUIAsync(() =>
                 {
-                    surface.Child = null;
-                }
-                host?.Dispose();
-                proofWindow?.Close();
-                _captureWindow = null;
-                themeScope?.Dispose();
-                Application.Current.UnhandledException -= reportException;
-            });
-            await provider.DisposeAsync();
+                    session?.Dispose();
+                    if (surface is not null)
+                        surface.Child = null;
+                    host?.Dispose();
+                    proofWindow?.Close();
+                });
+            }
+            finally
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    _captureWindow = null;
+                    themeScope?.Dispose();
+                    Application.Current.UnhandledException -= reportException;
+                });
+                await provider.DisposeAsync();
+            }
             Console.WriteLine("chat-proof: window closed");
         }
     }
