@@ -208,7 +208,7 @@ public sealed class NativeUiExceptionDiagnosticsTests
         Assert.Equal(1, stream.FlushCount); // Ready went through the real flush boundary.
         stream.Fault = fault;
         var original = new PoisonException();
-        var observed = Record.Exception(() =>
+        var observed = Record.Exception((Action)(() =>
         {
             try { throw original; }
             catch (Exception caught)
@@ -217,7 +217,7 @@ public sealed class NativeUiExceptionDiagnosticsTests
                 throw;
             }
             finally { sink.Dispose(); }
-        });
+        }));
         Assert.Same(original, observed);
         Assert.True(sink.WriteFailed);
         Assert.Equal(1, signals);
@@ -236,9 +236,12 @@ public sealed class NativeUiExceptionDiagnosticsTests
         Assert.True(duplicate.WriteFailed);
         Assert.Equal(1, failures);
         Assert.Equal(before, ReadBytes(path));
+        const string secondInvocation = "ffeeddccbbaa99887766554433221100";
+        Assert.True(Guid.TryParseExact(secondInvocation, "N", out _));
         var secondPath = directory.Combine("second.jsonl");
-        using var second = NativeUiExceptionDiagnostics.Open(secondPath, "ffeeddccbbaa9988776655443322110000", Revision);
-        Assert.Equal("ffeeddccbbaa9988776655443322110000", Assert.Single(Read(secondPath)).GetProperty("invocationId").GetString());
+        using var second = NativeUiExceptionDiagnostics.Open(secondPath, secondInvocation, Revision);
+        Assert.False(second.WriteFailed);
+        Assert.Equal(secondInvocation, Assert.Single(Read(secondPath)).GetProperty("invocationId").GetString());
         first.Dispose();
         second.RecordException(NativeUiExceptionSource.WinUiUnhandled, () => null);
         Assert.Equal(2, Read(secondPath).Length);
