@@ -4549,7 +4549,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) are contained by the settings below.</value>
+    <value>) and file actions use the Sandbox settings below.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network: use the gateway's exec approvals.</value>
@@ -7884,6 +7884,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>The requested item is no longer available here.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Some Dashboard destinations are unavailable for this Gateway version.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: choose an assistant first.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Upload cleanup is blocked</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Review folder access and private-state permissions. Old uploads may remain until cleanup is restored. Do not retry completed uploads automatically.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Remove item</value>
   </data>

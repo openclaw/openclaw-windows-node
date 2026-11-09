@@ -8,6 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Fixtures\worker-cache-x64.json" LogicalName="OpenClaw.FileWorker.Manifest.win-x64" />
+    <EmbeddedResource Include="Fixtures\worker-cache-arm64.json" LogicalName="OpenClaw.FileWorker.Manifest.win-arm64" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
