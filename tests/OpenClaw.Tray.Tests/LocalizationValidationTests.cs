@@ -1140,6 +1140,8 @@ public class LocalizationValidationTests
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],
+                    // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
+                    "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&
