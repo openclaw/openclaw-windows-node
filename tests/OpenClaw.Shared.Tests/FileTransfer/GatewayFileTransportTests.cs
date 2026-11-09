@@ -271,23 +271,32 @@ public class GatewayFileTransportTests
         public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) => ExecuteAsync(request, default);
         public async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken ct)
         {
-            using var cancellation = ct.Register(() => Cancelled.TrySetResult());
-            var messages = Channel.CreateBounded<string>(1);
-            await using var listener = await request.FileChannel!.ListenAsync((message, _) =>
+            try
             {
-                messages.Writer.TryWrite(Encoding.UTF8.GetString(message.Span));
-                return ValueTask.CompletedTask;
-            }, ct);
-            Assert.Equal("start", await messages.Reader.ReadAsync(ct));
-            Started.TrySetResult();
-            await request.FileChannel.SendAsync(bytes ?? "abc"u8.ToArray(), ct);
-            DataAcknowledged.TrySetResult();
-            Assert.Equal("ack", await messages.Reader.ReadAsync(ct));
-            return new()
+                var messages = Channel.CreateBounded<string>(1);
+                await using var listener = await request.FileChannel!.ListenAsync((message, _) =>
+                {
+                    messages.Writer.TryWrite(Encoding.UTF8.GetString(message.Span));
+                    return ValueTask.CompletedTask;
+                }, ct);
+                Assert.Equal("start", await messages.Reader.ReadAsync(ct));
+                Started.TrySetResult();
+                await request.FileChannel.SendAsync(bytes ?? "abc"u8.ToArray(), ct);
+                DataAcknowledged.TrySetResult();
+                Assert.Equal("ack", await messages.Reader.ReadAsync(ct));
+                return new()
+                {
+                    Ok = true, Payload = new { ok = false, code = "NOT_FOUND", message = "Synthetic failure after transport exchange" },
+                    FileOutcome = new(false, "NOT_FOUND", "Synthetic failure after transport exchange")
+                };
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                Ok = true, Payload = new { ok = false, code = "NOT_FOUND", message = "Synthetic failure after transport exchange" },
-                FileOutcome = new(false, "NOT_FOUND", "Synthetic failure after transport exchange")
-            };
+                // A pending read can unwind and dispose a scoped token callback before
+                // cancellation invokes it. Observe the operation's cancellation instead.
+                Cancelled.TrySetResult();
+                throw;
+            }
         }
     }
 
