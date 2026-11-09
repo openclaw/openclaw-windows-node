@@ -55,9 +55,11 @@ internal sealed partial class SettingsShellView : UserControl
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
+    private double _hostContentTopInset;
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageContentChanged { get; set; }
 
     /// <summary>Raised when a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
@@ -164,6 +166,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageContentChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
         _gatewayNavHideTimer?.Stop();
@@ -395,6 +398,7 @@ internal sealed partial class SettingsShellView : UserControl
         BackToAppButton.Width = open ? double.NaN : 40;
         BackToAppButton.HorizontalAlignment = open ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         ToolTipService.SetToolTip(BackToAppButton, open ? null : _backToAppToolTip);
+        UpdatePageAllocation();
         // Footer popups are anchored to buttons that move when the rail opens or closes.
         if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
             PaneFooterControl.HideFlyouts();
@@ -418,7 +422,24 @@ internal sealed partial class SettingsShellView : UserControl
             // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
             if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
                 ApplyNavPaneState(settings);
+            UpdatePageAllocation();
         }
+    }
+
+    private void UpdatePageAllocation()
+    {
+        // Existing pages retain their own padding. Only opted-in pages allocate shell chrome.
+        if (ContentFrame.Content is ISettingsPageContentInset page)
+            page.ApplyTopInset(ContentOnly ? _hostContentTopInset
+                : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen));
+    }
+
+    internal void SetHostContentTopInset(double inset)
+    {
+        if (!double.IsFinite(inset) || inset < 0)
+            throw new ArgumentOutOfRangeException(nameof(inset));
+        _hostContentTopInset = inset;
+        UpdatePageAllocation();
     }
 
     /// <summary>Returns the currently displayed page in the content frame.</summary>
@@ -761,6 +782,8 @@ internal sealed partial class SettingsShellView : UserControl
         SyncNavSelection(tag);
 
         InitializeCurrentPage();
+        PageContentChanged?.Invoke();
+        UpdatePageAllocation();
         UpdateAppNotificationActionEnabledState();
         ArmContentReady(
             e.Content as FrameworkElement,
