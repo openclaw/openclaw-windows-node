@@ -577,11 +577,16 @@ Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
 $trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
 Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
     -Message "Tray UI crash metadata must be bounded by an explicit start time."
+Assert-NotContains -Text $uiJob -Unexpected 'path: .ci-pipeline' `
+    -Message 'Nested pipeline checkout must not enter the product source manifest.'
 $trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
 foreach ($token in @(
         "if: always()",
         "steps.tray-ui-crash-window.outcome == 'success'",
-        "./scripts/Capture-CiTestHostCrashMetadata.ps1",
+        'git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"',
+        '$LASTEXITCODE -ne 0',
+        'Join-Path $env:RUNNER_TEMP',
+        '& $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
         "TRAY_UI_TEST_STARTED_UTC"
     )) {
     Assert-Contains -Text $trayUiCrashMetadata -Expected $token `

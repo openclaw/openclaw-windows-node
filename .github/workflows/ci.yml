@@ -203,7 +203,9 @@ jobs:
 
     - name: Validate CI workflow contracts
       shell: pwsh
-      run: ./scripts/test-ci-workflow-contract.ps1
+      run: |
+        ./scripts/test-ci-workflow-contract.ps1
+        ./scripts/test-ci-crash-metadata-source.ps1
 
     - name: Validate MSIX CI artifacts
       shell: pwsh
@@ -688,6 +690,10 @@ jobs:
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
+    - name: Verify native testhost exit diagnostics
+      shell: pwsh
+      run: ./scripts/test-ci-test-host-exit.ps1
+
     - name: Restore UI test projects
       run: |
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
@@ -758,13 +764,20 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
+        -CaptureHostExit
 
     - name: Capture non-memory Tray UI crash metadata
       if: always() && steps.tray-ui-crash-window.outcome == 'success'
       shell: pwsh
       env:
         TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
-      run: ./scripts/Capture-CiTestHostCrashMetadata.ps1 -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline crash metadata helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
 
     - name: Run mock Gateway application scenarios
       id: gateway-fixture

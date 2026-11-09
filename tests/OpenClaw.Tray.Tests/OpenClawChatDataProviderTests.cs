@@ -85,6 +85,8 @@ public class OpenClawChatDataProviderTests
         public Func<string, string, Task>? PatchSessionThinkingLevelBehavior { get; set; }
         public Func<string, Task>? ClearSessionThinkingLevelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
+        public Func<string, Task<JsonElement>>? AgentIdentityBehavior { get; set; }
+        public List<string> RequestedAgentIdentityIds { get; } = new();
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
         public ModelsListInfo? CurrentModels { get; set; }
@@ -171,6 +173,13 @@ public class OpenClawChatDataProviderTests
         {
             RequestSessionsCallCount++;
             return Task.CompletedTask;
+        }
+
+        public Task<JsonElement> RequestAgentIdentityAsync(string agentId)
+        {
+            RequestedAgentIdentityIds.Add(agentId);
+            return AgentIdentityBehavior?.Invoke(agentId) ??
+                Task.FromException<JsonElement>(new NotSupportedException());
         }
 
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null)
@@ -728,6 +737,34 @@ public class OpenClawChatDataProviderTests
 
             await scheduledRetry!();
             Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAgentIdentity_RequestsSelectedGatewayIdentityAndProjectsImage()
+    {
+        var (bridge, provider, _, _) = CreateProvider();
+        bridge.AgentIdentityBehavior = agentId =>
+        {
+            using var response = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                agentId,
+                name = "Research assistant",
+                avatar = "data:image/png;base64,AQID",
+                emoji = "✨"
+            }));
+            return Task.FromResult(response.RootElement.Clone());
+        };
+
+        await using (provider)
+        {
+            var identity = await provider.LoadAgentIdentityAsync("research");
+
+            Assert.Equal(["research"], bridge.RequestedAgentIdentityIds);
+            Assert.Equal("research", identity?.AgentId);
+            Assert.Equal("Research assistant", identity?.DisplayName);
+            Assert.Equal("data:image/png;base64,AQID", identity?.AvatarUrl);
+            Assert.Equal("✨", identity?.Emoji);
         }
     }
 

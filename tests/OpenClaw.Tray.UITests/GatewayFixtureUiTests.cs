@@ -1190,19 +1190,22 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
-        await using var run = await GatewayFixtureRun.StartAsync(appPath,
+        var run = await GatewayFixtureRun.StartAsync(appPath,
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
             allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
             allowSessionMutations: allowSessionMutations,
             scenario: scenario, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
             releasePendingResponses: releasePendingResponses, configureProfile: configureProfile,
             connectGateway: connectGateway);
+        Task body = Task.CompletedTask;
+        var failed = false;
         try
         {
             output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
             // UIA is synchronous and can block inside a hung app. Keep the deadline
             // outside that worker so failure reporting and owned-process cleanup still run.
-            await Task.Run(() => test(run)).WaitAsync(testTimeout ?? TimeSpan.FromSeconds(150)).ConfigureAwait(false);
+            body = Task.Run(() => test(run));
+            await body.WaitAsync(testTimeout ?? TimeSpan.FromSeconds(150)).ConfigureAwait(false);
             run.EnsureRunning();
             Assert.Empty(run.Gateway.UnexpectedRequests);
             var crashLog = Path.Combine(run.Profile.DataDirectory, "crash.log");
@@ -1211,44 +1214,84 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }
         catch (Exception ex)
         {
-            releasePendingResponses?.Invoke();
-            await run.WriteReportAsync("failed", ex);
-            if (run.IsRunning)
-            {
-                try { await CaptureIfRequestedAsync(run, "failure.png"); }
-                catch (Exception captureError)
-                {
-                    output.WriteLine($"Failure screenshot unavailable: {captureError.Message}");
-                    await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "screenshot-error.txt"), captureError.ToString());
-                }
-            }
+            failed = true;
+            // The owner bounds the whole synchronous capture entry, stops its app,
+            // joins body/capture workers, then disposes. Never return to another fixture
+            // with a live UIA worker or overwrite the original assertion with teardown.
+            await run.FinishUiFailureAsync(ex, body,
+                token => CaptureIfRequestedAsync(run, "failure.png", token), releasePendingResponses);
             throw;
         }
         finally
         {
-            // Release response gates before await-using disposes the server and joins its connections.
-            releasePendingResponses?.Invoke();
+            if (!failed)
+            {
+                // Release response gates before the server joins its connections.
+                try { releasePendingResponses?.Invoke(); }
+                finally { await run.DisposeAsync(); }
+            }
         }
     }
 
-    private static async Task SelectSessionAsync(GatewayFixtureRun run, string title, string key, bool waitForHistory = true)
+    private sealed record SessionSelectionStage(string Stage, string IntendedAgent, string ObservedAgent,
+        bool? RowPresent = null, bool? RowOffscreen = null, bool? RowSelected = null);
+
+    private static async Task SelectSessionAsync(GatewayFixtureRun run, string title, string key, bool waitForHistory = true,
+        Action<SessionSelectionStage>? observe = null)
     {
-        var selector = await WaitForElementByIdAsync(run, "WorkspaceAssistantSelector", "agent selector");
         var agentId = $"WorkspaceAgent:{SessionDisplayResolver.Resolve(new SessionInfo { Key = key }).AgentId}";
-        var selection = (SelectionPattern)selector.GetCurrentPattern(SelectionPattern.Pattern);
-        if (!selection.Current.GetSelection().Any(item => item.Current.AutomationId == agentId))
+        var observedAgent = "unobserved";
+        static string SafeAgent(string id) => id switch
+        {
+            "WorkspaceAgent:main" => "main", "WorkspaceAgent:research" => "research", "" => "none", _ => "other"
+        };
+        void Trace(string stage, bool? present = null, bool? offscreen = null, bool? selected = null) =>
+            observe?.Invoke(new(stage, SafeAgent(agentId), observedAgent, present, offscreen, selected));
+        bool AgentAcknowledged(AutomationElement? element)
+        {
+            string[] ids = element is null ? [] : ((SelectionPattern)element.GetCurrentPattern(SelectionPattern.Pattern))
+                .Current.GetSelection().Select(item => item.Current.AutomationId).ToArray();
+            observedAgent = ids.Length == 1 ? SafeAgent(ids[0]) : ids.Length == 0 ? "none" : "multiple";
+            Trace("agent-observed");
+            return ids.Contains(agentId, StringComparer.Ordinal);
+        }
+        Trace("selector-lookup");
+        var selector = await WaitForElementByIdAsync(run, "WorkspaceAssistantSelector", "agent selector");
+        if (!AgentAcknowledged(selector))
         {
             var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
             dropdown.Expand();
+            Trace("agent-invoke");
             Invoke(await WaitForElementByIdAsync(run, agentId, "session's agent"));
             dropdown.Collapse();
         }
+        // Acknowledge the one native selection, including replacement selector providers.
+        // Never reissue activation or use MCP to bypass the actual sidebar transition.
+        await WaitUiAsync(run, () => AgentAcknowledged(FindById(run, "WorkspaceAssistantSelector")),
+            "selected session agent acknowledged");
         var rowId = key == GatewayScenario.MainSessionKey ? "WorkspaceNavHome" : $"WorkspaceSession:{key}";
-        Invoke(await WaitForElementByIdAsync(run, rowId, $"sidebar session {title}"));
+        AutomationElement? row = null;
+        Trace("row-lookup");
+        await WaitUiAsync(run, () =>
+        {
+            row = FindById(run, rowId);
+            Trace("row-observed", present: row is not null);
+            return row is not null;
+        }, $"sidebar session {title}");
+        var selectedRow = row!;
+        if (observe is not null)
+        {
+            var offscreen = selectedRow.Current.IsOffscreen;
+            bool? selected = selectedRow.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern)
+                ? ((SelectionItemPattern)pattern).Current.IsSelected : null;
+            Trace("row-before-invoke", true, offscreen, selected);
+        }
+        Invoke(selectedRow);
         await WaitComposerSelectionAsync(run, key, waitForHistory);
         if (key != GatewayScenario.MainSessionKey)
             await WaitUiAsync(run, () => SessionSelected(run, title), $"selected session {title}");
         if (waitForHistory) await WaitHistoryAsync(run, key);
+        Trace("selection-complete", true, selected: key == GatewayScenario.MainSessionKey ? null : true);
     }
 
     private static Task WaitHistoryAsync(GatewayFixtureRun run, string key) =>
@@ -1397,12 +1440,13 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }, description, timeout);
     }
 
-    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)
+    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
             return Task.CompletedTask;
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
-            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
+            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name, cancellationToken);
         return Task.CompletedTask;
     }
 

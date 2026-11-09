@@ -7921,4 +7921,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Permission_NoDecisionAvailable" xml:space="preserve"><value>Over dit verzoek kan niet vanuit deze app worden beslist.</value></data>
   <data name="Toast_ApprovalRunsOnThisComputer" xml:space="preserve"><value>Wordt uitgevoerd op deze computer</value></data>
   <data name="Inbox_ApprovalDecisionUncertain" xml:space="preserve"><value>De beslissing kon niet worden bevestigd. Verdere beslissingen zijn geblokkeerd zolang de uitkomst onbekend is.</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Terug naar app</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Instellingen</value>
+  </data>
 </root>

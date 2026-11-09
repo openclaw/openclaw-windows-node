@@ -2,6 +2,18 @@
 <UserControl x:Class="OpenClawTray.Controls.AgentIdentityBadge"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- Per-instance brushes; code recolors them from AgentAvatarPresentation.Face. -->
+        <SolidColorBrush x:Key="AgentFaceBackgroundBrush"/>
+        <SolidColorBrush x:Key="AgentFaceInkBrush"/>
+        <SolidColorBrush x:Key="AgentFacePaleBrush"/>
+        <Style x:Key="AgentFaceStroke" TargetType="Path">
+            <Setter Property="Stroke" Value="{StaticResource AgentFaceInkBrush}"/>
+            <Setter Property="StrokeThickness" Value="1.6"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+        </Style>
+    </UserControl.Resources>
     <Grid x:Name="Layout" ColumnSpacing="12" MinHeight="40">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
@@ -9,6 +21,38 @@
         </Grid.ColumnDefinitions>
         <PersonPicture x:Name="Picture" Width="32" Height="32" VerticalAlignment="Center"
                        IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+        <!-- Generated face for agents without an image or text avatar (Control UI parity). -->
+        <Viewbox x:Name="Face" Width="32" Height="32" VerticalAlignment="Center" Visibility="Collapsed"
+                 IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
+            <Canvas Width="32" Height="32">
+                <Ellipse Width="32" Height="32" Fill="{StaticResource AgentFaceBackgroundBrush}"/>
+                <Canvas x:Name="FaceEye0">
+                    <Ellipse Canvas.Left="9.4" Canvas.Top="11.9" Width="3.2" Height="3.2" Fill="{StaticResource AgentFaceInkBrush}"/>
+                    <Ellipse Canvas.Left="19.4" Canvas.Top="11.9" Width="3.2" Height="3.2" Fill="{StaticResource AgentFaceInkBrush}"/>
+                </Canvas>
+                <Canvas x:Name="FaceEye1">
+                    <Ellipse Canvas.Left="9.5" Canvas.Top="11" Width="3" Height="4" Fill="{StaticResource AgentFaceInkBrush}"/>
+                    <Ellipse Canvas.Left="19.5" Canvas.Top="11" Width="3" Height="4" Fill="{StaticResource AgentFaceInkBrush}"/>
+                </Canvas>
+                <Path x:Name="FaceEye2" Style="{StaticResource AgentFaceStroke}" Data="M9,14 Q11,11 13,14 M19,14 Q21,11 23,14"/>
+                <Canvas x:Name="FaceEye3">
+                    <Rectangle Canvas.Left="6.5" Canvas.Top="9" Width="19" Height="9.5" RadiusX="4.75" RadiusY="4.75"
+                               Fill="{StaticResource AgentFaceInkBrush}"/>
+                    <Rectangle Canvas.Left="10.5" Canvas.Top="12" Width="2.5" Height="3.5" RadiusX="1.25" RadiusY="1.25"
+                               Fill="{StaticResource AgentFacePaleBrush}"/>
+                    <Rectangle Canvas.Left="19" Canvas.Top="12" Width="2.5" Height="3.5" RadiusX="1.25" RadiusY="1.25"
+                               Fill="{StaticResource AgentFacePaleBrush}"/>
+                </Canvas>
+                <Path x:Name="FaceMouth0" Style="{StaticResource AgentFaceStroke}" Data="M11.5,20 Q16,24.5 20.5,20"/>
+                <Canvas x:Name="FaceMouth1">
+                    <Path Fill="{StaticResource AgentFaceInkBrush}"
+                          Data="M11,19 Q16,20.5 21,19 C20.5,23.5 18,25 16,25 C14,25 11.5,23.5 11,19 Z"/>
+                    <Path Fill="{StaticResource AgentFacePaleBrush}" Data="M13.5,23 Q16,21 18.5,23 Q16,25 13.5,23 Z"/>
+                </Canvas>
+                <Path x:Name="FaceMouth2" Style="{StaticResource AgentFaceStroke}" Data="M12,22 Q17,24 20,21"/>
+                <Path x:Name="FaceMouth3" Style="{StaticResource AgentFaceStroke}" Data="M13.5,22.5 L18.5,22.5"/>
+            </Canvas>
+        </Viewbox>
         <StackPanel x:Name="Details" Grid.Column="1" VerticalAlignment="Center">
             <TextBlock x:Name="AgentName" Style="{StaticResource BodyTextBlockStyle}" MaxLines="1" TextTrimming="CharacterEllipsis"/>
             <TextBlock x:Name="AgentId" Style="{StaticResource CaptionTextBlockStyle}" MaxLines="1"
