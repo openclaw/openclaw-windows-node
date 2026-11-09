@@ -688,6 +688,10 @@ jobs:
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
+    - name: Verify native testhost exit diagnostics
+      shell: pwsh
+      run: ./scripts/test-ci-test-host-exit.ps1
+
     - name: Restore UI test projects
       run: |
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
@@ -758,6 +762,7 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
         -HangTimeoutSeconds 300
+        -CaptureHostExit
 
     - name: Capture non-memory Tray UI crash metadata
       if: always() && steps.tray-ui-crash-window.outcome == 'success'
