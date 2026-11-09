@@ -257,22 +257,6 @@ public sealed class InboxGatewayItemsTests
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(NowMs - 600_000), inbox.Entries[0].CreatedAt);
     }
 
-    [Fact]
-    public void InboxDecisions_OfferAllowOnlyWhenTheRowShowsTheWholeCommand()
-    {
-        var longMultiline = string.Join("\n", Enumerable.Range(0, 40).Select(line => $"echo step-{line} --flag value"));
-        Assert.Equal(["allow-once", "allow-always", "deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = longMultiline }));
-        Assert.Equal(longMultiline, InboxGatewayItems.DisplayCommand(longMultiline));
-
-        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = new string('x', 300 * 1024) }));
-        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = "rm\u2007-rf /" }));
-        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(Approval("a", NowMs) with { Command = "" }));
-        var plugin = Approval("a", NowMs, kind: GatewayApprovalKind.Plugin) with { Command = "" };
-        Assert.Equal(["deny"], InboxGatewayItems.InboxDecisions(plugin));
-        Assert.Equal(["allow-once", "allow-always", "deny"],
-            InboxGatewayItems.InboxDecisions(plugin with { Title = "Publish the reviewed draft" }));
-    }
-
     internal static GatewayPendingApproval Approval(string id, long createdAtMs, long? expiresAtMs = null, GatewayApprovalKind kind = GatewayApprovalKind.Exec) =>
         new(id, kind, "echo hi", createdAtMs, expiresAtMs ?? createdAtMs + 3_600_000) { SessionKey = "agent:main:main" };
 
@@ -715,13 +699,6 @@ public sealed class InboxGatewaySourceTests
         private readonly Dictionary<string, Delegate?> _handlers = new(StringComparer.Ordinal);
 
         public IReadOnlyList<string> Scopes = [];
-        public IReadOnlyList<string> Methods = [];
-        public List<(string Method, long Epoch)> ConnectionReads = [];
-        public Func<string, long, Task<JsonElement>>? ConnectionRead;
-        public long? Epoch = 7;
-        public List<(GatewayApprovalKind Kind, string Id, string Decision, long Epoch)> Resolves = [];
-        public Func<Task> ResolveResult = () => Task.CompletedTask;
-        public Action? BeforeResolve;
         public Dictionary<string, JsonElement> Replies = new(StringComparer.Ordinal);
         public Dictionary<string, TaskCompletionSource<JsonElement>> Pending = new(StringComparer.Ordinal);
         public List<string> Requests = [];
@@ -760,16 +737,9 @@ public sealed class InboxGatewaySourceTests
                 case "get_HasHandshakeSnapshot":
                     return false;
                 case "get_AdvertisedServerMethods":
-                    return Methods;
+                    return Array.Empty<string>();
                 case "get_GrantedOperatorScopes":
                     return Scopes;
-                case "get_SessionMutationConnectionEpoch":
-                    return Epoch;
-                case "ResolveApprovalAsync":
-                    BeforeResolve?.Invoke();
-                    (args![4] as Action)?.Invoke();
-                    lock (Resolves) Resolves.Add(((GatewayApprovalKind)args![0]!, (string)args[1]!, (string)args[2]!, (long)args[3]!));
-                    return ResolveResult();
                 case "RequestCronListAsync":
                 case "RequestCronStatusAsync":
                     lock (Requests) Requests.Add(name);
@@ -783,12 +753,6 @@ public sealed class InboxGatewaySourceTests
                             : Replies.TryGetValue("cron.list", out var cron) ? Task.FromResult(cron)
                             : Task.FromException<JsonElement>(new InvalidOperationException("unknown method")),
                         args![1], (CancellationToken)args[2]!);
-                case "SendWizardRequestOnConnectionAsync":
-                    var readMethod = (string)args![0]!;
-                    var readEpoch = (long)args[2]!;
-                    ConnectionReads.Add((readMethod, readEpoch));
-                    return ConnectionRead is { } connectionRead ? connectionRead(readMethod, readEpoch)
-                        : Task.FromException<JsonElement>(new NotSupportedException("No reconciliation reply configured"));
                 case "SendWizardRequestAsync":
                     var requested = (string)args![0]!;
                     lock (Requests) Requests.Add(requested);

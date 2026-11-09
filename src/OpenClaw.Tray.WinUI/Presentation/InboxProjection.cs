@@ -105,9 +105,6 @@ internal sealed record InboxSnapshot(IReadOnlyList<InboxEntry> Entries, InboxBad
 {
     public static InboxSnapshot Empty { get; } = new([], InboxBadge.Empty);
 
-    /// <summary>Do not disturb silences interruptions only; entries and the badge are unchanged.</summary>
-    public bool DoNotDisturb { get; init; }
-
     public IReadOnlyList<InboxEntry> For(InboxTab tab) =>
         tab == InboxTab.All ? Entries : Entries.Where(entry => entry.MatchesTab(tab)).ToList();
 

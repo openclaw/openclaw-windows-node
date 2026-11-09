@@ -46,12 +46,6 @@ internal sealed record InboxGatewayItem(
     DateTimeOffset ArrivedAt)
 {
     public GatewayPendingApproval? Approval { get; init; }
-    /// <summary>Opaque source observation identity. Decisions must match the exact row the user reviewed.</summary>
-    public object? ApprovalObservation { get; init; }
-    /// <summary>False when the connection lacks the scope to decide <see cref="Approval"/>.</summary>
-    public bool CanDecide { get; init; } = true;
-    /// <summary>A previous decision may have reached the Gateway; no further decision may be sent.</summary>
-    public bool DecisionUncertain { get; init; }
     public InboxModelAuthAttention? ModelAuth { get; init; }
     /// <summary>Failure text reported by the Gateway for a failed automation.</summary>
     public string? Detail { get; init; }
@@ -95,39 +89,6 @@ internal static class InboxGatewayItems
         ? ""
         : ExecApprovalCommandDisplaySanitizer.SanitizeCommandForReview(command);
 
-    /// <summary>
-    /// True when an Inbox row shows the request in full for review. For exec approvals that means
-    /// a command that <see cref="DisplayCommand"/> renders completely and faithfully: present,
-    /// within the shared review limits (<see cref="GatewayApprovalDecisions.CanReviewInFull"/>), and
-    /// free of look-alike spaces that the display would leave indistinguishable from a real space.
-    /// </summary>
-    public static bool ShowsWholeCommandForReview(GatewayPendingApproval approval)
-    {
-        ArgumentNullException.ThrowIfNull(approval);
-        if (!GatewayApprovalDecisions.CanReviewInFull(approval))
-            return false;
-        if (approval.Kind == GatewayApprovalKind.Plugin)
-            return true;
-        return !string.IsNullOrWhiteSpace(approval.Command) &&
-            !approval.Command.EnumerateRunes().Any(IsLookalikeSpace);
-    }
-
-    /// <summary>
-    /// Decisions an Inbox row offers: the shared <see cref="GatewayApprovalDecisions.Effective"/> set,
-    /// reduced to Deny unless <see cref="ShowsWholeCommandForReview"/>.
-    /// </summary>
-    public static IReadOnlyList<string> InboxDecisions(GatewayPendingApproval approval)
-    {
-        var effective = GatewayApprovalDecisions.Effective(approval);
-        return ShowsWholeCommandForReview(approval)
-            ? effective
-            : effective.Where(decision => decision == GatewayApprovalDecisions.Deny).ToArray();
-    }
-
-    private static bool IsLookalikeSpace(System.Text.Rune rune) =>
-        (System.Text.Rune.GetUnicodeCategory(rune) == System.Globalization.UnicodeCategory.SpaceSeparator && rune.Value != ' ') ||
-        rune.Value is 0x115F or 0x1160 or 0x3164 or 0xFFA0;
-
     /// <summary>Remaining approval time as minutes:seconds ("4:52"), or null once expired.</summary>
     public static string? FormatCountdown(long expiresAtMs, long nowMs)
     {
@@ -137,44 +98,7 @@ internal static class InboxGatewayItems
         return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{totalSeconds / 60}:{totalSeconds % 60:00}");
     }
 
-    /// <summary>What an approval would allow ("Pays 612 USD to ..."), using <paramref name="getString"/> for the localized formats.</summary>
-    public static string ScopeLabel(GatewayApprovalScope scope, Func<string, string> getString)
-    {
-        ArgumentNullException.ThrowIfNull(scope);
-        string Format(string key, params object[] args) =>
-            string.Format(System.Globalization.CultureInfo.CurrentCulture, getString(key), args);
-        var summary = scope.Kind switch
-        {
-            GatewayApprovalScopeKind.StandingGrant when scope.ExpiresInDays is { } days =>
-                Format("Inbox_ApprovalScopeStandingGrantDaysFormat", DisplayCommand(scope.Automation), days),
-            GatewayApprovalScopeKind.StandingGrant => Format("Inbox_ApprovalScopeStandingGrantFormat", DisplayCommand(scope.Automation)),
-            GatewayApprovalScopeKind.MessageSend => Format("Inbox_ApprovalScopeMessageSendFormat", scope.RecipientCount, DisplayCommand(scope.Target)),
-            GatewayApprovalScopeKind.Payment => Format("Inbox_ApprovalScopePaymentFormat", DisplayCommand(scope.Amount), DisplayCommand(scope.Currency), DisplayCommand(scope.Target)),
-            GatewayApprovalScopeKind.ExternalPost => Format("Inbox_ApprovalScopeExternalPostFormat", DisplayCommand(scope.Target)),
-            _ => getString("Inbox_ApprovalUnreviewableCommand"),
-        };
-        if (scope.Kind == GatewayApprovalScopeKind.MessageSend)
-        {
-            if (scope.Recipients is { } recipients)
-            {
-                var listed = recipients.Count == 0 ? getString("Inbox_ApprovalScopeNoRecipientsListed") :
-                    string.Join("\n", recipients.Select(ExecApprovalCommandDisplaySanitizer.SanitizeSingleLineForReview));
-                summary += "\n" + Format("Inbox_ApprovalScopeRecipientsFormat", listed);
-            }
-            if (scope.Audience is not null)
-                summary += "\n" + Format("Inbox_ApprovalScopeAudienceFormat", DisplayCommand(scope.Audience));
-        }
-        // Each field is independently bounded/redacted. Do not truncate the combined disclosure
-        // after the shared permit gate has established that every consent field can be reviewed.
-        return scope.Kind switch
-        {
-            GatewayApprovalScopeKind.StandingGrant => summary + "\n" + Format("Inbox_ApprovalScopeCommandFormat", DisplayCommand(scope.Command)),
-            GatewayApprovalScopeKind.ExternalPost => summary + "\n" + Format("Inbox_ApprovalScopeVisibilityFormat", DisplayCommand(scope.Visibility)),
-            _ => summary,
-        };
-    }
-
-    public static InboxGatewayItem FromApproval(GatewayPendingApproval approval, DateTimeOffset expiresAt, bool canDecide = true)
+    public static InboxGatewayItem FromApproval(GatewayPendingApproval approval, DateTimeOffset expiresAt)
     {
         ArgumentNullException.ThrowIfNull(approval);
         return new($"{IdPrefix}approval:{approval.Id}", InboxGatewayItemKind.Approval,
@@ -182,7 +106,6 @@ internal static class InboxGatewayItems
         {
             Approval = approval,
             ExpiresAt = expiresAt,
-            CanDecide = canDecide,
         };
     }
 

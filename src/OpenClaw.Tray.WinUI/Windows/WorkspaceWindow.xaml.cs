@@ -1243,20 +1243,17 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var snapshot = _inbox.Snapshot;
-        var badge = snapshot.Badge;
+        var badge = _inbox.Snapshot.Badge;
         var helpText = badge.IsVisible
             ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
             : LocalizationHelper.GetString("Inbox_NothingWaiting");
-        if (snapshot.DoNotDisturb)
-            helpText = LocalizationHelper.Format("Inbox_DoNotDisturbBellHelpFormat", helpText);
         foreach (var footer in Footers)
-            footer.ApplyInboxBadge(badge, snapshot.DoNotDisturb, helpText);
+            footer.ApplyInboxBadge(badge, helpText);
     }
 
-    /// <summary>Window navigation for Inbox rows: chat routes select the session; other routes use Settings routing.</summary>
+    /// <summary>Gateway facts navigate without dismissal; app reminders use the separate admission callback.</summary>
     private InboxViewCommands InboxCommands(Action? openPage) => new(
-        OpenInboxRoute,
+        OpenGatewayInboxRoute,
         ((IAppCommands)CurrentApp).TryNavigateAsync,
         () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
         () => ((IAppCommands)CurrentApp).OpenDashboard(),
@@ -1272,10 +1269,8 @@ public sealed partial class WorkspaceWindow : WindowEx
             OpenCompanion(CompanionPageId.Connection);
     }
 
-    private void OpenInboxRoute(string route)
+    private void OpenGatewayInboxRoute(string route)
     {
-        if (ThisPcAlertSource.TryOpenPrivacySettings(route))
-            return;
         if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey) && sessionKey is not null)
         {
             SelectSession(sessionKey);

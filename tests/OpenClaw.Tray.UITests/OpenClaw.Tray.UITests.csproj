@@ -37,8 +37,6 @@
 
   <ItemGroup>
     <PackageReference Include="Axe.Windows" Version="2.4.2" />
-    <!-- Axe embeds runtime-only interop types. The proof client needs the public UIA3 reference. -->
-    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MicrosoftWindowsSdkBuildToolsVersion)" />
   </ItemGroup>

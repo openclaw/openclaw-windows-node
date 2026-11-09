@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using OpenClaw.Shared;
-using OpenClaw.Shared.ExecApprovals;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -20,9 +19,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     private bool _isExpanded;
     private DateTimeOffset _createdAt;
     private DateTimeOffset? _expiresAt;
-    private bool _isDeciding;
-    private bool _canDecide;
-    private string _decisionError = "";
 
     private InboxItemViewModel(string id) => Id = id;
 
@@ -30,8 +26,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
 
     public string Id { get; }
     public InboxEntryKind Kind { get; private set; }
-    /// <summary>The live Gateway fact behind this row, used to send approval decisions.</summary>
-    public InboxGatewayItem? GatewayItem { get; private set; }
     public bool CanDismiss { get; private set; }
     public string Glyph { get; private set; } = "";
     public Visibility ErrorIconVisibility { get; private set; }
@@ -45,7 +39,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     public string CreatedText { get; private set; } = "";
     public string? ActionLabel { get; private set; }
     public string? ActionRoute { get; private set; }
-    public bool SecondaryOpensDashboard { get; private set; }
+    public bool OpensDashboard { get; private set; }
     public Visibility ActionVisibility { get; private set; }
     /// <summary>Prompt sent to OpenClaw by "Ask OpenClaw" to explain a failure; null when not offered.</summary>
     public string? AskQuestion { get; private set; }
@@ -69,53 +63,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     public Visibility DismissVisibility { get; private set; }
     public string DismissAutomationName { get; private set; } = "";
     public string RowAutomationName { get; private set; } = "";
-    public Visibility AllowOnceVisibility { get; private set; }
-    public Visibility AllowAlwaysVisibility { get; private set; }
-    public Visibility DenyVisibility { get; private set; }
-    public string AllowOnceLabel => LocalizationHelper.GetString("Inbox_ApprovalAllowOnce");
-    public string AllowAlwaysLabel => LocalizationHelper.GetString("Inbox_ApprovalAllowAlways");
-    public string DenyLabel => LocalizationHelper.GetString("Inbox_ApprovalDeny");
-    public string DecisionGroupName => LocalizationHelper.GetString("Inbox_ApprovalDecisions");
-    public string PermissionText => LocalizationHelper.GetString("Inbox_ApprovalNoPermission");
-    public string AllowOnceAutomationName { get; private set; } = "";
-    public string AllowAlwaysAutomationName { get; private set; } = "";
-    public string DenyAutomationName { get; private set; } = "";
-    /// <summary>Shown instead of decisions when the connection lacks approval access.</summary>
-    public Visibility PermissionVisibility { get; private set; }
-    /// <summary>Why only Deny is offered (no command, or a command that cannot be shown in full).</summary>
-    public string DecisionNoteText { get; private set; } = "";
-    public Visibility DecisionNoteVisibility { get; private set; }
-
-    /// <summary>Decision buttons are enabled while the approval is live, decidable and not already sending.</summary>
-    public bool DecisionsEnabled => _canDecide && !_isDeciding && !IsExpired(DateTimeOffset.UtcNow);
-
-    public bool IsDeciding
-    {
-        get => _isDeciding;
-        set
-        {
-            if (_isDeciding == value) return;
-            _isDeciding = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(DecisionsEnabled));
-        }
-    }
-
-    /// <summary>Outcome message after a decision could not be confirmed; empty when none.</summary>
-    public string DecisionErrorText
-    {
-        get => _decisionError;
-        set
-        {
-            value ??= "";
-            if (string.Equals(_decisionError, value, StringComparison.Ordinal)) return;
-            _decisionError = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(DecisionErrorVisibility));
-        }
-    }
-
-    public Visibility DecisionErrorVisibility => Show(_decisionError.Length > 0);
 
     public bool IsExpanded
     {
@@ -139,12 +86,12 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     }
 
     /// <summary>Dispatches a row action without interpreting Gateway text as a URL or native route.</summary>
-    public void OpenSecondaryAction(Action<string> openRoute, Action openDashboard)
+    public void OpenAction(Action<string> openRoute, Action openDashboard)
     {
-        if (SecondaryOpensDashboard)
+        if (OpensDashboard)
             openDashboard();
-        else if (!string.IsNullOrWhiteSpace(SecondaryActionRoute))
-            openRoute(SecondaryActionRoute);
+        else if (!string.IsNullOrWhiteSpace(ActionRoute))
+            openRoute(ActionRoute);
     }
 
     /// <summary>Copies a newer projection of the same entry, raising change notifications.</summary>
@@ -171,13 +118,9 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             {
                 ExpiryText = expiry;
                 OnPropertyChanged(nameof(ExpiryText));
-                if (IsExpired(now))
-                    OnPropertyChanged(nameof(DecisionsEnabled));
             }
         }
     }
-
-    private bool IsExpired(DateTimeOffset now) => _expiresAt is { } expiresAt && expiresAt <= now;
 
     private void Apply(InboxEntry entry, DateTimeOffset now, bool raise)
     {
@@ -187,7 +130,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         _createdAt = entry.CreatedAt;
         _expiresAt = content.ExpiresAt;
         Kind = entry.Kind;
-        GatewayItem = entry.GatewayItem;
         CanDismiss = entry.CanDismiss;
         Glyph = ToGlyph(entry);
         ErrorIconVisibility = Show(entry.Severity == InboxSeverity.Error);
@@ -200,7 +142,9 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         Metadata = content.Metadata;
         AgeText = FormatAge(InboxProjection.Age(entry.CreatedAt, now), entry.CreatedAt);
         CreatedText = entry.CreatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-        var hasAction = !string.IsNullOrWhiteSpace(content.ActionLabel) && !string.IsNullOrWhiteSpace(content.ActionRoute);
+        OpensDashboard = content.OpensDashboard;
+        var hasAction = !string.IsNullOrWhiteSpace(content.ActionLabel) &&
+            (OpensDashboard || !string.IsNullOrWhiteSpace(content.ActionRoute));
         ActionLabel = hasAction ? content.ActionLabel : null;
         ActionRoute = hasAction ? content.ActionRoute : null;
         ActionVisibility = Show(hasAction);
@@ -208,9 +152,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         AskVisibility = Show(content.AskQuestion is not null);
         SecondaryActionLabel = content.SecondaryLabel;
         SecondaryActionRoute = content.SecondaryRoute;
-        SecondaryOpensDashboard = content.SecondaryOpensDashboard;
-        SecondaryActionVisibility = Show(content.SecondaryLabel is not null &&
-            (SecondaryOpensDashboard || content.SecondaryRoute is not null));
+        SecondaryActionVisibility = Show(content.SecondaryLabel is not null && content.SecondaryRoute is not null);
         CommandText = content.Command ?? "";
         CommandVisibility = Show(content.Command is not null);
         ScopeText = content.Scope ?? "";
@@ -227,18 +169,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             ? content.Title
             : LocalizationHelper.Format("Inbox_RowAutomationNameFormat", content.Title, state);
 
-        var decisions = content.Decisions ?? [];
-        _canDecide = content.CanDecide && decisions.Count > 0;
-        AllowOnceVisibility = Show(_canDecide && decisions.Contains(GatewayApprovalDecisions.AllowOnce));
-        AllowAlwaysVisibility = Show(_canDecide && decisions.Contains(GatewayApprovalDecisions.AllowAlways));
-        DenyVisibility = Show(_canDecide && decisions.Contains(GatewayApprovalDecisions.Deny));
-        AllowOnceAutomationName = DecisionAutomationName("Inbox_ApprovalAllowOnce", state);
-        AllowAlwaysAutomationName = DecisionAutomationName("Inbox_ApprovalAllowAlways", state);
-        DenyAutomationName = DecisionAutomationName("Inbox_ApprovalDeny", state);
-        PermissionVisibility = Show(content.Decisions is not null && !content.CanDecide);
-        DecisionNoteText = content.DecisionNote ?? "";
-        DecisionNoteVisibility = Show((content.CanDecide || content.Uncertain) && content.DecisionNote is not null);
-
         if (raise)
             OnPropertyChanged(string.Empty);
     }
@@ -247,7 +177,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     {
         public string? ActionLabel { get; init; }
         public string? ActionRoute { get; init; }
-        public bool SecondaryOpensDashboard { get; init; }
+        public bool OpensDashboard { get; init; }
         public string? AskQuestion { get; init; }
         public string? SecondaryLabel { get; init; }
         public string? SecondaryRoute { get; init; }
@@ -257,11 +187,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         /// <summary>Local-clock approval deadline (see InboxGatewayItem.ExpiresAt).</summary>
         public DateTimeOffset? ExpiresAt { get; init; }
         public int OccurrenceCount { get; init; } = 1;
-        /// <summary>Approval decisions offered, permit-first; null for rows that are not approvals.</summary>
-        public IReadOnlyList<string>? Decisions { get; init; }
-        public bool CanDecide { get; init; }
-        public string? DecisionNote { get; init; }
-        public bool Uncertain { get; init; }
     }
 
     private static RowContent FromNotification(AppNotification notification) =>
@@ -281,7 +206,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
     // Gateway text (commands, titles, errors) is shown as plain, selectable text only.
     private static RowContent FromGatewayItem(InboxGatewayItem item) => item.Kind switch
     {
-        InboxGatewayItemKind.Approval when item.Approval is { } approval => FromApproval(approval, item.ExpiresAt, item.CanDecide, item.DecisionUncertain),
+        InboxGatewayItemKind.Approval when item.Approval is { } approval => FromApproval(approval, item.ExpiresAt),
         InboxGatewayItemKind.AutomationFailed => new(item.Label, LocalizationHelper.GetString("Inbox_AutomationFailed"), item.Detail ?? "", "")
         {
             AskQuestion = LocalizationHelper.Format("Inbox_AskAutomationFailedFormat", item.Label),
@@ -299,7 +224,7 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         _ => new(item.Label, "", "", ""),
     };
 
-    private static RowContent FromApproval(GatewayPendingApproval approval, DateTimeOffset? expiresAt, bool canDecide, bool uncertain)
+    private static RowContent FromApproval(GatewayPendingApproval approval, DateTimeOffset? expiresAt)
     {
         var title = LocalizationHelper.GetString(approval.Kind switch
         {
@@ -308,48 +233,32 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
             _ => "Inbox_ApprovalTitle",
         });
         var isExec = approval.Kind == GatewayApprovalKind.Exec;
-        // The full command, never trimmed, so what is reviewed is what would run.
-        var command = approval.Kind == GatewayApprovalKind.Plugin || string.IsNullOrWhiteSpace(approval.Command)
-            ? null
-            : InboxGatewayItems.DisplayCommand(approval.Command);
-        var state = isExec
-            ? command is null ? LocalizationHelper.GetString("Inbox_ApprovalNoCommand") : InboxGatewayItems.CompactCommand(approval.Command)
-            : ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(approval.Title ?? approval.Command);
+        var fullTitle = InboxGatewayItems.DisplayCommand(approval.Title ?? approval.Command);
+        var state = isExec ? InboxGatewayItems.CompactCommand(approval.Command) : fullTitle;
+        // The collapsed state is ellipsized. Keep the entire non-exec title in the expanded
+        // plain-text detail even when the optional description is missing.
+        var details = isExec ? "" : string.Join("\n\n", new[]
+        {
+            fullTitle, InboxGatewayItems.DisplayCommand(approval.Description),
+        }.Where(text => !string.IsNullOrWhiteSpace(text)));
         var metadata = string.Join(" · ", new[] { HostLabel(approval.Host), InboxGatewayItems.DisplayCommand(approval.Cwd) }
             .Where(value => !string.IsNullOrWhiteSpace(value)));
-        // Reviewer detail can contain the operation itself, not just explanatory copy.
-        // Keep title and detail complete in the existing selectable plain-text surface.
-        var details = string.Join("\n\n", new[] { isExec ? null : approval.Title, approval.Description, approval.Detail }
-            .OfType<string>()
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(ExecApprovalCommandDisplaySanitizer.SanitizeWarningText));
         return new(title, state, details, metadata)
         {
-            SecondaryLabel = LocalizationHelper.GetString(isExec ? "Inbox_OpenChat" : "Menu_OpenDashboard"),
-            SecondaryOpensDashboard = !isExec,
-            SecondaryRoute = !isExec ? null : string.IsNullOrWhiteSpace(approval.SessionKey)
+            ActionLabel = LocalizationHelper.GetString(isExec ? "Inbox_OpenChat" : "Menu_OpenDashboard"),
+            // Native chat translates only exec approvals. Non-exec requests use the existing
+            // Dashboard launcher at its home, never a URL/session/route from the request.
+            OpensDashboard = !isExec,
+            ActionRoute = !isExec ? null : string.IsNullOrWhiteSpace(approval.SessionKey)
                 ? "chat"
                 : AppNotificationActionRoutes.Chat(approval.SessionKey),
-            Command = command,
+            // The full command, never trimmed, so what is reviewed is what would run.
+            Command = approval.Kind == GatewayApprovalKind.Plugin ? null : InboxGatewayItems.DisplayCommand(approval.Command),
             Scope = approval.Scope is { } scope ? ScopeLabel(scope) : null,
-            Warning = string.IsNullOrWhiteSpace(approval.WarningText)
-                ? null
-                : ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(approval.WarningText),
+            Warning = string.IsNullOrWhiteSpace(approval.WarningText) ? null : InboxGatewayItems.DisplayCommand(approval.WarningText),
             ExpiresAt = expiresAt,
-            Decisions = uncertain ? [] : InboxGatewayItems.InboxDecisions(approval),
-            Uncertain = uncertain,
-            CanDecide = canDecide,
-            DecisionNote = uncertain ? LocalizationHelper.GetString("Inbox_ApprovalDecisionUncertain")
-                : InboxGatewayItems.ShowsWholeCommandForReview(approval)
-                ? null
-                : LocalizationHelper.GetString(isExec && command is null ? "Inbox_ApprovalMissingCommand" : "Inbox_ApprovalUnreviewableCommand"),
         };
     }
-
-    private static string DecisionAutomationName(string labelKey, string subject) =>
-        string.IsNullOrWhiteSpace(subject)
-            ? LocalizationHelper.GetString(labelKey)
-            : LocalizationHelper.Format("Inbox_RowAutomationNameFormat", LocalizationHelper.GetString(labelKey), subject);
 
     private static RowContent FromModelAuth(InboxModelAuthAttention auth)
     {
@@ -373,8 +282,18 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         };
     }
 
-    private static string ScopeLabel(GatewayApprovalScope scope) =>
-        InboxGatewayItems.ScopeLabel(scope, LocalizationHelper.GetString);
+    private static string ScopeLabel(GatewayApprovalScope scope) => scope.Kind switch
+    {
+        GatewayApprovalScopeKind.StandingGrant when scope.ExpiresInDays is { } days =>
+            LocalizationHelper.Format("Inbox_ApprovalScopeStandingGrantDaysFormat", InboxGatewayItems.DisplayCommand(scope.Automation), days),
+        GatewayApprovalScopeKind.StandingGrant =>
+            LocalizationHelper.Format("Inbox_ApprovalScopeStandingGrantFormat", InboxGatewayItems.DisplayCommand(scope.Automation)),
+        GatewayApprovalScopeKind.MessageSend =>
+            LocalizationHelper.Format("Inbox_ApprovalScopeMessageSendFormat", scope.RecipientCount, InboxGatewayItems.DisplayCommand(scope.Target)),
+        GatewayApprovalScopeKind.Payment =>
+            LocalizationHelper.Format("Inbox_ApprovalScopePaymentFormat", InboxGatewayItems.DisplayCommand(scope.Amount), InboxGatewayItems.DisplayCommand(scope.Currency), InboxGatewayItems.DisplayCommand(scope.Target)),
+        _ => LocalizationHelper.Format("Inbox_ApprovalScopeExternalPostFormat", InboxGatewayItems.DisplayCommand(scope.Target)),
+    };
 
     private static string? HostLabel(string? host) => host switch
     {
@@ -420,7 +339,6 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         _ when entry.Category == InboxCategory.Automations => FluentIconCatalog.Cron,
         _ when entry.GatewayItem?.Kind == InboxGatewayItemKind.ModelAuth => FluentIconCatalog.Plug,
         _ when string.Equals(entry.Notification?.Source, "connection", StringComparison.OrdinalIgnoreCase) => FluentIconCatalog.Plug,
-        _ when string.Equals(entry.Notification?.Source, ThisPcAlerts.Source, StringComparison.OrdinalIgnoreCase) => FluentIconCatalog.System,
         InboxEntryKind.Error => FluentIconCatalog.StatusErr,
         _ => FluentIconCatalog.StatusWarn,
     };
@@ -443,12 +361,10 @@ internal sealed class InboxItemViewModel : INotifyPropertyChanged
         "node.invoke" => LocalizationHelper.GetString("NotificationsPage_MetadataCategoryNodeInvoke"),
         "node" => LocalizationHelper.GetString("NotificationsPage_MetadataNode"),
         "pairing" => LocalizationHelper.GetString("NotificationsPage_MetadataPairing"),
-        "privacy" => LocalizationHelper.GetString("NotificationsPage_MetadataPrivacy"),
         "sandbox" => LocalizationHelper.GetString("NotificationsPage_MetadataSandbox"),
         "settings" => LocalizationHelper.GetString("NotificationsPage_MetadataSettings"),
         "status" => LocalizationHelper.GetString("NotificationsPage_MetadataStatus"),
         "system.run" => LocalizationHelper.GetString("NotificationsPage_MetadataSystemRun"),
-        "this-pc" => LocalizationHelper.GetString("NotificationsPage_MetadataThisPc"),
         _ => value
     };
 }

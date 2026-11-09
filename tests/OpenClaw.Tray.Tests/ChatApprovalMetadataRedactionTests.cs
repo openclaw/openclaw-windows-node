@@ -27,17 +27,4 @@ public sealed class ChatApprovalMetadataRedactionTests
         Assert.DoesNotContain("s3cret42", request.Detail);
         Assert.Equal(["deny"], request.Actions);
     }
-    [Fact]
-    public void AdditionalConsentProjectionExplainsWhyChatCannotPermit()
-    {
-        var data = JsonSerializer.SerializeToElement(new
-        {
-            phase = "requested", approvalId = "fixture", command = "echo preview",
-            requiresInboxReview = true, allowedDecisions = new[] { "deny" }, decisionAccess = "granted",
-        });
-        var mapping = ChatEventMapper.Map(new AgentEventInfo { Stream = "approval", SessionKey = "main", Data = data });
-        var request = Assert.IsType<ChatPermissionRequestEvent>(mapping.Event);
-        Assert.Equal(["deny"], request.Actions);
-        Assert.EndsWith("This approval can't be shown in full, so only Deny is available.", request.Detail);
-    }
 }

@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using Axe.Windows.Automation;
@@ -27,8 +25,6 @@ public static class AxeHelper
     private const int MaxReportedErrors = 20;
     private const int MaxDescriptionLength = 256;
     private const int MaxContextLength = 128;
-    private const int MaxSnapshotBoundsLength = 128;
-    private const int MaxLayoutDiagnosticBytes = 32 * 1024;
     private static readonly HashSet<string> ControlTypes = new(
         Axe.Windows.Core.Types.ControlType.GetInstance().GetKeyValuePairList()
             .Select(pair => pair.Value), StringComparer.Ordinal);
@@ -104,46 +100,20 @@ public static class AxeHelper
         int processId,
         Func<ILayoutElement> getHub,
         ISet<RuleId> excludedRules,
-        string? context,
-        Action<string>? writeDiagnostics = null)
+        string? context)
     {
-        LayoutObservation[] first = [], second = [];
-        int? firstErrorCount = null, secondErrorCount = null;
-        var scanCount = 1;
-        var retryAttempted = false;
-        try
+        var errors = GetErrors(scan(), excludedRules);
+        if (errors.Count > 0
+            && errors.All(error => HasCompleteMetadata(error) && IsStaleLayoutSnapshot(
+                getHub,
+                processId,
+                error!.Rule.ID,
+                error.Element.Properties)))
         {
-            var errors = GetErrors(scan(), excludedRules);
-            firstErrorCount = errors.Count;
-            first = ObserveCachedLayout(1, errors);
-            var ordinal = 0;
-            if (errors.Count > 0 && errors.All(error =>
-                {
-                    var observation = ordinal < first.Length ? first[ordinal] : null;
-                    ordinal++;
-                    if (!HasCompleteMetadata(error))
-                    {
-                        if (observation is not null) observation.Reason = LayoutRetryReason.IncompleteMetadata;
-                        return false;
-                    }
-                    return IsStaleLayoutSnapshot(getHub, processId, error!.Rule.ID,
-                        error.Element.Properties, observation);
-                }))
-            {
-                retryAttempted = true;
-                scanCount = 2;
-                errors = GetErrors(scan(), excludedRules);
-                secondErrorCount = errors.Count;
-                second = ObserveCachedLayout(2, errors);
-            }
+            errors = GetErrors(scan(), excludedRules);
+        }
 
-            AssertNoErrors(errors, context);
-        }
-        finally
-        {
-            WriteLayoutDiagnostics(first, second, scanCount, retryAttempted,
-                firstErrorCount, secondErrorCount, writeDiagnostics);
-        }
+        AssertNoErrors(errors, context);
     }
 
     internal static List<ScanResult?> GetErrors(ScanOutput? scan, ISet<RuleId> excludedRules)
@@ -219,149 +189,39 @@ public static class AxeHelper
         Func<ILayoutElement> getHub,
         int processId,
         RuleId ruleId,
-        IReadOnlyDictionary<string, string> properties,
-        LayoutObservation? observation)
+        IReadOnlyDictionary<string, string> properties)
     {
-        bool Finish(LayoutRetryReason reason, bool result = false)
+        if (ruleId is not (
+                RuleId.ClickablePointOnScreen
+                or RuleId.BoundingRectangleSizeReasonable)
+            || !properties.TryGetValue("LogicalSize", out var logicalSize)
+            || logicalSize is null
+            || !logicalSize.Contains("h=0", StringComparison.Ordinal))
         {
-            if (observation is not null) observation.Reason = reason;
-            return result;
+            return false;
         }
 
-        // These are the original predicates, in the original short-circuit order.
-        // Diagnostic parsing never participates in retry eligibility.
-        if (ruleId is not (RuleId.ClickablePointOnScreen or RuleId.BoundingRectangleSizeReasonable))
-            return Finish(LayoutRetryReason.RuleNotEligible);
-        if (!properties.TryGetValue("LogicalSize", out var logicalSize) || logicalSize is null)
-            return Finish(LayoutRetryReason.SnapshotSizeMissing);
-        if (!logicalSize.Contains("h=0", StringComparison.Ordinal))
-            return Finish(LayoutRetryReason.SnapshotNotZeroHeight);
-        if (!properties.TryGetValue("AutomationId", out var automationId) || string.IsNullOrWhiteSpace(automationId))
-            return Finish(LayoutRetryReason.AutomationIdMissing);
+        if (!properties.TryGetValue("AutomationId", out var automationId)
+            || string.IsNullOrWhiteSpace(automationId))
+            return false;
         try
         {
-            if (observation is not null) observation.Reason = LayoutRetryReason.ProbeInterrupted;
             var hub = getHub();
             if (hub.ProcessId != processId)
-                return Finish(LayoutRetryReason.ForeignHub);
+                return false;
             var element = hub.FindByAutomationId(automationId);
-            if (element is null)
-                return Finish(LayoutRetryReason.ElementMissing);
-            if (element.ProcessId != processId)
-                return Finish(LayoutRetryReason.ForeignElement);
+            if (element is null || element.ProcessId != processId)
+                return false;
 
             var bounds = element.Bounds;
-            var offscreen = element.IsOffscreen;
-            if (observation is not null)
-            {
-                // Only the values from the existing reads are cached. No diagnostic UIA read.
-                observation.LiveBounds = LayoutSize.From(bounds.Width, bounds.Height);
-                observation.LiveIsOffscreen = offscreen;
-            }
-            if (offscreen) return Finish(LayoutRetryReason.LiveOffscreen);
-            var eligible = bounds.Width > 0 && bounds.Height > 0;
-            return Finish(eligible ? LayoutRetryReason.Eligible : LayoutRetryReason.LiveEmpty, eligible);
+            return !element.IsOffscreen
+                && bounds.Width > 0
+                && bounds.Height > 0;
         }
         catch (ElementNotAvailableException)
         {
-            return Finish(LayoutRetryReason.ElementUnavailable);
+            return false;
         }
-    }
-
-    private enum LayoutRetryReason
-    {
-        NotEvaluated, IncompleteMetadata, RuleNotEligible, SnapshotSizeMissing, SnapshotNotZeroHeight,
-        AutomationIdMissing, ProbeInterrupted, ForeignHub, ElementMissing, ForeignElement,
-        LiveOffscreen, LiveEmpty, Eligible, ElementUnavailable
-    }
-
-    private readonly record struct LayoutSize(bool Available, double? Width, double? Height, double? Area)
-    {
-        internal static LayoutSize From(double width, double height) =>
-            double.IsFinite(width) && width >= 0 && double.IsFinite(height) && height >= 0
-                && double.IsFinite(width * height)
-                ? new(true, width, height, width * height) : default;
-    }
-
-    // Primitive data only. Never retain ScanResult, property dictionaries, IDs, or native elements.
-    private sealed class LayoutObservation(int scan, int ordinal)
-    {
-        public int Scan { get; } = scan;
-        public int ErrorOrdinal { get; } = ordinal;
-        public string Rule { get; set; } = "Unknown";
-        public string ControlType { get; set; } = "Unknown";
-        public bool MetadataUnavailable { get; set; }
-        public LayoutSize SnapshotBounds { get; set; }
-        public bool? AutomationIdPresent { get; set; }
-        internal LayoutRetryReason Reason { get; set; }
-        public string RetryReason => Reason.ToString();
-        public LayoutSize LiveBounds { get; set; }
-        public bool? LiveIsOffscreen { get; set; }
-    }
-
-    private static LayoutObservation[] ObserveCachedLayout(int scan, IReadOnlyList<ScanResult?> errors)
-    {
-        var observations = new LayoutObservation[Math.Min(errors.Count, MaxReportedErrors)];
-        for (var index = 0; index < observations.Length; index++)
-        {
-            var observation = observations[index] = new LayoutObservation(scan, index + 1);
-            try
-            {
-                var error = errors[index];
-                if (error?.Rule is { } rule && Enum.IsDefined(rule.ID)) observation.Rule = rule.ID.ToString();
-                if (error?.Element?.Properties is not { } properties)
-                {
-                    observation.MetadataUnavailable = true;
-                    continue;
-                }
-                if (properties.TryGetValue("ControlType", out var type) && type is not null && ControlTypes.Contains(type))
-                    observation.ControlType = type;
-                observation.AutomationIdPresent = properties.TryGetValue("AutomationId", out var id)
-                    && !string.IsNullOrWhiteSpace(id);
-                if (properties.TryGetValue("BoundingRectangle", out var bounds))
-                    observation.SnapshotBounds = ReadCachedBounds(bounds);
-            }
-            catch (Exception) { observation.MetadataUnavailable = true; }
-        }
-        return observations;
-    }
-
-    private static LayoutSize ReadCachedBounds(string? text)
-    {
-        // Axe.Windows 2.4.2 (1c8709bd): A11yProperty -> Rectangle -> DisplayStrings.
-        // Canonical nonnegative-size form is [l={Int32},t={Int32},r={Int32},b={Int32}].
-        // Alternate/localized/malformed forms stay unavailable, never echo or change policy.
-        if (text is null || text.Length > MaxSnapshotBoundsLength
-            || !text.StartsWith("[l=", StringComparison.Ordinal) || !text.EndsWith(']')) return default;
-        var parts = text[1..^1].Split(',');
-        if (parts.Length != 4 || !parts[1].StartsWith("t=", StringComparison.Ordinal)
-            || !parts[2].StartsWith("r=", StringComparison.Ordinal) || !parts[3].StartsWith("b=", StringComparison.Ordinal)) return default;
-        const NumberStyles style = NumberStyles.AllowLeadingSign;
-        if (!int.TryParse(parts[0].AsSpan(2), style, CultureInfo.InvariantCulture, out var left)
-            || !int.TryParse(parts[1].AsSpan(2), style, CultureInfo.InvariantCulture, out var top)
-            || !int.TryParse(parts[2].AsSpan(2), style, CultureInfo.InvariantCulture, out var right)
-            || !int.TryParse(parts[3].AsSpan(2), style, CultureInfo.InvariantCulture, out var bottom)) return default;
-        return LayoutSize.From((double)right - left, (double)bottom - top);
-    }
-
-    private static void WriteLayoutDiagnostics(LayoutObservation[] first, LayoutObservation[] second,
-        int scanCount, bool retryAttempted, int? firstErrorCount, int? secondErrorCount, Action<string>? write)
-    {
-        if (first.Length == 0 && second.Length == 0) return;
-        try
-        {
-            var body = JsonSerializer.Serialize(new
-            {
-                schema = 1, source = "axe-layout", scanCount, retryAttempted, firstErrorCount, secondErrorCount,
-                observationsTruncated = (firstErrorCount ?? 0) > first.Length || (secondErrorCount ?? 0) > second.Length,
-                observations = first.Concat(second)
-            });
-            if (Encoding.UTF8.GetByteCount(body) > MaxLayoutDiagnosticBytes)
-                body = "{\"schema\":1,\"source\":\"axe-layout\",\"unavailable\":true}";
-            if (write is null) Console.WriteLine(body);
-            else write(body);
-        }
-        catch (Exception) { /* Diagnostics must not replace an assertion, probe failure, or passing result. */ }
     }
 
     // Keep UIA access separate from retry policy so tests never query the shared desktop.

@@ -1,13 +1,11 @@
 // The Inbox list shared by the footer bell flyout and the full Inbox page: tabs,
-// action-first rows that expand in place, approval decisions (Allow once / Always allow /
-// Deny, sent through InboxFeed to OperatorApprovalDecisions), "Dismiss shown", the empty
-// state, the Do not disturb toggle (saved through InboxFeed) and the notification settings
-// shortcut. Data comes from InboxFeed (app notifications plus live Gateway facts); navigation
-// and "Ask OpenClaw" are supplied by the hosting window.
+// action-first rows that expand in place, "Dismiss shown", the empty state and the
+// notification settings shortcut. Data comes from InboxFeed (app notifications plus
+// live Gateway facts); navigation and "Ask OpenClaw" are supplied by the hosting window.
 //
 // Usage:
 //   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
-//       OpenRoute: route => window.OpenNotificationRoute(route),
+//       OpenGatewayRoute: route => window.OpenGatewayInboxRoute(route),
 //       TryNavigateAsync: appCommands.TryNavigateAsync,
 //       OpenDashboard: () => appCommands.OpenDashboard(),
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
@@ -31,12 +29,13 @@ namespace OpenClawTray.Controls;
 
 /// <summary>
 /// Navigation supplied by the Inbox host. <paramref name="TryNavigateAsync"/> reports actual
-/// admission for app reminders; Gateway row actions keep their own lifetime.
+/// admission for app reminders. <paramref name="OpenGatewayRoute"/> navigates only
+/// Gateway facts without dismissing or deciding them; those rows keep their own lifetime.
 /// <paramref name="OpenPage"/> is null on the page itself;
 /// <paramref name="AskOpenClaw"/> sends a failure's explain prompt to OpenClaw and shows the reply.
 /// </summary>
 internal sealed record InboxViewCommands(
-    Action<string> OpenRoute,
+    Action<string> OpenGatewayRoute,
     Func<string, string?, Task<bool>> TryNavigateAsync,
     Action OpenSettings,
     Action OpenDashboard,
@@ -54,7 +53,6 @@ public sealed partial class InboxView : UserControl
     private InboxViewCommands? _commands;
     private InboxSnapshot _snapshot = InboxSnapshot.Empty;
     private InboxTab _tab = InboxTab.All;
-    private bool _applyingDoNotDisturb;
 
     public InboxView()
     {
@@ -114,38 +112,6 @@ public sealed partial class InboxView : UserControl
         ApplyTabLabels();
         SyncInboxItems(_snapshot.For(_tab), DateTimeOffset.UtcNow);
         ApplyChrome();
-        ApplyDoNotDisturb(snapshot.DoNotDisturb);
-    }
-
-    private void ApplyDoNotDisturb(bool doNotDisturb)
-    {
-        if (DoNotDisturbToggle.IsOn == doNotDisturb)
-            return;
-        _applyingDoNotDisturb = true;
-        try
-        {
-            DoNotDisturbToggle.IsOn = doNotDisturb;
-        }
-        finally
-        {
-            _applyingDoNotDisturb = false;
-        }
-    }
-
-    private void OnDoNotDisturbToggled(object sender, RoutedEventArgs e)
-    {
-        if (_applyingDoNotDisturb || _feed is not { } feed)
-            return;
-        try
-        {
-            feed.SetDoNotDisturb(DoNotDisturbToggle.IsOn);
-        }
-        catch (Exception ex)
-        {
-            new AppLogger().Warn($"[Inbox] Do not disturb could not be saved: {ex.GetType().Name}");
-        }
-        // The toggle always reflects what was saved, including when no settings owner is attached.
-        ApplyDoNotDisturb(feed.DoNotDisturb);
     }
 
     private void RefreshClock()
@@ -265,13 +231,6 @@ public sealed partial class InboxView : UserControl
             _commands is not { } commands)
             return;
 
-        if (ThisPcAlerts.IsPrivacySettingsRoute(item.ActionRoute))
-        {
-            // Opening Windows settings does not clear the underlying privacy block.
-            commands.OpenRoute(item.ActionRoute!);
-            return;
-        }
-
         if (!InboxGatewayItems.IsGatewayItemId(item.Id))
         {
             if (_feed is { } feed)
@@ -282,68 +241,20 @@ public sealed partial class InboxView : UserControl
         }
 
         // Navigation for a Gateway fact never dismisses or decides the underlying item.
-        if (!string.IsNullOrWhiteSpace(item.ActionRoute))
-            commands.OpenRoute(item.ActionRoute);
+        item.OpenAction(commands.OpenGatewayRoute, commands.OpenDashboard);
     }
 
     private void OnSecondaryActionClick(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: InboxItemViewModel item } && _commands is { } commands)
-            item.OpenSecondaryAction(commands.OpenRoute, commands.OpenDashboard);
+        if (sender is FrameworkElement { Tag: InboxItemViewModel { SecondaryActionRoute: { Length: > 0 } route } item } &&
+            InboxGatewayItems.IsGatewayItemId(item.Id))
+            _commands?.OpenGatewayRoute(route);
     }
 
     private void OnAskClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: InboxItemViewModel { AskQuestion: { Length: > 0 } question } })
             _commands?.AskOpenClaw?.Invoke(question);
-    }
-
-    private void OnAllowOnceClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.AllowOnce);
-
-    private void OnAllowAlwaysClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.AllowAlways);
-
-    private void OnDenyClick(object sender, RoutedEventArgs e) => Decide(sender, GatewayApprovalDecisions.Deny);
-
-    // A sent or already-resolved decision removes the row through the feed; anything else stays for retry.
-    private void Decide(object sender, string decision)
-    {
-        if (sender is not FrameworkElement { Tag: InboxItemViewModel { GatewayItem: { } gatewayItem } item } ||
-            _feed is not { } feed ||
-            !item.DecisionsEnabled)
-            return;
-
-        AsyncEventHandlerGuard.Run(
-            () => DecideAsync(feed, item, gatewayItem, decision),
-            new AppLogger(),
-            nameof(Decide),
-            _ =>
-            {
-                item.IsDeciding = false;
-                item.DecisionErrorText = LocalizationHelper.GetString("Inbox_ApprovalDecisionFailed");
-            });
-    }
-
-    private static async Task DecideAsync(InboxFeed feed, InboxItemViewModel item, InboxGatewayItem gatewayItem, string decision)
-    {
-        item.IsDeciding = true;
-        item.DecisionErrorText = "";
-        try
-        {
-            var outcome = await feed.DecideApprovalAsync(gatewayItem, decision);
-            item.DecisionErrorText = outcome switch
-            {
-                ApprovalDecisionOutcome.Failed => LocalizationHelper.GetString("Inbox_ApprovalDecisionFailed"),
-                // The source-backed uncertainty note survives rerender and reopening the Inbox.
-                ApprovalDecisionOutcome.Uncertain => "",
-                ApprovalDecisionOutcome.NotPending => LocalizationHelper.GetString("Inbox_ApprovalNoLongerPending"),
-                ApprovalDecisionOutcome.NotAllowed => LocalizationHelper.GetString("Inbox_ApprovalDecisionUnavailable"),
-                _ => "",
-            };
-        }
-        finally
-        {
-            item.IsDeciding = false;
-        }
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => _commands?.OpenSettings();

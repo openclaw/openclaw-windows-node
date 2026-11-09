@@ -1247,8 +1247,13 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is not null, "native chat composer");
             await WaitHistoryAsync(run, GatewayScenario.MainSessionKey);
 
-            await run.Gateway.PublishExecApprovalRequestedAsync(
-                GatewayScenario.MainSessionKey, "fixture-safe-approval", "echo fixture-safe");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-safe-approval",
+                command = "echo fixture-safe",
+                title = "Command approval requested",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "reviewable Allow button");
             Assert.NotNull(FindButton(run, "Always allow"));
             Assert.NotNull(FindButton(run, "Deny once"));
@@ -1263,8 +1268,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("allow-once", allowed.Decision);
             Assert.Equal("ok", allowed.Outcome);
 
-            await run.Gateway.PublishExecApprovalRequestedAsync(
-                GatewayScenario.MainSessionKey, "fixture-unreviewable-approval", "");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-unreviewable-approval",
+                command = "",
+                message = "Please approve this request.",
+                title = "Command approval requested",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Deny once") is not null
                 && FindText(run, "only Deny is available") is not null, "Deny-only approval");
             Assert.Null(FindButton(run, "Allow once"));
@@ -1281,24 +1292,34 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("deny", denied.Decision);
             Assert.Equal("ok", denied.Outcome);
 
-            await run.Gateway.PublishExecApprovalRequestedAsync(
-                GatewayScenario.MainSessionKey, "fixture-superseded-approval", "echo superseded");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-superseded-approval",
+                command = "echo superseded",
+                title = "Command approval requested",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "superseded Allow button");
-            await run.Gateway.PublishExecApprovalResolvedAsync(
-                GatewayScenario.MainSessionKey, "fixture-superseded-approval", "deny");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "resolved",
+                approvalId = "fixture-superseded-approval",
+                decision = "deny",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is null
                 && FindButton(run, "Always allow") is null, "superseded actions removed");
+            await Task.Delay(200);
             Assert.Equal(2, run.Gateway.Requests.Count(request => request.Method == "exec.approval.resolve"));
-        }, scenario: GatewayScenario.CreateApprovalReview());
+        });
     }
 
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
         Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
-        bool connectGateway = true, TimeSpan? testTimeout = null, string? initialAppPath = null)
+        bool connectGateway = true, TimeSpan? testTimeout = null)
     {
-        var appPath = initialAppPath ?? Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
+        var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         var run = await GatewayFixtureRun.StartAsync(appPath,
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),

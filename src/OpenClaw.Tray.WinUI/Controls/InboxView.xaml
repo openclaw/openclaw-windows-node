@@ -8,7 +8,6 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0" ColumnSpacing="8" Margin="2,0,0,0">
@@ -156,44 +155,6 @@
                                                    Style="{StaticResource CaptionTextBlockStyle}"/>
                                     </Border>
                                 </Grid>
-                                <TextBlock Text="{Binding DecisionNoteText}" Visibility="{Binding DecisionNoteVisibility}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextWrapping="WrapWholeWords"/>
-                                <TextBlock Text="{Binding PermissionText}" Visibility="{Binding PermissionVisibility}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextWrapping="WrapWholeWords"/>
-                                <StackPanel Orientation="Horizontal" Spacing="8"
-                                            AutomationProperties.Name="{Binding DecisionGroupName}">
-                                    <Button Content="{Binding AllowOnceLabel}"
-                                            Tag="{Binding}"
-                                            Visibility="{Binding AllowOnceVisibility}"
-                                            IsEnabled="{Binding DecisionsEnabled}"
-                                            AutomationProperties.Name="{Binding AllowOnceAutomationName}"
-                                            AutomationProperties.AutomationId="InboxApprovalAllowOnce"
-                                            Style="{StaticResource AccentButtonStyle}"
-                                            Click="OnAllowOnceClick"/>
-                                    <Button Content="{Binding AllowAlwaysLabel}"
-                                            Tag="{Binding}"
-                                            Visibility="{Binding AllowAlwaysVisibility}"
-                                            IsEnabled="{Binding DecisionsEnabled}"
-                                            AutomationProperties.Name="{Binding AllowAlwaysAutomationName}"
-                                            AutomationProperties.AutomationId="InboxApprovalAllowAlways"
-                                            Click="OnAllowAlwaysClick"/>
-                                    <Button Content="{Binding DenyLabel}"
-                                            Tag="{Binding}"
-                                            Visibility="{Binding DenyVisibility}"
-                                            IsEnabled="{Binding DecisionsEnabled}"
-                                            AutomationProperties.Name="{Binding DenyAutomationName}"
-                                            AutomationProperties.AutomationId="InboxApprovalDeny"
-                                            Click="OnDenyClick"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding DecisionErrorText}" Visibility="{Binding DecisionErrorVisibility}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                           AutomationProperties.LiveSetting="Assertive"
-                                           TextWrapping="WrapWholeWords"/>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Button Content="{Binding ActionLabel}"
                                             Tag="{Binding}"
@@ -250,24 +211,7 @@
             </StackPanel>
         </Border>
 
-        <!-- Windows-only: Do not disturb silences everything except approvals and access requests; shown in the flyout and on the page. -->
-        <Grid x:Name="DoNotDisturbRow" Grid.Row="3" Margin="2,0" ColumnSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <FontIcon Glyph="&#xE708;" FontSize="14" VerticalAlignment="Center"
-                      AutomationProperties.AccessibilityView="Raw"/>
-            <TextBlock x:Uid="Inbox_DoNotDisturbLabel" Grid.Column="1" Text="Do not disturb"
-                       VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
-            <ToggleSwitch x:Name="DoNotDisturbToggle" x:Uid="Inbox_DoNotDisturbToggle" Grid.Column="2"
-                          AutomationProperties.AutomationId="WorkspaceNotificationsDoNotDisturb"
-                          OnContent="" OffContent="" MinWidth="0" VerticalAlignment="Center"
-                          Toggled="OnDoNotDisturbToggled"/>
-        </Grid>
-
-        <Grid x:Name="FooterRow" Grid.Row="4" Margin="2,0" ColumnSpacing="8">
+        <Grid x:Name="FooterRow" Grid.Row="3" Margin="2,0" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>

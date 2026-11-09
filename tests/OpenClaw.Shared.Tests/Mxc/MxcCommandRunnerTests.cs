@@ -15,9 +15,11 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
         ".mxc-test-runs", Guid.NewGuid().ToString("N"));
     private SettingsData _settings = new();
+    private readonly List<NodeSandboxExecutor> _executors = [];
     private static CommandRequest Command => new() { Argv = [Path.Combine(Environment.SystemDirectory, "whoami.exe")], TimeoutMs = 10_000 };
     public void Dispose()
     {
+        foreach (var executor in _executors) executor.Dispose();
         var cleanup = Stopwatch.StartNew();
         while (Directory.Exists(_root))
         {
@@ -30,9 +32,14 @@ public sealed class MxcCommandRunnerTests : IDisposable
         }
     }
     private MxcCommandRunner Runner(Func<ContainerRequest, Task<IMxcProcess>> spawn, Func<ContainerRequest, ProbeOutput>? probe = null,
-        MxcAvailability? availability = null) => new(() => _settings, () => Path.Combine(_root, "settings"),
+        MxcAvailability? availability = null)
+    {
+        var executor = new NodeSandboxExecutor(new NodeSandboxPolicyStore(() => _settings), () => Path.Combine(_root, "settings"),
             () => availability ?? new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
             spawn: spawn, probe: probe ?? (_ => MxcAvailabilityTests.BaseProbe()), scratchRoot: _root);
+        _executors.Add(executor);
+        return new(executor);
+    }
 
     [Fact]
     public async Task ApprovedCommand_ExecutesOnceWithTypedRequestAndMapsNonzero()
@@ -59,7 +66,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     [InlineData("\t")]
     public void DefaultScratchRoot_IgnoresMissingOrBlankOverride(string? value)
     {
-        var root = MxcCommandRunner.GetDefaultScratchRoot(value, _root);
+        var root = NodeSandboxExecutor.GetDefaultScratchRoot(value, _root);
         Assert.Equal(Path.Combine(_root, "OpenClawMxc", "Runs"), root);
         Assert.True(Path.IsPathFullyQualified(root));
         Assert.False(Directory.Exists(_root));
@@ -110,7 +117,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     {
         var explicitRoot = Path.Combine(_root, "local");
         Assert.Equal(Path.Combine(explicitRoot, "OpenClawMxc", "Runs"),
-            MxcCommandRunner.GetDefaultScratchRoot(explicitRoot, Path.Combine(_root, "fallback")));
+            NodeSandboxExecutor.GetDefaultScratchRoot(explicitRoot, Path.Combine(_root, "fallback")));
     }
 
     [Theory]
@@ -458,7 +465,8 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Assert.True(process.Disposed);
         Assert.False(process.Killed);
         Assert.Equal(0, process.ExitProbesAfterWait);
-        await WaitForScratchCleanup();
+        // Failed SDK finalization cannot establish descendant/launch settlement.
+        Assert.Single(Directory.GetDirectories(_root));
     }
 
     [Fact]
