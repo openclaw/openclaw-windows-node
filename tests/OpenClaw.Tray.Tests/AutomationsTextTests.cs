@@ -350,7 +350,7 @@ public sealed class AutomationsTextTests
         Assert.Contains(".Padding(narrow ? 16 : 24", helper);
         Assert.DoesNotContain("AutomationsPageWashBrush", helper);
         Assert.DoesNotContain("SeenBadgeEntrances", helper);
-        Assert.Contains("keyedBadge.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade", helper);
+        Assert.Contains("badge.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade", helper);
         Assert.Contains("reconciliationKey ?? automationId", helper);
         Assert.Contains("reconciliationKey: \"AutomationRowStatusBadge\"", visuals);
         Assert.Contains("new UISettings().AnimationsEnabled", helper);

@@ -42,11 +42,6 @@ public sealed class WorkspaceSettingsLayoutTests
             Assert.Equal("OnTogglePane", (string?)button.Attribute("Click"));
             Assert.NotEqual("False", (string?)button.Attribute("IsHitTestVisible"));
         }
-        var source = File.ReadAllText(Path.Combine(root,
-            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        var focus = source[source.IndexOf("private bool HasChatNavigationFocus()", StringComparison.Ordinal)..
-            source.IndexOf("private void OnWorkspaceSizeChanged(", StringComparison.Ordinal)];
-        Assert.Contains("element == NavigationSection || element == PaneToggleChrome", focus);
     }
 
     [Theory]
@@ -67,19 +62,18 @@ public sealed class WorkspaceSettingsLayoutTests
         var shell = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
         var chrome = shell[shell.IndexOf("private void UpdatePaneChrome()", StringComparison.Ordinal)..
-            shell.IndexOf("private void UpdatePageAllocation()", StringComparison.Ordinal)];
+            shell.IndexOf("internal bool ContentOnly", StringComparison.Ordinal)];
         Assert.Contains("UpdatePageAllocation();", chrome);
         var contentOnly = shell[shell.IndexOf("internal bool ContentOnly", StringComparison.Ordinal)..
             shell.IndexOf("public object? CurrentPage", StringComparison.Ordinal)];
         Assert.Contains("UpdatePageAllocation();", contentOnly);
         var allocation = shell[shell.IndexOf("private void UpdatePageAllocation()", StringComparison.Ordinal)..
-            shell.IndexOf("internal bool ContentOnly", StringComparison.Ordinal)];
+            shell.IndexOf("public object? CurrentPage", StringComparison.Ordinal)];
         Assert.Contains("_hostContentTopInset", allocation);
         Assert.Contains("WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen)", allocation);
         Assert.Contains("ContentFrame.Content is ISettingsPageContentInset page", allocation);
-        Assert.Contains("ContentFrame.Margin = new Thickness(0);", allocation);
-        Assert.Contains("page.ApplyTopInset(inset);", allocation);
-        Assert.Contains("ContentFrame.Margin = new Thickness(0, inset, 0, 0);", allocation);
+        Assert.Contains("page.ApplyTopInset(ContentOnly ? _hostContentTopInset", allocation);
+        Assert.DoesNotContain("ContentFrame.Margin =", allocation);
         Assert.DoesNotContain(".Navigate(", allocation);
         Assert.DoesNotContain("UsagePage", allocation);
         var navigated = shell[shell.IndexOf("private void OnContentFrameNavigated(", StringComparison.Ordinal)..
@@ -117,71 +111,9 @@ public sealed class WorkspaceSettingsLayoutTests
     }
 
     [Theory]
-    [InlineData(0, true, false, true)]
-    [InlineData(719, true, true, false)]
-    [InlineData(720, true, false, true)]
-    [InlineData(800, true, false, true)]
-    [InlineData(719, false, true, false)]
-    [InlineData(720, false, false, false)]
-    public void HostWidth_SelectsChromeWithoutChangingRequestedDestination(
-        double width, bool requestedEmbedded, bool narrow, bool effectiveEmbedded)
-    {
-        var destination = WorkspaceDestination.Settings("usage", requestedEmbedded);
-        var layout = WorkspaceSettingsLayout.Project(width, destination.Embedded);
-        Assert.Equal(narrow, layout.Narrow);
-        Assert.Equal(effectiveEmbedded, layout.Embedded);
-        Assert.Equal("usage", destination.CompanionTag);
-        Assert.Equal(requestedEmbedded, destination.Embedded);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void NarrowExpansionNeverOverridesTheWidePreference(bool preferredOpen)
-    {
-        var wide = WorkspaceSettingsLayout.Project(800, embedded: false);
-        var narrow = WorkspaceSettingsLayout.Project(719, embedded: false);
-        Assert.Equal(preferredOpen, wide.PaneOpen(preferredOpen, narrowExpanded: false));
-        Assert.False(narrow.PaneOpen(preferredOpen, narrowExpanded: false));
-        Assert.True(narrow.PaneOpen(preferredOpen, narrowExpanded: true));
-        Assert.Equal(preferredOpen, wide.PaneOpen(preferredOpen, narrowExpanded: true));
-    }
-
-    [Theory]
-    [InlineData(800)]
-    [InlineData(1024)]
-    [InlineData(1280)]
-    public void ReachableWindowSizesPreserveExistingEmbeddingAndPanePreference(double width)
-    {
-        foreach (var embedded in new[] { false, true })
-        foreach (var preferredOpen in new[] { false, true })
-        {
-            var layout = WorkspaceSettingsLayout.Project(width, embedded);
-            Assert.False(layout.Narrow);
-            Assert.Equal(embedded, layout.Embedded);
-            Assert.Equal(preferredOpen, layout.PaneOpen(preferredOpen, narrowExpanded: false));
-        }
-    }
-
-    [Fact]
-    public void ResizeDoesNotReplaceDeferredUserNavigationOrRemountThePage()
-    {
-        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        var resize = source[source.IndexOf("private void ApplySettingsLayoutAfterResize()", StringComparison.Ordinal)..
-            source.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)];
-        Assert.DoesNotContain("DeferWhileModalOpen", resize);
-        Assert.DoesNotContain("_deferred.", resize);
-        Assert.DoesNotContain("RenderDestination", resize);
-        Assert.DoesNotContain("ShowSection", resize);
-        var apply = source[source.IndexOf("private void ApplySettingsPresentation(", StringComparison.Ordinal)..
-            source.IndexOf("private bool HasChatNavigationFocus()", StringComparison.Ordinal)];
-        Assert.DoesNotContain("_navigation.", apply);
-        Assert.DoesNotContain("ShowSection", apply);
-        Assert.DoesNotContain(".Navigate(", apply);
-        var shell = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
-        Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftCompact", shell);
-        Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftMinimal", shell);
-    }
+    [InlineData("cron", "ms-appx:///Assets/SidebarIcons/Cron.svg")]
+    [InlineData("instances", "ms-appx:///Assets/SidebarIcons/Instances.svg")]
+    [InlineData("usage", "ms-appx:///Assets/SidebarIcons/Usage.svg")]
+    public void HeroIcon_ReusesExistingSidebarAsset(string tag, string expected) =>
+        Assert.Equal(expected, PinnedPages.Find(tag)!.IconUri);
 }

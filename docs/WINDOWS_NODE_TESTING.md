@@ -514,7 +514,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 
 - `src/OpenClaw.Shared/WindowsNodeClient.cs` - Node protocol client
 - `src/OpenClaw.Shared/Capabilities/*.cs` - Capability handlers
-- `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayRegistry.cs` - persistent gateway records
+- `src/OpenClaw.Connection/GatewayRegistry.cs` - persistent gateway records
 - `src/OpenClaw.Connection/GatewayConnectionManager.cs` - public lifecycle façade, operator/state/tunnel orchestration
 - `src/OpenClaw.Connection/NodeConnectionCoordinator.cs` - node generation, start/recovery, connector events, and telemetry
 - `src/OpenClaw.Connection/BootstrapTokenLifecycle.cs` - bootstrap/device-token handoff and durable clear timing

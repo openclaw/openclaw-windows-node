@@ -8503,4 +8503,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Agendamento às {0}</value></data>
   <data name="Navigation_Expand" xml:space="preserve"><value>Expandir navegação</value></data>
   <data name="Navigation_Collapse" xml:space="preserve"><value>Recolher navegação</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Voltar ao app</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Configurações</value>
+  </data>
 </root>

@@ -12,7 +12,9 @@ public sealed class CiNugetCacheWorkflowTests
         Assert.Contains(@"OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming", job);
         Assert.Contains(@"OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local", job);
         Assert.Contains("OPENCLAW_REPO_ROOT: ${{ github.workspace }}", job);
-        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources\"", job);
+        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", job);
+        Assert.Contains("-Filter \"Category=AnimationPreferenceEnabled\"", job);
+        Assert.Contains("-Filter \"FullyQualifiedName~PageHeroAnimationsDisabledTests\"", job);
         Assert.DoesNotContain("FullyQualifiedName!~Onboarding", job);
     }
 
@@ -26,7 +28,7 @@ public sealed class CiNugetCacheWorkflowTests
         var steady = ExtractStep(job, "Run steady-resource Automations UI tests", "Run Accessibility Tests (Axe.Windows)");
         Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production", steady);
         Assert.Contains("OPENCLAW_UI_TEST_APP_THEME: Light", steady);
-        Assert.Contains("-Filter \"Category=ProductionResources\"", steady);
+        Assert.Contains("-Filter \"Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", steady);
         Assert.Contains("AutomationsSteadyResources.trx", steady);
     }
 

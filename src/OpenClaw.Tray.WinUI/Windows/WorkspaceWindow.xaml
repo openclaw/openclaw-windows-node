@@ -7,7 +7,7 @@
     xmlns:winex="using:WinUIEx"
     MinWidth="800" MinHeight="560">
     <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
-    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown">
+    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown" KeyDown="OnRootKeyDown">
         <Grid.Resources>
             <DataTemplate x:Key="AgentIdentityTemplate">
                 <controls:AgentIdentityBadge/>

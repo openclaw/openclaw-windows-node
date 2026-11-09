@@ -48,6 +48,19 @@ internal sealed record WorkspaceDestination(
 public enum SettingsExitCause { History, SidebarActivation }
 
 /// <summary>
+/// Escape leaves full Settings for the app, matching the macOS Settings sidebar. Anything that already
+/// owns Escape keeps it: a control that handled the key, an open flyout, menu, picker or dialog, and
+/// text or selection editors. Auto-repeat and pinned pages beside the sidebar never leave.
+/// </summary>
+internal static class SettingsEscapePolicy
+{
+    public static bool ExitsSettings(
+        WorkspaceDestination current, bool handled, bool isRepeat, bool overlayOpen, bool focusInEditor) =>
+        current is { Page: WorkspacePageId.Settings, Embedded: false }
+        && !handled && !isRepeat && !overlayOpen && !focusInEditor;
+}
+
+/// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file
 /// workspaces remain companion routes; they are not the application's landing page.
 /// </summary>
@@ -97,6 +110,22 @@ internal static class WorkspaceNavigation
         openCompanion(tag);
     }
 
+    /// <summary>
+    /// Reports destination admission using the same route policy. Native hosts may complete
+    /// synchronously; Dashboard hosts wait for Windows to accept the browser launch.
+    /// </summary>
+    public static Task<bool> DispatchAsync(
+        string? tag,
+        Func<WorkspaceDestination, Task<bool>> openWorkspace,
+        Func<string, Task<bool>> openCompanion,
+        Func<string, Task<bool>> openDashboard)
+    {
+        Task<bool>? admission = null;
+        Dispatch(tag, destination => admission = openWorkspace(destination),
+            section => admission = openCompanion(section), path => admission = openDashboard(path));
+        return admission ?? throw new InvalidOperationException("The navigation route was not dispatched.");
+    }
+
     /// <summary>Resolves a tag to a Workspace destination without dispatching it.</summary>
     public static bool TryResolveWorkspace(string? tag, out WorkspaceDestination destination)
     {
@@ -142,6 +171,15 @@ internal sealed class WorkspaceNavigationHistory
     private readonly Stack<WorkspaceDestination> _forward = new();
     public WorkspaceDestination Current { get; private set; } = new(WorkspacePageId.Home);
     public WorkspaceDestination ChatDestination { get; private set; } = new(WorkspacePageId.Home);
+    private WorkspaceDestination _appDestination = new(WorkspacePageId.Home);
+
+    /// <summary>
+    /// Where Settings' Back to app returns: the most recently shown app destination (chat, Notifications
+    /// or a pinned page beside the sidebar), with chat resolved to the retained conversation.
+    /// </summary>
+    public WorkspaceDestination AppDestination =>
+        _appDestination.Page == WorkspacePageId.Home ? ChatDestination : _appDestination;
+
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
@@ -203,6 +241,8 @@ internal sealed class WorkspaceNavigationHistory
             destination is { Page: WorkspacePageId.Settings, CompanionTag: { } tag } && shouldRemove(tag);
         RemoveFrom(_back, Match);
         RemoveFrom(_forward, Match);
+        if (Match(_appDestination))
+            _appDestination = new(WorkspacePageId.Home);
     }
 
     /// <summary>
@@ -288,5 +328,7 @@ internal sealed class WorkspaceNavigationHistory
         Current = destination;
         if (destination.Page == WorkspacePageId.Home)
             ChatDestination = destination;
+        if (destination is not { Page: WorkspacePageId.Settings, Embedded: false })
+            _appDestination = destination;
     }
 }

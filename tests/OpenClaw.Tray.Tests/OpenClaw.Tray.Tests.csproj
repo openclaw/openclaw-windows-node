@@ -31,7 +31,6 @@
     <Compile Include="../../src/OpenClaw.Tray.WinUI/Chat/GatewaySpeechPlayback.cs" Link="Chat/GatewaySpeechPlayback.cs" />
     <Compile Include="../../src/OpenClaw.Tray.WinUI/Chat/GatewaySpeechPresentation.cs" Link="Chat/GatewaySpeechPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PageResponsiveLayout.cs" Link="Presentation\PageResponsiveLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModelChoice.cs" Link="Chat\ChatModelChoice.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatThinkingProfile.cs" Link="Chat\ChatThinkingProfile.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEffortInputPolicy.cs" Link="Chat\ChatEffortInputPolicy.cs" />
@@ -297,12 +296,13 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchCatalog.cs" Link="Presentation\HubSearchCatalog.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubSearchController.cs" Link="Presentation\HubSearchController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPages.cs" Link="Presentation\PinnedPages.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PageResponsiveLayout.cs" Link="Presentation\PageResponsiveLayout.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSettingsLayout.cs" Link="Presentation\WorkspaceSettingsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PinnedPageRows.cs" Link="Presentation\PinnedPageRows.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredNavigation.cs" Link="Presentation\DeferredNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ChatVisibilityPolicy.cs" Link="Presentation\ChatVisibilityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceFooterPlacement.cs" Link="Presentation\WorkspaceFooterPlacement.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSettingsLayout.cs" Link="Presentation\WorkspaceSettingsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Automations\AutomationsViewportState.cs" Link="Presentation\AutomationsViewportState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DeferredFlyoutShowState.cs" Link="Presentation\DeferredFlyoutShowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />

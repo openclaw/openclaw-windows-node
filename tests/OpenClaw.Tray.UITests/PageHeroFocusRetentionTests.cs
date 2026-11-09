@@ -12,6 +12,7 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>Candidate regression for native action identity across the hero layout breakpoint.</summary>
 [Collection(UICollection.Name)]
+[Trait("Category", "ProductionResources")]
 public sealed class PageHeroFocusRetentionTests(UIThreadFixture ui)
 {
     private static FrameworkElement? Find(DependencyObject root, string id)
