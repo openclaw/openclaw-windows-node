@@ -70,7 +70,6 @@ internal sealed class GatewayService
 
         _clientGeneration++;
         _currentClient = newClient;
-        _state.InvalidateSessionsSnapshot();
         _state.AgentsListUnsupported = newClient?.IsAgentsListUnsupported ?? false;
 
         // Clear service-level caches on actual client swap
@@ -205,8 +204,6 @@ internal sealed class GatewayService
             if (!ReferenceEquals(statusClient, _currentClient) ||
                 statusClient?.SessionMutationConnectionEpoch != statusEpoch)
                 return;
-            if (status != ConnectionStatus.Connected)
-                _state.InvalidateSessionsSnapshot();
             if (status == ConnectionStatus.Connected)
             {
                 _state.AuthFailureMessage = null;
@@ -243,7 +240,6 @@ internal sealed class GatewayService
             if (!ReferenceEquals(authClient, _currentClient) ||
                 authClient?.SessionMutationConnectionEpoch != authEpoch)
                 return;
-            _state.InvalidateSessionsSnapshot();
             _state.AuthFailureMessage = message;
             AuthenticationFailed?.Invoke(this, message);
         });
@@ -365,13 +361,7 @@ internal sealed class GatewayService
                 generation != _clientGeneration || !client.IsConnectedToGateway ||
                 epoch != client.SessionMutationConnectionEpoch)
                 return;
-            // Older facade implementations expose no epoch. Preserve their
-            // tracked rows, but never promote those rows to a fresh badge.
-            if (epoch is null)
-                _state.Sessions = sessions;
-            else if (!_state.TryPublishSessions(sessions, generation, _clientGeneration,
-                         epoch, client.SessionMutationConnectionEpoch, client.IsConnectedToGateway))
-                return;
+            _state.Sessions = sessions;
             _state.PruneSessionPreviews(activeKeys);
         });
     }
