@@ -1,69 +1,88 @@
-name: Windows hardware validation (temporary RTX2 WSL qualification overlay)
-
+name: Windows hardware validation
+# TEMPORARY overlay of the already registered workflow, only on the owned branch.
+# Two isolated case executions, not a full UI retry or hardware/WSL proof.
 on:
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: Exact reviewed 40-character workflow/helper commit (must match selected ref)
+      pipeline_sha:
+        description: Exact reviewed temporary pipeline commit (must equal dispatch SHA)
         required: true
         type: string
-
 permissions:
   contents: read
-
-# Temporary branch overlay of existing workflow ID 408676726, not a default-branch change.
-# Parent reserves RTX2 before the single read-only qualification dispatch.
 concurrency:
   group: windows-hardware-validation
   cancel-in-progress: false
-
 jobs:
-  inventory:
-    if: github.repository == 'openclaw/openclaw-windows-node'
-    runs-on: [openclaw-managed, windows, arm64, rtx-n1x-5120]
-    timeout-minutes: 5
+  focused-voice-pair:
+    if: >-
+      github.repository == 'openclaw/openclaw-windows-node' &&
+      github.ref == 'refs/heads/validation/inbox-stack-ab3cbe7b-20261108' &&
+      github.event_name == 'workflow_dispatch' && github.run_attempt == 1 &&
+      inputs.pipeline_sha == github.sha
+    runs-on: windows-latest
+    timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
     env:
-      INVENTORY_CHECKOUT: .host-inventory-${{ github.run_id }}-${{ github.run_attempt }}
-      INVENTORY_SOURCE_SHA: ${{ inputs.source_sha }}
-      INVENTORY_WORKFLOW_SHA: ${{ github.sha }}
-      INVENTORY_HOST: rtx-2
-      INVENTORY_ARCHITECTURE: arm64
+      GitVersion_NoNormalizeEnabled: 'true'
+      GitVersion_NoFetchEnabled: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      OPENCLAW_CI_COLLECT_COVERAGE: 'false'
+      EXPECTED_PIPELINE_SHA: ${{ inputs.pipeline_sha }}
     steps:
-      - name: Require immutable reviewed source
-        run: |
-          if ($env:INVENTORY_SOURCE_SHA -cnotmatch '\A[a-f0-9]{40}\z' -or
-              $env:INVENTORY_SOURCE_SHA -cne $env:INVENTORY_WORKFLOW_SHA) {
-            Write-Output '{"outcome":"source-rejected"}'
-            exit 1
-          }
-      - id: inventory_checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.source_sha }}
-          fetch-depth: 1
+          ref: ${{ inputs.pipeline_sha }}
+          path: pipeline
+          fetch-depth: 0
           persist-credentials: false
-          set-safe-directory: false
-          clean: false
-          path: ${{ env.INVENTORY_CHECKOUT }}
-      - name: Check pure parsing and privacy controls
-        run: '& "$env:INVENTORY_CHECKOUT/scripts/Get-ManagedHostInventory.ps1" -SelfTest'
-      - name: Read bounded WSL and input-desktop readiness
-        run: |
-          & "$env:INVENTORY_CHECKOUT/scripts/Get-ManagedHostInventory.ps1" -SourceRevision $env:INVENTORY_SOURCE_SHA -HostSelector $env:INVENTORY_HOST -ExpectedArchitecture $env:INVENTORY_ARCHITECTURE
-      - name: Remove only this invocation checkout
-        if: always() && steps.inventory_checkout.outcome != 'skipped'
-        run: |
-          try {
-            if ($env:INVENTORY_CHECKOUT -cnotmatch '\A\.host-inventory-[0-9]+-[0-9]+\z') { throw 'invalid-checkout' }
-            $path = Join-Path $env:GITHUB_WORKSPACE $env:INVENTORY_CHECKOUT
-            if (Test-Path -LiteralPath $path) {
-              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
-            }
-            Write-Output '{"checkoutCleanup":"complete"}'
-          } catch {
-            Write-Output '{"checkoutCleanup":"failed"}'
-            exit 1
-          }
+      - uses: actions/checkout@v7
+        with:
+          ref: 1c223f14f6b66cf0928eeb8686f34208b5ea4d51
+          path: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 1e60d1135ae50d3a37525c7cdc3433b81123b4f3
+          path: approval
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Cache NuGet packages
+        continue-on-error: true
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Validate curator, build both pins and prepare existing CI runtime
+        run: ./pipeline/scripts/Invoke-VoicePair.ps1 -Mode Prepare -ExpectedPipelineSha $env:EXPECTED_PIPELINE_SHA
+      - name: Execute main once, then approval once only after qualified cleanup
+        timeout-minutes: 32
+        run: ./pipeline/scripts/Invoke-VoicePair.ps1 -Mode Run -ExpectedPipelineSha $env:EXPECTED_PIPELINE_SHA
+      - name: Remove privately retained data only after owned lifetime completion
+        if: always()
+        run: ./pipeline/scripts/Invoke-VoicePair.ps1 -Mode Cleanup -ExpectedPipelineSha $env:EXPECTED_PIPELINE_SHA
+      - name: Upload only strict curated operational results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: focused-voice-pair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            pipeline/TestResults/FocusedVoice/manifest.json
+            pipeline/TestResults/FocusedVoice/main.invocation.json
+            pipeline/TestResults/FocusedVoice/approval.invocation.json
+            pipeline/TestResults/FocusedVoice/main.json
+            pipeline/TestResults/FocusedVoice/approval.json
+            pipeline/TestResults/FocusedVoice/main.sanitized.trx
+            pipeline/TestResults/FocusedVoice/approval.sanitized.trx
+            pipeline/TestResults/FocusedVoice/summary.json
+            pipeline/TestResults/FocusedVoice/incomplete.json
+          if-no-files-found: error
+          retention-days: 7
