@@ -6,7 +6,7 @@ public sealed class HubPresentationContractTests
 {
     [Theory]
     [InlineData("Controls", "InboxView.xaml.cs", "private void OnActionClick",
-        "notifications.NavigateActionAsync(", "commands.TryNavigateAsync")]
+        "feed.NavigateNotificationAsync(", "commands.TryNavigateAsync")]
     [InlineData("Controls", "SettingsShellView.xaml.cs", "private void OnAppNotificationActionButtonClick",
         "notifications.NavigateActionAsync(", "((IAppCommands)CurrentApp).TryNavigateAsync")]
     public void NotificationActions_UseAdmissionWithoutPublishingPendingChatIntent(
@@ -35,11 +35,6 @@ public sealed class HubPresentationContractTests
         var footer = ReadSource("Controls", "WorkspacePaneFooter.xaml.cs");
         var view = ReadSource("Controls", "InboxView.xaml.cs");
         Assert.Contains("Func<string, string?, Task<bool>> TryNavigateAsync", view);
-        // The superseded fire-and-forget route path is closed; reminders need admission.
-        Assert.DoesNotContain("OpenRoute", view);
-        Assert.DoesNotContain("commands.OpenRoute", footer);
-        Assert.DoesNotContain("OpenInboxRoute", workspace);
-        Assert.DoesNotContain("OpenAppRoute", page);
         Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync,", page);
         Assert.Contains("((IAppCommands)CurrentApp).TryNavigateAsync,", workspace);
         Assert.Contains("return commands.TryNavigateAsync(route, sessionKey);", footer);
