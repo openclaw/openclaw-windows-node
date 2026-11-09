@@ -296,6 +296,8 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 await WaitForMountedStateAsync(host, root => ById<Grid>(root, "DashboardsCards").Children.Count == 30);
                 await ui.RunOnUIAsync(() =>
                 {
+                    // The shared hero must retain the gallery heading as the fallback focus destination.
+                    Assert.True(ById<TextBlock>(host, "DashboardsTitle").IsTabStop);
                     var card = ById<Button>(host, cardId);
                     Assert.True(card.Focus(FocusState.Keyboard));
                     Invoke(card);
@@ -309,9 +311,17 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                     state.Open(null);
                 });
                 var focusId = removeBoard ? "DashboardsTitle" : cardId;
+                var focusDiagnostics = "Gallery focus has not been observed.";
                 await WaitForMountedStateAsync(host, root =>
-                    Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root.XamlRoot) is DependencyObject focused &&
-                    AutomationProperties.GetAutomationId(focused) == focusId);
+                {
+                    var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root.XamlRoot) as DependencyObject;
+                    var heading = FindDescendants<TextBlock>(root).FirstOrDefault(text =>
+                        AutomationProperties.GetAutomationId(text) == "DashboardsTitle");
+                    var actualId = focused is null ? "none" : AutomationProperties.GetAutomationId(focused);
+                    focusDiagnostics = $"Expected focus {focusId}; actual {actualId}; heading present={heading is not null}, " +
+                        $"size={heading?.ActualWidth}x{heading?.ActualHeight}, tabStop={heading?.IsTabStop}; returnPending={state.ReturnFocusPending}.";
+                    return actualId == focusId;
+                }, () => focusDiagnostics);
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.Equal("Board", ById<TextBox>(host, "DashboardsSearch").Text);

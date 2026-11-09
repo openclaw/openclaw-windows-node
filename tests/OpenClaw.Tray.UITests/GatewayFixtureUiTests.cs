@@ -727,6 +727,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             bounds = node.Current.BoundingRectangle,
             isOffscreen = node.Current.IsOffscreen
         };
+        if (element.Current.ProcessId != run.AppProcessId)
+            throw new InvalidOperationException("Scroll target is not owned by the fixture app.");
         var targetBefore = Describe(element);
         var ancestors = new List<object>();
         var receiptPath = Path.Combine(run.ArtifactsDirectory, $"scroll-to-bottom-{Guid.NewGuid():N}.json");
@@ -741,6 +743,23 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 verticallyScrollable = scroll?.Current.VerticallyScrollable,
                 verticalScrollPercent = scroll?.Current.VerticalScrollPercent
             });
+            if (parent.Current.ProcessId != run.AppProcessId)
+                break;
+            if (scroll is not null && !scroll.Current.VerticallyScrollable &&
+                VisibleTargetFitsViewport(element.Current.BoundingRectangle, parent.Current.BoundingRectangle,
+                    element.Current.IsOffscreen || parent.Current.IsOffscreen))
+            {
+                // A page that already fits has a real viewport but cannot scroll.
+                // Accept only measured containment, never absence of ScrollPattern.
+                File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+                {
+                    run.ArtifactsDirectory, run.AppProcessId, targetBefore,
+                    targetAfter = Describe(element), viewport = Describe(parent),
+                    outcome = "Already visible in non-scrollable viewport",
+                    targetVisibleContainment = true, ancestors
+                }));
+                return;
+            }
             if (scroll is not null && scroll.Current.VerticallyScrollable)
             {
                 var selectedBefore = Describe(parent);
@@ -782,6 +801,27 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }));
         throw new InvalidOperationException($"No vertically scrollable ancestor for {element.Current.AutomationId}. Diagnostics: {receiptPath}");
     }
+
+    private static bool VisibleTargetFitsViewport(System.Windows.Rect target, System.Windows.Rect viewport, bool offscreen) =>
+        !offscreen && !target.IsEmpty && !viewport.IsEmpty &&
+        target.Width > 0 && target.Height > 0 && viewport.Width > 0 && viewport.Height > 0 &&
+        double.IsFinite(target.Left) && double.IsFinite(target.Top) &&
+        double.IsFinite(target.Right) && double.IsFinite(target.Bottom) &&
+        double.IsFinite(viewport.Left) && double.IsFinite(viewport.Top) &&
+        double.IsFinite(viewport.Right) && double.IsFinite(viewport.Bottom) && viewport.Contains(target);
+
+    [Theory]
+    [InlineData(10, 10, 20, 20, false, true)]
+    [InlineData(0, 0, 100, 100, false, true)]
+    [InlineData(10, 10, 20, 20, true, false)]
+    [InlineData(90, 10, 20, 20, false, false)]
+    [InlineData(10, 90, 20, 20, false, false)]
+    [InlineData(10, 10, 0, 20, false, false)]
+    [InlineData(double.NaN, 10, 20, 20, false, false)]
+    public void NonScrollableViewportAdmission_RequiresVisiblePositiveContainedBounds(
+        double x, double y, double width, double height, bool offscreen, bool expected) =>
+        Assert.Equal(expected, VisibleTargetFitsViewport(new System.Windows.Rect(x, y, width, height),
+            new System.Windows.Rect(0, 0, 100, 100), offscreen));
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]

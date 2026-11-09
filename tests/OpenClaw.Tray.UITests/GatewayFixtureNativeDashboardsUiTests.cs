@@ -397,7 +397,7 @@ public sealed partial class GatewayFixtureUiTests
                         JsonSerializer.Serialize(DashboardUiaContext(preflightHost ?? hub, run.AppProcessId)));
                     throw new InvalidOperationException("The named page-host peer is missing or zero-width. Baseline frame and UIA context saved.");
                 }
-                async Task WaitStableHost(string description, double? priorHost = null, int direction = 0)
+                async Task WaitStableHost(string description, double? priorHost = null, int direction = 0, bool collapsed = false)
                 {
                     double? previous = null;
                     double? previousNav = null;
@@ -407,9 +407,22 @@ public sealed partial class GatewayFixtureUiTests
                         if ((DateTimeOffset.UtcNow - lastRead).TotalMilliseconds < 300)
                             return false;
                         var value = HostWidth();
-                        var navElement = FindById(run, "WorkspacePinnedPage:dashboards")
-                            ?? throw new InvalidOperationException("The persistent dashboard pin stability anchor is missing.");
+                        var anchorId = collapsed ? "WorkspaceReopenPane" : "WorkspacePinnedPage:dashboards";
+                        var navElement = FindById(run, anchorId);
+                        var home = FindById(run, "WorkspaceNavHome");
+                        if (navElement is null || navElement.Current.IsOffscreen ||
+                            navElement.Current.ProcessId != run.AppProcessId ||
+                            (collapsed ? home is { Current.IsOffscreen: false } : home is not { Current.IsOffscreen: false }))
+                        {
+                            previous = previousNav = null;
+                            return false;
+                        }
                         var nav = navElement.Current.BoundingRectangle.Width;
+                        if (!double.IsFinite(nav) || nav <= 0)
+                        {
+                            previous = previousNav = null;
+                            return false;
+                        }
                         var moved = priorHost is null || direction == 0 ||
                             (direction > 0 ? value > priorHost.Value : value < priorHost.Value);
                         var stable = value > 0 && moved && previous is { } before && previousNav is { } beforeNav &&
@@ -467,7 +480,7 @@ public sealed partial class GatewayFixtureUiTests
                             Invoke(FindById(run, "WorkspaceTogglePane")
                                 ?? throw new InvalidOperationException("Standalone Dashboard workspace collapse control is missing."));
                             paneCollapsed = true;
-                            await WaitStableHost("stable collapsed-pane host and nav widths", openWidth, 1);
+                            await WaitStableHost("stable collapsed-pane host and reopen control", openWidth, 1, collapsed: true);
                         }
                         var measured = HostWidth();
                         var hostBounds = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
@@ -1135,10 +1148,14 @@ public sealed partial class GatewayFixtureUiTests
         if (notice.Current.ProcessId != run.AppProcessId || hub.Current.ProcessId != run.AppProcessId)
             throw new InvalidOperationException("Containment notice is not owned by the fixture app.");
         // Native banner close hides all active banners. Refuse to hide another notice.
-        var bell = FindById(run, "WorkspaceTitleBarNotifications")
-            ?? throw new InvalidOperationException("Owned notification count is unavailable.");
-        Assert.Equal(run.AppProcessId, bell.Current.ProcessId);
-        Assert.Equal("1 active", bell.Current.HelpText);
+        var bells = new[] { "WorkspaceNotifications", "WorkspaceTitleBarNotifications" }
+            .Select(id => FindById(run, id)).OfType<AutomationElement>()
+            .Where(element => element.Current.ProcessId == run.AppProcessId && !element.Current.IsOffscreen)
+            .ToArray();
+        var bell = Assert.Single(bells);
+        // Inbox includes every Warning/Error banner; exactly one waiting item
+        // proves closing this known banner cannot hide another active warning.
+        Assert.Equal("1 waiting", bell.Current.HelpText);
         var close = notice.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "CloseButton"))
             ?? throw new InvalidOperationException("Known containment notice has no native close button.");

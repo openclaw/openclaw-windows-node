@@ -30,10 +30,6 @@
             <SolidColorBrush x:Key="DashboardHue4WashBrush" Color="#0DA23295"/>
             <SolidColorBrush x:Key="DashboardHue5WashBrush" Color="#0D0E7A3D"/>
             <SolidColorBrush x:Key="DashboardOnHueBrush" Color="#FFFFFF"/>
-            <LinearGradientBrush x:Key="DashboardHeroBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.12">
-                <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0"/>
-                <GradientStop Color="Transparent" Offset="0.9"/>
-            </LinearGradientBrush>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="DashboardHue0Brush" Color="#62ABF5"/>
@@ -55,10 +51,6 @@
             <SolidColorBrush x:Key="DashboardHue4WashBrush" Color="#14E68FDC"/>
             <SolidColorBrush x:Key="DashboardHue5WashBrush" Color="#145CC97E"/>
             <SolidColorBrush x:Key="DashboardOnHueBrush" Color="#1C1C1C"/>
-            <LinearGradientBrush x:Key="DashboardHeroBrush" StartPoint="0,0" EndPoint="0,1" Opacity="0.12">
-                <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0"/>
-                <GradientStop Color="Transparent" Offset="0.9"/>
-            </LinearGradientBrush>
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="DashboardHue0Brush" Color="{ThemeResource SystemColorHighlightColor}"/>
@@ -80,7 +72,6 @@
             <SolidColorBrush x:Key="DashboardHue4WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
             <SolidColorBrush x:Key="DashboardHue5WashBrush" Color="{ThemeResource SystemColorWindowColor}"/>
             <SolidColorBrush x:Key="DashboardOnHueBrush" Color="{ThemeResource SystemColorHighlightTextColor}"/>
-            <SolidColorBrush x:Key="DashboardHeroBrush" Color="{ThemeResource SystemColorWindowColor}"/>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 

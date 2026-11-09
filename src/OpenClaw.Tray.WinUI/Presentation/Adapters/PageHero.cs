@@ -46,6 +46,7 @@ public static class PageHero
     private static readonly ConditionalWeakTable<FrameworkElement, Storyboard> Highlights = new();
 
     /// <summary>Builds a hero; callers own localized text, actions, accessibility IDs and page state.</summary>
+    /// <param name="titleIsTabStop">Opt in when the named heading is a page-navigation focus destination.</param>
     public static Element Header(
         string automationId,
         string glyph,
@@ -59,7 +60,8 @@ public static class PageHero
         bool highContrast = false,
         string? glyphAutomationId = null,
         Element? captionLine = null,
-        string? pageTag = null)
+        string? pageTag = null,
+        bool titleIsTabStop = false)
     {
         var titleLine = VStack(4,
             TextBlock(title)
@@ -68,6 +70,7 @@ public static class PageHero
                 .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
                 .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(title)
                 .AutomationId(titleAutomationId)
+                .IsTabStop(titleIsTabStop)
                 .HeadingLevel(AutomationHeadingLevel.Level1),
             answerLine,
             detailLine ?? Empty(),

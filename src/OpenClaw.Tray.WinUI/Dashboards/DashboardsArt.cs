@@ -27,7 +27,6 @@ internal static class DashboardHues
     public static string Subtle(int hue) => $"DashboardHue{Normalize(hue)}SubtleBrush";
     public static string Wash(int hue) => $"DashboardHue{Normalize(hue)}WashBrush";
     public const string OnHue = "DashboardOnHueBrush";
-    public const string Hero = "DashboardHeroBrush";
 
     /// <summary>Stable identity hue for a dashboard or author: the same key always gets the same color.</summary>
     public static int For(string? key)

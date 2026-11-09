@@ -487,7 +487,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
 
         return PageHero.Header("DashboardsHero", DashboardsGlyphs.Dashboard, headline, "DashboardsTitle",
                 AgentPicker(state, snapshot, TierFor(width) != PageWidthTier.Wide), detail, actions, narrow, reducedMotion, highContrast,
-                pageTag: DashboardsRoute.Tag)
+                pageTag: DashboardsRoute.Tag, titleIsTabStop: true)
             .Margin(0, 0, 0, 20);
     }
 

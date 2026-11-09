@@ -11,27 +11,6 @@ namespace OpenClaw.Tray.Tests.Dashboards;
 public sealed class DashboardResponsiveContractTests
 {
     [Theory]
-    [InlineData("Light")]
-    [InlineData("Dark")]
-    public void BackdropResource_FadesVerticallyToTransparentBeforeItsBottom(string theme)
-    {
-        var resources = System.Xml.Linq.XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Themes", "DashboardResources.xaml"));
-        System.Xml.Linq.XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-        System.Xml.Linq.XNamespace key = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var dictionary = resources.Descendants(xaml + "ResourceDictionary").Single(element =>
-            (string?)element.Attribute(key + "Key") == theme);
-        var brush = dictionary.Elements(xaml + "LinearGradientBrush").Single(element =>
-            (string?)element.Attribute(key + "Key") == "DashboardHeroBrush");
-        Assert.Equal("0,0", (string?)brush.Attribute("StartPoint"));
-        Assert.Equal("0,1", (string?)brush.Attribute("EndPoint"));
-        var stops = brush.Elements(xaml + "GradientStop").ToArray();
-        Assert.Equal("{ThemeResource SystemAccentColor}", (string?)stops[0].Attribute("Color"));
-        Assert.Equal("Transparent", (string?)stops[^1].Attribute("Color"));
-        Assert.Equal("0.9", (string?)stops[^1].Attribute("Offset"));
-    }
-
-    [Theory]
     [InlineData(1400, PageWidthTier.Wide, 1200, 4)]
     [InlineData(1000, PageWidthTier.Wide, 936, 3)]
     [InlineData(999.99994, PageWidthTier.Wide, 936, 3)]
