@@ -1296,9 +1296,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
         Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
-        bool connectGateway = true, TimeSpan? testTimeout = null)
+        bool connectGateway = true, TimeSpan? testTimeout = null, string? initialAppPath = null)
     {
-        var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
+        var appPath = initialAppPath ?? Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         var run = await GatewayFixtureRun.StartAsync(appPath,
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),

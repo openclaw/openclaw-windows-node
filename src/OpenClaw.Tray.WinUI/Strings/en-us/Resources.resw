@@ -7918,6 +7918,19 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>New requests and alerts land here.</value></data>
   <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Open Inbox</value></data>
   <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} waiting</value></data>
+  <data name="Inbox_DoNotDisturbLabel.Text" xml:space="preserve"><value>Do not disturb</value></data>
+  <data name="Inbox_DoNotDisturbToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Do not disturb</value></data>
+  <data name="Inbox_DoNotDisturbBellHelpFormat" xml:space="preserve"><value>Do not disturb is on. {0}</value></data>
+  <data name="NotificationsPage_MetadataThisPc" xml:space="preserve"><value>This PC</value></data>
+  <data name="NotificationsPage_MetadataPrivacy" xml:space="preserve"><value>Privacy</value></data>
+  <data name="ThisPc_CameraBlockedTitle" xml:space="preserve"><value>This PC: camera access is off</value></data>
+  <data name="ThisPc_CameraBlockedMessage" xml:space="preserve"><value>Agents can use the camera, but Windows privacy settings block camera access, so camera snapshots and clips fail.</value></data>
+  <data name="ThisPc_MicrophoneBlockedTitle" xml:space="preserve"><value>This PC: microphone access is off</value></data>
+  <data name="ThisPc_MicrophoneBlockedMessage" xml:space="preserve"><value>Agents can record sound for speech-to-text or camera clips, but Windows privacy settings block microphone access, so those requests fail.</value></data>
+  <data name="ThisPc_LocationBlockedTitle" xml:space="preserve"><value>This PC: location access is off</value></data>
+  <data name="ThisPc_LocationBlockedMessage" xml:space="preserve"><value>Agents can ask for this PC's location, but Windows privacy settings block location access, so location requests fail.</value></data>
+  <data name="ThisPc_ManagedBySystem" xml:space="preserve"><value>Windows or your organization manages this setting.</value></data>
+  <data name="ThisPc_OpenPrivacySettings" xml:space="preserve"><value>Open Windows privacy settings</value></data>
   <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Dismiss {0}</value></data>
   <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
   <data name="Inbox_AgeNow" xml:space="preserve"><value>now</value></data>

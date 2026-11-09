@@ -65,6 +65,8 @@ public sealed partial class NotificationsPage : Page
 
     private static void OpenAppRoute(string route)
     {
+        if (ThisPcAlertSource.TryOpenPrivacySettings(route))
+            return;
         var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
         AsyncEventHandlerGuard.Run(
             () => ((IAppCommands)CurrentApp).TryNavigateAsync(isChat ? "chat" : route, sessionKey),
