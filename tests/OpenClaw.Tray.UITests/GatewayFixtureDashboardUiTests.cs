@@ -124,6 +124,25 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task AccountMenu_CurrentGatewayExposesItsStateWithoutAnAccessibleShortcut()
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenWorkspaceAsync(run);
+            Invoke(FindById(run, OwnerButtonId)!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwnerGateway") is not null, "Gateway submenu ready");
+            ((ExpandCollapsePattern)FindById(run, "WorkspaceOwnerGateway")!
+                .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwnerGateway_0") is not null, "current Gateway row ready");
+            var current = FindById(run, "WorkspaceOwnerGateway_0")!;
+            Assert.Equal("Current gateway", current.Current.ItemStatus);
+            Assert.Equal("Current gateway. Connected", current.Current.HelpText);
+            Assert.Empty(current.Current.AcceleratorKey);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task ChannelsNavigation_OpensTheGatewayDashboardAndOffersRetryWhenTheBrowserFails()
     {
         await WithAppAsync(async run =>

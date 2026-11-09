@@ -7602,6 +7602,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
   <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>Nenhum gateway</value></data>
   <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Gateway atual</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Gateway atual. {0}</value></data>
   <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Adicionar gateway…</value></data>
   <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Reconectar</value></data>
   <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Configurações de conexão</value></data>

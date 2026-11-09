@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 namespace OpenClawTray.Controls;
 
 /// <summary>
-/// Account-menu <see cref="MenuFlyoutItem"/> with an optional secondary line, pill badge and
+/// Account-menu <see cref="MenuFlyoutItem"/> with optional secondary text, metadata, pill badge and
 /// profile picture. The styles in Themes/AccountMenuResources.xaml supply the optional parts;
 /// the default MenuFlyoutItem behavior (keyboard, focus, accelerator text) is unchanged.
 /// </summary>
@@ -18,10 +18,12 @@ namespace OpenClawTray.Controls;
 internal sealed partial class AccountMenuItem : MenuFlyoutItem
 {
     private TextBlock? _description;
+    private TextBlock? _metadata;
     private FrameworkElement? _badgeRoot;
     private TextBlock? _badgeText;
     private PersonPicture? _picture;
     private string? _descriptionValue;
+    private string? _metadataValue;
     private string? _badgeValue;
     private ImageSource? _pictureValue;
     private string? _pictureName;
@@ -34,6 +36,13 @@ internal sealed partial class AccountMenuItem : MenuFlyoutItem
     {
         get => _descriptionValue;
         set { _descriptionValue = value; Apply(); }
+    }
+
+    /// <summary>Right-aligned detail, separate from keyboard shortcuts and their automation metadata.</summary>
+    public string? Metadata
+    {
+        get => _metadataValue;
+        set { _metadataValue = value; Apply(); }
     }
 
     /// <summary>Short pill shown before the accelerator text; hidden when empty.</summary>
@@ -60,6 +69,7 @@ internal sealed partial class AccountMenuItem : MenuFlyoutItem
     {
         base.OnApplyTemplate();
         _description = GetTemplateChild("DescriptionTextBlock") as TextBlock;
+        _metadata = GetTemplateChild("MetadataTextBlock") as TextBlock;
         _badgeRoot = GetTemplateChild("BadgeRoot") as FrameworkElement;
         _badgeText = GetTemplateChild("BadgeTextBlock") as TextBlock;
         _picture = GetTemplateChild("PicturePart") as PersonPicture;
@@ -72,6 +82,11 @@ internal sealed partial class AccountMenuItem : MenuFlyoutItem
         {
             _description.Text = _descriptionValue ?? "";
             _description.Visibility = string.IsNullOrEmpty(_descriptionValue) ? Visibility.Collapsed : Visibility.Visible;
+        }
+        if (_metadata is not null)
+        {
+            _metadata.Text = _metadataValue ?? "";
+            _metadata.Visibility = string.IsNullOrEmpty(_metadataValue) ? Visibility.Collapsed : Visibility.Visible;
         }
         if (_badgeRoot is not null)
             _badgeRoot.Visibility = string.IsNullOrEmpty(_badgeValue) ? Visibility.Collapsed : Visibility.Visible;

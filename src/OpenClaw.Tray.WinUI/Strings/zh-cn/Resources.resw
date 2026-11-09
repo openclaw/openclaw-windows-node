@@ -7549,6 +7549,8 @@
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
   <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>无网关</value></data>
   <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>当前网关</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>当前网关。{0}</value></data>
   <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>添加网关…</value></data>
   <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>重新连接</value></data>
   <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>连接设置</value></data>

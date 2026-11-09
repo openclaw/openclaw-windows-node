@@ -82,3 +82,11 @@ pairing.
 ## Relationship to other validation
 
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.
+
+## Account menu metadata
+
+Account-menu hosts, versions and connection labels use `AccountMenuItem.Metadata`,
+not `KeyboardAcceleratorTextOverride`, which WinUI exposes as UI Automation's
+`AcceleratorKey`. Real shortcuts retain the native shortcut field. Saved Gateway
+rows expose the active choice through localized `ItemStatus` and HelpText without
+adding a radio/check column.

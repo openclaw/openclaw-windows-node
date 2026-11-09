@@ -7549,6 +7549,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
   <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>Aucune passerelle</value></data>
   <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Passerelle actuelle</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Passerelle actuelle. {0}</value></data>
   <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Ajouter une passerelle…</value></data>
   <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Reconnecter</value></data>
   <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Paramètres de connexion</value></data>
