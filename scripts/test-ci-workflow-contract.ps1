@@ -601,6 +601,18 @@ Assert-NotContains `
     -Unexpected "nuget-core-" `
     -Message "Only the core job may use the isolated NuGet cache key."
 
+# Shared-key consumers must never register a post-job cache save. A duplicate
+# writer can spend minutes archiving packages before losing the reservation.
+foreach ($lane in @("tray-tests", "ui-tests", "setup-e2e", "revocation-e2e",
+        "network-e2e", "build-x64", "build-arm64", "build-msix")) {
+    $cacheStep = Get-StepBlock -Text (Get-JobBlock $lane) -Name "Cache NuGet packages"
+    $action = if ($lane -eq "tray-tests") { "actions/cache@v6" } else { "actions/cache/restore@v6" }
+    Assert-Contains -Text $cacheStep -Expected "uses: $action" `
+        -Message "Shared NuGet cache lane '$lane' must use '$action'."
+    Assert-Contains -Text $cacheStep -Expected "continue-on-error: true" `
+        -Message "Cache availability must not gate '$lane'."
+}
+
 $trayJob = Get-JobBlock "tray-tests"
 foreach ($token in @(
         "OPENCLAW_TRAY_DATA_DIR:",
