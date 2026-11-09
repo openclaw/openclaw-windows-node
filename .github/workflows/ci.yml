@@ -753,6 +753,9 @@ jobs:
     - name: Run Tray UI Tests
       timeout-minutes: 15
       # Temporary diagnosis: dumps and raw debugger logs stay outside uploaded TestResults.
+      # Match the original pull-request process, including when dispatched manually.
+      env:
+        OPENCLAW_CI_COLLECT_COVERAGE: 'false'
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
