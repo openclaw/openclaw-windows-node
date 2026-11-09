@@ -486,6 +486,10 @@ Tray UI crash diagnostics are pipeline-owned. Promotions fetch the metadata
 helper from the pinned dispatch SHA into a separate sparse checkout after the
 UI tests. The alpha checkout still owns the app and tests, even when it predates
 that helper. Ordinary CI uses the helper from its normal source checkout.
+The UI job's product-root exporter (`Set-CiUiTestEnvironment.ps1`) is also
+pipeline-owned: the job loads it from the dispatch SHA and binds the isolated
+roots to the alpha checkout, so an alpha that predates the exporter still runs
+UI tests with isolated profiles.
 
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Promotion rechecks candidate eligibility and

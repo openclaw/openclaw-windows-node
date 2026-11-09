@@ -705,7 +705,13 @@ jobs:
 
     - name: Configure isolated UI product roots
       shell: pwsh
-      run: ./scripts/Set-CiUiTestEnvironment.ps1 -EnvironmentFile $env:GITHUB_ENV
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Set-CiUiTestEnvironment.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline UI environment helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Set-CiUiTestEnvironment.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -RepoRoot $env:GITHUB_WORKSPACE -EnvironmentFile $env:GITHUB_ENV
 
     - *promotion-version-tag
 
