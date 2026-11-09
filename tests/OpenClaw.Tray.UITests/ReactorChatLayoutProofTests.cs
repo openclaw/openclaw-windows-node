@@ -168,6 +168,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal("Configured proof assistant", picture.DisplayName);
                 Assert.Equal(emoji ?? "", picture.Initials);
                 Assert.Equal(96, picture.ActualWidth);
+                var face = Assert.Single(FindDescendants<Viewbox>(badge));
+                Assert.Equal(emoji is null && avatarUrl is null ? Visibility.Visible : Visibility.Collapsed,
+                    face.Visibility);
                 Assert.All(FindDescendants<TextBlock>(badge).Where(text => text.Text == "Configured proof assistant"),
                     text => Assert.Equal(0, Bounds(text, surface).Width));
             });
@@ -193,7 +196,148 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(64, picture!.ActualWidth);
                 if (avatarUrl is not null) Assert.NotNull(picture.ProfilePicture);
             });
-        }, "empty", placementGateway: new PlacementProofGateway(emoji, avatarUrl));
+        }, "empty", placementGateway: new PlacementProofGateway(emoji, avatarUrl),
+            // A real Gateway resolves the same picture through agents.list and agent.identity.get.
+            identityLoader: agentId => Task.FromResult<ChatAgentIdentity?>(new(agentId, null, avatarUrl, emoji)));
+    }
+
+    [Fact]
+    public async Task Welcome_UnconfiguredDefaultAgentUsesGatewayNameAndGeneratedFace()
+    {
+        // agents.list has no name or avatar for the default agent; agent.identity.get returns
+        // the built-in "Assistant" identity whose "A" avatar clients replace with the generated face.
+        await WithChatAsync(800, async (surface, _, _, provider) =>
+        {
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                FindDescendants<TextBlock>(surface).Any(text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatWelcomeAgent" && text.Text == "Assistant"),
+                "Gateway default agent name in the welcome header"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var badge = FindControl<NativeChatWelcomeAvatar>(surface, "ChatWelcomeAvatar");
+                var picture = Assert.Single(FindDescendants<PersonPicture>(badge));
+                Assert.Equal("Assistant", picture.DisplayName);
+                Assert.Equal("", picture.Initials);
+                Assert.Null(picture.ProfilePicture);
+                Assert.Equal(0, picture.Opacity);
+                var face = Assert.Single(FindDescendants<Viewbox>(badge));
+                Assert.Equal(Visibility.Visible, face.Visibility);
+                Assert.Equal(96, face.ActualWidth);
+            });
+            await CaptureAsync(surface, "UnconfiguredDefaultAgentFace");
+            Assert.Contains("main", provider.AgentIdentityRequests);
+        }, "empty", placementGateway: new PlacementProofGateway(emoji: null, agentName: null));
+    }
+
+    [Fact]
+    public async Task Timeline_RendersGatewayAgentImageAndUsesTheAgentName()
+    {
+        const string image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+        await WithChatAsync(1024, async (surface, _, _, provider) =>
+        {
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var avatar = FindControl<NativeChatWelcomeAvatar>(surface, "ChatAssistantAvatar");
+                return FindDescendants<PersonPicture>(avatar).SingleOrDefault()?.ProfilePicture is not null;
+            }, "Gateway agent image in the chat transcript"));
+
+            await ui.RunOnUIAsync(() =>
+            {
+                var avatar = FindControl<NativeChatWelcomeAvatar>(surface, "ChatAssistantAvatar");
+                var picture = Assert.Single(FindDescendants<PersonPicture>(avatar));
+                Assert.Equal("Research assistant", picture.DisplayName);
+                Assert.NotNull(picture.ProfilePicture);
+                AssertAvatarFitsSlot(picture, avatar);
+            });
+            Assert.Equal(["main"], provider.AgentIdentityRequests);
+        }, identityLoader: agentId =>
+            Task.FromResult<ChatAgentIdentity?>(new(agentId, "Research assistant", image, "✨")));
+    }
+
+    [Fact]
+    public async Task Timeline_UsesAndRefreshesTheCurrentRosterIdentity()
+    {
+        var roster = new MutableAgentRoster(new("main", "Research assistant", Emoji: "🔬"));
+        await WithChatAsync(1024, async (surface, _, session, provider) =>
+        {
+            await Task.Delay(900);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => session.Placement?.State.Catalog is
+                    { AgentName: "Research assistant", AgentEmoji: "🔬" },
+                "loaded placement catalog"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Research assistant",
+                    FindControl<TextBlock>(surface, "ChatWelcomeAgent").Text);
+            });
+            Assert.Empty(provider.AgentIdentityRequests);
+
+            roster.Publish(new("main", "Assistant", Emoji: "🤖", Revision: 1));
+            await SettleAsync();
+
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Assistant", FindControl<TextBlock>(surface, "ChatWelcomeAgent").Text);
+            });
+            await CaptureAsync(surface, "RosterIdentityRefreshedWelcome");
+
+            var snapshot = await provider.LoadAsync();
+            var transcript = ChatTimelineState.Initial() with
+            {
+                Entries = ImmutableList.Create(
+                    new ChatTimelineItem("assistant", ChatTimelineItemKind.Assistant, "Hello")),
+                HistoryLoaded = true,
+            };
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = transcript },
+            }));
+            await SettleAsync();
+
+            await ui.RunOnUIAsync(() =>
+            {
+                var avatar = FindControl<NativeChatWelcomeAvatar>(surface, "ChatAssistantAvatar");
+                Assert.Equal("Assistant", AutomationProperties.GetName(avatar));
+                var picture = Assert.Single(FindDescendants<PersonPicture>(avatar));
+                Assert.Equal("🤖", picture.Initials);
+            });
+            await CaptureAsync(surface, "RosterIdentityRefreshedTranscript");
+        }, "empty", placementGateway: new PlacementProofGateway("🔬", agentName: "Research assistant"),
+            identityLoader: agentId => Task.FromResult<ChatAgentIdentity?>(new(agentId, "Hydrated identity")),
+            agentRosterSource: roster);
+    }
+
+    [Fact]
+    public async Task Timeline_GeneratedAgentFaceFitsAvatarSlot()
+    {
+        await WithChatAsync(1024, async (surface, _, _, _) =>
+        {
+            NativeChatWelcomeAvatar? avatar = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                avatar = FindControl<NativeChatWelcomeAvatar>(surface, "ChatAssistantAvatar");
+                return avatar.ActualWidth > 0;
+            }, "rendered transcript avatar"));
+            await CaptureAsync(avatar!, "TranscriptAgentFace");
+            await ui.RunOnUIAsync(() =>
+            {
+                var face = Assert.Single(FindDescendants<Viewbox>(avatar!));
+                Assert.Equal(Visibility.Visible, face.Visibility);
+                Assert.Equal(36, avatar!.ActualWidth);
+                Assert.Equal(36, avatar.ActualHeight);
+                AssertAvatarFitsSlot(face, avatar);
+            });
+        });
+    }
+
+    private static void AssertAvatarFitsSlot(FrameworkElement picture, FrameworkElement slot)
+    {
+        var bounds = Bounds(picture, slot);
+        Assert.InRange(bounds.Left, 0, 0.1);
+        Assert.InRange(bounds.Top, 0, 0.1);
+        Assert.InRange(bounds.Right, slot.ActualWidth - 0.1, slot.ActualWidth);
+        Assert.InRange(bounds.Bottom, slot.ActualHeight - 0.1, slot.ActualHeight);
     }
 
     [Theory]
@@ -272,7 +416,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     FindControl<Button>(surface, "ChatComposerReasoningPicker"), surface).Right);
                 Assert.True(Bounds(button, surface).Right <= Bounds(
                     FindControl<Button>(surface, "ChatComposerVoice"), surface).Left);
+                ui.Diagnostics.SetPhase(NativeUiPhase.ChatShowingFlyout);
                 button.Flyout.ShowAt(button);
+                ui.Diagnostics.SetPhase(NativeUiPhase.ChatFlyoutShown);
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -915,8 +1061,15 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Contains("Responding", AutomationProperties.GetName(FindControl<TextBlock>(host, "ChatRunProgressText"))));
             Assert.Contains("1m", before);
             Assert.Contains("120 output tokens", before);
-            await Task.Delay(1200);
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControl<TextBlock>(host, "ChatRunProgressText").Text != before,
+                "active run elapsed text to advance",
+                () =>
+                {
+                    var progress = FindControl<TextBlock>(host, "ChatRunProgressText");
+                    return $"IsLoaded={progress.IsLoaded}, HasXamlRoot={progress.XamlRoot is not null}, " +
+                        $"TextUnchanged={progress.Text == before}, HostLoaded={host.IsLoaded}";
+                }));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.NotEqual(before, FindControl<TextBlock>(host, "ChatRunProgressText").Text);
@@ -2190,6 +2343,61 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Fact]
+    public async Task ReasoningPicker_HostDisposalCancelsQueuedValueChange()
+    {
+        await ui.ResetContainerAsync();
+        var selected = new List<string>();
+        ReactorHostControl? host = null;
+        Border? surface = null;
+        Slider? slider = null;
+        ChatThemeProofScope? themeScope = null;
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                themeScope = new ChatThemeProofScope("Light");
+                host = new ReactorHostControl();
+                host.Mount(_ => Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
+                    Button("Effort", null).AutomationId("ReasoningRetirementTarget"),
+                    [new("off", "Off"), new("low", "Low"), new("high", "High")],
+                    "off", "Off", true, selected.Add, () => { }, 480)));
+                surface = new Border { Child = host, Width = 480, Height = 720 };
+                ui.Container.Children.Add(surface);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface!, "ReasoningRetirementTarget");
+                var content = Assert.IsAssignableFrom<FrameworkElement>(Assert.IsType<Flyout>(button.Flyout).Content);
+                slider = FindControl<Slider>(content, "ChatReasoningSlider");
+                slider.Value = 1;
+            });
+            await SettleAsync();
+            Assert.Equal(new[] { "low" }, selected);
+
+            await ui.RunOnUIAsync(() =>
+            {
+                selected.Clear();
+                slider!.Value = 2;
+                host!.Dispose();
+                surface!.Child = null;
+            });
+            await SettleAsync();
+            Assert.Empty(selected);
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host?.Dispose();
+                if (surface is not null)
+                    ui.Container.Children.Remove(surface);
+                themeScope?.Dispose();
+            });
+        }
+    }
+
     [Theory]
     [InlineData(null, "Default", 0)]
     [InlineData("", "Default", 0)]
@@ -2710,8 +2918,11 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         bool initialThreadIsExplicitSelection = true,
         SettingsManager? sandboxSettings = null,
         Action? onSandboxSettings = null,
-        SandboxStatusStore? sandboxStatus = null)
+        SandboxStatusStore? sandboxStatus = null,
+        Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
+        IChatAgentRosterSource? agentRosterSource = null)
     {
+        using var diagnosticScope = ui.Diagnostics.BeginChatScope();
         await ui.ResetContainerAsync();
         using var settingsDirectory = new TempDirectory();
         using var settingsStore = new SettingsStore(
@@ -2722,10 +2933,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Border? surface = null;
         Window? proofWindow = null;
         ChatThemeProofScope? themeScope = null;
-        var provider = new ProofProvider(scenario, thinkingLevel, placementGateway);
+        var provider = new ProofProvider(scenario, thinkingLevel, placementGateway, identityLoader);
         var renderErrors = new RenderErrorLogger();
-        Microsoft.UI.Xaml.UnhandledExceptionEventHandler reportException = (_, args) =>
-            Console.Error.WriteLine($"Native chat harness: {args.Message}\n{args.Exception}");
+        var reportException = TestApp.CreateExceptionReporter(ui.Diagnostics, NativeUiExceptionSource.ChatUnhandled);
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -2757,7 +2967,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
                     new(provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
-                        InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection)));
+                        InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
+                        AgentRosterSource: agentRosterSource)));
                 surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
                     "Background=\"{ThemeResource NavigationViewContentBackground}\" />");
@@ -2777,15 +2988,18 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
             Console.WriteLine("chat-proof: body start");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatBody);
             await proof(surface!, host!, session!, provider);
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
         }
         finally
         {
             Console.WriteLine("chat-proof: teardown begin");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatClosingPopups);
             await CloseOpenPopupsAsync(surface);
             await SettleAsync();
             Console.WriteLine("chat-proof: popups closed");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingWindow);
             await ui.RunOnUIAsync(() =>
             {
                 session?.Dispose();
@@ -2793,14 +3007,19 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 {
                     surface.Child = null;
                 }
+                diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingHost);
                 host?.Dispose();
+                diagnosticScope.SetPhase(NativeUiPhase.ChatClosingWindow);
                 proofWindow?.Close();
+                diagnosticScope.SetPhase(NativeUiPhase.ChatWindowClosed);
                 _captureWindow = null;
                 themeScope?.Dispose();
                 Application.Current.UnhandledException -= reportException;
             });
+            diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingProvider);
             await provider.DisposeAsync();
             Console.WriteLine("chat-proof: window closed");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatClosed);
         }
     }
 
@@ -3080,7 +3299,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
     }
 
-    private sealed class PlacementProofGateway(string? emoji = "\u2728", string? avatarUrl = null) : IChatPlacementGateway
+    private sealed class PlacementProofGateway(string? emoji = "\u2728", string? avatarUrl = null,
+        string? agentName = "Configured proof assistant") : IChatPlacementGateway
     {
         public long? ConnectionEpoch => 5;
         internal int Preparations { get; private set; }
@@ -3094,7 +3314,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                  new("node:windows", "Windows host", false, ChatEnvironmentUnavailable.None),
                  new("node:unavailable", "Windows node", false, ChatEnvironmentUnavailable.HostingDisabled)],
                 new("default", "workspace", "/gateway/workspace"),
-                [new("project:one", "Repository", "/gateway/repository", "one")], "Configured proof assistant", emoji, avatarUrl));
+                [new("project:one", "Repository", "/gateway/repository", "one")], agentName, emoji, avatarUrl));
         public Task<ChatWorkspaceDirectory> BrowseAsync(string? path, long connectionEpoch, CancellationToken cancellationToken)
         {
             BrowsedPath = path;
@@ -3115,7 +3335,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     private sealed class ProofProvider(string scenario = "standard", string? thinkingLevel = null,
-        IChatPlacementGateway? placementGateway = null) : IChatDataProvider
+        IChatPlacementGateway? placementGateway = null,
+        Func<string, Task<ChatAgentIdentity?>>? identityLoader = null) :
+        IChatDataProvider, IChatAgentIdentitySource
     {
         public IChatPlacementGateway? PlacementGateway => placementGateway;
         private ChatDataSnapshot? _snapshot;
@@ -3123,6 +3345,13 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         public List<(string ThreadId, string Message)> SentMessages { get; } = [];
         public (string ThreadId, string MessageId)? LastCanceledMessage { get; private set; }
         public string DisplayName => "Native component proof";
+        public List<string> AgentIdentityRequests { get; } = [];
+        public Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId)
+        {
+            AgentIdentityRequests.Add(agentId);
+            return identityLoader?.Invoke(agentId) ??
+                Task.FromResult<ChatAgentIdentity?>(new(agentId, "Assistant"));
+        }
         public string? SelectedModel { get; private set; }
         public int SetModelCalls { get; private set; }
         public int ClearModelCalls { get; private set; }
@@ -3301,5 +3530,21 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RespondToPermissionAsync(string threadId, string requestId, string action, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class MutableAgentRoster(ChatAgentPresentation? current) : IChatAgentRosterSource
+    {
+        private ChatAgentPresentation? _current = current;
+
+        public event EventHandler? AgentRosterChanged;
+
+        public ChatAgentPresentation? FindAgent(string agentId) =>
+            string.Equals(_current?.AgentId, agentId, StringComparison.Ordinal) ? _current : null;
+
+        public void Publish(ChatAgentPresentation? agent)
+        {
+            _current = agent;
+            AgentRosterChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

@@ -7,7 +7,7 @@
     xmlns:winex="using:WinUIEx"
     MinWidth="800" MinHeight="560">
     <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
-    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown">
+    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown" KeyDown="OnRootKeyDown">
         <Grid.Resources>
             <DataTemplate x:Key="AgentIdentityTemplate">
                 <controls:AgentIdentityBadge/>
@@ -69,27 +69,9 @@
                                 <FontIcon Glyph="&#xE721;" FontSize="16"/>
                                 <Button.Flyout>
                                     <Flyout x:Name="WorkspaceSearchFlyout" Placement="BottomEdgeAlignedLeft"
-                                            Opening="OnWorkspaceSearchOpening" Opened="OnWorkspaceSearchOpened">
-                                        <AutoSuggestBox x:Name="WorkspaceSearchBox"
-                                                        AutomationProperties.AutomationId="WorkspaceSearchBox"
-                                                        QueryIcon="Find" TextMemberPath="Title" Width="320"
-                                                        PreviewKeyDown="OnWorkspaceSearchKeyDown"
-                                                        TextChanged="OnWorkspaceSearchTextChanged"
-                                                        SuggestionChosen="OnWorkspaceSearchSuggestionChosen"
-                                                        QuerySubmitted="OnWorkspaceSearchQuerySubmitted">
-                                            <AutoSuggestBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <StackPanel Orientation="Horizontal" Spacing="8" Padding="4">
-                                                        <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
-                                                        <StackPanel>
-                                                            <TextBlock Text="{Binding Title}" Style="{StaticResource BodyTextBlockStyle}"/>
-                                                            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
-                                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </AutoSuggestBox.ItemTemplate>
-                                        </AutoSuggestBox>
+                                            Opening="OnWorkspaceSearchOpening" Opened="OnWorkspaceSearchOpened"
+                                            Closed="OnWorkspaceSearchClosed">
+                                        <controls:SearchHost x:Name="WorkspaceSearchHost"/>
                                     </Flyout>
                                 </Button.Flyout>
                             </Button>
@@ -199,18 +181,6 @@
                 <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
             </Grid>
         </NavigationView>
-        <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                AutomationProperties.AutomationId="WorkspaceTogglePane"
-                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
-            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-        </Button>
-        <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                AutomationProperties.AutomationId="WorkspaceReopenPane"
-                Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
-            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-        </Button>
         </Grid>
         <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
               AutomationProperties.AutomationId="WorkspaceSettingsHost">
@@ -219,6 +189,23 @@
             <InfoBar x:Name="EmbeddedOperationInfo" Canvas.ZIndex="1" IsOpen="False" IsClosable="True"
                      Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
                      AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
+        </Grid>
+        <!-- Opted-in page backdrops extend under this chrome; the pane buttons must stay above them. -->
+        <Grid x:Name="PaneToggleChrome" Grid.Row="1"
+              Visibility="{Binding Visibility, ElementName=NavigationSection}"
+              HorizontalAlignment="Left" VerticalAlignment="Top" Width="48" Height="56">
+            <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                    AutomationProperties.AutomationId="WorkspaceTogglePane"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                    Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+            </Button>
+            <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                    AutomationProperties.AutomationId="WorkspaceReopenPane"
+                    Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                    Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+            </Button>
         </Grid>
         <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">

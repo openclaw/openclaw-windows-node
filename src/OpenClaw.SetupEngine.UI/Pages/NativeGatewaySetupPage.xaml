@@ -53,7 +53,7 @@
             <StackPanel Spacing="16">
                 <StackPanel x:Name="StepsPanel" Spacing="0" />
                 <TextBlock x:Name="AcquisitionNotice" x:Uid="Onboarding_Native_ProgressDeadline"
-                           Text="Package installation and verification share a five-minute limit. Windows may finish deployment after cancellation. Retry checks registration again."
+                           Text="Package installation and verification share a 30-minute limit by default. Windows may finish deployment after cancellation. Retry checks registration again."
                            Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <TextBlock x:Name="StatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True"

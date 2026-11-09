@@ -33,8 +33,11 @@ internal sealed class FlyoutShowRequest
 
     public void ShowAt(FrameworkElement anchor)
     {
-        if (!_state.TryDefer()) _flyout.ShowAt(anchor);
+        if (!DeferUntilClosed()) _flyout.ShowAt(anchor);
     }
+
+    /// <summary>Queues this owner's replay when a caller is about to open another surface's flyout.</summary>
+    public bool DeferUntilClosed() => _state.TryDefer();
 
     /// <summary>Drops a queued reopen, for example when its section is hidden or closed.</summary>
     public void Cancel() => _state.Cancel();

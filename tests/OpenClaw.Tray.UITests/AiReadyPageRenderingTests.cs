@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
@@ -164,7 +165,7 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
-    public async Task VerifiedChooser_ShowsNativeChoicesWithoutIssuingOrFinalizing(ElementTheme theme)
+    public async Task VerifiedReadyPage_ShowsChatActionWithoutIssuingOrFinalizing(ElementTheme theme)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         using var temp = new TempDirectory("native-ready-proof-");
@@ -210,10 +211,10 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
                 // Synthetic verification exercises rendering, not a live Gateway or inference.
                 await window.ShowReadyAsync(route, CancellationToken.None);
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is AiReadyPage { IsLoaded: true },
-                    "native ready chooser mounted");
+                    "native ready page mounted");
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
-                var choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
-                Assert.Equal(Visibility.Collapsed, choices.Visibility);
+                var chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
+                Assert.Equal(Visibility.Collapsed, chatActionPanel.Visibility);
                 Assert.NotEqual("Your AI is ready", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
                 window.Invalidate();
                 var beforeConsumption = Assert.IsType<AiCompletionPage>(frame.Content);
@@ -224,25 +225,20 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
                     Assert.IsType<Button>(beforeConsumption.FindName("RetryButton")).Visibility);
                 await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 page = Assert.IsType<AiReadyPage>(frame.Content);
-                choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
+                chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
                 var root = Assert.IsType<SetupPageShell>(page.Content);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(Assert.IsType<Grid>(root.Content), theme);
                 window.CommitPresentation();
-                Assert.Equal(Visibility.Visible, choices.Visibility);
-                Assert.Equal(2, choices.Children.Count);
-                Assert.Equal(["Chat", "Channels"], choices.Children.Cast<FrameworkElement>().Select(item => item.Tag));
-                Assert.All(choices.Children, item => Assert.True(Assert.IsAssignableFrom<Control>(item).IsEnabled));
+                Assert.Equal(Visibility.Visible, chatActionPanel.Visibility);
+                var chatAction = Assert.IsType<SetupActionCard>(page.FindName("ChatAction"));
+                Assert.Same(chatAction, Assert.Single(chatActionPanel.Children));
+                Assert.True(chatAction.IsEnabled);
                 Assert.Null(page.FindName("SkipButton"));
                 Assert.Null(page.FindName("ReturnButton"));
                 Assert.Null(page.FindName("FinishButton"));
-                var badge = Assert.IsType<RecommendedBadge>(page.FindName("RecommendedBadge"));
-                Assert.Equal("Recommended", Assert.IsType<TextBlock>(badge.FindName("Label")).Text);
-                await TestSupport.WaitForRenderedConditionAsync(
-                    () => badge.IsLoaded && badge.ActualWidth > 0 && badge.ActualHeight > 0,
-                    "admitted Ready choices have completed layout");
-                Assert.True(badge.ActualWidth > 0 && badge.ActualHeight > 0);
-                Assert.Equal("Talk to my agent, recommended",
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(choices.Children[0]));
+                Assert.Null(page.FindName("RecommendedBadge"));
+                Assert.Equal("Talk to my agent",
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(chatAction));
                 Assert.False(Assert.IsType<InfoBar>(page.FindName("ErrorBar")).IsOpen);
                 Assert.False(Directory.Exists(Path.Combine(data, "setup-dashboard-handoff")));
                 Assert.False(File.Exists(Path.Combine(data, "settings.json")));
@@ -257,12 +253,12 @@ public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestO
                 if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                 {
                     using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-{theme}", output,
-                        ["Recommended", "Talk to my agent"], requiredContent: page)) { }
-                    foreach (var choice in choices.Children.Cast<Control>()) choice.IsEnabled = false;
-                    Assert.False(badge.IsEnabled);
+                        ["Talk to my agent"], requiredContent: page)) { }
+                    chatAction.IsEnabled = false;
+                    Assert.False(chatAction.IsEnabled);
                     using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-disabled-{theme}", output,
-                        ["Recommended", "Talk to my agent"], requiredContent: page)) { }
-                    foreach (var choice in choices.Children.Cast<Control>()) choice.IsEnabled = true;
+                        ["Talk to my agent"], requiredContent: page)) { }
+                    chatAction.IsEnabled = true;
                 }
                 window.Invalidate();
                 var failure = Assert.IsType<AiCompletionPage>(frame.Content);

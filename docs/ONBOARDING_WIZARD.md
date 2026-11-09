@@ -18,13 +18,15 @@ inputs, and exact activation verification retain their existing owners.
 dialog for every Gateway-supplied prompt kind. Its device-code treatment does
 not assume a provider, authorization URL, code or expiry.
 
-### Verified AI destination presentation
+### Verified AI completion presentation
 
 `AiReadyPage` uses the same responsive shell and canonical Ready milestone.
 The verified model summary comes from the current completion proof, never from
-design sample data. The three flat choices remain Chat, Channels and Skills.
-Selection still performs fresh, exact model and route verification through
-`SetupNativeCompletionCoordinator` before finalization or destination handoff.
+design sample data. The single flat action opens Chat for the verified agent.
+`SetupWindow` retains pre-restart finalization through `SetupCompletionPreparation`;
+`SetupNativeHandoffLauncher` verifies the restart preparation before mounting Ready.
+`SetupReadyCoordinator` rechecks the captured route before Chat navigation without
+repeating setup finalization.
 Loading feedback and the failure-only Back to AI setup action remain in the
 fixed footer. This page does not claim node pairing or command approval, and
 does not replace the separate legacy, failure or restart `CompletePage`.
@@ -37,7 +39,7 @@ timeline because these outcomes do not supply a Ready stage. The legacy summary
 uses flat rows; real setup errors, fallback retry, setup logs and Local AI server
 diagnostics remain visible and scrollable. Actions stay in the fixed footer.
 
-The restart state follows the restart design, not the verified AI chooser.
+The restart state follows the restart design, not the verified AI Chat action.
 It explains that Windows restarts the whole computer and asks the user to save
 work. Yes, restart now remains an explicit action through the existing launcher;
 No, I'm not ready yet still closes setup without restarting. Startup preference,
@@ -342,7 +344,7 @@ Retry and Cancel stay reachable in the fixed footer. Terminal status scrolls
 into view without animation. The existing installer/session owners retain
 acquisition, cancellation, retry and automatic AI handoff.
 Normal completion uses the same
-verified-model heading and two destination choices as WSL, without a native-only
+verified-model heading and single Chat action as WSL, without a native-only
 Gateway/capabilities summary. Gateway details and Windows permissions remain in
 their existing Connection and Permissions settings. AI readiness does not imply
 that a Windows node is paired or that command approvals have been granted.
@@ -381,7 +383,7 @@ The native path:
    Native console output and scoped terminal/restart/cancel recovery appear only
    for errors, skipped/unavailable console output or uncertain outcomes in the
    shared page/provider dialog. Healthy provider selection has no extra native controls.
-4. The verified chooser offers **Talk to my agent** and **Connect channels**.
+4. The verified chooser offers **Talk to my agent**.
    Choosing a destination rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
    After draining the operator, setup retains isolated stop ownership through
@@ -514,7 +516,7 @@ capabilities (`CapabilitiesPage`), alternative routes (`AdvancedSetupPage`),
 WSL review (`GatewaySetupPage`) and its details (`GatewaySetupDetailPage`),
 installation (`ProgressPage` and `NativeGatewaySetupPage`),
 native connection (`SetupNativeConnectionPage`), classic compatibility
-(`WizardPage`), AI setup (`AiSetupPage`), verified destinations (`AiReadyPage`)
+(`WizardPage`), AI setup (`AiSetupPage`), verified completion (`AiReadyPage`)
 and legacy completion (`CompletePage`) use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
@@ -570,30 +572,39 @@ completion coordinator. Its celebrating mascot and "Your AI is ready" heading
 follow real primary-model verification, not discovery or browser sign-in.
 Showing the page creates no pending handoff and performs no finalization.
 
-The final screen has exactly two choices: **Talk to my agent**, with a visible
-Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
-Telegram, and more).
-There are no bottom Return or Skip buttons; the canonical timeline remains. Selecting
-a card is the final action, with no extra Finish button. These are navigation
-choices, never automatic sign-in, channel configuration, or skill installation.
-Legacy WhatsApp/Telegram receipt destinations retain their numeric mappings and
-channel focus behavior, but are not separate choices on this screen.
+The final screen has one action: **Talk to my agent**, which opens Chat for the
+verified agent. There is no recommendation badge or prompt implying multiple
+destinations.
+There are no bottom Return or Skip buttons; the canonical timeline remain. Selecting
+a card is the final action, with no extra Finish button. This removes the new
+Channels and Skills setup destinations; ordinary Dashboard access from
+Connection settings and the tray remains unchanged. The Chat action does not
+sign in to channels, change channel configuration, or install skills.
+Already-issued WhatsApp, Telegram, and Channels receipts remain accepted until
+expiry and open the Gateway Dashboard's `channels` path. Retired Skills receipts
+are rejected; legacy receipts do not add options to this screen.
 
-Each explicit choice drains the prior AI page, rechecks the same Gateway,
-endpoint, agent, model and main session through bounded verification,
-then finalizes Windows choices once. The prior page drain has its own 30-second
-deadline. Fresh proof has a separate eight-minute ceiling at the default startup
-budget, allowing the native owner's 330-second reconnect budget, the existing 120-second exact-model
-RPC budget and authority-check overhead. Neither deadline runs across finalization
-or destination publication: those retain caller cancellation and their underlying
-operation budgets, without abandoning or automatically replaying mutations.
-Verification does not publish provider configuration or finalize setup, but its
-authorization may start the selected owned Gateway and roll that start back.
-Failures stay on the chooser with retry or
-return-to-AI guidance. **Back to AI setup** is available only inside the error
-message, so changed verification has an actionable recovery without a permanent
-footer escape. Returning invalidates its admission and requires another
-verification. MCP-only/deferred routes do not claim verified AI.
+Before restart, `SetupWindow`'s `SetupCompletionPreparation` drains the AI page,
+verifies the same Gateway, endpoint, agent, model, and main session, finalizes
+Windows choices once, and publishes a restart preparation. After restart,
+`SetupNativeHandoffLauncher` re-verifies that preparation and mounts the Ready
+window. Choosing Chat then rechecks the captured Gateway, agent, and session
+binding before opening native Chat; it does not repeat setup finalization.
+
+The prior-page drain has its own 30-second deadline. Pre-restart verification
+has a separate deadline of one native connection budget plus model verification,
+eight minutes at the default 330-second connection and 150-second verification
+budgets. Finalization and restart publication use their owning operation and
+once-only protections, not those verification deadlines. Post-restart
+verification may start the selected owned Gateway and roll back that start on
+failure.
+
+Preparation failures remain on the completion page with retry or return-to-AI
+guidance. **Back to AI setup** is available only inside the error message;
+returning invalidates the preparation and requires verification again.
+Post-restart connection failures retain the receipt only for explicit retry,
+while changed ownership consumes it. MCP-only/deferred routes do not claim
+verified AI.
 
 ### Native startup and completion deadlines
 
@@ -686,7 +697,7 @@ Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery
 model verification, or native startup). The aggregate pre-publication verification
 deadline uses neutral readiness guidance because it includes both connection and model
 work; it does not incorrectly attribute a connection stall to model inference.
-The chooser displays localized phase-specific
+The finishing and Ready pages display localized phase-specific
 guidance and local diagnostics record only the phase/type, never raw package output,
 model content or credentials.
 
@@ -827,12 +838,13 @@ An invalid regular `restart.json` is rechecked and removed under its writer leas
 before reporting the error once. A newer valid handle, other handoff files and
 reparse paths are never removed by this recovery cleanup.
 
-After restart, native launch re-verifies ownership before mounting Chat
-or Channels. Legacy targeted Channels uses a fresh response from the bound Gateway,
-never generic fallback rows as evidence of support. Missing authoritative
-metadata produces an unconfirmed/retry state; an offered-channel list that
-omits the target produces an unavailable state. Native Chat selects the verified
-session without changing the user's persistent chat-surface preference.
+After restart, native launch re-verifies ownership before mounting Chat for new
+completion handoffs. Already-issued WhatsApp, Telegram, and Channels receipts
+remain supported until expiry and open the Gateway dashboard without starting
+authentication or changing channel configuration. Retired Skills receipts are
+rejected. Failed browser launches retain the handoff for explicit retry.
+Native Chat selects the verified session without changing the user's persistent
+chat-surface preference.
 
 On first launch, the wizard appears only when there is no usable saved gateway connection. Users with existing gateways manage connections from the tray app's Connections tab. The local WSL setup affordance in Connections is shown only when setup has not already created an app-owned WSL gateway on this device.
 
@@ -842,8 +854,8 @@ The setup flow walks users through:
 2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
 3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Gateway-installation disclosure, Windows-access advisory panel, or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
-5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same two destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
-6. **Completion** - Both verified focused AI flows open Chat or Channels. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
+5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same Chat-only completion. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
+6. **Completion** - Both verified focused AI flows open native Chat. Already-issued WhatsApp, Telegram, and Channels receipts remain accepted until expiry and open the Gateway Dashboard's `channels` path; retired Skills receipts are rejected. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
 
 `SetupWindow` owns one `SetupAccessDraft` over the same `SetupConfig` for the
 entire flow. The native connection contract separates verify-only **Check** from
@@ -854,7 +866,7 @@ Existing/Remote then review capabilities and enter focused AI setup
 using the committed registry. They never run WSL workspace finalization.
 MCP-only/Deferred persist reviewed settings/startup and complete without AI or
 WSL. MCP-only opens Companion Settings; deferred setup opens Connection settings.
-Verified focused AI routes use the native chooser. `AdvancedSetupRequested` is only the explicit classic Settings fallback,
+Verified focused AI routes use the native Chat action. `AdvancedSetupRequested` is only the explicit classic Settings fallback,
 not the normal native route. Connection verification, credentials and commit
 remain native host responsibilities. Progress indicators
 come from `OnboardingFlowPolicy`, not a fixed six-page count. Local AI recovery
@@ -873,7 +885,8 @@ form **Set up**; AiSetup forms **Connect your AI**; Ready forms **Start chatting
 Groups absent from the selected route are omitted, including AI/chat for
 MCP-only and deferred routes. Current/completed labels derive from the supplied
 stage position, not a second completion model. The accessible progress
-announcement retains the underlying stage count rather than the milestone count.
+announcement uses the grouped milestone position and count, matching the visible
+rail (for example, four milestones for managed WSL and native setup).
 The dot indicator remains a separate `SetupProgressIndicator` component.
 Both satisfy `ISetupProgressIndicator`, so the host supplies the same route
 without knowing their layouts. The Gateway chooser, capabilities and alternative
@@ -900,6 +913,10 @@ and unload settle the indicator immediately. Repeated identical updates do
 not restart the transition. Unload releases composition glow resources and
 Windows preference subscriptions. `SetupStepIndicatorTests` covers both
 supplied states, generic reuse, wrapping, invalid-input atomicity and lifecycle.
+`OnboardingWindowsFlowTests.ManagedFlow_NavigationAnimatesTheNewMilestoneWithoutRecreatingItsRows`
+exercises the actual capabilities-to-review navigation and observes the new
+page's finite transition, grouped announcement and stable rows after refresh.
+It reviews synthetic inspection facts without installing a Gateway.
 
 `SetupWelcomeShellTests` covers native default/minimum reachability, stable
 controls and focus across layout thresholds, route-specific milestones, legacy
@@ -1139,7 +1156,7 @@ individual tools use flat, divided native rows. Compact windows scroll the
 mounted content while Back and the route-specific primary action remain fixed.
 Native installation disclosure and independent transport, sharing and startup
 choices remain on this page.
-Gateway choices, the Balanced preset and the final Chat choice share the
+Gateway choices and the Balanced preset share the
 `RecommendedBadge` control: a localized caption with an accent outline, 8 px
 horizontal and 4 px vertical padding, and disabled-state brushes inherited from
 the choice's enabled state. The Balanced label has no parenthetical suffix;
@@ -1453,9 +1470,11 @@ not guess that reference from a catalog ID. Cancellation or an uncertain reply
 does not replay a mutation. Insufficient operator scopes remain an explicit
 error, not a reason to fall back or use node credentials.
 
-After verification, the native chooser finalizes Windows-node workspace guidance
-and the reviewed startup preference before restart. Dashboard management remains
-in Connection settings and the tray menu, not above Workspace chat. Windows
+After verification, `SetupWindow` finalizes applicable Windows-node workspace
+guidance and the reviewed startup preference before restart through
+`SetupCompletionPreparation`. The post-restart Chat action never repeats
+finalization. Dashboard management remains in Connection settings and the tray
+menu, not above Workspace chat. Windows
 capability consent remains in native Permissions, not in the web dashboard.
 
 ### Classic OpenClaw onboard (compatibility)
@@ -1623,7 +1642,7 @@ clean directory and checks every setup asset, including nested SVGs and notices.
 
 Run the repository-required build, Shared and Tray suites, plus
 `OpenClaw.SetupEngine.Tests` for the flow and AI protocol contracts.
-`AiReadyPageRenderingTests` covers the two destinations and isolated startup.
+`AiReadyPageRenderingTests` covers the Chat-only action and isolated startup.
 `ApprovedMock_FivePagesAndProviderPopup_LightAndDark` provides an opt-in native
 comparison without installation. Building fixtures alone is not rendered proof;
 high contrast and Windows text scaling need authorized visible validation.

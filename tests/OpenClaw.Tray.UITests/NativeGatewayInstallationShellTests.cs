@@ -89,7 +89,7 @@ public sealed class NativeGatewayInstallationShellTests(UIThreadFixture ui)
             Assert.Equal("Step 2 of 4", AutomationProperties.GetName(rail));
             Assert.Equal(0, shell.Scroller.ScrollableWidth);
             var notice = Find<TextBlock>(page, "AcquisitionNotice");
-            Assert.Contains("five-minute limit", notice.Text);
+            Assert.Contains("30-minute limit by default", notice.Text);
             Assert.Contains("Windows may finish deployment after cancellation", notice.Text);
             Assert.Contains("Retry checks registration again", notice.Text);
             var rows = Find<StackPanel>(page, "StepsPanel").Children.Cast<SettingsCard>().ToArray();

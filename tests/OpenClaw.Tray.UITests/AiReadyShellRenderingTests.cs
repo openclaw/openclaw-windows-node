@@ -1,5 +1,4 @@
 using System.Reflection;
-using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -16,7 +15,7 @@ public sealed partial class AiReadyPageRenderingTests
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
-    public async Task ReadyShell_ChoicesLoadingAndFailureStayReachableAcrossBreakpoints(ElementTheme theme)
+    public async Task ReadyShell_ChatActionLoadingAndFailureStayReachableAcrossBreakpoints(ElementTheme theme)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -32,9 +31,9 @@ public sealed partial class AiReadyPageRenderingTests
                 ui.Container.Children.Add(page);
                 await TestSupport.WaitForRenderedConditionAsync(() => page.IsLoaded, "ready shell mounted");
                 var shell = Assert.IsType<SetupPageShell>(page.FindName("ReadyShell"));
-                var choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
-                var chat = Assert.IsType<SetupActionCard>(page.FindName("ChatChoice"));
-                page.AdmitChoices();
+                var chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
+                var chat = Assert.IsType<SetupActionCard>(page.FindName("ChatAction"));
+                page.AdmitChatAction();
                 var model = Assert.IsType<TextBlock>(page.FindName("ModelSummary"));
                 model.Text = "Synthetic verified model " + new string('m', 150);
                 var timeline = Assert.IsType<SetupStepIndicator>(page.FindName("FlowProgress"));
@@ -43,8 +42,10 @@ public sealed partial class AiReadyPageRenderingTests
                 var error = Assert.IsType<InfoBar>(page.FindName("ErrorBar"));
                 var recovery = Assert.IsType<Button>(page.FindName("RecoveryButton"));
                 Assert.Equal(Visibility.Collapsed, recovery.Visibility);
-                Assert.Equal(["Chat", "Channels"],
-                    choices.Children.Cast<FrameworkElement>().Select(choice => choice.Tag));
+                Assert.Same(chat, Assert.Single(chatActionPanel.Children));
+                Assert.Null(page.FindName("ChannelsChoice"));
+                Assert.Null(page.FindName("Prompt"));
+                Assert.Null(page.FindName("RecommendedBadge"));
                 Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(
                     Assert.IsType<TextBlock>(page.FindName("Heading"))));
                 Assert.True(chat.Focus(FocusState.Keyboard));
@@ -61,9 +62,8 @@ public sealed partial class AiReadyPageRenderingTests
                     shell.Scroller.ChangeView(null, shell.Scroller.ScrollableHeight, null, true);
                     await TestSupport.WaitForRenderedConditionAsync(
                         () => Math.Abs(shell.Scroller.VerticalOffset - shell.Scroller.ScrollableHeight) < 0.5,
-                        "ready choice viewport");
-                    OnboardingNativeProof.AssertFullyVisible(
-                        Assert.IsType<SetupActionCard>(page.FindName("ChannelsChoice")), shell.Scroller);
+                        "ready Chat action viewport");
+                    OnboardingNativeProof.AssertFullyVisible(chat, shell.Scroller);
                     error.Message = string.Join(" ", Enumerable.Repeat("Synthetic verification failed. Retry or return to AI setup.", 8));
                     page.ShowInvalidated();
                     page.UpdateLayout();
@@ -72,14 +72,14 @@ public sealed partial class AiReadyPageRenderingTests
                     OnboardingNativeProof.AssertFullyVisible(recovery, shell);
                     var busy = typeof(AiReadyPage).GetMethod("SetBusy", BindingFlags.Instance | BindingFlags.NonPublic)!;
                     busy.Invoke(page, [true]);
-                    Assert.All(choices.Children, choice => Assert.False(Assert.IsAssignableFrom<Control>(choice).IsEnabled));
+                    Assert.False(chat.IsEnabled);
                     Assert.False(recovery.IsEnabled);
                     Assert.Equal(Visibility.Visible, Assert.IsType<ProgressBar>(page.FindName("BusyProgress")).Visibility);
                     busy.Invoke(page, [false]);
-                    Assert.All(choices.Children, choice => Assert.True(Assert.IsAssignableFrom<Control>(choice).IsEnabled));
+                    Assert.True(chat.IsEnabled);
                     error.IsOpen = false;
                     recovery.Visibility = Visibility.Collapsed;
-                    page.AdmitChoices();
+                    page.AdmitChatAction();
                     chat.Focus(FocusState.Keyboard);
                 }
                 Assert.Null(page.FindName("FinishButton"));

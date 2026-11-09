@@ -54,6 +54,18 @@ public sealed class FluentIconCatalogTests
     }
 
     [Fact]
+    public void PureTestGlyphConstantsMatchTheProductionCatalog()
+    {
+        var actual = ParseConstants(ReadCatalogSource());
+        foreach (var field in typeof(OpenClawTray.Helpers.FluentIconCatalog)
+            .GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            if (!field.IsLiteral || field.FieldType != typeof(string)) continue;
+            Assert.Equal(actual[field.Name], (string)field.GetRawConstantValue()!);
+        }
+    }
+
+    [Fact]
     public void StrictPreset_UsesPublishedLockGlyph()
     {
         Assert.Equal("\uE72E", ParseConstants(ReadCatalogSource())["SandboxStrict"]);

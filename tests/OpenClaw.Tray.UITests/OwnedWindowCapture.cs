@@ -12,8 +12,12 @@ namespace OpenClaw.Tray.UITests;
 internal static class OwnedWindowCapture
 {
     internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
-        params AutomationElement[] assertedElements)
+        params AutomationElement[] assertedElements) => Save(run, window, name, CancellationToken.None, assertedElements);
+
+    internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
+        CancellationToken cancellationToken, params AutomationElement[] assertedElements)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         run.EnsureRunning();
         var handle = new IntPtr(window.Current.NativeWindowHandle);
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
@@ -53,6 +57,9 @@ internal static class OwnedWindowCapture
                 for (var x = 20; x < image.Width - 20; x += Math.Max(1, image.Width / 100))
                     colors.Add(image.GetPixel(x, y).ToArgb());
             Assert.True(colors.Count >= 16, $"Rejected blank native content ({colors.Count} sampled colors).");
+            // A timed-out PrintWindow can return after owned termination. Do not publish
+            // its late image. The failure owner also joins this worker before disposal.
+            cancellationToken.ThrowIfCancellationRequested();
             var path = Path.Combine(run.ArtifactsDirectory, name);
             image.Save(path, ImageFormat.Png);
             File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonSerializer.Serialize(new

@@ -152,16 +152,37 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
                     new System.Windows.Automation.PropertyCondition(
                         System.Windows.Automation.AutomationElement.AutomationIdProperty, "ChoiceActionCard"));
                 Assert.NotNull(target);
+                var runtimeId = target.GetRuntimeId();
                 if (disabled)
                 {
+                    Assert.False(target.Current.IsEnabled);
                     var invoke = Assert.IsType<System.Windows.Automation.InvokePattern>(
                         target.GetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern));
-                    var error = Assert.Throws<System.Runtime.InteropServices.COMException>(invoke.Invoke);
-                    Assert.Equal(unchecked((int)0x802B001E), error.HResult); // WinUI E_ELEMENTNOTENABLED
+                    // A reused UIA worker can carry unrelated IErrorInfo. The disabled HRESULT
+                    // must be recognized by UIA itself, not mapped through that stale error.
+                    System.Runtime.InteropServices.Marshal.GetHRForException(
+                        new System.Windows.Automation.ElementNotAvailableException());
+                    try
+                    {
+                        var error = Assert.Throws<System.Windows.Automation.ElementNotEnabledException>(invoke.Invoke);
+                        Assert.Equal(unchecked((int)0x80040200), error.HResult); // UIA_E_ELEMENTNOTENABLED
+                        Assert.False(target.Current.IsEnabled);
+                    }
+                    finally
+                    {
+                        // Consume any injected IErrorInfo before returning this worker to the pool.
+                        _ = System.Runtime.InteropServices.Marshal.GetExceptionForHR(unchecked((int)0x80004005));
+                    }
                 }
                 else
                     Assert.False(target.TryGetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern, out _));
+                Assert.Equal(runtimeId, target.GetRuntimeId());
             });
+            await ui.YieldToRenderAsync();
+            Assert.Same(card, Assert.Single(TestSupport.FindDescendants<SetupActionCard>(choices)));
+            Assert.True(card.IsLoaded);
+            Assert.NotNull(page.XamlRoot);
+            Assert.Same(page.XamlRoot, card.XamlRoot);
             Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
             Assert.Equal(0, completed());
         });

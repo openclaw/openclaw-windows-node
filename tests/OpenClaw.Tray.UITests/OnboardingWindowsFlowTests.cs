@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Microsoft.Windows.ApplicationModel.Resources;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
@@ -507,6 +508,72 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             review = await MountedPageAsync<GatewaySetupPage>(window, frame);
             Assert.False(Find<ToggleSwitch>(review, "StartupPreferenceToggle").IsOn);
             AssertReviewReplacement(review);
+        });
+    }
+
+    [Fact]
+    public async Task ManagedFlow_NavigationAnimatesTheNewMilestoneWithoutRecreatingItsRows()
+    {
+        await WithWindowAsync(async (window, frame, data) =>
+        {
+            // Only review synthetic inspection facts. Never invoke installation.
+            RecordInspection(window.AccessDraft, replacement: true);
+            window.NavigateToCapabilities();
+            var capabilities = await MountedPageAsync<CapabilitiesPage>(window, frame);
+            AssertProgress(capabilities, milestoneCount: 4, currentMilestone: 0);
+            var previous = Find<SetupStepIndicator>(capabilities, "FlowProgress");
+            var observed = false;
+            var animated = false;
+            var uiSettings = new global::Windows.UI.ViewManagement.UISettings();
+            void ObserveTransition(object? sender, object args)
+            {
+                if (frame.Content is not GatewaySetupPage { IsLoaded: true } page)
+                    return;
+                var timeline = Find<SetupStepIndicator>(page, "FlowProgress");
+                var dots = TestSupport.FindDescendants<Ellipse>(timeline)
+                    .Where(element => element.Name == "CurrentDot").ToArray();
+                if (dots.Length != 4 || dots[1].Visibility != Visibility.Visible)
+                    return;
+                var scale = Assert.IsType<ScaleTransform>(dots[1].RenderTransform).ScaleX;
+                animated |= scale > 1;
+                if (animated || !uiSettings.AnimationsEnabled)
+                    observed = true;
+            }
+
+            // Observe from navigation onward, before an awaited mount can miss the finite pop.
+            CompositionTarget.Rendering += ObserveTransition;
+            try
+            {
+                Invoke(FooterButton(capabilities, next: true));
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                {
+                    ObserveTransition(null, EventArgs.Empty);
+                    return observed;
+                }, "real page navigation starts the next milestone transition");
+                var review = await MountedPageAsync<GatewaySetupPage>(window, frame);
+                var timeline = Find<SetupStepIndicator>(review, "FlowProgress");
+                Assert.NotSame(previous, timeline);
+                AssertProgress(review, milestoneCount: 4, currentMilestone: 1);
+                if (uiSettings.AnimationsEnabled)
+                    Assert.True(animated, "Real page navigation must transfer the previous milestone to the newly mounted timeline.");
+                var titles = TestSupport.FindDescendants<TextBlock>(timeline)
+                    .Where(element => element.Name == "StepTitle").ToArray();
+                Assert.Equal("Choose your PC tools, completed", AutomationProperties.GetName(titles[0]));
+                Assert.Equal("Set up, current step", AutomationProperties.GetName(titles[1]));
+                var current = TestSupport.FindDescendants<Ellipse>(timeline)
+                    .Where(element => element.Name == "CurrentDot").ElementAt(1);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => Assert.IsType<ScaleTransform>(current.RenderTransform).ScaleX == 1,
+                    "new page milestone transition settles");
+                window.RefreshFlowProgress();
+                await ui.YieldToRenderAsync();
+                Assert.Same(titles[1], TestSupport.FindDescendants<TextBlock>(timeline)
+                    .Single(element => element.Name == "StepTitle" && element.Text == "Set up"));
+                Assert.Equal(1, Assert.IsType<ScaleTransform>(current.RenderTransform).ScaleX);
+                Assert.False(File.Exists(Path.Combine(data, "settings.json")));
+                Assert.False(File.Exists(Path.Combine(data, "gateways.json")));
+            }
+            finally { CompositionTarget.Rendering -= ObserveTransition; }
         });
     }
 

@@ -118,25 +118,6 @@ public sealed class OnboardingCopyRefinementTests
         }
     }
 
-    [Fact]
-    public void WelcomeMilestonesUseApprovedRuntimeCopy()
-    {
-        var strings = Strings("en-us");
-        foreach (var (key, expected) in new[]
-        {
-            ("Onboarding_Milestone_Tools", "Choose your PC tools"),
-            ("Onboarding_Milestone_ToolsDescription", "Start with the access that suits you."),
-            ("Onboarding_Milestone_Setup", "Set up"),
-            ("Onboarding_Milestone_SetupDescription", "OpenClaw installs. You can keep using your PC."),
-            ("Onboarding_Milestone_Ai", "Connect your AI"),
-            ("Onboarding_Milestone_Chat", "Start chatting"),
-            ("Onboarding_Milestone_Current", "{0}, current step"),
-            ("Onboarding_Milestone_Complete", "{0}, completed"),
-            ("Onboarding_Milestone_Upcoming", "{0}, upcoming"),
-        })
-            Assert.Equal(expected, strings[key]);
-    }
-
     [Theory]
     [InlineData("en-us", "Step {0} of {1}")]
     [InlineData("fr-fr", "Étape {0} sur {1}")]

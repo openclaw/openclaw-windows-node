@@ -70,6 +70,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
     private TaskCompletionSource? _sessionListCaptured;
+    private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -463,6 +464,21 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    public void OverrideSearchRead(string method, Func<JsonElement, object> response)
+    {
+        if (method is not ("skills.status" or "sessions.search" or "sessions.list"))
+            throw new ArgumentException("Only search reads may be overridden.", nameof(method));
+        lock (_sync) _readResponses[method] = response;
+    }
+
+    public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
+        throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
+
+    public void ClearSearchReadOverride(string method)
+    {
+        lock (_sync) _readResponses.Remove(method);
+    }
+
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
     public Task ReleaseHistoryAsync(string sessionKey)
     {
@@ -519,6 +535,23 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             }
             await changed.WaitAsync(wait.Token);
         }
+    }
+
+    /// <summary>One canonical top-level exec request for the read-only Inbox scenario.
+    /// The authenticated transport is unchanged. This never issues a resolvable approval ID.</summary>
+    public async Task PublishInboxFeedApprovalAsync(CancellationToken cancellationToken = default)
+    {
+        var targets = AcquireConnections(onlyOpen: true);
+        try
+        {
+            if (targets.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
+            var payload = _scenario.CreateInboxLiveApproval();
+            await PublishEventAsync(targets, new { type = "event", @event = "exec.approval.requested", payload }, cancellationToken);
+            // PublishEventAsync returns after the first successful send, not a broadcast.
+            lock (_sync) _events.Add(new GatewayFixtureEvent("exec.approval.requested", 1));
+        }
+        finally { ReleaseConnections(targets); }
     }
 
     public async Task PublishAgentEventAsync(
@@ -854,6 +887,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
+                Func<JsonElement, object>? readResponse;
+                lock (_sync) _readResponses.TryGetValue(method, out readResponse);
+                if (method == "sessions.list" && !id.StartsWith("search:", StringComparison.Ordinal))
+                    readResponse = null;
                 JsonElement? agentsRoster;
                 bool agentsListUnsupported;
                 lock (_sync)
@@ -863,7 +900,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 }
                 if (agentsListUnsupported)
                     throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
-                payload = agentsRoster is { } roster ? roster
+                payload = readResponse is not null ? readResponse(parameters)
+                    : agentsRoster is { } roster ? roster
                     : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,

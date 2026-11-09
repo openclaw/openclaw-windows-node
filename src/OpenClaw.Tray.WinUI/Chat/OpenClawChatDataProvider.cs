@@ -42,6 +42,38 @@ internal static class LocalizationHelper
 }
 #endif
 
+/// <summary>Loads the Gateway-resolved identity (agent.identity.get) for one agent.</summary>
+public interface IChatAgentIdentitySource
+{
+    Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId);
+}
+
+/// <summary>Provides the current Workspace presentation for a Gateway roster agent.</summary>
+public interface IChatAgentRosterSource
+{
+    event EventHandler? AgentRosterChanged;
+
+    ChatAgentPresentation? FindAgent(string agentId);
+}
+
+/// <summary>The display identity already composed from the current Gateway roster and resolved identity.</summary>
+public sealed record ChatAgentPresentation(
+    string AgentId,
+    string Name,
+    string? AvatarUrl = null,
+    string? Emoji = null,
+    long Revision = 0)
+{
+    internal ChatAgentIdentity ToChatAgentIdentity() => new(AgentId, Name, AvatarUrl, Emoji);
+}
+
+/// <summary>Gateway identity for one agent. Absent values let the roster or generated face decide.</summary>
+public sealed record ChatAgentIdentity(
+    string AgentId,
+    string? DisplayName = null,
+    string? AvatarUrl = null,
+    string? Emoji = null);
+
 /// <summary>
 /// Adapts <see cref="IChatGatewayBridge"/> (which wraps a live
 /// <see cref="OpenClawGatewayClient"/>) into the
@@ -74,7 +106,7 @@ internal static class LocalizationHelper
 /// subsequent <see cref="SendMessageAsync"/> calls.
 /// </para>
 /// </remarks>
-public sealed class OpenClawChatDataProvider : IChatDataProvider
+public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIdentitySource
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
@@ -87,6 +119,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     internal ChatQuestionCoordinator? Questions { get; }
     private readonly Action<Action>? _post;
     private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
+    private readonly Func<Func<Task>, Task> _queueDrainScheduler;
     private readonly object _publishGate = new();
     private readonly Dictionary<int, int> _deliveryDepthByThread = [];
     private readonly ManualResetEventSlim _disposeCompleted = new();
@@ -102,6 +135,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     public string DisplayName => "OpenClaw gateway";
     public IChatPlacementGateway? PlacementGateway => _bridge.PlacementGateway;
+
+    public async Task<ChatAgentIdentity?> LoadAgentIdentityAsync(string agentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentId);
+        var response = await _bridge.RequestAgentIdentityAsync(agentId).ConfigureAwait(false);
+        return ChatWelcomePresentation.ParseAgentIdentity(agentId, response);
+    }
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
@@ -154,7 +194,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
         Action? historyFailureReservedForTesting = null,
         Func<Func<Task>, Task>? deferredAbortScheduler = null,
-        TimeProvider? throughputTimeProvider = null)
+        TimeProvider? throughputTimeProvider = null,
+        Func<Func<Task>, Task>? queueDrainScheduler = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         Questions = bridge is IChatQuestionGateway questionGateway
@@ -163,6 +204,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _throughput = new ChatThroughputTracker(throughputTimeProvider ?? TimeProvider.System);
         _deferredAbortScheduler =
             deferredAbortScheduler ?? (work => Task.Run(work));
+        // Only the scheduling boundary is injectable; delay, admission and commits retain their owners.
+        _queueDrainScheduler = queueDrainScheduler ?? (work => Task.Run(work));
         _metadataStore = new ChatMetadataStore(
             toolMetaCacheFilePath,
             attachmentMetaCacheFilePath);
@@ -341,7 +384,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             DateTimeOffset.UtcNow,
             ProjectionContext());
         Publish(snapshot);
-        TryDispatchNextQueuedSend(threadId);
+        _ = TryDispatchNextQueuedSend(threadId);
         return Task.FromResult(true);
     }
 
@@ -469,7 +512,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (preparation.Snapshot is not null)
                 {
                     Publish(preparation.Snapshot);
-                    TryDispatchNextQueuedSend(threadId);
+                    _ = TryDispatchNextQueuedSend(threadId);
                 }
                 return false;
             }
@@ -554,7 +597,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 }
             }
             if (!commit.IsCurrent && commit.AcceptedSnapshot is not null)
-                TryDispatchNextQueuedSend(threadId);
+                _ = TryDispatchNextQueuedSend(threadId);
 
             if (hasAttachments && commit.IsCurrent)
             {
@@ -591,7 +634,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (failure.Snapshot is not null)
                 {
                     Publish(failure.Snapshot);
-                    TryDispatchNextQueuedSend(threadId);
+                    _ = TryDispatchNextQueuedSend(threadId);
                 }
 
                 // The task completes so a reset does not surface as an error.
@@ -617,7 +660,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     LocalizationHelper.GetString(
                         "Chat_Notification_SendFailed"),
                     ex.Message));
-            TryDispatchNextQueuedSend(threadId);
+            _ = TryDispatchNextQueuedSend(threadId);
             if (rethrow)
                 throw;
             return false;
@@ -668,7 +711,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Publish(completion.Snapshot);
         if (result.Succeeded && command == ChatLifecycleCommandKind.Compact)
             _ = LoadHistoryAsync(threadId, force: true, authoritative: true);
-        TryDispatchNextQueuedSend(threadId);
+        _ = TryDispatchNextQueuedSend(threadId);
     }
 
     private static ChatAdmissionTelemetryStatus ToTelemetryAdmissionStatus(
@@ -1205,7 +1248,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         foreach (var threadId in transition.QueuedThreadsToDrain)
         {
-            TryDispatchNextQueuedSend(threadId);
+            _ = TryDispatchNextQueuedSend(threadId);
         }
     }
 
@@ -1822,7 +1865,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             $"(reason='{ChatTelemetryTracker.ToTelemetryValue(reason)}').");
     }
 
-    private void TryDispatchNextQueuedSend(string threadId)
+    private Task TryDispatchNextQueuedSend(string threadId)
     {
         var start = _state.TryStartNextQueuedSend(
             threadId,
@@ -1839,12 +1882,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (start.Snapshot is not null)
             Publish(start.Snapshot);
         if (dispatch is not null)
-            _ = DispatchQueuedSendAsync(
+            return DispatchQueuedSendAsync(
                 dispatch,
                 queueCompletion,
                 rethrow: false);
         else if (start.DelayedRetry is { } delay)
             ScheduleQueuedSendDrain(threadId, delay);
+        return Task.CompletedTask;
     }
 
     private void ScheduleQueuedSendDrain(string threadId)
@@ -1855,7 +1899,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (!_state.TryScheduleQueueDrain(threadId))
             return;
 
-        _ = Task.Run(async () =>
+        _ = _queueDrainScheduler(async () =>
         {
             try
             {
@@ -1868,7 +1912,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
             try
             {
-                TryDispatchNextQueuedSend(threadId);
+                await TryDispatchNextQueuedSend(threadId).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

@@ -33,33 +33,27 @@
                           Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
                           AutomationProperties.AccessibilityView="Raw" />
                 </Grid>
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking" HorizontalAlignment="Center" />
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking" HorizontalAlignment="Center" />
                 <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" HorizontalAlignment="Stretch" />
             </StackPanel>
         </controls:SetupPageShell.Hero>
         <controls:SetupPageShell.Header>
-        <StackPanel Spacing="12">
-            <TextBlock x:Name="Heading" Text="Finishing setup"
-                       FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
-                       AutomationProperties.HeadingLevel="Level1" TextAlignment="Left" TextWrapping="Wrap" />
-            <TextBlock x:Name="Prompt"
-                       FontFamily="Segoe UI Variable" FontSize="18" TextAlignment="Left" TextWrapping="Wrap"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <TextBlock x:Name="ModelSummary" Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Left" TextWrapping="Wrap" />
-        </StackPanel>
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="Heading" Text="Finishing setup"
+                           FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level1" TextAlignment="Left" TextWrapping="Wrap" />
+                <TextBlock x:Name="ModelSummary" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Left" TextWrapping="Wrap" />
+            </StackPanel>
         </controls:SetupPageShell.Header>
         <controls:SetupPageShell.Body>
             <StackPanel Spacing="8">
                 <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
-                <StackPanel x:Name="Choices" Spacing="0" Visibility="Collapsed">
-                    <controls:SetupActionCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
-                                     Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" InvokeRequested="Choose_Click"
-                                     Style="{StaticResource ReadyChoice}" AutomationProperties.Name="Talk to my agent, recommended">
-                        <controls:RecommendedBadge x:Name="RecommendedBadge" />
-                    </controls:SetupActionCard>
-                    <controls:SetupActionCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels" Style="{StaticResource ReadyChoice}"
-                                     Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" InvokeRequested="Choose_Click" />
+                <StackPanel x:Name="ChatActionPanel" Spacing="8" Visibility="Collapsed">
+                    <controls:SetupActionCard x:Name="ChatAction" x:Uid="Onboarding_Ready_Chat"
+                                              AutomationProperties.Name="Talk to my agent" Header="Talk to my agent"
+                                              Description="Open Chat with your agent." IsClickEnabled="True"
+                                              Style="{StaticResource ReadyChoice}" InvokeRequested="OpenChat_Click" />
                 </StackPanel>
             </StackPanel>
         </controls:SetupPageShell.Body>

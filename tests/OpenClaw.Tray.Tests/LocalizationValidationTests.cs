@@ -84,6 +84,10 @@ public class LocalizationValidationTests
         // Punctuation-only layout format; localized parts are supplied by
         // separate placeholders and should keep the same visual separator.
         "ConfigPage_AccessSummaryFormat",
+        // Inbox layout formats: a localized label/title plus a count or state
+        // supplied by separate, already localized placeholders.
+        "Inbox_TabCountFormat",
+        "Inbox_RowAutomationNameFormat",
         // NodesPage detail labels — "Version", "Hardware", and "PATH" are
         // technical loanwords that read the same in every supported locale
         // in this app's audience. Translating them adds no clarity and
@@ -116,11 +120,9 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_NodeStatus_Disabled",
-        // About / Gateway info strings added as part of the Windows-native
-        // settings reorg are seeded in English across locales until the next
-        // translation pass lands. They are still present in every locale file
-        // so key parity stays strict; this set only documents deferred copy.
-        "SettingsPage_About.Text",
+        // Gateway info strings remain seeded in English across locales until
+        // the next translation pass; they are still present everywhere so
+        // resource-key parity remains strict.
         "SettingsPage_GatewayInfoExpander.Header",
         "SettingsPage_GatewayInfoLabel_Version.Text",
         "SettingsPage_GatewayInfoLabel_Protocol.Text",
@@ -265,8 +267,8 @@ public class LocalizationValidationTests
         "ConfigPage_ConfigIsReadOnly",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
-        // same deferred-translation pattern as the AgentEventsPage
-        // / CronPage entries above. The Description_Format key takes the WSL
+        // same deferred-translation pattern as the CronPage entries above.
+        // The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
         "ConnectionPage_GatewayHostControlsDescription_Format",
         // GatewayHostAccess plan strings (terminal label / tooltip / disabled
@@ -285,8 +287,6 @@ public class LocalizationValidationTests
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
-        "Command_GoToAgentEvents_Title",
-        "Command_GoToAgentEvents_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -626,21 +626,19 @@ public class LocalizationValidationTests
     private static bool IsInvariantOrDeferred(string key, string value) =>
         InvariantOrDeferredResourceKeys.Contains(key)
         || IsInvariantValue(value)
-        || key.StartsWith("ChannelsPage_", StringComparison.Ordinal)
         || key.StartsWith("DiagnosticsPage_", StringComparison.Ordinal)
         || key.StartsWith("SettingsRow_", StringComparison.Ordinal)
         // Approved Workspace copy is seeded consistently in English while
         // locale review is pending, matching the existing deferred-copy policy.
         || key.StartsWith("WorkspaceShell_", StringComparison.Ordinal)
-        // Title-bar status pill + notifications bell flyout strings. Seeded
-        // English-only across all five .resw files using the deferred-translation
-        // pattern; translations land in a follow-up.
+        // Title-bar status pill strings. Seeded English-only across all five
+        // .resw files using the deferred-translation pattern; translations
+        // land in a follow-up.
         || key.StartsWith("HubWindow_StatusFlyout_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_StatusPill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Pill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Role_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Bell_", StringComparison.Ordinal)
-        || key.StartsWith("NotificationsFlyout_", StringComparison.Ordinal)
         // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
         // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
         // five .resw files with English values. Translations land in a follow-up.
@@ -1138,8 +1136,15 @@ public class LocalizationValidationTests
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
                         or "HubWindow_NavigationViewItem_145.Content"
-                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
+                        or "Inbox_TabMentions" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
+                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
+                    "Search_Dashboard_Plugins" => ["pt-br"],
+                    "Search_Dashboard_Secrets" => ["fr-fr"],
+                    "Search_Group_Agents" => ["fr-fr", "nl-nl"],
+                    // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
+                    "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&
