@@ -4,6 +4,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Usage;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
 using static Microsoft.UI.Reactor.Factories;
@@ -36,8 +37,8 @@ internal static class UsageSessionsSection
             && !range.IsLowerBound && !totals.IsLowerBound && range.MissingCostEntries == 0 && totals.MissingCostEntries == 0
                 ? F("Usage_Detail_ShareFormat", UsageFormat.Percent(totals.TotalCost / range.TotalCost, Culture, 0), UsageHeader.RangeWords(state.Filters))
                 : null;
-        var leftPadding = layout.Narrow ? CardPadding : 52;
-        var inner = layout.ContentWidth - leftPadding - CardPadding - 2;
+        var padding = ThemeResource.Thickness("ExpanderContentPadding");
+        var inner = layout.ContentWidth - padding.Left - padding.Right;
         var valueWidth = layout.TwoColumns ? (inner - PageResponsiveLayout.GapStack) / 2 : inner;
         var values = new List<Element>
         {
@@ -62,13 +63,12 @@ internal static class UsageSessionsSection
             VStack(8,
                 TextBlock(S("Usage_Metric_Tokens")).FontWeight(FontWeights.SemiBold),
                 VStack(8, values.ToArray())), "UsageDetailLayout" + suffix);
-        return Border(VStack(12,
+        return VStack(12,
                 detail.Row.Phase == UsageLoadPhase.Failed
                     ? Banner(S("Usage_Details_LoadFailedTitle"),
                         F("Usage_Details_LoadFailedFormat", S("Usage_Details_Summary"), ReadError(detail.Row)),
                         Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning, "UsageDetailRowError") : null,
-                detail.Row.IsLoading && row is null ? Note(S("Usage_Loading")) : facts))
-            .Padding(leftPadding, CardPadding, CardPadding, CardPadding).Background(Track)
+                detail.Row.IsLoading && row is null ? Note(S("Usage_Loading")) : facts)
             .AutomationName(F("Usage_Details_AccessibleFormat", title)).AutomationId("UsageSessionDetails" + suffix);
     }
 
@@ -81,7 +81,7 @@ internal static class UsageSessionsSection
                 .AutomationId(id + "Value").Grid(row: width < UsagePageLayout.FactStackWidth ? 1 : 0,
                     column: width < UsagePageLayout.FactStackWidth ? 0 : 1));
 
-    internal static Element Row(UsageSessionRowView row, UsagePageProps props, UsagePageLayout layout, Action? toggle = null)
+    internal static Element Row(UsageSessionRowView row, UsagePageProps props, UsagePageLayout layout)
     {
         var raw = props.Controller.State.Report?.Sessions.FirstOrDefault(r => r.Key == row.Key);
         var unpriced = raw?.Usage?.Totals is { TotalCost: 0, MissingCostEntries: > 0 };
@@ -111,24 +111,17 @@ internal static class UsageSessionsSection
             TextBlock(subtitle).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.NoWrap)
                 .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle).AutomationId("UsageRowSubtitle_" + row.Key),
             layout.Narrow ? meta.HAlign(HorizontalAlignment.Left) : null).AutomationId("UsageRowCopy_" + row.Key);
-        var summary = Button(Grid(layout.Narrow ? [GridSize.Auto, GridSize.Star()] : [GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+        return Grid(layout.Narrow ? [GridSize.Auto, GridSize.Star()] : [GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 Avatar(row.AgentId ?? row.Title, row.AgentId, 32).VAlign(VerticalAlignment.Center).Grid(column: 0),
                 copy
                     .Margin(12, 0, 12, 0).Grid(column: 1),
                 layout.Narrow ? null : VStack(2, TextBlock(cost).FontWeight(FontWeights.SemiBold)
                         .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).MaxWidth(160).ToolTip(cost),
                     TextBlock(raw?.Usage is null ? Dash : ReportedTokens(raw.Usage.Totals, "totalTokens", row.Tokens)).FontSize(12).Foreground(SecondaryText))
-                    .VAlign(VerticalAlignment.Center).HAlign(HorizontalAlignment.Right).AutomationId("UsageRowMeta_" + row.Key).Grid(column: 2)),
-                toggle ?? (() => props.Controller.SelectSession(row.Key, row.AgentId)))
-            .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .Padding(12).Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
-            .AutomationName($"{row.Title}: {cost}. {subtitle}")
-            .ItemStatus(S(row.Selected ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
+                    .VAlign(VerticalAlignment.Center).HAlign(HorizontalAlignment.Right).AutomationId("UsageRowMeta_" + row.Key).Grid(column: 2))
+            .HAlign(HorizontalAlignment.Stretch)
+            .Padding(0, PageResponsiveLayout.GapInner)
             .AutomationId("UsageSession_" + row.Key);
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            summary.Grid(column: 0),
-            ChatButton(row.Key, row.Title, props).VAlign(VerticalAlignment.Center).Grid(column: 1))
-            .AutomationId("UsageRowLayout_" + row.Key);
     }
 
     internal static Element ChatButton(string key, string title, UsagePageProps props) =>
@@ -227,11 +220,15 @@ internal sealed class UsageSessionCard : Component<UsageSessionCardProps>
         var expander = Expander(row.Title,
                 UsageSessionsSection.Details(Props.State, detail, Props.Layout, selected ? "" : "_" + row.Key),
                 open, Expand)
-            .HeaderTemplate(UsageSessionsSection.Row(row with { Selected = open }, Props.Actions, Props.Layout, () => Expand(!open)))
+            .HeaderTemplate(UsageSessionsSection.Row(row, Props.Actions, Props.Layout))
             .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .CornerRadius(CardRadius).BorderThickness(0)
+            .ItemStatus(S(open ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
             .AutomationName(row.Title).AutomationId("UsageSessionExpander_" + row.Key);
-        return Border(expander).WithBorder(CardStroke, 1).CornerRadius(CardRadius).Background(CardFill)
+        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+            expander.Grid(column: 0),
+            UsageSessionsSection.ChatButton(row.Key, row.Title, Props.Actions)
+                .VAlign(open ? VerticalAlignment.Top : VerticalAlignment.Center)
+                .Margin(PageResponsiveLayout.GapInner, open ? CardPadding : 0, 0, 0).Grid(column: 1))
             .AutomationId("UsageSessionCard_" + row.Key);
     }
 }

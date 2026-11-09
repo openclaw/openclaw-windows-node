@@ -7723,16 +7723,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Title" xml:space="preserve"><value>Gebruik</value></data>
   <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} tot {1}</value></data>
   <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1} (tijdzone)</value></data>
-  <data name="Usage_UpdatedFormat" xml:space="preserve"><value>Bijgewerkt om {0}</value></data>
   <data name="Usage_Refresh" xml:space="preserve"><value>Vernieuwen</value></data>
   <data name="Usage_Refreshing" xml:space="preserve"><value>Gebruik wordt vernieuwd</value></data>
   <data name="Usage_Export" xml:space="preserve"><value>CSV exporteren</value></data>
   <data name="Usage_Exporting" xml:space="preserve"><value>Exporteren bezig</value></data>
   <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessies (CSV)</value></data>
   <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Dagtotalen (CSV)</value></data>
-  <data name="Usage_Export_SavedTitle" xml:space="preserve"><value>Export opgeslagen</value></data>
   <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>{0} is opgeslagen.</value></data>
-  <data name="Usage_Export_FailedTitle" xml:space="preserve"><value>Exporteren mislukt</value></data>
   <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Maak verbinding met een gateway om gebruik te exporteren.</value></data>
   <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>Het gebruiksrapport kon niet worden gelezen of opgeslagen. Probeer het opnieuw.</value></data>
   <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>De gebruiksgegevens zijn onvolledig. Vernieuw en probeer het opnieuw, of verklein de periode.</value></data>
@@ -7740,7 +7737,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>Deze gateway biedt dit niet.</value></data>
   <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>De gateway is niet verbonden.</value></data>
   <data name="Usage_ReadError_Failed" xml:space="preserve"><value>Het verzoek is mislukt.</value></data>
-  <data name="Usage_Dismiss" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Usage_Filter_Range" xml:space="preserve"><value>Periode</value></data>
   <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Begindatum</value></data>
   <data name="Usage_Filter_EndDate" xml:space="preserve"><value>Einddatum</value></data>
@@ -7751,27 +7747,17 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Preset_Today" xml:space="preserve"><value>Vandaag</value></data>
   <data name="Usage_Preset_7d" xml:space="preserve"><value>7 dagen</value></data>
   <data name="Usage_Preset_30d" xml:space="preserve"><value>30 dagen</value></data>
-  <data name="Usage_TimeZone_Local" xml:space="preserve"><value>Lokaal</value></data>
   <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
   <data name="Usage_Scope_Instance" xml:space="preserve"><value>Huidige instantie</value></data>
   <data name="Usage_Scope_Family" xml:space="preserve"><value>Historische afstamming</value></data>
-  <data name="Usage_Scope_FamilyHint" xml:space="preserve"><value>Voegt bekende, geroteerde sessie-ID's samen.</value></data>
   <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Tokens</value></data>
-  <data name="Usage_Metric_Cost" xml:space="preserve"><value>Kosten</value></data>
-  <data name="Usage_LowerBoundShort" xml:space="preserve"><value>≥ Ondergrens</value></data>
-  <data name="Usage_LowerBoundNote" xml:space="preserve"><value>≥ geeft een ondergrens aan: sommige antwoorden stopten voordat het definitieve gebruik binnenkwam, dus tokens en kosten zijn deels geteld.</value></data>
   <data name="Usage_PartialShort" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
   <data name="Usage_PartialNote" xml:space="preserve"><value>Een deel van het gebruik wordt nog berekend, dus totalen kunnen stijgen.</value></data>
   <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
   <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
-  <data name="Usage_Unknown" xml:space="preserve"><value>Onbekend</value></data>
   <data name="Usage_Selected" xml:space="preserve"><value>Geselecteerd</value></data>
-  <data name="Usage_RemoveFilterFormat" xml:space="preserve"><value>Filter {0} verwijderen</value></data>
-  <data name="Usage_ClearFilters" xml:space="preserve"><value>Filters wissen</value></data>
   <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Sessies zoeken</value></data>
   <data name="Usage_Query_Label" xml:space="preserve"><value>Sessies filteren</value></data>
-  <data name="Usage_Query_Help" xml:space="preserve"><value>Zoek op sessienaam of -sleutel. Gebruik de menu&apos;s Agent, Aanbieder en Model om te filteren. Druk op Enter om toe te passen.</value></data>
-  <data name="Usage_Query_Apply" xml:space="preserve"><value>Toepassen</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Sommige filters zijn genegeerd</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
   <data name="Usage_Facet_provider" xml:space="preserve"><value>Aanbieder</value></data>
@@ -7800,93 +7786,55 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Table_Date" xml:space="preserve"><value>Datum</value></data>
   <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>Tokens per type</value></data>
   <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>Kosten per type</value></data>
-  <data name="Usage_Overview_Title" xml:space="preserve"><value>Gebruiksoverzicht</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>Berichten</value></data>
-  <data name="Usage_Overview_MessagesSubFormat" xml:space="preserve"><value>{0} gebruiker · {1} assistent</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Hulpmiddelaanroepen</value></data>
-  <data name="Usage_Overview_ToolsUsedFormat" xml:space="preserve"><value>{0} hulpmiddelen gebruikt</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Cache-hitratio</value></data>
-  <data name="Usage_Overview_CacheSubFormat" xml:space="preserve"><value>{0} uit cache · {1} prompt</value></data>
-  <data name="Usage_Overview_CacheHint" xml:space="preserve"><value>Aandeel prompttokens uit de cache: cache lezen gedeeld door invoer plus cache lezen en schrijven.</value></data>
-  <data name="Usage_Overview_ErrorHint" xml:space="preserve"><value>Berichten met een fout, gedeeld door alle berichten in de periode. Geen maat voor de beschikbaarheid van de gateway of aanbieders.</value></data>
   <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessies</value></data>
   <data name="Usage_Overview_Errors" xml:space="preserve"><value>Fouten</value></data>
-  <data name="Usage_Overview_NoModelData" xml:space="preserve"><value>Geen modelgegevens</value></data>
-  <data name="Usage_Overview_NoProviderData" xml:space="preserve"><value>Geen aanbiedergegevens</value></data>
   <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>Geen agentgegevens</value></data>
   <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Zonder prijs</value></data>
-  <data name="Usage_Overview_MessagesCountFormat" xml:space="preserve"><value>{0} ber.</value></data>
   <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} fouten</value></data>
   <data name="Usage_Providers_Title" xml:space="preserve"><value>Providerlimieten</value></data>
-  <data name="Usage_Providers_Subtitle" xml:space="preserve"><value>Abonnementen, quota en facturering per aanbieder. Los van sessiegebruik.</value></data>
   <data name="Usage_Providers_Loading" xml:space="preserve"><value>Gebruik per aanbieder laden</value></data>
   <data name="Usage_Providers_Empty" xml:space="preserve"><value>Geen aanbieders melden abonnementsgebruik.</value></data>
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>Gebruik per aanbieder is niet beschikbaar.</value></data>
-  <data name="Usage_Providers_Stalled" xml:space="preserve"><value>Gebruik per aanbieder kon niet worden vernieuwd. Laatste rapport wordt weergegeven.</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Gebruik per aanbieder wordt vernieuwd.</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Geen quotumgegevens gemeld.</value></data>
-  <data name="Usage_Providers_UsedFormat" xml:space="preserve"><value>{0} gebruikt</value></data>
-  <data name="Usage_Providers_ResetsFormat" xml:space="preserve"><value>Wordt gereset over {0}</value></data>
   <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>Wordt nu gereset</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} van {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (tegoed)</value></data>
-  <data name="Usage_Providers_CostHistoryFormat" xml:space="preserve"><value>{0} gefactureerd in de afgelopen {1} dagen</value></data>
-  <data name="Usage_Providers_Billing_balance" xml:space="preserve"><value>Saldo</value></data>
-  <data name="Usage_Providers_Billing_spend" xml:space="preserve"><value>Uitgaven</value></data>
-  <data name="Usage_Providers_Billing_budget" xml:space="preserve"><value>Budget (limiet)</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessies</value></data>
-  <data name="Usage_Sessions_SubtitleFormat" xml:space="preserve"><value>Sessies: {0} · gem. {1} · fouten: {2}</value></data>
   <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Sessies sorteren</value></data>
   <data name="Usage_Sort_Cost" xml:space="preserve"><value>Hoogste kosten</value></data>
   <data name="Usage_Sort_Errors" xml:space="preserve"><value>Meeste fouten</value></data>
   <data name="Usage_Sort_Messages" xml:space="preserve"><value>Meeste berichten</value></data>
   <data name="Usage_Sort_Recent" xml:space="preserve"><value>Meest recent</value></data>
   <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Meeste tokens</value></data>
-  <data name="Usage_Sessions_Ascending" xml:space="preserve"><value>Oplopend sorteren</value></data>
-  <data name="Usage_Sessions_Descending" xml:space="preserve"><value>Aflopend sorteren</value></data>
   <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>Geen sessies in de periode</value></data>
-  <data name="Usage_Sessions_ShowAllFormat" xml:space="preserve"><value>Alle {0} weergeven</value></data>
-  <data name="Usage_Sessions_ShowTopFormat" xml:space="preserve"><value>Top {0} weergeven</value></data>
   <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} tot {1} van {2}</value></data>
   <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Vorige pagina</value></data>
   <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Volgende pagina</value></data>
   <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Wordt berekend</value></data>
-  <data name="Usage_Sessions_ToolsFormat" xml:space="preserve"><value>{0} hulpmiddelen</value></data>
-  <data name="Usage_Sessions_InstancesFormat" xml:space="preserve"><value>{0} instanties</value></data>
-  <data name="Usage_Sessions_AgentFormat" xml:space="preserve"><value>Agent: {0}</value></data>
-  <data name="Usage_Sessions_CopyKey" xml:space="preserve"><value>Sessiesleutel kopiëren</value></data>
   <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Selecteer om details te bekijken.</value></data>
-  <data name="Usage_Details_Close" xml:space="preserve"><value>Details sluiten</value></data>
   <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Details van {0}</value></data>
-  <data name="Usage_Details_FamilyFormat" xml:space="preserve"><value>Bevat {0} sessie-instanties uit deze afstamming.</value></data>
   <data name="Usage_Details_Summary" xml:space="preserve"><value>sessieoverzicht</value></data>
   <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Sommige details konden niet worden geladen</value></data>
   <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Kan {0} niet laden: {1}</value></data>
   <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} in · {1} uit</value></data>
   <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} items zonder prijs</value></data>
   <data name="Usage_Details_Duration" xml:space="preserve"><value>Duur</value></data>
-  <data name="Usage_Details_ActivityFormat" xml:space="preserve"><value>{0} tot {1}</value></data>
-  <data name="Usage_Details_ModelMix" xml:space="preserve"><value>Modelverdeling</value></data>
-  <data name="Usage_Overview_ToolsUsedFormatOne" xml:space="preserve"><value>{0} hulpmiddel gebruikt</value></data>
-  <data name="Usage_Overview_MessagesCountFormatOne" xml:space="preserve"><value>{0} ber.</value></data>
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} fout</value></data>
-  <data name="Usage_Sessions_ToolsFormatOne" xml:space="preserve"><value>{0} hulpmiddel</value></data>
-  <data name="Usage_Sessions_InstancesFormatOne" xml:space="preserve"><value>{0} instantie</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} item zonder prijs</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Nieuwste eerst</value></data>
   <data name="Usage_Subtitle" xml:space="preserve"><value>Tokengebruik en geschatte kosten van je sessies.</value></data>
-  <data name="Usage_ReportingRange" xml:space="preserve"><value>Rapportageperiode</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessies in deze periode</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessie in deze periode</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Geschatte kosten</value></data>
-  <data name="Usage_Summary_CostHint" xml:space="preserve"><value>Geschat door de gateway op basis van tokengebruik en modelprijzen. Facturen van aanbieders kunnen afwijken.</value></data>
-  <data name="Usage_MissingCostShort" xml:space="preserve"><value>Deels zonder prijs</value></data>
   <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} gebruiksitems hebben geen bekende prijs, dus de geschatte kosten kunnen lager zijn dan de werkelijke.</value></data>
   <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} gebruiksitem heeft geen bekende prijs, dus de geschatte kosten kunnen lager zijn dan de werkelijke.</value></data>
   <data name="Usage_OpenWeb" xml:space="preserve"><value>Openen op het web</value></data>
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>Opent de pagina Gebruik van de gateway in je browser voor tijdlijnen, transcripties en andere gedetailleerde analyses. Je periode, filters en geselecteerde sessie worden niet overgenomen.</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} van {1} geladen; de totalen bevatten ze allemaal.</value></data>
-  <data name="Usage_Activity_ErrorRateFormat" xml:space="preserve"><value>{0} van de berichten</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>Gebruiksverdeling</value></data>
   <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>Gerangschikt op geschatte kosten, daarna op tokens. Gebruik zonder prijs staat onderaan.</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>Type verbruiker</value></data>
@@ -7896,7 +7844,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Details_Cache" xml:space="preserve"><value>Tokens in cache</value></data>
   <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>{0} gelezen · {1} geschreven</value></data>
   <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>Gesprek openen</value></data>
-  <data name="Usage_Details_MoreInBrowser" xml:space="preserve"><value>Gebruik in de tijd, transcripties en contextdetails zijn beschikbaar in de browser.</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>Gebruik is niet beschikbaar op deze gateway</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Werk de gateway bij om hier kosten, tokens en sessies te zien.</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>De eerste {0} zijn geladen; er kunnen er meer zijn.</value></data>
@@ -8026,8 +7973,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Mast_30d" xml:space="preserve"><value>in de afgelopen 30 dagen</value></data>
   <data name="Usage_Mast_7d" xml:space="preserve"><value>in de afgelopen 7 dagen</value></data>
   <data name="Usage_Mast_Today" xml:space="preserve"><value>vandaag tot nu toe</value></data>
-  <data name="Usage_MoreNeedsFormat" xml:space="preserve"><value>Nog {0} hebben je nodig</value></data>
-  <data name="Usage_NeedsYou" xml:space="preserve"><value>Heeft je nodig</value></data>
   <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>Geen in de geladen sessies.</value></data>
   <data name="Usage_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
   <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>Chat openen: {0}</value></data>

@@ -5,7 +5,6 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using OpenClaw.Shared.Usage;
-using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Usage;
@@ -18,7 +17,6 @@ internal static class UsageUi
 {
     public const double CardRadius = 8;
     public const double CardPadding = 16;
-    public const double SectionGap = 16;
 
     public static readonly ThemeRef CardFill = Theme.Ref("CardBackgroundFillColorDefaultBrush");
     public static readonly ThemeRef CardStroke = Theme.Ref("CardStrokeColorDefaultBrush");
@@ -72,11 +70,6 @@ internal static class UsageUi
 
     public const int PaletteSize = 6;
 
-    /// <summary>
-    /// Shared setup art (provider logos, mascot, party popper). The package pipeline scopes it under
-    /// OpenClaw.SetupEngine.UI, the same URIs setup's ProviderArtwork uses; the root copy exists only in loose builds.
-    /// </summary>
-    public const string SetupAssets = "ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/";
     private static readonly ThemeRef[] PaletteFills =
         Enumerable.Range(1, PaletteSize).Select(i => Theme.Ref($"UsagePalette{i}Brush")).ToArray();
     private static readonly ThemeRef[] PaletteTints =
@@ -117,26 +110,6 @@ internal static class UsageUi
             .AccessibilityView(AccessibilityView.Raw);
     }
 
-    /// <summary>
-    /// Bundled provider logo on the requested-Dark artwork tile used by setup (DESIGN.md providerArtwork*),
-    /// or a colored monogram for providers without bundled art.
-    /// </summary>
-    public static Element ProviderMark(string? provider, double size = 24)
-    {
-        var file = OpenClaw.SetupEngine.GatewayAiSetupPresentation.GetBundledProviderIconFileName(provider);
-        if (file is null || file.StartsWith("Pair", StringComparison.Ordinal))
-            return Avatar(string.IsNullOrWhiteSpace(provider) ? "?" : provider!, provider, size);
-        return Border(Image(UsageUi.SetupAssets + "ProviderIcons/" + file).AccessibilityHidden()
-                    .Size(Math.Round(size * 0.6), Math.Round(size * 0.6))
-                    .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-            .RequestedTheme(ElementTheme.Dark)
-            .Size(size, size)
-            .CornerRadius(Math.Round(size * 0.25))
-            .Background(Theme.Ref("SolidBackgroundFillColorBaseBrush"))
-            .WithBorder(CardStroke, 1)
-            .AccessibilityView(AccessibilityView.Raw);
-    }
-
     public static string Initials(string name)
     {
         var words = name.Split([' ', '-', '_', '/', ':', '.'], StringSplitOptions.RemoveEmptyEntries)
@@ -146,15 +119,6 @@ internal static class UsageUi
             ? words[0][..1].ToUpperInvariant()
             : string.Concat(words[0][0], words[1][0]).ToUpperInvariant();
     }
-
-    // Glyphs (Segoe Fluent Icons / MDL2 fallback through SymbolThemeFontFamily).
-    public const string GlyphTokens = "\uE9D9";
-    public const string GlyphCost = "\uE8C7";
-    public const string GlyphSessions = "\uE8BD";
-    public const string GlyphMessages = "\uE8F2";
-    public const string GlyphTools = "\uE90F";
-    public const string GlyphCache = "\uE8F7";
-    public const string GlyphErrors = "\uE783";
 
     // ── building blocks ──
 
@@ -204,16 +168,6 @@ internal static class UsageUi
             .AutomationId(id);
     }
 
-    /// <summary>A compact card for one stat or one ranked list inside an unframed section grid.</summary>
-    public static Element Tile(Element content) =>
-        Border(content)
-            .Padding(14, 12)
-            .CornerRadius(CardRadius)
-            .Background(CardFill)
-            .WithBorder(CardStroke, 1)
-            .HAlign(HorizontalAlignment.Stretch)
-            .VAlign(VerticalAlignment.Stretch);
-
     public static TextBlockElement Note(string text) =>
         TextBlock(text).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.WrapWholeWords).MaxWidth(640)
             .HAlign(HorizontalAlignment.Left);
@@ -237,56 +191,8 @@ internal static class UsageUi
         .HAlign(HorizontalAlignment.Stretch)
         .AutomationId(automationId);
 
-    public static readonly ThemeRef SuccessTint = Theme.Ref("ConnectionCapabilityPillSuccessBrush");
     public static readonly ThemeRef CautionTint = Theme.Ref("ConnectionCapabilityPillCautionBrush");
     public static readonly ThemeRef CriticalTint = Theme.Ref("ConnectionCapabilityPillCriticalBrush");
-
-    private static ThemeRef ToneTint(ThemeRef tone) =>
-        tone.Equals(Success) ? SuccessTint
-        : tone.Equals(Critical) ? CriticalTint
-        : tone.Equals(Caution) ? CautionTint
-        : PaletteTint(0);
-
-    /// <summary>
-    /// KPI tile: glyph badge, label, value and a secondary line. A tone (success, caution or critical) recolors the
-    /// badge to grade the value; text always carries the meaning.
-    /// </summary>
-    public static Element Stat(
-        string label, string value, string? sub, string automationId, ThemeRef? tone = null, string? tooltip = null,
-        string? glyph = null, int palette = 0)
-    {
-        var body = VStack(2,
-            TextBlock(label).FontSize(12).Foreground(SecondaryText).TextTrimming(TextTrimming.CharacterEllipsis),
-            TextBlock(value).FontSize(22).FontWeight(FontWeights.SemiBold).TextTrimming(TextTrimming.CharacterEllipsis)
-                .AutomationId(automationId + "Value"),
-            sub is null ? null : TextBlock(sub).FontSize(12).Foreground(TertiaryText).TextWrapping(TextWrapping.Wrap));
-        Element marker = glyph is null
-            ? Border(null).Width(3).CornerRadius(1.5).Background(tone ?? Track).VAlign(VerticalAlignment.Stretch)
-            : tone is { } graded
-                ? Border(TextBlock(glyph).AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(16).Foreground(graded)
-                        .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-                    .Size(32, 32).CornerRadius(9).Background(ToneTint(graded)).AccessibilityView(AccessibilityView.Raw)
-                    .VAlign(VerticalAlignment.Top)
-                : IconBadge(glyph, palette, 32).VAlign(VerticalAlignment.Top);
-        Element tile = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-                marker.Grid(column: 0),
-                body.Margin(12, 0, 0, 0).Grid(column: 1))
-            .MinWidth(150)
-            .AutomationName($"{label}: {value}{(sub is null ? "" : ". " + sub)}")
-            .AutomationId(automationId);
-        return tooltip is null ? tile : tile.ToolTip(tooltip);
-    }
-
-    /// <summary>Horizontal proportion bar. <paramref name="share"/> is clamped to 0..1.</summary>
-    public static Element ShareBar(double share, ThemeRef fill, double height = 6)
-    {
-        var value = Math.Clamp(double.IsNaN(share) ? 0 : share, 0, 1);
-        return Grid([GridSize.Star(Math.Max(value, 0.0001)), GridSize.Star(Math.Max(1 - value, 0.0001))], [GridSize.Px(height)],
-                Border(null).Background(fill).CornerRadius(height / 2).Grid(column: 0),
-                Border(null).Background(Track).CornerRadius(height / 2).Grid(column: 1))
-            .Height(height)
-            .AccessibilityView(AccessibilityView.Raw);
-    }
 
     /// <summary>Stacked proportion bar for parts of a whole.</summary>
     public static Element StackedBar(IReadOnlyList<(double Share, ThemeRef Fill)> parts, double height = 10)
@@ -326,16 +232,15 @@ internal static class UsageUi
             : HStack(6, TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(12).VAlign(VerticalAlignment.Center),
                 TextBlock(text).FontSize(13).VAlign(VerticalAlignment.Center));
         return Button(content, onClick)
-            .Resources(ChatVisuals.ToolbarButtonResources)
+            .SubtleButton()
             .AutomationId(automationId)
             .AutomationName(text);
     }
 
     public static Element IconButton(string glyph, string name, Action onClick, string automationId, bool enabled = true) =>
         Button(TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14), onClick)
-            .Padding(8)
+            .SubtleButton()
             .IsEnabled(enabled)
-            .Resources(ChatVisuals.ToolbarButtonResources)
             .ToolTip(name)
             .AutomationName(name)
             .AutomationId(automationId);

@@ -327,8 +327,8 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                             ? Metric(metric, row.Tokens, row.Cost, row.LowerBound) : Dash).FontSize(12).TextWrapping(TextWrapping.NoWrap).Grid(column: 1)),
                     () => Props.Actions.Controller.SelectSession(row.Key, row.AgentId))
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                    .AutomationName(row.Title).AutomationId("UsageContributorSession_" + row.Key)
-                    .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources).WithKey(row.Key)).ToList();
+                    .SubtleButton().AutomationName(row.Title).AutomationId("UsageContributorSession_" + row.Key)
+                    .WithKey(row.Key)).ToList();
             if (entries.Count == 0) entries.Add(Note(S("Usage_NoLoadedSessions")).WithKey("empty"));
             if (kind == UsageContributorKind.Agent && !Props.State.ServerFiltersUnavailable)
                 entries.Add(SubtleButton(F("Usage_ShowOnlyFormat", item.Label),
@@ -387,8 +387,8 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                 Note(S("Usage_CostliestLoaded")),
                 Button(TextBlock(costly.Title).TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
                         .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(costly.Title), () => actions.Controller.SelectSession(costly.Key, costly.AgentId))
-                    .Padding(0).HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Left)
-                    .AutomationName(costly.Title).Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources),
+                    .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Left)
+                    .SubtleButton().AutomationName(costly.Title),
                 Note(AnalysisCost(costly.Cost, costly.LowerBound))).WithKey("costliest"));
         var peak = dashboard.Chart.Days.Where(day => !day.Pending).OrderByDescending(day => day.Value).FirstOrDefault();
         if (peak is not null && peak.Value > 0 && dashboard.Chart.CoversRange && !dashboard.Summary.Partial
@@ -397,6 +397,6 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                 Metric(metric, peak.Tokens, peak.Cost, peak.LowerBound))).WithKey("peak"));
         if (dashboard.Summary.MissingCostEntries > 0)
             entries.Add(Note(FN("Usage_MissingCostNoteFormat", dashboard.Summary.MissingCostEntries)).WithKey("missing"));
-        return Border(VStack(12, entries.ToArray())).Padding(16).CornerRadius(CardRadius).Background(Track).AutomationId("UsageHighlights");
+        return VStack(12, entries.ToArray()).AutomationId("UsageHighlights");
     }
 }

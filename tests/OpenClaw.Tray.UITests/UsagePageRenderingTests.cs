@@ -1,7 +1,5 @@
 using System.Globalization;
 using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text.Json;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
@@ -416,14 +414,17 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         await WithUsagePageAsync(Report(false), new RecordingCommands(), async (host, gateway) =>
         {
             await WaitForAsync(host, "UsageSession_agent:main:webchat:main");
-            await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:main:webchat:main")));
+            await ui.RunOnUIAsync(() => ExpandSession(host, "agent:main:webchat:main"));
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main").IsExpanded,
+                () => Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main").IsExpanded
+                    && gateway.Controller.State.Detail?.Key == "agent:main:webchat:main"
+                    && Find<FrameworkElement>(host, "UsageSessionDetails") is not null,
                 "First session expanded"));
-            await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:research:discord:42")));
+            await ui.RunOnUIAsync(() => ExpandSession(host, "agent:research:discord:42"));
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => gateway.Controller.State.Detail?.Key == "agent:research:discord:42"
-                    && Get<Expander>(host, "UsageSessionExpander_agent:research:discord:42").IsExpanded,
+                    && Get<Expander>(host, "UsageSessionExpander_agent:research:discord:42").IsExpanded
+                    && Find<FrameworkElement>(host, "UsageSessionDetails_agent:main:webchat:main") is not null,
                 "Second detail selected without closing first"));
             await ui.RunOnUIAsync(() =>
             {
@@ -431,6 +432,116 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.NotNull(Find<FrameworkElement>(host, "UsageSessionDetails_agent:main:webchat:main"));
             });
         });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light, 520)]
+    [InlineData(ElementTheme.Light, 720)]
+    [InlineData(ElementTheme.Light, 1300)]
+    [InlineData(ElementTheme.Dark, 520)]
+    [InlineData(ElementTheme.Dark, 720)]
+    [InlineData(ElementTheme.Dark, 1300)]
+    public async Task SessionExpanders_OwnTheirChromeAndKeepActionsOutOfHeaders(ElementTheme theme, double width)
+    {
+        var commands = new RecordingCommands();
+        await WithUsagePageAsync(Report(true), commands, async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageSession_agent:main:webchat:main");
+            void AssertStockSessions()
+            {
+                var list = Get<StackPanel>(host, "UsageSessions");
+                foreach (var row in NamedRows())
+                {
+                    var expander = Get<Expander>(host, "UsageSessionExpander_" + row.Key);
+                    var header = Get<Grid>(expander, "UsageSession_" + row.Key);
+                    Assert.Empty(FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>(header));
+                    Assert.Equal(row.Label, AutomationProperties.GetName(expander));
+                    Assert.Equal(LocalizationHelper.GetString(expander.IsExpanded ? "Usage_Selected" : "Usage_Sessions_SelectHint"),
+                        AutomationProperties.GetItemStatus(expander));
+                    var chat = Get<Button>(list, "UsageChat_" + row.Key);
+                    Assert.True(chat.IsEnabled);
+                    Assert.Same(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(expander),
+                        Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(chat));
+                    var textBounds = FindDescendants<TextBlock>(header).Where(text => text.ActualHeight > 0)
+                        .Select(text => text.TransformToVisual(header).TransformBounds(
+                            new Windows.Foundation.Rect(0, 0, text.ActualWidth, text.ActualHeight))).ToArray();
+                    Assert.NotEmpty(textBounds);
+                    Assert.True(textBounds.Min(bounds => bounds.Top) >= 7, "Header text needs a top inset.");
+                    Assert.True(header.ActualHeight - textBounds.Max(bounds => bounds.Bottom) >= 7,
+                        "Header text needs a bottom inset.");
+                    if (!expander.IsExpanded)
+                    {
+                        var chatBounds = chat.TransformToVisual(expander).TransformBounds(
+                            new Windows.Foundation.Rect(0, 0, chat.ActualWidth, chat.ActualHeight));
+                        Assert.InRange(Math.Abs(chatBounds.Top + chatBounds.Height / 2 - expander.ActualHeight / 2), 0, 1);
+                    }
+                    var ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(expander);
+                    while (!ReferenceEquals(ancestor, list))
+                    {
+                        Assert.NotNull(ancestor);
+                        switch (ancestor)
+                        {
+                            case Border border:
+                                AssertUnpainted(border.Background);
+                                if (border.BorderThickness != new Thickness(0)) AssertUnpainted(border.BorderBrush);
+                                break;
+                            case Panel panel:
+                                AssertUnpainted(panel.Background);
+                                break;
+                            case ContentPresenter presenter:
+                                AssertUnpainted(presenter.Background);
+                                if (presenter.BorderThickness != new Thickness(0)) AssertUnpainted(presenter.BorderBrush);
+                                break;
+                            case Control control:
+                                AssertUnpainted(control.Background);
+                                if (control.BorderThickness != new Thickness(0)) AssertUnpainted(control.BorderBrush);
+                                break;
+                        }
+                        ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor);
+                    }
+                }
+            }
+            await ui.RunOnUIAsync(() =>
+            {
+                AssertStockSessions();
+                foreach (var id in new[] { "UsageFacet_agent", "UsageOptions", "UsageExport" })
+                    Assert.IsType<MenuFlyout>(Get<DropDownButton>(host, id).Flyout);
+                var options = Get<DropDownButton>(host, "UsageOptions");
+                Assert.Contains(FindDescendants<TextBlock>(options), text => text.Text == "\uE713");
+                Assert.Contains(FindDescendants<TextBlock>(Get<DropDownButton>(host, "UsageExport")),
+                    text => text.Text == "\uE896");
+                Assert.InRange(Math.Abs(Get<AutoSuggestBox>(host, "UsageQuery").ActualHeight - options.ActualHeight), 0, 1);
+                var expander = Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main");
+                Assert.False(expander.IsExpanded);
+                var detailBeforeChat = gateway.Controller.State.Detail;
+                Invoke(Get<Button>(host, "UsageChat_agent:main:webchat:main"));
+                Assert.Equal(["agent:main:webchat:main"], commands.PendingChatKeys);
+                Assert.Equal(["chat"], commands.Navigations);
+                Assert.False(expander.IsExpanded);
+                Assert.Same(detailBeforeChat, gateway.Controller.State.Detail);
+                ExpandSession(host, "agent:main:webchat:main");
+            });
+            await WaitForAsync(host, "UsageSessionDetails");
+            await ui.RunOnUIAsync(() =>
+            {
+                AssertStockSessions();
+                var expander = Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main");
+                var content = Assert.IsAssignableFrom<DependencyObject>(expander.Content);
+                Assert.Null(Find<Button>(content, "UsageChat_agent:main:webchat:main"));
+                AssertUnpainted(Get<StackPanel>(expander, "UsageSessionDetails").Background);
+            });
+        }, theme: theme, pageWidth: width);
+    }
+
+    private static void AssertUnpainted(Microsoft.UI.Xaml.Media.Brush? brush) =>
+        Assert.True(brush is null || brush.Opacity == 0 ||
+            brush is Microsoft.UI.Xaml.Media.SolidColorBrush { Color.A: 0 },
+            "A wrapper outside the stock Expander paints an additional surface.");
+
+    private static void ExpandSession(FrameworkElement host, string key)
+    {
+        var peer = FrameworkElementAutomationPeer.CreatePeerForElement(Get<Expander>(host, "UsageSessionExpander_" + key));
+        Assert.IsAssignableFrom<IExpandCollapseProvider>(peer.GetPattern(PatternInterface.ExpandCollapse)).Expand();
     }
 
     [Theory]
@@ -509,7 +620,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Equal(UsageUi.Dash, ToolTipService.GetToolTip(missingValue));
                 var day = Get<Button>(host, "UsageDailyChart_" + date);
                 Assert.Contains(UsageUi.Dash, AutomationProperties.GetName(day));
-                var row = Get<Grid>(host, "UsageRowLayout_agent:main:missing");
+                var row = Get<Grid>(host, "UsageSession_agent:main:missing");
                 Assert.Contains(FindDescendants<TextBlock>(row), text => text.Text == UsageUi.Dash);
                 Assert.DoesNotContain(FindDescendants<TextBlock>(row),
                     text => text.Text == LocalizationHelper.GetString("Usage_Sessions_Computing"));
@@ -661,7 +772,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     if (scenario == "legacy") Assert.Null(Find<FrameworkElement>(host, "UsageQuery"));
                     if (scenario == "near-limit")
                         Assert.NotNull(Find<Border>(host, "UsageNearLimit_anthropic"));
-                    var actions = new[] { Get<Button>(host, "UsageOpenWeb"), Get<Button>(host, "UsageExport") };
+                    var actions = new Control[] { Get<Button>(host, "UsageOpenWeb"), Get<DropDownButton>(host, "UsageExport") };
                     foreach (var action in actions)
                     {
                         var actionBounds = action.TransformToVisual(host).TransformBounds(
@@ -670,9 +781,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                             $"{AutomationProperties.GetAutomationId(action)} leaves the {width}-DIP viewport.");
                     }
                     if (scenario == "disconnected") Assert.All(actions, action => Assert.False(action.IsEnabled));
-                    if (scenario != "empty") AssertDailyFacts(host, width == 520 ? 1 : 3);
-                    PersistUsageReceipts($"hero-{theme}-{width:0}-{scenario}",
-                        [UsageNativeReceipt(host, scenario)]);
+                    if (scenario != "empty") AssertDailyFacts(host, width == 520 ? 2 : 3);
                     var captureName = $"Usage-{theme}-hero-{width:0}-{scenario}";
                     var captureRoot = Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR");
                     var existingCaptures = captureRoot is { Length: > 0 }
@@ -735,7 +844,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                         Assert.Empty(panel.ChildrenTransitions);
                     });
                     Assert.Equal(animations, new Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
-                    PersistUsageReceipts("reduced-motion", [UsageNativeReceipt(proof, "explicit-reduced-motion")]);
                 });
             }
             finally
@@ -755,16 +863,10 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         {
             await WaitForAsync(host, "UsageProvider_anthropic");
             FrameworkElement surface = null!;
-            var frames = new List<object>();
-            EventHandler<object> recordFrame = (_, _) => frames.Add(UsageNativeReceipt(host, "badge-frame"));
             await ui.RunOnUIAsync(() =>
             {
                 surface = Get<FrameworkElement>(host, "UsageSurface");
-                frames.Add(UsageNativeReceipt(host, "before-badge-refresh"));
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += recordFrame;
             });
-            try
-            {
             foreach (var percent in new[] { 75d, 74.99d, 75.01d })
             {
                 await ui.RunOnUIAsync(() =>
@@ -803,16 +905,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                             bounds.Right <= provider.ActualWidth + 1 && bounds.Bottom <= provider.ActualHeight + 1);
                         Assert.InRange(ElementCompositionPreview.GetElementVisual(inspect).Opacity, 0.99f, 1f);
                     }
-                    frames.Add(UsageNativeReceipt(host, $"settled-allowance-{percent.ToString(CultureInfo.InvariantCulture)}"));
-                });
-            }
-            }
-            finally
-            {
-                await ui.RunOnUIAsync(() =>
-                {
-                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= recordFrame;
-                    PersistUsageReceipts("badge-refresh", frames);
                 });
             }
         }, configure: gateway => gateway.Providers =
@@ -837,7 +929,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         await WithUsagePageAsync(report, new RecordingCommands(), async (host, gateway) =>
         {
             await WaitForAsync(host, "UsageSession_agent:research:discord:42");
-            await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:research:discord:42")));
+            await ui.RunOnUIAsync(() => ExpandSession(host, "agent:research:discord:42"));
             await WaitForAsync(host, "UsageDetailLayout");
             ScrollViewer retainedScroll = null!;
             FrameworkElement retainedSurface = null!;
@@ -859,11 +951,10 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 () => Math.Abs(retainedScroll.VerticalOffset - 64) < 1 &&
                     ReferenceEquals(FocusManager.GetFocusedElement(host.XamlRoot), retainedFocus),
                 "known scroll offset and focused native control before resize"));
-            var frames = new List<object>();
-            EventHandler<object> recordFrame = (_, _) => frames.Add(UsageNativeReceipt(host, "resize-frame"));
+            var renderFrames = 0;
+            EventHandler<object> recordFrame = (_, _) => renderFrames++;
             await ui.RunOnUIAsync(() =>
             {
-                frames.Add(UsageNativeReceipt(host, "before-resize"));
                 Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += recordFrame;
                 host.Width = width;
             });
@@ -873,7 +964,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Math.Abs(host.ActualWidth - width) < 0.1 &&
                 Math.Abs(Get<Grid>(host, "UsageStage").ActualWidth - contentWidth) < 0.1 &&
                 Get<Grid>(host, "UsageStage").ColumnDefinitions.Count == columns &&
-                frames.Count > 1 &&
+                renderFrames > 1 &&
                 UsageActionSettled(host, "UsageOpenWeb", requireViewport: false) &&
                 UsageActionSettled(host, "UsageExport", requireViewport: false),
                 "Responsive Usage reflow with settled visible hero actions"));
@@ -886,7 +977,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Same(retainedFocus, FocusManager.GetFocusedElement(host.XamlRoot));
                 Assert.True(retainedScroll.ScrollableHeight > 128);
                 Assert.InRange(Math.Abs(retainedScroll.VerticalOffset - 64), 0, 1);
-                frames.Add(UsageNativeReceipt(host, "settled-resize"));
                 host.Height = PageHeight;
                 retainedScroll.ChangeView(null, 0, null, disableAnimation: true);
             });
@@ -896,7 +986,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 await ui.RunOnUIAsync(() =>
                 {
                     Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= recordFrame;
-                    PersistUsageReceipts($"resize-{width:0}", frames);
                 });
             }
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
@@ -908,7 +997,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             var terminalExportFrame = false;
             var exportLabel = LocalizationHelper.GetString("Usage_Export");
             bool ExportLabelRestored() => !gateway.Controller.State.Exporting &&
-                FindDescendants<TextBlock>(Get<Button>(host, "UsageExport")).Any(text => text.Text == exportLabel);
+                FindDescendants<TextBlock>(Get<DropDownButton>(host, "UsageExport")).Any(text => text.Text == exportLabel);
             EventHandler<object> observeExportFrame = (_, _) =>
             {
                 if (ExportLabelRestored()) terminalExportFrame = true;
@@ -944,7 +1033,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.True(title.IsTextTrimmed);
                 Assert.Equal(longTitle, ToolTipService.GetToolTip(title));
                 AssertSeparatedChildren(Get<Grid>(host, "UsageMastGrid"));
-                AssertDailyFacts(host, width == 520 ? 1 : 3);
+                AssertDailyFacts(host, width == 520 ? 2 : 3);
                 foreach (var id in new[] { "UsageFilterRow", "UsageStage",
                     "UsageDailyControls", "UsageDailyFacts", "UsageActivity", "UsageContributorLayout", "UsageDetailLayout" })
                     AssertSeparatedChildren(Get<Grid>(host, id));
@@ -986,24 +1075,15 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                         Math.Min(rect.Bottom, mark.Bottom) - Math.Max(rect.Top, mark.Top) > 1);
                 }
                 foreach (var row in FindDescendants<Grid>(host).Where(grid =>
-                    AutomationProperties.GetAutomationId(grid).StartsWith("UsageRowLayout_", StringComparison.Ordinal)))
+                    AutomationProperties.GetAutomationId(grid).StartsWith("UsageSession_", StringComparison.Ordinal)))
                     AssertSeparatedChildren(row);
                 var actions = Get<StackPanel>(host, "UsageMastActions");
-                var buttons = FindDescendants<Button>(actions).Where(button => button.ActualWidth > 0).ToArray();
+                var buttons = FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>(actions).Where(button => button.ActualWidth > 0).ToArray();
                 Assert.Equal(2, buttons.Length);
                 var y = buttons[0].TransformToVisual(actions).TransformPoint(new()).Y + buttons[0].ActualHeight / 2;
                 Assert.All(buttons, button => Assert.InRange(
                     Math.Abs(button.TransformToVisual(actions).TransformPoint(new()).Y + button.ActualHeight / 2 - y), 0, 1));
-                Exception? receiptFailure = null;
-                try { PersistUsageReceipts($"layout-{width:0}", [UsageNativeReceipt(host, "layout-and-actions")]); }
-                catch (Exception ex)
-                {
-                    receiptFailure = ex;
-                    output.WriteLine($"Action measurement receipt failed: {ex}");
-                }
                 AssertUnclippedText(host);
-                if (receiptFailure is not null)
-                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(receiptFailure).Throw();
                 await VisualTestCapture.CaptureAsync(host, $"Usage-Light-responsive-{width:0}");
             });
             await ui.RunOnUIAsync(() => host.Width = 1300);
@@ -1173,18 +1253,18 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             await WaitForAsync(host, "UsageSession_agent:main:webchat:main");
             await ui.RunOnUIAsync(() =>
             {
-                AssertCardGaps(host, "UsageSessionCard_");
+                AssertSessionGaps(host);
                 AssertCardGaps(host, "UsageProvider_");
-                Invoke(Get<Button>(host, "UsageSession_agent:main:webchat:main"));
+                ExpandSession(host, "agent:main:webchat:main");
             });
             await WaitForAsync(host, "UsageSessionDetails");
             await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
             {
-                AssertCardGaps(host, "UsageSessionCard_");
+                AssertSessionGaps(host);
                 AssertCardGaps(host, "UsageProvider_");
-                Assert.True(Get<Border>(host, "UsageSessionCard_agent:main:webchat:main").ActualHeight >
-                    Get<Border>(host, "UsageSessionCard_agent:ops:slack:C01").ActualHeight);
+                Assert.True(Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main").ActualHeight >
+                    Get<Expander>(host, "UsageSessionExpander_agent:ops:slack:C01").ActualHeight);
                 Assert.True(Get<Button>(host, "UsageChat_agent:main:webchat:main").IsEnabled);
             });
         }, theme: ElementTheme.Light, pageWidth: width);
@@ -1205,8 +1285,21 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             Assert.Equal(new Thickness(1), item.Card.BorderThickness);
             Assert.Equal(new CornerRadius(8), item.Card.CornerRadius);
         }
+
         for (var index = 1; index < cards.Length; index++)
             Assert.InRange(Math.Abs(cards[index].Bounds.Top - cards[index - 1].Bounds.Bottom - 8), 0, 0.1);
+    }
+
+    private static void AssertSessionGaps(FrameworkElement host)
+    {
+        var bounds = FindDescendants<Expander>(host)
+            .Where(item => AutomationProperties.GetAutomationId(item).StartsWith("UsageSessionExpander_", StringComparison.Ordinal))
+            .Select(item => item.TransformToVisual(host).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, item.ActualWidth, item.ActualHeight)))
+            .OrderBy(item => item.Top).ToArray();
+        Assert.True(bounds.Length >= 3);
+        for (var index = 1; index < bounds.Length; index++)
+            Assert.InRange(Math.Abs(bounds[index].Top - bounds[index - 1].Bottom - 8), 0, 0.1);
     }
 
     // WinUI lays elements out on whole physical pixels, so compare widths at the raster scale instead of in DIPs.
@@ -1323,7 +1416,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.NotEqual(LocalizationHelper.GetString("Usage_OpenWebHint"), AutomationProperties.GetHelpText(refresh));
                 Assert.NotNull(Find<FrameworkElement>(host, "UsageQuery"));
                 Assert.NotNull(Find<FrameworkElement>(host, "UsageSessionsSort"));
-                Invoke(Get<Button>(host, "UsageSession_agent:research:discord:42"));
+                ExpandSession(host, "agent:research:discord:42");
             });
             await WaitForAsync(host, "UsageSessionDetails");
             await ui.RunOnUIAsync(async () =>
@@ -1458,7 +1551,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             await WaitForAsync(host, "UsageDaily");
             await ui.RunOnUIAsync(() =>
             {
-                var button = Get<Button>(host, "UsageOptions");
+                var button = Get<DropDownButton>(host, "UsageOptions");
                 var flyout = Assert.IsType<MenuFlyout>(button.Flyout);
                 var radios = flyout.Items.OfType<RadioMenuFlyoutItem>().ToList();
                 Assert.Equal(4, radios.Count);
@@ -1469,7 +1562,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
             {
-                var flyout = Assert.IsType<MenuFlyout>(Get<Button>(host, "UsageOptions").Flyout);
+                var flyout = Assert.IsType<MenuFlyout>(Get<DropDownButton>(host, "UsageOptions").Flyout);
                 var utc = flyout.Items.OfType<RadioMenuFlyoutItem>()
                     .Single(item => item.Text == LocalizationHelper.GetString("Usage_TimeZone_Utc"));
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(utc);
@@ -1611,13 +1704,13 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     {
         await ui.RunOnUIAsync(() =>
         {
-            var button = Get<Button>(host, "UsageExport");
+            var button = Get<DropDownButton>(host, "UsageExport");
             Assert.IsType<MenuFlyout>(button.Flyout).ShowAt(button);
         });
         await ui.YieldToRenderAsync();
         await ui.RunOnUIAsync(() =>
         {
-            var flyout = Assert.IsType<MenuFlyout>(Get<Button>(host, "UsageExport").Flyout);
+            var flyout = Assert.IsType<MenuFlyout>(Get<DropDownButton>(host, "UsageExport").Flyout);
             var item = Assert.Single(flyout.Items.OfType<MenuFlyoutItem>(), entry => entry.Text == LocalizationHelper.GetString(key));
             Assert.IsAssignableFrom<IInvokeProvider>(new MenuFlyoutItemAutomationPeer(item).GetPattern(PatternInterface.Invoke)).Invoke();
         });
@@ -1726,7 +1819,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 }
                 if (scenario is "unsupported" or "no-read")
                     Assert.Null(Find<FrameworkElement>(host, "UsageDaily"));
-                if (scenario == "offline") Assert.False(Get<Button>(host, "UsageExport").IsEnabled);
+                if (scenario == "offline") Assert.False(Get<DropDownButton>(host, "UsageExport").IsEnabled);
                 if (scenario == "missing-price")
                 {
                     Assert.Contains(LocalizationHelper.GetString("Usage_Overview_Unpriced"), Get<TextBlock>(host, "UsageSummaryCostValue").Text);
@@ -1755,7 +1848,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 });
                 await CaptureSectionAsync(host, "UsageDaily", $"Usage-{theme}-installed-per-day");
                 await CaptureSectionAsync(host, "UsageContributors", $"Usage-{theme}-installed-contributors");
-                await ui.RunOnUIAsync(() => Invoke(Get<Button>(host, "UsageSession_agent:research:discord:42")));
+                await ui.RunOnUIAsync(() => ExpandSession(host, "agent:research:discord:42"));
                 await WaitForAsync(host, "UsageSessionDetails");
                 await CaptureSectionAsync(host, "UsageSessions", $"Usage-{theme}-installed-sessions-detail");
             }
@@ -1774,120 +1867,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     .Select(index => new ProviderUsageSnapshot { Provider = "synthetic" + index, DisplayName = "Provider " + index,
                         Windows = [new("Week", null, 75 + index, DateTimeOffset.Now.AddDays(1))] })).ToList();
         });
-    }
-
-    [PairedUsageDiagnosticTheory]
-    [InlineData(ElementTheme.Light, 1400)]
-    [InlineData(ElementTheme.Light, 520)]
-    public async Task PairedHeroDiagnostic_CorrelatesOwnedWindowAndRtbWithoutChangingMotionSettings(ElementTheme theme, double width)
-    {
-        Assert.False(string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR")),
-            "Diagnostic requires an explicitly admitted private-desktop capture lane.");
-        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, _) =>
-        {
-            await WaitForAsync(host, "UsageDaily");
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                UsageActionSettled(host, "UsageOpenWeb") && UsageActionSettled(host, "UsageExport"),
-                "Paired hero actions settled"));
-            await ui.RunOnUIAsync(async () =>
-            {
-                var state = $"Usage-paired-{theme}-{width:0}";
-                var animationsBefore = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-                var scroll = Get<ScrollViewer>(host, "UsagePageRoot");
-                var originalOffset = scroll.VerticalOffset;
-                Action? restore = null;
-                long frames = 0;
-                DateTimeOffset lastFrameUtc = default;
-                EventHandler<object> observe = (_, _) =>
-                {
-                    frames++;
-                    lastFrameUtc = DateTimeOffset.UtcNow;
-                };
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += observe;
-                try
-                {
-                    restore = await MountedControlCapture.ArrangeUsageSceneAsync(ui.TestWindow, host, state);
-                    await WaitForRenderedConditionAsync(() =>
-                        UsageActionSettled(host, "UsageOpenWeb") && UsageActionSettled(host, "UsageExport"),
-                        "Arranged paired hero actions settled");
-                    await PairAsync("top");
-                    if (width == 520)
-                    {
-                        var sessions = Get<FrameworkElement>(host, "UsageSummarySessions");
-                        var offset = sessions.TransformToVisual(scroll).TransformPoint(new()).Y + scroll.VerticalOffset;
-                        Assert.True(scroll.ChangeView(null, Math.Max(0, offset - 20), null, disableAnimation: true));
-                        await WaitForRenderedConditionAsync(() =>
-                        {
-                            var bounds = sessions.TransformToVisual(scroll).TransformBounds(
-                                new Windows.Foundation.Rect(0, 0, sessions.ActualWidth, sessions.ActualHeight));
-                            return bounds.Top >= 0 && bounds.Bottom <= scroll.ViewportHeight;
-                        }, "Complete Sessions fact is inside the scrolled viewport");
-                        await OnboardingNativeProof.NextCompositionAsync();
-                        await PairAsync("scrolled-sessions");
-                    }
-                    Assert.Equal(animationsBefore, new Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
-
-                    async Task PairAsync(string phase)
-                    {
-                        await OnboardingNativeProof.NextCompositionAsync();
-                        Assert.True(frames > 0, "A real Rendering callback is required for the paired diagnostic.");
-                        var before = frames;
-                        var beforeUtc = DateTimeOffset.UtcNow;
-                        PersistUsageReceipts(state + "-" + phase + "-before", [UsageNativeReceipt(host, phase)]);
-                        await VisualTestCapture.CaptureAsync(host, state + "-" + phase + "-rtb");
-                        var rtbFrame = frames;
-                        var rtbUtc = DateTimeOffset.UtcNow;
-                        await MountedControlCapture.RequiredUsageAsync(ui.TestWindow, state + "-" + phase + "-hwnd");
-                        PersistUsageReceipts(state + "-" + phase + "-after", [UsageNativeReceipt(host, phase)]);
-                        var mast = Get<Border>(host, "UsageMast");
-                        var panels = FindDescendants<Panel>(mast).ToArray();
-                        if (!animationsBefore)
-                        {
-                            Assert.True(mast.Transitions is null || mast.Transitions.Count == 0);
-                            Assert.All(panels, panel =>
-                            {
-                                Assert.True(panel.Transitions is null || panel.Transitions.Count == 0);
-                                Assert.True(panel.ChildrenTransitions is null || panel.ChildrenTransitions.Count == 0);
-                            });
-                        }
-                        var directory = Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR")!;
-                        File.WriteAllText(Path.Combine(directory, state + "-" + phase + "-correlation.json"),
-                            JsonSerializer.Serialize(new
-                            {
-                                qualification = "Sequential same-window captures, not simultaneous compositor proof or pixel acceptance.",
-                                hwnd = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow).ToInt64(),
-                                pid = Environment.ProcessId,
-                                processStartUtc = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime(),
-                                before, rtbFrame, after = frames, beforeUtc, rtbUtc, afterUtc = DateTimeOffset.UtcNow,
-                                lastFrameUtc, animationsBefore,
-                                actualPageReducedMotionVerified = !animationsBefore,
-                                reducedMotionBlocker = animationsBefore ? "Host animations are enabled. No OS setting was changed." : null,
-                                scroll.VerticalOffset, scroll.ViewportHeight,
-                            }, new JsonSerializerOptions { WriteIndented = true }));
-                    }
-                }
-                finally
-                {
-                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observe;
-                    try
-                    {
-                        scroll.ChangeView(null, originalOffset, null, disableAnimation: true);
-                        await WaitForRenderedConditionAsync(() => Math.Abs(scroll.VerticalOffset - originalOffset) <= 1,
-                            "Diagnostic scroll offset restored");
-                    }
-                    finally { restore?.Invoke(); }
-                }
-            });
-        }, theme: theme, pageWidth: width);
-    }
-
-    private sealed class PairedUsageDiagnosticTheoryAttribute : TheoryAttribute
-    {
-        public PairedUsageDiagnosticTheoryAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_MOUNTED_CONTROL_CAPTURE_DIR")))
-                Skip = "Requires an explicitly admitted isolated private-desktop paired-capture lane.";
-        }
     }
 
     private async Task CaptureSectionAsync(FrameworkElement host, string marker, string name)
@@ -1911,7 +1890,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     private static string Count(long value) => UsageUi.Count(value);
 
     private static List<string> SessionRowIds(DependencyObject host) =>
-        FindDescendants<Button>(host)
+        FindDescendants<Grid>(host)
             .Select(AutomationProperties.GetAutomationId)
             .Where(id => id.StartsWith("UsageSession_agent:", StringComparison.Ordinal))
             .ToList();
@@ -1984,88 +1963,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         }
     }
 
-    private static object UsageNativeReceipt(FrameworkElement root, string phase)
-    {
-        var scroll = Find<ScrollViewer>(root, "UsagePageRoot");
-        var focus = FocusManager.GetFocusedElement(root.XamlRoot) as FrameworkElement;
-        var actionElements = Find<StackPanel>(root, "UsageMastActions") is { } actions
-            ? FindDescendants<FrameworkElement>(actions).ToHashSet()
-            : [];
-        var factElements = Find<Grid>(root, "UsageDailyFacts") is { } facts
-            ? FindDescendants<FrameworkElement>(facts).ToHashSet()
-            : [];
-        for (DependencyObject? ancestor = Find<Button>(root, "UsageExport"); ancestor is FrameworkElement element;
-            ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor))
-        {
-            actionElements.Add(element);
-            if (ReferenceEquals(element, root)) break;
-        }
-        object ElementReceipt(FrameworkElement element)
-        {
-            var visual = ElementCompositionPreview.GetElementVisual(element);
-            var bounds = element.TransformToVisual(root).TransformBounds(
-                new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
-            var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(element);
-            var padding = element switch
-            {
-                Control control => control.Padding,
-                Border border => border.Padding,
-                Grid grid => grid.Padding,
-                StackPanel stack => stack.Padding,
-                _ => new Thickness(),
-            };
-            return new
-            {
-                id = AutomationProperties.GetAutomationId(element), type = element.GetType().FullName,
-                managedInstance = RuntimeHelpers.GetHashCode(element),
-                bounds = new { bounds.X, bounds.Y, bounds.Width, bounds.Height },
-                desired = new { element.DesiredSize.Width, element.DesiredSize.Height },
-                layoutSlot = new { slot.X, slot.Y, slot.Width, slot.Height },
-                margin = new { element.Margin.Left, element.Margin.Top, element.Margin.Right, element.Margin.Bottom },
-                padding = new { padding.Left, padding.Top, padding.Right, padding.Bottom },
-                clipType = element.Clip?.GetType().FullName,
-                clip = element.Clip is Microsoft.UI.Xaml.Media.RectangleGeometry rectangle
-                    ? new { rectangle.Rect.X, rectangle.Rect.Y, rectangle.Rect.Width, rectangle.Rect.Height } : null,
-                rasterizationScale = element.XamlRoot?.RasterizationScale,
-                element.Width, element.Height, element.MinWidth, element.MaxWidth,
-                element.HorizontalAlignment, element.VerticalAlignment,
-                text = (element as TextBlock)?.Text,
-                element.Opacity, element.Visibility, element.ActualTheme,
-                composition = new
-                {
-                    visual.Opacity,
-                    offset = new { visual.Offset.X, visual.Offset.Y, visual.Offset.Z },
-                    scale = new { visual.Scale.X, visual.Scale.Y, visual.Scale.Z },
-                },
-                transitions = element.Transitions?.Select(transition => transition.GetType().Name).ToArray(),
-                childrenTransitions = (element as Panel)?.ChildrenTransitions?
-                    .Select(transition => transition.GetType().Name).ToArray(),
-            };
-        }
-        return new
-        {
-            phase, utc = DateTimeOffset.UtcNow, pid = Environment.ProcessId,
-            mountedOnly = true, root.ActualWidth, root.ActualHeight, root.ActualTheme,
-            animationsEnabled = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
-            focus = focus is null ? null : ElementReceipt(focus),
-            scroll = scroll is null ? null : new
-            {
-                instance = RuntimeHelpers.GetHashCode(scroll), scroll.VerticalOffset, scroll.ScrollableHeight,
-                scroll.ViewportHeight, scroll.ExtentHeight,
-            },
-            elements = FindDescendants<FrameworkElement>(root).Where(element =>
-                actionElements.Contains(element) || factElements.Contains(element) ||
-                (AutomationProperties.GetAutomationId(element) is { Length: > 0 } id &&
-                (id.StartsWith("UsageMast", StringComparison.Ordinal) || id.StartsWith("UsageReducedMotion", StringComparison.Ordinal)
-                    || id.StartsWith("UsageNearLimit_", StringComparison.Ordinal)
-                    || id.StartsWith("UsageInspectProvider_", StringComparison.Ordinal)
-                    || id is "UsageOpenWeb" or "UsageExport" or "UsageSurface" or "UsageFilterRow"
-                        or "UsageDailyFacts" or "UsageSummaryTokens" or "UsageSummaryCache" or "UsageSummarySessions"
-                        or "UsageSummaryTokensValue" or "UsageSummaryCacheValue" or "UsageSummarySessionsValue")))
-                .Select(ElementReceipt).ToArray(),
-        };
-    }
-
     private static bool UsageActionSettled(FrameworkElement root, string id, bool requireViewport = true)
     {
         var action = Find<Button>(root, id);
@@ -2087,23 +1984,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             if (ReferenceEquals(current, root)) return true;
         }
         return false;
-    }
-
-    private void PersistUsageReceipts(string name, IReadOnlyList<object> frames)
-    {
-        var json = JsonSerializer.Serialize(frames, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            // Auto dimensions and unbounded maxima are emitted as named JSON strings.
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
-        });
-        output.WriteLine(json);
-        if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR") is { Length: > 0 } root)
-        {
-            var directory = Path.Combine(root, "native-receipts");
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(Path.Combine(directory, name + ".json"), json);
-        }
     }
 
     private Task WaitForAsync(FrameworkElement root, string automationId) =>

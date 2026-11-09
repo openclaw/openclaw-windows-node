@@ -28,16 +28,16 @@ internal static class UsageExportFeedback
         var badge = Border(TextBlock("\uE7BA").FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
                 .FontSize(18).Foreground(Caution).HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center).AccessibilityHidden())
             .Size(36, 36).CornerRadius(18).Background(CautionTint);
-        var factWidth = width - CardPadding * 2;
+        var factWidth = width;
         return VStack(PageResponsiveLayout.GapStack,
             Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto], badge.Margin(0, 0, PageResponsiveLayout.GapGroup, 0).Grid(column: 0),
                 TextBlock(S("Usage_Export_BlockedTitle")).FontSize(20).FontWeight(FontWeights.SemiBold)
                     .TextWrapping(TextWrapping.WrapWholeWords).VAlign(VerticalAlignment.Center)
                     .AutomationId("UsageExportBlockedTitle").Grid(column: 1)),
             TextBlock(S("Usage_Export_BlockedMessage")).TextWrapping(TextWrapping.WrapWholeWords),
-            Border(VStack(10,
+            VStack(10,
                 Fact(S("Usage_Filter_Range"), RangeFact(block.Filters), factWidth),
-                Fact(S("Usage_Sessions_Title"), coverage, factWidth))).Padding(16).CornerRadius(CardRadius).Background(Track),
+                Fact(S("Usage_Sessions_Title"), coverage, factWidth)),
             Border(null).Height(1).Background(CardStroke),
             Grid(narrow ? [GridSize.Star()] : [GridSize.Star(), GridSize.Star()],
                 narrow ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],

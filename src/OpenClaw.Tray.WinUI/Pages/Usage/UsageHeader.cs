@@ -60,7 +60,7 @@ internal static class UsageHeader
         var mast = PageHero.Header("UsageMast", "\uE9D2", S("Usage_Title"), "UsagePageMarker",
             headline.AutomationId("UsageHeadline"), detail,
             unsupported || forbidden ? Empty() : buttons.AutomationId("UsageMastActions"),
-            layout.Narrow, !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled, highContrast);
+            layout.Narrow, !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled, highContrast, pageTag: "usage");
         return VStack(PageResponsiveLayout.GapStack,
             mast,
             unsupported || forbidden ? null : RangeRow(state, actions.Controller, layout))
@@ -162,6 +162,7 @@ internal static class UsageHeader
                 .Grid(row: layout.Narrow ? 1 : 0, column: inlineDates ? 2 : layout.Narrow ? 0 : 1).WithKey("controls"),
             advanced
                 ? Component<UsageQueryBox, UsageQueryBoxProps>(new(filters.Query, controller.SetQuery))
+                    .VAlign(VerticalAlignment.Center)
                     .MinWidth(inlineSearch ? 240 : 0).MaxWidth(inlineSearch ? 360 : double.PositiveInfinity)
                     .Width(inlineSearch ? Math.Clamp(layout.ContentWidth / 3, 240, 360) : double.NaN)
                     .Margin(0, inlineSearch ? 0 : PageResponsiveLayout.GapGroup, 0, 0)
@@ -185,7 +186,7 @@ internal static class UsageHeader
     private static Element AgentMenu(UsagePageState state, UsagePageController controller)
     {
         var values = state.Dashboard!.FilterOptions.TryGetValue("agent", out var agents) ? agents : [];
-        return MenuFlyout(Button(S("Usage_Facet_agent")).AutomationName(S("Usage_Facet_agent")).AutomationId("UsageFacet_agent"),
+        return MenuFlyout(DropDownButton(S("Usage_Facet_agent")).AutomationName(S("Usage_Facet_agent")).AutomationId("UsageFacet_agent"),
             values.Select(agent => (MenuFlyoutItemBase)ToggleMenuItem(agent,
                 state.Filters.Query.Split(' ').Contains("agent:" + agent),
                 _ => controller.ToggleQueryTerm("agent:" + agent))).ToArray());
@@ -196,10 +197,9 @@ internal static class UsageHeader
         var zone = state.Filters.TimeZone;
         var scope = state.Filters.Scope;
         var local = F("Usage_Options_LocalFormat", TimeZoneInfo.Local.StandardName);
-        return MenuFlyout(Button(HStack(6,
+        return MenuFlyout(UsageMenuButtonElement.DropDownButton(content: HStack(6,
                     TextBlock("\uE713").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).AccessibilityHidden(),
                     TextBlock(S("Usage_Options")).TextWrapping(TextWrapping.NoWrap)))
-                .Resources(OpenClawTray.Chat.ChatVisuals.ToolbarButtonResources)
                 .AutomationName(S("Usage_Options"))
                 .ToolTip($"{(zone == UsageTimeZoneMode.Utc ? S("Usage_TimeZone_Utc") : local)} · {S(scope == UsageScope.Family ? "Usage_Scope_Family" : "Usage_Scope_Instance")}")
                 .AutomationId("UsageOptions"),
@@ -225,10 +225,9 @@ internal static class UsageHeader
             filters.TimeZone == UsageTimeZoneMode.Utc ? S("Usage_TimeZone_Utc") : TimeZoneInfo.Local.StandardName);
 
     private static Element ExportMenu(UsagePageState state, Func<UsageExportFormat, Task> export) =>
-        MenuFlyout(Button(HStack(6,
-                    TextBlock("\uE896").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily),
-                    TextBlock(state.Exporting ? S("Usage_Exporting") : S("Usage_Export")).TextWrapping(TextWrapping.NoWrap),
-                    TextBlock("\uE70D").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(10)))
+        MenuFlyout(UsageMenuButtonElement.DropDownButton(content: HStack(6,
+                    TextBlock("\uE896").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).AccessibilityHidden(),
+                    TextBlock(S(state.Exporting ? "Usage_Exporting" : "Usage_Export")).TextWrapping(TextWrapping.NoWrap)))
                 .IsEnabled(state.Report is not null && !state.Exporting && !state.ExportInteraction && state.Availability == UsageAvailability.Connected)
                 .AutomationName(S("Usage_Export")).AutomationId("UsageExport"),
             MenuItem(S("Usage_Export_SessionsCsv"), () => _ = export(UsageExportFormat.SessionsCsv)),
@@ -239,6 +238,12 @@ internal static class UsageHeader
                 value => { if (value is { } picked) changed(DateOnly.FromDateTime(picked.Date)); })
             .MinWidth(0).HAlign(HorizontalAlignment.Stretch).PlaceholderText(name).AutomationName(name).AutomationId(id);
 }
+
+// The built-in Reactor factory accepts only a string label. This exposes native Content without replacing the template.
+[Microsoft.UI.Reactor.Wrappers.GenerateReactorWrapper(typeof(Microsoft.UI.Xaml.Controls.DropDownButton),
+    AutoDiscover = false, RegisterAssembly = false)]
+[Microsoft.UI.Reactor.Wrappers.WrapContent("Content")]
+internal partial record UsageMenuButtonElement;
 
 internal sealed record UsageQueryBoxProps(string Query, Action<string> Submit);
 

@@ -7722,16 +7722,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Title" xml:space="preserve"><value>Utilisation</value></data>
   <data name="Usage_RangeFormat" xml:space="preserve"><value>Du {0} au {1}</value></data>
   <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1} (fuseau)</value></data>
-  <data name="Usage_UpdatedFormat" xml:space="preserve"><value>Mis à jour à {0}</value></data>
   <data name="Usage_Refresh" xml:space="preserve"><value>Actualiser</value></data>
   <data name="Usage_Refreshing" xml:space="preserve"><value>Actualisation de l'utilisation</value></data>
   <data name="Usage_Export" xml:space="preserve"><value>Exporter CSV</value></data>
   <data name="Usage_Exporting" xml:space="preserve"><value>Exportation</value></data>
   <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessions au format CSV</value></data>
   <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Totaux quotidiens (CSV)</value></data>
-  <data name="Usage_Export_SavedTitle" xml:space="preserve"><value>Exportation enregistrée</value></data>
   <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>{0} a été enregistré.</value></data>
-  <data name="Usage_Export_FailedTitle" xml:space="preserve"><value>Échec de l'exportation</value></data>
   <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Connectez-vous à une passerelle pour exporter l'utilisation.</value></data>
   <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>Le rapport d'utilisation n'a pas pu être lu ou enregistré. Réessayez.</value></data>
   <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>Les données d'utilisation sont incomplètes. Actualisez puis réessayez, ou réduisez la période.</value></data>
@@ -7739,7 +7736,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>Cette passerelle ne le fournit pas.</value></data>
   <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>La passerelle n'est pas connectée.</value></data>
   <data name="Usage_ReadError_Failed" xml:space="preserve"><value>La requête a échoué.</value></data>
-  <data name="Usage_Dismiss" xml:space="preserve"><value>Fermer</value></data>
   <data name="Usage_Filter_Range" xml:space="preserve"><value>Période</value></data>
   <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Date de début</value></data>
   <data name="Usage_Filter_EndDate" xml:space="preserve"><value>Date de fin</value></data>
@@ -7750,27 +7746,17 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Preset_Today" xml:space="preserve"><value>Aujourd'hui</value></data>
   <data name="Usage_Preset_7d" xml:space="preserve"><value>7 jours</value></data>
   <data name="Usage_Preset_30d" xml:space="preserve"><value>30 jours</value></data>
-  <data name="Usage_TimeZone_Local" xml:space="preserve"><value>Heure locale</value></data>
   <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
   <data name="Usage_Scope_Instance" xml:space="preserve"><value>Instance actuelle</value></data>
   <data name="Usage_Scope_Family" xml:space="preserve"><value>Lignée historique</value></data>
-  <data name="Usage_Scope_FamilyHint" xml:space="preserve"><value>Regroupe les ID de session connus qui ont été renouvelés.</value></data>
   <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Jetons</value></data>
-  <data name="Usage_Metric_Cost" xml:space="preserve"><value>Coût</value></data>
-  <data name="Usage_LowerBoundShort" xml:space="preserve"><value>≥ Borne inférieure</value></data>
-  <data name="Usage_LowerBoundNote" xml:space="preserve"><value>≥ indique une borne inférieure : certaines réponses se sont arrêtées avant leur utilisation finale, leurs jetons et coûts sont donc partiellement comptés.</value></data>
   <data name="Usage_PartialShort" xml:space="preserve"><value>Résultats partiels</value></data>
   <data name="Usage_PartialNote" xml:space="preserve"><value>Une partie de l'utilisation est encore en cours de calcul, les totaux peuvent augmenter.</value></data>
   <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
   <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
-  <data name="Usage_Unknown" xml:space="preserve"><value>Inconnu</value></data>
   <data name="Usage_Selected" xml:space="preserve"><value>Sélectionné</value></data>
-  <data name="Usage_RemoveFilterFormat" xml:space="preserve"><value>Supprimer le filtre {0}</value></data>
-  <data name="Usage_ClearFilters" xml:space="preserve"><value>Effacer les filtres</value></data>
   <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Rechercher des sessions</value></data>
   <data name="Usage_Query_Label" xml:space="preserve"><value>Filtrer les sessions</value></data>
-  <data name="Usage_Query_Help" xml:space="preserve"><value>Recherchez par nom ou clé de session. Utilisez les menus Agent, Fournisseur et Modèle pour filtrer. Appuyez sur Entrée pour appliquer.</value></data>
-  <data name="Usage_Query_Apply" xml:space="preserve"><value>Appliquer</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Certains filtres ont été ignorés</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
   <data name="Usage_Facet_provider" xml:space="preserve"><value>Fournisseur</value></data>
@@ -7799,93 +7785,55 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Table_Date" xml:space="preserve"><value>Jour</value></data>
   <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>Jetons par type</value></data>
   <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>Coût par type</value></data>
-  <data name="Usage_Overview_Title" xml:space="preserve"><value>Vue d'ensemble de l'utilisation</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>Messages</value></data>
-  <data name="Usage_Overview_MessagesSubFormat" xml:space="preserve"><value>{0} utilisateur · {1} assistant</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Appels d'outils</value></data>
-  <data name="Usage_Overview_ToolsUsedFormat" xml:space="preserve"><value>{0} outils utilisés</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Taux de succès du cache</value></data>
-  <data name="Usage_Overview_CacheSubFormat" xml:space="preserve"><value>{0} en cache · {1} invite</value></data>
-  <data name="Usage_Overview_CacheHint" xml:space="preserve"><value>Part des jetons d'invite servis par le cache : lecture du cache divisée par entrée plus lecture et écriture du cache.</value></data>
-  <data name="Usage_Overview_ErrorHint" xml:space="preserve"><value>Messages ayant signalé une erreur, divisés par tous les messages de la période. Ne mesure pas la disponibilité de la passerelle ou des fournisseurs.</value></data>
   <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessions</value></data>
   <data name="Usage_Overview_Errors" xml:space="preserve"><value>Erreurs</value></data>
-  <data name="Usage_Overview_NoModelData" xml:space="preserve"><value>Aucune donnée de modèle</value></data>
-  <data name="Usage_Overview_NoProviderData" xml:space="preserve"><value>Aucune donnée de fournisseur</value></data>
   <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>Aucune donnée d'agent</value></data>
   <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Sans prix</value></data>
-  <data name="Usage_Overview_MessagesCountFormat" xml:space="preserve"><value>{0} msg</value></data>
   <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} erreurs</value></data>
   <data name="Usage_Providers_Title" xml:space="preserve"><value>Quotas des fournisseurs</value></data>
-  <data name="Usage_Providers_Subtitle" xml:space="preserve"><value>Forfaits, quotas et facturation signalés par chaque fournisseur. Distinct de l'utilisation des sessions.</value></data>
   <data name="Usage_Providers_Loading" xml:space="preserve"><value>Chargement de l'utilisation des fournisseurs</value></data>
   <data name="Usage_Providers_Empty" xml:space="preserve"><value>Aucun fournisseur ne signale l'utilisation de son forfait.</value></data>
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>L'utilisation des fournisseurs n'est pas disponible.</value></data>
-  <data name="Usage_Providers_Stalled" xml:space="preserve"><value>Impossible d'actualiser l'utilisation des fournisseurs. Affichage du dernier rapport.</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Actualisation de l'utilisation des fournisseurs.</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Aucune information de quota signalée.</value></data>
-  <data name="Usage_Providers_UsedFormat" xml:space="preserve"><value>{0} utilisé</value></data>
-  <data name="Usage_Providers_ResetsFormat" xml:space="preserve"><value>Réinitialisation dans {0}</value></data>
   <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>Réinitialisation en cours</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} sur {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (crédits)</value></data>
-  <data name="Usage_Providers_CostHistoryFormat" xml:space="preserve"><value>{0} facturé sur les {1} derniers jours</value></data>
-  <data name="Usage_Providers_Billing_balance" xml:space="preserve"><value>Solde</value></data>
-  <data name="Usage_Providers_Billing_spend" xml:space="preserve"><value>Dépenses</value></data>
-  <data name="Usage_Providers_Billing_budget" xml:space="preserve"><value>Budget alloué</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessions</value></data>
-  <data name="Usage_Sessions_SubtitleFormat" xml:space="preserve"><value>Sessions : {0} · moy. {1} · erreurs : {2}</value></data>
   <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Trier les sessions</value></data>
   <data name="Usage_Sort_Cost" xml:space="preserve"><value>Coût le plus élevé</value></data>
   <data name="Usage_Sort_Errors" xml:space="preserve"><value>Le plus d'erreurs</value></data>
   <data name="Usage_Sort_Messages" xml:space="preserve"><value>Le plus de messages</value></data>
   <data name="Usage_Sort_Recent" xml:space="preserve"><value>Les plus récentes</value></data>
   <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Le plus de jetons</value></data>
-  <data name="Usage_Sessions_Ascending" xml:space="preserve"><value>Tri croissant</value></data>
-  <data name="Usage_Sessions_Descending" xml:space="preserve"><value>Tri décroissant</value></data>
   <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>Aucune session dans la période</value></data>
-  <data name="Usage_Sessions_ShowAllFormat" xml:space="preserve"><value>Afficher les {0}</value></data>
-  <data name="Usage_Sessions_ShowTopFormat" xml:space="preserve"><value>Afficher les {0} premières</value></data>
   <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} à {1} sur {2}</value></data>
   <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Page précédente</value></data>
   <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Page suivante</value></data>
   <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Calcul en cours</value></data>
-  <data name="Usage_Sessions_ToolsFormat" xml:space="preserve"><value>{0} outils</value></data>
-  <data name="Usage_Sessions_InstancesFormat" xml:space="preserve"><value>{0} instances regroupées</value></data>
-  <data name="Usage_Sessions_AgentFormat" xml:space="preserve"><value>Agent : {0}</value></data>
-  <data name="Usage_Sessions_CopyKey" xml:space="preserve"><value>Copier la clé de session</value></data>
   <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Sélectionnez pour voir les détails.</value></data>
-  <data name="Usage_Details_Close" xml:space="preserve"><value>Fermer les détails</value></data>
   <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Détails de {0}</value></data>
-  <data name="Usage_Details_FamilyFormat" xml:space="preserve"><value>Inclut {0} instances de session de cette lignée.</value></data>
   <data name="Usage_Details_Summary" xml:space="preserve"><value>résumé de la session</value></data>
   <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Certains détails n'ont pas pu être chargés</value></data>
   <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Impossible de charger {0} : {1}</value></data>
   <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} entrée · {1} sortie</value></data>
   <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} entrées sans prix</value></data>
   <data name="Usage_Details_Duration" xml:space="preserve"><value>Durée</value></data>
-  <data name="Usage_Details_ActivityFormat" xml:space="preserve"><value>Du {0} au {1}</value></data>
-  <data name="Usage_Details_ModelMix" xml:space="preserve"><value>Répartition des modèles</value></data>
-  <data name="Usage_Overview_ToolsUsedFormatOne" xml:space="preserve"><value>{0} outil utilisé</value></data>
-  <data name="Usage_Overview_MessagesCountFormatOne" xml:space="preserve"><value>{0} message</value></data>
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} erreur</value></data>
-  <data name="Usage_Sessions_ToolsFormatOne" xml:space="preserve"><value>{0} outil</value></data>
-  <data name="Usage_Sessions_InstancesFormatOne" xml:space="preserve"><value>{0} instance regroupée</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} entrée sans prix</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Plus récentes d'abord</value></data>
   <data name="Usage_Subtitle" xml:space="preserve"><value>Utilisation des jetons et coûts estimés de vos sessions.</value></data>
-  <data name="Usage_ReportingRange" xml:space="preserve"><value>Période analysée</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessions sur la période</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} session sur la période</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Coût estimé</value></data>
-  <data name="Usage_Summary_CostHint" xml:space="preserve"><value>Estimé par la passerelle à partir de l&apos;utilisation des jetons et du prix des modèles. Les factures des fournisseurs peuvent différer.</value></data>
-  <data name="Usage_MissingCostShort" xml:space="preserve"><value>Utilisation partiellement sans prix</value></data>
   <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} entrées d&apos;utilisation n&apos;ont pas de prix connu : le coût estimé peut donc être inférieur au coût réel.</value></data>
   <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} entrée d&apos;utilisation n&apos;a pas de prix connu : le coût estimé peut donc être inférieur au coût réel.</value></data>
   <data name="Usage_OpenWeb" xml:space="preserve"><value>Ouvrir sur le web</value></data>
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>Ouvre la page Utilisation de la passerelle dans votre navigateur pour les chronologies, les transcriptions et d&apos;autres analyses détaillées. La période, les filtres et la session sélectionnée ne sont pas repris.</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} sur {1} chargées ; les totaux les incluent toutes.</value></data>
-  <data name="Usage_Activity_ErrorRateFormat" xml:space="preserve"><value>{0} des messages</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>Répartition de l&apos;utilisation</value></data>
   <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>Classés par coût estimé, puis par jetons. L&apos;utilisation sans prix arrive en dernier.</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>Type de contributeur</value></data>
@@ -7895,7 +7843,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Details_Cache" xml:space="preserve"><value>Jetons en cache</value></data>
   <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>{0} lus · {1} écrits</value></data>
   <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>Ouvrir la conversation</value></data>
-  <data name="Usage_Details_MoreInBrowser" xml:space="preserve"><value>L&apos;utilisation dans le temps, les transcriptions et le détail du contexte sont disponibles dans le navigateur.</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>L&apos;utilisation n&apos;est pas disponible sur cette passerelle</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Mettez la passerelle à jour pour voir ici le coût, les jetons et les sessions.</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>Les {0} premières sont chargées ; il peut y en avoir plus.</value></data>
@@ -8025,8 +7972,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Mast_30d" xml:space="preserve"><value>sur les 30 derniers jours</value></data>
   <data name="Usage_Mast_7d" xml:space="preserve"><value>sur les 7 derniers jours</value></data>
   <data name="Usage_Mast_Today" xml:space="preserve"><value>aujourd&apos;hui jusqu&apos;ici</value></data>
-  <data name="Usage_MoreNeedsFormat" xml:space="preserve"><value>{0} autres nécessitent votre attention</value></data>
-  <data name="Usage_NeedsYou" xml:space="preserve"><value>À votre attention</value></data>
   <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>Aucune parmi les sessions chargées.</value></data>
   <data name="Usage_OpenChat" xml:space="preserve"><value>Ouvrir le chat</value></data>
   <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>Ouvrir le chat : {0}</value></data>

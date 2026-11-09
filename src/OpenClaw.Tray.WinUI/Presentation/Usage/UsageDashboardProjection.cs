@@ -5,8 +5,12 @@ namespace OpenClawTray.Presentation.Usage;
 internal readonly record struct UsagePageLayout(double HostWidth)
 {
     public const double StatMinWidth = 160;
-    public static int DailyFactColumns(double innerWidth) =>
-        PageResponsiveLayout.Snap(innerWidth) >= 3 * StatMinWidth + 2 * PageResponsiveLayout.GapGroup ? 3 : 1;
+    public static int DailyFactColumns(double innerWidth)
+    {
+        var width = PageResponsiveLayout.Snap(innerWidth);
+        if (width >= 3 * StatMinWidth + 2 * PageResponsiveLayout.GapGroup) return 3;
+        return width >= 2 * StatMinWidth + PageResponsiveLayout.GapGroup ? 2 : 1;
+    }
     public const double ActivityTileMinWidth = 200;
     public const double FactStackWidth = 400;
     public const double DialogMaxWidth = 560;

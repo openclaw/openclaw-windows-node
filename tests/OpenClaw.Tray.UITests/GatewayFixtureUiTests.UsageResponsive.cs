@@ -12,6 +12,23 @@ public sealed partial class GatewayFixtureUiTests
 {
     private static readonly TimeSpan UsageResizeSampleInterval = TimeSpan.FromMilliseconds(300);
 
+    private static System.Windows.Rect UsageRangeBounds(GatewayFixtureRun run)
+    {
+        // Layout-only Grids have no UIA peer. Measure the actual interactive controls.
+        var bounds = System.Windows.Rect.Empty;
+        foreach (var id in new[] { "UsagePresets", "UsageOptions", "UsageRefresh" })
+        {
+            var control = FindById(run, id)
+                ?? throw new InvalidOperationException($"Missing Usage range control {id}.");
+            Assert.False(control.Current.IsOffscreen);
+            bounds.Union(control.Current.BoundingRectangle);
+        }
+        foreach (var id in new[] { "UsageFacet_agent", "UsageQuery", "UsageStartDate", "UsageEndDate" })
+            if (FindById(run, id) is { } control)
+                bounds.Union(control.Current.BoundingRectangle);
+        return bounds;
+    }
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task UsagePinned_ToggleOwnsHitPointAndTabOrderWithVisibleOperationFeedback()
@@ -283,8 +300,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
                 FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage at top");
             var hero = FindById(run, "UsageMast") ?? throw new InvalidOperationException("Missing Usage hero card.");
-            var filter = FindById(run, "UsageFilterRow") ?? throw new InvalidOperationException("Missing Usage range bar.");
-            Assert.True(filter.Current.BoundingRectangle.Top >= hero.Current.BoundingRectangle.Bottom);
+            Assert.True(UsageRangeBounds(run).Top >= hero.Current.BoundingRectangle.Bottom);
             OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", FindById(run, "UsagePageMarker")!);
             var top = scrollElement.Current.BoundingRectangle;
             var previousTitle = FindById(run, "UsagePageMarker")!.Current.BoundingRectangle;
@@ -354,7 +370,7 @@ public sealed partial class GatewayFixtureUiTests
                         var page = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle;
                         var host = page.Width / scale;
                         var hero = FindById(run, "UsageMast")!.Current.BoundingRectangle;
-                        var range = FindById(run, "UsageFilterRow")!.Current.BoundingRectangle;
+                        var range = UsageRangeBounds(run);
                         Assert.True(hero.Left >= page.Left && hero.Right <= page.Right);
                         Assert.True(range.Top >= hero.Bottom, "Range controls overlap the Usage hero.");
                         foreach (var id in new[] { "UsageOpenWeb", "UsageExport" })
@@ -378,23 +394,26 @@ public sealed partial class GatewayFixtureUiTests
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, name + "-layout.json"),
                             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
                         Assert.Equal(target == 0 ? PageWidthTier.Medium : PageWidthTier.Wide, PageResponsiveLayout.TierFor(host));
-                        if (theme == "Light" && target == 1400)
+                        if (target == 1400)
                         {
                             var scroll = (ScrollPattern)FindById(run, "UsagePageRoot")!.GetCurrentPattern(ScrollPattern.Pattern);
                             scroll.SetScrollPercent(ScrollPattern.NoScroll, 75);
                             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 74,
                                 "Usage session cards scrolled into view");
-                            OwnedWindowCapture.Save(run, window, "Usage-Light-separated-session-cards.png");
-                            var session = FindById(run, "UsageSession_agent:main:webchat:main")
-                                ?? throw new InvalidOperationException("Missing populated main Usage session.");
-                            ((InvokePattern)session.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                            OwnedWindowCapture.Save(run, window, $"Usage-{theme}-separated-session-cards.png");
+                            var expander = FindById(run, "UsageSessionExpander_agent:main:webchat:main")
+                                ?? throw new InvalidOperationException("Missing main Usage session Expander.");
+                            var collapsedHeaderHeight = expander.Current.BoundingRectangle.Height;
+                            ((ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
                             await WaitUiAsync(run, () => FindById(run, "UsageDetailCostValue") is not null,
                                 "expanded Usage session detail");
                             (System.Windows.Rect Header, System.Windows.Rect Cost, System.Windows.Rect Tokens)? previousDetail = null;
                             await run.WaitForAsync(async () =>
                             {
                                 await Task.Delay(UsageResizeSampleInterval);
-                                var current = (Header: session.Current.BoundingRectangle,
+                                var expandedBounds = expander.Current.BoundingRectangle;
+                                var current = (Header: new System.Windows.Rect(expandedBounds.Left, expandedBounds.Top,
+                                        expandedBounds.Width, collapsedHeaderHeight),
                                     Cost: FindById(run, "UsageDetailCostValue")!.Current.BoundingRectangle,
                                     Tokens: FindById(run, "UsageDetailTokensValue")!.Current.BoundingRectangle);
                                 var stable = previousDetail == current;
@@ -402,7 +421,20 @@ public sealed partial class GatewayFixtureUiTests
                                 return stable && current.Cost.Top >= current.Header.Bottom
                                     && current.Tokens.Top >= current.Header.Bottom;
                             }, "settled session animation with detail below its header");
-                            OwnedWindowCapture.Save(run, window, "Usage-Light-1400-expanded-session.png");
+                            var viewport = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle;
+                            var detailBounds = expander.Current.BoundingRectangle;
+                            Assert.True(detailBounds.Height <= viewport.Height, "Expanded session must fit the viewport.");
+                            var scrollableHeight = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
+                            Assert.True(scrollableHeight > 0);
+                            var detailPercent = Math.Clamp(scroll.Current.VerticalScrollPercent +
+                                100 * (detailBounds.Top - viewport.Top) / scrollableHeight, 0, 100);
+                            scroll.SetScrollPercent(ScrollPattern.NoScroll, detailPercent);
+                            await WaitUiAsync(run, () =>
+                            {
+                                var bounds = expander.Current.BoundingRectangle;
+                                return bounds.Top >= viewport.Top - 1 && bounds.Bottom <= viewport.Bottom + 1;
+                            }, "complete expanded session visible without cropping");
+                            OwnedWindowCapture.Save(run, window, $"Usage-{theme}-1400-expanded-session.png", expander);
                             scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
                             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
                                 FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top restored");
@@ -429,9 +461,10 @@ public sealed partial class GatewayFixtureUiTests
                     var expected = ResizeUsageWindow(handle, width, scale, capToDisplay: false);
                     await WaitUiAsync(run, () => UsageWindowBounds(handle).Width == expected.Width,
                         $"collapsed Settings at {width} DIP");
-                    await WaitUiAsync(run, () => FindById(run, "UsagePageMarker")!.Current.BoundingRectangle.Top >=
-                        Math.Max(FindById(run, "SettingsBack")!.Current.BoundingRectangle.Bottom,
-                            FindById(run, "SettingsForward")!.Current.BoundingRectangle.Bottom),
+                    await WaitUiAsync(run, () => FindById(run, "UsagePageMarker") is { } marker &&
+                        FindById(run, "SettingsBack") is { } back && FindById(run, "SettingsForward") is { } forward &&
+                        marker.Current.BoundingRectangle.Top >=
+                            Math.Max(back.Current.BoundingRectangle.Bottom, forward.Current.BoundingRectangle.Bottom),
                         "Usage header below collapsed history controls");
                     Assert.InRange(Math.Abs(UsageWindowBounds(handle).Width / scale - width), 0, 1);
                     OwnedWindowCapture.Save(run, window, $"Usage-{theme}-collapsed-{width}.png");
@@ -475,9 +508,12 @@ public sealed partial class GatewayFixtureUiTests
         var consecutive = 0;
         await run.WaitForAsync(async () =>
         {
-            var marker = FindById(run, markerId)!;
-            var pane = FindById(run, "SettingsTogglePane")!;
+            var marker = FindById(run, markerId);
+            var pane = FindById(run, "SettingsTogglePane");
+            var navigation = FindById(run, "SettingsNavChat");
+            if (marker is null || pane is null || navigation is null) return false;
             var content = TreeWalker.ControlViewWalker.GetParent(marker);
+            if (content is null) return false;
             var state = new
             {
                 marker = marker.Current.AutomationId,
@@ -486,7 +522,7 @@ public sealed partial class GatewayFixtureUiTests
                 contentBounds = content.Current.BoundingRectangle,
                 paneLabel = pane.Current.Name,
                 paneBounds = pane.Current.BoundingRectangle,
-                navigationBounds = FindById(run, "SettingsNavChat")!.Current.BoundingRectangle,
+                navigationBounds = navigation.Current.BoundingRectangle,
                 searchVisible = FindById(run, "SettingsSearch") is { Current.IsOffscreen: false },
                 usageVisible = FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false },
                 permissionsVisible = FindById(run, "PermissionsPageMarker") is { Current.IsOffscreen: false },

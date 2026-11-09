@@ -13,11 +13,11 @@ public sealed class UsageDashboardProjectionTests
 {
     [Theory]
     [InlineData(331.99, 1)]
-    [InlineData(332, 1)]
-    [InlineData(503.99, 1)]
+    [InlineData(332, 2)]
+    [InlineData(503.99, 2)]
     [InlineData(504, 3)]
     [InlineData(504.01, 3)]
-    [InlineData(503.994, 1)]
+    [InlineData(503.994, 2)]
     [InlineData(503.996, 3)]
     [InlineData(1200, 3)]
     public void DailyFacts_KeepAllThreeInOneColumnUntilThreeMinimumWidthColumnsFit(double innerWidth, int expected) =>
