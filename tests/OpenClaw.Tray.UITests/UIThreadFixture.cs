@@ -6,6 +6,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.ApplicationModel.DynamicDependency;
+using OpenClaw.TestSupport;
 
 // Windows App SDK bootstrap must not run while other test collections execute: hosted runners
 // froze the whole testhost inside Bootstrap.Initialize while non-UI collections started in parallel.
@@ -74,6 +75,7 @@ public sealed class UIThreadFixture : IDisposable
     private readonly ManualResetEventSlim _ready = new(false);
     private Exception? _startupError;
     private volatile string _startupPhase = "not started";
+    internal NativeUiExceptionDiagnostics Diagnostics { get; } = NativeUiExceptionDiagnostics.FromEnvironment();
 
     /// <summary>
     /// True when env var SLOW_UI_TESTS=1. Window stays visible, tests insert
@@ -159,14 +161,20 @@ public sealed class UIThreadFixture : IDisposable
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!Dispatcher.TryEnqueue(async () =>
         {
+            var diagnosticDispatch = Diagnostics.BeginDispatch();
             try
             {
                 OnboardingNativeProof.TraceDpiContext("RunOnUIAsync: dispatched", TestWindow);
                 var result = await work().ConfigureAwait(true);
                 OnboardingNativeProof.TraceDpiContext("RunOnUIAsync: resumed", TestWindow);
+                Diagnostics.CompleteDispatch(diagnosticDispatch);
                 tcs.SetResult(result);
             }
-            catch (Exception ex) { tcs.SetException(ex); }
+            catch (Exception ex)
+            {
+                Diagnostics.RecordException(NativeUiExceptionSource.DispatchCatch, () => ex, diagnosticDispatch);
+                tcs.SetException(ex);
+            }
         }))
         {
             tcs.SetException(new InvalidOperationException("Dispatcher rejected enqueue (shutting down?)"));
@@ -224,6 +232,7 @@ public sealed class UIThreadFixture : IDisposable
 
     private void UIThreadProc()
     {
+        Diagnostics.SetPhase(NativeUiPhase.UiStarting);
         try
         {
             OnboardingNativeProof.InitializeProductProcessDpi();
@@ -255,7 +264,7 @@ public sealed class UIThreadFixture : IDisposable
                     SynchronizationContext.SetSynchronizationContext(
                         new DispatcherQueueSynchronizationContext(Dispatcher));
                     _startupPhase = "creating TestApp";
-                    var app = new TestApp(); // ctor stashes itself as Application.Current
+                    var app = new TestApp(Diagnostics); // ctor stashes itself as Application.Current
                     OnboardingNativeProof.TraceDpiContext("Application.Start: TestApp constructed");
                     _startupPhase = "getting dispatcher";
                     _startupPhase = "creating hidden test window";
@@ -298,6 +307,7 @@ public sealed class UIThreadFixture : IDisposable
                             if (!app.Resources.ContainsKey("TextFillColorSecondaryBrush"))
                                 throw new InvalidOperationException("The WinUI test resource map did not initialize.");
                             _startupPhase = "ready";
+                            Diagnostics.SetPhase(NativeUiPhase.UiReady);
                         }
                         catch (Exception ex)
                         {
@@ -319,6 +329,12 @@ public sealed class UIThreadFixture : IDisposable
             _startupError = ex;
             _ready.Set();
         }
+        finally
+        {
+            // Close only after Application.Start unwinds, not at a timed-out Join.
+            Diagnostics.SetPhase(NativeUiPhase.UiExited);
+            Diagnostics.Dispose();
+        }
     }
 
     private static void MoveOffScreen(Window w)
@@ -339,6 +355,7 @@ public sealed class UIThreadFixture : IDisposable
 
     public void Dispose()
     {
+        Diagnostics.SetPhase(NativeUiPhase.UiStopping);
         if (Dispatcher is not null && _uiThread.IsAlive)
         {
             ResetContainerAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();

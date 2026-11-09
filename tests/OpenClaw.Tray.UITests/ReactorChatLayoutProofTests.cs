@@ -416,7 +416,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     FindControl<Button>(surface, "ChatComposerReasoningPicker"), surface).Right);
                 Assert.True(Bounds(button, surface).Right <= Bounds(
                     FindControl<Button>(surface, "ChatComposerVoice"), surface).Left);
+                ui.Diagnostics.SetPhase(NativeUiPhase.ChatShowingFlyout);
                 button.Flyout.ShowAt(button);
+                ui.Diagnostics.SetPhase(NativeUiPhase.ChatFlyoutShown);
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -2865,6 +2867,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
         IChatAgentRosterSource? agentRosterSource = null)
     {
+        using var diagnosticScope = ui.Diagnostics.BeginChatScope();
         await ui.ResetContainerAsync();
         using var settingsDirectory = new TempDirectory();
         using var settingsStore = new SettingsStore(
@@ -2877,8 +2880,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         ChatThemeProofScope? themeScope = null;
         var provider = new ProofProvider(scenario, thinkingLevel, placementGateway, identityLoader);
         var renderErrors = new RenderErrorLogger();
-        Microsoft.UI.Xaml.UnhandledExceptionEventHandler reportException = (_, args) =>
-            Console.Error.WriteLine($"Native chat harness: {args.Message}\n{args.Exception}");
+        var reportException = TestApp.CreateExceptionReporter(ui.Diagnostics, NativeUiExceptionSource.ChatUnhandled);
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -2931,15 +2933,18 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await SettleAsync();
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
             Console.WriteLine("chat-proof: body start");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatBody);
             await proof(surface!, host!, session!, provider);
             Assert.True(renderErrors.Errors.Count == 0, string.Join("\n", renderErrors.Errors));
         }
         finally
         {
             Console.WriteLine("chat-proof: teardown begin");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatClosingPopups);
             await CloseOpenPopupsAsync(surface);
             await SettleAsync();
             Console.WriteLine("chat-proof: popups closed");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingWindow);
             await ui.RunOnUIAsync(() =>
             {
                 session?.Dispose();
@@ -2947,14 +2952,19 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 {
                     surface.Child = null;
                 }
+                diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingHost);
                 host?.Dispose();
+                diagnosticScope.SetPhase(NativeUiPhase.ChatClosingWindow);
                 proofWindow?.Close();
+                diagnosticScope.SetPhase(NativeUiPhase.ChatWindowClosed);
                 _captureWindow = null;
                 themeScope?.Dispose();
                 Application.Current.UnhandledException -= reportException;
             });
+            diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingProvider);
             await provider.DisposeAsync();
             Console.WriteLine("chat-proof: window closed");
+            diagnosticScope.SetPhase(NativeUiPhase.ChatClosed);
         }
     }
 

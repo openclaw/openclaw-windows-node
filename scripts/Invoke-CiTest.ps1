@@ -73,7 +73,13 @@ if ($CaptureHostExit) {
     $testArguments.Add((Join-Path $rawRoot 'testplatform.log') + ';tracelevel=info')
     New-Item -ItemType Directory -Path $rawRoot -ErrorAction Stop | Out-Null
     $testExit = $null; $nativeErrorType = $null
+    # Only the existing ordinary-UI CaptureHostExit lane opts in. The invocation
+    # owns this curated, content-free file under the already-uploaded TestResults.
+    $previousMetadataPath = $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH
+    $previousMetadataInvocation = $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID
     try {
+        $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH = Join-Path $ResultsDirectory 'native-ui-exceptions.jsonl'
+        $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID = $invocation.id
         Invoke-CiNativeWithExit -ExitCode ([ref]$testExit) -Command {
             if ($collectCoverage) {
                 $coverageOutput = Join-Path $ResultsDirectory "coverage.cobertura.xml"
@@ -85,6 +91,13 @@ if ($CaptureHostExit) {
     }
     catch { $nativeErrorType = $_.Exception.GetType().FullName }
     finally {
+        try {
+            $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH = $previousMetadataPath
+            $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID = $previousMetadataInvocation
+        } catch {
+            # Diagnostic cleanup must not replace the observed native result.
+            try { Write-Host 'CI native UI metadata: environmentRestoreFailed=true' } catch { }
+        }
         $diagnostic = Complete-CiHostExitTrace -Root $rawRoot -NativeExitCode $testExit -NativeErrorType $nativeErrorType
         Write-Host ('CI host exit metadata: ' + ($diagnostic | ConvertTo-Json -Depth 5 -Compress))
     }

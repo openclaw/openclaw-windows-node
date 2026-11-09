@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows;
 using System.Windows.Automation;
 using Axe.Windows.Automation;
 using Axe.Windows.Automation.Data;
@@ -21,6 +22,12 @@ public static class AxeHelper
 {
     private static int? _processId;
     private static readonly object _lock = new();
+    private const int MaxReportedErrors = 20;
+    private const int MaxDescriptionLength = 256;
+    private const int MaxContextLength = 128;
+    private static readonly HashSet<string> ControlTypes = new(
+        Axe.Windows.Core.Types.ControlType.GetInstance().GetKeyValuePairList()
+            .Select(pair => pair.Value), StringComparer.Ordinal);
 
     /// <summary>
     /// Rules excluded globally due to known WinUI framework bugs that are not
@@ -79,60 +86,108 @@ public static class AxeHelper
             .ForProcessId(processId)
             .WithOutputFileFormat(OutputFileFormat.None)
             .Build();
-        var scanner = ScannerFactory.CreateScanner(config);
         var scanOptions = new ScanOptions(context, hubWindowHandle);
-        var errors = scanner.Scan(scanOptions).WindowScanOutputs
-            .SelectMany(output => output.Errors)
-            .Where(error => !excludedRules.Contains(error.Rule.ID))
-            .ToList();
+        AssertScan(
+            () => ScannerFactory.CreateScanner(config).Scan(scanOptions),
+            processId,
+            () => new UiaLayoutElement(AutomationElement.FromHandle(hubWindowHandle)),
+            excludedRules,
+            context);
+    }
+
+    internal static void AssertScan(
+        Func<ScanOutput?> scan,
+        int processId,
+        Func<ILayoutElement> getHub,
+        ISet<RuleId> excludedRules,
+        string? context)
+    {
+        var errors = GetErrors(scan(), excludedRules);
         if (errors.Count > 0
-            && errors.All(error => IsStaleLayoutSnapshot(
-                hubWindowHandle,
-                error.Rule.ID,
+            && errors.All(error => HasCompleteMetadata(error) && IsStaleLayoutSnapshot(
+                getHub,
+                processId,
+                error!.Rule.ID,
                 error.Element.Properties)))
         {
-            scanner = ScannerFactory.CreateScanner(config);
-            errors = scanner.Scan(scanOptions).WindowScanOutputs
-                .SelectMany(output => output.Errors)
-                .Where(error => !excludedRules.Contains(error.Rule.ID))
-                .ToList();
+            errors = GetErrors(scan(), excludedRules);
         }
 
+        AssertNoErrors(errors, context);
+    }
+
+    internal static List<ScanResult?> GetErrors(ScanOutput? scan, ISet<RuleId> excludedRules)
+    {
+        var outputs = scan?.WindowScanOutputs;
+        if (outputs is not { Count: > 0 })
+            Assert.Fail("Accessibility scan returned missing window metadata.");
+
+        var errors = new List<ScanResult?>();
+        foreach (var output in outputs)
+        {
+            if (output?.Errors is null)
+                Assert.Fail("Accessibility scan returned missing error metadata.");
+
+            var windowErrors = output.Errors.ToList();
+            if (output.ErrorCount != windowErrors.Count)
+                Assert.Fail("Accessibility scan returned inconsistent error metadata.");
+
+            // Incomplete results must never disappear through an exclusion or a stale-layout retry.
+            errors.AddRange(windowErrors.Where(error =>
+                !HasCompleteMetadata(error) || !excludedRules.Contains(error.Rule.ID)));
+        }
+
+        return errors;
+    }
+
+    private static bool HasCompleteMetadata(ScanResult? error) =>
+        error?.Rule is { } rule
+        && Enum.IsDefined(rule.ID)
+        && !string.IsNullOrWhiteSpace(rule.Description)
+        && error.Element?.Properties is not null;
+
+    internal static void AssertNoErrors(IReadOnlyList<ScanResult?> errors, string? context)
+    {
         if (errors.Count == 0) return;
 
-        var errorMessages = errors.Select(error =>
+        var message = new StringBuilder("Accessibility scan");
+        if (!string.IsNullOrEmpty(context))
+            message.Append(" of '").Append(BoundedText(context, MaxContextLength)).Append('\'');
+        message.Append(" found ").Append(errors.Count).Append(" violation(s):");
+        for (var index = 0; index < Math.Min(errors.Count, MaxReportedErrors); index++)
         {
-            var controlType = error.Element.Properties.TryGetValue("ControlType", out var ct)
-                ? ct : "Unknown";
-            var name = error.Element.Properties.TryGetValue("Name", out var n)
-                ? n : "(no name)";
-            var automationId = error.Element.Properties.TryGetValue("AutomationId", out var aid)
-                ? aid : "(no id)";
-            var axeProperties = string.Join(
-                ", ",
-                error.Element.Properties
-                   .OrderBy(property => property.Key, StringComparer.Ordinal)
-                   .Select(property => $"{property.Key}='{property.Value}'"));
-            var liveState = DescribeLiveState(
-                hubWindowHandle,
-                automationId == "(no id)" ? null : automationId,
-                name == "(no name)" ? null : name);
-            return $"  [{error.Rule.ID}] Element '{controlType}' " +
-                   $"(Name='{name}', AutomationId='{automationId}') " +
-                   $"violated rule: {error.Rule.Description}\r\n" +
-                   $"    Axe properties: {axeProperties}\r\n" +
-                   $"    Live UIA state: {liveState}";
-        });
+            var error = errors[index];
+            var rule = error?.Rule;
+            var ruleId = rule is not null && Enum.IsDefined(rule.ID) ? rule.ID.ToString() : "Unknown rule";
+            var controlType = "Unknown";
+            if (error?.Element?.Properties?.TryGetValue("ControlType", out var type) == true
+                && type is not null && ControlTypes.Contains(type))
+                controlType = type;
 
-        var header = string.IsNullOrEmpty(context)
-            ? $"Accessibility scan found {errors.Count} violation(s):"
-            : $"Accessibility scan of '{context}' found {errors.Count} violation(s):";
+            // UIA names, IDs and arbitrary properties can contain user content. Only emit
+            // canonical control types and an ordinal, without querying the live desktop.
+            message.Append("\r\n  [").Append(ruleId).Append("] Element #").Append(index + 1)
+                .Append(" (").Append(controlType).Append("): ")
+                .Append(BoundedText(rule?.Description, MaxDescriptionLength));
+            if (!HasCompleteMetadata(error))
+                message.Append(" [incomplete scan metadata]");
+        }
+        if (errors.Count > MaxReportedErrors)
+            message.Append("\r\n  Additional violations omitted.");
+        Assert.Fail(message.ToString());
+    }
 
-        Assert.Fail($"{header}\r\n{string.Join("\r\n", errorMessages)}");
+    private static string BoundedText(string? value, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "(missing)";
+        var text = new string(value.Take(limit)
+            .Select(character => char.IsControl(character) ? ' ' : character).ToArray());
+        return value.Length > limit ? text + "..." : text;
     }
 
     private static bool IsStaleLayoutSnapshot(
-        IntPtr hubWindowHandle,
+        Func<ILayoutElement> getHub,
+        int processId,
         RuleId ruleId,
         IReadOnlyDictionary<string, string> properties)
     {
@@ -140,30 +195,26 @@ public static class AxeHelper
                 RuleId.ClickablePointOnScreen
                 or RuleId.BoundingRectangleSizeReasonable)
             || !properties.TryGetValue("LogicalSize", out var logicalSize)
+            || logicalSize is null
             || !logicalSize.Contains("h=0", StringComparison.Ordinal))
         {
             return false;
         }
 
-        properties.TryGetValue("AutomationId", out var automationId);
-        properties.TryGetValue("Name", out var name);
+        if (!properties.TryGetValue("AutomationId", out var automationId)
+            || string.IsNullOrWhiteSpace(automationId))
+            return false;
         try
         {
-            var hub = AutomationElement.FromHandle(hubWindowHandle);
-            var element = hub.FindFirst(
-                TreeScope.Descendants,
-                !string.IsNullOrWhiteSpace(automationId)
-                    ? new PropertyCondition(
-                        AutomationElement.AutomationIdProperty,
-                        automationId)
-                    : new PropertyCondition(
-                        AutomationElement.NameProperty,
-                        name ?? string.Empty));
-            if (element is null)
+            var hub = getHub();
+            if (hub.ProcessId != processId)
+                return false;
+            var element = hub.FindByAutomationId(automationId);
+            if (element is null || element.ProcessId != processId)
                 return false;
 
-            var bounds = element.Current.BoundingRectangle;
-            return !element.Current.IsOffscreen
+            var bounds = element.Bounds;
+            return !element.IsOffscreen
                 && bounds.Width > 0
                 && bounds.Height > 0;
         }
@@ -173,45 +224,26 @@ public static class AxeHelper
         }
     }
 
-    private static string DescribeLiveState(
-        IntPtr hubWindowHandle,
-        string? automationId,
-        string? name)
+    // Keep UIA access separate from retry policy so tests never query the shared desktop.
+    internal interface ILayoutElement
     {
-        try
-        {
-            var hub = AutomationElement.FromHandle(hubWindowHandle);
-            var condition = !string.IsNullOrWhiteSpace(automationId)
-                ? new PropertyCondition(AutomationElement.AutomationIdProperty, automationId)
-                : new PropertyCondition(AutomationElement.NameProperty, name ?? string.Empty);
-            var element = hub.FindFirst(TreeScope.Descendants, condition);
-            if (element is null)
-                return "element no longer present";
-
-            var clickablePoint = element.TryGetClickablePoint(out var point)
-                ? $"{point.X:0.##},{point.Y:0.##}"
-                : "none";
-            var focused = AutomationElement.FocusedElement;
-            var foregroundWindow = GetForegroundWindow();
-            return $"bounds={element.Current.BoundingRectangle}; " +
-                   $"clickablePoint={clickablePoint}; " +
-                   $"isOffscreen={element.Current.IsOffscreen}; " +
-                   $"isEnabled={element.Current.IsEnabled}; " +
-                   $"isKeyboardFocusable={element.Current.IsKeyboardFocusable}; " +
-                   $"hasKeyboardFocus={element.Current.HasKeyboardFocus}; " +
-                   $"focusedName='{focused?.Current.Name ?? string.Empty}'; " +
-                   $"hubBounds={hub.Current.BoundingRectangle}; " +
-                   $"hubIsOffscreen={hub.Current.IsOffscreen}; " +
-                   $"hubIsForeground={foregroundWindow == hubWindowHandle}; " +
-                   $"hubHandle=0x{hubWindowHandle.ToInt64():X}; " +
-                   $"foregroundHandle=0x{foregroundWindow.ToInt64():X}";
-        }
-        catch (ElementNotAvailableException)
-        {
-            return "element became unavailable";
-        }
+        int ProcessId { get; }
+        Rect Bounds { get; }
+        bool IsOffscreen { get; }
+        ILayoutElement? FindByAutomationId(string automationId);
     }
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
+    private sealed class UiaLayoutElement(AutomationElement element) : ILayoutElement
+    {
+        public int ProcessId => element.Current.ProcessId;
+        public Rect Bounds => element.Current.BoundingRectangle;
+        public bool IsOffscreen => element.Current.IsOffscreen;
+
+        public ILayoutElement? FindByAutomationId(string automationId)
+        {
+            var child = element.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+            return child is null ? null : new UiaLayoutElement(child);
+        }
+    }
 }
