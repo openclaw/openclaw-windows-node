@@ -187,6 +187,14 @@ or executing destructive commands.
 
 | Prompt | Correct decision |
 |---|---|
+| Generate or change an HTTP, WebSocket, named-pipe or process handoff | Use [network-handoff](../.agents/skills/network-handoff/SKILL.md) alongside the owning route; trace receiver, side effect, installed contract and tests before editing |
+| Launch timed out after dispatch, so retry and clean up | Keep the outcome unknown; reconcile by identity, require contract-backed mutation retry and receiver-enforced cleanup authority |
+| Add snapshot then event subscription for correctness | Establish a revision/cursor bridge or use adequate authoritative bounded polling; test the read/subscribe gap and reconnect/history expiry |
+| Health is good on the old port, so the restart and config apply succeeded | Require the needed boot/revision/freshness and own-identity admission; current matching state is not historical attribution |
+| Refresh the outer timeout on every heartbeat | Keep a finite monotonic outer budget; only documented forward progress renews a separate no-progress allowance |
+| A request UUID makes approval exactly once | Inspect scope, concurrent deduplication, parameter conflict, retention and crash-safe effect/result recording; do not invent guarantees |
+| Cancel returned, so restore the saved config snapshot | Query the terminal winner and drain state; compensation must preserve concurrent edits and current receiver-side authority |
+| The installed Gateway lacks a needed receipt field | Check actual supported versions first; provide pinned producer evidence and a minimal versioned upstream proposal, with rollout and fault tests, not a consumer workaround |
 | Shorten the MCP explanation | Use the documentation workflow; preserve auth, profile, transport limits, and named destinations for retained facts |
 | A documented tool is absent from local discovery | Inspect the selected profile's live capability/settings surface before editing registry or Gateway policy |
 | Local MCP works, so pairing must be fixed | Reject the inference; identify the unproven Gateway boundary |
