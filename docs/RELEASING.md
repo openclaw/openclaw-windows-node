@@ -482,6 +482,11 @@ creation does not trigger another tag-push workflow. Do not replace it with a
 PAT or dispatch CI on the old candidate tag: that would execute the historical
 workflow instead of the selected pipeline.
 
+Tray UI crash diagnostics are pipeline-owned. Promotions fetch the metadata
+helper from the pinned dispatch SHA into a separate sparse checkout after the
+UI tests. The alpha checkout still owns the app and tests, even when it predates
+that helper. Ordinary CI uses the helper from its normal source checkout.
+
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Promotion rechecks candidate eligibility and
 approval protection, then the allocator verifies the existing same-base alpha

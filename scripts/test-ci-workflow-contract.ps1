@@ -461,6 +461,26 @@ foreach ($lane in $testLanes.GetEnumerator()) {
     }
 }
 
+$overlapLanes = [ordered]@{
+    "core-tests" = "core_tests"
+    "tray-tests" = "tray_tests"
+    "ui-tests" = "ui_tests"
+    "setup-e2e" = "setup_e2e"
+    "revocation-e2e" = "revocation_e2e"
+    "network-e2e" = "network_e2e"
+}
+foreach ($lane in $overlapLanes.GetEnumerator()) {
+    $job = Get-JobBlock $lane.Key
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-Contains -Text $jobHeader -Expected "    needs: change-classification" `
+        -Message "Lane '$($lane.Key)' must start after classification without waiting for fast validation."
+    Assert-Contains -Text $jobHeader `
+        -Expected ("    if: " + '${{ ' + "!cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.$($lane.Value) == 'true' }}") `
+        -Message "Lane '$($lane.Key)' must preserve cancellation, classification success, and selected-lane admission."
+    Assert-NotContains -Text $jobHeader -Unexpected "fast-validation" `
+        -Message "Lane '$($lane.Key)' must overlap fast validation; CI Gate still requires its success."
+}
+
 $coreJob = Get-JobBlock "core-tests"
 $sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
 Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
@@ -577,11 +597,16 @@ Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
 $trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
 Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
     -Message "Tray UI crash metadata must be bounded by an explicit start time."
+Assert-NotContains -Text $uiJob -Unexpected 'path: .ci-pipeline' `
+    -Message 'Nested pipeline checkout must not enter the product source manifest.'
 $trayUiCrashMetadata = Get-StepBlock -Text $uiJob -Name "Capture non-memory Tray UI crash metadata"
 foreach ($token in @(
         "if: always()",
         "steps.tray-ui-crash-window.outcome == 'success'",
-        "./scripts/Capture-CiTestHostCrashMetadata.ps1",
+        'git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"',
+        '$LASTEXITCODE -ne 0',
+        'Join-Path $env:RUNNER_TEMP',
+        '& $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC',
         "TRAY_UI_TEST_STARTED_UTC"
     )) {
     Assert-Contains -Text $trayUiCrashMetadata -Expected $token `
@@ -1129,7 +1154,8 @@ foreach ($token in @(
 
 $releasePreparationJob = Get-JobBlock "prepare-release-assets"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs.fast-validation.result == 'success'",
         "needs.reserve-msix-version.result == 'success'",
         "needs.proof-pool-contracts.result == 'success'",
         "needs.core-tests.result == 'success'",

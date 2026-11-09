@@ -10,6 +10,10 @@ automated tests. Its five sessions include an empty conversation, distinct
 session identities and titles, and 240 mixed-height messages with an explicit
 final-message marker. Supporting model, agent, health, usage and configuration
 responses populate the application rather than just its disconnected shell.
+Read-only `agent.identity.get` resolves each roster agent (and the agent the
+`agent-creation` scenario creates) to its roster name with no avatar, so the app
+renders generated faces; an unknown ID receives `INVALID_REQUEST`, as on a real
+Gateway.
 Read-only placement discovery returns an empty project catalog and one synthetic
 local environment through `projects.list` and `environments.list`. It creates no
 project or host resources; `projects.add` is rejected as a write.
