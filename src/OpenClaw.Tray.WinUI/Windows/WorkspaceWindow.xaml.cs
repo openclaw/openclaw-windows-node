@@ -434,6 +434,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _preparedSettings = null;
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
+        view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.ExitRequested = ExitSettings;
         view.PruneRequested = PruneSettingsHistory;
@@ -493,6 +494,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
+        _settings?.SetHostContentTopInset(0);
         SettingsSection.Margin = new Thickness(0);
         EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
@@ -1285,15 +1287,26 @@ public sealed partial class WorkspaceWindow : WindowEx
         NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
-        SettingsSection.Margin = embedded
-            ? (paneOpen ? new Thickness(NavView.OpenPaneLength, 0, 0, 0) : new Thickness(0, 56, 0, 0))
-            : new Thickness(0);
+        UpdateEmbeddedPageTopAllocation(view);
         EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
         EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
         UpdateTitleBarActions();
+    }
+
+    private void UpdateEmbeddedPageTopAllocation(SettingsShellView view)
+    {
+        var embedded = IsSettingsVisible && Destination.Embedded;
+        var paneOpen = NavView.IsPaneOpen;
+        var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(
+            embedded, paneOpen, view.CurrentPage is ISettingsPageContentInset);
+        view.SetHostContentTopInset(allocation.PageTopInset);
+        SettingsSection.Margin = embedded
+            ? new Thickness(paneOpen ? NavView.OpenPaneLength : 0, allocation.HostMarginTop, 0, 0)
+            : new Thickness(0);
+        EmbeddedOperationInfo.Margin = new Thickness(0, allocation.PageTopInset, 0, 0);
     }
 
     private void UpdateTitleBarActions()
