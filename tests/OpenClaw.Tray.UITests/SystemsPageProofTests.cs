@@ -1091,11 +1091,22 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     !Find<TextBlock>(surface, "SystemsMastSubtitle").Text.Contains("connected to Home as a node", StringComparison.Ordinal),
                     "An identity without a reported live node does not claim node connectivity");
                 controller.Select("node:machine-1");
-                await TestSupport.WaitForRenderedConditionAsync(() => TestSupport.FindDescendants<FrameworkElement>(surface)
-                    .Any(element => AutomationProperties.GetAutomationId(element) == "SystemsCapabilities" && element.ActualHeight > 0),
+                var selected = Find<Expander>(surface, "SystemsRow_node:machine-1");
+                await TestSupport.WaitForRenderedConditionAsync(() => selected.IsExpanded &&
+                    TestSupport.FindDescendants<FrameworkElement>(selected)
+                        .Any(element => AutomationProperties.GetAutomationId(element) == "SystemsCapabilities" && element.ActualHeight > 0),
                     "Expanded machine sections are laid out");
-                var capabilities = Find<FrameworkElement>(surface, "SystemsCapabilities");
-                var resources = Find<FrameworkElement>(surface, "SystemsStatistics");
+                // Selection keeps the Gateway and offline rows open, so each expanded row owns its own sections.
+                Assert.True(offline.IsExpanded);
+                var gatewayRow = Find<Expander>(surface, "SystemsRow_gateway");
+                Assert.True(gatewayRow.IsExpanded);
+                foreach (var row in new[] { gatewayRow, offline, selected })
+                {
+                    Find<FrameworkElement>(row, "SystemsCapabilities");
+                    Find<FrameworkElement>(row, "SystemsStatistics");
+                }
+                var capabilities = Find<FrameworkElement>(selected, "SystemsCapabilities");
+                var resources = Find<FrameworkElement>(selected, "SystemsStatistics");
                 var c = capabilities.TransformToVisual(surface).TransformPoint(new Point());
                 var r = resources.TransformToVisual(surface).TransformPoint(new Point());
                 if (width >= 1000)
@@ -1104,6 +1115,108 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.True(r.Y > c.Y);
             }), inventory: inventory, width: width);
         }
+    }
+
+    [Fact]
+    public async Task DeepLinkedRow_CreatedExpanded_RealizesDetailsAndKeepsUserCollapse()
+    {
+        var nodes = Enumerable.Range(1, 2).Select(index => new GatewayNodeInfo
+        {
+            NodeId = "machine-" + index, DisplayName = "Machine " + index, IsOnline = true,
+        }).ToArray();
+        var inventory = new SystemsInventorySnapshot
+        {
+            Nodes = nodes,
+            Environments = nodes.Select(node => new SystemEnvironment
+            {
+                Id = "node:" + node.NodeId, Type = "node", Label = node.DisplayName, Status = SystemStatus.Online,
+            }).Prepend(new SystemEnvironment { Id = "gateway", Type = "local", Label = "Home", Status = SystemStatus.Online }).ToArray(),
+        };
+        // systems:<id> selects the row before the page view mounts, so its Expander is created expanded.
+        await WithPageAsync(900, controller => controller.Select("node:machine-2"),
+            async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
+            {
+                var linked = Find<Expander>(surface, "SystemsRow_node:machine-2");
+                await TestSupport.WaitForRenderedConditionAsync(() => linked.IsExpanded &&
+                    TryFind<FrameworkElement>(linked, "SystemsCapabilities") is { ActualHeight: > 0 } &&
+                    TryFind<FrameworkElement>(linked, "SystemsStatistics") is { ActualHeight: > 0 },
+                    "the deep-linked row realizes its details");
+                linked.IsExpanded = false;
+                await ui.YieldToRenderAsync();
+                controller.Select("node:machine-1");
+                var other = Find<Expander>(surface, "SystemsRow_node:machine-1");
+                await TestSupport.WaitForRenderedConditionAsync(() => other.IsExpanded &&
+                    TryFind<FrameworkElement>(other, "SystemsCapabilities") is { ActualHeight: > 0 },
+                    "a later selection expands its own loaded row");
+                Assert.False(linked.IsExpanded, "An intentional collapse survives later selections and renders.");
+                linked.IsExpanded = true;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    TryFind<FrameworkElement>(linked, "SystemsCapabilities") is { ActualHeight: > 0 },
+                    "the collapsed row expands again on request");
+            }), inventory: inventory, width: 1000);
+    }
+
+    [Fact]
+    public async Task ExpandedRow_RemountedIntoAnotherGroup_RealizesDetailsOnItsNewControl()
+    {
+        var nodes = Enumerable.Range(1, 2).Select(index => new GatewayNodeInfo
+        {
+            NodeId = "machine-" + index, DisplayName = "Machine " + index, IsOnline = true,
+        }).ToArray();
+        SystemsInventorySnapshot Snapshot(string machine2Type) => new()
+        {
+            Nodes = machine2Type == "node" ? nodes : nodes.Take(1).ToArray(),
+            Environments = nodes.Select(node => new SystemEnvironment
+            {
+                Id = "node:" + node.NodeId, Type = node.NodeId == "machine-2" ? machine2Type : "node",
+                Label = node.DisplayName, Status = SystemStatus.Online,
+            }).Prepend(new SystemEnvironment { Id = "gateway", Type = "local", Label = "Home", Status = SystemStatus.Online }).ToArray(),
+        };
+        var gateway = new PageGateway(nodes[0], legacyInventory: false, Snapshot("node"), inventoryError: null);
+        await WithPageAsync(900, controller => controller.Select("node:machine-2"),
+            async (surface, controller, _) =>
+            {
+                Expander first = null!;
+                await ui.RunOnUIAsync(async () =>
+                {
+                    first = Find<Expander>(surface, "SystemsRow_node:machine-2");
+                    await TestSupport.WaitForRenderedConditionAsync(() => first.IsExpanded &&
+                        TryFind<FrameworkElement>(first, "SystemsCapabilities") is { ActualHeight: > 0 },
+                        "the expanded row realizes its details before it moves");
+                });
+                // A changed environment type moves the same row id to Workers, so Reactor mounts a new Expander.
+                gateway.Replacement = Snapshot("ssh");
+                await controller.RefreshAsync();
+                Expander moved = null!;
+                await ui.RunOnUIAsync(async () =>
+                {
+                    await TestSupport.WaitForRenderedConditionAsync(() =>
+                        TryFind<Expander>(surface, "SystemsRow_node:machine-2") is { } row && !ReferenceEquals(row, first) &&
+                        TryFind<FrameworkElement>(surface, "SystemsWorkersGroup") is { } workers &&
+                        TestSupport.FindDescendants<Expander>(workers).Contains(row),
+                        "the expanded row remounts into the Workers group");
+                    moved = Find<Expander>(surface, "SystemsRow_node:machine-2");
+                    await TestSupport.WaitForRenderedConditionAsync(() => moved.IsExpanded &&
+                        TryFind<FrameworkElement>(moved, "SystemsCapabilities") is { ActualHeight: > 0 } &&
+                        TryFind<FrameworkElement>(moved, "SystemsStatistics") is { ActualHeight: > 0 },
+                        "the remounted row realizes its details on its new control");
+                    moved.IsExpanded = false;
+                    await ui.YieldToRenderAsync();
+                });
+                gateway.Replacement = Snapshot("node");
+                await controller.RefreshAsync();
+                await ui.RunOnUIAsync(async () =>
+                {
+                    await TestSupport.WaitForRenderedConditionAsync(() =>
+                        TryFind<Expander>(surface, "SystemsRow_node:machine-2") is { IsLoaded: true } row &&
+                        !ReferenceEquals(row, moved) && TryFind<FrameworkElement>(surface, "SystemsDevicesGroup") is { } devices &&
+                        TestSupport.FindDescendants<Expander>(devices).Contains(row),
+                        "the collapsed row remounts back into Devices");
+                    await ui.YieldToRenderAsync();
+                    Assert.False(Find<Expander>(surface, "SystemsRow_node:machine-2").IsExpanded,
+                        "An intentional collapse survives a remount.");
+                });
+            }, inventory: Snapshot("node"), width: 1000, pageGateway: gateway);
     }
 
     [Fact]
@@ -1293,7 +1406,10 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     action.ActualWidth > 0 && action.ActualHeight > 0,
                     "direct action is loaded and entirely visible in the scroll viewport",
                     () => $"action={Bounds(action, surface)}, viewport={Bounds(scroll, surface)}, loaded={action.IsLoaded}");
-                Assert.Equal(SystemsText.S("OpenWeb"), AutomationProperties.GetName(action));
+                // The visible label stays short; the accessible name states the Systems destination.
+                Assert.Equal(SystemsText.S("OpenWeb_Name"), AutomationProperties.GetName(action));
+                Assert.Contains(TestSupport.FindDescendants<TextBlock>(action),
+                    text => text.Text == SystemsText.S("OpenWeb") && text.ActualWidth > 0);
                 Assert.Null(action.Flyout);
                 Invoke(action);
                 Assert.Equal(new string?[] { "systems" }, opened);
@@ -2003,6 +2119,8 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
 
         public int LoadCount => Volatile.Read(ref _loadCount);
 
+        public SystemsInventorySnapshot? Replacement { get; set; }
+
         public void HoldNextLoad() => Volatile.Write(ref _holdNextLoad, 1);
 
         public void CompleteHeldLoad() => _heldLoad.TrySetResult(_snapshot);
@@ -2014,13 +2132,13 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 throw inventoryError;
             if (Interlocked.Exchange(ref _holdNextLoad, 0) != 0)
                 return await _heldLoad.Task.WaitAsync(cancellationToken);
-            return _snapshot;
+            return Replacement ?? _snapshot;
         }
 
         public Task<(GatewaySystemInfo Info, DateTimeOffset SampledAt)?> ReadSystemInfoAsync(CancellationToken cancellationToken) =>
             Task.FromResult<(GatewaySystemInfo, DateTimeOffset)?>(null);
 
         public Task<IReadOnlyList<GatewayNodeInfo>> ReadNodesAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(_snapshot.Nodes);
+            Task.FromResult((Replacement ?? _snapshot).Nodes);
     }
 }

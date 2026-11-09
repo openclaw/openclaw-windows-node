@@ -61,6 +61,11 @@ internal sealed record SystemsViewState
     public int ConnectionEpoch { get; init; } = 1;
     /// <summary>Local clock minus Gateway clock; ages of Gateway timestamps subtract it from local now.</summary>
     public TimeSpan GatewayClockOffset { get; init; }
+    /// <summary>
+    /// Advanced by each page tick that published nothing else. Report ages and Live versus Last known
+    /// are computed at render time, so this keeps them current without another Gateway read.
+    /// </summary>
+    public DateTimeOffset? PresentedAt { get; init; }
 
     public SystemRow? Selected => SelectedId is null ? null : Rows.FirstOrDefault(row => row.Id == SelectedId);
 
@@ -118,6 +123,7 @@ internal sealed class SystemsController : IDisposable
     private bool _refreshQueued;
     private bool _measurementsPending;
     private bool _disposed;
+    private long _publishCount;
 
     public SystemsController(
         Func<ISystemsGateway?> gateway,
@@ -321,17 +327,25 @@ internal sealed class SystemsController : IDisposable
             Select(id);
     }
 
-    /// <summary>Periodic work: inventory when needed, otherwise the selected machine's measurements.</summary>
+    /// <summary>
+    /// Periodic work: inventory when needed, otherwise the selected machine's measurements. When no
+    /// read is eligible (nothing, a worker or a client selected, or disconnected), still re-renders so
+    /// visible ages and freshness keep advancing.
+    /// </summary>
     public async Task TickAsync()
     {
-        if (!_inputs.Connected || _disposed)
+        if (_disposed)
             return;
-        if (_snapshot is null || _refreshQueued)
+        var published = _publishCount;
+        if (_inputs.Connected)
         {
-            await RefreshAsync().ConfigureAwait(true);
-            return;
+            if (_snapshot is null || _refreshQueued)
+                await RefreshAsync().ConfigureAwait(true);
+            else
+                await RefreshMeasurementsAsync().ConfigureAwait(true);
         }
-        await RefreshMeasurementsAsync().ConfigureAwait(true);
+        if (!_disposed && _publishCount == published)
+            Publish(State with { PresentedAt = _clock() });
     }
 
     /// <summary>Reloads the inventory. Event bursts during a load collapse into one follow-up refresh.</summary>
@@ -526,6 +540,7 @@ internal sealed class SystemsController : IDisposable
     {
         if (_disposed)
             return;
+        _publishCount++;
         State = next;
         Changed?.Invoke(this, EventArgs.Empty);
     }

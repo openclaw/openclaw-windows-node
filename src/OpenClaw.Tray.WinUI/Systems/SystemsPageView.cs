@@ -146,6 +146,54 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             setExpandedRows(next);
         }
         var rowControls = UseRef(new Dictionary<string, Control>(StringComparer.Ordinal));
+        // A row Expander created already expanded keeps its details unrealized. Expansion is therefore
+        // shown only on the row's current native control once that control has loaded, the same path a
+        // user expansion takes. A newly mounted control (deep link, preselection, or a row remounted into
+        // another group) is held collapsed until its own Loaded; that native hold is not a user collapse.
+        var readyRows = UseRef(new HashSet<Control>(ReferenceEqualityComparer.Instance));
+        var rowLoadedHandlers = UseRef(new Dictionary<Control, RoutedEventHandler>(ReferenceEqualityComparer.Instance));
+        var heldRows = UseRef(new HashSet<string>(StringComparer.Ordinal));
+        var readyVersion = UseRef(0);
+        var (_, setReadyVersion) = UseState(0, threadSafe: true);
+        void ForgetRowControl(Control control)
+        {
+            if (rowLoadedHandlers.Current.Remove(control, out var handler))
+                control.Loaded -= handler;
+            readyRows.Current.Remove(control);
+        }
+        void MarkReady(Control control)
+        {
+            if (!rowLoadedHandlers.Current.ContainsKey(control) || !control.IsLoaded || !readyRows.Current.Add(control))
+                return;
+            setReadyVersion(++readyVersion.Current);
+        }
+        void TrackRow(string id, Control control)
+        {
+            rowControls.Current.TryGetValue(id, out var previous);
+            rowControls.Current[id] = control;
+            if (control is not Expander expander || rowLoadedHandlers.Current.ContainsKey(control))
+                return;
+            if (previous is not null && !ReferenceEquals(previous, control))
+                ForgetRowControl(previous);
+            RoutedEventHandler handler = (_, _) => MarkReady(control);
+            rowLoadedHandlers.Current[control] = handler;
+            control.Loaded += handler;
+            if (expander.IsExpanded && !control.IsLoaded)
+            {
+                heldRows.Current.Add(id);
+                try { expander.IsExpanded = false; }
+                finally { heldRows.Current.Remove(id); }
+            }
+            if (control.IsLoaded)
+                actions.PostUi(() => MarkReady(control));
+        }
+        bool ShowsExpanded(string id) =>
+            rowControls.Current.TryGetValue(id, out var control) && readyRows.Current.Contains(control);
+        UseEffect((Func<Action>)(() => () =>
+        {
+            foreach (var control in rowLoadedHandlers.Current.Keys.ToArray())
+                ForgetRowControl(control);
+        }), rowLoadedHandlers);
         var highContrast = UseHighContrast();
         var uiSettings = UseMemo(() => new global::Windows.UI.ViewManagement.UISettings(), []);
         var (reducedMotion, setReducedMotion) = UseState(!uiSettings.AnimationsEnabled, threadSafe: true);
@@ -199,7 +247,11 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         var currentRows = state.Rows.Select(row => row.Id).Concat(PairingRows(state).Select(request => request.Key))
             .ToHashSet(StringComparer.Ordinal);
         foreach (var key in rowControls.Current.Keys.Where(key => !currentRows.Contains(key)).ToArray())
+        {
+            ForgetRowControl(rowControls.Current[key]);
             rowControls.Current.Remove(key);
+        }
+        var shownExpandedRows = expandedRows.Where(ShowsExpanded).ToHashSet(StringComparer.Ordinal);
         void JumpToIssue()
         {
             var first = PairingRows(state).FirstOrDefault()?.Key ??
@@ -215,9 +267,11 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 (ScrollViewer(Grid([GridSize.Star()], [GridSize.Auto], VStack(24,
                     Header(state, actions, layout, setDialog, highContrast, reducedMotion, JumpToIssue),
                     Banners(state, controller, actions, layout),
-                    Body(state, controller, actions, setDialog, now, layout, expandedRows,
+                    Body(state, controller, actions, setDialog, now, layout, shownExpandedRows,
                         (id, expanded) =>
                         {
+                            if (heldRows.Current.Contains(id))
+                                return;
                             var next = new HashSet<string>(currentExpandedRows.Current, StringComparer.Ordinal);
                             if (expanded)
                             {
@@ -231,7 +285,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                                     controller.ToggleSelection(id);
                             }
                             PublishExpandedRows(next);
-                        }, rowControls.Current))
+                        }, rowControls.Current, TrackRow))
                     .MaxWidth(PageResponsiveLayout.ContentMaxWidth)
                     .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsContentColumn")
                     .Margin(layout.PagePadding, 20, layout.PagePadding, 32)))
@@ -491,7 +545,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
     private static Element Body(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
         Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout,
         IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded,
-        Dictionary<string, Control> rowControls)
+        Dictionary<string, Control> rowControls, Action<string, Control> trackRow)
     {
         if (!state.CanRead)
             return Card(VStack(8, TextBlock(S("ReadAccess_Title")).FontSize(20), Note(S("ReadAccess_Message"))))
@@ -500,12 +554,13 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             state.SelectionMissing
                 ? Placeholder("\uE7BA", SystemsHue.Caution, S("Missing_Title"), S("Missing_Hint"), "SystemsSelectionMissing")
                 : Empty(),
-            Inventory(state, controller, actions, open, now, layout, expandedRows, toggleExpanded, rowControls));
+            Inventory(state, controller, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, trackRow));
     }
 
     private static Element Inventory(SystemsViewState state, SystemsController controller, SystemsPageActions actions,
         Action<SystemsDialog?> open, DateTimeOffset now, SystemsLayout layout,
-        IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded, Dictionary<string, Control> rowControls)
+        IReadOnlySet<string> expandedRows, Action<string, bool> toggleExpanded, Dictionary<string, Control> rowControls,
+        Action<string, Control> trackRow)
     {
         var visible = SystemsProjection.OrderForInventory(state.Rows, DisplayName, state.Connected);
         var requests = PairingRows(state);
@@ -542,15 +597,15 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             var devices = visible.Where(row => row.Kind is SystemKind.Host or SystemKind.Node).ToArray();
             if (devices.Length > 0)
                 groups.Add(InventoryGroup(S("DevicesAndGateway"), SystemKind.Host, devices,
-                    state, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, "SystemsDevicesGroup"));
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, trackRow, "SystemsDevicesGroup"));
             var workers = visible.Where(row => row.Kind == SystemKind.Worker).ToArray();
             var clients = visible.Where(row => row.Kind == SystemKind.Client).ToArray();
             if (workers.Length > 0)
                 groups.Add(InventoryGroup(S("Group_Workers"), SystemKind.Worker, workers,
-                    state, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, "SystemsWorkersGroup", true));
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, trackRow, "SystemsWorkersGroup", true));
             if (clients.Length > 0)
                 groups.Add(InventoryGroup(S("ConnectedApps"), SystemKind.Client, clients,
-                    state, actions, open, now, layout, expandedRows, toggleExpanded, rowControls, "SystemsConnectedAppsGroup", true));
+                    state, actions, open, now, layout, expandedRows, toggleExpanded, trackRow, "SystemsConnectedAppsGroup", true));
             list = VStack(12, groups.ToArray());
         }
 
@@ -569,7 +624,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
     private static Element InventoryGroup(string title, SystemKind kind, IReadOnlyList<SystemRow> rows,
         SystemsViewState state, SystemsPageActions actions, Action<SystemsDialog?> open,
         DateTimeOffset now, SystemsLayout layout, IReadOnlySet<string> expandedRows,
-        Action<string, bool> toggleExpanded, Dictionary<string, Control> rowControls, string automationId, bool showHeading = false)
+        Action<string, bool> toggleExpanded, Action<string, Control> trackRow, string automationId, bool showHeading = false)
     {
         var heading = $"{title} ({Count(rows.Count)})";
         var content = PageHero.WithMotion(VStack(PageResponsiveLayout.GapInner, rows.Select(row =>
@@ -579,7 +634,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     .HeaderTemplate(InventoryItem(row, state, actions, layout))
                     .AutomationName(Join(DisplayName(row), StatusLabel(row, state),
                         string.Join(", ", RowIssues(row, state, actions, now).Select(issue => issue.Label))) ?? DisplayName(row))
-                    .Set(control => rowControls[row.Id] = control)
+                    .Set(control => trackRow(row.Id, control))
                     .HelpText(S(expandedRows.Contains(row.Id) ? "CollapseSystem" : "ExpandSystem"))
                     .AutomationId("SystemsRow_" + row.Id).WithKey(row.Id)).ToArray()),
                 !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)

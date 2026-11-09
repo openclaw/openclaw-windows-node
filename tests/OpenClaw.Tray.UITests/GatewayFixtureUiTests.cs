@@ -299,6 +299,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    [Trait("KeyboardProof", "Required")]
     public async Task PinnedSystems_ToggleHitTabAndFeedbackRemainOnVisibleSurface()
     {
         foreach (var theme in new[] { "Light", "Dark" })
@@ -367,24 +368,27 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     return toggle;
                 }
                 Invoke(FindById(run, "WorkspacePagesCustomize")!);
-                await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:systems") is not null, "Systems pin toggle");
-                Invoke(FindById(run, "WorkspacePagesToggle:systems")!);
-                await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:systems") is { Current.IsOffscreen: false },
+                // The pin catalog keeps the stored "instances" tag for existing pins; routing normalizes it to Systems.
+                await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:instances") is not null, "Systems pin toggle");
+                Invoke(FindById(run, "WorkspacePagesToggle:instances")!);
+                await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:instances") is { Current.IsOffscreen: false },
                     "Systems production pinned route");
-                Invoke(FindById(run, "WorkspacePinnedPage:systems")!);
+                Invoke(FindById(run, "WorkspacePinnedPage:instances")!);
                 await WaitUiAsync(run, () => FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false } &&
                     FindById(run, "SystemsRow_gateway") is not null, "populated embedded Systems");
-                var openHostTop = FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle.Top;
+                // Panels such as WorkspaceSettingsHost and SystemsPageRoot have no UIA peer. The embedded host
+                // shares the Workspace navigation row without a top margin for inset pages, so that control anchors it.
+                var openHostTop = FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top;
                 Invoke(AssertToggleHit("WorkspaceTogglePane"));
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } &&
                     FindById(run, "SystemsPageScroll") is { Current.BoundingRectangle.Height: > 0 }, "collapsed Systems host");
                 await WaitUiAsync(run, () =>
-                    Math.Abs((FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle.Top - openHostTop) / scale) <= 1 &&
+                    Math.Abs((FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top - openHostTop) / scale) <= 1 &&
                     Math.Abs((FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Top -
-                        FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle.Top) / scale - 56) <= 1,
+                        FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top) / scale - 56) <= 1,
                     "collapsed pinned Systems host and viewport allocations settle");
                 var reopen = AssertToggleHit("WorkspaceReopenPane");
-                var host = FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle;
+                var host = FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle;
                 var viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle;
                 Assert.InRange(Math.Abs((host.Top - openHostTop) / scale), 0, 1);
                 Assert.InRange(Math.Abs((viewport.Top - host.Top) / scale - 56), 0, 1);
@@ -403,16 +407,16 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 }
                 NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
                 await WaitUiAsync(run, () => IsWithin(AutomationElement.FocusedElement,
-                    FindById(run, "SystemsPageRoot")!), "pinned history native Tab to Systems content");
+                    FindById(run, "SystemsPageScroll")!), "pinned history native Tab to Systems content");
                 OwnedWindowCapture.Save(run, window, $"{theme}-pinned-systems-collapsed.png",
                     AssertToggleHit("WorkspaceReopenPane"), FindById(run, "SystemsPageMarker")!);
                 Invoke(AssertToggleHit("WorkspaceReopenPane"));
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { Current.IsOffscreen: false } &&
                     FindById(run, "WorkspaceTogglePane") is { Current.IsOffscreen: false }, "reopened Systems host");
                 await WaitUiAsync(run, () => Math.Abs((FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Top -
-                    FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle.Top) / scale) <= 1,
+                    FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top) / scale) <= 1,
                     "reopened pinned Systems removes viewport inset");
-                host = FindById(run, "WorkspaceSettingsHost")!.Current.BoundingRectangle;
+                host = FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle;
                 viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle;
                 Assert.InRange(Math.Abs((viewport.Top - host.Top) / scale), 0, 1);
                 Invoke(FindById(run, "WorkspaceSessionsAdd")!);

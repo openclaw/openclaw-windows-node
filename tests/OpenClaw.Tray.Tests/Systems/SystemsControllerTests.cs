@@ -18,6 +18,7 @@ public class SystemsControllerTests
         public IReadOnlyList<GatewayNodeInfo> Nodes = Array.Empty<GatewayNodeInfo>();
         public int NodeReads;
         public TaskCompletionSource<IReadOnlyList<GatewayNodeInfo>>? HeldNodes;
+        public int SystemInfoReads;
 
         public Task<SystemsInventorySnapshot> LoadInventoryAsync(CancellationToken cancellationToken)
         {
@@ -27,8 +28,11 @@ public class SystemsControllerTests
             return HeldInventory?.Task ?? Task.FromResult(Inventory());
         }
 
-        public Task<(GatewaySystemInfo Info, DateTimeOffset SampledAt)?> ReadSystemInfoAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<(GatewaySystemInfo, DateTimeOffset)?>(null);
+        public Task<(GatewaySystemInfo Info, DateTimeOffset SampledAt)?> ReadSystemInfoAsync(CancellationToken cancellationToken)
+        {
+            SystemInfoReads++;
+            return Task.FromResult<(GatewaySystemInfo, DateTimeOffset)?>(null);
+        }
 
         public Task<IReadOnlyList<GatewayNodeInfo>> ReadNodesAsync(CancellationToken cancellationToken)
         {
@@ -148,6 +152,96 @@ public class SystemsControllerTests
         Assert.Equal(reads, gateway.InventoryReads);
         Assert.False(controller.State.Connected);
         Assert.Equal(2, controller.State.Rows.Count);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(SystemKind.Worker)]
+    [InlineData(SystemKind.Client)]
+    [InlineData(SystemKind.Node)]
+    public async Task QuietTick_WithoutAnEligibleMeasurementRead_StillAdvancesPresentationTime(SystemKind? selectionKind)
+    {
+        var now = Now;
+        var gateway = new FakeSystemsGateway
+        {
+            Inventory = () => Inventory(Env("gateway", "local"), Env("node:studio"), Env("worker:build", "worker")),
+        };
+        using var controller = new SystemsController(() => gateway, () => now, (_, _) => Task.CompletedTask);
+        controller.UpdateInputs(Connected() with
+        {
+            Presence = [new PresenceEntry { InstanceId = "phone-1", Host = "Phone", Mode = "ios", Ts = Now.ToUnixTimeMilliseconds() }],
+        });
+        // Node stands for a deep link that no longer resolves, so no machine read is possible.
+        var selection = selectionKind switch
+        {
+            null => null,
+            SystemKind.Node => "node:missing",
+            _ => controller.State.Rows.Single(row => row.Kind == selectionKind).Id,
+        };
+        if (selection is null)
+            controller.ToggleSelection("gateway");
+        else
+            controller.Select(selection);
+        Assert.Equal(selection, controller.State.SelectedId);
+        Assert.Equal(selectionKind is SystemKind.Worker or SystemKind.Client, controller.State.Selected is not null);
+        var reads = (gateway.InventoryReads, gateway.NodeReads, gateway.SystemInfoReads);
+        var rows = controller.State.Rows;
+        var changes = 0;
+        controller.Changed += (_, _) => changes++;
+
+        now = Now.AddSeconds(31);
+        await controller.TickAsync();
+
+        Assert.Equal(1, changes);
+        Assert.Equal(now, controller.State.PresentedAt);
+        Assert.Same(rows, controller.State.Rows);
+        Assert.Equal(reads, (gateway.InventoryReads, gateway.NodeReads, gateway.SystemInfoReads));
+
+        now = Now.AddSeconds(46);
+        await controller.TickAsync();
+        Assert.Equal(2, changes);
+        Assert.Equal(now, controller.State.PresentedAt);
+    }
+
+    [Fact]
+    public async Task Tick_ThatPublishesMeasurements_DoesNotPublishASecondPresentationUpdate()
+    {
+        var now = Now;
+        var gateway = new FakeSystemsGateway
+        {
+            Inventory = () => Inventory(Env("gateway", "local"), Env("node:studio")),
+            Nodes = Inventory().Nodes,
+        };
+        using var controller = new SystemsController(() => gateway, () => now, (_, _) => Task.CompletedTask);
+        controller.UpdateInputs(Connected());
+        controller.Select("node:studio");
+        var nodeReads = gateway.NodeReads;
+        var changes = 0;
+        controller.Changed += (_, _) => changes++;
+
+        now = Now.AddSeconds(15);
+        await controller.TickAsync();
+
+        Assert.Equal(nodeReads + 1, gateway.NodeReads);
+        Assert.Equal(1, changes);
+        Assert.Null(controller.State.PresentedAt);
+    }
+
+    [Fact]
+    public async Task DisconnectedTick_AdvancesLastKnownAgesWithoutReading()
+    {
+        var now = Now;
+        var gateway = new FakeSystemsGateway { Inventory = () => Inventory(Env("gateway", "local"), Env("node:studio")) };
+        using var controller = new SystemsController(() => gateway, () => now, (_, _) => Task.CompletedTask);
+        controller.UpdateInputs(Connected());
+        controller.UpdateInputs(new SystemsInputs { Connected = false });
+        var reads = (gateway.InventoryReads, gateway.NodeReads, gateway.SystemInfoReads);
+
+        now = Now.AddMinutes(2);
+        await controller.TickAsync();
+
+        Assert.Equal(now, controller.State.PresentedAt);
+        Assert.Equal(reads, (gateway.InventoryReads, gateway.NodeReads, gateway.SystemInfoReads));
     }
 
     [Fact]
