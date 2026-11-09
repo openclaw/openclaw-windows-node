@@ -84,7 +84,7 @@ test("publishes only failed-test images, leaving passed captures in the diagnost
   assert.ok(report.body.includes(`[connected.png](${runUrl}/artifacts/102)`));
   assert.ok(!report.body.includes("Fixture.Success"));
   assert.deepEqual(await readFile(path.join(root, passedRun, "failure.png")), png);
-  assert.ok(report.body.includes("test-results-ui"));
+  assert.ok(report.body.includes("test-results-gateway-fixture"));
   assert.ok(!report.body.includes("must-not-be-published"));
   assert.equal(report.written, true);
   await assert.rejects(readdir(uploads[0].directory), { code: "ENOENT" });
@@ -95,7 +95,7 @@ test("successful runs produce no preview summary or uploads, even above the prev
   await capture(root, passedRun, Array.from({ length: 451 }, (_, index) => `${index}.png`));
   const report = summary();
   await publishScreenshots({ root, runUrl, summary: report, artifactClient: {
-    async uploadArtifact() { assert.fail("Successful screenshots belong only in test-results-ui"); },
+    async uploadArtifact() { assert.fail("Successful screenshots belong only in test-results-gateway-fixture"); },
   } });
   assert.equal(report.body, "");
   assert.equal(report.written, false);
