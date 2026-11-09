@@ -69,6 +69,10 @@
 .PARAMETER Force
     Build a new payload even when a matching one exists, and re-register.
 
+.PARAMETER SkipSetup
+    Register without the deployment's final `clawctl setup`, leaving first setup to
+    Companion. Use this when the first setup itself is being measured.
+
 .PARAMETER Unregister
     Tear down the patch's isolated session and remove its registration. Payloads are kept.
 
@@ -128,6 +132,9 @@ param(
 
     [Parameter(ParameterSetName = 'Build')]
     [switch]$Force,
+
+    [Parameter(ParameterSetName = 'Build')]
+    [switch]$SkipSetup,
 
     [Parameter(Mandatory, ParameterSetName = 'Unregister')]
     [switch]$Unregister
@@ -497,7 +504,7 @@ if (-not $reuse) {
 
 # --- Build: deploy -----------------------------------------------------------------------------
 
-& $deployScript -Patch $Patch -Architecture $Architecture -PayloadDirectory $payloadDir -Force:$Force
+& $deployScript -Patch $Patch -Architecture $Architecture -PayloadDirectory $payloadDir -Force:$Force -SkipSetup:$SkipSetup
 
 # --- Build: verify and report ------------------------------------------------------------------
 

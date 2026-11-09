@@ -9,6 +9,11 @@ Use for changes that affect tray UX, Settings, onboarding, chat/canvas, Command 
 
 If the validation host is macOS, read [PARALLELS.md](PARALLELS.md) for the optional local Parallels Windows VM workflow.
 
+For bounded startup, setup or actual-chat performance recording and saved-trace
+analysis, use [Windows tracing](../openclaw-tracing/SKILL.md). It covers private
+WPR evidence, resource attribution, operator-observed timing and named-recorder
+cleanup. Proof planning alone does not authorize a live capture.
+
 ## Rules
 
 - Required automated/focused tests are mandatory. Do not ask to skip them.
