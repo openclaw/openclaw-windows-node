@@ -157,6 +157,22 @@ dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj `
 
 ### 4. WinUI and application-boundary proof
 
+Use [WinApp CLI](../../../docs/WINAPP_CLI.md) as a first-choice companion to
+the existing harness: discover selectors and state with `ui`, diagnose native
+crashes with `run --debug-output`, and measure layout with `perf`. Prefer
+bounded condition waits and explicit outcomes over sleeps or command-exit-only
+checks. Keep native keyboard/IME/focus tests, Axe scans, pixel proof and all
+existing assertions; UIA invocation cannot replace a keyboard regression.
+Sandbox helps with authorized disposable app/installer experiments, not
+WSL/MXC or signed-release acceptance. Check installed help/schema and the
+guide's identity, desktop ownership, capture and DevTools limitations first.
+For clean-machine dependencies and installer/uninstaller differences, prefer
+our [sandbox-mcp / sbx tools](https://github.com/shanselman/sandbox-mcp), which
+do not implicitly provision app runtimes. Use the
+[tool-choice matrix](../../../docs/WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp)
+before starting a guest; WinApp's runtime-prepared loop and a clean baseline
+answer different questions. One Sandbox has one lifecycle owner.
+
 Pure view models and projections belong in focused unit tests. Mounted controls,
 Windows App SDK behavior, accessibility, keyboard input, and visible rendering
 need the UI suite or an interactive proof host.

@@ -20,6 +20,7 @@ public static class FluentIconCatalog
     public const string Channels = "\uEC05";
     public const string Devices = "\uE772";
     public const string Settings = "\uE713";
+    public const string About = "\uE946";
     public const string Money = "\uE9D9";
     public const string Fork = "\uE8AB";
     public const string Permissions = "\uEA18";

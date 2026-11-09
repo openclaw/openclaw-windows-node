@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using OpenClawTray.Services;
+using System.Text.Json;
 
 namespace OpenClawTray.Chat;
 
@@ -77,6 +78,8 @@ public interface IChatGatewayBridge : IDisposable
             Error = "Response-aware sessions.compact is not supported by this chat bridge."
         });
     Task RequestSessionsAsync() => Task.CompletedTask;
+    Task<JsonElement> RequestAgentIdentityAsync(string agentId) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Agent identity is unavailable."));
     Task PatchSessionModelAsync(string sessionKey, string model);
     /// <summary>
     /// Clears the session's model override (tri-state <c>sessions.patch</c> with
@@ -330,6 +333,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
 
     public Task RequestSessionsAsync() =>
         _client.RequestSessionsAsync();
+
+    public Task<JsonElement> RequestAgentIdentityAsync(string agentId) =>
+        _client.SendWizardRequestAsync("agent.identity.get", new { agentId });
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);

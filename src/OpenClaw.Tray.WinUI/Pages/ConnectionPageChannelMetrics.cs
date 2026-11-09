@@ -13,14 +13,13 @@ namespace OpenClawTray.Pages;
 /// (<c>ready/ok/connected</c>) AND required <c>IsLinked == true</c>. As a
 /// result, a single channel reporting <c>Status = "running"</c> or
 /// <c>"active"</c> — both canonical healthy statuses elsewhere
-/// (<see cref="ChannelHealth.IsHealthyStatus"/>, tray tooltip, channels
-/// page) — was counted as 0, so the chip read "0/1 channels" yellow even
-/// when the gateway was perfectly happy.
+/// (<see cref="ChannelHealth.IsHealthyStatus"/> and the tray tooltip) — was
+/// counted as 0, so the chip read "0/1 channels" yellow even when the gateway
+/// was perfectly happy.
 ///
 /// <see cref="CountHealthyChannels"/> aligns to the canonical predicate and
 /// drops the <c>IsLinked</c> gate. <c>IsLinked</c> stays where it belongs —
-/// as auth-age detail in <see cref="ChannelHealth.DisplayText"/> and the
-/// channels page — not as a health predicate.
+/// as auth-age detail in the channel summaries, not as a health predicate.
 /// </summary>
 internal static class ConnectionPageChannelMetrics
 {

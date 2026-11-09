@@ -8,7 +8,10 @@ namespace OpenClawTray.Presentation;
 /// <param name="Tag">Canonical Settings route tag, resolved through the single Workspace history at click time.</param>
 /// <param name="LabelKey">Existing Settings navigation label resource, so pins never carry a competing vocabulary.</param>
 /// <param name="IconAsset">File name (without extension) under Assets/SidebarIcons shared with the Settings navigation.</param>
-internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset);
+internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset)
+{
+    public string IconUri => $"ms-appx:///Assets/SidebarIcons/{IconAsset}.svg";
+}
 
 /// <summary>
 /// Owner of the pinnable native page catalog and of pin list rules. Home (fixed), Settings, the
@@ -25,10 +28,8 @@ internal static class PinnedPages
     [
         new("connection", "HubWindow_NavigationViewItem_88.Content", "Connection"),
         new("sessions", "HubWindow_NavigationViewItem_91.Content", "Sessions"),
-        new("channels", "HubWindow_NavigationViewItem_109.Content", "Channels"),
         new("instances", "HubWindow_NavigationViewItem_112.Content", "Instances"),
         new("cron", "HubWindow_NavigationViewItem_124.Content", "Cron"),
-        new("agentevents", "HubWindow_NavigationViewItem_94.Content", "AgentEvents"),
         new("config", "HubWindow_NavigationViewItem_118.Content", "Config"),
         new("usage", "HubWindow_NavigationViewItem_121.Content", "Usage"),
     ];

@@ -103,12 +103,12 @@ public sealed class SetupCompletionPreparation(
                 _draining ??= drain(ct);
                 await _draining.WaitAsync(token);
                 return true;
-            }, SetupNativeCompletionCoordinator.DrainTimeout, SetupNativeCompletionPhase.PageDrain, ct, timeProvider);
+            }, SetupNativeCompletionTiming.PreparationDrain, SetupNativeCompletionPhase.PageDrain, ct, timeProvider);
             ct.ThrowIfCancellationRequested();
             Stage = SetupNativeCompletionStage.Verifying;
             StateChanged?.Invoke();
             var current = await SetupNativeCompletionTiming.RunAsync(
-                token => verify(proof, token), SetupNativeCompletionCoordinator.VerificationTimeout,
+                token => verify(proof, token), SetupNativeCompletionTiming.PreparationVerification,
                 SetupNativeCompletionPhase.Verification, ct, timeProvider);
             SetupNativeVerification.RequireSame(proof, current);
             _verified = current.Verification;
