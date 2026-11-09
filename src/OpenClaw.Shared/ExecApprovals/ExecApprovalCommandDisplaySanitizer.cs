@@ -42,12 +42,17 @@ public static class ExecApprovalCommandDisplaySanitizer
             result.UnsafeConcealment);
     }
 
-    public static string SanitizeWarningText(string text)
+    public static string SanitizeWarningText(string text) => SanitizeWarningTextWithStatus(text).Text;
+
+    /// <summary>Preserves multiline review text and reports whether any required content was concealed or lost.</summary>
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeWarningTextWithStatus(string text)
     {
-        return SanitizeInternal(
+        var result = SanitizeInternal(
             NormalizeDisplayLineBreaks(text),
             preserveLineBreaks: true,
-            oversizedMarker: WarningOversizedMarker).Text;
+            oversizedMarker: WarningOversizedMarker);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
     /// <summary>
@@ -63,6 +68,16 @@ public static class ExecApprovalCommandDisplaySanitizer
         var normalized = text.Length > MaxInput ? text : text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var result = SanitizeInternal(normalized,
             preserveLineBreaks: true, commandReviewLayout: true);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
+    }
+
+    /// <summary>Full review text for one list entry, with every invisible character escaped, including line/tab controls.</summary>
+    public static string SanitizeSingleLineForReview(string text) => SanitizeSingleLineForReviewWithStatus(text).Text;
+
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeSingleLineForReviewWithStatus(string text)
+    {
+        var result = SanitizeInternal(text, commandReviewLayout: true);
         return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
@@ -163,7 +178,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         for (var i = 0; i < text.Length;)
         {
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if ((preserveLineBreaks && codePoint == '\n') || (commandReviewLayout && codePoint == '\t'))
+            if (preserveLineBreaks && (codePoint == '\n' || (commandReviewLayout && codePoint == '\t')))
             {
                 sanitized.Append((char)codePoint);
             }
@@ -222,7 +237,7 @@ public static class ExecApprovalCommandDisplaySanitizer
             }
 
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if ((preserveLineBreaks && codePoint == '\n') || (commandReviewLayout && codePoint == '\t'))
+            if (preserveLineBreaks && (codePoint == '\n' || (commandReviewLayout && codePoint == '\t')))
             {
                 rendered.Append((char)codePoint);
             }

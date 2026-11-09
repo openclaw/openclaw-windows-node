@@ -156,6 +156,20 @@ The one write-shaped exception is `exec.approval.resolve`: the fixture validates
 the fixture-owned approval ID and decision, records only that safe correlation,
 and returns a synthetic acknowledgement without executing a command.
 
+Approval consent tests opt into `GatewayScenario.CreateApprovalReview`, which grants
+only `operator.read` and `operator.approvals`. Its canonical exec and plugin approval
+events exercise the shared production decision owner. Plugin decisions are limited
+to Allow once or Deny for bounded fixture-issued IDs, with one-shot resolution and
+separate exec/plugin identity admission. This does not enable plugin execution or
+general Gateway writes.
+
+The `GatewayFixtureUiTests.InboxPluginReview_` cases expand real Inbox rows on the
+page and bell flyout. They require complete selectable title/detail text, visible
+critical suffixes after native text-range scrolling, and the exact decision RPC.
+Truncated or concealed detail/warning cases require Deny-only controls. With
+`-Screenshots`, the existing fixture runner retains owned-window captures of those
+states. Row-model tests and successful protocol replies alone are not rendered proof.
+
 The native agent-creation UI test explicitly opts into a separate `agent-creation`
 scenario. Only that scenario grants administrator scope and accepts one
 `agents.create` request into an in-memory catalog. It validates name/workspace

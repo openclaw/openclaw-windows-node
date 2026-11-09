@@ -6,12 +6,15 @@
 // connection. Facts are cleared on disconnect and recomputed on a timer so
 // approvals leave when they expire and automations become overdue on time.
 // Gateway text is untrusted display data: only methods and error types are logged.
+// Each approval keeps the authenticated connection epoch it was observed on, so
+// OperatorApprovalDecisions can refuse decisions for an earlier connection.
 //
 // Usage:
 //   var source = new InboxGatewaySource(new WinUIDispatcher(dispatcherQueue));
 //   connectionManager.OperatorClientChanged += (_, e) => source.AttachClient(e.NewClient);
 //   source.Changed += (_, _) => Render(InboxProjection.Build(notifications, source.Items));
 //   source.Dismiss(item.Id);
+//   if (source.TryGetPendingApproval(id, out var pending)) Decide(pending.Approval, pending.ConnectionEpoch);
 
 using OpenClaw.Shared;
 using OpenClawTray.Presentation;
@@ -42,7 +45,7 @@ internal sealed class InboxGatewaySource : IDisposable
     private readonly Func<DateTimeOffset> _clock;
     private readonly Timer? _timer;
     // Each pending approval keeps the local deadline fixed when it first arrived.
-    private readonly Dictionary<string, (GatewayPendingApproval Approval, DateTimeOffset Deadline)> _approvals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PendingApproval> _approvals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (DateTimeOffset Deadline, bool Terminal)> _approvalObservations = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dismissedIds = new(StringComparer.Ordinal);
     private IOperatorGatewayClient? _client;
@@ -57,7 +60,24 @@ internal sealed class InboxGatewaySource : IDisposable
     private DateTimeOffset _modelAuthRefreshAt = DateTimeOffset.MinValue;
     private int? _modelAuthFlightEpoch;
     private bool _disposed;
+    private Func<string, DateTimeOffset?>? _uncertainDeadline;
     private volatile IReadOnlyList<InboxGatewayItem> _items = [];
+    private volatile ApprovalState _approvalState = ApprovalState.Empty;
+
+    /// <summary>A pending approval and the authenticated connection epoch it was observed on.</summary>
+    internal sealed record PendingApproval(GatewayPendingApproval Approval, long? ConnectionEpoch, DateTimeOffset Deadline);
+
+    /// <summary>
+    /// Immutable view published after every change so decisions can be validated from any thread:
+    /// the current client, whether it holds an explicit approval grant, and the live approvals.
+    /// </summary>
+    internal sealed record ApprovalState(
+        IOperatorGatewayClient? Client,
+        bool CanDecide,
+        IReadOnlyDictionary<string, PendingApproval> Pending)
+    {
+        public static ApprovalState Empty { get; } = new(null, false, new Dictionary<string, PendingApproval>());
+    }
 
     public InboxGatewaySource(IUiDispatcher dispatcher, Func<DateTimeOffset>? clock = null, bool useTimer = true)
     {
@@ -70,8 +90,66 @@ internal sealed class InboxGatewaySource : IDisposable
     /// <summary>Raised on the UI thread after <see cref="Items"/> changed.</summary>
     public event EventHandler? Changed;
 
+    /// <summary>Raised on the UI thread when a live approval event adds a new pending approval (not on hydration).</summary>
+    public event EventHandler<GatewayPendingApproval>? ApprovalArrived;
+
     /// <summary>Current Gateway facts that need the user. Safe to read from any thread.</summary>
     public IReadOnlyList<InboxGatewayItem> Items => _items;
+
+    /// <summary>Client, approval grant and live approvals as one consistent snapshot. Safe to read from any thread.</summary>
+    public ApprovalState Approvals => _approvalState;
+
+    /// <summary>The operator client whose facts are shown, or null.</summary>
+    public IOperatorGatewayClient? Client => _approvalState.Client;
+
+    /// <summary>
+    /// True when the connection explicitly holds <c>operator.approvals</c> or <c>operator.admin</c>.
+    /// Unlike list hydration, deciding never assumes a grant from an empty scope list.
+    /// </summary>
+    public bool CanDecideApprovals => _approvalState.CanDecide;
+
+    /// <summary>Looks up a pending, unexpired-at-last-recompute approval. Safe to read from any thread.</summary>
+    public bool TryGetPendingApproval(string approvalId, out PendingApproval pending)
+    {
+        pending = null!;
+        return !string.IsNullOrEmpty(approvalId) && _approvalState.Pending.TryGetValue(approvalId, out pending!);
+    }
+
+    /// <summary>
+    /// Removes an approval that <paramref name="client"/> decided on <paramref name="connectionEpoch"/>,
+    /// without waiting for the Gateway's resolved event. Ignored when another client is current or the
+    /// approval was observed again on a later connection. Callable from any thread.
+    /// </summary>
+    public void MarkApprovalResolved(IOperatorGatewayClient client, string approvalId, long connectionEpoch, object observation)
+    {
+        if (string.IsNullOrEmpty(approvalId))
+            return;
+        var generation = _generation;
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (_disposed || generation != _generation || !ReferenceEquals(client, _client) ||
+                client.SessionMutationConnectionEpoch != connectionEpoch ||
+                !_approvals.TryGetValue(approvalId, out var pending) || pending.ConnectionEpoch != connectionEpoch ||
+                !ReferenceEquals(pending, observation))
+                return;
+            RetireApproval(approvalId);
+            Recompute();
+        });
+    }
+
+    // The decision owner retains uncertainty; this source only projects it and fences hydration.
+    internal void ObserveDecisionUncertainty(Func<string, DateTimeOffset?> uncertainDeadline) =>
+        _uncertainDeadline = uncertainDeadline;
+
+    internal void RefreshDecisionState() => _dispatcher.TryEnqueue(() =>
+    {
+        if (_disposed) return;
+        var previous = _items;
+        Recompute();
+        // Chat can still display a banner after a concurrent list/event removed its Inbox row.
+        // Publish the decision-owner change even when the fact inventory itself did not change.
+        if (ReferenceEquals(previous, _items)) Changed?.Invoke(this, EventArgs.Empty);
+    });
 
     /// <summary>Observes <paramref name="client"/> (or nothing) instead of the previous operator client. UI thread.</summary>
     public void AttachClient(IOperatorGatewayClient? client)
@@ -112,6 +190,7 @@ internal sealed class InboxGatewaySource : IDisposable
             return;
         _disposed = true;
         _timer?.Dispose();
+        _approvalState = ApprovalState.Empty;
         if (_client is { } client)
             Unsubscribe(client);
         _client = null;
@@ -161,6 +240,8 @@ internal sealed class InboxGatewaySource : IDisposable
         if (status == ConnectionStatus.Connected)
         {
             Load(client);
+            // The new handshake's scopes decide approval access now, not after the first reply.
+            Recompute();
         }
         else if (status is ConnectionStatus.Disconnected or ConnectionStatus.Error)
         {
@@ -169,11 +250,19 @@ internal sealed class InboxGatewaySource : IDisposable
         }
     });
 
-    private void OnApprovalRequested(object? sender, GatewayPendingApproval approval) => Post(sender, _ =>
+    private void OnApprovalRequested(object? sender, GatewayPendingApproval approval)
     {
-        Track(approval);
-        Recompute();
-    });
+        // Read on the event's socket thread so the epoch is the connection that delivered it.
+        var epoch = (sender as IOperatorGatewayClient)?.SessionMutationConnectionEpoch;
+        Post(sender, _ =>
+        {
+            var isNew = !_approvals.ContainsKey(approval.Id);
+            Track(approval, epoch);
+            Recompute();
+            if (isNew && _approvals.ContainsKey(approval.Id))
+                ApprovalArrived?.Invoke(this, approval);
+        });
+    }
 
     private void OnApprovalResolved(object? sender, string id) => Post(sender, _ =>
     {
@@ -256,12 +345,15 @@ internal sealed class InboxGatewaySource : IDisposable
         if (!Supports(client, method))
             return;
 
-        var known = _approvals.Values.Where(entry => entry.Approval.Kind == kind).Select(entry => entry.Approval.Id).ToHashSet(StringComparer.Ordinal);
+        var known = _approvals.Where(pair => pair.Value.Approval.Kind == kind)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var connectionEpoch = client.SessionMutationConnectionEpoch;
         IReadOnlyList<GatewayPendingApproval> listed;
         try
         {
             var reply = await client.SendWizardRequestAsync(method, new { }, RequestTimeoutMs()).ConfigureAwait(false);
-            listed = GatewayPendingApprovalParser.ParseList(kind, reply);
+            if (!GatewayPendingApprovalParser.TryParseCompleteList(kind, reply, out listed))
+                throw new InvalidDataException("Incomplete approval inventory.");
         }
         catch (Exception ex)
         {
@@ -275,10 +367,20 @@ internal sealed class InboxGatewaySource : IDisposable
                 return;
             var listedIds = listed.Select(approval => approval.Id).ToHashSet(StringComparer.Ordinal);
             // Known before the read and absent from it: decided or expired elsewhere.
-            foreach (var id in known.Where(id => !listedIds.Contains(id)))
-                RetireApproval(id);
+            foreach (var (id, observation) in known.Where(pair => !listedIds.Contains(pair.Key)))
+                if (_uncertainDeadline?.Invoke(id) is null &&
+                    _approvals.TryGetValue(id, out var current) && ReferenceEquals(current, observation))
+                    RetireApproval(id);
             foreach (var approval in listed)
-                Track(approval);
+            {
+                // Protect an existing observation from an older inventory, but reconstruct
+                // a missing quarantined row after reconnect using its retained deadline.
+                if (_approvals.TryGetValue(approval.Id, out var current) &&
+                    (_uncertainDeadline?.Invoke(approval.Id) is not null ||
+                        !known.TryGetValue(approval.Id, out var previous) || !ReferenceEquals(current, previous)))
+                    continue;
+                Track(approval, connectionEpoch);
+            }
             Recompute();
         });
     }
@@ -322,9 +424,10 @@ internal sealed class InboxGatewaySource : IDisposable
         });
     }
 
-    // A repeated request (event replay or list hydration) keeps its original deadline.
-    private void Track(GatewayPendingApproval approval)
+    // Replays keep the original deadline. Terminal identities stay retired until the connection changes.
+    private void Track(GatewayPendingApproval approval, long? connectionEpoch)
     {
+        var uncertainDeadline = _uncertainDeadline?.Invoke(approval.Id);
         if (!_approvalObservations.TryGetValue(approval.Id, out var observation))
         {
             if (_approvalObservations.Count >= ApprovalObservationLimit)
@@ -336,7 +439,8 @@ internal sealed class InboxGatewaySource : IDisposable
                 }
                 return;
             }
-            observation = (InboxGatewayItems.LocalDeadline(approval, _clock()), false);
+            var deadline = InboxGatewayItems.LocalDeadline(approval, _clock());
+            observation = (uncertainDeadline is { } original && original < deadline ? original : deadline, false);
             _approvalObservations.Add(approval.Id, observation);
         }
         if (observation.Terminal)
@@ -346,7 +450,11 @@ internal sealed class InboxGatewaySource : IDisposable
             RetireApproval(approval.Id);
             return;
         }
-        _approvals[approval.Id] = (approval, observation.Deadline);
+        // Identical parsed replays retain the exact displayed observation, including explicit decision lists.
+        if (_approvals.TryGetValue(approval.Id, out var existing) && existing.ConnectionEpoch == connectionEpoch &&
+            existing.Approval.HasSameContentAs(approval))
+            return;
+        _approvals[approval.Id] = new(approval, connectionEpoch, observation.Deadline);
     }
 
     private void RetireApproval(string id)
@@ -374,11 +482,23 @@ internal sealed class InboxGatewaySource : IDisposable
     {
         var now = _clock();
         var nowMs = now.ToUnixTimeMilliseconds();
+        foreach (var (id, pending) in _approvals.ToList())
+            if (_uncertainDeadline?.Invoke(id) is { } original && original < pending.Deadline)
+            {
+                _approvals[id] = pending with { Deadline = original };
+                _approvalObservations[id] = (original, false);
+            }
         foreach (var expired in _approvals.Where(pair => pair.Value.Deadline <= now).Select(pair => pair.Key).ToList())
             RetireApproval(expired);
+        var canDecide = _client is { } current && GatewayApprovalDecisions.HasDecisionGrant(current.GrantedOperatorScopes);
+        _approvalState = new(_client, canDecide, new Dictionary<string, PendingApproval>(_approvals, StringComparer.Ordinal));
 
         var facts = _approvals.Values
-            .Select(entry => InboxGatewayItems.FromApproval(entry.Approval, entry.Deadline))
+            .Select(pending => InboxGatewayItems.FromApproval(pending.Approval, pending.Deadline, canDecide) with
+            {
+                ApprovalObservation = pending,
+                DecisionUncertain = _uncertainDeadline?.Invoke(pending.Approval.Id) is not null,
+            })
             .Concat(InboxGatewayItems.BuildCron(_cronList, _schedulerEnabled, nowMs))
             .Concat(InboxGatewayItems.BuildModelAuth(_modelAuthStatus, nowMs))
             .ToList();
@@ -409,7 +529,7 @@ internal sealed class InboxGatewaySource : IDisposable
             due = _modelAuthRefreshAt < now ? TimeSpan.Zero : _modelAuthRefreshAt - now;
         if (_approvals.Count > 0)
         {
-            var nextExpiry = _approvals.Values.Min(entry => entry.Deadline);
+            var nextExpiry = _approvals.Values.Min(pending => pending.Deadline);
             var untilExpiry = nextExpiry - now + ExpiryGrace;
             if (untilExpiry < due)
                 due = untilExpiry < TimeSpan.Zero ? TimeSpan.Zero : untilExpiry;
@@ -447,12 +567,17 @@ internal sealed class InboxGatewaySource : IDisposable
     private static bool HasScope(IOperatorGatewayClient client, string scope)
     {
         var scopes = client.GrantedOperatorScopes;
-        return scopes.Count == 0 ||
-            scopes.Contains(scope, StringComparer.Ordinal) ||
+        return scopes.Count == 0 || HasGrantedScope(client, scope);
+    }
+
+    private static bool HasGrantedScope(IOperatorGatewayClient client, string scope)
+    {
+        var scopes = client.GrantedOperatorScopes;
+        return scopes.Contains(scope, StringComparer.Ordinal) ||
             scopes.Contains(AdminScope, StringComparer.Ordinal);
     }
 
-    private static int RequestTimeoutMs()
+    internal static int RequestTimeoutMs()
     {
         var configured = Environment.GetEnvironmentVariable(RequestTimeoutVariable);
         if (configured is null)

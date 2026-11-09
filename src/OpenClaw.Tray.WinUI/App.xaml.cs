@@ -268,6 +268,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private SettingsPersistenceNotification? _settingsPersistenceNotification;
     internal AppNotificationService? AppNotifications => _appNotificationService;
     private InboxGatewaySource? _inboxGatewaySource;
+    private OperatorApprovalDecisions? _approvalDecisions;
+    private ApprovalToastPresenter? _approvalToasts;
     /// <summary>Inbox rows, tab counts and badge: app notifications plus live Gateway facts.</summary>
     internal InboxFeed? InboxFeed { get; private set; }
     private string? _lastConnectionIssueNotificationKey;
@@ -786,7 +788,23 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
         _inboxGatewaySource = new InboxGatewaySource(new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!));
-        InboxFeed = new InboxFeed(_appNotificationService, _inboxGatewaySource);
+        _approvalDecisions = new OperatorApprovalDecisions(_inboxGatewaySource);
+        if (_chatCoordinator is not null)
+        {
+            _chatCoordinator.ResolveExecApproval = _approvalDecisions.ResolveChatExecApprovalAsync;
+            _chatCoordinator.IsApprovalDecisionUncertain = _approvalDecisions.IsUncertain;
+            _inboxGatewaySource.Changed += (_, _) => _chatCoordinator?.Provider?.RefreshApprovalDecisionState();
+        }
+        InboxFeed = new InboxFeed(_appNotificationService, _inboxGatewaySource, _approvalDecisions);
+        _approvalToasts = new ApprovalToastPresenter(
+            _inboxGatewaySource,
+            _approvalDecisions,
+            LocalizationHelper.GetString,
+            notificationsEnabled: () => _settings?.ShowNotifications == true,
+            isAppForeground: AppForeground.IsActive,
+            isHostConfirmedLocal: IsApprovalHostThisComputer,
+            show: _toastService.ShowWithdrawableToast,
+            withdraw: _toastService.RemoveToast);
         _settingsPersistenceNotification = new SettingsPersistenceNotification(
             _settings, new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!),
             _appNotificationService, LocalizationHelper.GetString);
@@ -2080,6 +2098,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _nodeService?.RefreshMcpOnlyCapabilities();
         _ = _connectionManager?.ReconnectAsync();
     }
+
+    // A Gateway-host command runs on this computer only when the active Gateway is a direct
+    // loopback endpoint; an SSH tunnel's loopback URL forwards to another machine.
+    private bool IsApprovalHostThisComputer(GatewayPendingApproval approval) =>
+        string.Equals(approval.Host, "gateway", StringComparison.Ordinal) &&
+        _gatewayRegistry?.GetActive() is { SshTunnel: null } active &&
+        _settings?.UseSshTunnel != true &&
+        GatewayRecordEditing.IsLoopbackEndpoint(active.Url);
 
     private void SyncActiveGatewayBrowserProxyForward()
     {
