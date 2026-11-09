@@ -340,8 +340,9 @@ file sealed class InitialTailPositioner : IDisposable
                 case InitialTailLanding.GiveUp:
                     var diagnostics = _confirmation.Diagnostics;
                     var attemptDiagnostics = _confirmation.AttemptDiagnostics;
+                    var bringOptions = _confirmation.BringOptionsObservation;
                     CompleteInitialLanding();
-                    LogInitialTailFailure(diagnostics, attemptDiagnostics, scrollView);
+                    LogInitialTailFailure(diagnostics, attemptDiagnostics, scrollView, bringOptions);
                     break;
             }
         };
@@ -349,7 +350,8 @@ file sealed class InitialTailPositioner : IDisposable
     }
 
     private void LogInitialTailFailure(InitialTailDiagnosticSnapshot diagnostics,
-        InitialTailAttemptDiagnostics attempt, WinUIScrollView scrollView)
+        InitialTailAttemptDiagnostics attempt, WinUIScrollView scrollView,
+        InitialTailBringOptionsObservation bringOptions)
     {
         // This runs only after the existing GiveUp cleanup. Native reads and the
         // local logger are best effort: neither can interrupt navigation cleanup.
@@ -367,7 +369,8 @@ file sealed class InitialTailPositioner : IDisposable
                 $"Chat initial tail navigation did not land at the tail. frames={diagnostics.ObservedFrames} retries={diagnostics.Retries} settledFrames={diagnostics.SettledFrames} hasExpectedTarget={diagnostics.HasExpectedTarget} hasCorrelation={diagnostics.HasCorrelation} bringCompleted={diagnostics.BringCompleted} attemptActive={diagnostics.AttemptActive} itemCount={_itemCount} tailIndex={_tailIndex} {native} ") +
                 FormattableString.Invariant($"bringReadSucceeded={attempt.ProposedOffset.HasValue && attempt.BringOffset.HasValue && attempt.BringScrollableHeight.HasValue} proposedOffset={attempt.ProposedOffset} bringOffset={attempt.BringOffset} bringScrollableHeight={attempt.BringScrollableHeight} targetIndexAvailable={attempt.TargetIndex.HasValue} targetIndex={attempt.TargetIndex} ") +
                 FormattableString.Invariant($"completionReadSucceeded={attempt.CompletedOffset.HasValue && attempt.CompletedScrollableHeight.HasValue} completedOffset={attempt.CompletedOffset} completedScrollableHeight={attempt.CompletedScrollableHeight} completionSourceReadSucceeded={attempt.CompletionSourceItemMatches.HasValue} completionSourceItemMatches={attempt.CompletionSourceItemMatches} ") +
-                FormattableString.Invariant($"maxOffsetAvailable={attempt.MaxObservedOffset.HasValue} maxObservedOffset={attempt.MaxObservedOffset}"));
+                FormattableString.Invariant($"maxOffsetAvailable={attempt.MaxObservedOffset.HasValue} maxObservedOffset={attempt.MaxObservedOffset} ") +
+                FormattableString.Invariant($"bringCancelReadSucceeded={bringOptions.CancelAtCallback.HasValue} bringCancelAtCallback={bringOptions.CancelAtCallback} bringAnimationDesiredReadSucceeded={bringOptions.AnimationDesiredAtCallback.HasValue} bringAnimationDesiredAtCallback={bringOptions.AnimationDesiredAtCallback}"));
         }
         catch (Exception) { }
     }
@@ -473,6 +476,14 @@ file sealed class InitialTailPositioner : IDisposable
         }
         catch (Exception) { }
         _confirmation.BringingIntoView(correlationId, targetItem, geometry, targetIndex);
+        // Passive callback-time values, not the final outcome after all listeners.
+        bool? cancelAtCallback = null;
+        bool? animationDesiredAtCallback = null;
+        try { cancelAtCallback = args.Cancel; }
+        catch (Exception) { }
+        try { animationDesiredAtCallback = args.RequestEventArgs?.AnimationDesired; }
+        catch (Exception) { }
+        _confirmation.ObserveBringOptions(correlationId, targetItem, cancelAtCallback, animationDesiredAtCallback);
     }
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)

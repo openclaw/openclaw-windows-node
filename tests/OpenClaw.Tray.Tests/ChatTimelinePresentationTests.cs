@@ -611,6 +611,89 @@ public sealed class ChatTimelinePresentationTests
         Assert.Equal(typeof(bool?), fields["CompletionSourceItemMatches"]);
     }
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(null, true)]
+    [InlineData(true, null)]
+    public void InitialTailBringOptions_KeepUnknownAndCallbackValuesWithoutChangingDecisions(bool? canceled, bool? animated)
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        confirmation.BringingIntoView(17, target);
+        // Null models either independent native getter failing/unavailable; false is observed.
+        confirmation.ObserveBringOptions(17, target, canceled, animated);
+        Assert.Equal(new InitialTailBringOptionsObservation(canceled, animated), confirmation.BringOptionsObservation);
+        Assert.Equal(new InitialTailDiagnosticSnapshot(0, 0, 0, true, true, false, true), confirmation.Diagnostics);
+        confirmation.ScrollCompleted(17);
+        for (var frame = 0; frame < 3; frame++)
+            Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: true, nearBottom: false));
+        Assert.Equal(InitialTailLanding.Retry, confirmation.Observe(idle: true, nearBottom: false));
+        Assert.Equal(new InitialTailDiagnosticSnapshot(4, 1, 0, true, true, true, false), confirmation.Diagnostics);
+    }
+
+    [Fact]
+    public void InitialTailBringOptions_RejectUnacceptedWrongTargetAndSupersededCorrelation()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        confirmation.Reset(target);
+        confirmation.ObserveBringOptions(17, target, true, true);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+        confirmation.BringingIntoView(17, target);
+        confirmation.ObserveBringOptions(18, target, true, true);
+        confirmation.ObserveBringOptions(17, new object(), true, true);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+        confirmation.ObserveBringOptions(17, target, true, false);
+        Assert.Equal(new InitialTailBringOptionsObservation(true, false), confirmation.BringOptionsObservation);
+        confirmation.BringingIntoView(18, target);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+        confirmation.ObserveBringOptions(17, target, true, true);
+        confirmation.ObserveBringOptions(18, target, null, null);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+    }
+
+    [Fact]
+    public void InitialTailBringOptions_ResetOnRetryRequestReplacementAndInvalidation()
+    {
+        var confirmation = new InitialTailConfirmation();
+        var target = new object();
+        var generation = confirmation.Reset(target);
+        confirmation.BringingIntoView(17, target);
+        confirmation.ObserveBringOptions(17, target, true, false);
+        var captured = confirmation.BringOptionsObservation;
+        confirmation.BeginAttempt(target);
+        Assert.True(confirmation.IsCurrent(generation));
+        confirmation.ObserveBringOptions(17, target, true, true);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+        confirmation.BringingIntoView(18, target);
+        confirmation.ObserveBringOptions(18, target, false, true);
+        var replacement = new object();
+        confirmation.Reset(replacement);
+        Assert.False(confirmation.IsCurrent(generation));
+        confirmation.ObserveBringOptions(18, target, true, true);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+        confirmation.BringingIntoView(19, replacement);
+        confirmation.ObserveBringOptions(19, replacement, false, false);
+        confirmation.Invalidate();
+        confirmation.ObserveBringOptions(19, replacement, true, true);
+        Assert.Equal(default(InitialTailBringOptionsObservation), confirmation.BringOptionsObservation);
+        Assert.Equal(new InitialTailBringOptionsObservation(true, false), captured);
+    }
+
+    [Fact]
+    public void InitialTailBringOptions_ExposeOnlyTwoNullableCallbackBooleans()
+    {
+        var fields = typeof(InitialTailBringOptionsObservation).GetProperties()
+            .ToDictionary(property => property.Name, property => property.PropertyType);
+        Assert.Equal(2, fields.Count);
+        Assert.Equal(typeof(bool?), fields["CancelAtCallback"]);
+        Assert.Equal(typeof(bool?), fields["AnimationDesiredAtCallback"]);
+    }
+
     [Fact]
     public void InitialTailConfirmation_LandsOnlyAfterSettledFramesAtTheTail()
     {
