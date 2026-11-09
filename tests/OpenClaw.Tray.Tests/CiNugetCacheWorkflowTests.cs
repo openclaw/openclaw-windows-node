@@ -24,6 +24,7 @@ public sealed class CiNugetCacheWorkflowTests
         var job = ExtractJob(ReadWorkflow(), "ui-tests", "build-msix");
         var standard = ExtractStep(job, "Run Tray UI Tests", "Run steady-resource Automations UI tests");
         Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard", standard);
+        Assert.Contains("-CaptureHostExit", standard);
 
         var steady = ExtractStep(job, "Run steady-resource Automations UI tests", "Run Accessibility Tests (Axe.Windows)");
         Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production", steady);
@@ -32,6 +33,7 @@ public sealed class CiNugetCacheWorkflowTests
         Assert.Contains("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'", steady);
         Assert.Contains(@"OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures", steady);
         Assert.Contains("-RequireAllTestsPassed", steady);
+        Assert.Contains("-CaptureHostExit", steady);
         Assert.Contains("-Filter \"Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", steady);
         Assert.Contains("AutomationsSteadyResources.trx", steady);
     }

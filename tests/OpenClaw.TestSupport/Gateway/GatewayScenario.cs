@@ -111,8 +111,8 @@ public sealed partial class GatewayScenario
             "models.list", "usage.cost", "agent.identity.get"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
-            .Concat(cronJobs is null ? [] : CronMethods)
-            .Concat(inboxFeed is null ? [] : ["exec.approval.list", "cron.list", "cron.status", "models.authStatus"])
+            .Concat(cronJobs is null ? [] : inboxFeed is null ? CronMethods : ["cron.list", "cron.status", "cron.get", "cron.runs"])
+            .Concat(inboxFeed is null ? [] : ["exec.approval.list", "models.authStatus"])
             .Concat(inboxFeed is not null && allowChatSend ? ["chat.send"] : [])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
             .Order(StringComparer.Ordinal).ToArray());
@@ -425,7 +425,7 @@ public sealed partial class GatewayScenario
                 methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray()
                     : _contextUsage is not null ? ReadMethods.Concat(["chat.send"]).ToArray() : ReadMethods,
                 events = _inboxFeed is not null
-                    ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "exec.approval.requested" }
+                    ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "cron", "exec.approval.requested" }
                     : IsInteractive
                     ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
                     : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
@@ -475,7 +475,7 @@ public sealed partial class GatewayScenario
     {
         if (_inboxFeed is not null)
         {
-            if (method is "exec.approval.list" or "cron.list" or "cron.status" or "models.authStatus")
+            if (method is "exec.approval.list" or "models.authStatus")
                 return _inboxFeed.Read(method, parameters);
             // operator.approvals is the upstream list-read scope, not permission to
             // turn this fixture into a decision server. No approval ID is issued here.

@@ -123,7 +123,13 @@ public sealed partial class GatewayFixtureUiTests
             await InboxFeedTextAsync(run, automation, "Synthetic archive destination unavailable.");
             CaptureInboxFeed(run, "inbox-feed-automation-failed.png", automation);
             Invoke(await InboxFeedButtonAsync(run, automation, "Open Automations"));
-            await WaitUiAsync(run, () => InboxFeedVisibleId(run, "CronPageMarker") is not null, "native Automations destination");
+            await WaitUiAsync(run, () => InboxFeedVisibleId(run, "CronPageMarker") is not null &&
+                FindById(run, "AutomationExpander:fixture-inbox-cron") is not null,
+                "native Automations destination renders the referenced job");
+            Assert.All(run.Gateway.Requests.Where(request => request.Method == "cron.list" && request.Outcome != "pending"),
+                request => Assert.Equal("ok", request.Outcome));
+            await ScrollAutomationIntoViewAsync(run, "AutomationExpander:fixture-inbox-cron");
+            Assert.Contains("Fixture nightly archive", FindById(run, "AutomationExpander:fixture-inbox-cron")!.Current.Name);
             await CaptureIfRequestedAsync(run, "inbox-feed-automations-destination.png");
 
             await OpenInboxFeedPageAsync(run, "System");

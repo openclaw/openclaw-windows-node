@@ -243,7 +243,7 @@ public sealed partial class GatewayScenario
             throw new FixtureRequestException("UNAVAILABLE", readError);
         if (CronStatusReadError is { } statusError && method == "cron.status")
             throw new FixtureRequestException("UNAVAILABLE", statusError);
-        if (CronReadOnly && method is "cron.add" or "cron.update" or "cron.remove" or "cron.run")
+        if ((_inboxFeed is not null || CronReadOnly) && method is "cron.add" or "cron.update" or "cron.remove" or "cron.run")
             throw new FixtureRequestException("FORBIDDEN", "missing scope: operator.admin");
         var jobs = _cronJobs!;
         lock (jobs)
@@ -325,6 +325,8 @@ public sealed partial class GatewayScenario
         var all = rows.ToList();
         var offset = OptionalInt(p, "offset") ?? 0;
         var limit = OptionalInt(p, "limit") ?? 50;
+        if (offset < 0 || limit is < 1 or > 200)
+            throw new FixtureRequestException("INVALID_PARAMS", "Expected bounded cron pagination.");
         var page = all.Skip(offset).Take(limit).Select(j =>
         {
             var row = j.DeepClone().AsObject();
@@ -332,7 +334,15 @@ public sealed partial class GatewayScenario
             return JsonSerializer.SerializeToElement(row);
         }).ToArray();
         var hasMore = offset + page.Length < all.Count;
-        return new { jobs = page, total = all.Count, offset, limit, hasMore, nextOffset = hasMore ? offset + page.Length : (int?)null };
+        var result = new { jobs = page, total = all.Count, offset, limit, hasMore, nextOffset = hasMore ? offset + page.Length : (int?)null };
+        if (_inboxFeed is null)
+            return result;
+        _inboxFeed.RecordCronPage(p);
+        var snapshot = JsonSerializer.SerializeToNode(result)!.AsObject();
+        // One revision describes the entire inventory, independent of filter or page.
+        snapshot["snapshotRevision"] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(jobs))));
+        return snapshot;
     }
 
     private static JsonObject FindJob(Dictionary<string, JsonObject> jobs, JsonElement p)

@@ -83,7 +83,7 @@ $runTests = {
         $testArguments.Add((Join-Path $rawRoot 'testplatform.log') + ';tracelevel=info')
         New-Item -ItemType Directory -Path $rawRoot -ErrorAction Stop | Out-Null
         $testExit = $null; $nativeErrorType = $null
-        # Only the existing ordinary-UI CaptureHostExit lane opts in. The invocation
+        # Ordinary UI and steady-resource UI lanes opt in with CaptureHostExit. The invocation
         # owns this curated, content-free file under the already-uploaded TestResults.
         $previousMetadataPath = $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH
         $previousMetadataInvocation = $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID

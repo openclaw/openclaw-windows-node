@@ -589,6 +589,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         finally { ReleaseConnections(targets); }
     }
 
+    /// <summary>Invalidates synthetic scheduler reads through the real top-level cron event.</summary>
+    public Task PublishCronChangedAsync()
+    {
+        if (!_scenario.ReadMethods.Contains("cron.list", StringComparer.Ordinal))
+            throw new InvalidOperationException("The scenario has no scheduler inventory.");
+        return BroadcastAsync("cron", new { action = "updated" });
+    }
+
     public async Task PublishAgentEventAsync(
         string sessionKey,
         object data,
