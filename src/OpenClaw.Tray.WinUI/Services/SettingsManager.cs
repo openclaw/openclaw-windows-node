@@ -100,7 +100,6 @@ public class SettingsManager
     // Notifications
     public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
     public string NotificationSound { get => _data.NotificationSound ?? "Default"; set => _data = _data with { NotificationSound = value }; }
-    public bool DoNotDisturb { get => _data.DoNotDisturb; set => _data = _data with { DoNotDisturb = value }; }
     
     // Notification filters
     public bool NotifyHealth { get => _data.NotifyHealth; set => _data = _data with { NotifyHealth = value }; }

@@ -6,7 +6,7 @@ public sealed class HubPresentationContractTests
 {
     [Theory]
     [InlineData("Controls", "InboxView.xaml.cs", "private void OnActionClick",
-        "feed.NavigateNotificationAsync(", "commands.TryNavigateAsync")]
+        "notifications.NavigateActionAsync(", "commands.TryNavigateAsync")]
     [InlineData("Controls", "SettingsShellView.xaml.cs", "private void OnAppNotificationActionButtonClick",
         "notifications.NavigateActionAsync(", "((IAppCommands)CurrentApp).TryNavigateAsync")]
     public void NotificationActions_UseAdmissionWithoutPublishingPendingChatIntent(

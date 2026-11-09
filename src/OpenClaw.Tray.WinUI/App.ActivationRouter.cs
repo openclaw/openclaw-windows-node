@@ -209,21 +209,7 @@ public partial class App : IActivationPlanSink
                     Logger.Warn("Deep link: agent message received but SendMessage handler is not registered");
                 }
                 break;
-            case ActivationRoute.DecideApproval r:
-                _ = DecideApprovalFromToastAsync(r);
-                break;
         }
-    }
-
-    // A toast decision that no longer matches a live approval decides nothing; the Inbox then
-    // shows the current state so the user can act on it there.
-    private async Task DecideApprovalFromToastAsync(ActivationRoute.DecideApproval route)
-    {
-        var outcome = _approvalDecisions is { } decisions
-            ? await decisions.DecideFromToastAsync(route.ApprovalId, route.Decision, route.Token)
-            : ApprovalDecisionOutcome.NotPending;
-        if (outcome is not (ApprovalDecisionOutcome.Sent or ApprovalDecisionOutcome.AlreadyResolved))
-            ShowHub("notifications");
     }
 
     private void ApplyCopyDiagnostics(DiagnosticsCopyKind kind)

@@ -100,31 +100,6 @@ internal static class ChatSnapshotProjector
                 : ImmutableHashSet<string>.Empty);
     }
 
-    /// <summary>Projects the shared decision quarantine without claiming a terminal approval outcome.</summary>
-    internal static ChatDataSnapshot WithUncertainApprovals(ChatDataSnapshot snapshot,
-        Func<string, bool> isUncertain, string message)
-    {
-        var blockedThreads = snapshot.Timelines.Where(pair =>
-            pair.Value.PendingPermission is { } pending && isUncertain(pending.RequestId))
-            .Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal);
-        if (blockedThreads.Count == 0) return snapshot;
-        string Explain(string text) => text.EndsWith(message, StringComparison.Ordinal) ? text : text + "\n\n" + message;
-        var timelines = snapshot.Timelines.ToDictionary(pair => pair.Key, pair =>
-        {
-            var timeline = pair.Value;
-            if (!blockedThreads.Contains(pair.Key)) return timeline;
-            return timeline with
-            {
-                PendingPermission = timeline.PendingPermission is { } pending && isUncertain(pending.RequestId)
-                    ? pending with { Actions = [], Detail = Explain(pending.Detail) } : timeline.PendingPermission,
-                Entries = timeline.Entries.Select(entry => entry.Kind == ChatTimelineItemKind.PermissionRequest &&
-                    entry.PermissionDecision == ChatPermissionDecision.Pending && entry.PermissionRequestId is { } id && isUncertain(id)
-                    ? entry with { PermissionActions = [], Text = Explain(entry.Text) } : entry).ToImmutableList(),
-            };
-        }, StringComparer.Ordinal);
-        return snapshot with { Timelines = timelines };
-    }
-
     internal static string? ResolveDefaultThreadId(ChatSnapshotProjectionInput input)
     {
         if (input.RememberedDefaultThreadId is { Length: > 0 } remembered &&

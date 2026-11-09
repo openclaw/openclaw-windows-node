@@ -90,11 +90,100 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.False(FindById(run, "ConnectionPageMarker")!.Current.IsOffscreen);
             Assert.Null(FindById(run, "WorkspacePinnedPage:sessions"));
 
-            var home = FindById(run, "WorkspaceNavHome")!;
-            var homeBounds = home.Current.BoundingRectangle;
-            var pinBounds = FindById(run, "WorkspacePinnedPage:connection")!.Current.BoundingRectangle;
-            var sessionsHeader = FindText(run, "Sessions")!.Current.BoundingRectangle;
-            var other = FindById(run, $"WorkspaceSession:{GatewayScenario.LongSessionKey}")!.Current.BoundingRectangle;
+            // Removing an automation peer is not an acknowledgment of the remaining rows' arrange pass.
+            // Keep two matching native samples, without another action or an extra timeout.
+            (string Identity, System.Windows.Rect Home, System.Windows.Rect Pin,
+                System.Windows.Rect Header, System.Windows.Rect Other, System.Windows.Rect Anchor)? previous = null;
+            AutomationElement? readyHome = null;
+            var samples = 0;
+            double? firstGap = null, lastGap = null;
+            static bool Usable(System.Windows.Rect rect) => !rect.IsEmpty && rect.Width > 0 && rect.Height > 0
+                && double.IsFinite(rect.Left) && double.IsFinite(rect.Top)
+                && double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom);
+            AutomationElement? InWorkspace(string id) => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+            try
+            {
+                await WaitUiAsync(run, () =>
+                {
+                    var prior = previous;
+                    previous = null; // A missing/stale peer or invalid sample breaks consecutive readiness.
+                    samples++;
+                    if (!double.IsFinite(scale) || scale <= 0
+                        || FindById(run, "WorkspacePagesToggle:sessions") is not null
+                        || InWorkspace("WorkspacePinnedPage:sessions") is not null)
+                        return false;
+                    var homeCandidate = InWorkspace("WorkspaceNavHome");
+                    var pin = InWorkspace("WorkspacePinnedPage:connection");
+                    var anchor = InWorkspace("WorkspaceSessionsAdd");
+                    var conversation = InWorkspace($"WorkspaceSession:{GatewayScenario.LongSessionKey}");
+                    var connection = InWorkspace("ConnectionPageMarker");
+                    if (homeCandidate is null || pin is null || anchor is null || conversation is null || connection is null)
+                        return false;
+                    AutomationElement[] owners = [window, homeCandidate, pin, anchor, conversation, connection];
+                    if (owners.Any(element => element.Current.ProcessId != run.AppProcessId || element.Current.IsOffscreen)
+                        || !pin.GetRuntimeId().SequenceEqual(connectionRow))
+                        return false;
+                    var homeRect = homeCandidate.Current.BoundingRectangle;
+                    var pinRect = pin.Current.BoundingRectangle;
+                    var anchorRect = anchor.Current.BoundingRectangle;
+                    var otherRect = conversation.Current.BoundingRectangle;
+                    if (!Usable(homeRect) || !Usable(pinRect) || !Usable(anchorRect) || !Usable(otherRect))
+                        return false;
+
+                    // The authored header has Sessions text beside its existing add button. Use that
+                    // native row band, not the first Sessions substring or an assumed UIA parent chain.
+                    AutomationElement? header = null;
+                    var headerRect = System.Windows.Rect.Empty;
+                    var labels = window.FindAll(TreeScope.Descendants, new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
+                        new PropertyCondition(AutomationElement.NameProperty, "Sessions"),
+                        new PropertyCondition(AutomationElement.IsOffscreenProperty, false)));
+                    foreach (AutomationElement label in labels)
+                    {
+                        var bounds = label.Current.BoundingRectangle;
+                        if (label.Current.ProcessId != run.AppProcessId || label.Current.IsOffscreen || !Usable(bounds)
+                            || bounds.Top < anchorRect.Top || bounds.Bottom > anchorRect.Bottom
+                            || bounds.Left < homeRect.Left || bounds.Right > anchorRect.Left)
+                            continue;
+                        if (header is not null) return false; // Ambiguous labels are not a section receipt.
+                        header = label;
+                        headerRect = bounds;
+                    }
+                    if (header is null) return false;
+                    var homeGap = (pinRect.Top - homeRect.Bottom) / scale;
+                    var headerGap = (headerRect.Top - pinRect.Bottom) / scale;
+                    if (!double.IsFinite(homeGap) || !double.IsFinite(headerGap)) return false;
+                    firstGap ??= headerGap;
+                    lastGap = headerGap;
+                    if (homeGap is < -1 or > 8 || headerGap is < 4 or > 48 || otherRect.Top < headerRect.Bottom)
+                        return false;
+                    // Runtime IDs are numeric, role-delimited and private to this observer; no UI text is retained.
+                    var identities = owners.Append(header).Select(element => element.GetRuntimeId()).ToArray();
+                    if (identities.Any(id => id is null || id.Length == 0)) return false;
+                    var identity = string.Join("|", identities.Select(id => string.Join(",", id)));
+                    var sample = (identity, homeRect, pinRect, headerRect, otherRect, anchorRect);
+                    previous = sample;
+                    if (prior is null || prior.Value != sample) return false;
+                    readyHome = homeCandidate;
+                    return true;
+                }, "stable post-unpin sidebar geometry");
+            }
+            finally
+            {
+                try
+                {
+                    output.WriteLine("Sidebar post-unpin geometry: " + JsonSerializer.Serialize(
+                        new { samples, firstGap, lastGap, stable = readyHome is not null }));
+                }
+                catch (Exception) { /* Best-effort numeric diagnostics must not replace the test failure. */ }
+            }
+            var settled = previous!.Value;
+            var home = readyHome!;
+            var homeBounds = settled.Home;
+            var pinBounds = settled.Pin;
+            var sessionsHeader = settled.Header;
+            var other = settled.Other;
             Assert.InRange((pinBounds.Top - homeBounds.Bottom) / scale, -1, 8);
             Assert.InRange((sessionsHeader.Top - pinBounds.Bottom) / scale, 4, 48);
             Assert.True(other.Top >= sessionsHeader.Bottom);
@@ -1158,8 +1247,13 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is not null, "native chat composer");
             await WaitHistoryAsync(run, GatewayScenario.MainSessionKey);
 
-            await run.Gateway.PublishExecApprovalRequestedAsync(
-                GatewayScenario.MainSessionKey, "fixture-safe-approval", "echo fixture-safe");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-safe-approval",
+                command = "echo fixture-safe",
+                title = "Command approval requested",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "reviewable Allow button");
             Assert.NotNull(FindButton(run, "Always allow"));
             Assert.NotNull(FindButton(run, "Deny once"));
@@ -1174,8 +1268,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("allow-once", allowed.Decision);
             Assert.Equal("ok", allowed.Outcome);
 
-            await run.Gateway.PublishExecApprovalRequestedAsync(
-                GatewayScenario.MainSessionKey, "fixture-unreviewable-approval", "");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-unreviewable-approval",
+                command = "",
+                message = "Please approve this request.",
+                title = "Command approval requested",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Deny once") is not null
                 && FindText(run, "only Deny is available") is not null, "Deny-only approval");
             Assert.Null(FindButton(run, "Allow once"));
@@ -1192,24 +1292,34 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("deny", denied.Decision);
             Assert.Equal("ok", denied.Outcome);
 
-            await run.Gateway.PublishExecApprovalRequestedAsync(
-                GatewayScenario.MainSessionKey, "fixture-superseded-approval", "echo superseded");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-superseded-approval",
+                command = "echo superseded",
+                title = "Command approval requested",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "superseded Allow button");
-            await run.Gateway.PublishExecApprovalResolvedAsync(
-                GatewayScenario.MainSessionKey, "fixture-superseded-approval", "deny");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "resolved",
+                approvalId = "fixture-superseded-approval",
+                decision = "deny",
+            });
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is null
                 && FindButton(run, "Always allow") is null, "superseded actions removed");
+            await Task.Delay(200);
             Assert.Equal(2, run.Gateway.Requests.Count(request => request.Method == "exec.approval.resolve"));
-        }, scenario: GatewayScenario.CreateApprovalReview());
+        });
     }
 
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
         Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
-        bool connectGateway = true, TimeSpan? testTimeout = null, string? initialAppPath = null)
+        bool connectGateway = true, TimeSpan? testTimeout = null)
     {
-        var appPath = initialAppPath ?? Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
+        var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         var run = await GatewayFixtureRun.StartAsync(appPath,
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
@@ -1293,9 +1403,61 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         try
         {
             AutomationElement? selector = null;
-            await WaitSelectionAsync("selector-lookup", () =>
-                (selector = probe.Read("selector-lookup", () => FindById(run, SessionAgentSelectorId, probe))) is not null,
-                "agent selector");
+            AutomationElement? selectorWindow = null;
+            var ownedProcessId = run.AppProcessId;
+            var ownedWindowHandle = 0;
+            int[] windowRuntimeId = [];
+            int[] selectorRuntimeId = [];
+
+            static bool HasFiniteBounds(System.Windows.Rect bounds) =>
+                !bounds.IsEmpty && double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) &&
+                double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) && bounds.Width > 0 && bounds.Height > 0;
+
+            bool SelectorIsLive()
+            {
+                probe.Run("owned-app-check", run.EnsureRunning);
+                return probe.Read("retained-selector-current", () =>
+                {
+                    if (selector is null || selectorWindow is null) return false;
+                    var owner = selectorWindow.Current;
+                    var current = selector.Current;
+                    var ownerBounds = owner.BoundingRectangle;
+                    var bounds = current.BoundingRectangle;
+                    return run.AppProcessId == ownedProcessId && owner.ProcessId == ownedProcessId &&
+                        ownedWindowHandle != 0 && owner.NativeWindowHandle == ownedWindowHandle &&
+                        owner.ControlType == ControlType.Window && owner.IsEnabled && !owner.IsOffscreen &&
+                        windowRuntimeId.Length > 0 && selectorWindow.GetRuntimeId().SequenceEqual(windowRuntimeId) &&
+                        current.ProcessId == ownedProcessId && current.ControlType == ControlType.ComboBox &&
+                        current.AutomationId == SessionAgentSelectorId && current.IsEnabled && !current.IsOffscreen &&
+                        selectorRuntimeId.Length > 0 && selector.GetRuntimeId().SequenceEqual(selectorRuntimeId) &&
+                        HasFiniteBounds(ownerBounds) && HasFiniteBounds(bounds) && ownerBounds.Contains(bounds);
+                });
+            }
+
+            bool FindOwnedSelector()
+            {
+                selector = null;
+                selectorWindow = null;
+                // Capture the owner from the existing initial discovery, not another global query.
+                foreach (var window in AppWindows(run, probe))
+                {
+                    var match = probe.Read("owned-descendant-lookup", () => window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, SessionAgentSelectorId)));
+                    if (match is null) continue;
+                    var identity = probe.Read("selector-owner-capture", () =>
+                        (Handle: window.Current.NativeWindowHandle, Window: window.GetRuntimeId(), Selector: match.GetRuntimeId()));
+                    selectorWindow = window;
+                    selector = match;
+                    ownedWindowHandle = identity.Handle;
+                    windowRuntimeId = identity.Window;
+                    selectorRuntimeId = identity.Selector;
+                    return SelectorIsLive();
+                }
+                return false;
+            }
+
+            await WaitSelectionAsync("selector-lookup", () => probe.Read("selector-lookup", FindOwnedSelector),
+                "live owned agent selector");
             if (!AgentAcknowledged(selector))
             {
                 var dropdown = probe.Read("expand-pattern", () =>
@@ -1312,13 +1474,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             }
             await WaitSelectionAsync("agent-acknowledgement", () =>
             {
-                var current = probe.Read("selector-lookup", () => FindById(run, SessionAgentSelectorId, probe));
-                if (current is null) return AgentAcknowledged(null);
+                // AssistantSelector is the same PaneHeader control for this selection's lifetime.
+                // Reuse only its live peer, never cached properties/selection or another window's peer.
+                if (!SelectorIsLive()) return false;
                 var popup = probe.Read("popup-pattern", () =>
-                    (ExpandCollapsePattern)current.GetCurrentPattern(ExpandCollapsePattern.Pattern));
+                    (ExpandCollapsePattern)selector!.GetCurrentPattern(ExpandCollapsePattern.Pattern));
                 var collapsed = probe.Read("popup-state", () => popup.Current.ExpandCollapseState) == ExpandCollapseState.Collapsed;
                 probe.Emit(probe.Current with { PopupCollapsed = collapsed });
-                var selected = AgentAcknowledged(current);
+                var selected = AgentAcknowledged(selector);
                 return collapsed && selected;
             }, "collapsed popup and exact selected session agent acknowledged");
             var rowId = key == GatewayScenario.MainSessionKey ? "WorkspaceNavHome" : $"WorkspaceSession:{key}";

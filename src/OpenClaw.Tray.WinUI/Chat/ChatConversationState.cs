@@ -498,13 +498,6 @@ internal sealed class ChatConversationState
         }
     }
 
-    /// <summary>The approval id correlated with a banner request id (the canonical id when the banner uses a slug).</summary>
-    internal string? AlternateApprovalId(string requestId)
-    {
-        lock (_gate)
-            return _approval.AlternateId(requestId);
-    }
-
     internal void ActivateHistoryGeneration(long generation)
     {
         lock (_gate)

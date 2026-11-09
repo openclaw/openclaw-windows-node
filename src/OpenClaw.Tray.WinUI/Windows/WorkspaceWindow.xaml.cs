@@ -25,7 +25,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
-    private readonly InboxFeed _inbox;
     private readonly WorkspaceIdentitySource _identity;
     private readonly WorkspaceSessionMenuController _sessionMenu;
     private readonly WorkspaceNavigationHistory _navigation = new();
@@ -80,9 +79,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         _search = new(CaptureSearch, new Presentation.Adapters.WinUIDispatcher(DispatcherQueue),
             category => Logger.Warn($"[Search] {category}"));
         _notifications = notifications;
-        // App creates the feed with the notification service; a window-owned fallback would never unsubscribe.
-        _inbox = CurrentApp.InboxFeed
-            ?? throw new InvalidOperationException("The Inbox feed is created with the app notification service.");
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn(WorkspaceIdentitySource.DescribeUnavailable(category)));
@@ -129,7 +125,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         ConfigureFooter(ChatFooter);
         ConfigureFooter(TitleBarFooter);
         _state.PropertyChanged += OnStateChanged;
-        _inbox.Changed += OnNotificationsChanged;
+        _notifications.Changed += OnNotificationsChanged;
         _chat.Loaded += (_, _) =>
         {
             if (Destination.Page == WorkspacePageId.Home) _chat.Initialize(this);
@@ -410,7 +406,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         else
         {
             var notifications = new NotificationsPage();
-            notifications.Initialize(_inbox, InboxCommands(openPage: null));
+            notifications.Initialize(_notifications, InboxCommands(openPage: null));
             ContentHost.Children.Add(notifications);
         }
 
@@ -438,6 +434,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _preparedSettings = null;
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
+        view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.ExitRequested = ExitSettings;
         view.PruneRequested = PruneSettingsHistory;
@@ -497,6 +494,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _settings?.Deactivate();
         _settings?.ContentOnly = false;
+        _settings?.SetHostContentTopInset(0);
         SettingsSection.Margin = new Thickness(0);
         EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
@@ -1136,7 +1134,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// <summary>Wires one footer to the window-owned state and commands, then applies current state.</summary>
     private void ConfigureFooter(WorkspacePaneFooter footer)
     {
-        footer.BindNotifications(_inbox, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
+        footer.BindNotifications(_notifications, InboxCommands(openPage: () => Navigate(new(WorkspacePageId.Notifications))));
         footer.DashboardRequested += (_, _) => OpenDashboard();
         if (footer.Layout != WorkspacePaneFooterLayout.TitleBar)
             footer.SetOwnerMenu(BuildOwnerMenu(footer));
@@ -1233,7 +1231,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnNewConversation(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(NewSessionAsync, new AppLogger(), nameof(OnNewConversation));
-    private void OnNotificationsChanged(object? sender, EventArgs e) =>
+    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs e) =>
         DispatcherQueue.TryEnqueue(() =>
         {
             if (!IsClosed) UpdateNotificationsBadge();
@@ -1241,15 +1239,12 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNotificationsBadge()
     {
-        var snapshot = _inbox.Snapshot;
-        var badge = snapshot.Badge;
+        var badge = InboxProjection.Build(_notifications.Snapshot.ActiveNotifications).Badge;
         var helpText = badge.IsVisible
             ? LocalizationHelper.Format("Inbox_CountFormat", badge.Count)
             : LocalizationHelper.GetString("Inbox_NothingWaiting");
-        if (snapshot.DoNotDisturb)
-            helpText = LocalizationHelper.Format("Inbox_DoNotDisturbBellHelpFormat", helpText);
         foreach (var footer in Footers)
-            footer.ApplyInboxBadge(badge, snapshot.DoNotDisturb, helpText);
+            footer.ApplyInboxBadge(badge, helpText);
     }
 
     /// <summary>Window navigation for Inbox rows: chat routes select the session; other routes use Settings routing.</summary>
@@ -1257,23 +1252,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         OpenInboxRoute,
         ((IAppCommands)CurrentApp).TryNavigateAsync,
         () => OnSettingsWorkspaceRoute(InboxRoutes.NotificationSettings),
-        () => ((IAppCommands)CurrentApp).OpenDashboard(),
-        openPage,
-        AskOpenClaw);
-
-    /// <summary>Sends an Inbox failure's explain prompt to the main conversation and shows it.</summary>
-    private void AskOpenClaw(string question)
-    {
-        if (InboxChatPrompt.TrySend(CurrentApp.ChatProvider, CurrentApp.GatewayClient, question, out var sessionKey))
-            SelectSession(sessionKey);
-        else
-            OpenCompanion(CompanionPageId.Connection);
-    }
+        openPage);
 
     private void OpenInboxRoute(string route)
     {
-        if (ThisPcAlertSource.TryOpenPrivacySettings(route))
-            return;
         if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey) && sessionKey is not null)
         {
             SelectSession(sessionKey);
@@ -1336,15 +1318,26 @@ public sealed partial class WorkspaceWindow : WindowEx
         NavigationSection.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
-        SettingsSection.Margin = embedded
-            ? (paneOpen ? new Thickness(NavView.OpenPaneLength, 0, 0, 0) : new Thickness(0, 56, 0, 0))
-            : new Thickness(0);
+        UpdateEmbeddedPageTopAllocation(view);
         EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
         EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen;
         UpdateTitleBarActions();
+    }
+
+    private void UpdateEmbeddedPageTopAllocation(SettingsShellView view)
+    {
+        var embedded = IsSettingsVisible && Destination.Embedded;
+        var paneOpen = NavView.IsPaneOpen;
+        var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(
+            embedded, paneOpen, view.CurrentPage is ISettingsPageContentInset);
+        view.SetHostContentTopInset(allocation.PageTopInset);
+        SettingsSection.Margin = embedded
+            ? new Thickness(paneOpen ? NavView.OpenPaneLength : 0, allocation.HostMarginTop, 0, 0)
+            : new Thickness(0);
+        EmbeddedOperationInfo.Margin = new Thickness(0, allocation.PageTopInset, 0, 0);
     }
 
     private void UpdateTitleBarActions()
@@ -1532,7 +1525,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         UnwirePins();
-        _inbox.Changed -= OnNotificationsChanged;
+        _notifications.Changed -= OnNotificationsChanged;
         _workspaceSearchShow.Cancel();
         foreach (var footer in Footers)
             footer.Close();

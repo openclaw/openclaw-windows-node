@@ -875,18 +875,10 @@ public abstract class WebSocketClientBase : IDisposable
     /// Sends only when the captured socket generation still owns the transport immediately before
     /// the write. Used for credential-bearing handshake frames.
     /// </summary>
-    protected virtual Task<bool> SendRawAsync(
+    protected virtual async Task<bool> SendRawAsync(
         string message,
         long expectedConnectionGeneration,
-        CancellationToken cancellationToken) =>
-        SendRawWithAdmissionAsync(message, expectedConnectionGeneration, cancellationToken, null);
-
-    /// <summary>Runs synchronous caller admission after the send queue, immediately before writing a frame.</summary>
-    protected async Task<bool> SendRawWithAdmissionAsync(
-        string message,
-        long expectedConnectionGeneration,
-        CancellationToken cancellationToken,
-        Action? validateBeforeSend)
+        CancellationToken cancellationToken)
     {
         var transportCancellation = _cts.Token;
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -920,8 +912,6 @@ public abstract class WebSocketClientBase : IDisposable
             {
                 var written = Encoding.UTF8.GetBytes(message, buffer);
                 linkedCancellation.Token.ThrowIfCancellationRequested();
-                // Admission may refuse a queued operation, but must never cancel another caller's partial frame.
-                validateBeforeSend?.Invoke();
                 // A caller may leave the queue, but aborting a partial frame closes the shared socket.
                 await ws.SendAsync(
                         buffer.AsMemory(0, written),

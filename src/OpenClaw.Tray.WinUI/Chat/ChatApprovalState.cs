@@ -64,10 +64,6 @@ internal sealed class ChatApprovalState
         _alternateIds.Clear();
     }
 
-    /// <summary>The correlated id (canonical approval id or slug) recorded for <paramref name="requestId"/>, if any.</summary>
-    internal string? AlternateId(string requestId) =>
-        !string.IsNullOrEmpty(requestId) && _alternateIds.TryGetValue(requestId, out var alternate) ? alternate : null;
-
     private void AddSeen(string approvalId)
     {
         if (_seen.Add(approvalId))

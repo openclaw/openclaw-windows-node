@@ -8190,11 +8190,16 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Assert.DoesNotContain(boundary.Snapshot.Timelines["main"].Entries, item =>
                 item.Kind == ChatTimelineItemKind.User && item.Text == "Hello");
 
-            phase = "retry-admission-held";
+            phase = "retry-admission-wait";
             Assert.Equal(2, drains.ScheduledCount);
-            var retryDrain = drains.RunNextAsync();
-            await retryEntered.Task.WaitAsync(QueuedSendProbeDeadline);
+            var retryDrain = await drains.RunUntilAdmissionAsync(retryEntered.Task, QueuedSendProbeDeadline);
+            phase = "retry-admission-held";
             Assert.False(retryDrain.IsCompleted);
+            Assert.False(drains.HasPending);
+            var callbacksAtAdmission = drains.OwnedCompletions;
+            Assert.Same(retryDrain, Assert.Single(callbacksAtAdmission, task => !task.IsCompleted));
+            Assert.All(callbacksAtAdmission.Where(task => !ReferenceEquals(task, retryDrain)),
+                task => Assert.True(task.IsCompletedSuccessfully));
             Assert.Equal(3, bridge.SentMessages.Count);
             Assert.Equal(firstAttemptKey, bridge.SentIdempotencyKeys[2]);
             var sending = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
@@ -8219,7 +8224,8 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 .Where(activity => activity.OperationName == ChatTelemetryTracker.SendSpanName)
                 .Select(activity => activity.GetTagItem(ChatTelemetryTracker.AdmissionStatusTag)).ToArray();
             Assert.Equal(new object?[] { "accepted", "deferred", "accepted" }, admissionStatuses);
-            Assert.Equal(2, drains.ScheduledCount);
+            Assert.False(drains.HasPending);
+            Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
             phase = "complete";
         }, async () =>
         {
@@ -8230,12 +8236,156 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             $"phase={phase} sendCount={Volatile.Read(ref sendCount)} scheduledDrains={drains.ScheduledCount} cleanupExceptionType={cleanupType ?? "none"}"));
     }
 
+    [Fact]
+    public async Task QueuedSend_RetryDriver_FollowsCapturedRearmAndReturnsHeldAdmission()
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stages = new List<string>();
+        Task? admissionCallback = null;
+        var rearmCallback = drains.Schedule(() =>
+        {
+            stages.Add("rearm");
+            admissionCallback = drains.Schedule(() =>
+            {
+                stages.Add("admit");
+                entered.TrySetResult();
+                return release.Task;
+            });
+            return Task.CompletedTask;
+        });
+        await RunQueuedSendProbeAsync(async () =>
+        {
+            var held = await drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline);
+            Assert.Same(admissionCallback, held);
+            Assert.True(rearmCallback.IsCompletedSuccessfully);
+            Assert.False(held.IsCompleted);
+            Assert.False(drains.HasPending);
+            Assert.Equal(new[] { "rearm", "admit" }, stages);
+            release.TrySetResult();
+            await held.WaitAsync(QueuedSendProbeDeadline);
+            Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+            Assert.Equal(new[] { "rearm", "admit" }, stages);
+        }, async () =>
+        {
+            release.TrySetResult();
+            await drains.DrainAsync(QueuedSendProbeDeadline);
+        }, _ => { });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task QueuedSend_RetryDriver_RejectsMissingScheduledWork(bool completesWithoutRearm)
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        if (completesWithoutRearm)
+            _ = drains.Schedule(() => { calls++; return Task.CompletedTask; });
+
+        await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() =>
+            drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline));
+        Assert.Equal(completesWithoutRearm ? 1 : 0, calls);
+        Assert.False(entered.Task.IsCompleted);
+        Assert.False(drains.HasPending);
+        Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_PropagatesCallbackFailure()
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failure = new IOException("Scheduled callback failure sentinel.");
+        var callback = drains.Schedule(() => Task.FromException(failure));
+
+        var observed = await Assert.ThrowsAsync<IOException>(() =>
+            drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline));
+        Assert.Same(failure, observed);
+        Assert.True(callback.IsFaulted);
+        Assert.False(drains.HasPending);
+        Assert.False(entered.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_CancellationAfterRearmDoesNotAbandonRunningWork()
+    {
+        var drains = new ControlledQueueDrains();
+        using var phase = new CancellationTokenSource();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var successorStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stages = new List<string>();
+        Task? successor = null;
+        _ = drains.Schedule(() =>
+        {
+            stages.Add("rearm");
+            successor = drains.Schedule(() =>
+            {
+                stages.Add("successor");
+                successorStarted.TrySetResult();
+                return release.Task;
+            });
+            return Task.CompletedTask;
+        });
+        Task<Task>? driving = null;
+        await RunQueuedSendProbeAsync(async () =>
+        {
+            var operation = drains.RunUntilAdmissionAsync(entered.Task, QueuedSendProbeDeadline, phase.Token);
+            driving = operation;
+            await successorStarted.Task.WaitAsync(QueuedSendProbeDeadline);
+            phase.Cancel();
+            var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+            Assert.Equal(phase.Token, error.CancellationToken);
+            Assert.NotNull(successor);
+            Assert.False(successor.IsCompleted);
+            Assert.False(entered.Task.IsCompleted);
+            Assert.False(drains.HasPending);
+            Assert.Equal(new[] { "rearm", "successor" }, stages);
+        }, async () =>
+        {
+            phase.Cancel();
+            release.TrySetResult();
+            await drains.DrainAsync(QueuedSendProbeDeadline);
+            if (driving is not null)
+            {
+                try { await driving; }
+                catch (OperationCanceledException) when (phase.IsCancellationRequested) { }
+            }
+            Assert.All(drains.OwnedCompletions, task => Assert.True(task.IsCompletedSuccessfully));
+        }, _ => { });
+    }
+
+    [Fact]
+    public async Task QueuedSend_RetryDriver_ExpiredBudgetCannotStartCapturedWork()
+    {
+        var drains = new ControlledQueueDrains();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var captured = drains.Schedule(() => { calls++; return Task.CompletedTask; });
+        await RunQueuedSendProbeAsync(async () =>
+        {
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                drains.RunUntilAdmissionAsync(entered.Task, TimeSpan.Zero));
+            Assert.Equal(0, calls);
+            Assert.False(captured.IsCompleted);
+            Assert.True(drains.HasPending);
+            Assert.False(entered.Task.IsCompleted);
+        }, () => drains.DrainAsync(QueuedSendProbeDeadline), _ => { });
+        Assert.True(captured.IsCompletedSuccessfully);
+        Assert.Equal(1, calls);
+    }
+
     // Controls only when actual provider-scheduled work runs; it supplies no queue state or admission result.
     private sealed class ControlledQueueDrains
     {
         private readonly ConcurrentQueue<Drain> _pending = new();
         private readonly ConcurrentQueue<Drain> _owned = new();
         public int ScheduledCount => _owned.Count;
+        public bool HasPending => !_pending.IsEmpty;
+        public Task[] OwnedCompletions => _owned.Select(drain => drain.Completion).ToArray();
         public Task Schedule(Func<Task> work)
         {
             var drain = new Drain(work);
@@ -8247,6 +8397,36 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         {
             Assert.True(_pending.TryDequeue(out var drain), "The provider must schedule the drain before the test can run it.");
             return drain!.RunAsync();
+        }
+        public async Task<Task> RunUntilAdmissionAsync(
+            Task admission, TimeSpan deadline, CancellationToken cancellationToken = default)
+        {
+            var started = Stopwatch.GetTimestamp();
+            TimeSpan Remaining()
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var remaining = deadline - Stopwatch.GetElapsedTime(started);
+                if (remaining <= TimeSpan.Zero)
+                    throw new TimeoutException("Scheduled queue work did not reach admission within the phase budget.");
+                return remaining;
+            }
+
+            Assert.False(admission.IsCompleted, "Admission must come from the scheduled work being driven.");
+            while (true)
+            {
+                _ = Remaining();
+                var running = RunNextAsync();
+                // A real callback may only rearm the not-before delay. Observe its completion
+                // before driving its actual successor; never reset the shared phase deadline.
+                await Task.WhenAny(running, admission).WaitAsync(Remaining(), cancellationToken);
+                _ = Remaining();
+                if (running.IsCompleted) await running;
+                if (admission.IsCompleted)
+                {
+                    await admission;
+                    return running;
+                }
+            }
         }
         public async Task DrainAsync(TimeSpan deadline)
         {
@@ -16491,60 +16671,6 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Single(bridge.ResolvedApprovals);
         Assert.Equal(ChatPermissionActionKeys.Deny, bridge.ResolvedApprovals[0].Decision);
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
-    }
-
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task RespondToPermissionAsync_SharedUncertaintyRemovesActionsAcrossSnapshotRefreshes(bool posted, bool correlated)
-    {
-        var deliveries = new ConcurrentQueue<Action>();
-        Action<Action>? post = posted ? deliveries.Enqueue : null;
-        void Drain() { while (deliveries.TryDequeue(out var delivery)) delivery(); }
-        const string canonical = "29c78023-a152-4a24-949d-59950de3a12e";
-        var displayedId = correlated ? "29c78023" : canonical;
-        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, post: post);
-        bridge.CommandCatalogResult = new CommandCatalog { IsSupported = true };
-        await provider.LoadAsync();
-        bridge.RaiseStatus(ConnectionStatus.Connected);
-        bridge.RaiseAgent(MakeApprovalRequestedEventWithIds(canonical, correlated ? displayedId : ""));
-        Drain();
-        var before = snapshots[^1].Timelines["main"];
-        Assert.Equal(displayedId, before.PendingPermission!.RequestId);
-        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
-        // An older queued publication must be projected with current authority at delivery.
-        provider.RefreshApprovalDecisionState();
-        provider.IsApprovalDecisionUncertain = id => id == canonical;
-        provider.RefreshApprovalDecisionState();
-        Drain();
-        AssertUncertain(snapshots[^1]);
-
-        // Command-catalog delivery bypasses Publish, but must use the same final projection.
-        await provider.EnsureCommandCatalogAsync();
-        Drain();
-        Assert.Equal(1, bridge.ListCommandsCallCount);
-        AssertUncertain(snapshots[^1]);
-        await provider.RespondToPermissionAsync("main", displayedId, allow: true);
-        bridge.RaiseSessions([MainSession()]);
-        Drain();
-        AssertUncertain(snapshots[^1]);
-        AssertUncertain(await provider.LoadAsync());
-        Assert.Empty(bridge.ResolvedApprovals);
-        // Previously delivered snapshots and the authoritative request remain immutable.
-        Assert.NotEmpty(ChatPermissionActionKeys.NormalizeActions(before.PendingPermission.Actions));
-        Assert.DoesNotContain("Inbox_ApprovalDecisionUncertain", before.PendingPermission.Detail);
-
-        void AssertUncertain(ChatDataSnapshot snapshot)
-        {
-            var timeline = snapshot.Timelines["main"];
-            Assert.Empty(timeline.PendingPermission!.Actions!);
-            Assert.Contains("Inbox_ApprovalDecisionUncertain", timeline.PendingPermission.Detail);
-            var row = Assert.Single(timeline.Entries, entry => entry.PermissionRequestId == displayedId);
-            Assert.Equal(ChatPermissionDecision.Pending, row.PermissionDecision);
-            Assert.Empty(row.PermissionActions!);
-            Assert.Contains("Inbox_ApprovalDecisionUncertain", row.Text);
-        }
     }
 
     [Fact]

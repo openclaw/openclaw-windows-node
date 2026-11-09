@@ -133,6 +133,12 @@ internal readonly record struct InitialTailAttemptDiagnostics(
     bool? CompletionSourceItemMatches,
     double? MaxObservedOffset);
 
+// Values at our callback only: later native listeners may still change the args.
+// Null is an unavailable/failed read, not false. Never used to control navigation.
+internal readonly record struct InitialTailBringOptionsObservation(
+    bool? CancelAtCallback,
+    bool? AnimationDesiredAtCallback);
+
 // A dispatched bring-into-view can be dropped or reset by a concurrent layout
 // (for example a session switch restoring cached rows), leaving the reader at
 // the top. Initial positioning stays pending until the settled view is at the tail.
@@ -156,6 +162,9 @@ internal sealed class InitialTailConfirmation
     private bool _bringCompleted;
     private bool _attemptActive;
     private InitialTailAttemptDiagnostics _attemptDiagnostics;
+    private InitialTailBringOptionsObservation _bringOptionsObservation;
+
+    public InitialTailBringOptionsObservation BringOptionsObservation => _bringOptionsObservation;
 
     public InitialTailAttemptDiagnostics AttemptDiagnostics => _attemptDiagnostics;
 
@@ -179,6 +188,7 @@ internal sealed class InitialTailConfirmation
         _attemptActive = false;
         _targetItem = null;
         _attemptDiagnostics = default;
+        _bringOptionsObservation = default;
     }
 
     public void BeginAttempt(object? targetItem = null)
@@ -189,6 +199,7 @@ internal sealed class InitialTailConfirmation
         _bringCompleted = false;
         _attemptActive = true;
         _attemptDiagnostics = default;
+        _bringOptionsObservation = default;
     }
 
     public void BringingIntoView(int correlationId, object? targetItem,
@@ -201,6 +212,7 @@ internal sealed class InitialTailConfirmation
         _correlationId = correlationId;
         _bringCompleted = false;
         _settledFrames = 0;
+        _bringOptionsObservation = default;
         _attemptDiagnostics = _attemptDiagnostics with
         {
             ProposedOffset = Finite(geometry?.ProposedOffset),
@@ -212,6 +224,16 @@ internal sealed class InitialTailConfirmation
             CompletionSourceItemMatches = null,
         };
         ObserveOffset(geometry?.Offset);
+    }
+
+    public void ObserveBringOptions(int correlationId, object? targetItem,
+        bool? cancelAtCallback, bool? animationDesiredAtCallback)
+    {
+        if (!_attemptActive || _correlationId != correlationId || _targetItem is null
+            || !ReferenceEquals(_targetItem, targetItem))
+            return;
+
+        _bringOptionsObservation = new(cancelAtCallback, animationDesiredAtCallback);
     }
 
     public void ScrollCompleted(int correlationId,
