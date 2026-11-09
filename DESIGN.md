@@ -1202,6 +1202,41 @@ Track and knob states bind the `toggle*`, `accent`, and `accentInk` resource tok
 
 The close control is `InfoBarCloseButtonStyle` (based on `DefaultButtonStyle` with AppBarButton resource overrides), not SubtleButtonStyle: 38x38 with a 5px margin and a 16px Cancel glyph. Its preview has hover, pressed, disabled, and keyboard-focus visuals, but **does not dismiss the banner**. The installed renderer only supports opening an overlay on click. Native `IsOpen`, `IsClosable`, actions, `InfoBarPanel` responsive reflow, high-contrast 2px border thickness, and native glyph/text rasterization are not reproduced. The preview retains a 1px border in every theme and uses representative high-contrast system colors. These limits prevent a 1:1 native rendering claim; ship the stock controls and their resources, never these SVG/browser stand-ins.
 
+### Shared page foundation
+
+`PageResponsiveLayout` measures the page content host's `ActualWidth`, not the
+window. Wide starts at 1000 DIPs, Medium at 720, and Narrow supports 480-DIP
+hosts. Horizontal padding is 32 DIPs on Wide/Medium and 20 on Narrow; usable
+content is capped at 1200 DIPs. Two-column bodies appear only on Wide, retain
+at least 320 DIPs per column, and otherwise stack with a 16-DIP gap. Inner,
+group and stack gaps are 8, 12 and 16 DIPs. Snap host widths to 0.01 DIP before
+breakpoint comparisons, but never round up the count of tiles that fit.
+
+`PageHero` provides opt-in native Reactor headers, summaries and attention
+badges. It does not own page data, navigation or localized copy. Headers keep
+actions under the same native parent across narrow/wide changes. Use the
+existing title scale (28 DIPs, 24 on narrow), 8-DIP card radius, Fluent card
+fill/stroke and a decorative system-accent wash (15%, 5%, then transparent).
+High contrast removes the wash and replaces sidebar artwork with a Fluent
+glyph. Summary tiles use 36-DIP icon wells with a separate 12-DIP text gap;
+actionable tiles stretch like static tiles. Summaries use all columns from
+760 DIPs, two from 380, and one below; an odd last tile spans both columns.
+Tile padding is 16/14 DIPs. Attention badges are 20 DIPs high with 8-DIP
+horizontal padding, semantic Fluent brushes and caller-owned accessible text.
+Reduced motion clears native entrance/reflow/exit transitions and disables
+reveal highlighting. Reveal skips controls that cannot take native focus.
+Repeated reveals restart one target-owned animation without replacing the
+background's style, theme resource or binding. Completion or cancellation
+reveals the current underlying background, including changes made by the page
+while the highlight was active.
+
+Pages may implement `ISettingsPageContentInset` to retain full-frame backdrops
+while reserving the 56-DIP history band inside their content. Apply updates,
+including zero, without remounting. Ordinary pages keep their existing host
+allocation. This foundation does not change Settings navigation, pane
+preferences, Back to app, Escape handling or Dashboard dispatch, and does not
+migrate existing pages to the new components.
+
 ## Do's and Don'ts
 
 Do:
