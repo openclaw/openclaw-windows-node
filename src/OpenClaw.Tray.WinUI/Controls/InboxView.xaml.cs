@@ -6,6 +6,7 @@
 // Usage:
 //   inboxView.Initialize(app.InboxFeed, new InboxViewCommands(
 //       OpenRoute: route => window.OpenNotificationRoute(route),
+//       TryNavigateAsync: appCommands.TryNavigateAsync,
 //       OpenDashboard: () => appCommands.OpenDashboard(),
 //       OpenSettings: () => window.OpenSettings("notification-preferences"),
 //       OpenPage: () => window.ShowInboxPage(),
@@ -17,6 +18,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -26,11 +28,14 @@ using System.Collections.ObjectModel;
 namespace OpenClawTray.Controls;
 
 /// <summary>
-/// Navigation supplied by the Inbox host. <paramref name="OpenPage"/> is null on the page itself;
+/// Navigation supplied by the Inbox host. <paramref name="TryNavigateAsync"/> reports actual
+/// admission for app reminders; Gateway row actions keep their own lifetime.
+/// <paramref name="OpenPage"/> is null on the page itself;
 /// <paramref name="AskOpenClaw"/> sends a failure's explain prompt to OpenClaw and shows the reply.
 /// </summary>
 internal sealed record InboxViewCommands(
     Action<string> OpenRoute,
+    Func<string, string?, Task<bool>> TryNavigateAsync,
     Action OpenSettings,
     Action OpenDashboard,
     Action? OpenPage = null,
@@ -225,11 +230,17 @@ public sealed partial class InboxView : UserControl
             _commands is not { } commands)
             return;
 
-        var feed = _feed;
+        if (!InboxGatewayItems.IsGatewayItemId(item.Id))
+        {
+            if (_feed is { } feed)
+                AsyncEventHandlerGuard.Run(
+                    () => feed.NavigateNotificationAsync(item.Id, commands.TryNavigateAsync),
+                    new AppLogger(), nameof(OnActionClick));
+            return;
+        }
+
+        // Navigation for a Gateway fact never dismisses or decides the underlying item.
         item.OpenAction(commands.OpenRoute, commands.OpenDashboard);
-        // Opening the conversation is what a mention asks for; other entries stay until resolved.
-        if (item.Kind == InboxEntryKind.Mention)
-            feed?.Dismiss(item.Id);
     }
 
     private void OnSecondaryActionClick(object sender, RoutedEventArgs e)

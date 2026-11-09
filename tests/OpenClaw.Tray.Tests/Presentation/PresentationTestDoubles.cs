@@ -72,7 +72,9 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public void ClearOperationLog() => _operationLog.Clear();
 
     public void OpenDashboard(string? path = null) { }
+    public Task<bool> TryOpenDashboardAsync(string? path = null) => Task.FromResult(false);
     public void Navigate(string pageTag) => Navigations.Add(pageTag);
+    public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => Task.FromResult(false);
     public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
@@ -141,7 +143,9 @@ internal sealed class SelfWritingAppCommands : IAppCommands
     }
 
     public void OpenDashboard(string? path = null) { }
+    public Task<bool> TryOpenDashboardAsync(string? path = null) => Task.FromResult(false);
     public void Navigate(string pageTag) { }
+    public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => Task.FromResult(false);
     public void Reconnect() { }
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
