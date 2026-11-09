@@ -503,7 +503,7 @@ public sealed class SetupNativeChatPresentationTests
                 completion.Verification, completion.Target.SessionKey)),
             async (selected, _) =>
             {
-                var dashboard = new GatewayDashboardLauncher(() => true,
+                var dashboard = new GatewayDashboardLauncher(() => Task.FromResult(true),
                     () =>
                     {
                         if (mutation == "gateway")
