@@ -17,9 +17,17 @@ $MaxExitRecords = 32
 # VSTest v18.6.0 emits this callback at Error or Information. Parse its trace
 # envelope and payload boundary, never an embedded stderr/serialized substring.
 function ConvertTo-TestHostExitMetadata {
-    param([string]$Line)
+    param([string]$Line, [Collections.IDictionary]$Counters = $null)
+    if ($null -ne $Counters) { $Counters.lines++ }
     $envelope = '^TpTrace (?:Error|Information):\s*\d+\s*:\s*(?<runner>\d+),\s*(?<thread>\d+),\s*(?<date>\d{4}/\d{2}/\d{2}),\s*(?<time>\d{2}:\d{2}:\d{2}\.\d{3}),\s*(?<ticks>\d+),\s*[A-Za-z0-9_.-]+,\s*(?<payload>[^\r\n]*)$'
-    if ($Line -cnotmatch $envelope) { return $null }
+    if ($Line -cnotmatch $envelope) {
+        if ($null -ne $Counters) {
+            $Counters.unmatchedEnvelopes++
+            if ($Line.Contains('TestHostManagerCallbacks.ExitCallBack:')) { $Counters.unboundCallbackMarkers++ }
+        }
+        return $null
+    }
+    if ($null -ne $Counters) { $Counters.recognizedEnvelopes++ }
     $payload = $Matches.payload
     $runner = 0
     $thread = 0
@@ -28,12 +36,14 @@ function ConvertTo-TestHostExitMetadata {
     if (-not [int]::TryParse($Matches.runner, [ref]$runner) -or $runner -le 0 -or
         -not [int]::TryParse($Matches.thread, [ref]$thread) -or $thread -le 0 -or
         -not [long]::TryParse($Matches.ticks, [ref]$ticks) -or $ticks -lt 0 -or
-        -not [DateTime]::TryParseExact(($Matches.date + ' ' + $Matches.time), 'yyyy/MM/dd HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$when)) { return $null }
+        -not [DateTime]::TryParseExact(($Matches.date + ' ' + $Matches.time), 'yyyy/MM/dd HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$when)) { if ($null -ne $Counters) { $Counters.invalidEnvelopeFields++ }; return $null }
     if ($payload -cnotmatch '^TestHostManagerCallbacks\.ExitCallBack: Testhost processId: (?<pid>-?\d+) exited with exitcode: (?<code>-?\d+) error:') { return $null }
+    if ($null -ne $Counters) { $Counters.callbackPrefixes++ }
     $processId = 0
     $exitValue = 0
     if (-not [int]::TryParse($Matches.pid, [ref]$processId) -or $processId -le 0 -or
-        -not [int]::TryParse($Matches.code, [ref]$exitValue)) { return $null }
+        -not [int]::TryParse($Matches.code, [ref]$exitValue)) { if ($null -ne $Counters) { $Counters.invalidCallbackFields++ }; return $null }
+    if ($null -ne $Counters) { $Counters.acceptedRecords++ }
     [pscustomobject][ordered]@{
         source = 'vstest-exit-callback-reported'
         runnerProcessId = $runner
@@ -127,6 +137,15 @@ function Save-ComparisonResults {
     [ordered]@{ reportedTrxFiles = $reports.Count; reportedSequenceFiles = $sequences.Count; ordinaryTrxPresent = $seen.Contains('ordinary-ui.trx') } | ConvertTo-Json | Set-Content (Join-Path $destination 'inventory.json') -Encoding utf8
 }
 
+# NativeCommandProcessor writes global:LASTEXITCODE, not a nearer script variable.
+function Invoke-ComparisonNative {
+    param([string]$Executable, [string[]]$Arguments, [ref]$ExitCode)
+    $ExitCode.Value = $null
+    $global:LASTEXITCODE = $null
+    try { & $Executable @Arguments }
+    finally { $ExitCode.Value = $global:LASTEXITCODE }
+}
+
 if ($SelfTest) {
     $envelope = 'TpTrace Information: 0 : 100, 5, 2026/11/08, 23:10:00.100, 123456, vstest.console, '
     $callback = 'TestHostManagerCallbacks.ExitCallBack: Testhost processId: 42 exited with exitcode: '
@@ -146,6 +165,10 @@ if ($SelfTest) {
         ($envelope + $callback + '-2147483649 error: hidden')
     )
     foreach ($line in $reject) { if ($null -ne (ConvertTo-TestHostExitMetadata $line)) { throw 'Invalid callback lookalike was accepted' } }
+    $counts = [ordered]@{ lines = 0L; recognizedEnvelopes = 0L; unmatchedEnvelopes = 0L; unboundCallbackMarkers = 0L; invalidEnvelopeFields = 0L; callbackPrefixes = 0L; invalidCallbackFields = 0L; acceptedRecords = 0L }
+    $null = ConvertTo-TestHostExitMetadata -Line ($envelope + $callback + '0 error: SECRET-MUST-NOT-LEAK') -Counters $counts
+    $null = ConvertTo-TestHostExitMetadata -Line ('STDERR: ' + $callback + '0 error: SECRET-MUST-NOT-LEAK') -Counters $counts
+    if ($counts.lines -ne 2 -or $counts.recognizedEnvelopes -ne 1 -or $counts.acceptedRecords -ne 1 -or $counts.unboundCallbackMarkers -ne 1 -or ($counts | ConvertTo-Json -Compress).Contains('SECRET')) { throw 'Parser stage-counter self-test failed' }
     $xmlText = '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results><UnitTestResult testName="OpenClaw.Tests.Sample.Fact(secret: SECRET-MUST-NOT-LEAK)" outcome="Passed"><Output><StdOut>SECRET-MUST-NOT-LEAK</StdOut></Output></UnitTestResult></Results><ResultSummary outcome="Completed"/></TestRun>'
     $safe = ConvertTo-ResultMetadata (Read-ComparisonXml ([IO.StringReader]::new($xmlText)))
     $json = $safe | ConvertTo-Json -Depth 6 -Compress
@@ -154,7 +177,35 @@ if ($SelfTest) {
     try { $null = Read-ComparisonXml ([IO.StringReader]::new('<!DOCTYPE root [<!ENTITY secret "SECRET-MUST-NOT-LEAK">]><root>&secret;</root>')) }
     catch [Xml.XmlException] { $dtdRejected = $true }
     if (-not $dtdRejected) { throw 'XML DTD was not rejected' }
-    Write-Host 'Diagnostic self-tests passed: producer envelope, numeric bounds, lookalike rejection, result redaction and DTD rejection.'
+    if (-not $IsWindows -or -not (Test-Path -LiteralPath $env:ComSpec -PathType Leaf)) { throw 'Native exit capture self-tests require the existing Windows command processor' }
+    $priorNativePreference = $PSNativeCommandUseErrorActionPreference
+    $priorGlobalExit = $global:LASTEXITCODE
+    try {
+        foreach ($nativePreference in @($false, $true)) {
+            $PSNativeCommandUseErrorActionPreference = $nativePreference
+            foreach ($expectedCode in @(0, 17)) {
+                $LASTEXITCODE = 999 # A nearer-scope shadow must not affect capture.
+                $observedCode = $null
+                $threw = $false
+                try { Invoke-ComparisonNative -Executable $env:ComSpec -Arguments @('/d', '/c', "exit $expectedCode") -ExitCode ([ref]$observedCode) }
+                catch { $threw = $true }
+                if ($null -eq $observedCode -or $observedCode -ne $expectedCode -or $threw -ne ($nativePreference -and $expectedCode -ne 0)) { throw 'Native zero/nonzero capture self-test failed' }
+            }
+        }
+        $PSNativeCommandUseErrorActionPreference = $false
+        $global:LASTEXITCODE = 17
+        $observedCode = $null
+        $launchFailed = $false
+        $missing = Join-Path $env:RUNNER_TEMP ("inbox-missing-$([guid]::NewGuid().ToString('N')).exe")
+        try { Invoke-ComparisonNative -Executable $missing -Arguments @() -ExitCode ([ref]$observedCode) }
+        catch [Management.Automation.CommandNotFoundException] { $launchFailed = $true }
+        if (-not $launchFailed -or $null -ne $observedCode) { throw 'Native launch failure inherited or fabricated an exit code' }
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $priorNativePreference
+        $global:LASTEXITCODE = $priorGlobalExit
+    }
+    Write-Host 'Diagnostic self-tests passed: native exit capture, producer envelope, numeric bounds, lookalike rejection, result redaction and DTD rejection.'
     $global:LASTEXITCODE = 0
     return
 }
@@ -244,14 +295,11 @@ $diagnosticError = $null
 $rawCleanup = $false
 $traceFiles = 0
 $metadata = [Collections.Generic.List[object]]::new()
+$parseCounters = [ordered]@{ lines = 0L; recognizedEnvelopes = 0L; unmatchedEnvelopes = 0L; unboundCallbackMarkers = 0L; invalidEnvelopeFields = 0L; callbackPrefixes = 0L; invalidCallbackFields = 0L; acceptedRecords = 0L }
 try {
-    $LASTEXITCODE = $null
-    & dotnet @arguments
-    $testExit = $LASTEXITCODE
+    Invoke-ComparisonNative -Executable 'dotnet' -Arguments $arguments -ExitCode ([ref]$testExit)
 }
 finally {
-    # Preserve a native nonzero exit even if the host enables native-command exceptions.
-    if ($null -eq $testExit -and $null -ne $LASTEXITCODE) { $testExit = $LASTEXITCODE }
     try {
         $files = @(Get-ChildItem -LiteralPath $rawRoot -File)
         $traceFiles = $files.Count
@@ -259,7 +307,7 @@ finally {
         foreach ($file in $files) {
             if ($file.Name -notlike 'testplatform*' -or $file.Length -gt $MaxTraceBytes) { throw 'Diagnostic trace is outside the bounded inventory' }
             foreach ($line in [IO.File]::ReadLines($file.FullName)) {
-                $record = ConvertTo-TestHostExitMetadata $line
+                $record = ConvertTo-TestHostExitMetadata -Line $line -Counters $parseCounters
                 if ($null -ne $record) {
                     if ($metadata.Count -ge $MaxExitRecords) { throw 'Too many testhost exit records' }
                     $metadata.Add($record)
@@ -283,6 +331,7 @@ finally {
         finishedUtc = [DateTime]::UtcNow.ToString('o')
         testCommandExitCode = $testExit
         traceFilesExamined = $traceFiles
+        traceParserCounts = $parseCounters
         testHostExitMetadataStatus = $metadataStatus
         testHostExitMetadata = @($metadata.ToArray())
         diagnosticErrorType = $diagnosticError
