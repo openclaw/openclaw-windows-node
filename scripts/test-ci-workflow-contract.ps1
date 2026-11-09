@@ -156,21 +156,56 @@ function Get-YamlBlockList {
         ForEach-Object { $_.Groups["value"].Value })
 }
 
+function ConvertTo-GitHubPathRegex {
+    param([Parameter(Mandatory)][string]$Glob)
+
+    # Models the GitHub filter subset used here: `*` stays within one path
+    # segment, `**` crosses segments and `**/` also matches zero directories.
+    if ($Glob -match '[?+\[\]!]') {
+        throw "Unsupported GitHub path glob syntax in '$Glob'."
+    }
+
+    $regex = [System.Text.StringBuilder]::new("^")
+    for ($i = 0; $i -lt $Glob.Length; $i++) {
+        if ($Glob[$i] -ne "*") {
+            [void]$regex.Append([regex]::Escape([string]$Glob[$i]))
+            continue
+        }
+        if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq "*") {
+            $i++
+            if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq "/") {
+                $i++
+                [void]$regex.Append("(?:.*/)?")
+            }
+            else {
+                [void]$regex.Append(".*")
+            }
+            continue
+        }
+        [void]$regex.Append("[^/]*")
+    }
+
+    return $regex.Append("$").ToString()
+}
+
 function Test-PathMatches {
     param(
         [Parameter(Mandatory)][string[]]$Patterns,
         [Parameter(Mandatory)][string]$Path
     )
 
+    # GitHub evaluates path patterns in order: a later `!` match excludes a
+    # path and a later positive match includes it again.
+    $matched = $false
     foreach ($pattern in $Patterns) {
-        if ([System.Management.Automation.WildcardPattern]::new(
-                $pattern,
-                [System.Management.Automation.WildcardOptions]::None).IsMatch($Path)) {
-            return $true
+        $negated = $pattern.StartsWith("!", [StringComparison]::Ordinal)
+        $glob = if ($negated) { $pattern.Substring(1) } else { $pattern }
+        if ([regex]::IsMatch($Path, (ConvertTo-GitHubPathRegex -Glob $glob))) {
+            $matched = -not $negated
         }
     }
 
-    return $false
+    return $matched
 }
 
 function Test-CodeQlTrigger {
@@ -223,7 +258,9 @@ $expectedCodeQlPaths = @(
     "global.json",
     "NuGet.Config",
     "package.json",
-    "package-lock.json"
+    "package-lock.json",
+    "!src/**/*.md",
+    "!tests/**/*.md"
 )
 if (($codeQlPushBranches -join ",") -ne "master") {
     throw "CodeQL branch pushes must be limited to master; main uses scheduled scans."
@@ -248,9 +285,16 @@ $codeQlTriggerCases = @(
     @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
     @{ Name = "root attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "nested attributes pull request"; Event = "pull_request"; Ref = "main"; Path = "src/.gitattributes"; Expected = $true },
+    @{ Name = "nested build props pull request"; Event = "pull_request"; Ref = "main"; Path = "eng/Directory.Build.props"; Expected = $false },
     @{ Name = "hidden attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/.gitattributes"; Expected = $true },
     @{ Name = "master attributes push"; Event = "push"; Ref = "master"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
+    @{ Name = "scoped source instructions pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Tray.WinUI/AGENTS.md"; Expected = $false },
+    @{ Name = "test Markdown pull request"; Event = "pull_request"; Ref = "main"; Path = "tests/README.md"; Expected = $false },
+    @{ Name = "master source Markdown push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/README.md"; Expected = $false },
+    @{ Name = "workflow pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/workflows/ci.yml"; Expected = $true },
+    @{ Name = "Markdown workflow source pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/workflows/example.md"; Expected = $true },
+    @{ Name = "master Markdown workflow source push"; Event = "push"; Ref = "master"; Path = ".github/workflows/example.md"; Expected = $true },
     @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
     @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
     @{ Name = "manual scan"; Event = "workflow_dispatch"; Ref = ""; Path = ""; Expected = $true }
