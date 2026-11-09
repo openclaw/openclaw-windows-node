@@ -208,7 +208,7 @@ public sealed class NativeUiExceptionDiagnosticsTests
         Assert.Equal(1, stream.FlushCount); // Ready went through the real flush boundary.
         stream.Fault = fault;
         var original = new PoisonException();
-        var observed = Record.Exception(() =>
+        var observed = Record.Exception((Action)(() =>
         {
             try { throw original; }
             catch (Exception caught)
@@ -217,7 +217,7 @@ public sealed class NativeUiExceptionDiagnosticsTests
                 throw;
             }
             finally { sink.Dispose(); }
-        });
+        }));
         Assert.Same(original, observed);
         Assert.True(sink.WriteFailed);
         Assert.Equal(1, signals);

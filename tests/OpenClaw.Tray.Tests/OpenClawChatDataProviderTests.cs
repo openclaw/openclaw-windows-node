@@ -8151,7 +8151,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 SessionKey = "main", Role = "assistant", Text = "first response", State = "delta",
             });
             Assert.Equal(0, drains.ScheduledCount);
-            Assert.Equal(1, bridge.SentMessages.Count);
+            Assert.Single(bridge.SentMessages);
             Assert.Equal(ChatQueuedMessageSendState.Queued,
                 Assert.Single(GetQueuedMessages(snapshots[^1], "main")).SendState);
 
@@ -8162,7 +8162,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             });
             // No sessions update or private dispatch call may repair missing terminal scheduling.
             Assert.Equal(1, drains.ScheduledCount);
-            Assert.Equal(1, bridge.SentMessages.Count);
+            Assert.Single(bridge.SentMessages);
             var firstDrain = drains.RunNextAsync();
             phase = "second-send-admission-held";
             await secondEntered.Task.WaitAsync(QueuedSendProbeDeadline);
