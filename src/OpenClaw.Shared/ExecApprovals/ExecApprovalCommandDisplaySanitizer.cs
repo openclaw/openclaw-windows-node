@@ -299,7 +299,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         if (category == UnicodeCategory.SpaceSeparator && codePoint != 0x20)
             return true;
 
-        return codePoint is 0x115F or 0x1160 or 0x3164 or 0xFFA0;
+        return codePoint is 0x115F or 0x1160 or 0x2800 or 0x3164 or 0xFFA0;
     }
 
     private static UnicodeCategory GetUnicodeCategory(int codePoint)

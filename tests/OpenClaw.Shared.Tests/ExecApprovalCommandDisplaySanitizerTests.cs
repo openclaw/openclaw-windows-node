@@ -57,6 +57,33 @@ public class ExecApprovalCommandDisplaySanitizerTests
     }
 
     [Fact]
+    public void EscapesBrailleBlank()
+    {
+        Assert.Equal(
+            @"echo \u{2800}hi",
+            ExecApprovalCommandDisplaySanitizer.Sanitize("echo " + U(0x2800) + "hi"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BrailleBlankSplitSecret_IsRedactedWithoutLosingSafeText(bool commandReview)
+    {
+        // Synthetic token: the raw view cannot recognize it across U+2800.
+        var command = "echo sk-abc123" + U(0x2800) + "456789012345678 remainder";
+
+        var result = commandReview
+            ? ExecApprovalCommandDisplaySanitizer.SanitizeCommandForReviewWithStatus(command)
+            : ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(command);
+
+        Assert.Equal(@"echo ***\u{2800}*** remainder", result.Text);
+        Assert.True(result.Redacted);
+        Assert.True(result.UnsafeConcealment);
+        Assert.False(result.Truncated);
+        Assert.False(result.Oversized);
+    }
+
+    [Fact]
     public void EscapesBidiOverrideTabAndZeroWidthSpace()
     {
         Assert.Equal(
@@ -114,6 +141,8 @@ public class ExecApprovalCommandDisplaySanitizerTests
     [InlineData(0x0301)]  // combining acute accent (Zalgo)
     [InlineData(0xFE0F)]  // variation selector-16 (emoji presentation)
     [InlineData(0x0430)]  // Cyrillic small a (homoglyph of Latin a)
+    [InlineData(0x2801)]  // visible braille pattern dot-1
+    [InlineData(0x28FF)]  // visible braille pattern dots-12345678
     public void DoesNotEscapeCharactersOutsideItsThreatModel(int codePoint)
     {
         var input = "echo " + U(codePoint) + "x";
