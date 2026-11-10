@@ -207,7 +207,7 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure()
+    public async Task AssistantMarkdown_DisclosureFollowsTheChatLinkAndContentPolicy()
     {
         await ui.ResetContainerAsync();
         ChatThemeProofScope? theme = null;
@@ -219,23 +219,51 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
                 theme = new ChatThemeProofScope("Light");
                 host = new ReactorHostControl { Width = 360 };
                 host.Content = host.Reconciler.Mount(ReactorChatTimeline.BuildSafeMarkdown(
-                    "<details open><summary>Untrusted</summary>\n\n" +
-                    "![pixel](https://example.invalid/pixel) [source](https://example.invalid)\n\n" +
+                    "Outside [web](https://example.invalid/outside) and `outside code`.\n\n" +
+                    "<details open><summary>See [docs](https://example.invalid/docs)</summary>\n\n" +
+                    "![pixel](https://example.invalid/pixel) [source](https://example.invalid/source) " +
+                    "[local](file:///C:/secret) https://example.invalid/bare and `inline code`.\n\n" +
                     "<script>alert('untrusted')</script>\n\n</details>"), static () => { });
                 ui.Container.Children.Add(host);
             });
             await ui.YieldToRenderAsync();
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 var mountedHost = Assert.IsType<ReactorHostControl>(host);
-                var texts = FindLogical<RichTextBlock>(mountedHost).Select(CollectText).ToArray();
-                Assert.Contains(texts, text => text.Contains("[Image: pixel]", StringComparison.Ordinal));
-                Assert.Contains(texts, text => text.Contains("source (https://example.invalid)", StringComparison.Ordinal));
-                Assert.Contains(texts, text => text.Contains("<script>", StringComparison.Ordinal));
+                var disclosure = Assert.Single(FindLogical<Expander>(mountedHost));
+                // The summary is plain header text, so its web link reads as "text (url)".
+                Assert.Equal("See docs (https://example.invalid/docs)", disclosure.Header);
+                Assert.Equal("See docs (https://example.invalid/docs)", AutomationProperties.GetName(disclosure));
+
+                // The body follows the chat's web-link policy: http/https links and bare URLs are
+                // live, while other schemes, images and raw HTML stay inert text.
+                var inside = Links(disclosure);
+                Assert.Equal(
+                    new[] { "https://example.invalid/source", "https://example.invalid/bare" },
+                    inside.Select(link => link.NavigateUri?.AbsoluteUri).ToArray());
+                Assert.Equal(
+                    new[] { "https://example.invalid/outside" },
+                    Links(mountedHost).Except(inside).Select(link => link.NavigateUri?.AbsoluteUri).ToArray());
+                var body = FindLogical<RichTextBlock>(disclosure).Select(AllText).ToArray();
+                Assert.Contains(body, text => text.Contains("[Image: pixel]", StringComparison.Ordinal));
+                Assert.Contains(body, text => text.Contains("local (file:///C:/secret)", StringComparison.Ordinal));
+                Assert.Contains(body, text => text.Contains("<script>", StringComparison.Ordinal));
                 Assert.Empty(FindLogical<Image>(mountedHost));
                 Assert.Empty(FindLogical<WebView2>(mountedHost));
-                Assert.Empty(FindLogical<RichTextBlock>(mountedHost).SelectMany(text =>
-                    text.Blocks.OfType<Paragraph>().SelectMany(paragraph => paragraph.Inlines.OfType<Hyperlink>())));
+
+                // The chat's after-reconcile inline styling reaches disclosure bodies too:
+                // links lose their underline and inline code gets its chip (except in high contrast).
+                var codeTexts = FindLogical<RichTextBlock>(mountedHost)
+                    .Where(text => AllText(text).Contains(" code", StringComparison.Ordinal))
+                    .ToArray();
+                Assert.Equal(2, codeTexts.Length);
+                var highContrast = new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
+                await WaitForRenderedConditionAsync(
+                    () => Links(mountedHost).All(link => link.UnderlineStyle == UnderlineStyle.None) &&
+                        (highContrast || codeTexts.All(text => text.TextHighlighters.Count > 0)),
+                    "chat inline link and code styling",
+                    () => $"underlines={string.Join(",", Links(mountedHost).Select(link => link.UnderlineStyle))} " +
+                        $"highlighters={string.Join(",", codeTexts.Select(text => text.TextHighlighters.Count))}");
             });
         }
         finally
@@ -271,4 +299,16 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
     private static string CollectText(RichTextBlock text) =>
         string.Concat(text.Blocks.OfType<Paragraph>().SelectMany(paragraph =>
             paragraph.Inlines.OfType<Run>().Select(run => run.Text)));
+
+    private static List<Hyperlink> Links(DependencyObject root) =>
+        FindLogical<RichTextBlock>(root).SelectMany(text => text.Blocks.OfType<Paragraph>())
+            .SelectMany(paragraph => Flatten(paragraph.Inlines)).OfType<Hyperlink>().ToList();
+
+    // Unlike CollectText, includes link text and runs nested in spans.
+    private static string AllText(RichTextBlock text) =>
+        string.Concat(text.Blocks.OfType<Paragraph>().SelectMany(paragraph => Flatten(paragraph.Inlines))
+            .OfType<Run>().Select(run => run.Text));
+
+    private static IEnumerable<Inline> Flatten(InlineCollection inlines) =>
+        inlines.SelectMany(inline => inline is Span span ? Flatten(span.Inlines).Prepend(inline) : new[] { inline });
 }

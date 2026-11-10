@@ -873,7 +873,7 @@ jobs:
         -HangTimeoutSeconds 120
 
     # Native Expander templates cannot safely outlive theme resource replacement in the
-    # shared WinUI testhost, so the disclosure proofs (Light + inert content) run in their
+    # shared WinUI testhost, so the disclosure proofs (Light + link/content policy) run in their
     # own process. Dark and HighContrast are screenshot-only (OPENCLAW_VISUAL_TEST=1).
     # A promoted alpha that predates these proofs has none to run; ordinary CI always runs them
     # and the proof runner fails on zero tests.

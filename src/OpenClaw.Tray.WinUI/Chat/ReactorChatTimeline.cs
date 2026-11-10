@@ -821,11 +821,22 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     internal static Element BuildSafeMarkdown(
         string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false)
     {
-        var parts = ChatMarkdownDisclosures.Parse(
-            ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true));
+        var parts = InertSummaries(ChatMarkdownDisclosures.Parse(
+            ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true)));
         return ChatMarkdownPresentation.Disclosures(
             parts, markdown => BuildMarkdownBlocks(markdown, tryCopy, compactSecondaryReading));
     }
+
+    // A summary is plain header text, so a web link kept for the body reads there as
+    // "text (url)", like any other inert link.
+    private static IReadOnlyList<ChatMarkdownPart> InertSummaries(IReadOnlyList<ChatMarkdownPart> parts) =>
+        parts.Select(part => part is ChatMarkdownDisclosure disclosure
+            ? disclosure with
+            {
+                Summary = ChatMarkdownSanitizer.Sanitize(disclosure.Summary),
+                Body = InertSummaries(disclosure.Body),
+            }
+            : part).ToArray();
 
     private static Element BuildMarkdownBlocks(
         string text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
