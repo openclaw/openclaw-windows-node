@@ -183,6 +183,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.InRange(Math.Abs(expandedChatBounds.Height - collapsedChatBounds.Height), 0, 1);
             Assert.InRange(expandedChatBounds.Top - collapsedBounds.Top + expandedChatBounds.Height / 2,
                 -1, collapsedBounds.Height + 1);
+            await ScrollAutomationIntoViewAsync(run, "AutomationExpander:morning-brief");
             Capture(run, "automations-stock-expander-expanded-Light.png", "AutomationExpander:morning-brief",
                 "AutomationScheduleSummary");
             scheduledDisclosure.Collapse();
@@ -213,6 +214,7 @@ public sealed partial class GatewayFixtureUiTests
             darkDisclosure.Expand();
             await WaitUiAsync(run, () => darkDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Expanded
                 && FindById(run, "AutomationScheduleSummary") is not null, "dark expanded scheduled row");
+            await ScrollAutomationIntoViewAsync(run, "AutomationExpander:morning-brief");
             Capture(run, "automations-stock-expander-expanded-Dark.png", "AutomationExpander:morning-brief",
                 "AutomationScheduleSummary");
             await SelectAppThemeAsync(run, "Light");
@@ -1159,10 +1161,15 @@ public sealed partial class GatewayFixtureUiTests
             ((ScrollItemPattern)item.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
             await WaitUiAsync(run, () => FindById(run, "AutomationAgenda:scheduled-204") is not null, "last paged agenda job");
             Invoke(FindById(run, "AutomationAgenda:scheduled-204")!);
-            await WaitUiAsync(run, () => FindById(run, "AutomationExpander:scheduled-204") is not null
+            await WaitUiAsync(run, () => FindById(run, "AutomationExpander:scheduled-204") is
+                { Current.HasKeyboardFocus: true, Current.IsOffscreen: false }
                 && FindById(run, "CronJobTitle:scheduled-204")?.Current.Name == "Scheduled fixture 204"
-                && FindById(run, "AutomationScheduleSummary") is not null, "agenda jump loads inventory");
-            Capture(run, "automations-agenda-jump.png", "CronJobTitle:scheduled-204", "AutomationScheduleSummary");
+                && FindById(run, "AutomationScheduleSummary") is not null, "agenda jump reveals and focuses inventory");
+            Assert.Equal(ExpandCollapseState.Expanded, ((ExpandCollapsePattern)FindById(run, "AutomationExpander:scheduled-204")!
+                .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
+            Capture(run, "automations-agenda-jump.png", "CronJobTitle:scheduled-204");
+            await ScrollAutomationIntoViewAsync(run, "AutomationExpander:scheduled-204");
+            Capture(run, "automations-agenda-jump-details.png", "CronJobTitle:scheduled-204", "AutomationScheduleSummary");
         }, scenario: scenario);
     }
 
