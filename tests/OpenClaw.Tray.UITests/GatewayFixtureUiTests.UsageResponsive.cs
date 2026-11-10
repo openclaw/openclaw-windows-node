@@ -688,7 +688,12 @@ public sealed partial class GatewayFixtureUiTests
                         var hostWidth = HostWidth();
                         var sizeKey = $"{bounds.Width}x{bounds.Height}:{hostWidth:F2}";
                         var file = $"Usage-Light-responsive-{name}.png";
+                        await PrepareUsageCaptureAsync(run, window, name);
+                        AssertUsageCaptureUnobstructed(run, name);
                         OwnedWindowCapture.Save(run, window, file, FindById(run, "UsagePageMarker")!);
+                        // A late asynchronous probe notification invalidates the capture rather
+                        // than supplying unrelated dark pixels to the label ink detector.
+                        AssertUsageCaptureUnobstructed(run, name);
                         using var capture = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.ArtifactsDirectory,
                             Path.ChangeExtension(file, ".json"))));
                         var sha = capture.RootElement.GetProperty("sha256").GetString()!;
@@ -742,6 +747,33 @@ public sealed partial class GatewayFixtureUiTests
             Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
         }, scenario: GatewayScenario.CreateUsageAnalytics(UsageAnalyticsMode.Released, completeDailyCoverage: true));
     }
+
+    private static async Task PrepareUsageCaptureAsync(GatewayFixtureRun run, AutomationElement window, string stateName)
+    {
+        // The host probe publishes asynchronously. Observe the real banner at every capture,
+        // not once at startup; absence here is not a claim that the probe has completed.
+        // Close only the known host-warning presentation. The warning remains in the Inbox,
+        // and containment policy/capability checks remain unchanged.
+        const string title = "Windows containment unavailable: commands run uncontained";
+        if (FindById(run, "AppNotificationInfoBar") is not { Current.IsOffscreen: false } notification) return;
+        Assert.Equal(run.AppProcessId, notification.Current.ProcessId);
+        var knownTitle = notification.Current.Name == title || notification.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.NameProperty, title)) is not null;
+        Assert.True(knownTitle, "An unexpected notification obstructs Usage capture; it must not be silently dismissed.");
+        var close = notification.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "CloseButton"));
+        Assert.NotNull(close);
+        Assert.Equal(run.AppProcessId, close.Current.ProcessId);
+        Assert.True(close.Current.IsEnabled);
+        OwnedWindowCapture.Save(run, window, stateName + "-host-warning-before-close.png", notification, close);
+        Invoke(close);
+        await WaitUiAsync(run, () => FindById(run, "AppNotificationInfoBar") is not { Current.IsOffscreen: false },
+            "known host-warning banner closed through its ordinary presentation control");
+    }
+
+    private static void AssertUsageCaptureUnobstructed(GatewayFixtureRun run, string stateName) =>
+        Assert.False(FindById(run, "AppNotificationInfoBar") is { Current.IsOffscreen: false },
+            stateName + ": a notification appeared at the capture boundary; its pixels are not Usage ink proof.");
 
     private static System.Drawing.Rectangle UsageWindowBounds(IntPtr handle)
     {

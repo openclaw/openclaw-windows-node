@@ -1479,9 +1479,24 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 gateway.Controller.State.Detail?.Row.Phase == (fails ? UsageLoadPhase.Failed : UsageLoadPhase.Loaded) &&
-                Find<TextBlock>(host, "UsageDetailModelValue")?.Text == (fails ? "list-model" : "detail-model"),
-                "Completed detail wins, while failed detail retains the list summary"));
-            await ui.RunOnUIAsync(() => Assert.Equal(fails, Find<InfoBar>(host, "UsageDetailRowError") is not null));
+                Find<TextBlock>(host, "UsageDetailModelValue")?.Text == (fails ? "list-model" : "detail-model") &&
+                (fails ? Find<InfoBar>(host, "UsageDetailRowError") is
+                    { IsOpen: true, Visibility: Visibility.Visible, ActualWidth: > 0, ActualHeight: > 0 }
+                    : Find<InfoBar>(host, "UsageDetailRowError") is null),
+                "Completed detail wins; failed detail commits its visible warning and retains the list summary"));
+            await ui.RunOnUIAsync(() =>
+            {
+                // On failure the model text is unchanged, so controller state plus that text alone
+                // cannot prove the asynchronously scheduled Reactor render committed.
+                Assert.Equal(fails, Find<InfoBar>(host, "UsageDetailRowError") is not null);
+                if (fails)
+                {
+                    var warning = Get<InfoBar>(host, "UsageDetailRowError");
+                    Assert.Equal(InfoBarSeverity.Warning, warning.Severity);
+                    Assert.Equal(LocalizationHelper.GetString("Usage_Details_LoadFailedTitle"), warning.Title);
+                    Assert.False(warning.IsClosable);
+                }
+            });
         });
     }
 
