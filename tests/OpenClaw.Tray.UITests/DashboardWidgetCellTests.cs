@@ -423,46 +423,97 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 .AutomationId("NativeReportPeerRoot"), _ => { }, theme: theme, width: width,
             afterMounted: host => ui.RunOnUIAsync(async () =>
         {
-            var geometry = "The expanded widget has not been observed.";
-            await WaitForRenderedConditionAsync(() =>
+            // An explicit Reactor width does not enlarge the shared fixture HWND, which
+            // normally lives offscreen at 1x1. Full peer bounds need a real, unclipped viewport.
+            var window = ui.TestWindow;
+            var appWindow = window.AppWindow;
+            var originalPosition = appWindow.Position;
+            var originalSize = appWindow.Size;
+            var viewportChanged = false;
+            Assert.Same(ui.Container, window.Content);
+            OnboardingNativeProof.AssertProductDpi(window);
+            try
             {
-                var ancestor = FindDescendants<Expander>(host).SingleOrDefault(element =>
-                    AutomationProperties.GetAutomationId(element) == "NativeReportPeerRoot");
-                var observedCard = FindDescendants<FrameworkElement>(host).SingleOrDefault(element =>
-                    AutomationProperties.GetAutomationId(element) == "BoardWidget_weekly-report");
-                var ancestorPeer = ancestor is null ? null : FrameworkElementAutomationPeer.CreatePeerForElement(ancestor);
-                var groupPeer = ancestorPeer is null ? null : WalkPeers(ancestorPeer).SingleOrDefault(peer =>
-                    peer.GetAutomationId() == "BoardWidget_weekly-report");
-                var rectangle = groupPeer?.GetBoundingRectangle() ?? default;
-                geometry = $"expanded={ancestor?.IsExpanded}, ancestorLoaded={ancestor?.IsLoaded}, cardLoaded={observedCard?.IsLoaded}, " +
-                    $"cardSize={observedCard?.ActualWidth}x{observedCard?.ActualHeight}, groupPresent={groupPeer is not null}, peerBounds={rectangle}";
-                return ancestor is { IsExpanded: true, IsLoaded: true } &&
-                    observedCard is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
-                    rectangle.Width > 0 && rectangle.Height > 0;
-            }, "expanded native widget group geometry", () => geometry);
-            // Start at a real ancestor peer: the plain Reactor host has no native peer of its own.
-            var root = FrameworkElementAutomationPeer.CreatePeerForElement(ById<Expander>(host, "NativeReportPeerRoot"));
-            Assert.NotNull(root);
-            var group = Assert.Single(WalkPeers(root!), peer => peer.GetAutomationId() == "BoardWidget_weekly-report");
-            Assert.Equal(AutomationControlType.Group, group.GetAutomationControlType());
-            Assert.Equal("Dashboard widget: Weekly report, Report", group.GetName());
-            Assert.True(group.IsControlElement());
-            Assert.True(group.IsContentElement());
-            Assert.False(group.IsKeyboardFocusable());
-            Assert.Null(group.GetPattern(PatternInterface.Invoke));
-            Assert.Null(group.GetPattern(PatternInterface.SelectionItem));
-            var card = ById<FrameworkElement>(host, "BoardWidget_weekly-report");
-            var bounds = group.GetBoundingRectangle();
-            Assert.True(bounds.Width > 0 && bounds.Height > 0);
-            var scale = card.XamlRoot.RasterizationScale;
-            Assert.InRange(Math.Abs(bounds.Width - card.ActualWidth * scale), 0, 1);
-            Assert.InRange(Math.Abs(bounds.Height - card.ActualHeight * scale), 0, 1);
-            var children = WalkPeers(group).Skip(1).ToArray();
-            Assert.Contains(children, peer => peer.GetName() == "Tickets closed");
-            Assert.Contains(children, peer => peer.GetName() == "128");
-            var link = Assert.Single(children, peer => peer.GetName() == "Runbook"
-                && peer.GetAutomationControlType() == AutomationControlType.Hyperlink);
-            Assert.IsAssignableFrom<IInvokeProvider>(link.GetPattern(PatternInterface.Invoke));
+                OnboardingNativeProof.AssertOwned(window);
+                // Size the client from the mounted scene, including shared-root padding.
+                // Mandatory peer geometry does not depend on optional screenshot capture.
+                ui.Container.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                var viewportScale = host.XamlRoot.RasterizationScale;
+                Assert.True(double.IsFinite(viewportScale) && viewportScale > 0);
+                var desired = ui.Container.DesiredSize;
+                Assert.True(double.IsFinite(desired.Width) && double.IsFinite(desired.Height) &&
+                    desired.Width > 0 && desired.Height > 0);
+                var clientSize = new Windows.Graphics.SizeInt32(
+                    checked((int)Math.Ceiling(desired.Width * viewportScale)),
+                    checked((int)Math.Ceiling(desired.Height * viewportScale)));
+                viewportChanged = true;
+                appWindow.ResizeClient(clientSize);
+                var work = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(appWindow.Id,
+                    Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
+                Assert.True(appWindow.Size.Width <= work.Width && appWindow.Size.Height <= work.Height,
+                    "The native report proof viewport must fit the owned window's monitor work area.");
+                appWindow.Move(new Windows.Graphics.PointInt32(work.X, work.Y));
+                var geometry = "The expanded widget has not been observed.";
+                await WaitForRenderedConditionAsync(() =>
+                {
+                    ui.Container.UpdateLayout();
+                    var ancestor = FindDescendants<Expander>(host).SingleOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "NativeReportPeerRoot");
+                    var observedCard = FindDescendants<FrameworkElement>(host).SingleOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "BoardWidget_weekly-report");
+                    var ancestorPeer = ancestor is null ? null : FrameworkElementAutomationPeer.CreatePeerForElement(ancestor);
+                    var groupPeer = ancestorPeer is null ? null : WalkPeers(ancestorPeer).SingleOrDefault(peer =>
+                        peer.GetAutomationId() == "BoardWidget_weekly-report");
+                    var rectangle = groupPeer?.GetBoundingRectangle() ?? default;
+                    geometry = $"expanded={ancestor?.IsExpanded}, ancestorLoaded={ancestor?.IsLoaded}, cardLoaded={observedCard?.IsLoaded}, " +
+                        $"cardSize={observedCard?.ActualWidth}x{observedCard?.ActualHeight}, groupPresent={groupPeer is not null}, peerBounds={rectangle}, " +
+                        $"client={appWindow.ClientSize.Width}x{appWindow.ClientSize.Height}, root={ui.Container.ActualWidth}x{ui.Container.ActualHeight}";
+                    return appWindow.ClientSize.Width == clientSize.Width &&
+                        appWindow.ClientSize.Height == clientSize.Height &&
+                        ui.Container.ActualWidth >= host.ActualWidth + ui.Container.Padding.Left + ui.Container.Padding.Right &&
+                        ui.Container.ActualHeight >= host.ActualHeight + ui.Container.Padding.Top + ui.Container.Padding.Bottom &&
+                        ancestor is { IsExpanded: true, IsLoaded: true } &&
+                        observedCard is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
+                        rectangle.Width > 0 && rectangle.Height > 0;
+                }, "expanded native widget group geometry", () => geometry);
+                OnboardingNativeProof.AssertProductDpi(window);
+                OnboardingNativeProof.AssertFullyVisible(host, ui.Container);
+                Console.WriteLine($"report-peer viewport theme={theme}; requestedWidth={width}; {geometry}");
+                // Start at a real ancestor peer: the plain Reactor host has no native peer of its own.
+                var root = FrameworkElementAutomationPeer.CreatePeerForElement(ById<Expander>(host, "NativeReportPeerRoot"));
+                Assert.NotNull(root);
+                var group = Assert.Single(WalkPeers(root!), peer => peer.GetAutomationId() == "BoardWidget_weekly-report");
+                Assert.Equal(AutomationControlType.Group, group.GetAutomationControlType());
+                Assert.Equal("Dashboard widget: Weekly report, Report", group.GetName());
+                Assert.True(group.IsControlElement());
+                Assert.True(group.IsContentElement());
+                Assert.False(group.IsKeyboardFocusable());
+                Assert.Null(group.GetPattern(PatternInterface.Invoke));
+                Assert.Null(group.GetPattern(PatternInterface.SelectionItem));
+                var card = ById<FrameworkElement>(host, "BoardWidget_weekly-report");
+                var bounds = group.GetBoundingRectangle();
+                Assert.True(bounds.Width > 0 && bounds.Height > 0);
+                var scale = card.XamlRoot.RasterizationScale;
+                Assert.InRange(Math.Abs(bounds.Width - card.ActualWidth * scale), 0, 1);
+                Assert.InRange(Math.Abs(bounds.Height - card.ActualHeight * scale), 0, 1);
+                var children = WalkPeers(group).Skip(1).ToArray();
+                Assert.Contains(children, peer => peer.GetName() == "Tickets closed");
+                Assert.Contains(children, peer => peer.GetName() == "128");
+                var link = Assert.Single(children, peer => peer.GetName() == "Runbook"
+                    && peer.GetAutomationControlType() == AutomationControlType.Hyperlink);
+                Assert.IsAssignableFrom<IInvokeProvider>(link.GetPattern(PatternInterface.Invoke));
+            }
+            finally
+            {
+                if (viewportChanged)
+                {
+                    appWindow.MoveAndResize(new Windows.Graphics.RectInt32(
+                        originalPosition.X, originalPosition.Y, originalSize.Width, originalSize.Height));
+                    Assert.Equal(originalPosition, appWindow.Position);
+                    Assert.Equal(originalSize, appWindow.Size);
+                    OnboardingNativeProof.AssertProductDpi(window);
+                }
+            }
         }));
 
     [Fact]
