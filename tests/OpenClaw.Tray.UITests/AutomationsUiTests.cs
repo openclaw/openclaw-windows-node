@@ -1144,6 +1144,9 @@ public sealed partial class GatewayFixtureUiTests
                 .Where(e => e.Current.AutomationId.StartsWith("AutomationAgenda:", StringComparison.Ordinal)).ToArray();
             Assert.InRange(initialAgendaRows.Length, 1, 6);
             Assert.Null(FindById(run, "AutomationExpander:scheduled-204"));
+            var page = await WaitForPageScrollPeerAsync(run);
+            var pageFrame = await ResetAutomationScrollAsync(run, page,
+                (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern));
             Capture(run, "automations-large-agenda.png", "AutomationsHeadline");
             var targetAt = DateTimeOffset.FromUnixTimeMilliseconds(scenario.GetCronJobs().Single(j =>
                 j.GetProperty("id").GetString() == "scheduled-204").GetProperty("state").GetProperty("nextRunAtMs").GetInt64()).ToLocalTime();
@@ -1168,7 +1171,8 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal(ExpandCollapseState.Expanded, ((ExpandCollapsePattern)FindById(run, "AutomationExpander:scheduled-204")!
                 .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
             Capture(run, "automations-agenda-jump.png", "CronJobTitle:scheduled-204");
-            await ScrollAutomationIntoViewAsync(run, "AutomationExpander:scheduled-204");
+            // Inspect the revealed row without rewinding through the entire paged inventory.
+            await ScrollAutomationIntoViewAsync(run, "AutomationExpander:scheduled-204", pageFrame);
             Capture(run, "automations-agenda-jump-details.png", "CronJobTitle:scheduled-204", "AutomationScheduleSummary");
         }, scenario: scenario);
     }
@@ -1363,12 +1367,13 @@ public sealed partial class GatewayFixtureUiTests
         }
     }
 
-    private static async Task ScrollAutomationIntoViewAsync(GatewayFixtureRun run, string id)
+    private static async Task ScrollAutomationIntoViewAsync(
+        GatewayFixtureRun run, string id, AutomationScrollFrame? samplingFrame = null)
     {
         var page = await WaitForPageScrollPeerAsync(run);
         await WaitForElementByIdAsync(run, id, $"automation target {id}");
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        var frame = await ResetAutomationScrollAsync(run, page, scroll);
+        var frame = samplingFrame ?? await ResetAutomationScrollAsync(run, page, scroll);
         var observed = ReadAutomationScroll(run, scroll, frame, id);
         while (observed.Target.Width <= 0 || observed.Target.Height <= 0 || observed.Target.IsEmpty)
         {
