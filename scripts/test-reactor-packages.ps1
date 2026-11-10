@@ -1,9 +1,3 @@
-<#
-.SYNOPSIS
-Checks Reactor acquisition, source mapping and bootstrap failure propagation offline.
-.EXAMPLE
-.\scripts\test-reactor-packages.ps1
-#>
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Initialize-ReactorPackages.ps1')
 $directory = Join-Path ([IO.Path]::GetTempPath()) ('reactor-bootstrap-' + [Guid]::NewGuid().ToString('N'))

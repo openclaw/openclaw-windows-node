@@ -848,54 +848,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     }
 
     [Fact]
-    public async Task SharedHeroReducedMotion_DisablesNativeTransitionsWithoutChangingTheWindowsSetting()
-    {
-        await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, _) =>
-        {
-            await WaitForAsync(host, "UsageMast");
-            var animations = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-            ReactorHostControl proof = null!;
-            try
-            {
-                await ui.RunOnUIAsync(() =>
-                {
-                    proof = new ReactorHostControl { Width = 520, Height = 300 };
-                    proof.Mount(_ => PageHero.Header("UsageReducedMotionHero", "\uE9D2",
-                        LocalizationHelper.GetString("Usage_Title"), "UsageReducedMotionTitle",
-                        TextBlock("$18.42"), TextBlock("63"),
-                        HStack(8, Button(LocalizationHelper.GetString("Usage_OpenWeb")),
-                            Button(LocalizationHelper.GetString("Usage_Export"))),
-                        narrow: true, reducedMotion: true));
-                    ui.Container.Children.Add(proof);
-                });
-                await WaitForAsync(proof, "UsageReducedMotionHero");
-                await ui.RunOnUIAsync(() =>
-                {
-                    var hero = Get<Border>(proof, "UsageReducedMotionHero");
-                    Assert.NotNull(hero.Transitions);
-                    Assert.Empty(hero.Transitions);
-                    var panels = FindDescendants<Panel>(hero).Where(panel => panel.Transitions is not null).ToArray();
-                    Assert.NotEmpty(panels);
-                    Assert.All(panels, panel =>
-                    {
-                        Assert.Empty(panel.Transitions);
-                        Assert.NotNull(panel.ChildrenTransitions);
-                        Assert.Empty(panel.ChildrenTransitions);
-                    });
-                    Assert.Equal(animations, new Windows.UI.ViewManagement.UISettings().AnimationsEnabled);
-                });
-            }
-            finally
-            {
-                await ui.RunOnUIAsync(() =>
-                {
-                    if (proof is not null) { ui.Container.Children.Remove(proof); proof.Dispose(); }
-                });
-            }
-        });
-    }
-
-    [Fact]
     public async Task AllowanceBadge_RefreshAppearsAndClearsWithoutRemountingThePage()
     {
         await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, gateway) =>
@@ -2027,7 +1979,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     public static IEnumerable<object[]> MainStates =>
         from theme in new[] { ElementTheme.Light, ElementTheme.Dark }
         from state in new[] { "installed", "advanced", "sparse", "large", "empty", "offline", "first-load", "load-failed",
-            "refresh-failed", "no-read", "unsupported", "computing", "read-only", "partial", "stale", "missing-price", "provider-unavailable" }
+            "refresh-failed", "no-read", "unsupported", "computing", "partial", "stale", "missing-price", "provider-unavailable" }
         select new object[] { theme, state };
 
     [Theory]

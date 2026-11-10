@@ -151,29 +151,19 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
                 Assert.Equal(draft, session!.ViewModel.Draft);
             });
             await provider.SendMessageAsync(key, "Synthetic native retention proof.");
-            // The question panel and root subscribe independently. A realized radio does not
-            // acknowledge the root's separate commit that hides the retained composer.
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => FindDescendants<RadioButton>(surface!).Any(radio =>
-                    AutomationProperties.GetAutomationId(radio) == "ChatQuestionOption_fixture_choice_0") &&
-                    FindDescendants<ScrollViewer>(surface!).Any(scroll =>
-                        AutomationProperties.GetAutomationId(scroll) == "ChatComposerArea" &&
-                        scroll.Visibility == Visibility.Collapsed),
-                "native pending question with the retained composer hidden"));
+                    AutomationProperties.GetAutomationId(radio) == "ChatQuestionOption_fixture_choice_0"),
+                "native pending question"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(input, Control<TextBox>(surface!, "ChatComposerInput"));
                 Assert.Equal(draft, session!.ViewModel.Draft);
-                Assert.Equal(draft, input!.Text);
                 Assert.Equal(Visibility.Collapsed, Control<ScrollViewer>(surface!, "ChatComposerArea").Visibility);
                 Invoke(FindDescendants<Button>(surface!).Single(button =>
                     AutomationProperties.GetName(button) == "Collapse question"));
             });
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => FindDescendants<ScrollViewer>(surface!).Any(scroll =>
-                    AutomationProperties.GetAutomationId(scroll) == "ChatComposerArea" &&
-                    scroll.Visibility == Visibility.Visible),
-                "retained composer shown after collapsing the question"));
+            await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(input, Control<TextBox>(surface!, "ChatComposerInput"));

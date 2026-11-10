@@ -610,7 +610,9 @@ The `usage-analytics` scenario opens the Settings Usage page against synthetic
 to the requested date range, so every preset shows populated charts. Twelve
 sessions cover several agents, channels, providers and models, plus cache,
 error and tool activity. Every other scenario also answers `sessions.usage`,
-which the Gateway does not advertise in `hello-ok`.
+which the Gateway does not advertise in `hello-ok`. The fixture models the
+native page's range, detail and bounded browsing reads, not web-only heatmaps,
+creator attribution, recent/multi-session selection or prompt-context analysis.
 
 ```powershell
 .\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario usage-analytics

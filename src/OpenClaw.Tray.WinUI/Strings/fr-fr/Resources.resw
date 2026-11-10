@@ -8205,7 +8205,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Query_Label" xml:space="preserve"><value>Filtrer les sessions</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Certains filtres ont été ignorés</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
-  <data name="Usage_Facet_provider" xml:space="preserve"><value>Fournisseur</value></data>
   <data name="Usage_Facet_model" xml:space="preserve"><value>Modèle</value></data>
   <data name="Usage_Loading" xml:space="preserve"><value>Chargement de l'utilisation</value></data>
   <data name="Usage_Empty_Title" xml:space="preserve"><value>Rien à compter pour l'instant</value></data>
@@ -8221,16 +8220,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Cache_Title" xml:space="preserve"><value>Mise à jour</value></data>
   <data name="Usage_Cache_Checking" xml:space="preserve"><value>Les données d'utilisation peuvent être incomplètes. Vérification automatique des totaux à jour.</value></data>
   <data name="Usage_Cache_Paused" xml:space="preserve"><value>Les données d'utilisation peuvent être incomplètes. Vérifications automatiques en pause ; sélectionnez Actualiser pour vérifier à nouveau.</value></data>
-  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>Utilisation quotidienne des jetons</value></data>
-  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>Coût quotidien</value></data>
-  <data name="Usage_Daily_Empty" xml:space="preserve"><value>Aucune utilisation quotidienne pour cette période.</value></data>
   <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0} : {1} jetons, {2}</value></data>
   <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0} : pas encore chargé</value></data>
   <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Pas encore chargé</value></data>
-  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>Afficher les valeurs quotidiennes sous forme de tableau</value></data>
   <data name="Usage_Table_Date" xml:space="preserve"><value>Jour</value></data>
-  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>Jetons par type</value></data>
-  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>Coût par type</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>Messages</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Appels d'outils</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Taux de succès du cache</value></data>
@@ -8245,7 +8238,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>L'utilisation des fournisseurs n'est pas disponible.</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Actualisation de l'utilisation des fournisseurs.</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Aucune information de quota signalée.</value></data>
-  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>Réinitialisation en cours</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} sur {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (crédits)</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessions</value></data>
@@ -8271,7 +8263,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} erreur</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} entrée sans prix</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Plus récentes d'abord</value></data>
-  <data name="Usage_Subtitle" xml:space="preserve"><value>Utilisation des jetons et coûts estimés de vos sessions.</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessions sur la période</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} session sur la période</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Coût estimé</value></data>
@@ -8281,14 +8272,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>Ouvre la page Utilisation de la passerelle dans votre navigateur pour les chronologies, les transcriptions et d&apos;autres analyses détaillées. La période, les filtres et la session sélectionnée ne sont pas repris.</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} sur {1} chargées ; les totaux les incluent toutes.</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>Répartition de l&apos;utilisation</value></data>
-  <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>Classés par coût estimé, puis par jetons. L&apos;utilisation sans prix arrive en dernier.</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>Type de contributeur</value></data>
   <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agents</value></data>
   <data name="Usage_Contributors_Model" xml:space="preserve"><value>Modèles</value></data>
   <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Fournisseurs</value></data>
-  <data name="Usage_Details_Cache" xml:space="preserve"><value>Jetons en cache</value></data>
-  <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>{0} lus · {1} écrits</value></data>
-  <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>Ouvrir la conversation</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>L&apos;utilisation n&apos;est pas disponible sur cette passerelle</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Mettez la passerelle à jour pour voir ici le coût, les jetons et les sessions.</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>Les {0} premières sont chargées ; il peut y en avoir plus.</value></data>

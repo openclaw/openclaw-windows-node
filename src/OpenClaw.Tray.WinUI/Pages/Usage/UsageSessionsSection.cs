@@ -23,8 +23,7 @@ internal static class UsageSessionsSection
 
     internal static Element Details(UsagePageState state, UsageDetailState detail, UsagePageLayout layout, string suffix = "")
     {
-        var source = state.Report?.Sessions.FirstOrDefault(row => row.Key == detail.Key);
-        var row = UsageSessionDetailProjection.SummaryRow(source, detail.Row.Value);
+        var row = detail.Row.Value ?? state.Report?.Sessions.FirstOrDefault(row => row.Key == detail.Key);
         var usage = row?.Usage;
         var totals = usage?.Totals;
         var counts = usage?.MessageCounts;

@@ -8206,7 +8206,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Query_Label" xml:space="preserve"><value>Sessies filteren</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Sommige filters zijn genegeerd</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
-  <data name="Usage_Facet_provider" xml:space="preserve"><value>Aanbieder</value></data>
   <data name="Usage_Facet_model" xml:space="preserve"><value>Model</value></data>
   <data name="Usage_Loading" xml:space="preserve"><value>Gebruik laden</value></data>
   <data name="Usage_Empty_Title" xml:space="preserve"><value>Nog niets om te tellen</value></data>
@@ -8222,16 +8221,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Cache_Title" xml:space="preserve"><value>Bijwerken</value></data>
   <data name="Usage_Cache_Checking" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Bijgewerkte totalen worden automatisch gecontroleerd.</value></data>
   <data name="Usage_Cache_Paused" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Automatische controles gepauzeerd; selecteer Vernieuwen om opnieuw te controleren.</value></data>
-  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>Dagelijks tokengebruik</value></data>
-  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>Dagelijkse kosten</value></data>
-  <data name="Usage_Daily_Empty" xml:space="preserve"><value>Geen dagelijks gebruik voor deze periode.</value></data>
   <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, kosten {2}</value></data>
   <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: nog niet geladen</value></data>
   <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Nog niet geladen</value></data>
-  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>Dagwaarden als tabel weergeven</value></data>
   <data name="Usage_Table_Date" xml:space="preserve"><value>Datum</value></data>
-  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>Tokens per type</value></data>
-  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>Kosten per type</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>Berichten</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Hulpmiddelaanroepen</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Cache-hitratio</value></data>
@@ -8246,7 +8239,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>Gebruik per aanbieder is niet beschikbaar.</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Gebruik per aanbieder wordt vernieuwd.</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Geen quotumgegevens gemeld.</value></data>
-  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>Wordt nu gereset</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} van {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (tegoed)</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessies</value></data>
@@ -8272,7 +8264,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} fout</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} item zonder prijs</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Nieuwste eerst</value></data>
-  <data name="Usage_Subtitle" xml:space="preserve"><value>Tokengebruik en geschatte kosten van je sessies.</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessies in deze periode</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessie in deze periode</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Geschatte kosten</value></data>
@@ -8282,14 +8273,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>Opent de pagina Gebruik van de gateway in je browser voor tijdlijnen, transcripties en andere gedetailleerde analyses. Je periode, filters en geselecteerde sessie worden niet overgenomen.</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} van {1} geladen; de totalen bevatten ze allemaal.</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>Gebruiksverdeling</value></data>
-  <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>Gerangschikt op geschatte kosten, daarna op tokens. Gebruik zonder prijs staat onderaan.</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>Type verbruiker</value></data>
   <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agents</value></data>
   <data name="Usage_Contributors_Model" xml:space="preserve"><value>Modellen</value></data>
   <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Aanbieders</value></data>
-  <data name="Usage_Details_Cache" xml:space="preserve"><value>Tokens in cache</value></data>
-  <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>{0} gelezen · {1} geschreven</value></data>
-  <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>Gesprek openen</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>Gebruik is niet beschikbaar op deze gateway</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Werk de gateway bij om hier kosten, tokens en sessies te zien.</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>De eerste {0} zijn geladen; er kunnen er meer zijn.</value></data>

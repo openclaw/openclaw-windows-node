@@ -3,7 +3,7 @@ using OpenClaw.Shared.Usage;
 
 namespace OpenClawTray.Presentation.Usage;
 
-/// <summary>One host-owned provider read, shared by Usage and navigation without additional polling.</summary>
+/// <summary>One host-owned provider read retained across Usage page lifetimes.</summary>
 internal interface IUsageProviderReadSource
 {
     UsageProviderReadState State { get; }
@@ -12,9 +12,9 @@ internal interface IUsageProviderReadSource
 }
 
 internal sealed record UsageProviderReadState(
-    long Epoch, IOperatorGatewayClient? Client, UsageRead<ProviderUsageSummary> Read, int? AttentionCount);
+    long Epoch, IOperatorGatewayClient? Client, UsageRead<ProviderUsageSummary> Read);
 
-/// <summary>The same provider-window predicate serves the page list and the host's valid count.</summary>
+/// <summary>Provider windows eligible for the page's attention presentation.</summary>
 internal static class UsageProviderAttention
 {
     /// <summary>Returns the highest currently valid warning window, never an expired or failed-provider snapshot.</summary>
@@ -44,8 +44,7 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
     private long? _socketEpoch;
     private int _generation;
     private bool _disposed;
-    private DateTimeOffset? _expiresAt;
-    private UsageProviderReadState _state = new(0, null, UsageRead<ProviderUsageSummary>.Idle, null);
+    private UsageProviderReadState _state = new(0, null, UsageRead<ProviderUsageSummary>.Idle);
 
     public UsageProviderReadSource(Action<Action> post, Func<DateTimeOffset>? now = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
@@ -55,12 +54,10 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
         _delay = delay ?? Task.Delay;
     }
 
-    // A queued host hook or timer must not expose an old authenticated socket's count in the meantime.
+    // A queued host hook must not expose an old authenticated socket's snapshot.
     public UsageProviderReadState State => !IsCurrent(_state.Client, _socketEpoch)
-        ? _state with { Client = null, Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null }
-        : _expiresAt is { } expiry && expiry <= _now()
-            ? _state with { AttentionCount = null }
-            : _state;
+        ? _state with { Client = null, Read = UsageRead<ProviderUsageSummary>.Idle }
+        : _state;
 
     public event Action? Changed;
 
@@ -73,7 +70,7 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
         if (ReferenceEquals(client, _state.Client) && epoch == _state.Epoch && socketEpoch == _socketEpoch) return;
         CancelPending();
         _socketEpoch = socketEpoch;
-        _state = new(epoch, client, UsageRead<ProviderUsageSummary>.Idle, null);
+        _state = new(epoch, client, UsageRead<ProviderUsageSummary>.Idle);
         Changed?.Invoke();
     }
 
@@ -86,14 +83,14 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
         if (!IsCurrent(client, _socketEpoch))
         {
             CancelPending();
-            _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null };
+            _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle };
             Changed?.Invoke();
             return;
         }
         CancelPending();
         var generation = _generation;
         var epoch = _socketEpoch;
-        _state = _state with { Read = _state.Read with { Phase = UsageLoadPhase.Loading }, AttentionCount = null };
+        _state = _state with { Read = _state.Read with { Phase = UsageLoadPhase.Loading } };
         Changed?.Invoke();
         _ = ReadAsync(client, epoch, generation, _readCts.Token);
     }
@@ -115,7 +112,7 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
             if (!IsCurrent(client, epoch))
             {
                 CancelPending();
-                _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null };
+                _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle };
                 Changed?.Invoke();
                 return;
             }
@@ -124,18 +121,12 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
                 : new UsageRead<ProviderUsageSummary>(UsageLoadPhase.Failed, _state.Read.Value, result.Error, result.Status);
             var now = _now();
             var providers = read is { Phase: UsageLoadPhase.Loaded, Value: { Refreshing: false } value } ? value : null;
-            _state = _state with
-            {
-                Read = read,
-                // A partial provider failure cannot establish an exact navigation count, including zero.
-                AttentionCount = providers is null || providers.Providers.Any(provider => !string.IsNullOrEmpty(provider.Error))
-                    ? null : UsageProviderAttention.Select(providers, now).Count,
-            };
-            _expiresAt = providers?.Providers.SelectMany(provider => provider.Windows)
+            _state = _state with { Read = read };
+            var expiry = providers?.Providers.SelectMany(provider => provider.Windows)
                 .Where(window => window.ResetAt > now).Select(window => window.ResetAt).Min();
             Changed?.Invoke();
-            if (_expiresAt is { } expiry)
-                _ = ExpireAsync(client, epoch, generation, expiry, _expiryCts.Token);
+            if (expiry is { } nextExpiry)
+                _ = ExpireAsync(client, epoch, generation, nextExpiry, _expiryCts.Token);
         });
     }
 
@@ -159,12 +150,11 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
         _post(() =>
         {
             if (_disposed || token.IsCancellationRequested || generation != _generation) return;
-            _state = !IsCurrent(client, epoch)
-                ? _state with { Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null }
-                : _state with { AttentionCount = null };
+            if (!IsCurrent(client, epoch))
+                _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle };
             Changed?.Invoke();
             // Retained display rows can have later reset boundaries too. Wake the same consumers
-            // at each boundary without rereading, and never restore an invalidated exact count.
+            // at each boundary without rereading.
             var next = _state.Read.Value?.Providers.SelectMany(provider => provider.Windows)
                 .Where(window => window.ResetAt > _now()).Select(window => window.ResetAt).Min();
             if (next is { } nextExpiry)
@@ -185,7 +175,6 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
         _expiryCts.Cancel();
         _expiryCts.Dispose();
         _expiryCts = new();
-        _expiresAt = null;
     }
 
     public void Dispose()
@@ -195,7 +184,7 @@ internal sealed class UsageProviderReadSource : IUsageProviderReadSource, IDispo
         _disposed = true;
         _readCts.Dispose();
         _expiryCts.Dispose();
-        _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle, AttentionCount = null };
+        _state = _state with { Read = UsageRead<ProviderUsageSummary>.Idle };
         Changed = null;
     }
 }

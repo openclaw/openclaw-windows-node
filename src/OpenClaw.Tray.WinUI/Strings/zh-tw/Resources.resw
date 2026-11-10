@@ -8205,7 +8205,6 @@
   <data name="Usage_Query_Label" xml:space="preserve"><value>篩選工作階段</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>部分篩選器已被忽略</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>代理程式</value></data>
-  <data name="Usage_Facet_provider" xml:space="preserve"><value>提供者</value></data>
   <data name="Usage_Facet_model" xml:space="preserve"><value>模型</value></data>
   <data name="Usage_Loading" xml:space="preserve"><value>正在載入用量</value></data>
   <data name="Usage_Empty_Title" xml:space="preserve"><value>目前還沒有可統計的內容</value></data>
@@ -8221,16 +8220,10 @@
   <data name="Usage_Cache_Title" xml:space="preserve"><value>正在更新</value></data>
   <data name="Usage_Cache_Checking" xml:space="preserve"><value>用量資料可能不完整。正在自動檢查更新的合計。</value></data>
   <data name="Usage_Cache_Paused" xml:space="preserve"><value>用量資料可能不完整。自動檢查已暫停；請選取「重新整理」再次檢查。</value></data>
-  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>每日權杖用量</value></data>
-  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>每日費用</value></data>
-  <data name="Usage_Daily_Empty" xml:space="preserve"><value>此期間沒有每日用量。</value></data>
   <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}：{1} 個權杖，{2}</value></data>
   <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}：尚未載入</value></data>
   <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>尚未載入</value></data>
-  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>以表格顯示每日數值</value></data>
   <data name="Usage_Table_Date" xml:space="preserve"><value>日期</value></data>
-  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>依類型的權杖</value></data>
-  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>依類型的費用</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>訊息</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>工具呼叫</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>快取命中率</value></data>
@@ -8245,7 +8238,6 @@
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>提供者用量無法使用。</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>正在重新整理提供者用量。</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>未回報配額資訊。</value></data>
-  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>正在重設</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0}，共 {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1}（額度）</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>工作階段</value></data>
@@ -8271,7 +8263,6 @@
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} 個錯誤</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} 個項目沒有價格</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>最新的在前</value></data>
-  <data name="Usage_Subtitle" xml:space="preserve"><value>各工作階段的權杖使用量與預估費用。</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>此範圍內有 {0} 個工作階段</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>此範圍內有 {0} 個工作階段</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>預估費用</value></data>
@@ -8281,14 +8272,10 @@
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>在瀏覽器中開啟閘道的用量頁面，檢視時間軸、對話記錄和其他詳細分析。不會帶入目前的日期範圍、篩選條件和選取的工作階段。</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>已載入 {0}/{1} 個工作階段；總計包含所有工作階段。</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>用量明細</value></data>
-  <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>依預估費用排序，其次依權杖數。未定價的用量排在最後。</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>來源類型</value></data>
   <data name="Usage_Contributors_Agent" xml:space="preserve"><value>代理程式</value></data>
   <data name="Usage_Contributors_Model" xml:space="preserve"><value>模型</value></data>
   <data name="Usage_Contributors_Provider" xml:space="preserve"><value>提供者</value></data>
-  <data name="Usage_Details_Cache" xml:space="preserve"><value>快取權杖</value></data>
-  <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>讀取 {0} · 寫入 {1}</value></data>
-  <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>開啟對話</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>此閘道不支援用量</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>請更新閘道以在此檢視費用、權杖與工作階段。</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>已載入前 {0} 個工作階段；可能還有更多。</value></data>

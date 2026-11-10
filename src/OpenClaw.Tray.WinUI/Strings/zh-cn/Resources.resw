@@ -8205,7 +8205,6 @@
   <data name="Usage_Query_Label" xml:space="preserve"><value>筛选会话</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>部分筛选器已被忽略</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>代理</value></data>
-  <data name="Usage_Facet_provider" xml:space="preserve"><value>提供商</value></data>
   <data name="Usage_Facet_model" xml:space="preserve"><value>模型</value></data>
   <data name="Usage_Loading" xml:space="preserve"><value>正在加载用量</value></data>
   <data name="Usage_Empty_Title" xml:space="preserve"><value>暂时还没有可统计的内容</value></data>
@@ -8221,16 +8220,10 @@
   <data name="Usage_Cache_Title" xml:space="preserve"><value>正在更新</value></data>
   <data name="Usage_Cache_Checking" xml:space="preserve"><value>用量数据可能不完整。正在自动检查更新的合计。</value></data>
   <data name="Usage_Cache_Paused" xml:space="preserve"><value>用量数据可能不完整。自动检查已暂停；请选择“刷新”再次检查。</value></data>
-  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>每日令牌用量</value></data>
-  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>每日费用</value></data>
-  <data name="Usage_Daily_Empty" xml:space="preserve"><value>此期间没有每日用量。</value></data>
   <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}：{1} 个令牌，{2}</value></data>
   <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}：尚未加载</value></data>
   <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>尚未加载</value></data>
-  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>以表格显示每日数值</value></data>
   <data name="Usage_Table_Date" xml:space="preserve"><value>日期</value></data>
-  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>按类型的令牌</value></data>
-  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>按类型的费用</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>消息</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>工具调用</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>缓存命中率</value></data>
@@ -8245,7 +8238,6 @@
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>提供商用量不可用。</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>正在刷新提供商用量。</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>未报告配额信息。</value></data>
-  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>正在重置</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0}，共 {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1}（额度）</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>会话</value></data>
@@ -8271,7 +8263,6 @@
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} 个错误</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} 个条目没有价格</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>最新的在前</value></data>
-  <data name="Usage_Subtitle" xml:space="preserve"><value>各会话的令牌用量和预估费用。</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>此范围内有 {0} 个会话</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>此范围内有 {0} 个会话</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>预估费用</value></data>
@@ -8281,14 +8272,10 @@
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>在浏览器中打开网关的用量页面，查看时间线、对话记录和其他详细分析。不会带入当前的日期范围、筛选条件和所选会话。</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>已加载 {0}/{1} 个会话；总计包括所有会话。</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>用量明细</value></data>
-  <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>按预估费用排序，其次按令牌数。未定价的用量排在最后。</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>来源类型</value></data>
   <data name="Usage_Contributors_Agent" xml:space="preserve"><value>代理</value></data>
   <data name="Usage_Contributors_Model" xml:space="preserve"><value>模型</value></data>
   <data name="Usage_Contributors_Provider" xml:space="preserve"><value>提供商</value></data>
-  <data name="Usage_Details_Cache" xml:space="preserve"><value>缓存令牌</value></data>
-  <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>读取 {0} · 写入 {1}</value></data>
-  <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>打开对话</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>此网关不支持用量</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>请更新网关以在此查看费用、令牌和会话。</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>已加载前 {0} 个会话；可能还有更多。</value></data>

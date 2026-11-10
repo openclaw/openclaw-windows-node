@@ -97,7 +97,6 @@ internal sealed record UsageDashboard(
 /// </summary>
 internal static class UsageDashboardProjection
 {
-    public const int TopContributors = 5;
     public const int MaxChartDays = 366;
 
     public static UsageDashboard Project(

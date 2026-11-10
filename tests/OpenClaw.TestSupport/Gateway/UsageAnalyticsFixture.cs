@@ -31,9 +31,8 @@ public sealed class UsageAnalyticsFixture
 
     private static readonly string[] SessionsUsageParameters =
     [
-        "key", "agentId", "agentScope", "creatorKey", "startDate", "endDate", "mode", "range", "groupBy",
-        "includeHistorical", "utcOffset", "timeZone", "limit", "projection", "offset", "query", "selectedDays",
-        "selectedHours", "selectedSessions", "recentKeys", "sort", "sortDirection", "includeContextWeight",
+        "key", "agentId", "agentScope", "startDate", "endDate", "mode", "groupBy",
+        "utcOffset", "timeZone", "limit", "projection", "offset", "query", "sort", "sortDirection",
     ];
 
     // SessionsUsageParamsSchema in the published openclaw@2026.10.7 package (closed object).
@@ -89,35 +88,35 @@ public sealed class UsageAnalyticsFixture
 
     private sealed record Spec(
         string Key, string Label, string Agent, string Channel, string Provider, string Model,
-        string CreatorKey, string CreatorType, string CreatorLabel, string[] Tools,
+        string[] Tools,
         double Weight, int ActivityPercent, int Hour, bool Errors = false);
 
     private static readonly Spec[] Specs =
     [
         new("agent:main:webchat:main", "Main conversation", "main", "webchat", "anthropic", "claude-sonnet-4.5",
-            "profile:ada", "human", "Ada Lovelace", ["read", "edit", "exec"], 1.6, 75, 10),
+            ["read", "edit", "exec"], 1.6, 75, 10),
         new("agent:research:discord:guild:42", "Research digest", "research", "discord", "google", "gemini-2.5-pro",
-            "agent:research", "agent", "Research agent", ["web_search", "web_fetch"], 1.2, 55, 14),
+            ["web_search", "web_fetch"], 1.2, 55, 14),
         new("agent:main:telegram:dm:ada", "Trip planning with Ada", "main", "telegram", "openai", "gpt-5.1",
-            "profile:ada", "human", "Ada Lovelace", ["web_search", "read", "calendar"], 1.0, 45, 20),
+            ["web_search", "read", "calendar"], 1.0, 45, 20),
         new("agent:ops:slack:C01", "Incident review", "ops", "slack", "anthropic", "claude-opus-4.1",
-            "profile:grace", "human", "Grace Hopper", ["exec", "read", "browser"], 0.9, 30, 16, Errors: true),
+            ["exec", "read", "browser"], 0.9, 30, 16, Errors: true),
         new("agent:main:discord:dm:linus", "Code review help", "main", "discord", "anthropic", "claude-sonnet-4.5",
-            "profile:linus", "human", "Linus", ["read", "edit", "exec"], 0.8, 40, 11),
+            ["read", "edit", "exec"], 0.8, 40, 11),
         new("agent:research:webchat:papers", "Paper reading list", "research", "webchat", "anthropic", "claude-sonnet-4.5",
-            "profile:ada", "human", "Ada Lovelace", ["web_fetch", "read"], 0.7, 35, 21),
+            ["web_fetch", "read"], 0.7, 35, 21),
         new("agent:ops:webchat:deploy", "Deploy runbook", "ops", "webchat", "openai", "gpt-5.1",
-            "profile:grace", "human", "Grace Hopper", ["exec", "read"], 0.6, 25, 9, Errors: true),
+            ["exec", "read"], 0.6, 25, 9, Errors: true),
         new("agent:research:slack:C02", "Market scan", "research", "slack", "google", "gemini-2.5-flash",
-            "agent:research", "agent", "Research agent", ["web_search"], 0.5, 50, 8),
+            ["web_search"], 0.5, 50, 8),
         new("agent:main:cron:daily-summary", "Daily summary", "main", "cron", "openai", "gpt-5-mini",
-            "system", "system", "System", ["read", "message"], 0.4, 95, 6),
+            ["read", "message"], 0.4, 95, 6),
         new("agent:main:webchat:voice-notes", "Voice notes", "main", "webchat", "openai", "gpt-realtime",
-            "profile:grace", "human", "Grace Hopper", [], 0.3, 20, 19),
+            [], 0.3, 20, 19),
         new("agent:main:whatsapp:dm:grace", "Groceries with Grace", "main", "whatsapp", "openai", "gpt-5-mini",
-            "profile:grace", "human", "Grace Hopper", ["message"], 0.25, 30, 18),
+            ["message"], 0.25, 30, 18),
         new("agent:ops:cron:backup-check", "Backup check", "ops", "cron", "ollama", "llama3.3",
-            "system", "system", "System", ["exec"], 0.2, 90, 3),
+            ["exec"], 0.2, 90, 3),
     ];
 
     // USD per million tokens: input, output, cache read, cache write.
@@ -218,36 +217,18 @@ public sealed class UsageAnalyticsFixture
         var (start, end) = Range(p);
         var family = Text(p, "groupBy") == "family";
         var key = Text(p, "key");
-        var includeContext = p.TryGetProperty("includeContextWeight", out var ic) && ic.ValueKind == JsonValueKind.True;
         var rows = Population(start, end, mode);
-
-        var creator = Text(p, "creatorKey");
-        var creatorOptions = rows.Select(r => r.Spec).DistinctBy(s => s.CreatorKey)
-            .Select(s => Creator(s)).ToArray();
-        if (creator is not null) rows = rows.Where(r => r.Spec.CreatorKey == creator).ToList();
 
         if (key is not null)
         {
             var single = rows.Where(r => r.Spec.Key == key).ToList();
-            return Report(start, end, single, single, rows, family, includeContext, mode, creatorOptions, overview: null);
+            return Report(start, end, single, single, family, mode, overview: null);
         }
 
         var overviewRequested = Text(p, "projection") == "overview";
         var warnings = new List<string>();
-        var calendarRows = ApplyQuery(rows, Text(p, "query"), warnings);
-        var hours = Ints(p, "selectedHours");
-        if (hours.Count > 0) calendarRows = calendarRows.Where(r => hours.Contains(r.Spec.Hour)).ToList();
-        var days = Strings(p, "selectedDays");
-        var population = days.Count == 0
-            ? calendarRows
-            : calendarRows
-                .Select(r => r with { Days = r.Days.Where(d => days.Contains(d.Date)).ToList() })
-                .Where(r => r.Days.Count > 0).ToList();
-
-        var recent = p.TryGetProperty("recentKeys", out var rk) && rk.ValueKind == JsonValueKind.Array
-            ? Strings(p, "recentKeys") : null;
-        var table = recent is null ? population : population.Where(r => recent.Contains(r.Spec.Key)).ToList();
-        table = Sort(table, Text(p, "sort") ?? "cost", Text(p, "sortDirection") != "asc");
+        var population = ApplyQuery(rows, Text(p, "query"), warnings);
+        var table = Sort(population, Text(p, "sort") ?? "cost", Text(p, "sortDirection") != "asc");
         var offset = p.TryGetProperty("offset", out var o) && o.TryGetInt32(out var ov) ? Math.Max(0, ov) : 0;
         var limit = p.TryGetProperty("limit", out var l) && l.TryGetInt32(out var lv) ? Math.Clamp(lv, 1, 1000) : 50;
         if (overviewRequested) limit = Math.Min(limit, SessionsUsageQueryLimit);
@@ -256,12 +237,9 @@ public sealed class UsageAnalyticsFixture
         JsonObject? overview = null;
         if (overviewRequested)
         {
-            var selected = Strings(p, "selectedSessions");
-            var selectedRows = selected.Select(k => population.FirstOrDefault(r => r.Spec.Key == k))
-                .OfType<Row>().ToList();
-            overview = Overview(population, rows, table, selectedRows, offset, limit, warnings, family, mode);
+            overview = Overview(population, rows, offset, limit, warnings);
         }
-        return Report(start, end, page, population, calendarRows, family, includeContext, mode, creatorOptions, overview);
+        return Report(start, end, page, population, family, mode, overview);
     }
 
     private const int SessionsUsageQueryLimit = 50;
@@ -284,30 +262,25 @@ public sealed class UsageAnalyticsFixture
         var (start, end) = Range(p);
         var family = Text(p, "groupBy") == "family";
         var key = Text(p, "key");
-        var includeContext = p.TryGetProperty("includeContextWeight", out var ic) && ic.ValueKind == JsonValueKind.True;
         var rows = Population(start, end, UsageAnalyticsMode.Populated);
-        var creatorOptions = rows.Select(r => r.Spec).DistinctBy(s => s.CreatorKey).Select(s => Creator(s)).ToArray();
-        var creator = Text(p, "creatorKey");
-        if (creator is not null) rows = rows.Where(r => r.Spec.CreatorKey == creator).ToList();
         if (key is not null) rows = rows.Where(r => r.Spec.Key == key).ToList();
         var limit = p.TryGetProperty("limit", out var l) && l.TryGetInt32(out var lv) ? Math.Clamp(lv, 1, 1000) : 50;
         var page = Sort(rows, "recent", descending: true).Take(limit).ToList();
-        return Report(start, end, page, rows, rows, family, includeContext, UsageAnalyticsMode.Populated, creatorOptions, overview: null);
+        return Report(start, end, page, rows, family, UsageAnalyticsMode.Populated, overview: null);
     }
 
     private static JsonObject Report(
-        DateOnly start, DateOnly end, List<Row> page, List<Row> population, List<Row> calendar, bool family,
-        bool includeContext, UsageAnalyticsMode mode, JsonNode[] creatorOptions, JsonObject? overview)
+        DateOnly start, DateOnly end, List<Row> page, List<Row> population, bool family,
+        UsageAnalyticsMode mode, JsonObject? overview)
     {
         var result = new JsonObject
         {
             ["updatedAt"] = GatewayScenarioClock.UpdatedAt,
             ["startDate"] = Iso(start),
             ["endDate"] = Iso(end),
-            ["sessions"] = new JsonArray(page.Select(r => SessionRow(r, family, includeContext)).ToArray<JsonNode?>()),
+            ["sessions"] = new JsonArray(page.Select(r => SessionRow(r, family)).ToArray<JsonNode?>()),
             ["totals"] = Totals(population.SelectMany(r => r.Days)),
-            ["aggregates"] = Aggregates(population, calendar),
-            ["creatorOptions"] = new JsonArray(creatorOptions.Select(c => c.DeepClone()).ToArray()),
+            ["aggregates"] = Aggregates(population),
             ["cacheStatus"] = mode == UsageAnalyticsMode.Partial
                 ? new JsonObject { ["status"] = "partial", ["cachedFiles"] = 9, ["pendingFiles"] = 3, ["staleFiles"] = 0 }
                 : new JsonObject { ["status"] = "fresh", ["cachedFiles"] = population.Count, ["pendingFiles"] = 0, ["staleFiles"] = 0 },
@@ -323,58 +296,15 @@ public sealed class UsageAnalyticsFixture
     }
 
     private static JsonObject Overview(
-        List<Row> population, List<Row> unfiltered, List<Row> table, List<Row> selected, int offset, int limit,
-        List<string> warnings, bool family, UsageAnalyticsMode mode)
-    {
-        var hourTokens = new long[24];
-        var hourlyMessages = new long[24];
-        var hourlyErrors = new long[24];
-        var weekdayTokens = new long[7];
-        foreach (var row in population)
-        {
-            foreach (var day in row.Days)
-            {
-                // Spread each day's tokens over a three-hour working window.
-                for (var offsetHour = 0; offsetHour < 3; offsetHour++)
-                {
-                    var hour = (row.Spec.Hour + offsetHour) % 24;
-                    var share = offsetHour == 0 ? 0.5 : 0.25;
-                    hourTokens[hour] += (long)(day.Tokens * share);
-                    hourlyMessages[hour] += (long)((day.User + day.Assistant) * share);
-                    hourlyErrors[hour] += offsetHour == 0 ? day.Errors : 0;
-                }
-                weekdayTokens[(int)DateOnly.ParseExact(day.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture).DayOfWeek] += day.Tokens;
-            }
-        }
-        var durations = population.Where(r => r.Days.Count > 0).Select(Duration).ToArray();
-        return new JsonObject
+        List<Row> population, List<Row> unfiltered, int offset, int limit, List<string> warnings) =>
+        new()
         {
             ["usageReport"] = Report(population.SelectMany(r => r.Days)),
-            ["total"] = table.Count,
+            ["total"] = population.Count,
             ["unfilteredSessionCount"] = unfiltered.Count,
-            ["selectedSessionCount"] = selected.Count,
-            ["selectedRowCount"] = selected.Count,
-            ["selectedUsageComplete"] = mode != UsageAnalyticsMode.Partial,
-            ["selectedRows"] = new JsonArray(selected.Select(r => SessionRow(r, family, false)).ToArray<JsonNode?>()),
-            // Upstream: total counts the visible roster (recent sessions only when asked); the table totals and their
-            // session count cover every matching session.
-            ["tableSessionCount"] = population.Count,
-            ["tableTotals"] = new JsonObject
-            {
-                ["tokens"] = population.Sum(r => r.Days.Sum(d => d.Tokens)),
-                ["cost"] = Math.Round(population.Sum(r => r.Days.Sum(d => d.Cost)), 6),
-                ["errors"] = population.Sum(r => r.Days.Sum(d => d.Errors)),
-            },
             ["offset"] = offset,
             ["limit"] = limit,
             ["queryWarnings"] = new JsonArray(warnings.Select(w => (JsonNode?)w).ToArray()),
-            ["hourTokens"] = new JsonArray(hourTokens.Select(v => (JsonNode?)v).ToArray()),
-            ["weekdayTokens"] = new JsonArray(weekdayTokens.Select(v => (JsonNode?)v).ToArray()),
-            ["hasTimelineData"] = population.Count > 0,
-            ["durationMs"] = durations.Sum(),
-            ["durationCount"] = durations.Length,
-            ["hourlyMessages"] = new JsonArray(hourlyMessages.Select(v => (JsonNode?)v).ToArray()),
-            ["hourlyErrors"] = new JsonArray(hourlyErrors.Select(v => (JsonNode?)v).ToArray()),
             ["filterOptions"] = new JsonObject
             {
                 ["agent"] = Options(unfiltered.Select(r => r.Spec.Agent)),
@@ -384,12 +314,11 @@ public sealed class UsageAnalyticsFixture
                 ["tool"] = Options(unfiltered.SelectMany(r => r.Spec.Tools)),
             },
         };
-    }
 
     private static JsonArray Options(IEnumerable<string> values) =>
         new(values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(v => (JsonNode?)v).ToArray());
 
-    private static JsonObject SessionRow(Row row, bool family, bool includeContext)
+    private static JsonObject SessionRow(Row row, bool family)
     {
         var spec = row.Spec;
         var sessionId = $"00000000-0000-4000-9000-{row.Index + 1:D12}";
@@ -401,13 +330,10 @@ public sealed class UsageAnalyticsFixture
             ["scope"] = family ? "family" : "instance",
             ["updatedAt"] = LastActivity(row),
             ["agentId"] = spec.Agent,
-            ["createdActor"] = Actor(spec),
-            ["creatorKey"] = spec.CreatorKey,
             ["channel"] = spec.Channel,
             ["chatType"] = spec.Channel == "cron" ? "cron" : "direct",
             ["modelProvider"] = spec.Provider,
             ["model"] = spec.Model,
-            ["hasContextWeight"] = true,
         };
         if (family && row.Index % 3 == 0)
         {
@@ -426,29 +352,13 @@ public sealed class UsageAnalyticsFixture
         usage["firstActivity"] = FirstActivity(row);
         usage["lastActivity"] = LastActivity(row);
         usage["durationMs"] = Duration(row);
-        usage["activityDates"] = new JsonArray(row.Days.Select(d => (JsonNode?)d.Date).ToArray());
-        usage["dailyBreakdown"] = new JsonArray(row.Days.Select(d =>
-        {
-            var daily = Totals([d]);
-            daily["date"] = d.Date;
-            daily["tokens"] = d.Tokens;
-            daily["cost"] = Math.Round(d.Cost, 6);
-            return (JsonNode?)daily;
-        }).ToArray());
         usage["messageCounts"] = Messages(row.Days);
         usage["toolUsage"] = Tools([row]);
-        usage["modelUsage"] = new JsonArray(new JsonObject
-        {
-            ["provider"] = spec.Provider, ["model"] = spec.Model,
-            ["count"] = row.Days.Sum(d => d.Assistant), ["totals"] = Totals(row.Days),
-        });
-        usage["latency"] = Latency(row.Days.Sum(d => d.Assistant), spec.Weight);
         json["usage"] = usage;
-        if (includeContext) json["contextWeight"] = ContextWeight(spec);
         return json;
     }
 
-    private static JsonObject Aggregates(List<Row> population, List<Row> calendar)
+    private static JsonObject Aggregates(List<Row> population)
     {
         var days = population.SelectMany(r => r.Days).ToList();
         JsonObject Bucket(IEnumerable<Row> rows, string? provider, string? model)
@@ -473,69 +383,15 @@ public sealed class UsageAnalyticsFixture
         {
             ["agentId"] = g.Key, ["totals"] = Totals(g.SelectMany(r => r.Days)),
         }).OrderByDescending(b => b["totals"]!["totalCost"]!.GetValue<double>());
-        var byChannel = population.GroupBy(r => r.Spec.Channel).Select(g => new JsonObject
-        {
-            ["channel"] = g.Key, ["totals"] = Totals(g.SelectMany(r => r.Days)),
-        }).OrderByDescending(b => b["totals"]!["totalCost"]!.GetValue<double>());
-        var byCreator = population.GroupBy(r => r.Spec.CreatorKey).Select(g =>
-        {
-            var creator = Creator(g.First().Spec).AsObject();
-            creator["totals"] = Totals(g.SelectMany(r => r.Days));
-            creator["sessionCount"] = g.Count();
-            creator["daily"] = DailyTotals(g.SelectMany(r => r.Days));
-            creator["sessionActivity"] = new JsonArray(g.Select(r => (JsonNode?)new JsonObject
-            {
-                ["dates"] = new JsonArray(r.Days.Select(d => (JsonNode?)d.Date).ToArray()),
-                ["sessionCount"] = 1,
-            }).ToArray());
-            return creator;
-        }).OrderByDescending(b => b["totals"]!["totalCost"]!.GetValue<double>());
-        var calendarDays = calendar.SelectMany(r => r.Days).ToList();
-        var modelDaily = calendar
-            .SelectMany(r => r.Days.Select(d => (r.Spec.Provider, r.Spec.Model, Day: d)))
-            .GroupBy(x => (x.Day.Date, x.Provider, x.Model))
-            .OrderBy(g => g.Key.Date, StringComparer.Ordinal)
-            .Select(g =>
-            {
-                var item = new JsonObject
-                {
-                    ["date"] = g.Key.Date, ["provider"] = g.Key.Provider, ["model"] = g.Key.Model,
-                    ["tokens"] = g.Sum(x => x.Day.Tokens), ["cost"] = Math.Round(g.Sum(x => x.Day.Cost), 6),
-                    ["count"] = g.Sum(x => x.Day.Assistant),
-                };
-                if (g.Any(x => x.Day.LowerBound)) item["usageReport"] = Unavailable();
-                return (JsonNode?)item;
-            });
-        var daily = days.GroupBy(d => d.Date).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g =>
-        {
-            var item = new JsonObject
-            {
-                ["date"] = g.Key,
-                ["tokens"] = g.Sum(d => d.Tokens),
-                ["cost"] = Math.Round(g.Sum(d => d.Cost), 6),
-                ["messages"] = g.Sum(d => d.User + d.Assistant),
-                ["toolCalls"] = g.Sum(d => d.ToolCalls),
-                ["errors"] = g.Sum(d => d.Errors),
-            };
-            if (g.Any(d => d.LowerBound)) item["usageReport"] = Unavailable();
-            return (JsonNode?)item;
-        });
-        var assistantTurns = days.Sum(d => d.Assistant);
         return new JsonObject
         {
             ["sessionCount"] = population.Count,
-            ["longestSessionDurationMs"] = population.Count == 0 ? 0 : population.Max(Duration),
             ["messages"] = Messages(days),
             ["tools"] = Tools(population),
             ["byModel"] = new JsonArray(byModel.ToArray<JsonNode?>()),
             ["byProvider"] = new JsonArray(byProvider.ToArray<JsonNode?>()),
             ["byAgent"] = new JsonArray(byAgent.ToArray<JsonNode?>()),
-            ["byChannel"] = new JsonArray(byChannel.ToArray<JsonNode?>()),
-            ["byCreator"] = new JsonArray(byCreator.ToArray<JsonNode?>()),
-            ["costDaily"] = DailyTotals(calendarDays),
-            ["latency"] = Latency(assistantTurns, 1),
-            ["modelDaily"] = new JsonArray(modelDaily.ToArray()),
-            ["daily"] = new JsonArray(daily.ToArray()),
+            ["costDaily"] = DailyTotals(days),
         };
     }
 
@@ -608,69 +464,6 @@ public sealed class UsageAnalyticsFixture
             ["tools"] = new JsonArray(tools.Select(t => (JsonNode?)new JsonObject { ["name"] = t.Key, ["count"] = t.Value }).ToArray()),
         };
     }
-
-    private static JsonObject? Latency(int count, double weight) => count == 0
-        ? null
-        : new JsonObject
-        {
-            ["count"] = count,
-            ["avgMs"] = Math.Round(2_400 + 1_800 * weight),
-            ["p95Ms"] = Math.Round(6_500 + 4_000 * weight),
-            ["minMs"] = 640,
-            ["maxMs"] = Math.Round(14_000 + 6_000 * weight),
-        };
-
-    private static JsonNode Creator(Spec spec) => new JsonObject { ["key"] = spec.CreatorKey, ["actor"] = Actor(spec) };
-
-    private static JsonObject Actor(Spec spec)
-    {
-        var actor = new JsonObject { ["type"] = spec.CreatorType, ["label"] = spec.CreatorLabel };
-        if (spec.CreatorType != "system") actor["id"] = spec.CreatorKey.Split(':')[1];
-        return actor;
-    }
-
-    private static JsonObject ContextWeight(Spec spec) => new()
-    {
-        ["source"] = "run",
-        ["generatedAt"] = GatewayScenarioClock.UpdatedAt,
-        ["sessionKey"] = spec.Key,
-        ["provider"] = spec.Provider,
-        ["model"] = spec.Model,
-        ["systemPrompt"] = new JsonObject
-        {
-            ["chars"] = 38_400, ["projectContextChars"] = 14_200, ["nonProjectContextChars"] = 24_200,
-        },
-        ["currentTurn"] = new JsonObject { ["promptChars"] = 1_840, ["runtimeContextChars"] = 620 },
-        ["injectedWorkspaceFiles"] = new JsonArray(
-            ContextFile("AGENTS.md", "/fixture/workspace/AGENTS.md", 6_200, 6_200, false),
-            ContextFile("SOUL.md", "/fixture/workspace/SOUL.md", 2_100, 2_100, false),
-            ContextFile("TOOLS.md", "/fixture/workspace/TOOLS.md", 9_400, 5_900, true),
-            ContextFile("MEMORY.md", "/fixture/workspace/MEMORY.md", 0, 0, false, missing: true)),
-        ["skills"] = new JsonObject
-        {
-            ["promptChars"] = 4_800,
-            ["entries"] = new JsonArray(
-                new JsonObject { ["name"] = "weather", ["blockChars"] = 1_900 },
-                new JsonObject { ["name"] = "calendar", ["blockChars"] = 1_600 },
-                new JsonObject { ["name"] = "github", ["blockChars"] = 1_300 }),
-        },
-        ["tools"] = new JsonObject
-        {
-            ["listChars"] = 3_100,
-            ["schemaChars"] = 11_700,
-            ["entries"] = new JsonArray(spec.Tools.Concat(["message"]).Distinct().Select((name, i) => (JsonNode?)new JsonObject
-            {
-                ["name"] = name, ["source"] = "openclaw", ["summaryChars"] = 420 + i * 60, ["schemaChars"] = 1_900 + i * 340,
-            }).ToArray()),
-        },
-    };
-
-    private static JsonObject ContextFile(string name, string path, long raw, long injected, bool truncated, bool missing = false) =>
-        new()
-        {
-            ["name"] = name, ["path"] = path, ["missing"] = missing, ["rawChars"] = raw,
-            ["injectedChars"] = injected, ["truncated"] = truncated,
-        };
 
     private static long Start(Row row, Day day) =>
         new DateTimeOffset(DateOnly.ParseExact(day.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture)
@@ -811,16 +604,6 @@ public sealed class UsageAnalyticsFixture
         p.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
             ? value.GetString()
             : null;
-
-    private static List<string> Strings(JsonElement p, string name) =>
-        p.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!).ToList()
-            : [];
-
-    private static List<int> Ints(JsonElement p, string name) =>
-        p.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().Where(v => v.TryGetInt32(out _)).Select(v => v.GetInt32()).ToList()
-            : [];
 
     private static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 }

@@ -8258,7 +8258,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_Query_Label" xml:space="preserve"><value>Filtrar sessões</value></data>
   <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Alguns filtros foram ignorados</value></data>
   <data name="Usage_Facet_agent" xml:space="preserve"><value>Agente</value></data>
-  <data name="Usage_Facet_provider" xml:space="preserve"><value>Provedor</value></data>
   <data name="Usage_Facet_model" xml:space="preserve"><value>Modelo</value></data>
   <data name="Usage_Loading" xml:space="preserve"><value>Carregando o uso</value></data>
   <data name="Usage_Empty_Title" xml:space="preserve"><value>Nada para contar ainda</value></data>
@@ -8274,16 +8273,10 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_Cache_Title" xml:space="preserve"><value>Atualizando</value></data>
   <data name="Usage_Cache_Checking" xml:space="preserve"><value>Os dados de uso podem estar incompletos. Verificando automaticamente os totais atualizados.</value></data>
   <data name="Usage_Cache_Paused" xml:space="preserve"><value>Os dados de uso podem estar incompletos. Verificações automáticas pausadas; selecione Atualizar para verificar novamente.</value></data>
-  <data name="Usage_Daily_TokensTitle" xml:space="preserve"><value>Uso diário de tokens</value></data>
-  <data name="Usage_Daily_CostTitle" xml:space="preserve"><value>Custo diário</value></data>
-  <data name="Usage_Daily_Empty" xml:space="preserve"><value>Nenhum uso diário neste período.</value></data>
   <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, custo {2}</value></data>
   <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: ainda não carregado</value></data>
   <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Ainda não carregado</value></data>
-  <data name="Usage_Daily_ShowTable" xml:space="preserve"><value>Mostrar valores diários em tabela</value></data>
   <data name="Usage_Table_Date" xml:space="preserve"><value>Data</value></data>
-  <data name="Usage_Breakdown_TokensTitle" xml:space="preserve"><value>Tokens por tipo</value></data>
-  <data name="Usage_Breakdown_CostTitle" xml:space="preserve"><value>Custo por tipo</value></data>
   <data name="Usage_Overview_Messages" xml:space="preserve"><value>Mensagens</value></data>
   <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Chamadas de ferramentas</value></data>
   <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Taxa de acertos do cache</value></data>
@@ -8298,7 +8291,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>O uso dos provedores não está disponível.</value></data>
   <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>O uso dos provedores está sendo atualizado.</value></data>
   <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Nenhuma informação de cota informada.</value></data>
-  <data name="Usage_Providers_ResetNow" xml:space="preserve"><value>Redefinindo agora</value></data>
   <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} de {1}</value></data>
   <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (créditos)</value></data>
   <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessões</value></data>
@@ -8324,7 +8316,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} erro</value></data>
   <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} entrada sem preço</value></data>
   <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Mais recentes primeiro</value></data>
-  <data name="Usage_Subtitle" xml:space="preserve"><value>Uso de tokens e custos estimados das suas sessões.</value></data>
   <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessões no período</value></data>
   <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessão no período</value></data>
   <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Custo estimado</value></data>
@@ -8334,14 +8325,10 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Usage_OpenWebHint" xml:space="preserve"><value>Abre a página Uso do gateway no navegador para linhas do tempo, transcrições e outras análises detalhadas. O período, os filtros e a sessão selecionada não são transferidos.</value></data>
   <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} de {1} carregadas; os totais incluem todas.</value></data>
   <data name="Usage_Contributors_Title" xml:space="preserve"><value>Detalhamento do uso</value></data>
-  <data name="Usage_Contributors_Subtitle" xml:space="preserve"><value>Classificados por custo estimado e depois por tokens. O uso sem preço fica por último.</value></data>
   <data name="Usage_Contributors_Label" xml:space="preserve"><value>Tipo de contribuinte</value></data>
   <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agentes</value></data>
   <data name="Usage_Contributors_Model" xml:space="preserve"><value>Modelos</value></data>
   <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Provedores</value></data>
-  <data name="Usage_Details_Cache" xml:space="preserve"><value>Tokens em cache</value></data>
-  <data name="Usage_Details_CacheSplitFormat" xml:space="preserve"><value>{0} lidos · {1} gravados</value></data>
-  <data name="Usage_Details_OpenConversation" xml:space="preserve"><value>Abrir conversa</value></data>
   <data name="Usage_Unsupported_Title" xml:space="preserve"><value>O uso não está disponível neste gateway</value></data>
   <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Atualize o gateway para ver custos, tokens e sessões aqui.</value></data>
   <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>As primeiras {0} foram carregadas; pode haver mais.</value></data>

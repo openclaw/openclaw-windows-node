@@ -1,12 +1,3 @@
-<#
-.SYNOPSIS
-Downloads and verifies the official Reactor packages for repository-local restore.
-.DESCRIPTION
-Used before direct restore and by build/CI entry points. Cached or downloaded
-packages with a different digest fail closed; no global NuGet settings are changed.
-.EXAMPLE
-.\scripts\Initialize-ReactorPackages.ps1
-#>
 [CmdletBinding()]
 param(
     [string]$DestinationDirectory = (Join-Path $PSScriptRoot '..\artifacts\reactor-packages')
