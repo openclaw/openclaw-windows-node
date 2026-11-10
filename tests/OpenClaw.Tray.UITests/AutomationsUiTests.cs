@@ -10,6 +10,19 @@ public sealed partial class GatewayFixtureUiTests
 {
     private static readonly TimeSpan ErrorToastPersistenceProbe = TimeSpan.FromSeconds(5);
 
+    internal static void AssertAutomationsPageReadScope(IEnumerable<GatewayFixtureRequest> requests, string agentId)
+    {
+        var reads = requests.Where(request => request.Method == "cron.list").ToArray();
+        // App-owned Inbox hydration legitimately reads the full catalog before navigation.
+        // Only its strict paged-catalog shape is separate; an unscoped typed page read still fails.
+        Assert.Contains(reads, request => request.IsUnscopedCronCatalogRead && request.Outcome == "ok");
+        Assert.All(reads.Where(request => request.IsUnscopedCronCatalogRead), request => Assert.Null(request.AgentId));
+        var pageReads = reads.Where(request => !request.IsUnscopedCronCatalogRead).ToArray();
+        Assert.NotEmpty(pageReads);
+        Assert.All(pageReads, request => Assert.Equal(agentId, request.AgentId));
+        Assert.Contains(pageReads, request => request.Outcome == "ok");
+    }
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task Automations_DesignerAgendaBudgetAndResizeKeepExpansionAndDialogDraft()
@@ -495,7 +508,7 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Null(FindById(run, "AutomationsBack"));
                 Assert.Null(FindById(run, "AutomationsListPane"));
                 Assert.StartsWith("Open chat:", FindById(run, "AutomationRowChat:morning-brief")!.Current.Name);
-                Assert.All(run.Gateway.Requests.Where(r => r.Method == "cron.list"), r => Assert.Equal("main", r.AgentId));
+                AssertAutomationsPageReadScope(run.Gateway.Requests, "main");
                 await ScanStateAsync("populated");
                 Capture(run, "automations-list.png", "AutomationsHeadline", "AutomationSeeRuns:flaky-report");
             });
@@ -727,7 +740,8 @@ public sealed partial class GatewayFixtureUiTests
                 await ScrollAutomationsToTopAsync(run);
                 await ChooseAutomationAgentAsync(run, "All agents");
                 await WaitUiAsync(run, () => FindById(run, $"AutomationExpander:{GatewayScenario.AutomationsOtherAgentJobId}") is not null, "all agents");
-                Assert.Contains(run.Gateway.Requests, r => r.Method == "cron.list" && r.AgentId is null && r.Outcome == "ok");
+                Assert.Contains(run.Gateway.Requests, r => r.Method == "cron.list" && !r.IsUnscopedCronCatalogRead
+                    && r.AgentId is null && r.Outcome == "ok");
                 await ChooseAutomationAgentAsync(run, "ops");
                 await WaitUiAsync(run, () => FindById(run, $"AutomationExpander:{GatewayScenario.AutomationsOtherAgentJobId}") is not null
                     && FindById(run, "AutomationExpander:morning-brief") is null, "single-job agent");

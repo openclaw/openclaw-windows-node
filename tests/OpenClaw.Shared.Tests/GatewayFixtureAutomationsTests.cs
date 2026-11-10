@@ -285,6 +285,38 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task Automations_RequestMetadataSeparatesInboxCatalogFromTypedPageScopes()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        IOperatorGatewayClient client = connected.Client;
+
+        using var deadline = new CancellationTokenSource(Deadline);
+        // The same catalog entrypoint and parameters as InboxGatewaySource, then both typed scopes.
+        var catalog = await client.ReadSearchCatalogAsync("cron.list", new { includeDisabled = true }, CancellationToken.None);
+        Assert.Contains(catalog.GetProperty("jobs").EnumerateArray(), job =>
+            job.GetProperty("id").GetString() == GatewayScenario.AutomationsOtherAgentJobId);
+        await client.ListCronJobsAsync(new CronListQuery { AgentId = "main" });
+        await client.ListCronJobsAsync(new CronListQuery());
+        // An extra query field must not gain the catalog exception just because agentId is absent.
+        await connected.Client.SendWizardRequestAsync("cron.list", new { includeDisabled = true, offset = 0, limit = 200, query = "morning" });
+
+        // A client response can arrive before the server publishes its completed diagnostic record.
+        await server.WaitForCompletedRequestAsync("cron.list", occurrence: 4, cancellationToken: deadline.Token);
+        var reads = server.Requests.Where(request => request.Method == "cron.list").ToArray();
+        Assert.Equal(4, reads.Length);
+        Assert.True(reads[0].IsUnscopedCronCatalogRead);
+        Assert.Null(reads[0].AgentId);
+        Assert.All(reads.Skip(1), request => Assert.False(request.IsUnscopedCronCatalogRead));
+        Assert.Equal("main", reads[1].AgentId);
+        Assert.Null(reads[2].AgentId);
+        Assert.Null(reads[3].AgentId);
+        Assert.All(reads, request => Assert.Equal("ok", request.Outcome));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task Automations_UpdateIsGuardedByConfigRevision()
     {
         var token = CreateToken();

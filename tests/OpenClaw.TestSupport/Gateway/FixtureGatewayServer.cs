@@ -17,7 +17,8 @@ public sealed record GatewayFixtureRequest(
     bool AdvertisesExecApprovals = false,
     string? ModelCatalogView = null,
     bool? IncludeModelDetails = null,
-    string? AgentId = null);
+    string? AgentId = null,
+    bool IsUnscopedCronCatalogRead = false);
 
 public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
 
@@ -796,7 +797,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             && details.ValueKind is JsonValueKind.True or JsonValueKind.False
                                 ? details.GetBoolean() : null,
                         // Agent scope is a synthetic fixture identifier, recorded to prove request scoping.
-                        method!.StartsWith("cron.", StringComparison.Ordinal) ? ReadString(parameters, "agentId") : null);
+                        method!.StartsWith("cron.", StringComparison.Ordinal) ? ReadString(parameters, "agentId") : null,
+                        method == "cron.list" && IsUnscopedCronCatalog(parameters));
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -1068,6 +1070,16 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         return role;
     }
 
+    // Only the shared paged-catalog wire shape. Missing agentId alone is NOT enough:
+    // typed page/global-overview queries retain their filters/sort and remain independently scoped.
+    // Record one safe boolean, never arbitrary parameters or a claimed caller identity.
+    private static bool IsUnscopedCronCatalog(JsonElement parameters) =>
+        parameters.ValueKind == JsonValueKind.Object
+        && parameters.EnumerateObject().Count() == 3
+        && parameters.TryGetProperty("includeDisabled", out var disabled) && disabled.ValueKind == JsonValueKind.True
+        && parameters.TryGetProperty("offset", out var offset) && offset.ValueKind == JsonValueKind.Number && offset.TryGetInt32(out var start) && start >= 0
+        && parameters.TryGetProperty("limit", out var limit) && limit.ValueKind == JsonValueKind.Number && limit.TryGetInt32(out var count) && count > 0 && count <= 200;
+
     private int Record(
         string method,
         string? key,
@@ -1076,13 +1088,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         bool advertisesExecApprovals = false,
         string? modelCatalogView = null,
         bool? includeModelDetails = null,
-        string? agentId = null)
+        string? agentId = null,
+        bool isUnscopedCronCatalogRead = false)
     {
         lock (_sync)
         {
             var index = _requests.Count;
             _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId,
-                advertisesExecApprovals, modelCatalogView, includeModelDetails, agentId));
+                advertisesExecApprovals, modelCatalogView, includeModelDetails, agentId, isUnscopedCronCatalogRead));
             SignalRequestChanged();
             return index;
         }
