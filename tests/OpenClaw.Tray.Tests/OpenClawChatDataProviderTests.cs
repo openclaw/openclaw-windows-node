@@ -3957,9 +3957,16 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CompletedRun_RichTranscriptReconcilesWithoutReopeningTurn(bool isFinal)
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    public async Task CompletedRun_RichTranscriptReconcilesWithoutReopeningTurn(
+        bool isFinal, bool hasRunId, bool hasCallId)
     {
         var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
         await using var lifetime = provider;
@@ -3970,15 +3977,15 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         bridge.RaiseChat(new ChatMessageInfo
         {
-            SessionKey = "main", RunId = "run-1", Role = "assistant", Text = "completed answer",
+            SessionKey = "main", RunId = hasRunId ? "run-1" : null, Role = "assistant", Text = "completed answer",
             State = isFinal ? "final" : null, IsTranscriptSnapshot = true,
-            Presentation = new(RunId: "run-1", MessageId: "answer-1"),
+            Presentation = new(RunId: hasRunId ? "run-1" : null, MessageId: "answer-1"),
             ContentParts =
             [
                 new() { Kind = ChatMessageContentPartKind.Tool, Tool = new()
-                    { Kind = ChatToolContentKind.Call, CallId = "read-1", ToolName = "read" } },
+                    { Kind = ChatToolContentKind.Call, CallId = hasCallId ? "read-1" : null, ToolName = "read" } },
                 new() { Kind = ChatMessageContentPartKind.Tool, Tool = new()
-                    { Kind = ChatToolContentKind.Result, CallId = "read-1", ToolName = "read", Text = "ready" } },
+                    { Kind = ChatToolContentKind.Result, CallId = hasCallId ? "read-1" : null, ToolName = "read", Text = "ready" } },
                 new() { Kind = ChatMessageContentPartKind.Text, Text = "completed answer",
                     Phase = "final_answer", TextSignatureId = "answer-block" },
                 new() { Kind = ChatMessageContentPartKind.Reasoning, Text = "recorded reasoning",
@@ -3996,6 +4003,40 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal("ready", tool.ToolOutput);
         Assert.Equal("completed answer",
             Assert.Single(actual.Entries, entry => entry.Kind == ChatTimelineItemKind.Assistant).Text);
+    }
+
+    [Theory]
+    [InlineData("approved", false)]
+    [InlineData("denied", false)]
+    [InlineData("approved", true)]
+    [InlineData("denied", true)]
+    public async Task CompletedRun_ToolReviewOutcomeRefinesRetainedIdleRow(string outcome, bool newerTurn)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"read","toolCallId":"read-1"}""", runId: "run-1"));
+        var review = MakeAgentEvent("tool",
+            """{"phase":"review","name":"read","toolCallId":"read-1","review":{"id":"review-1","label":"Review","status":"in_progress"}}""",
+            runId: "run-1");
+        review.Seq = 2;
+        bridge.RaiseAgent(review);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        if (newerTurn)
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+        review = MakeAgentEvent("tool", $$$"""
+            {"phase":"review","name":"read","toolCallId":"read-1","review":{"id":"review-1","label":"Review","status":"{{{outcome}}}"}}
+            """, runId: "run-1");
+        review.Seq = 3;
+        bridge.RaiseAgent(review);
+
+        var actual = snapshots[^1].Timelines["main"];
+        Assert.Equal(newerTurn, actual.TurnActive);
+        Assert.Equal(newerTurn ? "in_progress" : outcome,
+            Assert.Single(Assert.Single(actual.Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToolReviews!).Status);
     }
 
     [Theory]

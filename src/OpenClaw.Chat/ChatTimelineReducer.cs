@@ -17,7 +17,9 @@ public static class ChatTimelineReducer
             var parentKey = ResolvePendingParentKey(state, start.RunId, start.ToolCallId);
             return state.TerminalToolCorrelations?.ContainsKey(parentKey) == true &&
                 (state.PendingToolPresentations?.ContainsKey(parentKey) == true ||
-                 state.PendingToolOutcomes?.ContainsKey(parentKey) == true);
+                 state.PendingToolOutcomes?.ContainsKey(parentKey) == true ||
+                 start.Feedback is { PreparingInput: false, Review: not null } &&
+                 FindToolEntryIndex(state, parentKey, allowTerminalLegacy: false) >= 0);
         }
         var (runId, toolCallId) = evt switch
         {
@@ -536,7 +538,7 @@ public static class ChatTimelineReducer
             Entries = state.Entries.Add(entry),
             NextId = state.NextId + 1,
             // Only update legacy positional slot for events without a correlation ID.
-            ActiveToolCallId = !isTerminalReplay && e.ToolCallId is null ? id : state.ActiveToolCallId,
+            ActiveToolCallId = e.ToolCallId is null ? id : state.ActiveToolCallId,
             ActiveToolCalls = activeToolCalls,
             PendingToolPresentations = pendingPresentations,
             PendingToolOutcomes = pendingOutcomes,
@@ -763,7 +765,16 @@ public static class ChatTimelineReducer
         {
             var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
-                entries = entries.SetItem(idx, ApplyToolOutcome(entries[idx], incoming, recoveryRunId));
+            {
+                var entry = entries[idx];
+                // Ending a live turn advances the legacy epoch. Only a replay
+                // created in this still-idle epoch may recover without a run ID.
+                var recoverLegacyReplay = !state.TurnActive && entry.ToolRunId is null &&
+                    entry.ToolLegacyTurn == state.ToolLegacyTurn &&
+                    (key is null || state.TerminalToolCorrelations?.ContainsKey(key.Value) == true);
+                entries = entries.SetItem(idx,
+                    ApplyToolOutcome(entry, incoming, recoveryRunId, recoverLegacyReplay));
+            }
         }
 
         var pendingOutcomes = state.PendingToolOutcomes
@@ -802,7 +813,8 @@ public static class ChatTimelineReducer
     static ChatTimelineItem ApplyToolOutcome(
         ChatTimelineItem entry,
         ChatPendingToolOutcome incoming,
-        string? incomingRunId = null)
+        string? incomingRunId = null,
+        bool recoverLegacyReplay = false)
     {
         var currentStatus = entry.ToolResult ?? ChatToolCallStatus.InProgress;
         var currentPrecedence = ToolOutcomePrecedence(currentStatus);
@@ -821,8 +833,9 @@ public static class ChatTimelineReducer
         {
             if (currentStatus == ChatToolCallStatus.Interrupted
                 && incoming.Status == ChatToolCallStatus.Success
-                && !string.IsNullOrWhiteSpace(incomingRunId)
-                && string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal)
+                && (recoverLegacyReplay ||
+                    !string.IsNullOrWhiteSpace(incomingRunId) &&
+                    string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal))
                 && incoming.Sequence >= entry.ToolOutcomeSequence)
             {
                 return entry with

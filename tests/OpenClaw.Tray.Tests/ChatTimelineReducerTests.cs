@@ -290,6 +290,20 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void InterruptedLiveLegacyToolCannotRecoverWithoutRunIdentity()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatToolStartEvent("read", "read", ToolCallId: "read-1"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("late output", ToolCallId: "read-1"));
+
+        Assert.False(updated.TurnActive);
+        Assert.Equal(ChatToolCallStatus.Interrupted, Assert.Single(updated.Entries).ToolResult);
+        Assert.Equal("late output", updated.Entries[0].ToolOutput);
+    }
+
+    [Fact]
     public void StaleStreamingPreview_DoesNotMergeAcrossUserBoundary()
     {
         // Regression for the cross-turn stale-preview class identified by
