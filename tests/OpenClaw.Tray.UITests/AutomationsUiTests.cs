@@ -1134,6 +1134,14 @@ public sealed partial class GatewayFixtureUiTests
     public async Task Automations_LargeAgendaPagesBeyondBrowseAndJumpsToInlineRow()
     {
         var scenario = GatewayScenario.CreateAutomations(additionalJobs: 205);
+        // Singleton day groups deliberately remain visible beyond the collapsed budget.
+        // Keep this pagination proof on one reported date, independent of the current hour.
+        var reportingZone = TimeZoneInfo.Local;
+        var reportedDate = TimeZoneInfo.ConvertTime(DateTimeOffset.Now, reportingZone).Date.AddDays(1).AddHours(12);
+        var tomorrow = new DateTimeOffset(reportedDate, reportingZone.GetUtcOffset(reportedDate));
+        for (var index = 0; index < 205; index++)
+            scenario.SetCronJobNextRun($"scheduled-{index:D3}", tomorrow.AddMinutes(index).ToUnixTimeMilliseconds());
+        scenario.SetCronJobNextRun("morning-brief", tomorrow.AddMinutes(205).ToUnixTimeMilliseconds());
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "agent:main:cron" });
@@ -1149,12 +1157,20 @@ public sealed partial class GatewayFixtureUiTests
             var pageFrame = await ResetAutomationScrollAsync(run, page,
                 (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern));
             Capture(run, "automations-large-agenda.png", "AutomationsHeadline");
-            var targetAt = DateTimeOffset.FromUnixTimeMilliseconds(scenario.GetCronJobs().Single(j =>
-                j.GetProperty("id").GetString() == "scheduled-204").GetProperty("state").GetProperty("nextRunAtMs").GetInt64()).ToLocalTime();
-            var key = targetAt.Date == DateTimeOffset.Now.Date ? "Today" : "Tomorrow";
             var list = FindById(run, "AutomationsAgendaList")!;
             var before = list.FindAll(TreeScope.Children, Condition.TrueCondition).Count;
-            Invoke(FindById(run, $"AutomationAgendaMore:{key}")!);
+            // Startup can cross midnight: use the rendered group, not a second clock sample.
+            AutomationElement? more = null;
+            await WaitUiAsync(run, () =>
+            {
+                var candidates = new[] { "Today", "Tomorrow" }
+                    .Select(key => FindById(run, $"AutomationAgendaMore:{key}"))
+                    .OfType<AutomationElement>().Where(element => element.Current.IsEnabled).ToArray();
+                if (candidates.Length != 1) return false;
+                more = candidates[0];
+                return true;
+            }, "one expandable group for the reported pagination date");
+            Invoke(more!);
             await WaitUiAsync(run, () => FindById(run, "AutomationsAgendaList")!.FindAll(TreeScope.Children, Condition.TrueCondition).Count > before,
                 "expanded agenda contains additional native items");
             list = FindById(run, "AutomationsAgendaList")!;
