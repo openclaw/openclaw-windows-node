@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Globalization;
-using System.Text;
 using OpenClaw.Chat;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Chat;
 
@@ -18,8 +18,7 @@ public enum ChatToolActivityCategory
 
 public sealed record ChatToolActivityCount(
     ChatToolActivityCategory Category,
-    int Count,
-    IReadOnlyList<string>? ToolNames = null);
+    int Count);
 
 public sealed record ChatToolActivitySummary(
     IReadOnlyList<ChatToolActivityCount> Counts,
@@ -33,31 +32,224 @@ public sealed record ChatToolActivityRow(
     string Key,
     ChatTimelineItem? Entry,
     IReadOnlyList<ChatTimelineItem> Tools,
-    ChatToolActivitySummary? Summary)
+    ChatToolActivitySummary? Summary,
+    IReadOnlyList<ChatTimelineItem>? Work = null,
+    double? DurationMs = null)
 {
-    public bool IsActivityGroup => Tools.Count >= 2;
+    public bool IsActivityGroup => Tools.Count > 0 || Work is not null;
+    public bool IsCompletedWork => Work is not null;
 }
+
+/// <summary>A tool call and the calls the Gateway recorded as nested under it.</summary>
+public sealed record ChatToolCallNode(
+    ChatTimelineItem Tool,
+    IReadOnlyList<ChatToolCallNode> Children);
 
 /// <summary>
 /// WinUI-free chronological projection and summary policy for production chat tool activity.
 /// </summary>
 public static class ChatToolActivityPresentation
 {
-    private static readonly string[] s_pathPropertyNames =
-    [
-        "path", "file_path", "filePath", "filepath", "filename", "file", "notebook_path", "paths", "files",
-    ];
-
     public static IReadOnlyList<ChatToolActivityRow> Project(
         IReadOnlyList<ChatTimelineItem> entries,
         string? sessionId,
         long timelineGeneration,
-        bool showToolCalls = true)
+        bool showToolCalls = true,
+        IReadOnlyDictionary<string, ChatEntryMetadata>? metadata = null,
+        bool runWorking = false,
+        bool bubbleMode = false,
+        ChatThread? session = null)
+    {
+        var scope = sessionId?.Trim().ToLowerInvariant().Split(':');
+        if (scope is not ["agent", { Length: > 0 }, "dashboard", { Length: > 0 }] ||
+            bubbleMode)
+            return ProjectActivity(entries, sessionId, timelineGeneration, showToolCalls);
+
+        ChatMessagePresentation? Facts(ChatTimelineItem entry) =>
+            entry.Presentation ?? metadata?.GetValueOrDefault(entry.Id)?.Presentation;
+        string? Run(ChatTimelineItem entry) => entry.ToolRunId ?? Facts(entry)?.RunId;
+        bool Independent(ChatTimelineItem entry) => Facts(entry)?.IsIndependent == true || entry.IsBackgroundFinal;
+        bool Media(ChatTimelineItem entry) =>
+            metadata?.GetValueOrDefault(entry.Id)?.AssistantContent?.Media.Count > 0;
+        bool Output(ChatTimelineItem entry) =>
+            entry.Kind is ChatTimelineItemKind.Assistant or ChatTimelineItemKind.ToolCall or ChatTimelineItemKind.Reasoning &&
+            !Independent(entry) && Facts(entry)?.SenderSession is null && Facts(entry)?.SenderAgentId is null;
+        bool Failed(ChatTimelineItem entry) =>
+            entry.ToolResult is ChatToolCallStatus.Error or ChatToolCallStatus.Interrupted ||
+            entry.ToolReviews is { Count: > 0 } ||
+            entry.ToolInputPreparing ||
+            Facts(entry)?.EndsInFailure == true;
+        string? Phase(ChatTimelineItem entry)
+        {
+            var facts = Facts(entry);
+            if (facts?.StreamItemId is not null)
+                return "commentary";
+            return facts?.Phase ??
+                (facts is { MirrorOrigin: "codex-app-server", RunTerminal: true, StopReason: "stop", Interrupted: false }
+                    ? "final_answer" : null);
+        }
+        bool Reply(ChatTimelineItem entry) =>
+            entry.Kind == ChatTimelineItemKind.Assistant && !entry.IsStreaming && !Independent(entry) &&
+            Facts(entry)?.VoiceTranscript != true && !Failed(entry) &&
+            Facts(entry)?.StopReason != "toolUse" &&
+            (Facts(entry)?.MirrorOrigin != "codex-app-server" || Facts(entry)?.RunTerminal == true) &&
+            Phase(entry) != "commentary" && (!string.IsNullOrWhiteSpace(entry.Text) || Media(entry));
+        bool Work(ChatTimelineItem entry) =>
+            Output(entry) && !entry.IsStreaming && !Media(entry) &&
+            Facts(entry)?.VoiceTranscript != true && Phase(entry) != "final_answer";
+
+        var turns = new List<List<ChatTimelineItem>>();
+        foreach (var entry in entries)
+        {
+            if (turns.Count == 0 || entry.Kind == ChatTimelineItemKind.User ||
+                Facts(entry)?.TurnBoundary == true || Independent(entry) ||
+                Facts(entry)?.SenderSession is not null || Facts(entry)?.SenderAgentId is not null)
+                turns.Add([]);
+            turns[^1].Add(entry);
+        }
+        var liveTurn = runWorking ? turns.Count - 1 : -1;
+        var steerTarget = runWorking && turns.Count > 0
+            ? turns[^1].Where(entry => entry.Kind == ChatTimelineItemKind.User)
+                .Select(entry => Facts(entry)?.SteerTargetRunId).LastOrDefault(id => id is not null)
+            : null;
+        if (steerTarget is not null)
+        {
+            var target = turns.FindIndex(turn => turn.Any(entry =>
+                entry.Kind == ChatTimelineItemKind.User && Run(entry) == steerTarget));
+            if (target >= 0)
+                liveTurn = target;
+        }
+
+        var result = new List<ChatToolActivityRow>();
+        void Append(IEnumerable<ChatTimelineItem> items) =>
+            result.AddRange(ProjectActivity(items.ToArray(), sessionId, timelineGeneration, showToolCalls));
+        for (var turnIndex = 0; turnIndex < turns.Count; turnIndex++)
+        {
+            var turn = turns[turnIndex];
+            var final = turn.FindLastIndex(entry => Reply(entry));
+            if (turn.Any(entry => entry.ConfirmedHandoff is not null))
+            {
+                var trailing = turn.Skip(final + 1).ToArray();
+                var answerLast = final >= 0 && Run(turn[final]) is { } replyRun &&
+                    trailing.Length > 0 && trailing.All(entry => Work(entry) &&
+                        entry.ConfirmedHandoff is null && Run(entry) == replyRun && !Failed(entry));
+                Append(answerLast
+                    ? turn.Take(final).Concat(trailing).Append(turn[final])
+                    : turn);
+                continue;
+            }
+            if (turnIndex == liveTurn || turn.Any(entry =>
+                    entry.IsStreaming || entry.ToolResult == ChatToolCallStatus.InProgress) || final < 0)
+            {
+                Append(turn);
+                continue;
+            }
+            var start = final;
+            while (start > 0 && Output(turn[start - 1]))
+                start--;
+            var replyRuns = turn.Where(entry => Run(entry) is not null &&
+                (Media(entry) || entry.Kind == ChatTimelineItemKind.Assistant && !string.IsNullOrWhiteSpace(entry.Text)))
+                .Select(Run).ToHashSet(StringComparer.Ordinal);
+            var end = final;
+            while (end + 1 < turn.Count && Output(turn[end + 1]) &&
+                (Run(turn[end + 1]) is null || replyRuns.Contains(Run(turn[end + 1]))))
+                end++;
+
+            var preserved = new HashSet<string>(StringComparer.Ordinal) { turn[final].Id };
+            if (Run(turn[final]) is { } finalRun)
+            {
+                var answered = new HashSet<string>(StringComparer.Ordinal) { finalRun };
+                for (var index = final - 1; index >= start; index--)
+                {
+                    if (Run(turn[index]) is not { } run || answered.Contains(run))
+                        continue;
+                    if (Failed(turn[index]))
+                        answered.Add(run);
+                    else if (Reply(turn[index]))
+                    {
+                        answered.Add(run);
+                        preserved.Add(turn[index].Id);
+                    }
+                }
+            }
+            var work = new List<ChatTimelineItem>();
+            var answers = new List<ChatTimelineItem>();
+            for (var index = start; index <= end; index++)
+            {
+                var entry = turn[index];
+                if (!preserved.Contains(entry.Id) && Work(entry) && (index < final || !Failed(entry)))
+                {
+                    if (showToolCalls || entry.Kind != ChatTimelineItemKind.ToolCall)
+                        work.Add(entry);
+                }
+                else
+                    answers.Add(entry);
+            }
+            if (work.Count == 0)
+            {
+                Append(turn);
+                continue;
+            }
+            Append(turn.Take(start));
+            var tools = work.Where(entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToArray();
+            var ownerRun = Run(turn[final]);
+            if (preserved.Count > 1)
+            {
+                var workRuns = new HashSet<string?>(StringComparer.Ordinal);
+                for (var index = start; index <= end; index++)
+                {
+                    if (!work.Contains(turn[index]))
+                        continue;
+                    var run = Run(turn[index]);
+                    for (var next = index + 1; run is null && next <= end; next++)
+                        run = Run(turn[next]);
+                    workRuns.Add(run);
+                }
+                var firstAnswerRun = answers.Count > 0 ? Run(answers[0]) : null;
+                ownerRun = workRuns.Count == 1 && workRuns.Contains(firstAnswerRun) ? firstAnswerRun : null;
+            }
+            var duration = session is not null && session.Id == sessionId && ownerRun is not null &&
+                session.LastRunId == ownerRun && session.RunStatus is "done" or "failed" or "timeout" or "killed" &&
+                session.RuntimeMs is { } ms && double.IsFinite(ms) && ms >= 0
+                    ? session.RuntimeMs : null;
+            result.Add(new(
+                $"thread:{sessionId}|generation:{timelineGeneration}|work:{turn[final].Id}",
+                null, tools, Summarize(tools) with { NewestRunningTool = null }, work, duration));
+            Append(answers);
+            Append(turn.Skip(end + 1));
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<ChatToolActivityRow> ProjectActivity(
+        IReadOnlyList<ChatTimelineItem> entries,
+        string? sessionId,
+        long timelineGeneration,
+        bool showToolCalls)
     {
         var rows = new List<ChatToolActivityRow>(entries.Count);
         for (var index = 0; index < entries.Count;)
         {
             var entry = entries[index];
+            if (entry.ConfirmedHandoff is { } handoff)
+            {
+                if (handoff.ToolName == "sessions_yield")
+                {
+                    if (!string.IsNullOrWhiteSpace(handoff.Acknowledgment))
+                        rows.Add(Standalone(entry with
+                        {
+                            Id = $"{entry.Id}:handoff",
+                            Kind = ChatTimelineItemKind.Assistant,
+                            Text = handoff.Acknowledgment,
+                            ToolName = null, ToolArgs = null, ToolOutput = null, ToolResult = null,
+                            Presentation = entry.Presentation ?? new(RunId: entry.ToolRunId),
+                        }, sessionId, timelineGeneration));
+                }
+                else if (showToolCalls)
+                    rows.Add(Standalone(entry, sessionId, timelineGeneration));
+                index++;
+                continue;
+            }
             if (entry.Kind != ChatTimelineItemKind.ToolCall)
             {
                 rows.Add(Standalone(entry, sessionId, timelineGeneration));
@@ -65,7 +257,9 @@ public static class ChatToolActivityPresentation
                 continue;
             }
 
-            if (entry.ToolResult == ChatToolCallStatus.Error)
+            // Failed steps join the group with an inline outcome, as on the web.
+            // Reviews and input preparation keep their standalone disclosure.
+            if (entry.ToolReviews is { Count: > 0 } || entry.ToolInputPreparing)
             {
                 if (showToolCalls)
                     rows.Add(Standalone(entry, sessionId, timelineGeneration));
@@ -76,7 +270,11 @@ public static class ChatToolActivityPresentation
             var end = index + 1;
             while (end < entries.Count
                 && entries[end].Kind == ChatTimelineItemKind.ToolCall
-                && entries[end].ToolResult != ChatToolCallStatus.Error)
+                && entries[end].ConfirmedHandoff is null
+                && entries[end].ToolReviews is not { Count: > 0 }
+                && !entries[end].ToolInputPreparing
+                && string.Equals(entries[end].ToolRunId, entry.ToolRunId, StringComparison.Ordinal)
+                && entries[end].ToolLegacyTurn == entry.ToolLegacyTurn)
             {
                 end++;
             }
@@ -87,20 +285,12 @@ public static class ChatToolActivityPresentation
                 continue;
             }
 
-            var count = end - index;
-            if (count == 1)
-            {
-                rows.Add(Standalone(entry, sessionId, timelineGeneration));
-            }
-            else
-            {
-                var tools = entries.Skip(index).Take(count).ToArray();
-                rows.Add(new ChatToolActivityRow(
-                    ActivityKey(sessionId, timelineGeneration, tools[0].Id),
-                    null,
-                    tools,
-                    Summarize(tools)));
-            }
+            var tools = entries.Skip(index).Take(end - index).ToArray();
+            rows.Add(new ChatToolActivityRow(
+                ActivityKey(sessionId, timelineGeneration, tools[0].Id),
+                null,
+                tools,
+                Summarize(tools)));
 
             index = end;
         }
@@ -111,87 +301,108 @@ public static class ChatToolActivityPresentation
     public static string ActivityKey(string? sessionId, long timelineGeneration, string firstToolEntryId) =>
         $"thread:{sessionId ?? "none"}|generation:{timelineGeneration}|activity:{firstToolEntryId}";
 
+    /// <summary>Expansion key of one tool row, distinct from the group that starts with it.</summary>
+    public static string ToolRowKey(string? sessionId, long timelineGeneration, string toolEntryId) =>
+        $"thread:{sessionId ?? "none"}|generation:{timelineGeneration}|tool:{toolEntryId}";
+
+    /// <summary>Groups the completed-work narration into the same rows as the transcript.</summary>
+    public static IReadOnlyList<ChatToolActivityRow> ProjectWork(
+        IReadOnlyList<ChatTimelineItem> work,
+        string? sessionId,
+        long timelineGeneration) =>
+        ProjectActivity(work, sessionId, timelineGeneration, showToolCalls: true);
+
+    /// <summary>
+    /// Port of the web <c>groupToolCalls</c>: nests a call under its recorded
+    /// <c>parentToolCallId</c> within the same run only. Relationships are never guessed from
+    /// names or order; ambiguous identities stay unlinked and cycle members become roots.
+    /// </summary>
+    public static IReadOnlyList<ChatToolCallNode> GroupNested(IReadOnlyList<ChatTimelineItem> tools)
+    {
+        var identities = new Dictionary<(string Run, string Call), int>();
+        var ambiguous = new HashSet<(string Run, string Call)>();
+        for (var index = 0; index < tools.Count; index++)
+        {
+            if (tools[index] is { ToolRunId: { Length: > 0 } run, ToolCallId: { Length: > 0 } call } &&
+                !identities.TryAdd((run, call), index))
+                ambiguous.Add((run, call));
+        }
+        int? Resolve(string run, string call) =>
+            !ambiguous.Contains((run, call)) && identities.TryGetValue((run, call), out var index) ? index : null;
+
+        var parents = new int?[tools.Count];
+        for (var index = 0; index < tools.Count; index++)
+        {
+            var tool = tools[index];
+            if (tool.ToolRunId is not { Length: > 0 } run ||
+                tool.ToolParentCallId is not { Length: > 0 } parent ||
+                parent == tool.ToolCallId ||
+                tool.ToolCallId is { Length: > 0 } call && Resolve(run, call) != index)
+                continue;
+            parents[index] = Resolve(run, parent);
+        }
+
+        var visited = new bool[tools.Count];
+        for (var index = 0; index < tools.Count; index++)
+        {
+            var path = new List<int>();
+            int? current = index;
+            while (current is { } node && !visited[node])
+            {
+                visited[node] = true;
+                path.Add(node);
+                current = parents[node];
+            }
+            var cycleStart = current is { } repeated ? path.IndexOf(repeated) : -1;
+            if (cycleStart >= 0)
+            {
+                foreach (var member in path.Skip(cycleStart))
+                    parents[member] = null;
+            }
+        }
+
+        var children = tools.Select(static _ => new List<ChatToolCallNode>()).ToArray();
+        var nodes = tools.Select((tool, index) => new ChatToolCallNode(tool, children[index])).ToArray();
+        var roots = new List<ChatToolCallNode>();
+        for (var index = 0; index < tools.Count; index++)
+            (parents[index] is { } parent ? children[parent] : roots).Add(nodes[index]);
+        return roots;
+    }
+
+    /// <summary>
+    /// Counts operations per category, not distinct files, matching the web summary. A call that
+    /// wraps recorded nested calls is not counted itself; its nested calls are.
+    /// </summary>
     public static ChatToolActivitySummary Summarize(IReadOnlyList<ChatTimelineItem> tools)
     {
-        var categoryCounts = new Dictionary<ChatToolActivityCategory, int>();
-        var genericCount = 0;
-        var genericNames = new List<string>();
-        var genericNameSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var knownPaths = new Dictionary<ChatToolActivityCategory, HashSet<string>>();
-        var pathCategoryCalls = new Dictionary<ChatToolActivityCategory, int>();
+        var wrappers = new HashSet<ChatTimelineItem>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<ChatToolCallNode>(GroupNested(tools));
+        while (pending.TryPop(out var node))
+        {
+            if (node.Children.Count > 0)
+                wrappers.Add(node.Tool);
+            foreach (var child in node.Children)
+                pending.Push(child);
+        }
 
+        var categoryCounts = new Dictionary<ChatToolActivityCategory, int>();
+        var counted = 0;
         foreach (var tool in tools)
         {
+            if (wrappers.Contains(tool))
+                continue;
             var category = Classify(tool.ToolName, tool.ToolArgs);
-            if (category is ChatToolActivityCategory.Read
-                or ChatToolActivityCategory.Edit
-                or ChatToolActivityCategory.Write)
-            {
-                pathCategoryCalls[category] = pathCategoryCalls.GetValueOrDefault(category) + 1;
-                var paths = ExtractPaths(tool.ToolArgs, tool.ToolName);
-                if (paths.Count > 0)
-                {
-                    if (!knownPaths.TryGetValue(category, out var categoryPaths))
-                    {
-                        categoryPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                        knownPaths[category] = categoryPaths;
-                    }
-
-                    categoryPaths.UnionWith(paths);
-                }
-            }
-            else if (category == ChatToolActivityCategory.Generic)
-            {
-                genericCount++;
-                var name = DisplayToolName(tool.ToolName);
-                if (!string.IsNullOrWhiteSpace(name) && genericNameSet.Add(name))
-                    genericNames.Add(name);
-            }
-            else
-            {
-                categoryCounts[category] = categoryCounts.GetValueOrDefault(category) + 1;
-            }
+            categoryCounts[category] = categoryCounts.GetValueOrDefault(category) + 1;
+            counted++;
         }
 
-        foreach (var category in new[]
-                 {
-                     ChatToolActivityCategory.Read,
-                     ChatToolActivityCategory.Edit,
-                     ChatToolActivityCategory.Write,
-                 })
-        {
-            var calls = pathCategoryCalls.GetValueOrDefault(category);
-            var count = knownPaths.TryGetValue(category, out var paths) && paths.Count > 0
-                ? paths.Count
-                : calls;
-            if (count > 0)
-                categoryCounts[category] = count;
-        }
-
-        var counts = new List<ChatToolActivityCount>();
-        foreach (var category in Enum.GetValues<ChatToolActivityCategory>())
-        {
-            if (category != ChatToolActivityCategory.Generic
-                && categoryCounts.TryGetValue(category, out var count))
-            {
-                counts.Add(new ChatToolActivityCount(category, count));
-            }
-        }
-
-        if (genericCount > 0)
-        {
-            counts.Add(new ChatToolActivityCount(
-                ChatToolActivityCategory.Generic,
-                genericCount,
-                genericNames.ToArray()));
-        }
-
+        var counts = Enum.GetValues<ChatToolActivityCategory>()
+            .Where(categoryCounts.ContainsKey)
+            .Select(category => new ChatToolActivityCount(category, categoryCounts[category]))
+            .ToArray();
         var newestRunning = tools.LastOrDefault(
             static tool => tool.ToolResult is null or ChatToolCallStatus.InProgress);
-        return new ChatToolActivitySummary(
-            counts,
-            tools.Count,
-            newestRunning);
+        return new ChatToolActivitySummary(counts, counted, newestRunning);
     }
 
     public static ChatToolActivityCategory Classify(string? toolName, JsonObject? args = null)
@@ -229,32 +440,6 @@ public static class ChatToolActivityPresentation
         return ChatToolActivityCategory.Generic;
     }
 
-    public static IReadOnlyList<string> ExtractPaths(JsonObject? args, string? toolName = null)
-    {
-        if (args is null)
-            return [];
-
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (Matches(NormalizeToolName(toolName), "apply_patch", "applypatch", "patch"))
-        {
-            AddStructuredChangePaths(args, paths);
-            var patchText = ReadString(args, "patch")
-                ?? ReadString(args, "input")
-                ?? ReadString(args, "diff");
-            if (patchText is not null)
-                AddPatchTextPaths(patchText, paths);
-        }
-
-        foreach (var propertyName in s_pathPropertyNames)
-        {
-            if (!args.TryGetPropertyValue(propertyName, out var node) || node is null)
-                continue;
-            AddPathValues(node, paths);
-        }
-
-        return paths.ToArray();
-    }
-
     private static ChatToolActivityRow Standalone(
         ChatTimelineItem entry,
         string? sessionId,
@@ -267,249 +452,6 @@ public static class ChatToolActivityPresentation
             [],
             null);
 
-    private static void AddPathValues(JsonNode node, ISet<string> paths)
-    {
-        if (node is JsonArray array)
-        {
-            foreach (var child in array)
-            {
-                if (child is not null)
-                    AddPathValues(child, paths);
-            }
-            return;
-        }
-
-        if (node is JsonValue value
-            && value.TryGetValue<string>(out var path)
-            && !string.IsNullOrWhiteSpace(path))
-        {
-            paths.Add(path.Trim());
-        }
-    }
-
-    private static void AddStructuredChangePaths(JsonObject args, ISet<string> paths)
-    {
-        if (!args.TryGetPropertyValue("changes", out var changesNode)
-            || changesNode is not JsonArray changes)
-            return;
-
-        foreach (var changeNode in changes)
-        {
-            if (changeNode is not JsonObject change)
-                continue;
-
-            var target = change["kind"] is JsonObject kind
-                ? ReadString(kind, "move_path") ?? ReadString(kind, "movePath")
-                : null;
-            target ??= ReadString(change, "path");
-            AddNormalizedPath(target, paths);
-        }
-    }
-
-    private static void AddPatchTextPaths(string patchText, ISet<string> paths)
-    {
-        const int maxPatchCharacters = 2_000_000;
-        var bounded = patchText.Length <= maxPatchCharacters
-            ? patchText
-            : patchText[..maxPatchCharacters];
-        var lines = bounded.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-
-        AddCodexPatchPaths(lines, paths);
-        AddUnifiedDiffPaths(lines, paths);
-    }
-
-    private static void AddCodexPatchPaths(IReadOnlyList<string> lines, ISet<string> paths)
-    {
-        var insidePatch = false;
-        string? pendingUpdate = null;
-
-        void FlushUpdate()
-        {
-            AddNormalizedPath(pendingUpdate, paths);
-            pendingUpdate = null;
-        }
-
-        foreach (var line in lines)
-        {
-            if (line == "*** Begin Patch")
-            {
-                insidePatch = true;
-                continue;
-            }
-            if (!insidePatch)
-                continue;
-            if (line == "*** End Patch")
-            {
-                FlushUpdate();
-                break;
-            }
-            if (line.StartsWith("*** Update File: ", StringComparison.Ordinal))
-            {
-                FlushUpdate();
-                pendingUpdate = line["*** Update File: ".Length..];
-            }
-            else if (line.StartsWith("*** Move to: ", StringComparison.Ordinal)
-                     && pendingUpdate is not null)
-            {
-                pendingUpdate = line["*** Move to: ".Length..];
-            }
-            else if (line.StartsWith("*** Add File: ", StringComparison.Ordinal))
-            {
-                FlushUpdate();
-                AddNormalizedPath(line["*** Add File: ".Length..], paths);
-            }
-            else if (line.StartsWith("*** Delete File: ", StringComparison.Ordinal))
-            {
-                FlushUpdate();
-                AddNormalizedPath(line["*** Delete File: ".Length..], paths);
-            }
-        }
-
-        FlushUpdate();
-    }
-
-    private static void AddUnifiedDiffPaths(IReadOnlyList<string> lines, ISet<string> paths)
-    {
-        string? blockOld = null;
-        string? blockNew = null;
-        string? headerOld = null;
-        string? headerNew = null;
-
-        void FlushBlock()
-        {
-            AddNormalizedPath(
-                string.Equals(headerNew, "/dev/null", StringComparison.Ordinal)
-                    ? headerOld ?? blockOld
-                    : headerNew ?? blockNew,
-                paths);
-            blockOld = blockNew = headerOld = headerNew = null;
-        }
-
-        for (var index = 0; index < lines.Count; index++)
-        {
-            var line = lines[index];
-            if (line.StartsWith("diff --git ", StringComparison.Ordinal))
-            {
-                FlushBlock();
-                var (oldPath, newPath) = ParseGitDiffPathPair(line["diff --git ".Length..]);
-                if (oldPath is not null && newPath is not null)
-                {
-                    blockOld = StripDiffPrefix(oldPath);
-                    blockNew = StripDiffPrefix(newPath);
-                }
-                continue;
-            }
-
-            if (line.StartsWith("rename to ", StringComparison.Ordinal))
-            {
-                blockNew = ParseGitMetadataPath(line["rename to ".Length..]);
-                continue;
-            }
-
-            if (line.StartsWith("copy to ", StringComparison.Ordinal))
-            {
-                blockNew = ParseGitMetadataPath(line["copy to ".Length..]);
-                continue;
-            }
-
-            if (line.StartsWith("--- ", StringComparison.Ordinal)
-                && index + 1 < lines.Count
-                && lines[index + 1].StartsWith("+++ ", StringComparison.Ordinal))
-            {
-                var oldPath = ParseUnifiedHeaderPath(line[4..]);
-                var newPath = ParseUnifiedHeaderPath(lines[++index][4..]);
-                if (blockOld is not null || blockNew is not null)
-                {
-                    headerOld = oldPath;
-                    headerNew = newPath;
-                }
-                else
-                {
-                    AddNormalizedPath(
-                        string.Equals(newPath, "/dev/null", StringComparison.Ordinal)
-                            ? oldPath
-                            : newPath,
-                        paths);
-                }
-            }
-        }
-
-        FlushBlock();
-    }
-
-    private static string? ParseUnifiedHeaderPath(string value)
-    {
-        var path = ParseGitMetadataPath(value.Split('\t', 2)[0]);
-        if (path.Length == 0)
-            return null;
-        return string.Equals(path, "/dev/null", StringComparison.Ordinal)
-            ? path
-            : StripDiffPrefix(path);
-    }
-
-    private static (string? OldPath, string? NewPath) ParseGitDiffPathPair(string value)
-    {
-        var offset = 0;
-
-        string? ReadPath()
-        {
-            while (offset < value.Length && value[offset] == ' ')
-                offset++;
-            if (offset >= value.Length)
-                return null;
-
-            if (value[offset] != '"')
-            {
-                var start = offset;
-                while (offset < value.Length && value[offset] != ' ')
-                    offset++;
-                return value[start..offset];
-            }
-
-            var path = new StringBuilder();
-            offset++;
-            var escaped = false;
-            while (offset < value.Length)
-            {
-                var character = value[offset++];
-                if (!escaped && character == '"')
-                    return path.ToString();
-                if (!escaped && character == '\\')
-                {
-                    escaped = true;
-                    path.Append(character);
-                    continue;
-                }
-                escaped = false;
-                path.Append(character);
-            }
-            return null;
-        }
-
-        return (ReadPath(), ReadPath());
-    }
-
-    private static string ParseGitMetadataPath(string value)
-    {
-        var path = value.Trim();
-        return path.Length >= 2 && path[0] == '"' && path[^1] == '"'
-            ? path[1..^1]
-            : path;
-    }
-
-    private static string StripDiffPrefix(string path) =>
-        path.StartsWith("a/", StringComparison.Ordinal) || path.StartsWith("b/", StringComparison.Ordinal)
-            ? path[2..]
-            : path;
-
-    private static void AddNormalizedPath(string? path, ISet<string> paths)
-    {
-        if (string.IsNullOrWhiteSpace(path)
-            || string.Equals(path.Trim(), "/dev/null", StringComparison.Ordinal))
-            return;
-        paths.Add(path.Trim());
-    }
-
     private static string NormalizeToolName(string? toolName)
     {
         var name = (toolName ?? string.Empty).Trim().ToLowerInvariant();
@@ -518,7 +460,7 @@ public static class ChatToolActivityPresentation
             if (name.StartsWith(prefix, StringComparison.Ordinal))
                 name = name[prefix.Length..];
         }
-        return name.Replace('-', '_');
+        return name.Replace('-', '_').Replace(' ', '_');
     }
 
     private static bool Matches(string name, params string[] aliases) =>
@@ -526,15 +468,6 @@ public static class ChatToolActivityPresentation
             string.Equals(name, alias, StringComparison.Ordinal)
             || name.EndsWith($".{alias}", StringComparison.Ordinal)
             || name.EndsWith($"_{alias}", StringComparison.Ordinal));
-
-    private static string? DisplayToolName(string? toolName)
-    {
-        var name = (toolName ?? string.Empty).Trim();
-        if (name.Length == 0)
-            return null;
-        var separator = Math.Max(name.LastIndexOf('.'), name.LastIndexOf('/'));
-        return separator >= 0 && separator + 1 < name.Length ? name[(separator + 1)..] : name;
-    }
 
     private static string? ReadString(JsonObject? args, string propertyName) =>
         args?.TryGetPropertyValue(propertyName, out var node) == true
@@ -560,8 +493,6 @@ public sealed record ChatToolActivityFormatTemplates(
     string FetchMany,
     string GenericOne,
     string GenericMany,
-    string GenericNamed,
-    string GenericNamedRepeated,
     string Running,
     string ToolFallback);
 
@@ -582,33 +513,13 @@ public static class ChatToolActivityFormatter
                     : running.ToolName);
         }
 
-        var segments = summary.Counts.Select(count => FormatCount(count, templates)).ToArray();
-        var label = string.Join(", ", segments);
-        if (label.Length == 0)
-            return string.Empty;
-
-        return char.ToUpper(label[0], CultureInfo.CurrentCulture) + label[1..];
+        return string.Join(" · ", summary.Counts.Select(count => FormatCount(count, templates)));
     }
 
     private static string FormatCount(
         ChatToolActivityCount count,
         ChatToolActivityFormatTemplates templates)
     {
-        if (count.Category == ChatToolActivityCategory.Generic)
-        {
-            var names = count.ToolNames ?? [];
-            if (names.Count is > 0 and <= 2)
-            {
-                return string.Format(
-                    CultureInfo.CurrentCulture,
-                    count.Count > names.Count
-                        ? templates.GenericNamedRepeated
-                        : templates.GenericNamed,
-                    count.Count,
-                    string.Join(", ", names));
-            }
-        }
-
         var template = (count.Category, count.Count == 1) switch
         {
             (ChatToolActivityCategory.Command, true) => templates.CommandOne,
@@ -639,6 +550,9 @@ public sealed class ChatToolActivityExpansionState
     private int _collapseVersion;
 
     public bool IsExpanded(string key, ChatToolActivitySummary summary, int collapseVersion)
+        => IsExpanded(key, collapseVersion);
+
+    public bool IsExpanded(string key, int collapseVersion)
     {
         ResetIfNeeded(collapseVersion);
         return _overrides.TryGetValue(key, out var value) && value;
@@ -656,5 +570,35 @@ public sealed class ChatToolActivityExpansionState
             return;
         _collapseVersion = collapseVersion;
         _overrides.Clear();
+    }
+}
+
+/// <summary>Admits completed-work entrances once, excluding initial and replacement history.</summary>
+public sealed class ChatToolActivityMotionState
+{
+    private (string? Session, long Generation, long HistoryRevision)? _scope;
+    private HashSet<string> _keys = new(StringComparer.Ordinal);
+
+    public IReadOnlySet<string> Update(
+        IEnumerable<string> completedWorkKeys,
+        string? sessionId,
+        long generation,
+        long historyRevision,
+        bool historyReady = true)
+    {
+        if (!historyReady)
+        {
+            _scope = null;
+            _keys.Clear();
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+        var scope = (sessionId, generation, historyRevision);
+        var keys = completedWorkKeys.ToHashSet(StringComparer.Ordinal);
+        var entering = _scope == scope
+            ? keys.Where(key => !_keys.Contains(key)).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        _scope = scope;
+        _keys = keys;
+        return entering;
     }
 }
