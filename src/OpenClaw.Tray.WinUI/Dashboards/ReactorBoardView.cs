@@ -41,14 +41,36 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var width = props.ViewportWidth > 0 ? props.ViewportWidth : measuredWidth;
         var model = UseRef<BoardDocumentModel?>(null);
         var tabStrip = UseRef<SelectorBar?>(null);
-        var overflowFocus = UseRef<string?>(null);
+        var overflowFocus = UseRef<(string TabId, bool FlyoutClosed)?>(null);
         var tabPanels = UseRef(new Dictionary<string, FrameworkElement>(StringComparer.Ordinal));
         UseEffect((Func<Action>)(() =>
         {
             var current = true;
+            var queued = false;
+            SelectorBar? focusOwner = null;
+            void QueueOverflowFocus(object? sender, object args)
+            {
+                if (!current || queued || overflowFocus.Current is null)
+                    return;
+                queued = true;
+                props.State.Post(() =>
+                {
+                    queued = false;
+                    if (current)
+                        RestoreOverflowFocus(tabStrip.Current, overflowFocus, tabPanels);
+                });
+            }
             props.State.Post(() =>
             {
-                if (!current || tabStrip.Current is not { IsLoaded: true } strip)
+                if (!current || tabStrip.Current is not { } strip)
+                    return;
+                if (overflowFocus.Current is not null)
+                {
+                    focusOwner = strip;
+                    strip.LayoutUpdated += QueueOverflowFocus;
+                    QueueOverflowFocus(null, EventArgs.Empty);
+                }
+                if (!strip.IsLoaded)
                     return;
                 foreach (var item in strip.Items)
                 {
@@ -58,11 +80,13 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                     if (tabPanels.Current.TryGetValue(id, out var panel) && panel.IsLoaded)
                         peers.Add(panel);
                 }
-                if (overflowFocus.Current == snapshot.ActiveTabId && strip.SelectedItem is { } selected &&
-                    selected.Focus(FocusState.Programmatic))
-                    overflowFocus.Current = null;
             });
-            return () => current = false;
+            return () =>
+            {
+                current = false;
+                if (focusOwner is not null)
+                    focusOwner.LayoutUpdated -= QueueOverflowFocus;
+            };
         }), snapshot);
 
         UseEffect((Func<Action>)(() =>
@@ -222,7 +246,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         double width,
         bool reducedMotion,
         Ref<SelectorBar?> tabStrip,
-        Ref<string?> overflowFocus,
+        Ref<(string TabId, bool FlyoutClosed)?> overflowFocus,
         Ref<Dictionary<string, FrameworkElement>> tabPanels)
     {
         var board = snapshot.Board!;
@@ -244,12 +268,13 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             .AutomationId("DashboardGrid");
 
         return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
-            Tabs(tabs, snapshot.ActiveTabId, tabId => model.Current?.SelectTab(tabId), width, tabStrip, overflowFocus).Grid(row: 0),
+            Tabs(tabs, snapshot.ActiveTabId, tabId => model.Current?.SelectTab(tabId), width, tabStrip, overflowFocus, tabPanels).Grid(row: 0),
             gridHost.Grid(row: 1));
     }
 
     private static Element Tabs(ImmutableArray<BoardTab> tabs, string activeTabId, Action<string> select, double width,
-        Ref<SelectorBar?> tabStrip, Ref<string?> overflowFocus)
+        Ref<SelectorBar?> tabStrip, Ref<(string TabId, bool FlyoutClosed)?> overflowFocus,
+        Ref<Dictionary<string, FrameworkElement>> tabPanels)
     {
         if (tabs.Length <= 1)
             return Empty();
@@ -285,14 +310,17 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         if (overflow.Length == 0)
             return strip.Margin(0, 0, 0, 12);
         var menu = new MenuFlyout();
-        var selectedFromMenu = false;
+        string? selectedFromMenu = null;
         menu.Closed += (_, _) =>
         {
-            if (selectedFromMenu && tabStrip.Current is { } bar)
-                bar.DispatcherQueue.TryEnqueue(() =>
+            if (selectedFromMenu is { } tabId && tabStrip.Current is { } bar)
+                bar.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                 {
-                    if (tabStrip.Current is { IsLoaded: true, SelectedItem: { } selected })
-                        selected.Focus(FocusState.Programmatic);
+                    if (overflowFocus.Current?.TabId != tabId)
+                        return;
+                    // Closed returns before WinUI finishes restoring the flyout anchor's focus.
+                    overflowFocus.Current = (tabId, true);
+                    RestoreOverflowFocus(tabStrip.Current, overflowFocus, tabPanels);
                 });
         };
         foreach (var tab in overflow)
@@ -302,8 +330,8 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, "DashboardOverflowTab_" + tabId);
             item.Click += (_, _) =>
             {
-                selectedFromMenu = true;
-                overflowFocus.Current = tabId;
+                selectedFromMenu = tabId;
+                overflowFocus.Current = (tabId, false);
                 select(tabId);
             };
             menu.Items.Add(item);
@@ -315,6 +343,21 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                     .AutomationId("DashboardMoreTabs")
                     .VAlign(VerticalAlignment.Center))
             .Margin(0, 0, 0, 12);
+    }
+
+    private static void RestoreOverflowFocus(SelectorBar? strip,
+        Ref<(string TabId, bool FlyoutClosed)?> pending, Ref<Dictionary<string, FrameworkElement>> tabPanels)
+    {
+        if (pending.Current is not { FlyoutClosed: true } request ||
+            strip is not { IsLoaded: true, SelectedItem: { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } selected } ||
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(selected) != "DashboardTab_" + request.TabId ||
+            !tabPanels.Current.TryGetValue(request.TabId, out var panel) || !panel.IsLoaded)
+            return;
+        var peers = Microsoft.UI.Xaml.Automation.AutomationProperties.GetControlledPeers(selected);
+        peers.Clear();
+        peers.Add(panel);
+        if (selected.Focus(FocusState.Programmatic))
+            pending.Current = null;
     }
 
     private static Element TabGrid(

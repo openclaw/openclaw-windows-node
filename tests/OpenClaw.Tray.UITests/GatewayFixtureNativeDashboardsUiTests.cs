@@ -10,6 +10,14 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "CreateWindowExW",
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr DashboardCreateOccluder(uint extendedStyle, string className, string title,
+        uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr parameter);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "DestroyWindow", SetLastError = true)]
+    private static extern bool DashboardDestroyOccluder(IntPtr window);
+
     private static AutomationElement? FindDashboardGalleryCard(GatewayFixtureRun run, string sessionKey) =>
         FindById(run, $"DashboardCardFresh_{sessionKey}") ?? FindById(run, $"DashboardCard_{sessionKey}");
 
@@ -43,13 +51,18 @@ public sealed partial class GatewayFixtureUiTests
                                 return true;
                         return false;
                     }
-                    async Task AssertToggleHitAsync(string id)
+                    void AssertPointOwner(CronPoint point) =>
+                        Assert.Equal(hwnd, GetAncestor(WindowFromPoint(point), 2));
+                    async Task ClickToggleAsync(string id, string expectedId)
                     {
                         run.EnsureRunning();
                         Assert.Equal(run.AppProcessId, hub.Current.ProcessId);
                         // PrintWindow captures an owned HWND even behind other windows. Desktop
                         // point queries need a separately qualified foreground and physical-DPI context.
                         await NativeKeyboardProof.ActivateAsync(hwnd);
+                        var point = new CronPoint();
+                        var belongsToButton = false;
+                        uint sent = 0;
                         var previousDpi = DashboardSetThreadDpiAwarenessContext(new IntPtr(-4));
                         Assert.NotEqual(IntPtr.Zero, previousDpi);
                         try
@@ -61,16 +74,16 @@ public sealed partial class GatewayFixtureUiTests
                             Assert.True(button.Current.IsEnabled);
                             var bounds = button.Current.BoundingRectangle;
                             Assert.True(bounds.Width > 0 && bounds.Height > 0);
-                            var point = new DashboardCursorPoint
+                            point = new CronPoint
                             {
                                 X = (int)Math.Round(bounds.Left + bounds.Width / 2),
                                 Y = (int)Math.Round(bounds.Top + bounds.Height / 2)
                             };
-                            var nativeHit = DashboardWindowFromPoint(point);
+                            var nativeHit = WindowFromPoint(point);
                             var nativeRoot = DashboardGetAncestor(nativeHit, 2);
                             var foreground = DashboardForegroundWindow();
                             var hit = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
-                            var belongsToButton = IsWithin(hit, button);
+                            belongsToButton = IsWithin(hit, button);
                             var nativeBounds = DashboardRect(hwnd);
                             File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"pinned-hit-{id}-{Guid.NewGuid():N}.json"),
                                 JsonSerializer.Serialize(new
@@ -82,16 +95,69 @@ public sealed partial class GatewayFixtureUiTests
                                     buttonRuntimeId = button.GetRuntimeId(), hitRuntimeId = hit.GetRuntimeId(),
                                     hitProcessId = hit.Current.ProcessId, hitClass = hit.Current.ClassName,
                                     hitId = hit.Current.AutomationId, hitType = hit.Current.ControlType.ProgrammaticName,
-                                    hitBounds = hit.Current.BoundingRectangle, belongsToButton
+                                    hitBounds = DescribeScrollBounds(hit.Current.BoundingRectangle), belongsToButton
                                 }));
                             Assert.Equal(hwnd, foreground);
                             Assert.Equal(hwnd, nativeRoot);
-                            Assert.Equal(run.AppProcessId, hit.Current.ProcessId);
-                            Assert.True(belongsToButton,
-                                $"Pinned pane button {id} is occluded or lacks an exact UIA hit at its center: " +
-                                $"{hit.Current.ClassName}/{hit.Current.AutomationId}, PID {hit.Current.ProcessId}. See pinned-hit receipt.");
+                            // The bridge may end a UIA point query above the button. The actual
+                            // center click and opposite pane state, not that ancestor, prove the hit.
+                            AssertPointOwner(point);
+                            Assert.True(SetCursorPos(point.X, point.Y));
+                            Assert.True(GetCursorPos(out var cursor));
+                            Assert.Equal(point, cursor);
+                            AssertOwnedForeground(hwnd, GetForegroundWindow);
+                            AssertPointOwner(cursor);
+                            var input = new[]
+                            {
+                                new CronInput { Mouse = new CronMouse { Flags = 2 } },
+                                new CronInput { Mouse = new CronMouse { Flags = 4 } },
+                            };
+                            sent = SendInput(2, input, System.Runtime.InteropServices.Marshal.SizeOf<CronInput>());
+                            if (sent == 1)
+                                SendInput(1, [input[1]], System.Runtime.InteropServices.Marshal.SizeOf<CronInput>());
+                            Assert.Equal(2u, sent);
                         }
                         finally { DashboardSetThreadDpiAwarenessContext(previousDpi); }
+                        await WaitUiAsync(run, () =>
+                            FindById(run, id) is null or { Current.IsOffscreen: true } &&
+                            FindById(run, expectedId) is { Current.IsOffscreen: false },
+                            $"physical center click on {id} changed the pane to {expectedId}");
+                        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"pinned-click-{id}-{Guid.NewGuid():N}.json"),
+                            JsonSerializer.Serialize(new
+                            {
+                                id, expectedId, run.AppProcessId, point.X, point.Y,
+                                uiaTargetOwned = belongsToButton, injectedEvents = sent, paneTransitionObserved = true
+                            }));
+                    }
+                    await NativeKeyboardProof.ActivateAsync(hwnd);
+                    var negativeBounds = FindById(run, "WorkspaceTogglePane")!.Current.BoundingRectangle;
+                    var negativePoint = new CronPoint
+                    {
+                        X = (int)Math.Round(negativeBounds.Left + negativeBounds.Width / 2),
+                        Y = (int)Math.Round(negativeBounds.Top + negativeBounds.Height / 2)
+                    };
+                    var negativeDpi = DashboardSetThreadDpiAwarenessContext(new IntPtr(-4));
+                    Assert.NotEqual(IntPtr.Zero, negativeDpi);
+                    var occluder = IntPtr.Zero;
+                    try
+                    {
+                        occluder = DashboardCreateOccluder(0x08000008, "BUTTON", "Dashboard hit-test negative control",
+                            0x90000000, negativePoint.X - 20, negativePoint.Y - 20, 40, 40,
+                            IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                        Assert.NotEqual(IntPtr.Zero, occluder);
+                        Assert.Equal(occluder, GetAncestor(WindowFromPoint(negativePoint), 2));
+                        Assert.Throws<Xunit.Sdk.EqualException>(() => AssertPointOwner(negativePoint));
+                        Assert.False(FindById(run, "WorkspaceTogglePane")!.Current.IsOffscreen);
+                        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "pinned-hit-occlusion-negative.json"),
+                            JsonSerializer.Serialize(new
+                            {
+                                point = new { negativePoint.X, negativePoint.Y }, rejected = true, injectedEvents = 0
+                            }));
+                    }
+                    finally
+                    {
+                        if (occluder != IntPtr.Zero) Assert.True(DashboardDestroyOccluder(occluder));
+                        DashboardSetThreadDpiAwarenessContext(negativeDpi);
                     }
                     foreach (var board in new[] { false, true })
                     {
@@ -107,14 +173,11 @@ public sealed partial class GatewayFixtureUiTests
                             var collapsed = paneState == "collapsed";
                             if (collapsed)
                             {
-                                await AssertToggleHitAsync("WorkspaceTogglePane");
-                                Invoke(FindById(run, "WorkspaceTogglePane")
-                                    ?? throw new InvalidOperationException("Workspace collapse control is missing."));
+                                await ClickToggleAsync("WorkspaceTogglePane", "WorkspaceReopenPane");
                             }
                             else if (FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } reopen)
                             {
-                                await AssertToggleHitAsync("WorkspaceReopenPane");
-                                Invoke(reopen);
+                                await ClickToggleAsync("WorkspaceReopenPane", "WorkspaceTogglePane");
                             }
                             await WaitUiAsync(run, () => FindById(run, collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane")
                                 is { Current.IsOffscreen: false }, "pinned pane state");
@@ -158,7 +221,18 @@ public sealed partial class GatewayFixtureUiTests
                             var measuredHostMargin = (host.Top - openHostTop!.Value) / scale;
                             Assert.InRange(Math.Abs(measuredInset - (collapsed ? 56 : 0)), 0, 1);
                             Assert.InRange(Math.Abs(measuredHostMargin), 0, 1);
-                            await AssertToggleHitAsync(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane");
+                            var toggleId = collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane";
+                            var oppositeId = collapsed ? "WorkspaceTogglePane" : "WorkspaceReopenPane";
+                            await ClickToggleAsync(toggleId, oppositeId);
+                            await ClickToggleAsync(oppositeId, toggleId);
+                            await WaitUiAsync(run, () =>
+                            {
+                                var currentHost = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
+                                var currentViewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!
+                                    .Current.BoundingRectangle;
+                                return Math.Abs((currentViewport.Top - currentHost.Top) / scale - (collapsed ? 56 : 0)) <= 1 &&
+                                    Math.Abs((currentHost.Top - openHostTop.Value) / scale) <= 1;
+                            }, "pinned geometry retained after the physical pane roundtrip");
                             if (collapsed)
                             {
                                 var reopen = FindById(run, "WorkspaceReopenPane")!;
@@ -176,13 +250,76 @@ public sealed partial class GatewayFixtureUiTests
                                     var history = FindById(run, id)!;
                                     if (!history.Current.IsEnabled)
                                         continue;
-                                    Send(run, hub, "{TAB}");
+                                    NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
                                     await WaitUiAsync(run, () => history.Current.HasKeyboardFocus,
                                         $"pinned toggle/history tab order: {id}");
                                 }
-                                Send(run, hub, "{TAB}");
-                                await WaitUiAsync(run, () => IsWithin(AutomationElement.FocusedElement,
-                                    FindById(run, "DashboardsContentHost")!), "pinned history-to-page tab order");
+                                void RecordTabFocus(string step)
+                                {
+                                    var focused = AutomationElement.FocusedElement;
+                                    object? ownedFocus = focused?.Current.ProcessId == run.AppProcessId ? new
+                                    {
+                                        runtimeId = focused.GetRuntimeId(), focused.Current.AutomationId,
+                                        controlType = focused.Current.ControlType.ProgrammaticName,
+                                        bounds = DescribeScrollBounds(focused.Current.BoundingRectangle)
+                                    } : null;
+                                    File.WriteAllText(Path.Combine(run.ArtifactsDirectory,
+                                        $"pinned-tab-{surface}-{step}.json"), JsonSerializer.Serialize(new
+                                        {
+                                            step, expectedPid = run.AppProcessId, focusedPid = focused?.Current.ProcessId,
+                                            foreground = GetForegroundWindow().ToString("X"), ownedFocus
+                                        }));
+                                }
+                                async Task TabToShellControlAsync(string id, ControlType controlType, bool reverse = false)
+                                {
+                                    var expected = FindById(run, id)
+                                        ?? throw new InvalidOperationException($"Missing title-bar focus target {id}.");
+                                    Assert.Equal(run.AppProcessId, expected.Current.ProcessId);
+                                    Assert.Equal(controlType, expected.Current.ControlType);
+                                    Assert.True(expected.Current.IsEnabled);
+                                    Assert.False(expected.Current.IsOffscreen);
+                                    NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: reverse);
+                                    try
+                                    {
+                                        await WaitUiAsync(run, () => expected.Current.HasKeyboardFocus,
+                                            $"real {(reverse ? "Shift+Tab" : "Tab")} to {id}");
+                                    }
+                                    finally { RecordTabFocus((reverse ? "reverse-" : "") + id); }
+                                    AssertOwnedForeground(hwnd, GetForegroundWindow);
+                                    Assert.Equal(expected.GetRuntimeId(), AutomationElement.FocusedElement.GetRuntimeId());
+                                }
+                                var pageContent = FindById(run, "DashboardsContentHost")!;
+                                var pageViewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!;
+                                bool HasVisiblePageFocus()
+                                {
+                                    if (AutomationElement.FocusedElement is not { } focused) return false;
+                                    var bounds = focused.Current.BoundingRectangle;
+                                    return focused.Current.ProcessId == run.AppProcessId && focused.Current.HasKeyboardFocus &&
+                                        !focused.Current.IsOffscreen && bounds.Width > 0 && bounds.Height > 0 &&
+                                        pageViewport.Current.BoundingRectangle.Contains(bounds) && IsWithin(focused, pageContent);
+                                }
+                                Assert.True(FindById(run, "WorkspaceTitleBarOwner") is null or { Current.IsOffscreen: true });
+                                await TabToShellControlAsync("WorkspaceTitleBar", ControlType.TitleBar);
+                                await TabToShellControlAsync("WorkspaceTitleBarDashboard", ControlType.Button);
+                                await TabToShellControlAsync("WorkspaceTitleBarNotifications", ControlType.Button);
+                                Assert.True(FindById(run, "WorkspaceNotificationsOpenPage") is null or { Current.IsOffscreen: true });
+                                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                                try
+                                {
+                                    await WaitUiAsync(run, HasVisiblePageFocus,
+                                        "real Tab from title-bar actions into visible Dashboard content");
+                                }
+                                finally { RecordTabFocus("page-content"); }
+                                var firstPageFocus = AutomationElement.FocusedElement.GetRuntimeId();
+                                await TabToShellControlAsync("WorkspaceTitleBarNotifications", ControlType.Button, reverse: true);
+                                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                                try
+                                {
+                                    await WaitUiAsync(run, () => HasVisiblePageFocus() &&
+                                        firstPageFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()),
+                                        "real Tab returns to the same Dashboard control without trapping focus");
+                                }
+                                finally { RecordTabFocus("page-content-return"); }
                                 if (FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false } feedback)
                                     Assert.True(toggleBounds.Bottom <= feedback.Current.BoundingRectangle.Top,
                                         "Pinned operation feedback overlaps the reopen button.");
@@ -1276,13 +1413,22 @@ public sealed partial class GatewayFixtureUiTests
         double? requested = null;
         try
         {
-            if (!VisibleTargetFitsViewport(before, viewportBefore, widget.Current.IsOffscreen))
+            // UIA can clip a group's rectangle to the viewport. A rectangle touching the
+            // bottom edge does not establish that the complete widget is visible.
+            if (!VisibleTargetFitsViewport(before, viewportBefore, widget.Current.IsOffscreen) ||
+                before.Bottom >= viewportBefore.Bottom - 1)
             {
                 Assert.True(scroll.Current.VerticallyScrollable, $"Clipped widget {widgetId} has no scrollable viewport.");
-                requested = DashboardWidgetScrollPercent(before, viewportBefore, percentBefore, scroll.Current.VerticalViewSize);
+                var viewSize = scroll.Current.VerticalViewSize;
+                requested = DashboardWidgetScrollPercent(before, viewportBefore, percentBefore, viewSize);
+                var expectedTop = before.Top - (requested.Value - percentBefore) / 100 *
+                    viewportBefore.Height * (100 / viewSize - 1);
                 scroll.SetScrollPercent(ScrollPattern.NoScroll, requested.Value);
-                await WaitUiAsync(run, () => VisibleTargetFitsViewport(widget.Current.BoundingRectangle,
-                    viewport.Current.BoundingRectangle, widget.Current.IsOffscreen || viewport.Current.IsOffscreen),
+                await WaitUiAsync(run, () =>
+                    Math.Abs(scroll.Current.VerticalScrollPercent - requested.Value) <= 0.1 &&
+                    Math.Abs(widget.Current.BoundingRectangle.Top - expectedTop) <= 1 &&
+                    VisibleTargetFitsViewport(widget.Current.BoundingRectangle,
+                        viewport.Current.BoundingRectangle, widget.Current.IsOffscreen || viewport.Current.IsOffscreen),
                     $"fully visible widget {widgetId} after native page scroll");
             }
             return widget;
@@ -1315,16 +1461,17 @@ public sealed partial class GatewayFixtureUiTests
             !double.IsFinite(viewport.Top) || !double.IsFinite(viewport.Bottom) || viewport.Height <= 0 ||
             target.Height > viewport.Height || target.Left < viewport.Left || target.Right > viewport.Right)
             throw new InvalidOperationException("The complete widget cannot be qualified in the measured native viewport.");
-        // Center a clipped widget to leave measured slack on both sides instead of depending on edge rounding.
-        var delta = viewport.Contains(target) ? 0 : (target.Top + target.Height / 2) - (viewport.Top + viewport.Height / 2);
+        // Align the known top, not the midpoint of a potentially clipped UIA rectangle.
+        var delta = target.Top - viewport.Top;
         var scrollableHeight = viewport.Height * (100 / viewSize - 1);
         return Math.Clamp(currentPercent + 100 * delta / scrollableHeight, 0, 100);
     }
 
     [Theory]
-    [InlineData(200, 50, 0, 25, 58.333333)]
-    [InlineData(-60, 40, 40, 25, 10)]
-    [InlineData(10, 40, 35, 25, 35)]
+    [InlineData(200, 50, 0, 25, 66.666667)]
+    [InlineData(-60, 40, 40, 25, 20)]
+    [InlineData(10, 40, 35, 25, 38.333333)]
+    [InlineData(88, 12, 0, 25, 29.333333)]
     public void WidgetReveal_UsesMeasuredViewportAndScrollExtent(double top, double height,
         double percent, double viewSize, double expected) =>
         Assert.Equal(expected, DashboardWidgetScrollPercent(new System.Windows.Rect(10, top, 80, height),
