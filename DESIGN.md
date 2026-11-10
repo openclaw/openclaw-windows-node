@@ -68,6 +68,13 @@ colors:
   chatReadAloudText: rgba(0,0,0,0.43372549)
   chatUser: rgba(0,103,192,0.08)
   chatUserText: "#000000e4"
+  usageChartCacheRead: "#99ebff"
+  usagePalette1: "#005fb8"
+  usagePalette2: "#038387"
+  usagePalette3: "#8764b8"
+  usagePalette4: "#ca5010"
+  usagePalette5: "#c239b3"
+  usagePalette6: "#107c10"
   chatActionDisabled: "#00000037"
   chatActionDisabledText: "#ffffff"
   chatActionHover: "#0067c0e6"
@@ -724,6 +731,40 @@ x-colophon:
       chatUserText:
         resource: ChatUserTextBrush
         themes: { dark: "#ffffff", highContrast: "#000000" }
+      usageChartCacheRead:
+        resource: UsageChartCacheReadBrush
+        themes: { dark: "#005fb8", highContrast: "#3ff23f" }
+        usage: Cache-read segment of the Usage token breakdown. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so adjacent segments stay distinct; SystemColorGrayTextColor in high contrast. Other segments bind accent, success and caution fills. The daily chart also has an expandable text table.
+      usagePalette1:
+        resource: UsagePalette1Brush
+        themes: { dark: "#99ebff", highContrast: "#1aebff" }
+        usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
+      usageChartBar:
+        resource: UsageChartBarBrush
+        usage: Daily chart bars use solid SystemAccentColor in light and dark themes, and SystemColorHighlightColor in high contrast. Reported current-day bars use the same solid fill; their date and reported value carry the meaning. Day selection uses native keyboard focus and an accessible selected status.
+      usageCountPill:
+        resource: UsageCountPillBrush
+        usage: Neutral section count pill. TextFillColorPrimary at 16% brush opacity with primary text. High contrast uses SystemColorButtonFaceColor. Attention counts use the existing critical tint and critical foreground instead.
+      usagePalette2:
+        resource: UsagePalette2Brush
+        themes: { dark: "#4fc3c7", highContrast: "#8080ff" }
+        usage: Usage categorical teal. Agents, models and providers keep one slot page-wide (stable name hash). High contrast uses SystemColorHotlightColor.
+      usagePalette3:
+        resource: UsagePalette3Brush
+        themes: { dark: "#b4a0ff", highContrast: "#ffffff" }
+        usage: Usage categorical purple. High contrast uses SystemColorWindowTextColor.
+      usagePalette4:
+        resource: UsagePalette4Brush
+        themes: { dark: "#f7894a", highContrast: "#1aebff" }
+        usage: Usage categorical orange. High contrast uses SystemColorHighlightColor.
+      usagePalette5:
+        resource: UsagePalette5Brush
+        themes: { dark: "#ee7ae3", highContrast: "#8080ff" }
+        usage: Usage categorical magenta. High contrast uses SystemColorHotlightColor.
+      usagePalette6:
+        resource: UsagePalette6Brush
+        themes: { dark: "#6ccb5f", highContrast: "#ffffff" }
+        usage: Usage categorical green, also the cost color. Color never carries meaning alone; labels and values sit beside every swatch. High contrast uses SystemColorWindowTextColor.
       chatActionDisabled:
         resource: AccentButtonBackgroundDisabled
         themes: { dark: "#ffffff28", highContrast: "#000000" }
@@ -1200,6 +1241,17 @@ ComposerPickerOptions rows use full-row `subtleHover` and `subtlePressed` fills 
 TextBox ships as the stock `Microsoft.UI.Xaml.Controls.TextBox`, as used by `DirectUrlBox` in `Pages/ConnectionPage.xaml`, not a custom control template. The Colophon preview uses 14px body text, 32px single-line height, `sm` corners, exact text-control padding, pointer-over and disabled resource tokens, and the accent focus underline. WinUI has no separate pressed background for the input itself; pressing enters its focused state. The browser preview approximates the native elevation border with `controlLine` and does not reproduce the native focused-fill transition or clear-button template.
 
 Card binds its title to `subtitle` (`SubtitleTextBlockStyle`, 20/28 SemiBold) and its description to `body` (`BodyTextBlockStyle`, 14/20 Regular). Its Open report action references the shared HyperlinkButton, not a separately styled link. The card remains static while the action inherits the shared control's typography, hover, pressed, disabled, and focus states.
+
+### Usage daily facts
+
+The daily analysis card keeps tokens (with input/output), cache read/written,
+and sessions in three, two or one columns according to the available width.
+Three columns require 504 DIP of inner width: three 160-DIP minimums
+and two 12-DIP gaps. With narrow page padding of 20 DIP per side and card padding
+of 16 DIP per side, this fits at a 576-DIP content-host width. At least 332 DIP
+of inner width fits two columns, with the third fact on the next row. Smaller
+allocations stack all three facts. Existing width snapping, localized labels, native theme
+resources and wider three-column layouts remain unchanged.
 
 ### Native normal and accent buttons
 

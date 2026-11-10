@@ -1988,36 +1988,6 @@ Gebruik een van deze opties:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>Totale kosten</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>Aanvragen</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>Toegangstokens</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>Aanbieders</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 dagen</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 dagen</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>Aanbieders laden…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>Geen aanbieders geconfigureerd</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>Uitsplitsing per provider</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>Dagelijkse kosten</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>Werkruimte</value>
   </data>
@@ -2329,9 +2299,6 @@ Gebruik een van deze opties:
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>Gebruik en kosten</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Openen in browser</value>
@@ -4834,12 +4801,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>Verbinding openen</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>Dagelijkse kosten worden geladen…</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>Geen dagelijks gebruik voor deze periode</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Spraakinvoer testen</value>
@@ -8540,4 +8501,173 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>De sessiesleutel kon niet worden gekopieerd.</value>
   </data>
+  <data name="Usage_Title" xml:space="preserve"><value>Gebruik</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} tot {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1} (tijdzone)</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>Gebruik wordt vernieuwd</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>CSV exporteren</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>Exporteren bezig</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessies (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Dagtotalen (CSV)</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>{0} is opgeslagen.</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Maak verbinding met een gateway om gebruik te exporteren.</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>Het gebruiksrapport kon niet worden gelezen of opgeslagen. Probeer het opnieuw.</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>De gebruiksgegevens zijn onvolledig. Vernieuw en probeer het opnieuw, of verklein de periode.</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>Deze periode bevat meer sessies dan één export kan bevatten. Verklein de periode of de filters en probeer het opnieuw.</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>Deze gateway biedt dit niet.</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>De gateway is niet verbonden.</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>Het verzoek is mislukt.</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>Periode</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Begindatum</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>Einddatum</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>tot</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>Tijdzone</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>Bereik</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>Weergeven</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>Vandaag</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 dagen</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 dagen</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>Huidige instantie</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>Historische afstamming</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Tokens</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>Een deel van het gebruik wordt nog berekend, dus totalen kunnen stijgen.</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>Geselecteerd</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Sessies zoeken</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>Sessies filteren</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Sommige filters zijn genegeerd</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>Model</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>Gebruik laden</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>Nog niets om te tellen</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>Geen gebruik in deze periode. Begin een gesprek of kies een ruimere periode om meer geschiedenis te bekijken.</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>Gebruik vereist leestoegang</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>Deze verbinding heeft geen operator.read-bereik. Koppel opnieuw met leestoegang om gebruik te zien.</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>Gebruik kon niet worden geladen</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>De gateway gaf geen gebruik terug. Probeer het opnieuw.</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>De gateway meldde: {0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>De gateway stopte eerder met lezen. Totalen bevatten wat tot nu toe is gelezen.</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>Bijwerken</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Bijgewerkte totalen worden automatisch gecontroleerd.</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Automatische controles gepauzeerd; selecteer Vernieuwen om opnieuw te controleren.</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, kosten {2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: nog niet geladen</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Nog niet geladen</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>Datum</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>Berichten</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Hulpmiddelaanroepen</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Cache-hitratio</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessies</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>Fouten</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>Geen agentgegevens</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Zonder prijs</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} fouten</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>Providerlimieten</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>Gebruik per aanbieder laden</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>Geen aanbieders melden abonnementsgebruik.</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>Gebruik per aanbieder is niet beschikbaar.</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Gebruik per aanbieder wordt vernieuwd.</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Geen quotumgegevens gemeld.</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (tegoed)</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessies</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Sessies sorteren</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>Hoogste kosten</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>Meeste fouten</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>Meeste berichten</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>Meest recent</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Meeste tokens</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>Geen sessies in de periode</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} tot {1} van {2}</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Vorige pagina</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Volgende pagina</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Wordt berekend</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Selecteer om details te bekijken.</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Details van {0}</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>sessieoverzicht</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Sommige details konden niet worden geladen</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Kan {0} niet laden: {1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} in · {1} uit</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} items zonder prijs</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>Duur</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} fout</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} item zonder prijs</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Nieuwste eerst</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessies in deze periode</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessie in deze periode</value></data>
+  <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Geschatte kosten</value></data>
+  <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} gebruiksitems hebben geen bekende prijs, dus de geschatte kosten kunnen lager zijn dan de werkelijke.</value></data>
+  <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} gebruiksitem heeft geen bekende prijs, dus de geschatte kosten kunnen lager zijn dan de werkelijke.</value></data>
+  <data name="Usage_OpenWeb" xml:space="preserve"><value>Openen op het web</value></data>
+  <data name="Usage_OpenWebHint" xml:space="preserve"><value>Opent de pagina Gebruik van de gateway in je browser voor tijdlijnen, transcripties en andere gedetailleerde analyses. Je periode, filters en geselecteerde sessie worden niet overgenomen.</value></data>
+  <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} van {1} geladen; de totalen bevatten ze allemaal.</value></data>
+  <data name="Usage_Contributors_Title" xml:space="preserve"><value>Gebruiksverdeling</value></data>
+  <data name="Usage_Contributors_Label" xml:space="preserve"><value>Type verbruiker</value></data>
+  <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agents</value></data>
+  <data name="Usage_Contributors_Model" xml:space="preserve"><value>Modellen</value></data>
+  <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Aanbieders</value></data>
+  <data name="Usage_Unsupported_Title" xml:space="preserve"><value>Gebruik is niet beschikbaar op deze gateway</value></data>
+  <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Werk de gateway bij om hier kosten, tokens en sessies te zien.</value></data>
+  <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>De eerste {0} zijn geladen; er kunnen er meer zijn.</value></data>
+  <data name="Usage_AllowanceWarningFormat" xml:space="preserve"><value>{0}-limiet is {1} gebruikt</value></data>
+  <data name="Usage_Automation" xml:space="preserve"><value>automatisering</value></data>
+  <data name="Usage_BusiestDayFormat" xml:space="preserve"><value>Drukste dag: {0}, {1}</value></data>
+  <data name="Usage_CacheWrittenFormat" xml:space="preserve"><value>cache gelezen · {0} geschreven</value></data>
+  <data name="Usage_Chart" xml:space="preserve"><value>Grafiek</value></data>
+  <data name="Usage_ChartView" xml:space="preserve"><value>Grafiek of tabel</value></data>
+  <data name="Usage_ComputingFormat" xml:space="preserve"><value>Er worden nog {0} sessies berekend</value></data>
+  <data name="Usage_CostliestLoaded" xml:space="preserve"><value>Duurste geladen sessie</value></data>
+  <data name="Usage_DailyAverageFormat" xml:space="preserve"><value>Daggemiddelde {0}</value></data>
+  <data name="Usage_Detail_CacheSplit" xml:space="preserve"><value>Cache gelezen · geschreven</value></data>
+  <data name="Usage_Detail_InputOutput" xml:space="preserve"><value>Invoer · uitvoer</value></data>
+  <data name="Usage_Detail_ShareFormat" xml:space="preserve"><value>{0} van de kosten {1}</value></data>
+  <data name="Usage_Detail_ToolsFormat" xml:space="preserve"><value>{0} ({1} uniek)</value></data>
+  <data name="Usage_FromAutomation" xml:space="preserve"><value>van een automatisering</value></data>
+  <data name="Usage_Highlights" xml:space="preserve"><value>Hoogtepunten</value></data>
+  <data name="Usage_LastKnownFormat" xml:space="preserve"><value>Laatst bekend · {0}</value></data>
+  <data name="Usage_LoadedSessions" xml:space="preserve"><value>Geladen sessies</value></data>
+  <data name="Usage_Mast_30d" xml:space="preserve"><value>in de afgelopen 30 dagen</value></data>
+  <data name="Usage_Mast_7d" xml:space="preserve"><value>in de afgelopen 7 dagen</value></data>
+  <data name="Usage_Mast_Today" xml:space="preserve"><value>vandaag tot nu toe</value></data>
+  <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>Geen in de geladen sessies.</value></data>
+  <data name="Usage_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>Chat openen: {0}</value></data>
+  <data name="Usage_Options" xml:space="preserve"><value>Opties</value></data>
+  <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Lokale tijd ({0})</value></data>
+  <data name="Usage_OtherFormat" xml:space="preserve"><value>Overige ({0})</value></data>
+  <data name="Usage_PerDay" xml:space="preserve"><value>Dagelijks gebruik</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>Geen gerapporteerde datums</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Vooral {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Meest gebruikt model: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Bijna aan limiet</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dagen gerapporteerd</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} getoond · {1} geladen</value></data>
+  <data name="Usage_Preset_Custom" xml:space="preserve"><value>Aangepast</value></data>
+  <data name="Usage_ResetAtFormat" xml:space="preserve"><value>wordt hersteld op {0}</value></data>
+  <data name="Usage_SeeUsing" xml:space="preserve"><value>Bekijken wat het gebruikt</value></data>
+  <data name="Usage_SeeUsingProviderFormat" xml:space="preserve"><value>Bekijken wat {0} gebruikt</value></data>
+  <data name="Usage_ShowLess" xml:space="preserve"><value>Minder weergeven</value></data>
+  <data name="Usage_ShowMoreFormat" xml:space="preserve"><value>Nog {0} weergeven</value></data>
+  <data name="Usage_ShowMoreLoaded" xml:space="preserve"><value>Meer geladen sessies weergeven</value></data>
+  <data name="Usage_ShowOnlyFormat" xml:space="preserve"><value>Alleen {0} weergeven</value></data>
+  <data name="Usage_Table" xml:space="preserve"><value>Tabel</value></data>
+  <data name="Usage_NoProviderUsageFormat" xml:space="preserve"><value>Geen totaalgebruik gemeld voor {0}.</value></data>
+  <data name="Usage_Sessions_PartialLoadedFormat" xml:space="preserve"><value>{0} van {1} geladen; de totalen zijn nog onvolledig.</value></data>
+  <data name="Usage_Activity_MessageSplitFormat" xml:space="preserve"><value>{0} van jou, {1} van agents</value></data>
+  <data name="Usage_Export_BlockedTitle" xml:space="preserve"><value>Sessies kunnen nog niet worden geëxporteerd</value></data>
+  <data name="Usage_Export_BlockedMessage" xml:space="preserve"><value>Sommige sessies in dit bereik zijn niet geladen of worden nog geteld. Het bestand zou onvolledig zijn.</value></data>
+  <data name="Usage_Export_CoverageFormat" xml:space="preserve"><value>{0} geladen van {1}</value></data>
+  <data name="Usage_Export_CoverageUnknownFormat" xml:space="preserve"><value>{0} geladen; totaal niet gemeld</value></data>
+  <data name="Usage_Export_DailyAlternative" xml:space="preserve"><value>Dagtotalen exporteren</value></data>
+  <data name="Usage_Export_OpenFolder" xml:space="preserve"><value>Map openen</value></data>
+  <data name="Usage_Export_Error_OpenFolder" xml:space="preserve"><value>Windows kon de exportmap niet openen.</value></data>
+  <data name="Usage_Export_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Usage_Export_Range7d" xml:space="preserve"><value>Afgelopen 7 dagen</value></data>
+  <data name="Usage_Export_Range30d" xml:space="preserve"><value>Afgelopen 30 dagen</value></data>
 </root>

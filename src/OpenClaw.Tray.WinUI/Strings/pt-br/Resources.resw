@@ -2033,36 +2033,6 @@ Use uma destas opções:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Cancelar</value>
   </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>Custo total</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>Solicitações</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>Tokens usados</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>Provedores</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 dias</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 dias</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>Carregando provedores…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>Nenhum provedor configurado</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>Detalhamento por provedor</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>Custo diário</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>Espaço de trabalho</value>
   </data>
@@ -2374,9 +2344,6 @@ Use uma destas opções:
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>Uso e Custo</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Abrir no navegador</value>
@@ -4810,12 +4777,6 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>Abrir conexão</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>Carregando custos diários...</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>Nenhum uso diário neste período</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Testar entrada de voz</value>
@@ -8592,4 +8553,173 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_CopyFailed" xml:space="preserve">
     <value>Não foi possível copiar a chave da sessão.</value>
   </data>
+  <data name="Usage_Title" xml:space="preserve"><value>Uso</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} a {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1} (fuso)</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>Atualizar</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>Atualizando o uso</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>Exportar CSV</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>Exportando</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessões (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Totais diários (CSV)</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>{0} foi salvo.</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Conecte-se a um gateway para exportar o uso.</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>Não foi possível ler ou salvar o relatório de uso. Tente novamente.</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>Os dados de uso estão incompletos. Atualize e tente novamente ou reduza o período.</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>Este período tem mais sessões do que uma exportação pode incluir. Reduza o período ou os filtros e tente novamente.</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>Este gateway não oferece isso.</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>O gateway não está conectado.</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>A solicitação falhou.</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>Período</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Data inicial</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>Data final</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>a</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>Fuso horário</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>Escopo</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>Mostrar</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>Hoje</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 dias</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 dias</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>Instância atual</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>Linhagem histórica</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Tokens</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>Resultados parciais</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>Parte do uso ainda está sendo calculada, então os totais podem aumentar.</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>Selecionado</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Pesquisar sessões</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>Filtrar sessões</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Alguns filtros foram ignorados</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>Agente</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>Modelo</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>Carregando o uso</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>Nada para contar ainda</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>Não há uso neste período. Inicie uma conversa ou escolha um período maior para explorar mais histórico.</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>O uso requer acesso de leitura</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>Esta conexão não tem o escopo operator.read. Emparelhe novamente com acesso de leitura para ver o uso.</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>Não foi possível carregar o uso</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>O gateway não retornou o uso. Tente novamente.</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>O gateway informou: {0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>Resultados parciais</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>O gateway parou de ler o uso antes. Os totais incluem o que foi lido até agora.</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>Atualizando</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>Os dados de uso podem estar incompletos. Verificando automaticamente os totais atualizados.</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>Os dados de uso podem estar incompletos. Verificações automáticas pausadas; selecione Atualizar para verificar novamente.</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, custo {2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: ainda não carregado</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Ainda não carregado</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>Data</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>Mensagens</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Chamadas de ferramentas</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Taxa de acertos do cache</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessões</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>Erros</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>Nenhum dado de agente</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Sem preço</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} erros</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>Cotas dos provedores</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>Carregando o uso dos provedores</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>Nenhum provedor informa o uso do plano.</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>O uso dos provedores não está disponível.</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>O uso dos provedores está sendo atualizado.</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Nenhuma informação de cota informada.</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} de {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (créditos)</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessões</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Ordenar sessões</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>Maior custo</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>Mais erros</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>Mais mensagens</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>Mais recentes</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Mais tokens</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>Nenhuma sessão no período</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} a {1} de {2}</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Página anterior</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Próxima página</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Calculando</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Selecione para ver detalhes.</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Detalhes de {0}</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>resumo da sessão</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Alguns detalhes não puderam ser carregados</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Não foi possível carregar {0}: {1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} entrada · {1} saída</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} entradas sem preço</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>Duração</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} erro</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} entrada sem preço</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Mais recentes primeiro</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessões no período</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessão no período</value></data>
+  <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Custo estimado</value></data>
+  <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} entradas de uso não têm preço conhecido, então o custo estimado pode ser menor que o real.</value></data>
+  <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} entrada de uso não tem preço conhecido, então o custo estimado pode ser menor que o real.</value></data>
+  <data name="Usage_OpenWeb" xml:space="preserve"><value>Abrir na web</value></data>
+  <data name="Usage_OpenWebHint" xml:space="preserve"><value>Abre a página Uso do gateway no navegador para linhas do tempo, transcrições e outras análises detalhadas. O período, os filtros e a sessão selecionada não são transferidos.</value></data>
+  <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} de {1} carregadas; os totais incluem todas.</value></data>
+  <data name="Usage_Contributors_Title" xml:space="preserve"><value>Detalhamento do uso</value></data>
+  <data name="Usage_Contributors_Label" xml:space="preserve"><value>Tipo de contribuinte</value></data>
+  <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agentes</value></data>
+  <data name="Usage_Contributors_Model" xml:space="preserve"><value>Modelos</value></data>
+  <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Provedores</value></data>
+  <data name="Usage_Unsupported_Title" xml:space="preserve"><value>O uso não está disponível neste gateway</value></data>
+  <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Atualize o gateway para ver custos, tokens e sessões aqui.</value></data>
+  <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>As primeiras {0} foram carregadas; pode haver mais.</value></data>
+  <data name="Usage_AllowanceWarningFormat" xml:space="preserve"><value>A cota de {0} está {1} usada</value></data>
+  <data name="Usage_Automation" xml:space="preserve"><value>automação</value></data>
+  <data name="Usage_BusiestDayFormat" xml:space="preserve"><value>Dia mais ativo: {0}, {1}</value></data>
+  <data name="Usage_CacheWrittenFormat" xml:space="preserve"><value>cache lido · {0} gravados</value></data>
+  <data name="Usage_Chart" xml:space="preserve"><value>Gráfico</value></data>
+  <data name="Usage_ChartView" xml:space="preserve"><value>Gráfico ou tabela</value></data>
+  <data name="Usage_ComputingFormat" xml:space="preserve"><value>Ainda calculando {0} sessões</value></data>
+  <data name="Usage_CostliestLoaded" xml:space="preserve"><value>Sessão carregada mais cara</value></data>
+  <data name="Usage_DailyAverageFormat" xml:space="preserve"><value>Média diária {0}</value></data>
+  <data name="Usage_Detail_CacheSplit" xml:space="preserve"><value>Cache lido · gravado</value></data>
+  <data name="Usage_Detail_InputOutput" xml:space="preserve"><value>Entrada · saída</value></data>
+  <data name="Usage_Detail_ShareFormat" xml:space="preserve"><value>{0} do custo {1}</value></data>
+  <data name="Usage_Detail_ToolsFormat" xml:space="preserve"><value>{0} ({1} únicas)</value></data>
+  <data name="Usage_FromAutomation" xml:space="preserve"><value>de uma automação</value></data>
+  <data name="Usage_Highlights" xml:space="preserve"><value>Destaques</value></data>
+  <data name="Usage_LastKnownFormat" xml:space="preserve"><value>Último estado conhecido · {0}</value></data>
+  <data name="Usage_LoadedSessions" xml:space="preserve"><value>Sessões carregadas</value></data>
+  <data name="Usage_Mast_30d" xml:space="preserve"><value>nos últimos 30 dias</value></data>
+  <data name="Usage_Mast_7d" xml:space="preserve"><value>nos últimos 7 dias</value></data>
+  <data name="Usage_Mast_Today" xml:space="preserve"><value>hoje até agora</value></data>
+  <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>Nenhuma nas sessões carregadas.</value></data>
+  <data name="Usage_OpenChat" xml:space="preserve"><value>Abrir chat</value></data>
+  <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>Abrir chat: {0}</value></data>
+  <data name="Usage_Options" xml:space="preserve"><value>Opções</value></data>
+  <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Hora local ({0})</value></data>
+  <data name="Usage_OtherFormat" xml:space="preserve"><value>Outros ({0})</value></data>
+  <data name="Usage_PerDay" xml:space="preserve"><value>Uso diário</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>Nenhuma data informada</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Principalmente {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Modelo principal: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Perto do limite</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dias informados</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} exibidas · {1} carregadas</value></data>
+  <data name="Usage_Preset_Custom" xml:space="preserve"><value>Personalizado</value></data>
+  <data name="Usage_ResetAtFormat" xml:space="preserve"><value>redefine em {0}</value></data>
+  <data name="Usage_SeeUsing" xml:space="preserve"><value>Ver o que está usando</value></data>
+  <data name="Usage_SeeUsingProviderFormat" xml:space="preserve"><value>Ver o que está usando {0}</value></data>
+  <data name="Usage_ShowLess" xml:space="preserve"><value>Mostrar menos</value></data>
+  <data name="Usage_ShowMoreFormat" xml:space="preserve"><value>Mostrar mais {0}</value></data>
+  <data name="Usage_ShowMoreLoaded" xml:space="preserve"><value>Mostrar mais sessões carregadas</value></data>
+  <data name="Usage_ShowOnlyFormat" xml:space="preserve"><value>Mostrar apenas {0}</value></data>
+  <data name="Usage_Table" xml:space="preserve"><value>Tabela</value></data>
+  <data name="Usage_NoProviderUsageFormat" xml:space="preserve"><value>Nenhum uso agregado informado para {0}.</value></data>
+  <data name="Usage_Sessions_PartialLoadedFormat" xml:space="preserve"><value>{0} de {1} carregadas; os totais ainda estão incompletos.</value></data>
+  <data name="Usage_Activity_MessageSplitFormat" xml:space="preserve"><value>{0} suas, {1} dos agentes</value></data>
+  <data name="Usage_Export_BlockedTitle" xml:space="preserve"><value>As sessões ainda não podem ser exportadas</value></data>
+  <data name="Usage_Export_BlockedMessage" xml:space="preserve"><value>Algumas sessões deste período não foram carregadas ou ainda estão sendo contadas, então o arquivo ficaria incompleto.</value></data>
+  <data name="Usage_Export_CoverageFormat" xml:space="preserve"><value>{0} carregadas de {1}</value></data>
+  <data name="Usage_Export_CoverageUnknownFormat" xml:space="preserve"><value>{0} carregadas; total não informado</value></data>
+  <data name="Usage_Export_DailyAlternative" xml:space="preserve"><value>Exportar totais diários</value></data>
+  <data name="Usage_Export_OpenFolder" xml:space="preserve"><value>Abrir pasta</value></data>
+  <data name="Usage_Export_Error_OpenFolder" xml:space="preserve"><value>O Windows não conseguiu abrir a pasta de exportação.</value></data>
+  <data name="Usage_Export_Close" xml:space="preserve"><value>Fechar</value></data>
+  <data name="Usage_Export_Range7d" xml:space="preserve"><value>Últimos 7 dias</value></data>
+  <data name="Usage_Export_Range30d" xml:space="preserve"><value>Últimos 30 dias</value></data>
 </root>
