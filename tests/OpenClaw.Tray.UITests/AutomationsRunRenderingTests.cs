@@ -17,6 +17,7 @@ namespace OpenClaw.Tray.UITests;
 public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
 {
     private const string Response = "## Summary\n\n- **Ready**\n- [details](https://example.invalid)\n\n"
+        + "<https://autolink.invalid> https://bare.invalid www.bare.invalid <mailto:hello@example.invalid>\n\n"
         + "[unsafe](javascript:alert(1))\n\n![remote image](https://example.invalid/image.png)\n\n"
         + "<script>alert('not executed')</script>";
 
@@ -75,7 +76,7 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
                 }
                 else
                 {
-                    var rich = FindLogical<RichTextBlock>(root).ToArray();
+                    var rich = FindResultContent<RichTextBlock>(root).ToArray();
                     Assert.NotEmpty(rich);
                     var paragraphs = rich.SelectMany(text => text.Blocks.OfType<Paragraph>()).ToArray();
                     var runs = paragraphs.SelectMany(paragraph => AllInlines(paragraph.Inlines))
@@ -85,14 +86,19 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
                     Assert.Contains(paragraphs, paragraph => string.Concat(
                         AllInlines(paragraph.Inlines).OfType<Run>().Select(run => run.Text))
                         == "details (https://example.invalid)");
+                    var renderedText = string.Concat(runs.Select(run => run.Text));
+                    Assert.Contains("https://autolink.invalid", renderedText);
+                    Assert.Contains("https://bare.invalid", renderedText);
+                    Assert.Contains("www.bare.invalid", renderedText);
+                    Assert.Contains("hello@example.invalid", renderedText);
                     Assert.DoesNotContain(runs, run => run.Text.Contains("**Ready**"));
                     Assert.DoesNotContain(paragraphs.SelectMany(paragraph => AllInlines(paragraph.Inlines)),
                         item => item is Hyperlink);
                     Assert.All(rich, text => Assert.True(text.IsTextSelectionEnabled));
                 }
-                Assert.Empty(FindLogical<Image>(root));
-                Assert.All(FindLogical<HyperlinkButton>(root), button => Assert.Null(button.NavigateUri));
-                Assert.Empty(FindDescendants<WebView2>(renderer));
+                Assert.Empty(FindResultContent<Image>(root));
+                Assert.All(FindResultContent<HyperlinkButton>(root), button => Assert.Null(button.NavigateUri));
+                Assert.Empty(FindResultContent<WebView2>(root));
             });
         }
         finally
@@ -108,6 +114,20 @@ public sealed class AutomationsRunRenderingTests(UIThreadFixture ui)
                 store?.Dispose();
             });
         }
+    }
+
+    private static IEnumerable<T> FindResultContent<T>(Microsoft.UI.Xaml.DependencyObject root)
+        where T : Microsoft.UI.Xaml.DependencyObject
+    {
+        foreach (var element in FindLogical<T>(root))
+            yield return element;
+        // Custom Markdown links put their label controls inside inline UI containers.
+        foreach (var rich in FindLogical<RichTextBlock>(root))
+            foreach (var container in rich.Blocks.OfType<Paragraph>()
+                .SelectMany(paragraph => AllInlines(paragraph.Inlines)).OfType<InlineUIContainer>())
+                if (container.Child is { } child)
+                    foreach (var element in FindResultContent<T>(child))
+                        yield return element;
     }
 
     private static IEnumerable<Inline> AllInlines(IEnumerable<Inline> inlines)

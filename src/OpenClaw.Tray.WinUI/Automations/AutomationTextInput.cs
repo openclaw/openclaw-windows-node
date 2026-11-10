@@ -61,9 +61,9 @@ internal static class AutomationTextInput
         {
             _control = control;
             _property = property;
-            control.Loaded += Loaded;
-            control.Unloaded += Unloaded;
-            Attach();
+            // ContentDialog reconciliation can reparent a still-live input. Its
+            // property binding belongs to the Reactor element, not visual loading.
+            _token = control.RegisterPropertyChangedCallback(property, Changed);
         }
 
         public void Update(string value, Action<string> changed)
@@ -91,21 +91,11 @@ internal static class AutomationTextInput
             _changed?.Invoke(value);
         }
 
-        private void Loaded(object sender, RoutedEventArgs args) => Attach();
-        private void Unloaded(object sender, RoutedEventArgs args) => Detach();
-        private void Attach() => _token ??= _control.RegisterPropertyChangedCallback(_property, Changed);
-        private void Detach()
-        {
-            if (_token is not { } token) return;
-            _control.UnregisterPropertyChangedCallback(_property, token);
-            _token = null;
-        }
-
         public void Dispose()
         {
-            Detach();
-            _control.Loaded -= Loaded;
-            _control.Unloaded -= Unloaded;
+            if (_token is { } token)
+                _control.UnregisterPropertyChangedCallback(_property, token);
+            _token = null;
             _changed = null;
         }
     }

@@ -57,6 +57,19 @@ internal static class OwnedWindowCapture
         return dpi / 96d;
     }
 
+    internal static global::System.Windows.Rect ReadOwnedClientBounds(GatewayFixtureRun run, AutomationElement window)
+    {
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        Assert.Equal(run.AppProcessId, window.Current.ProcessId);
+        GetWindowThreadProcessId(handle, out var owner);
+        Assert.Equal((uint)run.AppProcessId, owner);
+        Assert.True(GetClientRect(handle, out var client));
+        var origin = new System.Drawing.Point();
+        Assert.True(ClientToScreen(handle, ref origin));
+        return new global::System.Windows.Rect(origin.X, origin.Y,
+            client.Right - client.Left, client.Bottom - client.Top);
+    }
+
     internal static void ResizeOwnedPixels(GatewayFixtureRun run, AutomationElement window, int width, int height)
     {
         var handle = new IntPtr(window.Current.NativeWindowHandle);
@@ -182,6 +195,7 @@ internal static class OwnedWindowCapture
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetSystemMetricsForDpi(int index, uint dpi);
     [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr window, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr window, ref System.Drawing.Point point);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(
         IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);

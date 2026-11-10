@@ -148,9 +148,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is { Current.HasKeyboardFocus: true },
                 "native Expander keyboard focus");
             Capture(run, "automations-stock-expander-focused-Light.png", "AutomationExpander:morning-brief");
-            var collapsedBounds = OwnedWindowCapture.WithPhysicalCoordinates(() => scheduledExpander.Current.BoundingRectangle);
-            var collapsedChatBounds = OwnedWindowCapture.WithPhysicalCoordinates(() =>
-                FindById(run, "AutomationRowChat:morning-brief")!.Current.BoundingRectangle);
+            var (collapsedBounds, collapsedTitleBounds, collapsedChatBounds) =
+                await WaitForAutomationRowLayoutAsync(run, "morning-brief", expanded: false);
             var noChatBounds = OwnedWindowCapture.WithPhysicalCoordinates(() =>
                 FindById(run, "AutomationExpander:deploy-watch")!.Current.BoundingRectangle);
             Assert.Null(FindById(run, "AutomationRowChat:deploy-watch"));
@@ -166,19 +165,23 @@ public sealed partial class GatewayFixtureUiTests
                 "native scheduled item expansion");
             await WaitUiAsync(run, () => FindById(run, "AutomationScheduleSummary") is not null,
                 "scheduled item details");
-            var expandedBounds = OwnedWindowCapture.WithPhysicalCoordinates(() => scheduledExpander.Current.BoundingRectangle);
-            var expandedChatBounds = OwnedWindowCapture.WithPhysicalCoordinates(() =>
-                FindById(run, "AutomationRowChat:morning-brief")!.Current.BoundingRectangle);
-            Assert.InRange(Math.Abs(expandedBounds.Width - collapsedBounds.Width), 0, 1);
+            var (expandedBounds, expandedTitleBounds, expandedChatBounds) =
+                await WaitForAutomationRowLayoutAsync(run, "morning-brief", expanded: true);
+            // Expander's UIA rectangle includes expanded template/content ink. The mounted
+            // responsive proof checks allocated row/header widths; this checks visible anchors.
+            Assert.InRange(Math.Abs(expandedTitleBounds.Width - collapsedTitleBounds.Width), 0, 1);
+            Assert.InRange(Math.Abs(expandedTitleBounds.Left - collapsedTitleBounds.Left), 0, 1);
+            Assert.InRange(Math.Abs(expandedTitleBounds.Top - collapsedTitleBounds.Top), 0, 1);
+            Assert.InRange(Math.Abs(expandedTitleBounds.Height - collapsedTitleBounds.Height), 0, 1);
             Assert.True(expandedBounds.Height > collapsedBounds.Height + expandedChatBounds.Height,
                 "The expanded detail must be tall enough to expose centering against the whole card.");
-            Assert.InRange(Math.Abs((expandedChatBounds.Top - expandedBounds.Top)
-                - (collapsedChatBounds.Top - collapsedBounds.Top)), 0, 1);
+            Assert.InRange(Math.Abs((expandedChatBounds.Top - expandedTitleBounds.Top)
+                - (collapsedChatBounds.Top - collapsedTitleBounds.Top)), 0, 1);
             Assert.InRange(Math.Abs(expandedChatBounds.Left - collapsedChatBounds.Left), 0, 1);
             Assert.InRange(Math.Abs(expandedChatBounds.Top - collapsedChatBounds.Top), 0, 1);
             Assert.InRange(Math.Abs(expandedChatBounds.Width - collapsedChatBounds.Width), 0, 1);
             Assert.InRange(Math.Abs(expandedChatBounds.Height - collapsedChatBounds.Height), 0, 1);
-            Assert.InRange(expandedChatBounds.Top - expandedBounds.Top + expandedChatBounds.Height / 2,
+            Assert.InRange(expandedChatBounds.Top - collapsedBounds.Top + expandedChatBounds.Height / 2,
                 -1, collapsedBounds.Height + 1);
             Capture(run, "automations-stock-expander-expanded-Light.png", "AutomationExpander:morning-brief",
                 "AutomationScheduleSummary");
@@ -186,6 +189,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run,
                 () => scheduledDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Collapsed,
                 "native scheduled item collapse");
+            await WaitForAutomationRowLayoutAsync(run, "morning-brief", expanded: false);
             var rowChat = FindById(run, "AutomationRowChat:morning-brief")!;
             rowChat.SetFocus();
             var hoverBounds = OwnedWindowCapture.WithPhysicalCoordinates(() =>
@@ -269,16 +273,17 @@ public sealed partial class GatewayFixtureUiTests
             Assert.DoesNotContain(run.Gateway.Requests, r => r.Method is "cron.add" or "cron.update" or "cron.run");
             Invoke(FindById(run, "AutomationEditorCancel")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "closed copy");
-            var inboxTop = OwnedWindowCapture.WithPhysicalCoordinates(() => FindById(run, "AutomationExpander:inbox-sweep")!.Current.BoundingRectangle.Top);
+            var inboxTop = (await WaitForAutomationRowLayoutAsync(run, "inbox-sweep", expanded: false)).Title.Top;
             ExpandAutomation(run, "inbox-sweep");
-            bool HasTextInCard(string id, string value) => FindById(run, $"AutomationExpander:{id}")!
-                .FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
-                .Cast<AutomationElement>().Any(element => element.Current.Name.Contains(value, StringComparison.Ordinal));
-            await WaitUiAsync(run, () => HasTextInCard("inbox-sweep", "Archived 4 newsletters, flagged 0 message."),
-                "second expanded row loads its own runs");
+            bool HasTextInCard(string id, string value) => FindById(run, $"AutomationExpander:{id}") is { } card
+                && card.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                    .Cast<AutomationElement>().Any(element => element.Current.Name.Contains(value, StringComparison.Ordinal));
+            await WaitUiAsync(run, () => HasTextInCard("inbox-sweep", "Archived 4 newsletters, flagged 0 message.")
+                && HasTextInCard("morning-brief", "Three things today: design review at 10"),
+                "both expanded rows retain their own runs");
             Assert.True(HasTextInCard("morning-brief", "Three things today: design review at 10"));
-            Assert.InRange(Math.Abs(OwnedWindowCapture.WithPhysicalCoordinates(() =>
-                FindById(run, "AutomationExpander:inbox-sweep")!.Current.BoundingRectangle.Top) - inboxTop), 0, 1);
+            var inboxTitle = (await WaitForAutomationRowLayoutAsync(run, "inbox-sweep", expanded: true)).Title;
+            Assert.InRange(Math.Abs(inboxTitle.Top - inboxTop), 0, 1);
             foreach (var id in new[] { "morning-brief", "inbox-sweep" })
                 Assert.Equal(ExpandCollapseState.Expanded, ((ExpandCollapsePattern)FindById(run, $"AutomationExpander:{id}")!
                     .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
@@ -421,7 +426,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "AutomationsAgendaList") is not null, "complete agenda");
             await ScrollAutomationsToTopAsync(run);
             await AssertAutomationsHeroWashAsync(run, theme);
-        }, scenario: GatewayScenario.CreateAutomations());
+        }, scenario: GatewayScenario.CreateAutomations(additionalJobs: 20));
     }
 
     [GatewayFixtureUiTheory]
@@ -451,8 +456,11 @@ public sealed partial class GatewayFixtureUiTests
             var proofFailures = new List<string>();
             async Task SelectJobAsync(string id)
             {
+                AutomationElement? row = null;
+                await WaitUiAsync(run, () => (row = FindById(run, $"AutomationExpander:{id}")) is { Current.IsEnabled: true },
+                    $"available automation {id}");
                 if (FindById(run, $"CronCommands:{id}") is null)
-                    ExpandAutomation(run, id);
+                    ((ExpandCollapsePattern)row!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
                 await WaitUiAsync(run, () => FindById(run, $"CronCommands:{id}") is not null, $"selected {id}");
             }
             async Task ProofStateAsync(string name, Func<Task> proof)
@@ -1240,22 +1248,85 @@ public sealed partial class GatewayFixtureUiTests
     private const double AutomationScrollTolerancePixels = 1;
     private const int AutomationScrollCorrectionLimit = 3;
 
+    private readonly record struct AutomationScrollFrame(
+        global::System.Windows.Rect Window, global::System.Windows.Rect Aperture);
+
+    private static async Task<AutomationScrollFrame> ResetAutomationScrollAsync(
+        GatewayFixtureRun run, AutomationElement page, ScrollPattern scroll)
+    {
+        AutomationScrollFrame? previous = null;
+        var observed = default(AutomationScrollFrame);
+        if (scroll.Current.VerticallyScrollable)
+            scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
+        await WaitUiAsync(run, () =>
+        {
+            if (scroll.Current.VerticallyScrollable && scroll.Current.VerticalScrollPercent != 0) return false;
+            observed = OwnedWindowCapture.WithPhysicalCoordinates(() =>
+            {
+                var window = AutomationsWindow(run);
+                var aperture = global::System.Windows.Rect.Intersect(page.Current.BoundingRectangle,
+                    OwnedWindowCapture.ReadOwnedClientBounds(run, window));
+                Assert.True(!aperture.IsEmpty && aperture.Width > 0 && aperture.Height > 0);
+                return new AutomationScrollFrame(OwnedWindowCapture.ReadOwnedBounds(run, window), aperture);
+            });
+            var settled = previous == observed;
+            previous = observed;
+            return settled;
+        }, "settled scroll-zero sampling aperture");
+        return observed;
+    }
+
+    private static async Task<(global::System.Windows.Rect Bounds, global::System.Windows.Rect Title, global::System.Windows.Rect Chat)>
+        WaitForAutomationRowLayoutAsync(GatewayFixtureRun run, string id, bool expanded)
+    {
+        var observed = (Bounds: global::System.Windows.Rect.Empty, Title: global::System.Windows.Rect.Empty,
+            Chat: global::System.Windows.Rect.Empty);
+        var previous = observed;
+        string? previousIdentity = null;
+        await WaitUiAsync(run, () =>
+        {
+            if (FindById(run, $"AutomationExpander:{id}") is not { } row) return false;
+            if (FindById(run, $"CronJobTitle:{id}") is not { } title) return false;
+            var state = ((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState;
+            if (state != (expanded ? ExpandCollapseState.Expanded : ExpandCollapseState.Collapsed)) return false;
+            observed = OwnedWindowCapture.WithPhysicalCoordinates(() => (row.Current.BoundingRectangle, title.Current.BoundingRectangle,
+                FindById(run, $"AutomationRowChat:{id}")?.Current.BoundingRectangle ?? global::System.Windows.Rect.Empty));
+            var identity = string.Join(",", row.GetRuntimeId());
+            var settled = !observed.Bounds.IsEmpty && observed.Bounds.Width > 0 && observed.Bounds.Height > 0
+                && !observed.Title.IsEmpty && observed.Title.Width > 0 && observed.Title.Height > 0
+                && observed == previous && identity == previousIdentity;
+            File.AppendAllText(Path.Combine(run.ArtifactsDirectory, "automations-row-layout.jsonl"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    id, expanded, identity, settled, timestampUtc = DateTimeOffset.UtcNow,
+                    bounds = observed.Bounds.ToString(), title = observed.Title.ToString(), chat = observed.Chat.ToString(),
+                }) + Environment.NewLine);
+            previous = observed;
+            previousIdentity = identity;
+            return settled;
+        }, $"settled {(expanded ? "expanded" : "collapsed")} row {id}");
+        return observed;
+    }
+
     private static (double Percent, double ViewSize, global::System.Windows.Rect Viewport,
         global::System.Windows.Rect Target, bool Offscreen) ReadAutomationScroll(
-        GatewayFixtureRun run, AutomationElement page, ScrollPattern scroll, string? id) =>
+        GatewayFixtureRun run, ScrollPattern scroll, AutomationScrollFrame frame, string? id) =>
         OwnedWindowCapture.WithPhysicalCoordinates(() =>
         {
+            Assert.Equal(frame.Window, OwnedWindowCapture.ReadOwnedBounds(run, AutomationsWindow(run)));
             var info = scroll.Current;
             var target = id is null ? null : FindById(run, id);
+            // This fixed aperture bounds sampling/reveal within an unchanged HWND, not
+            // an observed post-scroll allocation. Mounted proof measures the real viewport.
             return (info.VerticallyScrollable ? info.VerticalScrollPercent : 0, info.VerticalViewSize,
-                page.Current.BoundingRectangle, target?.Current.BoundingRectangle ?? global::System.Windows.Rect.Empty,
+                frame.Aperture, target?.Current.BoundingRectangle ?? global::System.Windows.Rect.Empty,
                 id is not null && (target is null || target.Current.IsOffscreen));
         });
 
-    private static async Task MoveAutomationScrollAsync(GatewayFixtureRun run, AutomationElement page,
-        ScrollPattern scroll, double requested, string? id = null)
+    private static async Task MoveAutomationScrollAsync(GatewayFixtureRun run, ScrollPattern scroll,
+        AutomationScrollFrame frame, double requested, string? id = null)
     {
-        var observed = ReadAutomationScroll(run, page, scroll, id);
+        var observed = ReadAutomationScroll(run, scroll, frame, id);
         var previous = observed;
         previous.Percent = double.NaN;
         if (scroll.Current.VerticallyScrollable)
@@ -1264,7 +1335,7 @@ public sealed partial class GatewayFixtureUiTests
         {
             await WaitUiAsync(run, () =>
             {
-                observed = ReadAutomationScroll(run, page, scroll, id);
+                observed = ReadAutomationScroll(run, scroll, frame, id);
                 var range = observed.ViewSize > 0
                     ? observed.Viewport.Height * (100 / observed.ViewSize - 1) : 0;
                 var tolerance = range > 0 ? AutomationScrollTolerancePixels * 100 / range : 0;
@@ -1280,7 +1351,7 @@ public sealed partial class GatewayFixtureUiTests
                 System.Text.Json.JsonSerializer.Serialize(new
                 {
                     id, requested, actual = observed.Percent, observed.ViewSize, observed.Offscreen,
-                    viewport = observed.Viewport.ToString(), target = observed.Target.ToString(),
+                    samplingAperture = observed.Viewport.ToString(), target = observed.Target.ToString(),
                 }) + Environment.NewLine);
         }
     }
@@ -1290,8 +1361,8 @@ public sealed partial class GatewayFixtureUiTests
         var page = await WaitForPageScrollPeerAsync(run);
         await WaitForElementByIdAsync(run, id, $"automation target {id}");
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        await MoveAutomationScrollAsync(run, page, scroll, 0, id);
-        var observed = ReadAutomationScroll(run, page, scroll, id);
+        var frame = await ResetAutomationScrollAsync(run, page, scroll);
+        var observed = ReadAutomationScroll(run, scroll, frame, id);
         while (observed.Target.Width <= 0 || observed.Target.Height <= 0 || observed.Target.IsEmpty)
         {
             Assert.True(observed.Percent < 100 && observed.ViewSize is > 0 and < 100,
@@ -1300,8 +1371,8 @@ public sealed partial class GatewayFixtureUiTests
             // destination, not the first geometry/progress reported during the native update.
             var next = Math.Min(100, observed.Percent + 50 * observed.ViewSize / (100 - observed.ViewSize));
             Assert.True(next > observed.Percent, $"Page scroll did not advance toward {id}.");
-            await MoveAutomationScrollAsync(run, page, scroll, next, id);
-            observed = ReadAutomationScroll(run, page, scroll, id);
+            await MoveAutomationScrollAsync(run, scroll, frame, next, id);
+            observed = ReadAutomationScroll(run, scroll, frame, id);
         }
 
         var atBoundary = false;
@@ -1313,8 +1384,8 @@ public sealed partial class GatewayFixtureUiTests
             if (range <= 0) { atBoundary = true; break; }
             var next = Math.Clamp(observed.Percent + delta * 100 / range, 0, 100);
             atBoundary = next == 0 && delta < 0 || next == 100 && delta > 0;
-            await MoveAutomationScrollAsync(run, page, scroll, next, id);
-            observed = ReadAutomationScroll(run, page, scroll, id);
+            await MoveAutomationScrollAsync(run, scroll, frame, next, id);
+            observed = ReadAutomationScroll(run, scroll, frame, id);
             if (atBoundary) break;
         }
         Assert.True(!observed.Offscreen && !observed.Target.IsEmpty && observed.Target.Width > 0
@@ -1328,7 +1399,7 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task ScrollAutomationsToTopAsync(GatewayFixtureRun run)
     {
         var page = await WaitForPageScrollPeerAsync(run);
-        await MoveAutomationScrollAsync(run, page, (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern), 0);
+        await ResetAutomationScrollAsync(run, page, (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern));
     }
 
     /// <summary>
@@ -1339,19 +1410,22 @@ public sealed partial class GatewayFixtureUiTests
     {
         var page = await WaitForPageScrollPeerAsync(run);
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
+        var scrollFrame = await ResetAutomationScrollAsync(run, page, scroll);
         SaveAutomationsWindow(run, "automations-hero-top.png", "AutomationsHeadline", "AutomationsMast");
         Assert.True(scroll.Current.VerticallyScrollable, "The populated page must scroll to prove the hero placement.");
         var window = AutomationsWindow(run);
         var (frame, viewport, headline, hero) = OwnedWindowCapture.WithPhysicalCoordinates(() => (
-            OwnedWindowCapture.ReadOwnedBounds(run, window), page.Current.BoundingRectangle,
+            scrollFrame.Window, scrollFrame.Aperture,
             FindById(run, "AutomationsHeadline")!.Current.BoundingRectangle,
             FindById(run, "AutomationsMast")!.Current.BoundingRectangle));
         var scale = OwnedWindowCapture.OwnedDpiScale(run, window);
         var highContrast = new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
         var range = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
+        Assert.True(range > hero.Bottom - viewport.Top,
+            "The fixture must provide enough scroll range to move the complete hero out of view.");
         var shift = Math.Min(hero.Top - viewport.Top - scale, hero.Height / 4);
         Assert.True(range > 0 && shift >= 8 * scale, "A visible partial-scroll interval is required for wash tracking.");
-        await MoveAutomationScrollAsync(run, page, scroll, shift * 100 / range);
+        await MoveAutomationScrollAsync(run, scroll, scrollFrame, shift * 100 / range);
         var translatedHero = OwnedWindowCapture.WithPhysicalCoordinates(() =>
             FindById(run, "AutomationsMast")!.Current.BoundingRectangle);
         Assert.True(translatedHero.Top < hero.Top - scale);
@@ -1367,12 +1441,12 @@ public sealed partial class GatewayFixtureUiTests
                 new global::System.Windows.Rect(hero.Left - frame.Left, hero.Top - frame.Top, hero.Width, hero.Height),
                 new global::System.Windows.Rect(translatedHero.Left - frame.Left, translatedHero.Top - frame.Top,
                     translatedHero.Width, translatedHero.Height), (int)Math.Ceiling(12 * scale));
-        scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+        await MoveAutomationScrollAsync(run, scroll, scrollFrame, 100);
         await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 99.5 && OwnedWindowCapture.WithPhysicalCoordinates(() =>
             FindById(run, "AutomationsHeadline") is not { } moved || moved.Current.IsOffscreen ||
             moved.Current.BoundingRectangle is var area && (area.IsEmpty || area.Bottom <= viewport.Top + 1)),
             "header scrolled out with the content");
-        Assert.Equal(viewport, OwnedWindowCapture.WithPhysicalCoordinates(() => page.Current.BoundingRectangle));
+        Assert.Equal(frame, OwnedWindowCapture.ReadOwnedBounds(run, window));
         SaveAutomationsWindow(run, "automations-hero-scrolled.png");
         var scrolled = Path.Combine(run.ArtifactsDirectory, "automations-hero-scrolled.png");
         using var afterScroll = new System.Drawing.Bitmap(scrolled);
@@ -1390,7 +1464,7 @@ public sealed partial class GatewayFixtureUiTests
         await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "automations-hero-proof.json"),
             System.Text.Json.JsonSerializer.Serialize(new
             {
-                theme, highContrast, scroll.Current.VerticalScrollPercent, frame, viewport, headline, hero, translatedHero,
+                theme, highContrast, scroll.Current.VerticalScrollPercent, frame, samplingAperture = viewport, headline, hero, translatedHero,
                 motion = motion is { } measured ? new { measured.TranslatedDelta, measured.StationaryDelta } : null,
                 sampleX = x, bandTop, bandBottom, maxBackplateDelta = drift, heroWashDelta = wash,
             }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
@@ -1409,7 +1483,10 @@ public sealed partial class GatewayFixtureUiTests
         var dy = (int)Math.Round(moved.Top - hero.Top);
         var x = (int)Math.Round(hero.Left) + inset;
         var first = (int)Math.Ceiling(hero.Top) + inset;
-        var last = (int)Math.Floor(Math.Min(hero.Bottom, moved.Bottom)) - inset;
+        // Include the original lower padding revealed beneath the translated hero.
+        // Restricting both samples to their overlap cannot distinguish a shallow
+        // diagonal gradient after a small vertical scroll.
+        var last = (int)Math.Floor(hero.Bottom) - inset;
         Assert.True(dy < 0 && last > first, "A translated, overlapping hero interior is required.");
         var translated = 0;
         var stationary = 0;
@@ -1534,6 +1611,7 @@ public sealed partial class GatewayFixtureUiTests
                     {
                         var viewport = owner.Current.BoundingRectangle;
                         viewport.Intersect(FindById(run, "AutomationEditorDialog")!.Current.BoundingRectangle);
+                        viewport.Intersect(OwnedWindowCapture.ReadOwnedClientBounds(run, AutomationsWindow(run)));
                         viewport.Intersect(OwnedWindowCapture.ReadOwnedBounds(run, AutomationsWindow(run)));
                         Assert.True(!viewport.IsEmpty && viewport.Width > 0 && viewport.Height > 0,
                             $"Editor field {id} has no visible owned scroll viewport.");
@@ -1595,8 +1673,23 @@ public sealed partial class GatewayFixtureUiTests
     }
     private static string? EditorValue(GatewayFixtureRun run, string id) => EditorValueElement(run, id) is { } e
         ? ((ValuePattern)e.GetCurrentPattern(ValuePattern.Pattern)).Current.Value : null;
-    private static void SetEditorValue(GatewayFixtureRun run, string id, string value) =>
-        ((ValuePattern)(EditorValueElement(run, id) ?? throw new InvalidOperationException($"Missing {id}.")).GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
+    private static void SetEditorValue(GatewayFixtureRun run, string id, string value)
+    {
+        var element = EditorValueElement(run, id) ?? throw new InvalidOperationException($"Missing {id}.");
+        void Record(string phase) => File.AppendAllText(Path.Combine(run.ArtifactsDirectory, "automation-editor-input.jsonl"),
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                phase, id, timestampUtc = DateTimeOffset.UtcNow,
+                runtimeId = element.GetRuntimeId(), element.Current.ProcessId,
+                element.Current.IsEnabled, element.Current.IsOffscreen, element.Current.HasKeyboardFocus,
+                element.Current.ItemStatus,
+                nativeLength = ((ValuePattern)element.GetCurrentPattern(ValuePattern.Pattern)).Current.Value.Length,
+                requestedLength = value.Length,
+            }) + Environment.NewLine);
+        Record("before");
+        ((ValuePattern)element.GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
+        Record("returned");
+    }
 
     private static async Task ScanAutomationsAsync(GatewayFixtureRun run, string theme, string state)
     {

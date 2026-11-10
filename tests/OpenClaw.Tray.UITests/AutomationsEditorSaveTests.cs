@@ -1,12 +1,17 @@
 // Exercises the editor's live owner snapshot without a parent rerender or Gateway write.
 // Set OPENCLAW_UI_TEST_RESOURCE_PROFILE=Production, then run dotnet test --filter FullyQualifiedName~AutomationsEditorSaveTests.
 using System.Xml.Linq;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared.Cron;
+using OpenClaw.Shared;
+using OpenClaw.TestSupport;
+using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Automations;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
@@ -18,6 +23,84 @@ namespace OpenClaw.Tray.UITests;
 [Trait("Category", "ProductionResources")]
 public sealed class AutomationsEditorSaveTests(UIThreadFixture ui)
 {
+    [Fact]
+    public async Task RootHostedDialogKeepsNativeTextBindingAfterRequiredValidation()
+    {
+        Assert.True(ui.UsesProductionResources);
+        var repo = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+            ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT.");
+        var catalog = XDocument.Load(Path.Combine(repo, "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"))
+            .Root!.Elements("data").ToDictionary(item => (string)item.Attribute("name")!, item => (string)item.Element("value")!);
+        var token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24));
+        using var identity = new TempDirectory("automation-dialog-binding-");
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateAutomations(), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: identity.Path, ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) => connected.TrySetResult();
+        await client.ConnectAsync();
+        await connected.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        await ui.ResetContainerAsync();
+        AutomationsStore? store = null;
+        ReactorHostControl? renderer = null;
+        Window? window = null;
+        ContentDialog? dialog = null;
+        FrameworkElement Find(DependencyObject root, string id) => Assert.Single(
+            FindDescendants<FrameworkElement>(root), element => AutomationProperties.GetAutomationId(element) == id);
+        void Invoke(Button button) => Assert.IsAssignableFrom<IInvokeProvider>(
+            new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                store = new AutomationsStore("main", () => client, action => ui.Dispatcher.TryEnqueue(() => action()));
+                var host = new AutomationsHost(store, new AutomationsText(key => catalog[key]), () => client,
+                    () => Assert.Fail("Unexpected connection"), _ => Assert.Fail("Unexpected chat"),
+                    _ => Assert.Fail("Unexpected web"), _ => false, () => ["main"]);
+                renderer = new ReactorHostControl();
+                renderer.Mount(_ => Component<AutomationsRoot, AutomationsRootProps>(new(host)));
+                window = new Window { Content = renderer };
+                window.AppWindow.ResizeClient(new global::Windows.Graphics.SizeInt32(1100, 900));
+                window.AppWindow.Move(new global::Windows.Graphics.PointInt32(-32000, -32000));
+                window.Activate();
+                store.Refresh();
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                FindDescendants<Button>(renderer!).Any(button => AutomationProperties.GetAutomationId(button) == "AutomationsNew"),
+                "production root create action"));
+            await ui.RunOnUIAsync(() => Invoke(Assert.IsType<Button>(Find(renderer!, "AutomationsNew"))));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                dialog = VisualTreeHelper.GetOpenPopupsForXamlRoot(renderer!.XamlRoot)
+                    .SelectMany(popup => popup.Child is ContentDialog direct
+                        ? new[] { direct } : FindDescendants<ContentDialog>(popup.Child)).SingleOrDefault();
+                return dialog is not null;
+            }, "root-owned editor dialog"));
+            await ui.RunOnUIAsync(() => Invoke(Assert.IsType<Button>(Find(dialog!, "AutomationEditorSave"))));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                AutomationProperties.GetItemStatus(Find(dialog!, "AutomationEditorName")) == "Enter a name.",
+                "required validation applied"));
+            await ui.RunOnUIAsync(async () =>
+            {
+                var input = Assert.IsType<TextBox>(Find(dialog!, "AutomationEditorName"));
+                await NativeTextValueInput.SetAsync(window!, input, "Dialog-owned name");
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                AutomationProperties.GetItemStatus(Find(dialog!, "AutomationEditorName")) == "",
+                "root-owned dialog draft accepts native name"));
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                dialog?.Hide();
+                renderer?.Dispose();
+                if (window is not null) { window.Content = null; window.Close(); }
+                store?.Dispose();
+            });
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

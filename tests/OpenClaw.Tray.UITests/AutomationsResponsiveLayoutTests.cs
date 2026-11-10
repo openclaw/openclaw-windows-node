@@ -489,6 +489,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                         "The native client crops the required page-host height.");
                 }
             });
+            await AssertRowAllocationAcrossExpansionAsync(surface!);
             OwnedWindowCapture.WindowGeometry? qualifiedCapture = null;
             if (capture && width < 400)
             {
@@ -675,13 +676,14 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
         var offset = Math.Min(240, atTop.ScrollableHeight);
         var scrolled = await CaptureViewportFrameAsync(surface, offset, save, $"automations-viewport-{width}-Light-scrolled.png");
         Assert.InRange(Math.Abs(scrolled.Offset - offset), 0, 0.5);
+        Assert.Equal(atTop.Viewport, scrolled.Viewport);
         Assert.True(Math.Abs(atTop.Mast.Top - offset - scrolled.Mast.Top) <= 1,
             $"The hero should scroll with the page: {atTop} -> {scrolled}.");
         await ScrollPageAsync(surface, 0);
     }
 
     private readonly record struct ViewportFrame(double Offset, double ScrollableHeight,
-        global::Windows.Foundation.Rect Mast, int ScrollRequests);
+        global::Windows.Foundation.Rect Viewport, global::Windows.Foundation.Rect Mast, int ScrollRequests);
 
     /// <summary>
     /// Measures and captures one rendered viewport frame. A screenshot is kept only when the page is
@@ -696,7 +698,8 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             if (save is null) return frame;
             save(name);
             var after = await ui.RunOnUIAsync(() => Task.FromResult(ReadViewportFrame(surface, frame.ScrollRequests)));
-            if (Math.Abs(after.Offset - frame.Offset) < 0.5 && Math.Abs(after.Mast.Top - frame.Mast.Top) < 0.5) return frame;
+            if (after.Viewport == frame.Viewport && Math.Abs(after.Offset - frame.Offset) < 0.5
+                && Math.Abs(after.Mast.Top - frame.Mast.Top) < 0.5) return frame;
             if (attempt == attempts)
                 Assert.Fail($"The page moved while capturing {name}: {frame} -> {after}.");
         }
@@ -755,7 +758,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
     {
         var scroll = Assert.IsType<ScrollView>(Find(surface, "CronPageMarker"));
         return new(scroll.VerticalOffset, scroll.ScrollableHeight,
-            Bounds(Find(surface, "AutomationsMast"), surface), scrollRequests);
+            Bounds(scroll, surface), Bounds(Find(surface, "AutomationsMast"), surface), scrollRequests);
     }
 
     private static FrameworkElement Find(DependencyObject root, string id) =>
@@ -793,6 +796,45 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
     {
         Assert.InRange(Math.Abs(Bounds(Find(surface, "AutomationsAgentScope"), surface).Left
             - Bounds(Find(surface, "AutomationsHeadline"), surface).Left), 0, 1);
+    }
+
+    private async Task AssertRowAllocationAcrossExpansionAsync(Border surface)
+    {
+        (double RowWidth, double ExpanderWidth, double Height, global::Windows.Foundation.Rect Header,
+            global::Windows.Foundation.Rect Chat) Read()
+        {
+            var row = Find(surface, "AutomationCard:morning-brief");
+            var expander = Find(surface, "AutomationExpander:morning-brief");
+            return (row.ActualWidth, expander.ActualWidth, expander.ActualHeight,
+                Bounds(Find(surface, "AutomationRowHeader:morning-brief"), row),
+                Bounds(Find(surface, "AutomationRowChat:morning-brief"), row));
+        }
+        var initial = await ui.RunOnUIAsync(() => Task.FromResult(Read()));
+        foreach (var expanded in new[] { false, true })
+        {
+            await ui.RunOnUIAsync(() => Assert.IsType<Expander>(Find(surface, "AutomationExpander:morning-brief")).IsExpanded = expanded);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                surface.UpdateLayout();
+                var current = Read();
+                return Assert.IsType<Expander>(Find(surface, "AutomationExpander:morning-brief")).IsExpanded == expanded
+                    && (expanded ? Math.Abs(current.Height - initial.Height) < 1 : current.Height < initial.Height);
+            }, $"native row allocation after {(expanded ? "expansion" : "collapse")}"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var current = Read();
+                var scale = surface.XamlRoot.RasterizationScale;
+                AssertWithinOnePhysicalPixel(current.RowWidth, initial.RowWidth, scale);
+                AssertWithinOnePhysicalPixel(current.ExpanderWidth, initial.ExpanderWidth, scale);
+                foreach (var pair in new[] { (current.Header, initial.Header), (current.Chat, initial.Chat) })
+                {
+                    AssertWithinOnePhysicalPixel(pair.Item1.Left, pair.Item2.Left, scale);
+                    AssertWithinOnePhysicalPixel(pair.Item1.Top, pair.Item2.Top, scale);
+                    AssertWithinOnePhysicalPixel(pair.Item1.Width, pair.Item2.Width, scale);
+                    AssertWithinOnePhysicalPixel(pair.Item1.Height, pair.Item2.Height, scale);
+                }
+            });
+        }
     }
 
     // Measures arranged row edges, so a margin added on top of panel spacing fails as a doubled gap.

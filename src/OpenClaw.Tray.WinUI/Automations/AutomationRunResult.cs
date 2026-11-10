@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Markdown;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -61,7 +62,7 @@ internal static class AutomationRunResult
         var details = new List<Element?>
         {
             expanded && run.Status == "ok"
-                ? ReactorChatTimeline.BuildSafeMarkdown(full, host.CopyText).AutomationId($"AutomationRunSummary:{run.Key}")
+                ? InertMarkdown(full, host.CopyText).AutomationId($"AutomationRunSummary:{run.Key}")
                 : TextBlock(full).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true)
                 .Foreground(isError ? Theme.SystemCritical : Theme.PrimaryText)
                 .MaxLines(expanded ? 0 : 3)
@@ -83,5 +84,25 @@ internal static class AutomationRunResult
                 VStack(4, details.ToArray()),
                 actions.Count == 0 ? Empty() : HStack(4, actions.ToArray()));
         return Border(body).Padding(0, 8, 0, 12).BorderBrush(Theme.CardStroke).BorderThickness(0, 0, 0, 1);
+    }
+
+    private static Element InertMarkdown(string text, Func<string, bool> tryCopy)
+    {
+        // Run results retain a read-only link policy independently of chat navigation.
+        Element Literal(string value) => TextBlock(value).FontSize(ChatVisuals.BodySize)
+            .TextWrapping(TextWrapping.WrapWholeWords).IsTextSelectionEnabled(true).Foreground(Theme.PrimaryText);
+        var options = new MarkdownOptions
+        {
+            Heading = ChatMarkdownPresentation.Heading,
+            Paragraph = ChatMarkdownPresentation.Paragraph,
+            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
+            CodeFontFamily = ChatVisuals.CodeFontFamily,
+            ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml,
+            LinkBuilder = link => HStack(link.Label),
+            Image = (alt, _) => Literal(string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]"),
+            HtmlBlock = raw => Literal(ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw)),
+        };
+        return ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(
+            Microsoft.UI.Reactor.Advanced.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options)));
     }
 }
