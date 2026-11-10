@@ -1,0 +1,44 @@
+<Project>
+  <PropertyGroup>
+    <FileWorkerRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</FileWorkerRid>
+    <FileWorkerRid Condition="'$(FileWorkerRid)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">win-arm64</FileWorkerRid>
+    <FileWorkerRid Condition="'$(FileWorkerRid)' == ''">win-x64</FileWorkerRid>
+    <FileWorkerPayload>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\OpenClaw.FileWorker\bin\$(Configuration)\net10.0\$(FileWorkerRid)\publish\'))</FileWorkerPayload>
+    <FileWorkerPayload Condition="'$(OpenClawSignedFileWorkerPath)' != ''">$([System.IO.Path]::GetFullPath('$(OpenClawSignedFileWorkerPath)\'))</FileWorkerPayload>
+    <_FileWorkerSignatureArgs Condition="'$(RequireSignedFileWorker)' == 'true' or '$(OpenClawSignedFileWorkerPath)' != ''">-RequireSignedWorker</_FileWorkerSignatureArgs>
+  </PropertyGroup>
+  <Target Name="BuildFixedFileWorker" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="'$(FileWorkerRid)' != 'win-x64' and '$(FileWorkerRid)' != 'win-arm64'"
+           Text="A self-contained fixed file worker is required for this product RID." />
+    <Error Condition="'$(RequireSignedFileWorker)' == 'true' and '$(OpenClawSignedFileWorkerPath)' == ''"
+           Text="Release builds require a signed fixed-worker payload before manifest generation." />
+    <MSBuild Projects="..\OpenClaw.FileWorker\OpenClaw.FileWorker.csproj"
+             Condition="'$(OpenClawSignedFileWorkerPath)' == ''"
+             Targets="Restore;Publish"
+             RemoveProperties="TargetFramework;TargetFrameworks;Platform;OutputPath;RuntimeIdentifiers;AppxPackage;WindowsPackageType"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(FileWorkerRid);SelfContained=true;PublishDir=$(FileWorkerPayload)" />
+    <Exec Command="&quot;$(SystemRoot)\System32\WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\Write-FileWorkerManifest.ps1&quot; -PayloadDirectory &quot;$(FileWorkerPayload).&quot; -RuntimeIdentifier &quot;$(FileWorkerRid)&quot; -ProductVersion &quot;$(Version)&quot; $(_FileWorkerSignatureArgs)" />
+    <GetFileHash Files="$(FileWorkerPayload)payload-manifest.json" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_FixedFileWorkerManifestIdentity" />
+    </GetFileHash>
+    <PropertyGroup>
+      <FileWorkerPayloadId>$([System.String]::Copy('%(_FixedFileWorkerManifestIdentity.FileHash)').ToLowerInvariant().Substring(0, 32))</FileWorkerPayloadId>
+    </PropertyGroup>
+    <ItemGroup>
+      <EmbeddedResource Include="$(FileWorkerPayload)payload-manifest.json">
+        <LogicalName>OpenClaw.FileWorker.Manifest.$(FileWorkerRid)</LogicalName>
+      </EmbeddedResource>
+      <_FixedFileWorkerPayloadFile Include="$(FileWorkerPayload)*" />
+      <Content Include="@(_FixedFileWorkerPayloadFile)">
+        <Link>Workers\FileWorker\$(FileWorkerRid)\$(FileWorkerPayloadId)\%(_FixedFileWorkerPayloadFile.Filename)%(_FixedFileWorkerPayloadFile.Extension)</Link>
+        <TargetPath>Workers\FileWorker\$(FileWorkerRid)\$(FileWorkerPayloadId)\%(_FixedFileWorkerPayloadFile.Filename)%(_FixedFileWorkerPayloadFile.Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
+  <Target Name="VerifyFixedFileWorkerBuild" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(TargetDir)Workers\FileWorker\$(FileWorkerRid)\$(FileWorkerPayloadId)\OpenClaw.FileWorker.exe') or !Exists('$(TargetDir)Workers\FileWorker\$(FileWorkerRid)\$(FileWorkerPayloadId)\coreclr.dll') or !Exists('$(TargetDir)Workers\FileWorker\$(FileWorkerRid)\$(FileWorkerPayloadId)\payload-manifest.json')"
+           Text="The Companion output is missing its self-contained fixed-worker payload." />
+  </Target>
+</Project>

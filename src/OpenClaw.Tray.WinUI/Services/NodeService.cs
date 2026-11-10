@@ -324,6 +324,17 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
+        _fileOperations ??= new OpenClaw.Shared.FileTransfer.FileOperations(_sandboxExecutor!);
+        if (_uploadRetention is null)
+        {
+            var settingsDirectory = _settings?.SettingsDirectory ?? SettingsManager.SettingsDirectoryPath;
+            _uploadRetention = new OpenClaw.Shared.FileTransfer.UploadRetentionCoordinator(
+                _fileOperations, System.IO.Path.Combine(settingsDirectory, "upload-roots.json"), _logger);
+            _uploadRetention.Changed += OnUploadCleanupChanged;
+            _uploadRetention.Start();
+            if (_settings is not null) _settings.Saved += OnUploadSettingsSaved;
+        }
+        Register(new OpenClaw.Shared.FileTransfer.FileCapability(_logger, _fileOperations));
         // One coordinator per service lifetime (it serializes approvals with a
         // per-instance semaphore). Construction failures are not sticky, so a
         // later rebuild retries while this capability remains fail closed.
@@ -336,7 +347,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
         {
-            _canvasCapability = new CanvasCapability(_logger);
+            _canvasCapability = new CanvasCapability(_logger, _fileOperations!.ReadContentAsync);
             _canvasCapability.PresentRequested += OnCanvasPresent;
             _canvasCapability.HideRequested += OnCanvasHide;
             _canvasCapability.NavigateRequested += OnCanvasNavigate;
@@ -456,7 +467,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 useSshTunnel: tunnelState.Enabled,
                 sshTunnelLocalPort: tunnelState.LocalPort,
                 allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,
-                authorizeEndpointAsync: _browserControlAuthorization);
+                authorizeEndpointAsync: _browserControlAuthorization,
+                readFile: _fileOperations!.ReadContentAsync);
             Register(_browserProxyCapability);
         }
         else if (browserProxyBlock != BrowserProxyActivation.RegistrationBlock.ToggleDisabled)
@@ -656,20 +668,29 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private ICommandRunner BuildSystemRunRunner()
     {
         // Admission is deferred, never probed under the capability-registration lock.
-        var settingsDirectory = SettingsManager.SettingsDirectoryPath;
-        return new MxcCommandRunner(
-            () => SnapshotSettings(),
+        var settingsDirectory = _settings?.SettingsDirectory ?? SettingsManager.SettingsDirectoryPath;
+        _sandboxExecutor ??= new NodeSandboxExecutor(
+            _settings?.SandboxPolicies ?? new NodeSandboxPolicyStore(new SettingsData()),
             () => settingsDirectory,
             GetOrProbeMxcAvailability,
             _logger,
-            contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory));
+            contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory),
+            fileWorker: new OpenClaw.Shared.FileTransfer.InstalledFileWorkerResolver(typeof(NodeService).Assembly));
+        return new MxcCommandRunner(_sandboxExecutor);
     }
 
-    /// <summary>
-    /// Snapshot the live <see cref="SettingsManager"/> into the wire-shaped
-    /// <see cref="SettingsData"/> consumed by the immutable request builder.
-    /// </summary>
-    private SettingsData SnapshotSettings() => _settings?.SnapshotSystemRunSettings() ?? new();
+    private NodeSandboxExecutor? _sandboxExecutor;
+    private OpenClaw.Shared.FileTransfer.FileOperations? _fileOperations;
+    private OpenClaw.Shared.FileTransfer.UploadRetentionCoordinator? _uploadRetention;
+    public string? UploadCleanupBlockedReason => _uploadRetention?.BlockedReason;
+    public event Action? UploadCleanupChanged;
+    private void OnUploadCleanupChanged()
+    {
+        if (_uploadRetention?.BlockedReason is not null)
+            _logger.Warn("[files] operation=upload-cleanup outcome=blocked action=review-sandbox-settings retryCompletedUpload=false");
+        UploadCleanupChanged?.Invoke();
+    }
+    private void OnUploadSettingsSaved(object? sender, EventArgs args) => _uploadRetention?.Refresh(recoverRoots: true);
 
     private MxcAvailability? _mxcAvailability;
     private DateTime _mxcNextProbeAllowedAtUtc;
@@ -2539,6 +2560,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         await StopMcpServerAsync().ConfigureAwait(false);
+        if (_settings is not null) _settings.Saved -= OnUploadSettingsSaved;
+        if (_uploadRetention is not null)
+        {
+            _uploadRetention.Changed -= OnUploadCleanupChanged;
+            try { await _uploadRetention.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.Debug($"NodeService: Dispose UploadRetentionCoordinator failed: {ex.GetType().Name}"); }
+        }
 
         WindowsNodeClient? client;
         lock (_clientLock)
@@ -2553,6 +2581,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         // Best-effort disposal during teardown; surface failures at Debug for diagnostics
         // but never let a cleanup throw block the rest of the teardown chain.
+        try { _sandboxExecutor?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose NodeSandboxExecutor failed: {ex.Message}"); }
         try { _cameraCaptureService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose CameraCaptureService failed: {ex.Message}"); }
         try { _screenRecordingService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose ScreenRecordingService failed: {ex.Message}"); }
         try { _textToSpeechService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose TextToSpeechService failed: {ex.Message}"); }

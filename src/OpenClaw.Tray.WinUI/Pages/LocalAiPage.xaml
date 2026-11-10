@@ -73,8 +73,10 @@
                             <TextBlock x:Uid="LocalAiPage_EngineHeading" Text="llama-server"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"/>
                             <TextBlock x:Name="EngineStatusText" AutomationProperties.AutomationId="LocalAiEngineStatus"
+                                       TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite"/>
                             <TextBlock x:Name="EngineOwnershipText" AutomationProperties.AutomationId="LocalAiEngineOwnership"
+                                       TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
@@ -105,7 +107,7 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                AutomationProperties.AutomationId="LocalAiNativeSelectionGuidance"
                                AutomationProperties.LiveSetting="Polite"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel x:Name="EngineActions" Orientation="Horizontal" Spacing="8">
                         <Button x:Name="StartButton" x:Uid="LocalAiPage_StartButton" Content="Start router"
                                 Click="OnStart" AutomationProperties.AutomationId="LocalAiStart"/>
                         <Button x:Name="StopButton" x:Uid="LocalAiPage_StopButton" Content="Stop"
@@ -132,16 +134,18 @@
                 <StackPanel Spacing="10">
                     <TextBlock x:Uid="LocalAiPage_ModelHeading" Text="Model"
                                Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                         <Ellipse x:Name="ModelStatusDot" Width="12" Height="12" VerticalAlignment="Center"
                                  Fill="{ThemeResource SystemFillColorNeutralBrush}"
                                  AutomationProperties.AccessibilityView="Raw"/>
-                        <TextBlock x:Name="ModelStatusText" AutomationProperties.AutomationId="LocalAiModelStatus"
+                        <TextBlock Grid.Column="1" x:Name="ModelStatusText" AutomationProperties.AutomationId="LocalAiModelStatus"
+                                   TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite"/>
-                    </StackPanel>
+                    </Grid>
                     <TextBlock x:Name="ModelNameText" AutomationProperties.AutomationId="LocalAiModelName"
                                TextWrapping="Wrap"/>
                     <TextBlock x:Name="ModelRecipeText"
+                               TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     <Button x:Name="RetrySetupButton" x:Uid="LocalAiPage_RetrySetupButton"
@@ -149,13 +153,13 @@
                             AutomationProperties.AutomationId="LocalAiRetrySetup"/>
                     <StackPanel x:Name="ChangeModelPanel" Spacing="8" Visibility="Collapsed">
                         <ComboBox x:Name="LocalAiModelSelector" x:Uid="LocalAiPage_ModelSelector"
-                                  Header="Model" MinWidth="320" HorizontalAlignment="Left"
+                                  Header="Model" MaxWidth="320" HorizontalAlignment="Left"
                                   SelectionChanged="OnModelSelectionChanged"
                                   AutomationProperties.AutomationId="LocalAiModelSelector"/>
                         <TextBox x:Name="LocalAiCustomModelBox" x:Uid="LocalAiPage_CustomModelBox"
                                  Header="Custom Hugging Face model (optional)"
                                  PlaceholderText="owner/repo, owner/repo:Q4_K_M, or a huggingface.co link"
-                                 Width="560" HorizontalAlignment="Left"
+                                 MaxWidth="560" HorizontalAlignment="Left"
                                  TextChanged="OnCustomModelChanged"
                                  AutomationProperties.AutomationId="LocalAiCustomModel"/>
                         <TextBlock x:Uid="LocalAiPage_CustomModelHint"
@@ -183,7 +187,7 @@
                         <TextBlock x:Name="ModelSwitchStatusText" TextWrapping="Wrap" Visibility="Collapsed"
                                    AutomationProperties.AutomationId="LocalAiModelSwitchStatus"
                                    AutomationProperties.LiveSetting="Polite"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel x:Name="ModelActions" Orientation="Horizontal" Spacing="8">
                             <Button x:Name="ApplyModelButton" x:Uid="LocalAiPage_ApplyModelButton"
                                     Content="Switch model" Style="{StaticResource AccentButtonStyle}"
                                     Click="OnApplyModel"
@@ -207,17 +211,18 @@
                 <StackPanel Spacing="10">
                     <TextBlock x:Uid="LocalAiPage_GatewayHeading" Text="Gateway connection"
                                Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                         <Ellipse x:Name="GatewayStatusDot" Width="12" Height="12" VerticalAlignment="Center"
                                  Fill="{ThemeResource SystemFillColorNeutralBrush}"
                                  AutomationProperties.AccessibilityView="Raw"/>
-                        <TextBlock x:Name="GatewayStatusText" AutomationProperties.AutomationId="LocalAiGatewayStatus"
+                        <TextBlock Grid.Column="1" x:Name="GatewayStatusText" AutomationProperties.AutomationId="LocalAiGatewayStatus"
+                                   TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite"/>
-                    </StackPanel>
+                    </Grid>
                     <TextBlock x:Name="GatewayDetailText" TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel x:Name="GatewayActions" Orientation="Horizontal" Spacing="8">
                         <Button x:Name="RepairConnectionButton" x:Uid="LocalAiPage_RepairConnectionButton"
                                 Content="Repair connection" Click="OnRepairConnection"
                                 AutomationProperties.AutomationId="LocalAiRepairConnection"/>

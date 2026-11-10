@@ -55,9 +55,12 @@ internal sealed partial class SettingsShellView : UserControl
     private bool _suppressAppNotificationClosed;
     private bool _disposed;
     private bool _active;
+    private double _hostContentTopInset;
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageNavigationChanged { get; set; }
+    internal Action? PageContentChanged { get; set; }
 
     /// <summary>Raised when a notification route leaves Settings.</summary>
     internal Action<string>? WorkspaceRouteRequested { get; set; }
@@ -164,6 +167,8 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageNavigationChanged = null;
+        PageContentChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
         _gatewayNavHideTimer?.Stop();
@@ -391,6 +396,7 @@ internal sealed partial class SettingsShellView : UserControl
         BackToAppButton.Width = open ? double.NaN : 40;
         BackToAppButton.HorizontalAlignment = open ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         ToolTipService.SetToolTip(BackToAppButton, open ? null : _backToAppToolTip);
+        UpdatePageAllocation();
         // Footer popups are anchored to buttons that move when the rail opens or closes.
         if (PaneFooterControl.Layout != (NavView.IsPaneOpen ? WorkspacePaneFooterLayout.Expanded : WorkspacePaneFooterLayout.Rail))
             PaneFooterControl.HideFlyouts();
@@ -399,6 +405,17 @@ internal sealed partial class SettingsShellView : UserControl
 
     // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
     // This view keeps no navigation stack of its own.
+    internal bool HasOpenDashboard => ContentFrame.Content is DashboardsPage { HasOpenBoard: true };
+
+    internal bool TryReturnToDashboardGallery() =>
+        ContentFrame.Content is DashboardsPage dashboards && dashboards.TryReturnToGallery();
+
+    internal void RefreshPageNavigation()
+    {
+        if (!_disposed)
+            PageNavigationChanged?.Invoke();
+    }
+
     /// <summary>
     /// Shows only the section content, hiding this view's own section list. Used when a pinned page
     /// opens beside the Workspace sidebar.
@@ -414,7 +431,24 @@ internal sealed partial class SettingsShellView : UserControl
             // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
             if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
                 ApplyNavPaneState(settings);
+            UpdatePageAllocation();
         }
+    }
+
+    private void UpdatePageAllocation()
+    {
+        // Existing pages retain their own padding. Only opted-in pages allocate shell chrome.
+        if (ContentFrame.Content is ISettingsPageContentInset page)
+            page.ApplyTopInset(ContentOnly ? _hostContentTopInset
+                : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen));
+    }
+
+    internal void SetHostContentTopInset(double inset)
+    {
+        if (!double.IsFinite(inset) || inset < 0)
+            throw new ArgumentOutOfRangeException(nameof(inset));
+        _hostContentTopInset = inset;
+        UpdatePageAllocation();
     }
 
     /// <summary>Returns the currently displayed page in the content frame.</summary>
@@ -474,6 +508,7 @@ internal sealed partial class SettingsShellView : UserControl
         _currentNavTag = null;
         // Clearing Content does not raise OnNavigatedFrom, so pages with cleanup are stopped here.
         (ContentFrame.Content as DebugPage)?.Deactivate();
+        (ContentFrame.Content as SystemsPage)?.Dispose();
         ContentFrame.Content = null;
         try { CurrentApp.PageActivator?.Reset(); }
         catch (Exception ex)
@@ -516,6 +551,9 @@ internal sealed partial class SettingsShellView : UserControl
         if (ContentFrame.Content is not null &&
             ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
+            // Boards open in-page without changing the route, so the same tag can mean a new destination.
+            if (ContentFrame.Content is DashboardsPage dashboards)
+                dashboards.Initialize(this, tag);
             _contentReady = CreateCompletedContentReady();
             AccessibilityNavigationSignal.WritePageReady(pageType.Name);
             return;
@@ -541,6 +579,7 @@ internal sealed partial class SettingsShellView : UserControl
     private void SyncNavSelection(string? tag)
     {
         if (tag == null) return;
+        tag = HubPageRegistry.NavigationTag(tag);
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -647,7 +686,9 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavInstances.Visibility = vis;
+            NavInstances.Visibility = keepCurrentGatewayPageVisible && HubPageRegistry.IsSystemsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavCron.Visibility = vis;
             var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
             AgentsNavItem.Visibility = gatewayToolVisibility;
@@ -761,6 +802,8 @@ internal sealed partial class SettingsShellView : UserControl
         SyncNavSelection(tag);
 
         InitializeCurrentPage();
+        PageContentChanged?.Invoke();
+        UpdatePageAllocation();
         UpdateAppNotificationActionEnabledState();
         ArmContentReady(
             e.Content as FrameworkElement,
@@ -841,7 +884,8 @@ internal sealed partial class SettingsShellView : UserControl
                     OpenClawTray.Services.Logger.Error($"[SettingsShellView] ConfigPage seed failed: {ex}");
                 }
                 break;
-            case InstancesPage instances: instances.Initialize(); break;
+            case SystemsPage systems: systems.Initialize(); break;
+            case DashboardsPage dashboards: dashboards.Initialize(this, _currentNavTag); break;
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
@@ -851,7 +895,7 @@ internal sealed partial class SettingsShellView : UserControl
                 break;
             case SettingsPage settings: settings.Initialize(); break;
             case AboutPage about: about.Initialize(); break;
-            case NotificationsPage notifications: notifications.Initialize(_appNotificationService); break;
+            case NotificationsPage notifications: notifications.Initialize(CurrentApp.InboxFeed); break;
             case DebugPage debug: debug.Initialize(); break;
         }
     }
@@ -909,7 +953,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
-        { "instances",   "\uE977" },
+        { "systems",     "\uE977" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },

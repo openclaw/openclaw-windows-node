@@ -22,7 +22,9 @@ internal sealed record ChatSnapshotProjectionInput(
     string? RememberedThreadTitle,
     string? RememberedModel,
     string? RememberedModelProvider,
-    IReadOnlySet<string>? CurrentHistoryThreads = null);
+    IReadOnlySet<string>? CurrentHistoryThreads = null,
+    IReadOnlySet<string>? FailedHistoryThreads = null,
+    IReadOnlySet<string>? OlderHistoryThreads = null);
 
 internal static class ChatSnapshotProjector
 {
@@ -97,7 +99,14 @@ internal static class ChatSnapshotProjector
             CurrentHistoryThreads: input.Status == ConnectionStatus.Connected
                 ? input.CurrentHistoryThreads?.ToImmutableHashSet(StringComparer.Ordinal)
                     ?? ImmutableHashSet<string>.Empty
-                : ImmutableHashSet<string>.Empty);
+                : ImmutableHashSet<string>.Empty,
+            FailedHistoryThreads: input.Status == ConnectionStatus.Connected
+                ? input.FailedHistoryThreads?.ToImmutableHashSet(StringComparer.Ordinal)
+                    ?? ImmutableHashSet<string>.Empty
+                : ImmutableHashSet<string>.Empty,
+            OlderHistoryThreads: input.Status == ConnectionStatus.Connected
+                ? input.OlderHistoryThreads?.ToImmutableHashSet(StringComparer.Ordinal)
+                    ?? ImmutableHashSet<string>.Empty : ImmutableHashSet<string>.Empty);
     }
 
     internal static string? ResolveDefaultThreadId(ChatSnapshotProjectionInput input)
@@ -133,6 +142,15 @@ internal static class ChatSnapshotProjector
             Id = session.Key ?? string.Empty,
             Title = title,
             AgentId = display.AgentId,
+            ParentSessionKey = session.ParentSessionKey,
+            CurrentActivity = session.HasActiveRun == true
+                ? NativeToolProjector.SanitizeToolDisplayValue(session.CurrentActivity) : null,
+            WaitingForSubagents = session.HasActiveSubagentRun == true && session.HasActiveRun == false,
+            ProviderReview = session.ProviderReview is { } review ? review with
+            {
+                Explanation = NativeToolProjector.SanitizeToolDisplayValue(review.Explanation),
+                ContinuationMessage = NativeToolProjector.SanitizeToolDisplayValue(review.ContinuationMessage),
+            } : null,
             IsBackground = display.IsBackground,
             IsArchived = session.Archived,
             IsChannelSession = display.Classification.ToLowerInvariant() is "direct" or "group" or "channel" or "thread",
@@ -142,12 +160,18 @@ internal static class ChatSnapshotProjector
             Model = session.Model,
             ModelProvider = session.Provider,
             ThinkingLevel = session.ThinkingLevel,
+            ReasoningLevel = session.ReasoningLevel,
+            ReasoningDefault = session.ReasoningDefault,
             ThinkingContext = session.ThinkingContext,
             ThinkingDefaults = session.ThinkingDefaults,
             InputTokens = session.InputTokens,
             OutputTokens = session.OutputTokens,
             TotalTokens = session.TotalTokens,
             ContextTokens = session.ContextTokens,
+            LastRunId = session.LastRunId,
+            RunStatus = session.Status,
+            RuntimeMs = session.RuntimeMs,
+            EndedAt = session.EndedAt,
             CreatedAt = session.StartedAt is { } started ? ToOffset(started) : null,
             UpdatedAt = session.UpdatedAt is { } updated ? ToOffset(updated) : null,
         };

@@ -156,21 +156,56 @@ function Get-YamlBlockList {
         ForEach-Object { $_.Groups["value"].Value })
 }
 
+function ConvertTo-GitHubPathRegex {
+    param([Parameter(Mandatory)][string]$Glob)
+
+    # Models the GitHub filter subset used here: `*` stays within one path
+    # segment, `**` crosses segments and `**/` also matches zero directories.
+    if ($Glob -match '[?+\[\]!]') {
+        throw "Unsupported GitHub path glob syntax in '$Glob'."
+    }
+
+    $regex = [System.Text.StringBuilder]::new("^")
+    for ($i = 0; $i -lt $Glob.Length; $i++) {
+        if ($Glob[$i] -ne "*") {
+            [void]$regex.Append([regex]::Escape([string]$Glob[$i]))
+            continue
+        }
+        if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq "*") {
+            $i++
+            if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq "/") {
+                $i++
+                [void]$regex.Append("(?:.*/)?")
+            }
+            else {
+                [void]$regex.Append(".*")
+            }
+            continue
+        }
+        [void]$regex.Append("[^/]*")
+    }
+
+    return $regex.Append("$").ToString()
+}
+
 function Test-PathMatches {
     param(
         [Parameter(Mandatory)][string[]]$Patterns,
         [Parameter(Mandatory)][string]$Path
     )
 
+    # GitHub evaluates path patterns in order: a later `!` match excludes a
+    # path and a later positive match includes it again.
+    $matched = $false
     foreach ($pattern in $Patterns) {
-        if ([System.Management.Automation.WildcardPattern]::new(
-                $pattern,
-                [System.Management.Automation.WildcardOptions]::None).IsMatch($Path)) {
-            return $true
+        $negated = $pattern.StartsWith("!", [StringComparison]::Ordinal)
+        $glob = if ($negated) { $pattern.Substring(1) } else { $pattern }
+        if ([regex]::IsMatch($Path, (ConvertTo-GitHubPathRegex -Glob $glob))) {
+            $matched = -not $negated
         }
     }
 
-    return $false
+    return $matched
 }
 
 function Test-CodeQlTrigger {
@@ -223,7 +258,9 @@ $expectedCodeQlPaths = @(
     "global.json",
     "NuGet.Config",
     "package.json",
-    "package-lock.json"
+    "package-lock.json",
+    "!src/**/*.md",
+    "!tests/**/*.md"
 )
 if (($codeQlPushBranches -join ",") -ne "master") {
     throw "CodeQL branch pushes must be limited to master; main uses scheduled scans."
@@ -248,9 +285,16 @@ $codeQlTriggerCases = @(
     @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
     @{ Name = "root attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "nested attributes pull request"; Event = "pull_request"; Ref = "main"; Path = "src/.gitattributes"; Expected = $true },
+    @{ Name = "nested build props pull request"; Event = "pull_request"; Ref = "main"; Path = "eng/Directory.Build.props"; Expected = $false },
     @{ Name = "hidden attributes pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/.gitattributes"; Expected = $true },
     @{ Name = "master attributes push"; Event = "push"; Ref = "master"; Path = ".gitattributes"; Expected = $true },
     @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
+    @{ Name = "scoped source instructions pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Tray.WinUI/AGENTS.md"; Expected = $false },
+    @{ Name = "test Markdown pull request"; Event = "pull_request"; Ref = "main"; Path = "tests/README.md"; Expected = $false },
+    @{ Name = "master source Markdown push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/README.md"; Expected = $false },
+    @{ Name = "workflow pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/workflows/ci.yml"; Expected = $true },
+    @{ Name = "Markdown workflow source pull request"; Event = "pull_request"; Ref = "main"; Path = ".github/workflows/example.md"; Expected = $true },
+    @{ Name = "master Markdown workflow source push"; Event = "push"; Ref = "master"; Path = ".github/workflows/example.md"; Expected = $true },
     @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
     @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
     @{ Name = "manual scan"; Event = "workflow_dispatch"; Ref = ""; Path = ""; Expected = $true }
@@ -413,7 +457,8 @@ $testLanes = [ordered]@{
         Projects = @(
             "tests/OpenClaw.Shared.Tests",
             "tests/OpenClaw.Connection.Tests",
-            "tests/OpenClaw.WinNode.Cli.Tests"
+            "tests/OpenClaw.WinNode.Cli.Tests",
+            "tests/OpenClaw.FileWorker.Tests"
         )
         Artifact = "test-results-core"
     }
@@ -465,6 +510,7 @@ $overlapLanes = [ordered]@{
     "core-tests" = "core_tests"
     "tray-tests" = "tray_tests"
     "ui-tests" = "ui_tests"
+    "gateway-fixture" = "ui_tests"
     "setup-e2e" = "setup_e2e"
     "revocation-e2e" = "revocation_e2e"
     "network-e2e" = "network_e2e"
@@ -507,11 +553,13 @@ foreach ($token in @(
         "'src/OpenClaw.Connection/OpenClaw.Connection.csproj'",
         "'src/OpenClaw.Cli/OpenClaw.Cli.csproj'",
         "'src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj'",
+        "'src/OpenClaw.FileWorker/OpenClaw.FileWorker.csproj'",
         "'tests/OpenClaw.TestSupport/OpenClaw.TestSupport.csproj'",
         "'tests/OpenClaw.Shared.TestHost/OpenClaw.Shared.TestHost.csproj'",
         "'tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj'",
         "'tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj'",
-        "'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'"
+        "'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'",
+        "'tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj'"
     )) {
     Assert-Contains -Text $coreJob -Expected $token -Message "Core NuGet cache is missing '$token'."
 }
@@ -541,8 +589,8 @@ foreach ($token in @(
         'restore-keys: nuget-${{ runner.os }}-'
     )) {
     $count = ([regex]::Matches($nonCoreWorkflow, [regex]::Escape($token))).Count
-    if ($count -ne 8) {
-        throw "Expected 8 unchanged non-core cache entries for '$token', found $count."
+    if ($count -ne 9) {
+        throw "Expected 9 non-core cache entries for '$token', found $count."
     }
 }
 Assert-NotContains `
@@ -553,6 +601,18 @@ Assert-NotContains `
     -Text $nonCoreWorkflow `
     -Unexpected "nuget-core-" `
     -Message "Only the core job may use the isolated NuGet cache key."
+
+# Shared-key consumers must never register a post-job cache save. A duplicate
+# writer can spend minutes archiving packages before losing the reservation.
+foreach ($lane in @("tray-tests", "ui-tests", "setup-e2e", "revocation-e2e",
+        "network-e2e", "build-x64", "build-arm64", "build-msix")) {
+    $cacheStep = Get-StepBlock -Text (Get-JobBlock $lane) -Name "Cache NuGet packages"
+    $action = if ($lane -eq "tray-tests") { "actions/cache@v6" } else { "actions/cache/restore@v6" }
+    Assert-Contains -Text $cacheStep -Expected "uses: $action" `
+        -Message "Shared NuGet cache lane '$lane' must use '$action'."
+    Assert-Contains -Text $cacheStep -Expected "continue-on-error: true" `
+        -Message "Cache availability must not gate '$lane'."
+}
 
 $trayJob = Get-JobBlock "tray-tests"
 foreach ($token in @(
@@ -588,12 +648,38 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"' `
-    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding and strict Gateway fixture lanes."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"' `
+    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding, Gateway fixture and animation-preference lanes."
+Assert-NotContains -Text $trayUiStep -Unexpected '-AnimationPreference ' `
+    -Message 'The ordinary UI suite must retain its original Windows animation preference.'
+$enabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animation-enabled reveal proof'
+foreach ($token in @(
+        './scripts/Invoke-CiTest.ps1',
+        '-AnimationPreference Enabled',
+        '-RequireAllTestsPassed',
+        '-Filter "Category=AnimationPreferenceEnabled"',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $enabledAnimationStep -Expected $token -Message "Enabled animation proof lost required contract '$token'."
+}
+$disabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animations-disabled behavior proof'
+foreach ($token in @(
+        './scripts/Invoke-CiTest.ps1',
+        '-AnimationPreference Disabled',
+        '-RequireAllTestsPassed',
+        '-Filter "FullyQualifiedName~PageHeroAnimationsDisabledTests"',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $disabledAnimationStep -Expected $token -Message "Disabled animation proof lost required contract '$token'."
+}
+Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
+    -Message 'Native animation prerequisite failures and restoration must be tested.'
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+Assert-Contains -Text $trayUiStep -Expected "-CollectNativeFailureMetadata" `
+    -Message "Tray UI failures must retain safe native fault metadata."
 $trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
 Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
     -Message "Tray UI crash metadata must be bounded by an explicit start time."
@@ -671,13 +757,17 @@ if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
     throw 'Tray UI crash metadata must exclude unrelated application failures.'
 }
 
-$fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
+$fixtureJob = Get-JobBlock "gateway-fixture"
+$fixtureStep = Get-StepBlock -Text $fixtureJob -Name "Run mock Gateway application scenarios"
 foreach ($token in @(
         'timeout-minutes: 30',
         './scripts/test-gateway-fixture.ps1',
         '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
         '-ArtifactsDirectory .\TestResults\GatewayFixture',
-        '-Screenshots'
+        '-TestTimeoutSeconds 1200',
+        '-Screenshots',
+        '-NativeInputProof',
+        '-NoBuild'
     )) {
     Assert-Contains -Text $fixtureStep -Expected $token -Message "Mock Gateway CI step is missing '$token'."
 }
@@ -688,14 +778,45 @@ Assert-Contains -Text $accessibilityStep `
 foreach ($token in @('continue-on-error:', 'OPENCLAW_RUN_MXC_E2E', 'OPENCLAW_RUN_E2E')) {
     Assert-NotContains -Text $fixtureStep -Unexpected $token -Message "Mock Gateway CI must run by default without real Gateway opt-ins: '$token'."
 }
-Assert-Contains -Text $uiJob -Expected 'runs-on: windows-latest' `
+Assert-Contains -Text $fixtureJob -Expected 'runs-on: windows-latest' `
     -Message "Mock Gateway application scenarios must use the ordinary Windows hosted runner."
-if ($uiJob.IndexOf('name: Install WindowsAppRuntime', [StringComparison]::Ordinal) -ge
-    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -or
-    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -ge
-    $uiJob.IndexOf('name: Verify DevBuild identity marker', [StringComparison]::Ordinal)) {
-    throw 'Mock Gateway scenarios must run after matching WindowsAppRuntime installation and before DevBuild changes the app identity.'
+if ($fixtureJob.IndexOf('name: Install WindowsAppRuntime', [StringComparison]::Ordinal) -ge
+    $fixtureJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal)) {
+    throw 'Mock Gateway scenarios must run after matching WindowsAppRuntime installation.'
 }
+foreach ($token in @('DevBuild=true', 'Run Tray UI Tests', 'Run Accessibility Tests')) {
+    Assert-NotContains -Text $fixtureJob -Unexpected $token `
+        -Message "The fixture job must keep its non-Dev identity and not duplicate native UI tests: '$token'."
+}
+Assert-NotContains -Text $uiJob -Unexpected './scripts/test-gateway-fixture.ps1' `
+    -Message 'Fixture scenarios must not remain on the serial native UI path.'
+Assert-Contains -Text $fixtureJob -Expected 'uses: actions/cache/restore@v6' `
+    -Message 'The new fixture runner must not add another shared NuGet cache writer.'
+$fixtureRestore = Get-StepBlock -Text $fixtureJob -Name 'Restore UI test projects'
+$fixtureBootstrapIndex = $fixtureRestore.IndexOf('./scripts/Initialize-ReactorPackages.ps1', [StringComparison]::Ordinal)
+$fixtureRestoreIndex = $fixtureRestore.IndexOf('dotnet restore tests/OpenClaw.Tray.UITests', [StringComparison]::Ordinal)
+if ($fixtureBootstrapIndex -lt 0 -or $fixtureRestoreIndex -lt 0 -or
+    $fixtureBootstrapIndex -ge $fixtureRestoreIndex) {
+    throw 'The fixture runner must initialize the verified local Reactor feed before restoring UI tests.'
+}
+Assert-Contains -Text $fixtureRestore -Expected "`$ErrorActionPreference = 'Stop'" `
+    -Message 'The fixture restore must stop if Reactor package initialization fails.'
+foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
+    if ((Get-StepBlock -Text $uiJob -Name $name).Trim() -cne
+        (Get-StepBlock -Text $fixtureJob -Name $name).Trim()) {
+        throw "Native UI and fixture lanes must retain equivalent runtime/desktop preparation: '$name'."
+    }
+}
+Assert-Contains -Text $fixtureJob -Expected 'dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore' `
+    -Message 'The fixture lane must build the current candidate UI test graph.'
+Assert-Contains -Text $fixtureRestore -Expected 'dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64' `
+    -Message 'The prebuilt fixture lane must restore its profile and compatibility test project.'
+Assert-Contains -Text $fixtureJob -Expected 'dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore' `
+    -Message 'The prebuilt fixture lane must build profile and compatibility tests before invoking the runner.'
+Assert-Contains -Text $fixtureJob -Expected "ref: `${{ inputs.promotion_source_sha || github.sha }}" `
+    -Message 'The fixture lane must use the exact candidate checkout, including alpha promotion.'
+Assert-Contains -Text $fixtureJob -Expected '*promotion-version-tag' `
+    -Message 'Fixture candidate versioning must preserve the promotion tag setup.'
 $runtimeStep = Get-StepBlock -Text $uiJob -Name 'Install WindowsAppRuntime'
 foreach ($token in @('Directory.Build.props', 'MicrosoftWindowsAppSDKVersion', '$channel/$version/windowsappruntimeinstall-x64.exe', '$LASTEXITCODE -ne 0')) {
     Assert-Contains -Text $runtimeStep -Expected $token -Message "UI runtime installation must match the candidate SDK and fail closed: '$token'."
@@ -717,16 +838,16 @@ foreach ($entry in @(
     @{ name = 'Install WindowsAppRuntime'; id = 'ui-runtime' },
     @{ name = 'Configure UI desktop'; id = 'ui-desktop' }
 )) {
-    Assert-Contains -Text (Get-StepBlock -Text $uiJob -Name $entry.name) -Expected "id: $($entry.id)" `
+    Assert-Contains -Text (Get-StepBlock -Text $fixtureJob -Name $entry.name) -Expected "id: $($entry.id)" `
         -Message "Fixture launch prerequisite must expose its real step outcome: '$($entry.id)'."
 }
-$screenshotPreparation = Get-StepBlock -Text $uiJob -Name 'Prepare mock Gateway screenshot publisher'
+$screenshotPreparation = Get-StepBlock -Text $fixtureJob -Name 'Prepare mock Gateway screenshot publisher'
 foreach ($token in @('always()', "steps.gateway-fixture.outcome == 'failure'", 'npm ci', '--ignore-scripts')) {
     Assert-Contains -Text $screenshotPreparation -Expected $token -Message "Screenshot uploader preparation must run after failed fixtures and use locked dependencies: '$token'."
 }
 Assert-NotContains -Text $screenshotPreparation -Unexpected "steps.gateway-fixture.outcome == 'success'" `
     -Message 'Successful fixture runs must keep screenshots only in the complete diagnostic archive.'
-$screenshotPublication = Get-StepBlock -Text $uiJob -Name 'Publish browsable mock Gateway screenshots'
+$screenshotPublication = Get-StepBlock -Text $fixtureJob -Name 'Publish browsable mock Gateway screenshots'
 foreach ($token in @('always()', "steps.screenshot-publisher.outcome == 'success'", 'actions/github-script@v9', 'await report.run({ core, context })')) {
     Assert-Contains -Text $screenshotPublication -Expected $token -Message "Screenshot previews must publish after test failures through the Actions artifact runtime: '$token'."
 }
@@ -736,8 +857,21 @@ $uiUpload = Get-StepBlock -Text $uiJob -Name 'Upload Test Results'
 foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
     Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
 }
+$fixtureUpload = Get-StepBlock -Text $fixtureJob -Name 'Upload Test Results'
+foreach ($token in @('always()', 'test-results-gateway-fixture', 'path: TestResults/')) {
+    Assert-Contains -Text $fixtureUpload -Expected $token `
+        -Message "The independent fixture diagnostic archive must be retained: '$token'."
+}
 $fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
-$releasedProfileStep = Get-StepBlock -Text $uiJob -Name 'Run latest stable profile compatibility'
+Assert-NotContains -Text $fixtureRunner -Unexpected '-p:Platform=' `
+    -Message 'The fixture runner must reuse the RID-selected canonical outputs instead of rebuilding a separate Platform graph.'
+Assert-Contains -Text $fixtureRunner -Expected "if (`$NoBuild) { `$testArguments += @('--no-build', '--no-restore') }" `
+    -Message 'Prebuilt fixture execution must not spend its test deadline rebuilding or restoring.'
+$releasedProfileStep = Get-StepBlock -Text $fixtureJob -Name 'Run latest stable profile compatibility'
+Assert-NotContains -Text $releasedProfileStep -Unexpected '-TestTimeoutSeconds' `
+    -Message 'The longer deadline belongs only to the ordinary mock-Gateway scenarios step.'
+Assert-Contains -Text $releasedProfileStep -Expected '-NoBuild' `
+    -Message 'Released-profile compatibility must reuse the same prebuilt integration tests.'
 foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
         'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
     Assert-Contains -Text $releasedProfileStep -Expected $token `
@@ -748,13 +882,91 @@ Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtu
 foreach ($token in @(
         "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
         "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
-        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:`$NativeInputProof",
         "'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof",
         "`$start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if (`$EnableKeyboardProof) { '1' } else { '0' }",
         '[int]$counters.total -le 0 -or [int]$counters.passed -ne [int]$counters.total'
     )) {
     Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture runner lost its explicit-app, category or all-pass contract: '$token'."
 }
+# Exercise the production child-launch construction without launching dotnet or native input.
+$fixtureTokens = $null
+$fixtureParseErrors = $null
+$fixtureAst = [Management.Automation.Language.Parser]::ParseInput($fixtureRunner, [ref]$fixtureTokens, [ref]$fixtureParseErrors)
+if ($fixtureParseErrors.Count -ne 0) { throw 'Fixture runner must parse before its launch contract is checked.' }
+# Exercise the real parameter binder without resolving or launching an app.
+$fixtureTimeoutProbe = [scriptblock]::Create($fixtureAst.ParamBlock.Extent.Text + "`n[int](`$TestTimeoutSeconds * 1000)")
+if ((& $fixtureTimeoutProbe -AppPath 'unused-built-app.exe') -ne 900000) {
+    throw 'Existing fixture callers must retain the 900-second default.'
+}
+foreach ($case in @(@{ Seconds = 1; Milliseconds = 1000 }, @{ Seconds = 1200; Milliseconds = 1200000 },
+        @{ Seconds = 1800; Milliseconds = 1800000 })) {
+    if ((& $fixtureTimeoutProbe -AppPath 'unused-built-app.exe' -TestTimeoutSeconds $case.Seconds) -ne $case.Milliseconds) {
+        throw "Fixture timeout conversion failed for $($case.Seconds) seconds."
+    }
+}
+foreach ($invalid in @(0, -1, 1801, [int]::MaxValue, ([long][int]::MaxValue + 1), [double]::PositiveInfinity)) {
+    try {
+        & $fixtureTimeoutProbe -AppPath 'unused-built-app.exe' -TestTimeoutSeconds $invalid | Out-Null
+        throw "Fixture timeout accepted invalid or overflowing value: $invalid."
+    }
+    catch [System.Management.Automation.ParameterBindingException] { }
+}
+foreach ($token in @('$process.WaitForExit($TestTimeoutSeconds * 1000)', '$process.Kill($true)',
+        '$process.ExitCode -ne 0', 'if (-not (Test-Path -LiteralPath $resultFile))')) {
+    Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture timeout/result admission lost '$token'."
+}
+$startInfoFunction = @($fixtureAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-FixtureTestStartInfo'
+}, $true))
+if ($startInfoFunction.Count -ne 1) { throw 'Expected one fixture child ProcessStartInfo owner.' }
+& {
+    param($Definition, $Root)
+    . ([scriptblock]::Create($Definition))
+    $repoRoot = $Root
+    $Configuration = 'Debug'
+    $NoBuild = $false
+    $rid = 'win-x64'
+    $resultsDirectory = Join-Path $Root 'TestResults'
+    $resolvedApp = Join-Path $Root 'candidate.exe'
+    $resolvedStableApp = $null
+    $artifacts = $resultsDirectory
+    $Screenshots = $true
+    $inherited = $env:OPENCLAW_RUN_KEYBOARD_PROOF
+    try {
+        $env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+        foreach ($enabled in @($false, $true)) {
+            $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'Category=GatewayFixture&KeyboardProof!=Required' -ResultName 'fixture-ui' -EnableKeyboardProof:$enabled
+            $expected = if ($enabled) { '1' } else { '0' }
+            if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne $expected -or $start.UseShellExecute -or
+                $start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] -ne $resolvedApp -or
+                $start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] -ne '1' -or
+                -not $start.ArgumentList.Contains('Category=GatewayFixture&KeyboardProof!=Required')) {
+                throw "Fixture UI native input must follow the explicit child option ($enabled), preserving owned-app/filter binding."
+            }
+        }
+        foreach ($resultName in @('fixture-profile-app', 'fixture-released-profile')) {
+            $resolvedStableApp = if ($resultName -eq 'fixture-released-profile') { Join-Path $Root 'stable.exe' } else { $null }
+            $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'profile' -ResultName $resultName
+            if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne '0') {
+                throw 'Profile and upgrade children must not inherit native-input authorization.'
+            }
+        }
+        $NoBuild = $true
+        $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'profile' -ResultName 'prebuilt'
+        if (-not $start.ArgumentList.Contains('--no-build') -or -not $start.ArgumentList.Contains('--no-restore') -or
+            @($start.ArgumentList | Where-Object { $_ -like '-p:Platform=*' }).Count -ne 0) {
+            throw 'Prebuilt fixture execution must retain canonical RID outputs without building or restoring.'
+        }
+        if ($env:OPENCLAW_RUN_KEYBOARD_PROOF -ne '1') { throw 'Child launch planning changed the parent input opt-in.' }
+    } finally { $env:OPENCLAW_RUN_KEYBOARD_PROOF = $inherited }
+} $startInfoFunction[0].Extent.Text $repoRootPath
+if ([regex]::Matches($fixtureRunner, [regex]::Escape('-EnableKeyboardProof:$NativeInputProof')).Count -ne 1) {
+    throw 'The ordinary UI child must be the sole consumer of NativeInputProof.'
+}
+Assert-NotContains -Text $fixtureStep -Unexpected 'OPENCLAW_RUN_KEYBOARD_PROOF' -Message 'Fixture native input must use the explicit child option, not a step/global environment bypass.'
+Assert-NotContains -Text $releasedProfileStep -Unexpected '-NativeInputProof' -Message 'Released-profile compatibility must not request native wheel input.'
+
 foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-dump-type"', '"none"')) {
     Assert-Contains -Text $runner -Expected $token `
         -Message "CI test runner is missing hang diagnostic argument '$token'."
@@ -763,8 +975,8 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 8) {
-    throw "Expected all 8 non-E2E test projects to use Invoke-CiTest.ps1, found $runnerUses."
+if ($runnerUses -ne 11) {
+    throw "Expected 9 non-E2E project runs plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."
@@ -1124,7 +1336,7 @@ $ciGateJob = Get-JobBlock "ci-gate"
 foreach ($token in @(
         "name: CI Gate",
         "if: `${{ always() }}",
-        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
+        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
         "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
         "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
@@ -1138,6 +1350,8 @@ foreach ($token in @(
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
         "-UiRequired `$env:UI_REQUIRED",
+        "GATEWAY_FIXTURE_RESULT: `${{ needs.gateway-fixture.result }}",
+        "-GatewayFixtureResult `$env:GATEWAY_FIXTURE_RESULT",
         "-SetupE2eRequired `$env:SETUP_E2E_REQUIRED",
         "-RevocationE2eRequired `$env:REVOCATION_E2E_REQUIRED",
         "-NetworkE2eRequired `$env:NETWORK_E2E_REQUIRED",

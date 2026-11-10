@@ -594,9 +594,12 @@ public partial class OpenClawGatewayClient
         if (method is not ("cron.list" or "skills.status" or "config.schema" or "agents.list" or "models.list"))
             throw new ArgumentException("Not a read-only search catalog method.", nameof(method));
         if (method == "cron.list")
+        {
+            var epoch = GetReadyConnectionGeneration(method);
             return GatewaySearchProtocol.ReadAutomationPagesAsync(
                 (args, ct) => SendResponseRequestAsync(method, args, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
-                    requestCancellationToken: ct, searchRead: true), parameters, cancellationToken);
+                    expectedConnectionEpoch: epoch, requestCancellationToken: ct, searchRead: true), parameters, cancellationToken);
+        }
         return SendResponseRequestAsync(method, parameters, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
             requestCancellationToken: cancellationToken, searchRead: true);
     }

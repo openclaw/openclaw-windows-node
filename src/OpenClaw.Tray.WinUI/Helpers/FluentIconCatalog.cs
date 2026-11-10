@@ -56,6 +56,7 @@ static class FluentIconCatalog
     public const string Settings = "\uE713";       // Settings
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
+    public const string Help = "\uE897";           // Help — account menu Help & about
     public const string Notifications = "\uEA8F";  // Ringer
     public const string DashboardView = "\uF246";  // ViewDashboard
     public const string Plugins = "\uEA86";        // Puzzle
@@ -79,8 +80,10 @@ static class FluentIconCatalog
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string ChevronDown = "\uE70D";    // ChevronDown
+    public const string BulletedList = "\uE8FD";   // BulletedList, chat tool activity summary row
     public const string Stop = "\uE71A";           // Stop
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
+    public const string ChatJumpLatest = "\uE74B"; // Down, returns to the latest chat content
     public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker
     public const string Check = "\uE73E";          // CheckMark
 
