@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><Compile Remove="Fixture/**/*.cs" /><ProjectReference Include="Fixture/Fixture.csproj" /><Compile Include="../Observer/BlameIdentity.cs" Link="BlameIdentity.cs" /><Compile Include="../Observer/Binding.cs" Link="Binding.cs" /><Compile Include="../Observer/ObserverContract.cs" Link="ObserverContract.cs" /><Compile Include="../OwnedCommand.cs" Link="OwnedCommand.cs" /></ItemGroup>
+</Project>
