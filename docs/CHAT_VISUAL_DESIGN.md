@@ -467,7 +467,13 @@ provider publishes the existing disconnected composer state instead of replacing
 the transcript with initial connection guidance. Offline ports reject mutations
 and cancel pending reads and writes through the client request lifetime. The
 transport rechecks cancellation under its send lock before writing. No transcript
-persistence cache is introduced.
+persistence cache is introduced. The sidebar may keep only that loaded conversation's
+selected row from the same confirmed provider while its port is suspended. This
+is read-only navigation, not a retained authoritative roster: AppState caches
+still clear, assistant/session creation still waits for current access, and an
+authoritative empty roster never falls back to the retained row. Known profile,
+Gateway or credential changes and manager-auth revocation invalidate that
+projection before queued UI work can publish it again.
 
 A replacement connection may reuse that provider only after fresh endpoint,
 local signing-device, authenticated `users.self` profile and session identities

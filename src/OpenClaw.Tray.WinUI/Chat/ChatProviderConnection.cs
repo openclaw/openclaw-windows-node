@@ -39,7 +39,8 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
     private GatewayRegistry? _registry;
     private GatewayRecord? _scope;
     private OpenClawGatewayClient? _client;
-    private ChatConnectionAuthority? _authority;
+    // Receive-loop invalidation precedes its queued UI notification.
+    private volatile ChatConnectionAuthority? _authority;
     private CancellationTokenSource? _verification;
     private Action? _unsubscribe;
     private int _version;
@@ -54,6 +55,13 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
 
     internal OpenClawChatDataProvider? Provider { get; private set; }
     public ChatVerificationState VerificationState { get; private set; }
+
+    // Only the already-confirmed ordinary conversation can supply an offline row.
+    // The live roster and creation readiness keep their independent authority gates.
+    internal SessionInfo? RetainedNavigationSession(string? sessionKey) =>
+        !_disposed && _authority is not null && CaptureScope() == _scope &&
+        !_bridge.IsAttached && _client is not { IsConnectedToGateway: true }
+            ? Provider?.RetainedNavigationSession(sessionKey) : null;
 
     public bool RetryVerification() => RetryVerificationForClient(null);
 
@@ -122,6 +130,7 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
         EventHandler profile = (_, _) =>
         {
             if (!Current(client, version)) return;
+            _authority = null;
             CancelVerification();
             Suspend();
             _post(() =>
@@ -134,6 +143,7 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
         EventHandler<GatewayErrorKind> failure = (_, kind) =>
         {
             if (!InvalidatesAuthority(kind) || !Current(client, version)) return;
+            _authority = null;
             CancelVerification();
             Suspend();
             _post(() => { if (Current(client, version)) Forget(); });
@@ -154,6 +164,7 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
     {
         if (snapshot.OperatorErrorKind is not { } kind || !InvalidatesAuthority(kind)) return;
         var version = _version;
+        _authority = null;
         CancelVerification();
         Suspend();
         _post(() => { if (!_disposed && version == _version) Forget(); });
@@ -167,6 +178,7 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
     private void OnRegistryChanged(object? sender, GatewayRegistryChangedEventArgs args)
     {
         if (_disposed || CaptureScope() == _scope) return;
+        _authority = null;
         CancelVerification();
         Suspend();
         _post(() =>

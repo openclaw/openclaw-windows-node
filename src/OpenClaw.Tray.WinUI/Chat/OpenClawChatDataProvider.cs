@@ -264,6 +264,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatConnectio
         _bridge is GatewayClientChatBridge direct && direct.IsBoundTo(client);
 
     internal bool CanRetainHistory(SessionInfo[] sessions) => _state.CanRetainHistory(sessions);
+    internal SessionInfo? RetainedNavigationSession(string? sessionKey) => _state.RetainedNavigationSession(sessionKey);
     internal ChatVerificationState VerificationState =>
         (_bridge as RetainedChatGatewayBridge)?.Recovery?.VerificationState ?? ChatVerificationState.None;
     internal bool RetryVerification() => !_state.IsDisposed &&

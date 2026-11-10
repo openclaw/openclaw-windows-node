@@ -130,6 +130,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         ConfigureFooter(ChatFooter);
         ConfigureFooter(TitleBarFooter);
         _state.PropertyChanged += OnStateChanged;
+        CurrentApp.ChatProviderChanged += OnChatProviderChanged;
         _inbox.Changed += OnNotificationsChanged;
         _chat.Loaded += (_, _) =>
         {
@@ -741,8 +742,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         AssistantSelector.IsEnabled = _agentSelection.CanOpenAssistantMenu(_state.Status);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
-        IReadOnlyList<WorkspaceSession> sessions = _agentSelection.HasSessionAccess
-            ? WorkspaceProjection.Sessions(_state.Sessions, SelectedAgentId, _sessionOrder, CurrentApp.GatewayClient?.MainSessionKey) : [];
+        var sessions = WorkspaceProjection.Sessions(_state.Sessions, SelectedAgentId, _sessionOrder,
+            CurrentApp.GatewayClient?.MainSessionKey, hasSessionAccess: _agentSelection.HasSessionAccess,
+            retainedSession: CurrentApp.ChatSpeech?.RetainedNavigationSession(
+                _navigation.ChatDestination.SessionKey ?? _chat.CurrentSessionKey));
         SyncSessionItems(_sessionItems, sessions, "WorkspaceSession", NavView.MenuItems.IndexOf(SessionsEmpty) + 1);
         SessionsEmpty.Content = Text("NoSessions");
         SessionsEmpty.Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1031,6 +1034,13 @@ public sealed partial class WorkspaceWindow : WindowEx
             RenderDestination();
         UpdateNavigationSelection();
         UpdateHistoryButtons();
+    }
+
+    private void OnChatProviderChanged(object? sender, EventArgs e)
+    {
+        if (IsClosed) return;
+        if (DispatcherQueue.HasThreadAccess) RefreshSidebar();
+        else DispatcherQueue.TryEnqueue(() => { if (!IsClosed) RefreshSidebar(); });
     }
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -1736,6 +1746,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;
         _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
+        CurrentApp.ChatProviderChanged -= OnChatProviderChanged;
         UnwirePins();
         _inbox.Changed -= OnNotificationsChanged;
         _workspaceSearchShow.Cancel();

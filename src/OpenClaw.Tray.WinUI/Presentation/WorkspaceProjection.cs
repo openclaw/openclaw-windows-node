@@ -131,9 +131,15 @@ internal static class WorkspaceProjection
     }
 
     public static IReadOnlyList<WorkspaceSession> Sessions(IEnumerable<SessionInfo> source, string? agentId,
-        WorkspaceSessionOrder order, string? mainSessionKey = null)
+        WorkspaceSessionOrder order, string? mainSessionKey = null, bool hasSessionAccess = true,
+        SessionInfo? retainedSession = null)
     {
-        var rows = source.ToArray();
+        // A current roster, including an authoritative empty roster, always wins.
+        // Offline navigation gets at most the lifetime owner's confirmed loaded row,
+        // never the cleared AppState cache or readiness for Gateway actions.
+        IEnumerable<SessionInfo> admitted = hasSessionAccess ? source
+            : retainedSession is { } retained ? [retained] : [];
+        var rows = admitted.ToArray();
         var homeKey = HomeSessionKey(rows, agentId, mainSessionKey);
         // Pinned rows first (most recently pinned on top); everything else keeps creation order (WorkspaceSessionOrder), so new input or activity never reorders the sidebar.
         var sessions = order.Sort(Visible(rows, agentId))

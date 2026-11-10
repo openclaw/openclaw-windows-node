@@ -133,6 +133,8 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
 
     public OpenClawChatDataProvider? Provider => _connection.Provider;
+    internal OpenClaw.Shared.SessionInfo? RetainedNavigationSession(string? sessionKey) =>
+        _connection.RetainedNavigationSession(sessionKey);
     public event EventHandler? ProviderChanged;
     internal ChatVerificationState VerificationState => _connection.VerificationState;
     internal bool RetryVerification(IOperatorGatewayClient? expectedClient = null) =>

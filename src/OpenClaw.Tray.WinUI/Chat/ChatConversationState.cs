@@ -136,6 +136,21 @@ internal sealed class ChatConversationState
         }
     }
 
+    // Navigation may name a loaded conversation while its port is suspended.
+    // This is one defensive row, not a replacement authoritative roster.
+    internal SessionInfo? RetainedNavigationSession(string? sessionKey)
+    {
+        lock (_gate)
+        {
+            if (_disposed || sessionKey is null || !_timelines.TryGetValue(sessionKey, out var timeline) ||
+                !timeline.HistoryLoaded && timeline.Entries.Count == 0) return null;
+            var session = _presentation.FindSession(sessionKey);
+            var identity = _history.ResolveSessionId(sessionKey) ?? session?.SessionId;
+            return session is not null && !string.IsNullOrEmpty(identity) && identity == session.SessionId
+                ? session.Clone() : null;
+        }
+    }
+
     internal ChatDataSnapshot RetainedSnapshot(ChatProjectionContext context)
     {
         lock (_gate)

@@ -9,6 +9,61 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed partial class ChatProviderConnectionSecurityTests
 {
+    [Fact]
+    public async Task ExplicitDisconnectOffersOnlyLoadedImmutableNavigationAndKeepsWritesBlocked()
+    {
+        await using var h = await Harness.StartAsync();
+        var provider = h.Lifetime.Provider!;
+        Assert.Null(h.Lifetime.RetainedNavigationSession(GatewayScenario.OtherSessionKey));
+        h.Lifetime.SetClient(null);
+        await h.Client.DisconnectAsync();
+        var row = Assert.IsType<SessionInfo>(h.Lifetime.RetainedNavigationSession(GatewayScenario.OtherSessionKey));
+        Assert.Equal(GatewayScenario.OtherSessionKey, row.Key);
+        Assert.False(string.IsNullOrEmpty(row.SessionId));
+        row.DisplayName = "Not the retained state";
+        Assert.NotEqual(row.DisplayName, h.Lifetime.RetainedNavigationSession(row.Key)!.DisplayName);
+        Assert.Null(h.Lifetime.RetainedNavigationSession(GatewayScenario.LongSessionKey));
+        Assert.Null(h.Lifetime.RetainedNavigationSession("unloaded-unknown"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SendMessageAsync(row.Key, "Offline navigation is not send authority."));
+        Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
+    }
+
+    [Fact]
+    public async Task ConfirmedRosterWithoutLoadedHistoryDoesNotCreateOfflineNavigation()
+    {
+        await using var h = await Harness.StartAsync(loadHistory: false);
+        h.Lifetime.SetClient(null);
+        Assert.NotNull(h.Lifetime.Provider);
+        Assert.Null(h.Lifetime.RetainedNavigationSession(GatewayScenario.OtherSessionKey));
+    }
+
+    [Theory]
+    [InlineData("profile")]
+    [InlineData("auth")]
+    [InlineData("gateway")]
+    public async Task KnownAuthorityInvalidationCannotResurrectOfflineNavigationBeforeUiDrain(string boundary)
+    {
+        await using var h = await Harness.StartAsync();
+        var old = h.Lifetime.Provider!;
+        switch (boundary)
+        {
+            case "profile": await h.ChangeProfileAsync("fixture-navigation-new-owner"); break;
+            case "auth": h.Lifetime.ObserveConnection(new GatewayConnectionSnapshot
+                { GatewayId = h.Record.Id, OperatorErrorKind = GatewayErrorKind.Auth }); break;
+            case "gateway":
+                h.Registry.AddOrUpdate(new GatewayRecord { Id = "other", Url = "wss://fixture-other.invalid" });
+                h.Registry.SetActive("other");
+                break;
+        }
+        // No queued UI callback has been drained. Retiring the transport now must
+        // not turn its known-revoked view back into legitimate offline continuity.
+        h.Lifetime.SetClient(null);
+        Assert.Null(h.Lifetime.RetainedNavigationSession(GatewayScenario.OtherSessionKey));
+        h.Drain();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => old.LoadAsync());
+        Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
+    }
+
     [Theory]
     [InlineData("{\"sessions\":{}}")]
     [InlineData("{\"sessions\":{\"agent:research:fixture-other\":{\"displayName\":\"Legacy row\"}}}")]
