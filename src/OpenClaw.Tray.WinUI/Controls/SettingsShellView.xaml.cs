@@ -508,6 +508,7 @@ internal sealed partial class SettingsShellView : UserControl
         _currentNavTag = null;
         // Clearing Content does not raise OnNavigatedFrom, so pages with cleanup are stopped here.
         (ContentFrame.Content as DebugPage)?.Deactivate();
+        (ContentFrame.Content as SystemsPage)?.Dispose();
         ContentFrame.Content = null;
         try { CurrentApp.PageActivator?.Reset(); }
         catch (Exception ex)
@@ -578,6 +579,7 @@ internal sealed partial class SettingsShellView : UserControl
     private void SyncNavSelection(string? tag)
     {
         if (tag == null) return;
+        tag = HubPageRegistry.NavigationTag(tag);
         var item = FindNavItemForTag(NavView.MenuItems, tag)
                 ?? FindNavItemForTag(NavView.FooterMenuItems, tag);
         if (item != null && !ReferenceEquals(NavView.SelectedItem, item))
@@ -684,7 +686,9 @@ internal sealed partial class SettingsShellView : UserControl
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavSessions.Visibility = vis;
-            NavInstances.Visibility = vis;
+            NavInstances.Visibility = keepCurrentGatewayPageVisible && HubPageRegistry.IsSystemsTag(currentTag)
+                ? Visibility.Visible
+                : vis;
             NavCron.Visibility = vis;
             var gatewayToolVisibility = keepCurrentGatewayPageVisible ? Visibility.Visible : vis;
             AgentsNavItem.Visibility = gatewayToolVisibility;
@@ -880,7 +884,7 @@ internal sealed partial class SettingsShellView : UserControl
                     OpenClawTray.Services.Logger.Error($"[SettingsShellView] ConfigPage seed failed: {ex}");
                 }
                 break;
-            case InstancesPage instances: instances.Initialize(); break;
+            case SystemsPage systems: systems.Initialize(); break;
             case DashboardsPage dashboards: dashboards.Initialize(this, _currentNavTag); break;
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
@@ -949,7 +953,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         { "connection",  "\uE839" },
         { "sessions",    "\uE8F2" },
-        { "instances",   "\uE977" },
+        { "systems",     "\uE977" },
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },

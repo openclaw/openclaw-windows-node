@@ -393,6 +393,166 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    [Trait("KeyboardProof", "Required")]
+    public async Task PinnedSystems_ToggleHitTabAndFeedbackRemainOnVisibleSurface()
+    {
+        foreach (var theme in new[] { "Light", "Dark" })
+            await WithAppAsync(async run =>
+            {
+                if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF") != "1")
+                    throw new InvalidOperationException("Pinned Systems requires explicit native keyboard proof opt-in.");
+                await run.InvokeAsync("app.navigate", new { page = "chat" });
+                await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize") is { Current.IsOffscreen: false },
+                    "Systems pin customization");
+                var window = FindHub(run);
+                var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+                var scale = SystemsWindowDpi(hwnd) / 96d;
+                var work = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+                    Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd),
+                    Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
+                ((WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Normal);
+                Assert.True(1000 * scale <= work.Width, "The display must contain the exact 1000-DIP pinned proof window.");
+                Assert.True(SystemsSetWindowPos(hwnd, IntPtr.Zero, work.X, work.Y,
+                    (int)Math.Round(1000 * scale), Math.Min(work.Height, (int)Math.Round(900 * scale)), 0x0014));
+                await WaitUiAsync(run, () => Math.Abs(window.Current.BoundingRectangle.Width / scale - 1000) <= 2,
+                    "normal 1000-DIP pinned Systems window");
+                await NativeKeyboardProof.ActivateAsync(hwnd);
+                bool IsWithin(AutomationElement element, AutomationElement ancestor)
+                {
+                    for (AutomationElement? current = element; current is not null;
+                         current = TreeWalker.RawViewWalker.GetParent(current))
+                        if (current.GetRuntimeId().SequenceEqual(ancestor.GetRuntimeId()))
+                            return true;
+                    return false;
+                }
+                var hitSequence = 0;
+                AutomationElement AssertToggleHit(string id)
+                {
+                    var toggle = FindById(run, id) ?? throw new InvalidOperationException($"Missing {id}.");
+                    var bounds = toggle.Current.BoundingRectangle;
+                    var point = new System.Windows.Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+                    var ancestors = new List<object>();
+                    var receiptPath = Path.Combine(run.ArtifactsDirectory, $"toggle-hit-{++hitSequence:D2}.json");
+                    var target = new { runtimeId = toggle.GetRuntimeId(), toggle.Current.ProcessId,
+                        toggle.Current.ClassName, controlType = toggle.Current.ControlType.ProgrammaticName,
+                        toggle.Current.AutomationId, bounds };
+                    var windowBounds = window.Current.BoundingRectangle;
+                    var windowState = ((WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern)).Current.WindowVisualState.ToString();
+                    string Receipt(string stage) => JsonSerializer.Serialize(new { id, theme, run.AppProcessId, stage,
+                        hwnd = hwnd.ToInt64(), point, windowBounds,
+                        windowState, target, hitAncestors = ancestors });
+                    File.WriteAllText(receiptPath, Receipt("before-point-query"));
+                    var hit = AutomationElement.FromPoint(point);
+                    File.WriteAllText(receiptPath, Receipt("point-query-returned"));
+                    for (AutomationElement? current = hit; current is not null;
+                         current = TreeWalker.RawViewWalker.GetParent(current))
+                    {
+                        ancestors.Add(new { runtimeId = current.GetRuntimeId(), current.Current.ProcessId,
+                            current.Current.ClassName, controlType = current.Current.ControlType.ProgrammaticName,
+                            current.Current.AutomationId, bounds = current.Current.BoundingRectangle });
+                        File.WriteAllText(receiptPath, Receipt("reading-hit-ancestry"));
+                    }
+                    var receipt = Receipt("hit-ancestry-complete");
+                    File.WriteAllText(receiptPath, receipt);
+                    output.WriteLine(receipt);
+                    Assert.False(toggle.Current.IsOffscreen, receipt);
+                    Assert.True(toggle.Current.IsEnabled, receipt);
+                    Assert.True(bounds.Width > 0 && bounds.Height > 0, receipt);
+                    Assert.True(IsWithin(hit, toggle), $"Pinned {id} center ownership failed. {receipt}");
+                    return toggle;
+                }
+                Invoke(FindById(run, "WorkspacePagesCustomize")!);
+                // The pin catalog keeps the stored "instances" tag for existing pins; routing normalizes it to Systems.
+                await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:instances") is not null, "Systems pin toggle");
+                Invoke(FindById(run, "WorkspacePagesToggle:instances")!);
+                await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:instances") is { Current.IsOffscreen: false },
+                    "Systems production pinned route");
+                Invoke(FindById(run, "WorkspacePinnedPage:instances")!);
+                await WaitUiAsync(run, () => FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false } &&
+                    FindById(run, "SystemsRow_gateway") is not null, "populated embedded Systems");
+                // Panels such as WorkspaceSettingsHost and SystemsPageRoot have no UIA peer. The embedded host
+                // shares the Workspace navigation row without a top margin for inset pages, so that control anchors it.
+                var openHostTop = FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top;
+                Invoke(AssertToggleHit("WorkspaceTogglePane"));
+                await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } &&
+                    FindById(run, "SystemsPageScroll") is { Current.BoundingRectangle.Height: > 0 }, "collapsed Systems host");
+                await WaitUiAsync(run, () =>
+                    Math.Abs((FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top - openHostTop) / scale) <= 1 &&
+                    Math.Abs((FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Top -
+                        FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top) / scale - 56) <= 1,
+                    "collapsed pinned Systems host and viewport allocations settle");
+                var reopen = AssertToggleHit("WorkspaceReopenPane");
+                var host = FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle;
+                var viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle;
+                Assert.InRange(Math.Abs((host.Top - openHostTop) / scale), 0, 1);
+                Assert.InRange(Math.Abs((viewport.Top - host.Top) / scale - 56), 0, 1);
+                foreach (var id in new[] { "SettingsBack", "SettingsForward" })
+                    Assert.True(reopen.Current.BoundingRectangle.Right <= FindById(run, id)!.Current.BoundingRectangle.Left,
+                        $"Pinned reopen overlaps {id}.");
+                reopen.SetFocus();
+                await WaitUiAsync(run, () => reopen.Current.HasKeyboardFocus, "pinned Systems toggle focus");
+                foreach (var id in new[] { "SettingsBack", "SettingsForward" })
+                {
+                    var history = FindById(run, id)!;
+                    if (!history.Current.IsEnabled)
+                        continue;
+                    NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                    await WaitUiAsync(run, () => history.Current.HasKeyboardFocus, $"pinned Systems native Tab to {id}");
+                }
+                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                await WaitUiAsync(run, () => IsWithin(AutomationElement.FocusedElement,
+                    FindById(run, "SystemsPageScroll")!), "pinned history native Tab to Systems content");
+                OwnedWindowCapture.Save(run, window, $"{theme}-pinned-systems-collapsed.png",
+                    AssertToggleHit("WorkspaceReopenPane"), FindById(run, "SystemsPageMarker")!);
+                Invoke(AssertToggleHit("WorkspaceReopenPane"));
+                await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { Current.IsOffscreen: false } &&
+                    FindById(run, "WorkspaceTogglePane") is { Current.IsOffscreen: false }, "reopened Systems host");
+                await WaitUiAsync(run, () => Math.Abs((FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Top -
+                    FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle.Top) / scale) <= 1,
+                    "reopened pinned Systems removes viewport inset");
+                host = FindById(run, "WorkspaceNavigation")!.Current.BoundingRectangle;
+                viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle;
+                Assert.InRange(Math.Abs((viewport.Top - host.Top) / scale), 0, 1);
+                Invoke(FindById(run, "WorkspaceSessionsAdd")!);
+                await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false },
+                    "explicit rejected operation on pinned Systems");
+                Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+                Invoke(AssertToggleHit("WorkspaceTogglePane"));
+                await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } &&
+                    FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false },
+                    "collapsed pinned Systems keeps operation feedback");
+                await WaitUiAsync(run, () =>
+                    FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false } info &&
+                    new[] { "WorkspaceReopenPane", "SettingsBack", "SettingsForward" }.All(id =>
+                        FindById(run, id)!.Current.BoundingRectangle.Bottom <= info.Current.BoundingRectangle.Top),
+                    "collapsed operation feedback settles below toggle and history");
+                var feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
+                Assert.True(AssertToggleHit("WorkspaceReopenPane").Current.BoundingRectangle.Bottom <= feedback.Current.BoundingRectangle.Top);
+                foreach (var id in new[] { "SettingsBack", "SettingsForward" })
+                    Assert.True(FindById(run, id)!.Current.BoundingRectangle.Bottom <= feedback.Current.BoundingRectangle.Top);
+                OwnedWindowCapture.Save(run, window, $"{theme}-pinned-systems-feedback.png",
+                    AssertToggleHit("WorkspaceReopenPane"), feedback);
+                Invoke(AssertToggleHit("WorkspaceReopenPane"));
+                await WaitUiAsync(run, () => FindById(run, "WorkspaceTogglePane") is { Current.IsOffscreen: false },
+                    "pinned Systems feedback permits reopening");
+                await WaitUiAsync(run, () =>
+                    FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false } info &&
+                    FindById(run, "WorkspaceTogglePane") is { Current.IsOffscreen: false } toggle &&
+                    (toggle.Current.BoundingRectangle.Right <= info.Current.BoundingRectangle.Left ||
+                     toggle.Current.BoundingRectangle.Bottom <= info.Current.BoundingRectangle.Top),
+                    "reopened operation feedback remains visible without covering toggle");
+                feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
+                Assert.False(feedback.Current.IsOffscreen);
+                var finalToggle = AssertToggleHit("WorkspaceTogglePane");
+                Assert.True(finalToggle.Current.BoundingRectangle.Right <= feedback.Current.BoundingRectangle.Left ||
+                    finalToggle.Current.BoundingRectangle.Bottom <= feedback.Current.BoundingRectangle.Top);
+                OwnedWindowCapture.Save(run, window, $"{theme}-pinned-systems-reopened.png",
+                    finalToggle, FindById(run, "SystemsPageMarker")!, feedback);
+            }, scenario: GatewayScenario.CreateSystems(empty: false), appTheme: theme);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task PinnedPages_BackgroundFollowsThemeWhenReturningFromSettings()
     {
         await WithAppAsync(async run =>
@@ -1415,7 +1575,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
         bool requireAgentSelection = false, bool allowSessionMutations = false, GatewayScenario? scenario = null,
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null, bool postSetupRestart = false,
-        Action? releasePendingResponses = null, Action<GatewayFixtureProfile>? configureProfile = null,
+        Action? releasePendingResponses = null, string appTheme = "Light",
+        Action<GatewayFixtureProfile>? configureProfile = null,
         bool connectGateway = true, TimeSpan? testTimeout = null)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
@@ -1424,7 +1585,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
             allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
             allowSessionMutations: allowSessionMutations,
-            scenario: scenario, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
+            scenario: scenario, appTheme: appTheme, prepareSetupHandoff: prepareSetupHandoff, postSetupRestart: postSetupRestart,
             releasePendingResponses: releasePendingResponses, configureProfile: configureProfile,
             connectGateway: connectGateway);
         Task body = Task.CompletedTask;

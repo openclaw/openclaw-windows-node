@@ -608,8 +608,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     FontWeights.Normal,
                     "TextFillColorPrimaryBrush")
                 .IsTextSelectionEnabled(true),
-            LinkBuilder = link => (Element?)link.Label ?? Text(link.Text, 14, FontWeights.Normal, "TextFillColorPrimaryBrush")
-                .IsTextSelectionEnabled(true),
+            LinkBuilder = link => HStack(link.Label),
             HtmlBlock = raw => Text(
                     ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw),
                     14,

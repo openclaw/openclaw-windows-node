@@ -216,7 +216,7 @@ public sealed partial class GatewayFixtureUiTests
                                 ["A saved report line", "status.example.com"]);
                         }
                     }
-                }, scenario: GatewayScenario.CreateDashboards());
+                }, scenario: GatewayScenario.CreateDashboards(), appTheme: theme);
             }
         }
         finally
@@ -377,7 +377,7 @@ public sealed partial class GatewayFixtureUiTests
                     using var evidence = JsonDocument.Parse(JsonSerializer.Serialize(states));
                     Assert.All(evidence.RootElement.EnumerateArray(), state =>
                         Assert.True(state.GetProperty("captured").GetBoolean(), state.GetRawText()));
-                }, scenario: GatewayScenario.CreateDashboards());
+                }, scenario: GatewayScenario.CreateDashboards(), appTheme: theme);
             }
         }
         finally { Environment.SetEnvironmentVariable("OPENCLAW_FIXTURE_APP_THEME", previousTheme); }
@@ -682,7 +682,7 @@ public sealed partial class GatewayFixtureUiTests
                         appProcessId = run.AppProcessId }));
                 Assert.All(inputResults, result => Assert.True(result.Error is null, JsonSerializer.Serialize(result)));
                 Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "board.get");
-            }, scenario: GatewayScenario.CreateDashboards());
+            }, scenario: GatewayScenario.CreateDashboards(), appTheme: "Light");
         }
         finally
         {
@@ -1174,7 +1174,7 @@ public sealed partial class GatewayFixtureUiTests
                             report = "Tickets closed",
                             mutations = 0,
                         }));
-                }, scenario: GatewayScenario.CreateDashboards());
+                }, scenario: GatewayScenario.CreateDashboards(), appTheme: theme);
             }
 
         }

@@ -70,6 +70,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null,
         bool postSetupRestart = false,
         Action? releasePendingResponses = null,
+        string appTheme = "Light",
         Action<GatewayFixtureProfile>? configureProfile = null,
         bool connectGateway = true)
     {
@@ -83,7 +84,8 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayFixtureProfile profile;
         try
         {
-            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy, connectGateway);
+            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy,
+                appTheme: appTheme, connectGateway: connectGateway);
         }
         catch
         {

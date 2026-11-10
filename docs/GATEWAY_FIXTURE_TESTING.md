@@ -456,6 +456,98 @@ and resetting for a new job. Artifacts include owned-window editor captures
 and the exact synthetic schedules read back after accepted saves. This proves
 the app/fixture wire path, not production Gateway persistence or scheduling.
 
+## Systems inventory proof
+
+The `systems-inventory` and `systems-empty` scenarios back the native Systems
+page. `systems-inventory` serves `environments.list`, `system.info`, `node.list`
+with host statistics, pending node and device pairings, and presence beacons
+for connected apps. Session rows carry placement and exec
+bindings so machines show related sessions. Timestamps are relative to the
+current time, and host statistics change between reads. Node rename and removal
+still receive the read-only protocol error; Systems routes pairing decisions to
+the Connection page and opens deeper machine and desktop administration in the
+web interface. `systems-empty` returns an empty inventory.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario systems-inventory
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario systems-inventory -Theme Dark
+```
+
+Navigate with local MCP `app.navigate` and `{"page":"systems"}`, or open one
+machine with `{"page":"systems:node:fixture-studio"}`. `-Theme` (Light by
+default, or Dark) sets the isolated profile's app theme, because local MCP cannot
+change it.
+
+The page is one scroll, not a master-detail list. Select an inventory row to
+expand it inline; other rows can remain expanded independently.
+`systems:<id>` still opens exactly that row, and an unavailable id keeps its
+missing-selection explanation. "Devices and Gateway" always shows the full
+inventory in online-first order, with no search, status filter or sort controls.
+The shared hero reports this PC's observed Gateway attachment. Online and Issues
+are its only summary tiles; backup reads and badges remain closed. Pending pairing
+requests appear first as separate Wants to join rows. Other attention badges stay
+on their actual machine/worker rows. Issues reveals the first badged row without
+hiding the inventory; there is no separate Issues view. Workers and Connected
+apps retain their groups. Pairing review routes to Connection, not inline approval.
+Presence does not create machine rows or connection topology.
+
+For native mounted-control proof on an authorized desktop, use the host's RID
+(`win-arm64` on native ARM64):
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
+  -r win-arm64 --filter 'FullyQualifiedName~SystemsPageProofTests'
+```
+
+This covers inline row invocation, the minimum-height scroll, pending recovery,
+read-only access, resource disclosure, management confirmation epochs, the single
+page-level direct Open in web action, Issues jump without hidden inventory, independent
+expanders and narrow recovery-action layout, and the Capabilities column width
+and gap. It is not screenshot proof. Capture the hero, row badges and
+expanded row in light, dark and narrow layouts from the current fixture build. Verify
+the native CommandBar overflow and keyboard focus, collapsed Diagnostics,
+separate CPU count/load and the icon-only chat action. The fixture cannot prove
+real pairing or live desktop control.
+
+`GatewayFixtureUiTests.SystemsDesign_RealAppLightAndDark` launches an isolated
+real app for each theme and captures the loaded page, expanded machine, Add
+system dialog and cancelled Forget dialog. Set `OPENCLAW_RUN_GATEWAY_FIXTURE_UI=1`,
+`OPENCLAW_GATEWAY_FIXTURE_APP` to the current executable and
+`OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS` to an evidence directory before selecting
+that test. Captures use the existing owned-window capture helper. Mounted
+`RenderTargetBitmap` exports can omit compositor surfaces, opacity or inherited
+theme brushes; do not treat them as equivalent native screenshot evidence.
+
+`SystemsPage_OmitsConnectionMapInLightAndDark` verifies that the fixture-mounted
+page has no connection-map elements in either theme. `SystemsInventory_ExistingSeparatedCards`
+captures separated inventory rows, then scrolls the expanded Gateway's related
+sessions and Diagnostics into view before capture. `SystemsHero_TopAndScrolled`
+captures the scrolling hero with an unchanged scroll viewport.
+`SystemsHero_FullHostLightAndDark` captures wide and medium native shell widths
+in both themes. Widths below 720 use the existing mounted viewport route without
+lowering the production 800-DIP minimum. These renamed hero cases are source-only
+until their granted lane executes; earlier backdrop screenshots do not prove the
+new header. Fixture captures remain synthetic proof.
+
+Add a system opens three instructions and forwards to Connection. Forget names
+the node, displays only reported platform, last-seen and approval facts, and
+defaults to Cancel. A successful rename or forget shows a four-second in-page
+notification; errors remain in the dialog and are announced assertively.
+
+The page polls the selected machine's reported measurements every `OPENCLAW_SYSTEMS_POLL_SECONDS`
+(default 15, minimum 5) and reloads the inventory once per burst of Gateway
+events, `OPENCLAW_SYSTEMS_EVENT_REFRESH_MS` (default 1500) after the first one.
+Paired Windows nodes publish host statistics immediately after handshake and every
+`OPENCLAW_NODE_HOST_STATS_INTERVAL_SECONDS` (default 60).
+
+Node wire fixtures must therefore correlate command replies rather than assume
+the next frame is a reply. `NodeExecDenialWireTests` acknowledges only validated
+`node.event` requests for `node.host.stats`, using the Gateway's
+`handled: true, reason: "updated"` payload. Wrong invocation ids, unexpected
+methods or events, and malformed statistics fail the fixture. Continued
+statistics cannot extend its existing invocation cancellation deadline.
+
 ## Targeted context-usage proof
 
 `ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into
@@ -700,8 +792,12 @@ no real board or capability grant is touched:
 .\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards
 ```
 
-Set `OPENCLAW_FIXTURE_APP_THEME` to `Dark` (or `Light`, the default) in the
-calling shell to seed the disposable profile's app theme for theme proof.
+Pass `-Theme Dark` to seed the disposable profile for dark-theme proof.
+Omitting `-Theme` uses `Light`:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards -Theme Dark
+```
 
 The focused native regression runs both themes, captures the gallery, HTML and
 report widgets, approval/error states, tabs, the website link card and an empty

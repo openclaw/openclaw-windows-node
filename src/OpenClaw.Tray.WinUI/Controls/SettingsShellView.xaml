@@ -76,7 +76,7 @@
                                         AutomationProperties.AutomationId="SettingsNavConnection">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
-                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="instances" Content="Systems">
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="systems" Content="Systems">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Automations">

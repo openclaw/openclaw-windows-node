@@ -12,6 +12,20 @@ dotnet test tests\OpenClaw.Tray.UITests --no-build -c Debug -r win-x64 --filter 
 
 Those tests launch the app in a real Windows desktop process and scan pages for WCAG violations through Axe.Windows. Failures are summarized in the GitHub Actions step summary and written to `Accessibility.trx`.
 
+The preceding framework UI lane preserves failed test exit codes and writes
+`native-failure.json` with allowlisted Application Error module/exception metadata
+and installed Windows App Runtime versions. It does not collect memory dumps,
+event messages, command lines, paths or environment values. Missing event access
+is reported as unavailable, not successful native diagnosis. Testhost phase logs
+distinguish COM-wrapper initialization from Windows App SDK bootstrap.
+Watchdog-terminated hangs may have no Application Error event; use the phase logs
+and interrupted-test sequence in that case. An instrumented passing run does not
+erase an earlier crash or establish its cause.
+The test application writes unhandled exception types, HRESULTs and managed method
+names directly to the standard error stream. This bypasses per-test console
+buffering that can lose the last diagnostic on native fail-fast. Exception messages,
+data, file paths and locals are not included, and exceptions remain unhandled.
+
 Failure diagnostics retain rule IDs, bounded rule descriptions and canonical
 control types with scan-result ordinals. They omit UIA names, automation IDs
 (which can be data-derived), arbitrary properties and desktop focus state.
@@ -83,24 +97,29 @@ pairing.
 
 ### Settings navigation keyboard contract
 
-The canonical shell owns **Back to app** and unhandled Escape from full
-Settings. Focused editors, native search flyouts, menus and ContentDialogs
-retain their own dismissal behavior. Pinned pages do not use the full-Settings
-Escape exit. `WorkspaceWindowProofTests.SettingsBackToApp_ReturnsToAppDestinationInSameWindow`
-covers mouse, Enter and Escape; `WorkspaceNavigationTests.SettingsEscape_*`
-protects the editor, overlay and key-repeat boundaries.
+Back to app and an unhandled Escape leave full Settings for the retained app
+destination. Window-owned `SettingsEscapePolicy` preserves native editors,
+flyouts, menus and dialogs as the first Escape owners; it does not collapse the
+Settings rail. The pane toggle retains the user's saved preference.
+`WorkspaceWindowProofTests.SettingsBackToApp_ReturnsToAppDestinationInSameWindow`
+covers mouse, Enter and Escape activation, retained chat and notification focus.
+`WorkspaceNavigationTests.SettingsEscape_LeavesFullSettingsOnlyWhenNothingElseOwnsEscape`
+covers the policy exclusions.
 
-Workspace retains its 800-DIP minimum and saved pane preference. Page width
-tiers do not switch shell embedding or turn Escape into a rail-collapse action.
-`WorkspaceSettingsLayout` allocates the history band, not navigation identity.
+Workspace still has an 800-DIP minimum width. The below-720-DIP rail is not a
+supported window-size claim. Width-driven shell embedding and temporary narrow
+rail preferences are superseded by the canonical shared foundation. Page-owned
+responsive layouts still use their allocated content width.
+`SettingsPageInsetTests.Shell_DeliversFullAndEmbeddedInsetsWithoutMovingBackdropOrReplacingContent`
+covers the optional content inset and preserves ordinary pages' existing padding.
+
+The integrated Config, Local AI, Default Model, Voice, Notifications, Event
+Stream and Diagnostics source adapts to allocated width after rail/sidebar
+subtraction. Config measures its editor grid and keeps draft controls mounted
+while stacking tree/detail panes. Source guards and XAML parsing do not prove
+native layout, focus retention, text scaling or six-locale reachability; these
+still require current-build native proof before any window-minimum reduction.
+
 Dashboards retains its standalone session route and native reader state.
-Source integration is not evidence of mounted rendering, focus or text scaling.
-
-Config, Local AI, Default Model, Voice, Notifications, Event Stream and
-Diagnostics adapt to each page's allocated width after rail/sidebar subtraction.
-Config additionally measures its editor grid at the 728-DIP stacking boundary
-and retains draft controls while moving tree/detail panes. The integrated source
-guards and XAML parsing do not establish native layout, six-locale reachability
-or focused-control retention. Those require current isolated runtime proof.
 
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

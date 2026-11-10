@@ -441,6 +441,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<JsonElement>? CronRunsUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler? ConfigurationChanged;
+    /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config). Argument is the event name.</summary>
+    public event EventHandler<string>? SystemsInventoryChanged;
+    /// <summary>A node published new host statistics (<c>node.hostStats</c>).</summary>
+    public event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
 
     /// <summary>
@@ -3259,7 +3263,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private readonly record struct PairingConnectErrorDetails(bool IsPairingRequired, string? RequestId);
 
-    private static bool IsUnknownMethodError(string errorMessage)
+    internal static bool IsUnknownMethodError(string errorMessage)
     {
         return errorMessage.Contains("unknown method", StringComparison.OrdinalIgnoreCase);
     }
@@ -3632,6 +3636,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 // until the next poll.
                 _ = RequestNodePairListAsync();
                 _ = RequestNodesAsync();
+                if (eventType == "node.pair.resolved")
+                    SystemsInventoryChanged?.Invoke(this, "node.pair.resolved");
+                break;
+            case "node.runnerInventory.changed":
+                SystemsInventoryChanged?.Invoke(this, "node.runnerInventory.changed");
+                break;
+            case "node.hostStats":
+                if (root.TryGetProperty("payload", out var statsPayload) &&
+                    Systems.SystemsParser.String(statsPayload, "nodeId") is { } statsNodeId &&
+                    statsPayload.TryGetProperty("hostStats", out var statsValue) &&
+                    Systems.SystemsParser.ParseNodeHostStats(statsValue) is { } nodeStats)
+                {
+                    NodeHostStatsReceived?.Invoke(this, new Systems.NodeHostStatsEvent(statsNodeId, nodeStats));
+                }
                 break;
             case "device.pair.requested":
             case "device.pair.resolved":
@@ -3642,6 +3660,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 // Presence snapshot broadcast when clients connect/disconnect
                 if (root.TryGetProperty("payload", out var presPayload))
                     TryParsePresenceFromBroadcast(presPayload);
+                SystemsInventoryChanged?.Invoke(this, "presence");
                 break;
             case "sessions.changed":
                 if (root.TryGetProperty("payload", out var sessionChange)
@@ -3666,6 +3685,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "config.changed":
                 ConfigurationChanged?.Invoke(this, EventArgs.Empty);
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
+                SystemsInventoryChanged?.Invoke(this, "config.changed");
                 break;
             case "board.changed":
             case "board.command":
@@ -5001,6 +5021,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         else if (authoritativeSessionList)
             session.Archived = false;
         if (item.TryGetProperty("execNode", out _)) session.ExecNode = GetString(item, "execNode");
+        if (item.TryGetProperty("placement", out _))
+            session.Placement = Systems.SystemsParser.ParseSessionPlacement(item);
+        else if (authoritativeSessionList)
+            session.Placement = null;
         if (item.TryGetProperty("parentSessionKey", out _))
             session.ParentSessionKey = GetString(item, "parentSessionKey");
         if (item.TryGetProperty("spawnDepth", out var spawnDepth))
@@ -5072,6 +5096,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         try
         {
+            if (ParseNodeListPayload(nodesPayload) is { } ordered)
+                NodesUpdated?.Invoke(this, ordered);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to parse node.list: {ex.Message}");
+        }
+    }
+
+    /// <summary>Parses a <c>node.list</c> payload; null when it has no node array.</summary>
+    internal static GatewayNodeInfo[]? ParseNodeListPayload(JsonElement nodesPayload)
+    {
+        {
             JsonElement nodes = nodesPayload;
             if (nodesPayload.ValueKind == JsonValueKind.Object)
             {
@@ -5082,7 +5119,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             if (nodes.ValueKind != JsonValueKind.Array)
-                return;
+                return null;
 
             var buffer = new GatewayNodeInfo[nodes.GetArrayLength()];
             var count = 0;
@@ -5187,6 +5224,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     ModelIdentifier = GetString(nodeElement, "modelIdentifier"),
                     RemoteIp = GetString(nodeElement, "remoteIp"),
                     PathEnv = GetString(nodeElement, "pathEnv"),
+                    HostStats = nodeElement.TryGetProperty("hostStats", out var hostStats)
+                        ? Systems.SystemsParser.ParseNodeHostStats(hostStats)
+                        : null,
                     IsPaired = paired ?? false,
                     IsOnline = online ?? connected ?? status is "ok" or "online" or "connected" or "ready" or "active"
                 };
@@ -5202,11 +5242,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 return StringComparer.OrdinalIgnoreCase.Compare(a.DisplayName, b.DisplayName);
             });
 
-            NodesUpdated?.Invoke(this, ordered);
-        }
-        catch (Exception ex)
-        {
-            _logger.Warn($"Failed to parse node.list: {ex.Message}");
+            return ordered;
         }
     }
 

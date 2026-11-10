@@ -21,7 +21,7 @@ public sealed class ReactorChatMarkdownContractTests
             timeline,
             StringComparison.Ordinal);
         Assert.Contains("Image = (alt, _) => Text(", timeline, StringComparison.Ordinal);
-        Assert.Contains("LinkBuilder = link => (Element?)link.Label ?? Text(link.Text", timeline, StringComparison.Ordinal);
+        Assert.Contains("LinkBuilder = link => HStack(link.Label)", timeline, StringComparison.Ordinal);
         Assert.Contains("HtmlBlock = raw => Text(", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("ListItem =", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("BuildWrappingMarkdownListItem", timeline, StringComparison.Ordinal);
