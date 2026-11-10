@@ -67,12 +67,15 @@ and its [person label](https://github.com/openclaw/openclaw/blob/882e4a1447f7d94
 except for a named shared owner. That label follows the web Control UI
 [presence label](https://github.com/openclaw/openclaw/blob/882e4a1447f7d94b876c4a25458c8a0e898e8eba/ui/src/lib/presence-users.ts)
 at the same commit: the shared `gateway-owner` profile shows localized
-`Name · Shared owner` when it has a saved display name, and localized Shared
+`First name · Shared owner` when it has a saved display name, and localized Shared
 owner otherwise (macOS shows Shared owner alone). The shared marker stays because
 anyone using the shared Gateway credential appears as this profile. The label
-never uses the owner's email or profile id. Any other profile shows its name,
+never uses the owner's email or profile id. Any other profile shows its first name,
 then email, then profile id, and localized Owner is shown while no profile is
-known (connecting, disconnected or a failed read). The second
+known (connecting, disconnected or a failed read). First name means the first
+whitespace-delimited part of the saved display name; the full profile name
+remains unchanged for avatar initials and other profile consumers. Email and
+profile-id fallbacks are not shortened. The second
 line is connection status. Like macOS, there are no separate loading, unavailable
 or unnamed labels and no profile setup action. `WorkspaceIdentitySource` reads
 `users.self` profile fields (`displayName`, first `emails` entry, `id`) and the
