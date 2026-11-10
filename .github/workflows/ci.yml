@@ -796,6 +796,7 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
         -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
         -CaptureHostExit
 
     - name: Run steady-resource Automations UI tests
