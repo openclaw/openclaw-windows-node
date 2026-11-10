@@ -1,0 +1,47 @@
+ProcDump v12.02
+Capture Usage:
+procdump.exe [-mm] [-ma] [-mt] [-mp] [-mc <Mask>] [-md <Callback_DLL>] [-mk]
+            [-n <Count>]
+            [-s <Seconds>]
+            [-c|-cl <CPU_Usage> [-u]]
+            [-m|-ml <Commit_Usage>]
+            [-p|-pl <Counter> <Threshold>]
+            [-h]
+            [-e [1] [-g] [-b] [-ld] [-ud] [-ct] [-et]]
+            [-l]
+            [-t]
+            [-f <Include_Filter>, ...]
+            [-fx <Exclude_Filter>, ...]
+            [-dc <Comment>]
+            [-o]
+            [-r [1..5] [-a]]
+            [-at <Timeout>]
+            [-wer]
+            [-64]
+            {
+                {{[-w] <Process_Name> | <Service_Name> | <PID>} [<Dump_File> | <Dump_Folder>]}
+            |
+                {-x <Dump_Folder> <Image_File> [Argument, ...]}
+            }
+Dump Types:
+-ma Write a 'Full' dump file.
+    - Includes all memory (Image, Mapped and Private).
+    - Includes all metadata (Process, Thread, Module, Handle, Address Space, etc.).
+Conditions:
+-e Write a dump when the process encounters an unhandled exception.
+   Include the 1 to create dump on first chance exceptions.
+   Add -ld to create a dump when a DLL (module) is loaded (filtering applies).
+   Add -ud to create a dump when a DLL (module) is unloaded (filtering applies).
+   Add -ct to create a dump when a thread is created.
+   Add -et to create a dump when a thread exits.
+-g Run as a native debugger in a managed process (no interop).
+-n Number of dumps to write before exiting.
+-at Avoid outage at Timeout. Cancel the trigger's collection at N seconds.
+License Agreement:
+Use the -accepteula command line option to automatically accept the
+Sysinternals license agreement.
+Automated Termination:
+-cancel <Target Process PID>
+Using this option or setting an event with the name ProcDump-<PID> is the same as typing Ctrl+C to gracefully terminate ProcDump. Graceful termination ensures the process is resumed if a capture is active. The cancellation applies to ALL ProcDump instances monitoring the process.
+See a list of example command lines (the examples are listed above):
+C:\>procdump -? -e
