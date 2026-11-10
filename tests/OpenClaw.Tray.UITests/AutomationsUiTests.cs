@@ -962,7 +962,7 @@ public sealed partial class GatewayFixtureUiTests
                             windowRectDip = DipRect(actualWindow, scale),
                             pageHostRectDip = DipRect(actualHost, scale),
                             dpiScale = scale,
-                            hostMeasurementSource = "ScrollPattern ancestor of exposed CronPageMarker",
+                            hostMeasurementSource = "Owned ScrollPattern on or above exposed CronPageMarker",
                             hostPeerClass = hostPeer.Current.ClassName,
                             hostPeerAutomationId = hostPeer.Current.AutomationId,
                             markerMissReads = markerMisses - missesAtStart,
@@ -1428,7 +1428,7 @@ public sealed partial class GatewayFixtureUiTests
     private static AutomationElement PageScrollPeer(GatewayFixtureRun run, bool dumpAncestors = false) =>
         TryPageScrollPeer(run, dumpAncestors) ?? throw new InvalidOperationException("Missing exposed Automations page marker.");
 
-    /// <summary>Returns null only when the marker is absent; a marker without a scroll ancestor still fails.</summary>
+    /// <summary>Returns null only when the marker is absent; a marker without an owned scroll surface still fails.</summary>
     private static AutomationElement? TryPageScrollPeer(GatewayFixtureRun run, bool dumpAncestors = false)
     {
         var element = FindById(run, "CronPageMarker");

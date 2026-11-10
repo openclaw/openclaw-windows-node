@@ -340,6 +340,8 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
         var body = state.Connected
             ? VStack(24, banner, content)
             : VStack(24, content);
+        // The page marker belongs to the named native scroll surface, not the decorative
+        // icon Border (which has no automation peer). It remains exposed in every page state.
         return Grid([GridSize.Star()], [GridSize.Star()],
             ScrollView(VStack(24,
                 PageHero.WithMotion(headerContent, look.ReduceMotion).Width(contentWidth).HAlign(HorizontalAlignment.Center)
@@ -348,7 +350,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                     .Margin(PageResponsiveLayout.HorizontalPadding(tier), 0, PageResponsiveLayout.HorizontalPadding(tier), 24))
                 .Width(hostSize.Page).HAlign(HorizontalAlignment.Stretch))
                 .Margin(0, topInset, 0, 0)
-                .AutomationId("AutomationsList").Ref(scrollRef).WithKey("page-scroll"),
+                .AutomationName(t["Title"]).AutomationId("CronPageMarker").Ref(scrollRef).WithKey("page-scroll"),
             VStack(8, toasts.Select((notice, i) => (Element)Component<AutomationToast, AutomationToastProps>(
                     new(notice, t, i == toasts.Length - 1, DismissToast)).WithKey($"toast-{notice.Id}")).ToArray())
                 .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Bottom).MaxWidth(ToastMaxWidth)
@@ -447,7 +449,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             TextBlock(answer).FontSize(14).Foreground(Theme.SecondaryText)
                 .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2).AutomationId("AutomationsHeroAnswer"),
             detailLine, commands, tier == PageWidthTier.Narrow, look.ReduceMotion, look.HighContrast,
-            glyphAutomationId: "CronPageMarker", pageTag: "cron");
+            pageTag: "cron");
     }
 
     private static Element RenderSummaryTiles(AutomationsHost host, AutomationsSnapshot state, AutomationsLook look,

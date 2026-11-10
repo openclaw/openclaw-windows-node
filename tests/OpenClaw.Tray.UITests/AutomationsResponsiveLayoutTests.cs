@@ -280,7 +280,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                         Assert.Equal(narrow ? 1 : 0, Microsoft.UI.Xaml.Controls.Grid.GetRow(originalActionHost));
                         Assert.Equal(narrow ? 1 : 2, Microsoft.UI.Xaml.Controls.Grid.GetColumn(originalActionHost));
                         Assert.Equal(narrow ? 2 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(originalActionHost));
-                        var glyph = Assert.IsType<Border>(Find(surface!, "CronPageMarker"));
+                        var glyph = Assert.IsType<Border>(Find(surface!, "AutomationsMast:Glyph"));
                         var title = Assert.IsType<TextBlock>(Find(surface!, "AutomationsHeadline"));
                         var copy = Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(title));
                         Assert.Same(originalContent, VisualTreeHelper.GetParent(copy));
@@ -334,26 +334,33 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             double originalSurfaceWidth = 0;
             await ui.RunOnUIAsync(() =>
             {
-                retainedScroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
+                retainedScroll = Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker"));
+                var markerPeer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(retainedScroll)
+                    ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(retainedScroll);
+                Assert.NotNull(markerPeer);
+                Assert.Equal(catalog["Automations_Title"], markerPeer.GetName());
+                Assert.True(markerPeer.IsControlElement());
+                Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IScrollProvider>(
+                    markerPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Scroll));
                 retainedMast = Find(surface!, "AutomationsMast");
                 originalMastTop = Bounds(retainedMast, surface!).Top;
                 originalSurfaceWidth = surface!.ActualWidth;
                 viewport.ApplyTopInset(56);
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 56
+                Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker")).Margin.Top == 56
                 && Math.Abs(Bounds(Find(surface!, "AutomationsMast"), surface!).Top - originalMastTop - 56) < 1,
                 "inset-only change at constant width updates the retained scroll content"));
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Same(retainedScroll, Find(surface!, "AutomationsList"));
+                Assert.Same(retainedScroll, Find(surface!, "CronPageMarker"));
                 Assert.Same(retainedMast, Find(surface!, "AutomationsMast"));
                 AssertWithinOnePhysicalPixel(surface!.ActualWidth, originalSurfaceWidth, surface.XamlRoot.RasterizationScale);
                 Assert.True(Bounds(retainedMast!, surface).Top >= 56);
                 viewport.ApplyTopInset(0);
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                Assert.IsType<ScrollView>(Find(surface!, "AutomationsList")).Margin.Top == 0,
+                Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker")).Margin.Top == 0,
                 "removing inset restores the retained page viewport"));
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
@@ -480,7 +487,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             if (capture)
             {
                 OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, $"automations-responsive-{width}-Light-details.png");
-                await ui.RunOnUIAsync(() => Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"))
+                await ui.RunOnUIAsync(() => Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker"))
                     .ScrollTo(0, 0, new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
                 await ui.YieldToRenderAsync();
                 OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, $"automations-responsive-{width}-Light.png");
@@ -492,7 +499,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
             {
                 var rowOffset = await ui.RunOnUIAsync(() =>
                 {
-                    var scroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
+                    var scroll = Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker"));
                     var row = Bounds(Find(surface!, "AutomationExpander:morning-brief"), surface!);
                     return Task.FromResult(Math.Clamp(scroll.VerticalOffset + row.Top - Bounds(scroll, surface!).Top,
                         0, scroll.ScrollableHeight));
@@ -500,7 +507,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 await ScrollPageAsync(surface!, rowOffset);
                 await ui.RunOnUIAsync(async () =>
                 {
-                    var scroll = Assert.IsType<ScrollView>(Find(surface!, "AutomationsList"));
+                    var scroll = Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker"));
                     var targets = new[] { "AutomationRowHeader:morning-brief", "AutomationRowChat:morning-brief",
                         "CronCommands:morning-brief", "CronMore:morning-brief", "AutomationScheduleSummary" };
                     await WaitForRenderedConditionAsync(() =>
@@ -699,7 +706,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
         ViewportFrame? measured = null;
         await ui.RunOnUIAsync(() =>
         {
-            var scroll = Assert.IsType<ScrollView>(Find(surface, "AutomationsList"));
+            var scroll = Assert.IsType<ScrollView>(Find(surface, "CronPageMarker"));
             void Request()
             {
                 scroll.ScrollTo(0, offset, options);
@@ -733,7 +740,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
 
     private static ViewportFrame ReadViewportFrame(Border surface, int scrollRequests)
     {
-        var scroll = Assert.IsType<ScrollView>(Find(surface, "AutomationsList"));
+        var scroll = Assert.IsType<ScrollView>(Find(surface, "CronPageMarker"));
         return new(scroll.VerticalOffset, scroll.ScrollableHeight,
             Bounds(Find(surface, "AutomationsMast"), surface), scrollRequests);
     }
