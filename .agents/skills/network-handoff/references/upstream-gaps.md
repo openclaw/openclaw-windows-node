@@ -17,7 +17,7 @@ H10 and H14 are not automatically missing Gateway/packaging features:
 
 - H10 now has local typed handshake observations with transport generation,
   elapsed/phase timing and typed failure/retry hints in
-  [GatewayHandshakeObservation](https://github.com/openclaw/openclaw-windows-node/blob/9b8b7bf912f67630057cc2021c8b4c1309ccb0bd/src/OpenClaw.Shared/GatewayHandshakeObservation.cs#L3-L35).
+  [GatewayHandshakeObservation](https://github.com/openclaw/openclaw-windows-node/blob/9b8b7bf912f67630057cc2021c8b4c1309ccb0bd/src/OpenClaw.Shared/GatewayHandshakeObservation.cs#L3-L33).
   [NativeGatewaySetupConnection](https://github.com/openclaw/openclaw-windows-node/blob/9b8b7bf912f67630057cc2021c8b4c1309ccb0bd/src/OpenClaw.SetupEngine/NativeGatewaySetupConnection.cs#L61-L97)
   bounds operator admission and forwards observations. These local generations
   do not independently establish a producer boot identity.
@@ -124,7 +124,7 @@ Pinned `openclaw/openclaw-windows-packaging` main:
 |---|---|---|
 | H4-H5: dispatch/lost acknowledgment | [Receipt v1](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/src/OpenClaw.Launcher/Gateway/GatewayLaunchAttempt.cs#L1-L18); [controller pending-before-dispatch and retention](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/src/OpenClaw.Launcher/Gateway/GatewayController.cs#L318-L428) | attemptId and pending state already exist. Unknown dispatch retains state instead of manufacturing failure |
 | H5: receipt recovery | [Lost-acknowledgment integration test](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/tests/OpenClaw.Launcher.Tests/Gateway/GatewayLaunchAttemptTests.cs#L145-L251) | Recovery checks exact durable supervisor receipt, schema, attempt and helper. AttemptId maps to session RequestId, not a separate boot identifier |
-| H6: listener wait | [WaitForListenerAsync](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/src/OpenClaw.Launcher/Gateway/GatewayController.cs#L507-L540) | Bounded, TimeProvider-driven inspection already distinguishes process/listener outcomes. It does not prove operator admission |
+| H6: listener wait | [WaitForListenerAsync](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/src/OpenClaw.Launcher/Gateway/GatewayController.cs#L507-L540) | TimeProvider-driven polling distinguishes process/listener outcomes and checks its listener budget between completed inspections. An individual inspection can outlive that budget; it is not an enforced per-call or end-to-end deadline and does not prove operator admission |
 | H4/H8: cleanup ownership | [Conditional stop](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/src/OpenClaw.Launcher/Gateway/GatewayController.cs#L576-L602) and [replacement/inspection refusal tests](https://github.com/openclaw/openclaw-windows-packaging/blob/3d70637e7523eac6f38de4f703f86d4db592bf7b/tests/OpenClaw.Launcher.Tests/Gateway/GatewayLaunchAttemptTests.cs#L43-L74) | Attempt mismatch and unverified ownership refuse cleanup. Keep these fences, including when inspection fails |
 
 ### P1: correlated restart and retained terminal outcomes (H4-H5, H8)
