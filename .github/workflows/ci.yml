@@ -181,6 +181,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-proof-evidence.ps1
 
+    - name: Test safe native failure metadata
+      shell: pwsh
+      run: ./scripts/test-ci-native-failure-metadata.ps1
+
     - name: Test read-only agent readiness
       shell: pwsh
       run: ./scripts/test-agent-readiness.ps1
@@ -210,6 +214,10 @@ jobs:
       run: |
         ./scripts/test-ci-workflow-contract.ps1
         ./scripts/test-ci-crash-metadata-source.ps1
+
+    - name: Validate official Reactor package bootstrap
+      shell: pwsh
+      run: ./scripts/test-reactor-packages.ps1
 
     - name: Validate MSIX CI artifacts
       shell: pwsh
@@ -611,6 +619,8 @@ jobs:
 
     - name: Restore tray test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.Tray.Tests -r win-x64
         dotnet restore tests/OpenClaw.SetupEngine.Tests -r win-x64
@@ -714,6 +724,8 @@ jobs:
 
     - name: Restore UI test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
         dotnet restore tests/OpenClawTray.FunctionalUI.Tests -r win-x64
 
@@ -782,6 +794,7 @@ jobs:
         -Runtime win-x64
         -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
         -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
         -CaptureHostExit
 
     - name: Capture non-memory Tray UI crash metadata
@@ -1084,6 +1097,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1160,6 +1175,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1236,6 +1253,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1399,7 +1418,10 @@ jobs:
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
 
     - name: Download signed cleanup host
       if: needs.sign-cleanup-host.result == 'success'
@@ -1487,7 +1509,10 @@ jobs:
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
 
     - name: Download signed cleanup host
       if: needs.sign-cleanup-host.result == 'success'

@@ -63,6 +63,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _agentsListGate;
     private JsonElement? _agentsRoster;
     private bool _agentsListUnsupported;
+    private bool _systemsInventoryUnavailable;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource? _connectionHandshakeGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
@@ -416,6 +417,16 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         lock (_sync)
             _agentsListUnsupported = true;
+    }
+
+    /// <summary>Injects a real inventory-read failure for isolated Systems recovery proof.</summary>
+    public void SetSystemsInventoryUnavailable(bool unavailable)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            _systemsInventoryUnavailable = unavailable;
+        }
     }
 
     public void HoldAgentsList()
@@ -893,13 +904,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     readResponse = null;
                 JsonElement? agentsRoster;
                 bool agentsListUnsupported;
+                bool systemsInventoryUnavailable;
                 lock (_sync)
                 {
                     agentsRoster = method == "agents.list" ? _agentsRoster : null;
                     agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                    systemsInventoryUnavailable = method == "environments.list" && _systemsInventoryUnavailable;
                 }
                 if (agentsListUnsupported)
                     throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
+                if (systemsInventoryUnavailable)
+                    throw new FixtureRequestException("UNAVAILABLE", "Fixture Systems inventory is temporarily unavailable.");
                 payload = readResponse is not null ? readResponse(parameters)
                     : agentsRoster is { } roster ? roster
                     : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)

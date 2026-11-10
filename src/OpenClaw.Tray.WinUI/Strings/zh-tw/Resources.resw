@@ -1777,32 +1777,11 @@
   <data name="NodesPage_Action_Forget" xml:space="preserve">
     <value>忘記</value>
   </data>
-  <data name="NodesPage_Action_MoreOptions" xml:space="preserve">
-    <value>更多選項</value>
-  </data>
   <data name="NodesPage_Label_Version" xml:space="preserve">
     <value>Version</value>
   </data>
-  <data name="NodesPage_Label_Hardware" xml:space="preserve">
-    <value>Hardware</value>
-  </data>
   <data name="NodesPage_Label_Network" xml:space="preserve">
     <value>網路</value>
-  </data>
-  <data name="NodesPage_Label_Approved" xml:space="preserve">
-    <value>已核准</value>
-  </data>
-  <data name="NodesPage_Label_Connected" xml:space="preserve">
-    <value>已連線</value>
-  </data>
-  <data name="NodesPage_Label_LastSeen" xml:space="preserve">
-    <value>上次看到</value>
-  </data>
-  <data name="NodesPage_Label_Capabilities" xml:space="preserve">
-    <value>功能</value>
-  </data>
-  <data name="NodesPage_Label_Permissions" xml:space="preserve">
-    <value>權限</value>
   </data>
   <data name="NodesPage_Label_PathEnv" xml:space="preserve">
     <value>PATH</value>
@@ -3472,24 +3451,6 @@
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>
   </data>
-  <data name="InstancesPage_Title.Text" xml:space="preserve">
-    <value>Instances</value>
-  </data>
-  <data name="InstancesPage_Subtitle.Text" xml:space="preserve">
-    <value>Latest presence beacons from OpenClaw nodes.</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Message" xml:space="preserve">
-    <value>Connect to a gateway to see live instance data.</value>
-  </data>
-  <data name="InstancesPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No instances reported yet.</value>
-  </data>
-  <data name="InstancesPage_ContextMenu_CopyDebug" xml:space="preserve">
-    <value>Copy debug summary</value>
-  </data>
   <data name="InstancesPage_Status_Active" xml:space="preserve">
     <value>Active</value>
   </data>
@@ -3532,44 +3493,17 @@
   <data name="ConnectionPage_NodePairing_Subtitle.Text" xml:space="preserve">
     <value>Operators and Windows nodes waiting for approval to connect to this gateway.</value>
   </data>
-  <data name="InstancesPage_RefreshLabel.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="InstancesPage_CapabilitiesCount_Format" xml:space="preserve">
-    <value>{0} capabilities</value>
-  </data>
-  <data name="InstancesPage_CommandsCount_Format" xml:space="preserve">
-    <value>{0} commands</value>
-  </data>
-  <data name="InstancesPage_Presence_AccessibilityFormat" xml:space="preserve">
-    <value>{0} presence</value>
-  </data>
   <data name="InstancesPage_UpdateReason_Tooltip_Format" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker). Raw: {0}</value>
   </data>
   <data name="InstancesPage_UpdateReason_Tooltip_NoReason" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected: no active presence</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active: last seen {0}</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
-  </data>
-  <data name="InstanceManage_CopyNodeId_AccessibilityName" xml:space="preserve">
-    <value>Copy node ID</value>
   </data>
   <data name="InstancesPage_TimeAgo_Seconds_Format" xml:space="preserve">
     <value>{0}秒前</value>
@@ -4428,15 +4362,6 @@
   </data>
   <data name="DebugPage_OpenFile.Text" xml:space="preserve">
     <value>開啟檔案</value>
-  </data>
-  <data name="InstancesPage_PairingApprovalRequired.Text" xml:space="preserve">
-    <value>需要配對核准</value>
-  </data>
-  <data name="InstancesPage_ANodeHasConnected.Text" xml:space="preserve">
-    <value>節點已連線,但在您核准配對要求之前,其功能不會啟用。</value>
-  </data>
-  <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
-    <value>在「連線」頁面檢視</value>
   </data>
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>權限</value>
@@ -5744,12 +5669,6 @@
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
     <value>前往收件匣</value>
-  </data>
-  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
-    <value>Gateway instances</value>
-  </data>
-  <data name="Command_GoToInstances_Title" xml:space="preserve">
-    <value>Go to Instances</value>
   </data>
   <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
     <value>Capabilities, exec policy &amp; allowlists</value>
@@ -7728,6 +7647,306 @@
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>摘要我的近期工作階段</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>協助我設定頻道</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>檢查系統健康狀態</value></data>
+  <data name="Systems_Title" xml:space="preserve">
+    <value>系統</value>
+  </data>
+  <data name="Systems_Inventory" xml:space="preserve">
+    <value>電腦</value>
+  </data>
+  <data name="Systems_Refresh_Name" xml:space="preserve">
+    <value>重新整理電腦</value>
+  </data>
+  <data name="Systems_Loading" xml:space="preserve">
+    <value>正在載入電腦…</value>
+  </data>
+  <data name="Systems_Empty" xml:space="preserve">
+    <value>此帳戶沒有可用的電腦。</value>
+  </data>
+  <data name="Systems_Missing_Title" xml:space="preserve">
+    <value>此電腦已不在清單中</value>
+  </data>
+  <data name="Systems_Missing_Hint" xml:space="preserve">
+    <value>請重新整理清單或選擇其他電腦。您的選取項目未變更。</value>
+  </data>
+  <data name="Systems_Group_Workers" xml:space="preserve">
+    <value>工作者</value>
+  </data>
+  <data name="Systems_Kind_Host" xml:space="preserve">
+    <value>閘道主機</value>
+  </data>
+  <data name="Systems_Kind_Node" xml:space="preserve">
+    <value>已配對節點</value>
+  </data>
+  <data name="Systems_Kind_Worker" xml:space="preserve">
+    <value>工作者</value>
+  </data>
+  <data name="Systems_Kind_Client" xml:space="preserve">
+    <value>已連線的應用程式</value>
+  </data>
+  <data name="Systems_Status_Online" xml:space="preserve">
+    <value>上線</value>
+  </data>
+  <data name="Systems_Status_Offline" xml:space="preserve">
+    <value>離線</value>
+  </data>
+  <data name="Systems_Status_Starting" xml:space="preserve">
+    <value>正在啟動</value>
+  </data>
+  <data name="Systems_Status_Stopping" xml:space="preserve">
+    <value>正在停止</value>
+  </data>
+  <data name="Systems_Status_Error" xml:space="preserve">
+    <value>錯誤</value>
+  </data>
+  <data name="Systems_Status_Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="Systems_Status_Name" xml:space="preserve">
+    <value>狀態：{0}</value>
+  </data>
+  <data name="Systems_ThisDevice" xml:space="preserve">
+    <value>這部電腦</value>
+  </data>
+  <data name="Systems_AwaitingApproval" xml:space="preserve">
+    <value>等待核准</value>
+  </data>
+  <data name="Systems_Desktop" xml:space="preserve">
+    <value>桌面</value>
+  </data>
+  <data name="Systems_CopyDebug" xml:space="preserve">
+    <value>複製偵錯資訊</value>
+  </data>
+  <data name="Systems_CopyIdentifier" xml:space="preserve">
+    <value>複製識別碼</value>
+  </data>
+  <data name="Systems_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Systems_OpenConnection" xml:space="preserve">
+    <value>開啟連線</value>
+  </data>
+  <data name="Systems_Disconnected_Title" xml:space="preserve">
+    <value>閘道已中斷連線</value>
+  </data>
+  <data name="Systems_Disconnected_Message" xml:space="preserve">
+    <value>重新連線以重新整理電腦。顯示的是最後回報的資訊。</value>
+  </data>
+  <data name="Systems_ReadAccess_Title" xml:space="preserve">
+    <value>需要讀取權限</value>
+  </data>
+  <data name="Systems_ReadAccess_Message" xml:space="preserve">
+    <value>需要操作員讀取權限才能檢視電腦。</value>
+  </data>
+  <data name="Systems_PartialErrors_Title" xml:space="preserve">
+    <value>部分電腦資訊無法重新整理。</value>
+  </data>
+  <data name="Systems_Offline_Title" xml:space="preserve">
+    <value>此電腦目前離線</value>
+  </data>
+  <data name="Systems_Pairing_TitleOne" xml:space="preserve">
+    <value>1 台裝置想要加入</value>
+  </data>
+  <data name="Systems_Pairing_Message" xml:space="preserve">
+    <value>只有在你於該裝置上發起此要求時才核准。</value>
+  </data>
+  <data name="Systems_Pairing_OwnNodeMessage" xml:space="preserve">
+    <value>這部電腦正在等待配對核准。在獲得核准之前，其功能與命令會保持停用。</value>
+  </data>
+  <data name="Systems_Pairing_Review" xml:space="preserve">
+    <value>檢閱</value>
+  </data>
+  <data name="Systems_Stats_Title" xml:space="preserve">
+    <value>資源</value>
+  </data>
+  <data name="Systems_Stats_None" xml:space="preserve">
+    <value>此電腦未回報資源統計資料。</value>
+  </data>
+  <data name="Systems_Stats_Load" xml:space="preserve">
+    <value>負載（1 分鐘）</value>
+  </data>
+  <data name="Systems_Stats_Cores" xml:space="preserve">
+    <value>{0} 個核心</value>
+  </data>
+  <data name="Systems_Stats_Cpu" xml:space="preserve">
+    <value>CPU 數量</value>
+  </data>
+  <data name="Systems_Stats_CpuCores" xml:space="preserve">
+    <value>邏輯核心</value>
+  </data>
+  <data name="Systems_Stats_Memory" xml:space="preserve">
+    <value>已用記憶體</value>
+  </data>
+  <data name="Systems_Stats_Disk" xml:space="preserve">
+    <value>可用磁碟空間</value>
+  </data>
+  <data name="Systems_Stats_DiskPath" xml:space="preserve">
+    <value>可用磁碟空間（{0}）</value>
+  </data>
+  <data name="Systems_Stats_OfTotal" xml:space="preserve">
+    <value>共 {0}</value>
+  </data>
+  <data name="Systems_Stats_Sampled" xml:space="preserve">
+    <value>{0}前回報</value>
+  </data>
+  <data name="Systems_Details_Title" xml:space="preserve">
+    <value>電腦詳細資料</value>
+  </data>
+  <data name="Systems_Field_Identifier" xml:space="preserve">
+    <value>識別碼</value>
+  </data>
+  <data name="Systems_Field_Status" xml:space="preserve">
+    <value>狀態</value>
+  </data>
+  <data name="Systems_Field_Platform" xml:space="preserve">
+    <value>平台</value>
+  </data>
+  <data name="Systems_Field_Activity" xml:space="preserve">
+    <value>活動</value>
+  </data>
+  <data name="Systems_Field_LastInput" xml:space="preserve">
+    <value>上次輸入</value>
+  </data>
+  <data name="Systems_Field_Roles" xml:space="preserve">
+    <value>角色</value>
+  </data>
+  <data name="Systems_Field_Hostname" xml:space="preserve">
+    <value>主機名稱</value>
+  </data>
+  <data name="Systems_Field_OperatingSystem" xml:space="preserve">
+    <value>作業系統</value>
+  </data>
+  <data name="Systems_Field_Processor" xml:space="preserve">
+    <value>CPU 型號</value>
+  </data>
+  <data name="Systems_Field_Address" xml:space="preserve">
+    <value>區域網路位址</value>
+  </data>
+  <data name="Systems_Field_Runtime" xml:space="preserve">
+    <value>Node 版本</value>
+  </data>
+  <data name="Systems_Field_Uptime" xml:space="preserve">
+    <value>運作時間</value>
+  </data>
+  <data name="Systems_Field_Hardware" xml:space="preserve">
+    <value>硬體</value>
+  </data>
+  <data name="Systems_Field_LastConnected" xml:space="preserve">
+    <value>上次連線</value>
+  </data>
+  <data name="Systems_Field_LastDisconnected" xml:space="preserve">
+    <value>上次中斷連線</value>
+  </data>
+  <data name="Systems_Field_LastSeen" xml:space="preserve">
+    <value>上次出現</value>
+  </data>
+  <data name="Systems_Field_Approved" xml:space="preserve">
+    <value>核准時間</value>
+  </data>
+  <data name="Systems_Field_WorkerState" xml:space="preserve">
+    <value>工作者狀態</value>
+  </data>
+  <data name="Systems_Field_WorkerError" xml:space="preserve">
+    <value>工作者錯誤</value>
+  </data>
+  <data name="Systems_Field_Issue" xml:space="preserve">
+    <value>問題</value>
+  </data>
+  <data name="Systems_Issue_UpdateRequired" xml:space="preserve">
+    <value>需要更新。請在此電腦上執行 openclaw update，然後重新連線。</value>
+  </data>
+  <data name="Systems_Duration_DaysHours" xml:space="preserve">
+    <value>{0} 天 {1} 小時</value>
+  </data>
+  <data name="Systems_Duration_HoursMinutes" xml:space="preserve">
+    <value>{0} 小時 {1} 分鐘</value>
+  </data>
+  <data name="Systems_Duration_Minutes" xml:space="preserve">
+    <value>{0} 分鐘</value>
+  </data>
+  <data name="Systems_Desktop_Title_Offline" xml:space="preserve">
+    <value>此電腦目前離線</value>
+  </data>
+  <data name="Systems_Desktop_Title_NotReady" xml:space="preserve">
+    <value>此電腦尚未就緒</value>
+  </data>
+  <data name="Systems_Desktop_Title_NoDesktop" xml:space="preserve">
+    <value>沒有可用的桌面</value>
+  </data>
+  <data name="Systems_Desktop_Locked" xml:space="preserve">
+    <value>已鎖定</value>
+  </data>
+  <data name="Systems_Desktop_Unlocked" xml:space="preserve">
+    <value>已解除鎖定</value>
+  </data>
+  <data name="Systems_Sessions_Title" xml:space="preserve">
+    <value>相關工作階段</value>
+  </data>
+  <data name="Systems_Sessions_None" xml:space="preserve">
+    <value>已載入的清單中沒有相關工作階段。</value>
+  </data>
+  <data name="Systems_Relation_Placement" xml:space="preserve">
+    <value>放置於此</value>
+  </data>
+  <data name="Systems_Relation_RetainedPlacement" xml:space="preserve">
+    <value>保留的放置</value>
+  </data>
+  <data name="Systems_Relation_Runner" xml:space="preserve">
+    <value>執行器</value>
+  </data>
+  <data name="Systems_Relation_ExecBinding" xml:space="preserve">
+    <value>設定的執行目標</value>
+  </data>
+  <data name="Systems_Relation_Gateway" xml:space="preserve">
+    <value>本機工作階段內容</value>
+  </data>
+  <data name="Systems_Capabilities_Title" xml:space="preserve">
+    <value>功能</value>
+  </data>
+  <data name="Systems_Capability_Disabled" xml:space="preserve">
+    <value>{0}已關閉</value>
+  </data>
+  <data name="Systems_Capability_PendingDeclared" xml:space="preserve">
+    <value>等待核准：{0}</value>
+  </data>
+  <data name="Command_GoToSystems_Title" xml:space="preserve">
+    <value>前往系統</value>
+  </data>
+  <data name="Command_GoToSystems_Subtitle" xml:space="preserve">
+    <value>閘道主機、節點與工作者</value>
+  </data>
+  <data name="Systems_Stats_LoadMeter" xml:space="preserve">
+    <value>核心的 {0}%</value>
+  </data>
+  <data name="Systems_Stats_UsedMeter" xml:space="preserve">
+    <value>已使用 {0}%</value>
+  </data>
+  <data name="Systems_Stats_LiveBadge" xml:space="preserve">
+    <value>即時</value>
+  </data>
+  <data name="Systems_Stats_LastKnownBadge" xml:space="preserve">
+    <value>最近已知數據</value>
+  </data>
+  <data name="Systems_OpenWeb" xml:space="preserve">
+    <value>在網頁中開啟</value>
+  </data>
+  <data name="Systems_OpenWeb_Name" xml:space="preserve">
+    <value>在網頁介面中開啟「系統」</value>
+  </data>
+  <data name="Systems_OpenWeb_Help" xml:space="preserve">
+    <value>在瀏覽器中開啟閘道的「系統」頁面。請在該處選取此電腦以繼續。</value>
+  </data>
+  <data name="Systems_OpenWeb_RootName" xml:space="preserve">
+    <value>開啟閘道網頁介面</value>
+  </data>
+  <data name="Systems_OpenWeb_RootHelp" xml:space="preserve">
+    <value>在瀏覽器中開啟閘道網頁介面。此閘道未提供「系統」頁面。</value>
+  </data>
+  <data name="Systems_Manage_PairingRequired" xml:space="preserve">
+    <value>需要配對權限才能重新命名或移除此節點。</value>
+  </data>
+  <data name="Systems_Sessions_ViewAll" xml:space="preserve">
+    <value>檢視所有工作階段</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>節點沙箱</value>
   </data>
@@ -7836,6 +8055,85 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
+  <data name="Systems_AddSystem" xml:space="preserve"><value>新增系統</value></data>
+  <data name="Systems_CopyUpdate" xml:space="preserve"><value>複製更新命令</value></data>
+  <data name="Systems_CollapseSystem" xml:space="preserve"><value>摺疊系統詳細資料</value></data>
+  <data name="Systems_ExpandSystem" xml:space="preserve"><value>展開系統詳細資料</value></data>
+  <data name="Systems_NotSeen" xml:space="preserve"><value>上次上線：{0}</value></data>
+  <data name="Systems_Diagnostics" xml:space="preserve"><value>診斷</value></data>
+  <data name="Systems_OpenChat" xml:space="preserve"><value>開啟聊天</value></data>
+  <data name="Systems_OpenChat_Name" xml:space="preserve"><value>開啟聊天：{0}</value></data>
+  <data name="Systems_Capability_NotReported" xml:space="preserve"><value>未回報</value></data>
+  <data name="Systems_Capability_Allowed" xml:space="preserve"><value>已允許</value></data>
+  <data name="Systems_Capability_TurnedOff" xml:space="preserve"><value>已關閉</value></data>
+  <data name="Systems_Capability_System" xml:space="preserve"><value>系統工具</value></data>
+  <data name="Systems_Capability_Shell" xml:space="preserve"><value>Shell 命令</value></data>
+  <data name="Systems_Capability_Screen" xml:space="preserve"><value>螢幕擷取</value></data>
+  <data name="Systems_Capability_Camera" xml:space="preserve"><value>相機</value></data>
+  <data name="Systems_Capability_Browser" xml:space="preserve"><value>瀏覽器</value></data>
+  <data name="Systems_Capability_Canvas" xml:space="preserve"><value>畫布</value></data>
+  <data name="Systems_Capability_Clipboard" xml:space="preserve"><value>剪貼簿</value></data>
+  <data name="Systems_Capability_Notifications" xml:space="preserve"><value>通知</value></data>
+  <data name="Systems_Capability_Audio" xml:space="preserve"><value>音訊輸入</value></data>
+  <data name="Systems_ManagePermissions" xml:space="preserve"><value>管理權限</value></data>
+  <data name="Systems_Connection" xml:space="preserve"><value>連線</value></data>
+  <data name="Systems_ConnectionRequired" xml:space="preserve"><value>連線到 Gateway 後才能使用此動作。</value></data>
+  <data name="Systems_ConnectedApps" xml:space="preserve"><value>已連線的應用程式</value></data>
+  <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>裝置和 Gateway</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>裝置和 Gateway {0}</value></data>
+  <data name="Systems_Issues" xml:space="preserve"><value>問題</value></data>
+  <data name="Systems_LastKnownOffline" xml:space="preserve"><value>上次已知狀態：離線</value></data>
+  <data name="Systems_LastKnownOnline" xml:space="preserve"><value>上次已知狀態：上線</value></data>
+  <data name="Systems_LoadFailed" xml:space="preserve"><value>載入失敗。</value></data>
+  <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>此配對要求已無法使用。</value></data>
+  <data name="Systems_RequestTimeout" xml:space="preserve"><value>要求在 {0} 秒後逾時。</value></data>
+  <data name="Systems_ForgetTitle" xml:space="preserve"><value>忘記 {0}？</value></data>
+  <data name="Systems_Forgotten" xml:space="preserve"><value>已忘記 {0}。</value></data>
+  <data name="Systems_RenameSucceeded" xml:space="preserve"><value>已重新命名節點。</value></data>
+  <data name="Systems_Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="Systems_AddSystemSteps" xml:space="preserve"><value>1. 在另一台裝置上安裝支援的 OpenClaw 節點應用程式。
+2. 將它連線到此閘道。
+3. 開啟「連線」以檢閱其配對要求。</value></data>
+  <data name="Systems_Number_0" xml:space="preserve"><value>零</value></data>
+  <data name="Systems_Number_1" xml:space="preserve"><value>一</value></data>
+  <data name="Systems_Number_2" xml:space="preserve"><value>二</value></data>
+  <data name="Systems_Number_3" xml:space="preserve"><value>三</value></data>
+  <data name="Systems_Number_4" xml:space="preserve"><value>四</value></data>
+  <data name="Systems_Number_5" xml:space="preserve"><value>五</value></data>
+  <data name="Systems_Number_6" xml:space="preserve"><value>六</value></data>
+  <data name="Systems_Number_7" xml:space="preserve"><value>七</value></data>
+  <data name="Systems_Number_8" xml:space="preserve"><value>八</value></data>
+  <data name="Systems_Number_9" xml:space="preserve"><value>九</value></data>
+  <data name="Systems_Age_Seconds" xml:space="preserve"><value>{0} 秒</value></data>
+  <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} 分鐘</value></data>
+  <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} 小時</value></data>
+  <data name="Systems_Age_Days" xml:space="preserve"><value>{0} 天</value></data>
+  <data name="Systems_HowToReconnect" xml:space="preserve"><value>如何重新連線</value></data>
+  <data name="Systems_ForgetConsequence" xml:space="preserve"><value>它將與 {0} 取消配對。若要重新加入，必須再次要求核准。</value></data>
+  <data name="Systems_Field_Paired" xml:space="preserve"><value>配對時間</value></data>
+  <data name="Systems_AddSystemIntro" xml:space="preserve"><value>配對電腦、Mac 或手機，讓代理程式能夠使用它。</value></data>
+  <data name="Systems_ForgetAction" xml:space="preserve"><value>忘記</value></data>
+  <data name="Systems_SecondsAgo" xml:space="preserve"><value>{0} 秒前</value></data>
+  <data name="Systems_Desktop_Available" xml:space="preserve"><value>可用</value></data>
+  <data name="Systems_Capability_Files" xml:space="preserve"><value>檔案</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>展開導覽</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>摺疊導覽</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>此電腦已作為節點連線至 {0}。</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>此電腦正在等待 {0} 的核准。</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>{0} 未回報此電腦為已連線的節點。</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>無法存取 {0}。其他系統顯示的是 {1} 最後回報的資料。</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>無法存取 {0}。沒有可用的系統報告。</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} / {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>最後回報的上線狀態</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>問題：{0}。顯示第一個需要處理的系統。</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>系統摘要</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>需要核准</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>需要重新核准</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>已離線 {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>需要更新</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>需要 Windows 權限</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>已回報錯誤</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>請求加入</value></data>
   <data name="Inbox_Title.Text" xml:space="preserve"><value>收件匣</value></data>
   <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>略過顯示的項目</value></data>
   <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>通知設定</value></data>

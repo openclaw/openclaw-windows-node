@@ -1778,32 +1778,11 @@ Gebruik een van deze opties:
   <data name="NodesPage_Action_Forget" xml:space="preserve">
     <value>Vergeten</value>
   </data>
-  <data name="NodesPage_Action_MoreOptions" xml:space="preserve">
-    <value>Meer opties</value>
-  </data>
   <data name="NodesPage_Label_Version" xml:space="preserve">
     <value>Version</value>
   </data>
-  <data name="NodesPage_Label_Hardware" xml:space="preserve">
-    <value>Hardware</value>
-  </data>
   <data name="NodesPage_Label_Network" xml:space="preserve">
     <value>Netwerk</value>
-  </data>
-  <data name="NodesPage_Label_Approved" xml:space="preserve">
-    <value>Goedgekeurd</value>
-  </data>
-  <data name="NodesPage_Label_Connected" xml:space="preserve">
-    <value>Verbonden</value>
-  </data>
-  <data name="NodesPage_Label_LastSeen" xml:space="preserve">
-    <value>Gezien</value>
-  </data>
-  <data name="NodesPage_Label_Capabilities" xml:space="preserve">
-    <value>Mogelijkheden</value>
-  </data>
-  <data name="NodesPage_Label_Permissions" xml:space="preserve">
-    <value>Machtigingen</value>
   </data>
   <data name="NodesPage_Label_PathEnv" xml:space="preserve">
     <value>PATH</value>
@@ -3473,24 +3452,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>
   </data>
-  <data name="InstancesPage_Title.Text" xml:space="preserve">
-    <value>Instances</value>
-  </data>
-  <data name="InstancesPage_Subtitle.Text" xml:space="preserve">
-    <value>Latest presence beacons from OpenClaw nodes.</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Message" xml:space="preserve">
-    <value>Connect to a gateway to see live instance data.</value>
-  </data>
-  <data name="InstancesPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No instances reported yet.</value>
-  </data>
-  <data name="InstancesPage_ContextMenu_CopyDebug" xml:space="preserve">
-    <value>Copy debug summary</value>
-  </data>
   <data name="InstancesPage_Status_Active" xml:space="preserve">
     <value>Active</value>
   </data>
@@ -3533,44 +3494,17 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_NodePairing_Subtitle.Text" xml:space="preserve">
     <value>Operators and Windows nodes waiting for approval to connect to this gateway.</value>
   </data>
-  <data name="InstancesPage_RefreshLabel.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="InstancesPage_CapabilitiesCount_Format" xml:space="preserve">
-    <value>{0} capabilities</value>
-  </data>
-  <data name="InstancesPage_CommandsCount_Format" xml:space="preserve">
-    <value>{0} commands</value>
-  </data>
-  <data name="InstancesPage_Presence_AccessibilityFormat" xml:space="preserve">
-    <value>{0} presence</value>
-  </data>
   <data name="InstancesPage_UpdateReason_Tooltip_Format" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker). Raw: {0}</value>
   </data>
   <data name="InstancesPage_UpdateReason_Tooltip_NoReason" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected: no active presence</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active: last seen {0}</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
-  </data>
-  <data name="InstanceManage_CopyNodeId_AccessibilityName" xml:space="preserve">
-    <value>Copy node ID</value>
   </data>
   <data name="InstancesPage_TimeAgo_Seconds_Format" xml:space="preserve">
     <value>{0}s geleden</value>
@@ -4429,15 +4363,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="DebugPage_OpenFile.Text" xml:space="preserve">
     <value>Bestand openen</value>
-  </data>
-  <data name="InstancesPage_PairingApprovalRequired.Text" xml:space="preserve">
-    <value>Goedkeuring voor koppelen vereist</value>
-  </data>
-  <data name="InstancesPage_ANodeHasConnected.Text" xml:space="preserve">
-    <value>Een node heeft verbinding gemaakt, maar zijn mogelijkheden worden pas geactiveerd nadat u het koppelverzoek hebt goedgekeurd.</value>
-  </data>
-  <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
-    <value>Bekijken op pagina Verbinding</value>
   </data>
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>Machtigingen</value>
@@ -5745,12 +5670,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
     <value>Ga naar Postvak IN</value>
-  </data>
-  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
-    <value>Gateway instances</value>
-  </data>
-  <data name="Command_GoToInstances_Title" xml:space="preserve">
-    <value>Go to Instances</value>
   </data>
   <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
     <value>Capabilities, exec policy &amp; allowlists</value>
@@ -7729,6 +7648,306 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="Systems_Title" xml:space="preserve">
+    <value>Systemen</value>
+  </data>
+  <data name="Systems_Inventory" xml:space="preserve">
+    <value>Machinelijst</value>
+  </data>
+  <data name="Systems_Refresh_Name" xml:space="preserve">
+    <value>Machines vernieuwen</value>
+  </data>
+  <data name="Systems_Loading" xml:space="preserve">
+    <value>Machines laden…</value>
+  </data>
+  <data name="Systems_Empty" xml:space="preserve">
+    <value>Er zijn geen machines beschikbaar voor dit account.</value>
+  </data>
+  <data name="Systems_Missing_Title" xml:space="preserve">
+    <value>Deze machine staat niet meer in de lijst</value>
+  </data>
+  <data name="Systems_Missing_Hint" xml:space="preserve">
+    <value>Vernieuw de inventaris of kies een andere machine. Je selectie is niet gewijzigd.</value>
+  </data>
+  <data name="Systems_Group_Workers" xml:space="preserve">
+    <value>Werkers</value>
+  </data>
+  <data name="Systems_Kind_Host" xml:space="preserve">
+    <value>Gatewayhost</value>
+  </data>
+  <data name="Systems_Kind_Node" xml:space="preserve">
+    <value>Gekoppelde node</value>
+  </data>
+  <data name="Systems_Kind_Worker" xml:space="preserve">
+    <value>Werker</value>
+  </data>
+  <data name="Systems_Kind_Client" xml:space="preserve">
+    <value>Verbonden app</value>
+  </data>
+  <data name="Systems_Status_Online" xml:space="preserve">
+    <value>Verbonden</value>
+  </data>
+  <data name="Systems_Status_Offline" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="Systems_Status_Starting" xml:space="preserve">
+    <value>Wordt gestart</value>
+  </data>
+  <data name="Systems_Status_Stopping" xml:space="preserve">
+    <value>Wordt gestopt</value>
+  </data>
+  <data name="Systems_Status_Error" xml:space="preserve">
+    <value>Fout</value>
+  </data>
+  <data name="Systems_Status_Unknown" xml:space="preserve">
+    <value>Onbekend</value>
+  </data>
+  <data name="Systems_Status_Name" xml:space="preserve">
+    <value>Staat: {0}</value>
+  </data>
+  <data name="Systems_ThisDevice" xml:space="preserve">
+    <value>Deze pc</value>
+  </data>
+  <data name="Systems_AwaitingApproval" xml:space="preserve">
+    <value>Wacht op goedkeuring</value>
+  </data>
+  <data name="Systems_Desktop" xml:space="preserve">
+    <value>Bureaublad</value>
+  </data>
+  <data name="Systems_CopyDebug" xml:space="preserve">
+    <value>Foutopsporingsgegevens kopiëren</value>
+  </data>
+  <data name="Systems_CopyIdentifier" xml:space="preserve">
+    <value>Id kopiëren</value>
+  </data>
+  <data name="Systems_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Systems_OpenConnection" xml:space="preserve">
+    <value>Verbinding openen</value>
+  </data>
+  <data name="Systems_Disconnected_Title" xml:space="preserve">
+    <value>Gateway niet verbonden</value>
+  </data>
+  <data name="Systems_Disconnected_Message" xml:space="preserve">
+    <value>Maak opnieuw verbinding om machines te vernieuwen. De laatst gemelde gegevens worden getoond.</value>
+  </data>
+  <data name="Systems_ReadAccess_Title" xml:space="preserve">
+    <value>Leestoegang vereist</value>
+  </data>
+  <data name="Systems_ReadAccess_Message" xml:space="preserve">
+    <value>Leestoegang als operator is vereist om machines te bekijken.</value>
+  </data>
+  <data name="Systems_PartialErrors_Title" xml:space="preserve">
+    <value>Sommige machinegegevens konden niet worden vernieuwd.</value>
+  </data>
+  <data name="Systems_Offline_Title" xml:space="preserve">
+    <value>Deze machine is niet verbonden</value>
+  </data>
+  <data name="Systems_Pairing_TitleOne" xml:space="preserve">
+    <value>1 apparaat wil deelnemen</value>
+  </data>
+  <data name="Systems_Pairing_Message" xml:space="preserve">
+    <value>Keur alleen goed als je dit op dat apparaat hebt gestart.</value>
+  </data>
+  <data name="Systems_Pairing_OwnNodeMessage" xml:space="preserve">
+    <value>Deze pc wacht op goedkeuring van de koppeling. De mogelijkheden en opdrachten blijven inactief tot de goedkeuring.</value>
+  </data>
+  <data name="Systems_Pairing_Review" xml:space="preserve">
+    <value>Bekijken</value>
+  </data>
+  <data name="Systems_Stats_Title" xml:space="preserve">
+    <value>Resources</value>
+  </data>
+  <data name="Systems_Stats_None" xml:space="preserve">
+    <value>Deze machine heeft geen resourcestatistieken gemeld.</value>
+  </data>
+  <data name="Systems_Stats_Load" xml:space="preserve">
+    <value>Belasting (1 min)</value>
+  </data>
+  <data name="Systems_Stats_Cores" xml:space="preserve">
+    <value>{0} kernen</value>
+  </data>
+  <data name="Systems_Stats_Cpu" xml:space="preserve">
+    <value>Aantal CPU's</value>
+  </data>
+  <data name="Systems_Stats_CpuCores" xml:space="preserve">
+    <value>logische kernen</value>
+  </data>
+  <data name="Systems_Stats_Memory" xml:space="preserve">
+    <value>Gebruikt geheugen</value>
+  </data>
+  <data name="Systems_Stats_Disk" xml:space="preserve">
+    <value>Beschikbare schijfruimte</value>
+  </data>
+  <data name="Systems_Stats_DiskPath" xml:space="preserve">
+    <value>Beschikbare schijfruimte ({0})</value>
+  </data>
+  <data name="Systems_Stats_OfTotal" xml:space="preserve">
+    <value>van {0}</value>
+  </data>
+  <data name="Systems_Stats_Sampled" xml:space="preserve">
+    <value>{0} geleden gemeld</value>
+  </data>
+  <data name="Systems_Details_Title" xml:space="preserve">
+    <value>Machinegegevens</value>
+  </data>
+  <data name="Systems_Field_Identifier" xml:space="preserve">
+    <value>Identificatie</value>
+  </data>
+  <data name="Systems_Field_Status" xml:space="preserve">
+    <value>Staat</value>
+  </data>
+  <data name="Systems_Field_Platform" xml:space="preserve">
+    <value>Systeemplatform</value>
+  </data>
+  <data name="Systems_Field_Activity" xml:space="preserve">
+    <value>Activiteit</value>
+  </data>
+  <data name="Systems_Field_LastInput" xml:space="preserve">
+    <value>Laatste invoer</value>
+  </data>
+  <data name="Systems_Field_Roles" xml:space="preserve">
+    <value>Rollen</value>
+  </data>
+  <data name="Systems_Field_Hostname" xml:space="preserve">
+    <value>Hostnaam</value>
+  </data>
+  <data name="Systems_Field_OperatingSystem" xml:space="preserve">
+    <value>Besturingssysteem</value>
+  </data>
+  <data name="Systems_Field_Processor" xml:space="preserve">
+    <value>CPU-model</value>
+  </data>
+  <data name="Systems_Field_Address" xml:space="preserve">
+    <value>LAN-adres</value>
+  </data>
+  <data name="Systems_Field_Runtime" xml:space="preserve">
+    <value>Node-versie</value>
+  </data>
+  <data name="Systems_Field_Uptime" xml:space="preserve">
+    <value>Bedrijfstijd</value>
+  </data>
+  <data name="Systems_Field_Hardware" xml:space="preserve">
+    <value>Apparatuur</value>
+  </data>
+  <data name="Systems_Field_LastConnected" xml:space="preserve">
+    <value>Laatst verbonden</value>
+  </data>
+  <data name="Systems_Field_LastDisconnected" xml:space="preserve">
+    <value>Laatst verbroken</value>
+  </data>
+  <data name="Systems_Field_LastSeen" xml:space="preserve">
+    <value>Laatst gezien</value>
+  </data>
+  <data name="Systems_Field_Approved" xml:space="preserve">
+    <value>Goedgekeurd</value>
+  </data>
+  <data name="Systems_Field_WorkerState" xml:space="preserve">
+    <value>Werkerstaat</value>
+  </data>
+  <data name="Systems_Field_WorkerError" xml:space="preserve">
+    <value>Werkerfout</value>
+  </data>
+  <data name="Systems_Field_Issue" xml:space="preserve">
+    <value>Probleem</value>
+  </data>
+  <data name="Systems_Issue_UpdateRequired" xml:space="preserve">
+    <value>Update vereist. Voer openclaw update uit op deze machine en maak daarna opnieuw verbinding.</value>
+  </data>
+  <data name="Systems_Duration_DaysHours" xml:space="preserve">
+    <value>{0} d {1} u</value>
+  </data>
+  <data name="Systems_Duration_HoursMinutes" xml:space="preserve">
+    <value>{0} u {1} min</value>
+  </data>
+  <data name="Systems_Duration_Minutes" xml:space="preserve">
+    <value>{0} minuten</value>
+  </data>
+  <data name="Systems_Desktop_Title_Offline" xml:space="preserve">
+    <value>Deze machine is niet verbonden</value>
+  </data>
+  <data name="Systems_Desktop_Title_NotReady" xml:space="preserve">
+    <value>Deze machine is niet gereed</value>
+  </data>
+  <data name="Systems_Desktop_Title_NoDesktop" xml:space="preserve">
+    <value>Geen bureaublad beschikbaar</value>
+  </data>
+  <data name="Systems_Desktop_Locked" xml:space="preserve">
+    <value>Vergrendeld</value>
+  </data>
+  <data name="Systems_Desktop_Unlocked" xml:space="preserve">
+    <value>Ontgrendeld</value>
+  </data>
+  <data name="Systems_Sessions_Title" xml:space="preserve">
+    <value>Gerelateerde sessies</value>
+  </data>
+  <data name="Systems_Sessions_None" xml:space="preserve">
+    <value>Geen gerelateerde sessies in de geladen lijst.</value>
+  </data>
+  <data name="Systems_Relation_Placement" xml:space="preserve">
+    <value>Hier geplaatst</value>
+  </data>
+  <data name="Systems_Relation_RetainedPlacement" xml:space="preserve">
+    <value>Behouden plaatsing</value>
+  </data>
+  <data name="Systems_Relation_Runner" xml:space="preserve">
+    <value>Uitvoerder</value>
+  </data>
+  <data name="Systems_Relation_ExecBinding" xml:space="preserve">
+    <value>Geconfigureerd uitvoerdoel</value>
+  </data>
+  <data name="Systems_Relation_Gateway" xml:space="preserve">
+    <value>Lokale sessiecontext</value>
+  </data>
+  <data name="Systems_Capabilities_Title" xml:space="preserve">
+    <value>Mogelijkheden</value>
+  </data>
+  <data name="Systems_Capability_Disabled" xml:space="preserve">
+    <value>{0} uitgeschakeld</value>
+  </data>
+  <data name="Systems_Capability_PendingDeclared" xml:space="preserve">
+    <value>Wacht op goedkeuring: {0}</value>
+  </data>
+  <data name="Command_GoToSystems_Title" xml:space="preserve">
+    <value>Naar Systemen</value>
+  </data>
+  <data name="Command_GoToSystems_Subtitle" xml:space="preserve">
+    <value>Gatewayhost, nodes en werkers</value>
+  </data>
+  <data name="Systems_Stats_LoadMeter" xml:space="preserve">
+    <value>{0}% van de kernen</value>
+  </data>
+  <data name="Systems_Stats_UsedMeter" xml:space="preserve">
+    <value>{0}% gebruikt</value>
+  </data>
+  <data name="Systems_Stats_LiveBadge" xml:space="preserve">
+    <value>Actueel</value>
+  </data>
+  <data name="Systems_Stats_LastKnownBadge" xml:space="preserve">
+    <value>Laatst bekend</value>
+  </data>
+  <data name="Systems_OpenWeb" xml:space="preserve">
+    <value>Openen op het web</value>
+  </data>
+  <data name="Systems_OpenWeb_Name" xml:space="preserve">
+    <value>Systemen openen in de webinterface</value>
+  </data>
+  <data name="Systems_OpenWeb_Help" xml:space="preserve">
+    <value>Opent de pagina Systemen van de gateway in de browser. Selecteer daar deze machine om verder te gaan.</value>
+  </data>
+  <data name="Systems_OpenWeb_RootName" xml:space="preserve">
+    <value>De webinterface van de gateway openen</value>
+  </data>
+  <data name="Systems_OpenWeb_RootHelp" xml:space="preserve">
+    <value>Opent de webinterface van de gateway in de browser. Deze gateway meldt geen pagina Systemen.</value>
+  </data>
+  <data name="Systems_Manage_PairingRequired" xml:space="preserve">
+    <value>Koppelingstoegang is vereist om deze node te hernoemen of te verwijderen.</value>
+  </data>
+  <data name="Systems_Sessions_ViewAll" xml:space="preserve">
+    <value>Alle sessies bekijken</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
   </data>
@@ -7837,6 +8056,85 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Systems_AddSystem" xml:space="preserve"><value>Systeem toevoegen</value></data>
+  <data name="Systems_CopyUpdate" xml:space="preserve"><value>Updateopdracht kopiëren</value></data>
+  <data name="Systems_CollapseSystem" xml:space="preserve"><value>Systeemdetails samenvouwen</value></data>
+  <data name="Systems_ExpandSystem" xml:space="preserve"><value>Systeemdetails uitvouwen</value></data>
+  <data name="Systems_NotSeen" xml:space="preserve"><value>Laatst gezien {0}</value></data>
+  <data name="Systems_Diagnostics" xml:space="preserve"><value>Diagnostiek</value></data>
+  <data name="Systems_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Systems_OpenChat_Name" xml:space="preserve"><value>Chat openen: {0}</value></data>
+  <data name="Systems_Capability_NotReported" xml:space="preserve"><value>Niet gemeld</value></data>
+  <data name="Systems_Capability_Allowed" xml:space="preserve"><value>Toegestaan</value></data>
+  <data name="Systems_Capability_TurnedOff" xml:space="preserve"><value>Uitgeschakeld</value></data>
+  <data name="Systems_Capability_System" xml:space="preserve"><value>Systeemhulpmiddelen</value></data>
+  <data name="Systems_Capability_Shell" xml:space="preserve"><value>Shellopdrachten</value></data>
+  <data name="Systems_Capability_Screen" xml:space="preserve"><value>Schermopname</value></data>
+  <data name="Systems_Capability_Camera" xml:space="preserve"><value>Camera</value></data>
+  <data name="Systems_Capability_Browser" xml:space="preserve"><value>Browser</value></data>
+  <data name="Systems_Capability_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="Systems_Capability_Clipboard" xml:space="preserve"><value>Klembord</value></data>
+  <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Meldingen</value></data>
+  <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio-invoer</value></data>
+  <data name="Systems_ManagePermissions" xml:space="preserve"><value>Machtigingen beheren</value></data>
+  <data name="Systems_Connection" xml:space="preserve"><value>Verbinding</value></data>
+  <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Maak verbinding met de Gateway om deze actie te gebruiken.</value></data>
+  <data name="Systems_ConnectedApps" xml:space="preserve"><value>Verbonden apps</value></data>
+  <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Apparaten en Gateway</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Apparaten en Gateway {0}</value></data>
+  <data name="Systems_Issues" xml:space="preserve"><value>Problemen</value></data>
+  <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Laatst bekend offline</value></data>
+  <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Laatst bekend online</value></data>
+  <data name="Systems_LoadFailed" xml:space="preserve"><value>Laden mislukt.</value></data>
+  <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>Dit koppelingsverzoek is niet meer beschikbaar.</value></data>
+  <data name="Systems_RequestTimeout" xml:space="preserve"><value>Verzoek verlopen na {0} s.</value></data>
+  <data name="Systems_ForgetTitle" xml:space="preserve"><value>{0} vergeten?</value></data>
+  <data name="Systems_Forgotten" xml:space="preserve"><value>{0} vergeten.</value></data>
+  <data name="Systems_RenameSucceeded" xml:space="preserve"><value>De node is hernoemd.</value></data>
+  <data name="Systems_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Systems_AddSystemSteps" xml:space="preserve"><value>1. Installeer een ondersteunde OpenClaw-node-app op het andere apparaat.
+2. Verbind het met deze gateway.
+3. Open Verbinding om het koppelingsverzoek te bekijken.</value></data>
+  <data name="Systems_Number_0" xml:space="preserve"><value>nul</value></data>
+  <data name="Systems_Number_1" xml:space="preserve"><value>één</value></data>
+  <data name="Systems_Number_2" xml:space="preserve"><value>twee</value></data>
+  <data name="Systems_Number_3" xml:space="preserve"><value>drie</value></data>
+  <data name="Systems_Number_4" xml:space="preserve"><value>vier</value></data>
+  <data name="Systems_Number_5" xml:space="preserve"><value>vijf</value></data>
+  <data name="Systems_Number_6" xml:space="preserve"><value>zes</value></data>
+  <data name="Systems_Number_7" xml:space="preserve"><value>zeven</value></data>
+  <data name="Systems_Number_8" xml:space="preserve"><value>acht</value></data>
+  <data name="Systems_Number_9" xml:space="preserve"><value>negen</value></data>
+  <data name="Systems_Age_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} u</value></data>
+  <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Systems_HowToReconnect" xml:space="preserve"><value>Opnieuw verbinden</value></data>
+  <data name="Systems_ForgetConsequence" xml:space="preserve"><value>Het is ontkoppeld van {0}. Om terug te komen, moet het opnieuw om goedkeuring vragen.</value></data>
+  <data name="Systems_Field_Paired" xml:space="preserve"><value>Gekoppeld</value></data>
+  <data name="Systems_AddSystemIntro" xml:space="preserve"><value>Koppel een pc, Mac of telefoon zodat agents het kunnen gebruiken.</value></data>
+  <data name="Systems_ForgetAction" xml:space="preserve"><value>Vergeten</value></data>
+  <data name="Systems_SecondsAgo" xml:space="preserve"><value>{0} seconden geleden</value></data>
+  <data name="Systems_Desktop_Available" xml:space="preserve"><value>Beschikbaar</value></data>
+  <data name="Systems_Capability_Files" xml:space="preserve"><value>Bestanden</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Navigatie uitklappen</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Navigatie inklappen</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>Deze pc is als node verbonden met {0}.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>Deze pc wacht op goedkeuring bij {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>Deze pc is niet gemeld als verbonden node bij {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>{0} is niet bereikbaar. Andere systemen tonen de laatst gemelde gegevens van {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>{0} is niet bereikbaar. Er is geen systeemrapport beschikbaar.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Laatst gemeld als online</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Problemen: {0}. Toon het eerste systeem dat aandacht nodig heeft.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Systeemoverzicht</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Goedkeuring nodig</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Opnieuw goedkeuren</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline sinds {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Update vereist</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Windows-toestemming nodig</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Fout gemeld</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Wil deelnemen</value></data>
   <data name="Inbox_Title.Text" xml:space="preserve"><value>Postvak IN</value></data>
   <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Getoonde sluiten</value></data>
   <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Meldingsinstellingen</value></data>

@@ -10,19 +10,21 @@ param(
     [Parameter(Mandatory)]
     [string]$AppPath,
     [string]$ArtifactsDirectory,
-    [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots')]
+    [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots', 'systems-inventory', 'systems-empty')]
     [string]$Scenario = 'multi-session-browse',
     [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
     [string]$Interaction,
     [ValidateRange(0, 86400)]
     [int]$DurationSeconds = 0,
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Debug'
+    [string]$Configuration = 'Debug',
+    [ValidateSet('Light', 'Dark')]
+    [string]$Theme = 'Light'
 )
 $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot '..\tests\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj'
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
-$hostArgs = @('--app', $resolvedApp, '--scenario', $Scenario)
+$hostArgs = @('--app', $resolvedApp, '--scenario', $Scenario, '--theme', $Theme)
 if ($Interaction) {
     if ($Scenario -ne 'chat-interactive') { throw '-Interaction requires -Scenario chat-interactive.' }
     $hostArgs += @('--interaction', $Interaction)
