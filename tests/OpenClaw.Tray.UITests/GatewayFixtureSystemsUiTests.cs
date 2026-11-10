@@ -455,7 +455,14 @@ public sealed partial class GatewayFixtureUiTests
             Invoke(FindById(run, "SettingsTogglePane")!);
             await WaitUiAsync(run, () =>
             {
-                var viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle;
+                // An absent viewport during the pane transition is not settled geometry.
+                if (FindById(run, "SystemsPageScroll") is not
+                    { Current.BoundingRectangle.Width: > 0, Current.BoundingRectangle.Height: > 0 } scroll)
+                {
+                    previousExpandedWidth = -1d;
+                    return false;
+                }
+                var viewport = scroll.Current.BoundingRectangle;
                 var stable = Math.Abs(viewport.Width - previousExpandedWidth) < .1;
                 previousExpandedWidth = viewport.Width;
                 return stable && viewport.Width < collapsedWidth - 100 * scale &&
