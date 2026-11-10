@@ -380,14 +380,14 @@ file sealed class InitialTailPositioner : IDisposable
             return;
         }
 
-        ObserveInitialLanding(version, generation, request);
+        ObserveInitialLanding(version, generation);
     }
 
     private bool IsInitialConfirmationCurrent(int version, int generation) =>
         !_disposed && _valid && itemsView.IsLoaded && _initialPending
         && version == _version && _confirmation.IsCurrent(generation);
 
-    private void ObserveInitialLanding(int version, int generation, TailNavigationRequest request)
+    private void ObserveInitialLanding(int version, int generation)
     {
         if (!IsInitialConfirmationCurrent(version, generation))
             return;
@@ -413,7 +413,7 @@ file sealed class InitialTailPositioner : IDisposable
                 scrollView.State == ScrollingInteractionState.Idle, IsAtBottom(scrollView)))
             {
                 case InitialTailLanding.Landed:
-                    CompleteInitialLanding(request);
+                    CompleteInitialLanding();
                     break;
                 case InitialTailLanding.Retry:
                     DetachConfirmation();
@@ -427,7 +427,7 @@ file sealed class InitialTailPositioner : IDisposable
                     var diagnostics = _confirmation.Diagnostics;
                     var attemptDiagnostics = _confirmation.AttemptDiagnostics;
                     var bringOptions = _confirmation.BringOptionsObservation;
-                    CompleteInitialLanding(request);
+                    CompleteInitialLanding();
                     LogInitialTailFailure(diagnostics, attemptDiagnostics, scrollView, bringOptions);
                     break;
             }
@@ -523,7 +523,7 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            ObserveInitialLanding(version, generation, request);
+            ObserveInitialLanding(version, generation);
         }))
         {
             if (IsInitialConfirmationCurrent(version, generation))
@@ -532,7 +532,7 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
-    private void CompleteInitialLanding(TailNavigationRequest? completedRequest = null)
+    private void CompleteInitialLanding()
     {
         RestoreTailAnchor();
         CancelRealization();
@@ -540,15 +540,6 @@ file sealed class InitialTailPositioner : IDisposable
         _confirmation.Invalidate();
         _initialPending = false;
         _explicitJumpPending = false;
-        // A newer tail can arrive while a native move is in flight. Finish that move
-        // before positioning the current row; a numeric bottom is not its landing.
-        if (completedRequest is { } completed && _valid
-            && !TailNavigationPolicy.CanExecute(completed, _tailIndex, _displayedTailKey, _itemCount))
-        {
-            _following = true;
-            _initialPending = true;
-            AwaitLayout();
-        }
     }
 
     private void AttachScrollView()
@@ -774,10 +765,7 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            // Finalizing a streamed row can recycle it and transiently reset the offset.
-            // Confirm this move too; real reader input still cancels its generation.
-            _initialPending = true;
-            ConfirmInitialLanding(_version, queuedRequest);
+            StartTailRequest(queuedRequest);
         }))
         {
             _tailNavigationQueue.SchedulingFailed();
