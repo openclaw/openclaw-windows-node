@@ -538,6 +538,25 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         output.WriteLine("Focused DPI preflight only. This single scene is not a completed gallery.");
     }
 
+    [Theory]
+    [InlineData("checking")]
+    [InlineData("blocked")]
+    [InlineData("failure")]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task WslReadinessScenes_SelectTheManagedRouteBeforeInvokingNext(string state)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        var scene = Assert.Single(RequiredScenes, item => item.Family == "welcome" && item.State == state);
+        var result = new SceneResult(scene, ElementTheme.Light);
+        _results.Add(result);
+        await CaptureSceneAsync(result);
+        Assert.NotEmpty(result.Frames);
+        Assert.True(result.AllViewportsCaptured);
+        OnboardingNativeProof.AssertSourceUnchanged();
+    }
+
     [Fact]
     [Trait("Category", "NativeOnboardingProof")]
     public async Task CompleteNativeGallery_AllRequiredScenesAndScrollViewports_LightAndDark()
@@ -734,6 +753,13 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                     Find<ListViewItem>(welcome, "ConnectChoice");
                             if (scene.State is "checking" or "blocked" or "failure")
                             {
+                                await WaitAsync(() => !Find<ProgressRing>(welcome, "NativeCheckProgress").IsActive,
+                                    "native capability projection before selecting the managed route");
+                                var installChoice = Find<ListViewItem>(welcome, "InstallChoice");
+                                Assert.True(installChoice.IsEnabled);
+                                Find<ListView>(welcome, "GatewayChoiceSelector").SelectedItem = installChoice;
+                                await WaitAsync(() => Find<Button>(welcome, "NextButton") is { IsLoaded: true, IsEnabled: true },
+                                    "selected managed route is ready for its synthetic WSL check");
                                 pendingWsl = SeedPendingWsl(window);
                                 Invoke(window, Find<Button>(welcome, "NextButton"));
                                 await WaitAsync(() => Find<ProgressRing>(welcome, "InstallCheckProgress").IsActive, "synthetic WSL checking");
