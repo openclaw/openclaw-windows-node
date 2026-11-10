@@ -789,6 +789,15 @@ Assert-NotContains -Text $uiJob -Unexpected './scripts/test-gateway-fixture.ps1'
     -Message 'Fixture scenarios must not remain on the serial native UI path.'
 Assert-Contains -Text $fixtureJob -Expected 'uses: actions/cache/restore@v6' `
     -Message 'The new fixture runner must not add another shared NuGet cache writer.'
+$fixtureRestore = Get-StepBlock -Text $fixtureJob -Name 'Restore UI test projects'
+$fixtureBootstrapIndex = $fixtureRestore.IndexOf('./scripts/Initialize-ReactorPackages.ps1', [StringComparison]::Ordinal)
+$fixtureRestoreIndex = $fixtureRestore.IndexOf('dotnet restore tests/OpenClaw.Tray.UITests', [StringComparison]::Ordinal)
+if ($fixtureBootstrapIndex -lt 0 -or $fixtureRestoreIndex -lt 0 -or
+    $fixtureBootstrapIndex -ge $fixtureRestoreIndex) {
+    throw 'The fixture runner must initialize the verified local Reactor feed before restoring UI tests.'
+}
+Assert-Contains -Text $fixtureRestore -Expected "`$ErrorActionPreference = 'Stop'" `
+    -Message 'The fixture restore must stop if Reactor package initialization fails.'
 foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
     if ((Get-StepBlock -Text $uiJob -Name $name).Trim() -cne
         (Get-StepBlock -Text $fixtureJob -Name $name).Trim()) {
