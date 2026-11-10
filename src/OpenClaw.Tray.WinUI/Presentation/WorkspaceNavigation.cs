@@ -16,8 +16,8 @@ internal enum WorkspacePageId
 
 internal enum CompanionPageId
 {
-    Connection, Sessions, Instances, Cron, AgentEvents, Agents, Config, Usage, LocalAi, DefaultModel,
-    Voice, Permissions, Sandbox, Debug, Settings, About
+    Connection, Sessions, Instances, Cron, Agents,
+    Config, Usage, LocalAi, DefaultModel, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
 /// <summary>
@@ -29,9 +29,12 @@ internal enum CompanionPageId
 internal sealed record WorkspaceDestination(
    WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null, bool Embedded = false)
 {
-   /// <summary>Creates a Settings destination for the supplied canonical companion tag.</summary>
+   /// <summary>
+   /// Creates a native page destination. Dashboards always uses the standalone pinned-page
+   /// presentation, including session links and command navigation, never the Settings section list.
+   /// </summary>
    public static WorkspaceDestination Settings(string companionTag, bool embedded = false) =>
-       new(WorkspacePageId.Settings, null, companionTag, embedded);
+       new(WorkspacePageId.Settings, null, companionTag, embedded || DashboardsRoute.IsDashboardsTag(companionTag));
 
    /// <summary>The replacement for a pruned section keeps the presentation the user was in.</summary>
    public static WorkspaceDestination PrunedFallback(WorkspaceDestination current, string fallbackTag) =>
@@ -46,6 +49,19 @@ internal sealed record WorkspaceDestination(
 }
 
 public enum SettingsExitCause { History, SidebarActivation }
+
+/// <summary>
+/// Escape leaves full Settings for the app, matching the macOS Settings sidebar. Anything that already
+/// owns Escape keeps it: a control that handled the key, an open flyout, menu, picker or dialog, and
+/// text or selection editors. Auto-repeat and pinned pages beside the sidebar never leave.
+/// </summary>
+internal static class SettingsEscapePolicy
+{
+    public static bool ExitsSettings(
+        WorkspaceDestination current, bool handled, bool isRepeat, bool overlayOpen, bool focusInEditor) =>
+        current is { Page: WorkspacePageId.Settings, Embedded: false }
+        && !handled && !isRepeat && !overlayOpen && !focusInEditor;
+}
 
 /// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file
@@ -64,7 +80,8 @@ internal static class WorkspaceNavigation
     {
         "agents", "agent-detail", "writer-detail", "dashboards", "dashboard-detail", "canvas",
         "systems", "system-detail", "automations", "automation-detail", "plugins", "skills",
-        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more"
+        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more",
+        "agentevents"
     };
 
     /// <summary>Dispatches a route to the Workspace host or companion navigation host.</summary>
@@ -89,7 +106,27 @@ internal static class WorkspaceNavigation
         if (tag!.StartsWith("workspace:", StringComparison.Ordinal))
             throw new ArgumentException("Unknown Workspace route. Use workspace:home or workspace:notifications.", nameof(tag));
 
+        if (tag != "command-center" &&
+            HubPageRegistry.ResolvePage(HubPageRegistry.NormalizeTag(tag, "main")) is null)
+            throw new ArgumentException("Unknown companion Settings route.", nameof(tag));
+
         openCompanion(tag);
+    }
+
+    /// <summary>
+    /// Reports destination admission using the same route policy. Native hosts may complete
+    /// synchronously; Dashboard hosts wait for Windows to accept the browser launch.
+    /// </summary>
+    public static Task<bool> DispatchAsync(
+        string? tag,
+        Func<WorkspaceDestination, Task<bool>> openWorkspace,
+        Func<string, Task<bool>> openCompanion,
+        Func<string, Task<bool>> openDashboard)
+    {
+        Task<bool>? admission = null;
+        Dispatch(tag, destination => admission = openWorkspace(destination),
+            section => admission = openCompanion(section), path => admission = openDashboard(path));
+        return admission ?? throw new InvalidOperationException("The navigation route was not dispatched.");
     }
 
     /// <summary>Resolves a tag to a Workspace destination without dispatching it.</summary>
@@ -117,7 +154,6 @@ internal static class WorkspaceNavigation
     {
         CompanionPageId.LocalAi => "local-ai",
         CompanionPageId.DefaultModel => "model",
-        CompanionPageId.AgentEvents => "agentevents",
         CompanionPageId.Agents => $"agent:{agentId}",
         _ => page.ToString().ToLowerInvariant()
     };
@@ -127,7 +163,7 @@ internal static class WorkspaceNavigation
     /// scope stays in the tag, except About, which keeps its own identity so Back restores it.
     /// </summary>
     public static string NormalizeSettingsTag(string tag, string agentId) =>
-        tag is "about" or "info" ? "about" : HubPageRegistry.NormalizeTag(tag, agentId);
+        HubPageRegistry.NormalizeTag(tag, agentId);
 
 }
 
@@ -138,6 +174,15 @@ internal sealed class WorkspaceNavigationHistory
     private readonly Stack<WorkspaceDestination> _forward = new();
     public WorkspaceDestination Current { get; private set; } = new(WorkspacePageId.Home);
     public WorkspaceDestination ChatDestination { get; private set; } = new(WorkspacePageId.Home);
+    private WorkspaceDestination _appDestination = new(WorkspacePageId.Home);
+
+    /// <summary>
+    /// Where Settings' Back to app returns: the most recently shown app destination (chat, Notifications
+    /// or a pinned page beside the sidebar), with chat resolved to the retained conversation.
+    /// </summary>
+    public WorkspaceDestination AppDestination =>
+        _appDestination.Page == WorkspacePageId.Home ? ChatDestination : _appDestination;
+
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
@@ -199,6 +244,8 @@ internal sealed class WorkspaceNavigationHistory
             destination is { Page: WorkspacePageId.Settings, CompanionTag: { } tag } && shouldRemove(tag);
         RemoveFrom(_back, Match);
         RemoveFrom(_forward, Match);
+        if (Match(_appDestination))
+            _appDestination = new(WorkspacePageId.Home);
     }
 
     /// <summary>
@@ -284,5 +331,7 @@ internal sealed class WorkspaceNavigationHistory
         Current = destination;
         if (destination.Page == WorkspacePageId.Home)
             ChatDestination = destination;
+        if (destination is not { Page: WorkspacePageId.Settings, Embedded: false })
+            _appDestination = destination;
     }
 }

@@ -69,6 +69,10 @@ public static class GatewaySearchProtocol
                 jobs.Add(JsonNode.Parse(row.GetRawText()));
             }
             if (!page.TryGetProperty("hasMore", out var more) || more.ValueKind != JsonValueKind.True) break;
+            // Legacy single-page replies need no revision. A multi-page read cannot establish
+            // one consistent inventory without it, even if the total stays the same.
+            if (string.IsNullOrEmpty(revision))
+                throw new InvalidDataException("Automation pagination requires a snapshot revision.");
             if (!page.TryGetProperty("nextOffset", out var next) || !next.TryGetInt32(out var nextOffset) ||
                 nextOffset <= offset || rows.GetArrayLength() == 0)
                 throw new InvalidDataException("Automation search pagination did not advance.");

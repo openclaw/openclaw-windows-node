@@ -5,7 +5,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid HorizontalAlignment="Stretch">
             <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
-            <TextBlock x:Uid="DefaultModelPage_Title" Text="Default model"
+            <TextBlock x:Uid="DefaultModelPage_Title" Text="Models"
                        Style="{StaticResource TitleTextBlockStyle}"
                        AutomationProperties.AutomationId="DefaultModelPageMarker"/>
             <TextBlock x:Uid="DefaultModelPage_Intro"
@@ -33,13 +33,13 @@
                     CornerRadius="8" Padding="16">
                 <StackPanel Spacing="10">
                     <ComboBox x:Name="DefaultModelSelector" x:Uid="DefaultModelPage_ModelSelector"
-                              Header="Default model" MinWidth="360" HorizontalAlignment="Left"
+                              Header="Default model" MaxWidth="360" HorizontalAlignment="Left"
                               SelectionChanged="OnSelectionChanged"
                               AutomationProperties.AutomationId="DefaultModelSelector"/>
                     <TextBlock x:Name="DefaultModelStatusText" TextWrapping="Wrap" Visibility="Collapsed"
                                AutomationProperties.AutomationId="DefaultModelStatus"
                                AutomationProperties.LiveSetting="Polite"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel x:Name="ModelActions" Orientation="Horizontal" Spacing="8">
                         <Button x:Name="ApplyDefaultModelButton" x:Uid="DefaultModelPage_ApplyButton"
                                 Content="Use this model" Style="{StaticResource AccentButtonStyle}"
                                 Click="OnApply"
@@ -83,12 +83,12 @@
 
                     <StackPanel x:Name="GatewayProviderPanel" Spacing="8">
                         <ComboBox x:Name="ProviderCatalogSelector" x:Uid="DefaultModelPage_ProviderSelector"
-                                  Header="Provider" MinWidth="360" HorizontalAlignment="Left"
+                                  Header="Provider" MaxWidth="360" HorizontalAlignment="Left"
                                   SelectionChanged="OnProviderCatalogSelectionChanged"
                                   AutomationProperties.AutomationId="DefaultModelProviderSelector"/>
                         <StackPanel x:Name="ProviderApiKeyPanel" Orientation="Horizontal" Spacing="8">
                             <PasswordBox x:Name="ProviderApiKeyBox" x:Uid="DefaultModelPage_ProviderApiKey"
-                                         Header="API key" MinWidth="280"
+                                         Header="API key" MaxWidth="280" HorizontalAlignment="Left"
                                          AutomationProperties.AutomationId="DefaultModelProviderApiKey"/>
                             <Button x:Name="SaveProviderApiKeyButton" x:Uid="DefaultModelPage_SaveApiKeyButton"
                                     Content="Save API key" VerticalAlignment="Bottom"
@@ -97,7 +97,7 @@
                         </StackPanel>
                         <StackPanel x:Name="ProviderSignInPanel" Orientation="Horizontal" Spacing="8">
                             <ComboBox x:Name="ProviderLoginSelector" x:Uid="DefaultModelPage_ProviderSignInMethod"
-                                      Header="Sign-in method" MinWidth="280"
+                                      Header="Sign-in method" MaxWidth="280" HorizontalAlignment="Left"
                                       SelectionChanged="OnProviderLoginSelectionChanged"
                                       AutomationProperties.AutomationId="DefaultModelProviderSignInMethod"/>
                             <Button x:Name="StartProviderSignInButton" x:Uid="DefaultModelPage_SignInButton"
@@ -109,13 +109,13 @@
 
                     <StackPanel x:Name="CustomProviderPanel" Spacing="8" Visibility="Collapsed">
                         <TextBox x:Name="CustomProviderIdBox" x:Uid="DefaultModelPage_CustomProviderId"
-                                 Header="Provider ID" PlaceholderText="my-endpoint" MinWidth="360" HorizontalAlignment="Left"
+                                 Header="Provider ID" PlaceholderText="my-endpoint" MaxWidth="360" HorizontalAlignment="Left"
                                  AutomationProperties.AutomationId="DefaultModelCustomProviderId"/>
                         <TextBox x:Name="CustomProviderBaseUrlBox" x:Uid="DefaultModelPage_CustomProviderBaseUrl"
-                                 Header="Base URL" PlaceholderText="http://localhost:8000/v1" MinWidth="360" HorizontalAlignment="Left"
+                                 Header="Base URL" PlaceholderText="http://localhost:8000/v1" MaxWidth="360" HorizontalAlignment="Left"
                                  AutomationProperties.AutomationId="DefaultModelCustomProviderBaseUrl"/>
                         <ComboBox x:Name="CustomProviderApiSelector" x:Uid="DefaultModelPage_CustomProviderApi"
-                                  Header="API type" SelectedIndex="0" MinWidth="360"
+                                  Header="API type" SelectedIndex="0" MaxWidth="360" HorizontalAlignment="Left"
                                   AutomationProperties.AutomationId="DefaultModelCustomProviderApi">
                             <ComboBoxItem x:Uid="DefaultModelPage_CustomApiOpenAiCompletions" Tag="openai-completions"
                                           Content="OpenAI-compatible (Chat Completions)"/>
@@ -125,10 +125,10 @@
                                           Content="Anthropic Messages"/>
                         </ComboBox>
                         <PasswordBox x:Name="CustomProviderApiKeyBox" x:Uid="DefaultModelPage_CustomProviderApiKey"
-                                     Header="API key (optional for OpenAI-compatible)" MinWidth="360" HorizontalAlignment="Left"
+                                     Header="API key (optional for OpenAI-compatible)" MaxWidth="360" HorizontalAlignment="Left"
                                      AutomationProperties.AutomationId="DefaultModelCustomProviderApiKey"/>
                         <TextBox x:Name="CustomProviderModelsBox" x:Uid="DefaultModelPage_CustomProviderModels"
-                                 Header="Model IDs" PlaceholderText="model-a, model-b" MinWidth="360" HorizontalAlignment="Left"
+                                 Header="Model IDs" PlaceholderText="model-a, model-b" MaxWidth="360" HorizontalAlignment="Left"
                                  AutomationProperties.AutomationId="DefaultModelCustomProviderModels"/>
                         <Button x:Name="AddCustomProviderButton" x:Uid="DefaultModelPage_AddCustomProviderButton"
                                 Content="Add provider" Style="{StaticResource AccentButtonStyle}"

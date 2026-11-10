@@ -9,7 +9,7 @@ internal static class HubSearchCatalog
     internal static readonly (string Tag, string Path)[] Counterparts =
     [
         ("connection", "/settings/connection"), ("sessions", "/sessions"), ("skills", "/skills"),
-        ("instances", "/settings/devices"),
+        ("systems", "/settings/devices"),
         ("cron", "/automations"), ("config", "/settings/general"), ("usage", "/usage")
     ];
 
@@ -70,12 +70,40 @@ internal static class HubSearchCatalog
         return Counterparts.FirstOrDefault(pair => pair.Tag == tag).Path;
     }
 
+    internal static string? ContextualDashboardPath(
+        WorkspaceDestination destination,
+        string? currentSessionKey,
+        bool? isMain,
+        string? gatewayVersion)
+    {
+        var supported = SupportsDashboard(gatewayVersion);
+        if (destination.Page == WorkspacePageId.Settings)
+        {
+            if (destination.CompanionTag is not { } tag)
+                return null;
+            if (tag.StartsWith("agent:", StringComparison.Ordinal) &&
+                tag.IndexOf(':', "agent:".Length) < 0)
+                return null;
+            return Counterpart(tag, supported);
+        }
+        if (!supported || destination.Page != WorkspacePageId.Home)
+            return null;
+
+        var sessionKey = destination.SessionKey ?? currentSessionKey;
+        return string.IsNullOrWhiteSpace(sessionKey) ? null : SessionPath(sessionKey, isMain);
+    }
+
     internal static IEnumerable<HubSearchItem> Navigation(
         IEnumerable<HubCommand> commands, bool connected, bool dashboardSupported, Func<string, string> localize)
     {
-        foreach (var command in commands)
+        var destinations = commands.GroupBy(command =>
+            command.Action is { Kind: HubCommandActionKind.Navigate, Value: { } tag }
+                ? HubCommandAction.Navigate(HubPageRegistry.NormalizeTag(tag, HubPageRegistry.ParseAgentId(tag)))
+                : command.Action);
+        foreach (var destination in destinations)
         {
-            if (command.Action.Kind == HubCommandActionKind.Navigate && command.Action.Value is { } tag)
+            var command = destination.First();
+            if (destination.Key.Kind == HubCommandActionKind.Navigate && destination.Key.Value is { } tag)
             {
                 if (!connected && HubPageRegistry.IsGatewayPageTag(tag)) continue;
                 if (tag.StartsWith("agent:", StringComparison.Ordinal) && HubPageRegistry.ParseAgentId(tag).Length == 0) continue;
@@ -87,7 +115,8 @@ internal static class HubSearchCatalog
                     continue;
                 }
                 yield return new($"page:{tag}", HubSearchGroup.Settings, localize(presentation.TitleKey), command.Subtitle,
-                    presentation.Icon, new(HubSearchTargetKind.Page, tag), $"{tag} {command.Title}",
+                    presentation.Icon, new(HubSearchTargetKind.Page, tag),
+                    string.Join(" ", destination.Select(alias => $"{alias.Action.Value} {alias.Title} {alias.Subtitle}")),
                     Counterpart(tag, dashboardSupported));
             }
             else if (command.Action.Kind == HubCommandActionKind.OpenDashboard && string.IsNullOrEmpty(command.Action.Value))

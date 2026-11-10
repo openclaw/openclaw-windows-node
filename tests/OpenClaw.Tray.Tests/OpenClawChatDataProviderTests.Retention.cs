@@ -11,6 +11,102 @@ namespace OpenClaw.Tray.Tests;
 public partial class OpenClawChatDataProviderTests
 {
     [Fact]
+    public async Task RetainedPortForwardsCurrentMainIdentityAndHistoryReadContracts()
+    {
+        var identity = System.Text.Json.JsonSerializer.SerializeToElement(new { name = "Current agent" });
+        var history = new ChatHistoryInfo { SessionKey = "main", Messages = [] };
+        var message = new ChatMessageReadResult(ChatMessageReadStatus.Available,
+            new ChatMessageInfo { Role = "assistant", Text = "Current detail" });
+        var first = new FakeBridge
+        {
+            IsConnected = true, CurrentStatus = ConnectionStatus.Connected,
+            ToolDetailsProfileState = new(7, true), ChatMessageReadConnectionEpoch = 42,
+            AgentIdentityBehavior = _ => Task.FromResult(identity),
+            OlderHistoryBehavior = _ => Task.FromResult(history),
+            MessageReadBehavior = _ => Task.FromResult(message),
+        };
+        using var port = new RetainedChatGatewayBridge();
+        port.Attach(first);
+        Assert.True(port.ToolDetailsAvailable);
+        Assert.Equal(new ChatToolDetailsProfileState(7, true), port.ToolDetailsProfileState);
+        Assert.Equal(42L, port.ChatMessageReadConnectionEpoch);
+        Assert.Equal("Current agent", (await port.RequestAgentIdentityAsync("research")).GetProperty("name").GetString());
+        Assert.Equal(["research"], first.RequestedAgentIdentityIds);
+        var page = new ChatHistoryPageRequest("cursor", "immutable-session");
+        Assert.Same(history, await port.RequestOlderChatHistoryAsync("main", page));
+        Assert.Same(page, Assert.Single(first.OlderHistoryRequests));
+        Assert.Same(message, await port.RequestChatMessageAsync("main", "immutable-session", "message-1", 4096, 42, CancellationToken.None));
+        Assert.Equal(("main", "immutable-session", "message-1", 4096, 42L), Assert.Single(first.MessageReads));
+    }
+
+    [Fact]
+    public async Task RetiredPortRejectsLateAgentIdentityWithoutLosingTheNewRoute()
+    {
+        var pending = new TaskCompletionSource<System.Text.Json.JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = new FakeBridge { IsConnected = true, AgentIdentityBehavior = _ => pending.Task };
+        using var port = new RetainedChatGatewayBridge();
+        port.Attach(first);
+        var retired = port.RequestAgentIdentityAsync("research");
+        port.Attach(null);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => retired);
+        Assert.False(port.ToolDetailsAvailable);
+        Assert.Null(port.ChatMessageReadConnectionEpoch);
+        pending.SetResult(System.Text.Json.JsonSerializer.SerializeToElement(new { name = "Retired agent" }));
+        port.Attach(new FakeBridge
+        {
+            IsConnected = true,
+            AgentIdentityBehavior = _ => Task.FromResult(System.Text.Json.JsonSerializer.SerializeToElement(new { name = "New route" })),
+        });
+        Assert.Equal("New route", (await port.RequestAgentIdentityAsync("research")).GetProperty("name").GetString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RetiringPortCancelsNewHistoryAndMessageReads(bool readMessage)
+    {
+        var history = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var message = new TaskCompletionSource<ChatMessageReadResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken observed = default;
+        var first = new FakeBridge
+        {
+            IsConnected = true, OlderHistoryBehavior = _ => history.Task,
+            MessageReadBehavior = token => { observed = token; return message.Task.WaitAsync(token); },
+        };
+        using var port = new RetainedChatGatewayBridge();
+        port.Attach(first);
+        Task read = readMessage
+            ? port.RequestChatMessageAsync("main", "session", "message", 4096, 1, CancellationToken.None)
+            : port.RequestOlderChatHistoryAsync("main", new ChatHistoryPageRequest("cursor", "session"));
+        Assert.False(read.IsCompleted);
+        port.Attach(null);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await read);
+        if (readMessage) Assert.True(observed.IsCancellationRequested);
+        history.TrySetResult(new ChatHistoryInfo { SessionKey = "main", Messages = [] });
+        message.TrySetResult(new ChatMessageReadResult(ChatMessageReadStatus.Available));
+    }
+
+    [Fact]
+    public void RetiredDetailsInvalidationsCannotPublishThroughTheNewBinding()
+    {
+        var first = new FakeBridge { IsConnected = true, ToolDetailsProfileState = new(1, true) };
+        var second = new FakeBridge { IsConnected = true, ToolDetailsProfileState = new(2, true) };
+        using var port = new RetainedChatGatewayBridge();
+        port.Attach(first);
+        var delayed = first.CaptureToolDetailsInvalidation();
+        var notifications = 0;
+        port.ToolDetailsInvalidated += (_, _) => notifications++;
+        port.Attach(second);
+        var afterAttach = notifications;
+        delayed();
+        Assert.Equal(afterAttach, notifications);
+        Assert.Equal(new ChatToolDetailsProfileState(2, true), port.ToolDetailsProfileState);
+        second.RaiseToolDetailsProfile(new(3, true));
+        Assert.True(notifications > afterAttach);
+        Assert.Equal(new ChatToolDetailsProfileState(3, true), port.ToolDetailsProfileState);
+    }
+
+    [Fact]
     public async Task RetiredClientKeepsLoadedConversationReadOnlyAndRejectsLateHistory()
     {
         using var temp = new TempDirectory();

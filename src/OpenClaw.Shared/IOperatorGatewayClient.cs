@@ -9,6 +9,7 @@
 // </summary>
 
 using System.Text.Json;
+using OpenClaw.Shared.Usage;
 
 namespace OpenClaw.Shared;
 
@@ -42,11 +43,19 @@ public interface IOperatorGatewayClient
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
     /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
     event EventHandler? SelfProfileChanged { add { } remove { } }
+    /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
+    event EventHandler<string>? SystemsInventoryChanged { add { } remove { } }
+    /// <summary>A node published new host statistics.</summary>
+    event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<bool>? AgentsListUnsupportedChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
+    /// <summary>A Gateway approval (exec, plugin or system agent) now waits for a decision.</summary>
+    event EventHandler<GatewayPendingApproval>? PendingApprovalRequested { add { } remove { } }
+    /// <summary>A pending Gateway approval was decided; the argument is its id.</summary>
+    event EventHandler<string>? PendingApprovalResolved { add { } remove { } }
 
     /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
     IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
@@ -226,6 +235,17 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+
+    // ─── Usage analytics (Usage page) ───
+    // Response-aware reads; defaults report Unsupported so test doubles keep compiling.
+    /// <summary>Per-session usage report (<c>sessions.usage</c>).</summary>
+    Task<UsageReadResult<SessionsUsageReport>> GetSessionsUsageAsync(
+        SessionsUsageQuery query, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
+    /// <summary>Provider plans, quotas and billing (<c>usage.status</c>) as a typed response.</summary>
+    Task<UsageReadResult<ProviderUsageSummary>> GetProviderUsageAsync(
+        int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Unsupported());
     /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
     Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
         => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));

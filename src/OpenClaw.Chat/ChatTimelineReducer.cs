@@ -10,8 +10,17 @@ public static class ChatTimelineReducer
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
 
-    public static bool CanApplyRetainedToolOutcome(ChatTimelineState state, ChatEvent? evt)
+    public static bool CanApplyRetainedToolEvent(ChatTimelineState state, ChatEvent? evt)
     {
+        if (!state.TurnActive && evt is ChatToolStartEvent { RunId.Length: > 0, ToolCallId.Length: > 0 } start)
+        {
+            var parentKey = ResolvePendingParentKey(state, start.RunId, start.ToolCallId);
+            return state.TerminalToolCorrelations?.ContainsKey(parentKey) == true &&
+                (state.PendingToolPresentations?.ContainsKey(parentKey) == true ||
+                 state.PendingToolOutcomes?.ContainsKey(parentKey) == true ||
+                 start.Feedback is { PreparingInput: false, Review: not null } &&
+                 FindToolEntryIndex(state, parentKey, allowTerminalLegacy: false) >= 0);
+        }
         var (runId, toolCallId) = evt switch
         {
             ChatToolOutputEvent output => (output.RunId, output.ToolCallId),
@@ -20,9 +29,12 @@ public static class ChatTimelineReducer
         };
         if (string.IsNullOrWhiteSpace(runId) || string.IsNullOrWhiteSpace(toolCallId))
             return false;
-        var key = CurrentCorrelationKey(state, runId, toolCallId);
+        var key = ResolveBufferedCorrelationKey(state, runId, toolCallId);
         return state.TerminalToolCorrelations?.ContainsKey(key) == true &&
-            FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0;
+            (FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0 ||
+             !state.TurnActive &&
+             (state.PendingToolPresentations?.ContainsKey(key) == true ||
+              state.PendingToolOutcomes?.ContainsKey(key) == true));
     }
 
     public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
@@ -70,13 +82,15 @@ public static class ChatTimelineReducer
                 RunUsage = string.IsNullOrWhiteSpace(e.RunId) ? state.RunUsage
                     : state.RunUsage?.RunId == e.RunId ? state.RunUsage : new(e.RunId),
             },
-            ChatProgressEvent e => state with { ProgressText = e.Text },
+            ChatProgressEvent e => state with { ProgressText = e.Text, ProgressRetryAtMs = e.RetryAtMs },
             ChatRunUsageEvent e => ApplyRunUsage(state, e),
-            ChatReasoningEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: true),
-            ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false),
+            ChatReasoningEvent e => UpsertReasoning(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, e.Presentation, e.IsStreaming, e.AttachToAssistant),
+            ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false, e.Presentation, streaming: true),
+            ChatReasoningStreamEvent e => ApplyReasoningStream(state, e),
+            ChatReasoningReceiptEvent e => ApplyReasoningReceipt(state, e),
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
-            ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true),
-            ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious),
+            ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true, presentation: e.Presentation),
+            ChatMessageEvent e => UpsertAssistant(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
             ChatBackgroundFinalEvent e => ApplyBackgroundFinal(state, e.Text),
             ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
@@ -103,9 +117,10 @@ public static class ChatTimelineReducer
                 next = next with { RunUsage = null };
         }
         if (state.TurnActive && !next.TurnActive)
-            next = next with { TurnEndedAt = timestamp, ProgressText = null };
-        if (evt is ChatMessageDeltaEvent or ChatReasoningDeltaEvent or ChatToolStartEvent)
-            next = next with { ProgressText = null };
+            next = next with { TurnEndedAt = timestamp, ProgressText = null, ProgressRetryAtMs = null };
+        if (!ReferenceEquals(state, next) && evt is ChatMessageDeltaEvent or ChatMessageEvent
+            or ChatReasoningDeltaEvent or ChatReasoningStreamEvent or ChatToolStartEvent or ChatToolProgressEvent)
+            next = next with { ProgressText = null, ProgressRetryAtMs = null };
         return next;
     }
 
@@ -114,6 +129,37 @@ public static class ChatTimelineReducer
         && evt.OutputTokens >= 0 && evt.Sequence > usage.Sequence
             ? state with { RunUsage = usage with { OutputTokens = evt.OutputTokens, Sequence = evt.Sequence } }
             : state;
+
+    private static ChatTimelineState ApplyReasoningStream(ChatTimelineState state, ChatReasoningStreamEvent evt)
+    {
+        if (string.IsNullOrWhiteSpace(evt.RunId) || string.IsNullOrWhiteSpace(evt.ItemId))
+            return state;
+        var items = state.ReasoningStream?.RunId == evt.RunId
+            ? state.ReasoningStream.Items : ImmutableList<ChatReasoningStreamItem>.Empty;
+        var index = items.FindIndex(item => item.ItemId == evt.ItemId);
+        items = index >= 0
+            ? items.SetItem(index, items[index] with { Text = evt.Text })
+            : items.Add(new(evt.ItemId, evt.Text, evt.StartedAtMs, state.Entries.LastOrDefault()?.Id));
+        return BeginTurn(state) with { ReasoningStream = new(evt.RunId, items) };
+    }
+
+    private static ChatTimelineState ApplyReasoningReceipt(ChatTimelineState state, ChatReasoningReceiptEvent evt)
+    {
+        if (state.ReasoningStream is not { } stream || stream.RunId != evt.RunId ||
+            string.IsNullOrWhiteSpace(evt.MessageRunId) || string.IsNullOrWhiteSpace(evt.MessageId))
+            return state;
+        var index = stream.Items.FindIndex(item => item.ItemId == evt.ItemId);
+        return index < 0 ? state : state with
+        {
+            ReasoningStream = stream with
+            {
+                Items = stream.Items.SetItem(index, stream.Items[index] with
+                {
+                    Receipt = new(evt.MessageRunId, evt.MessageId),
+                }),
+            },
+        };
+    }
 
     public static ChatTimelineState AddLocalUser(ChatTimelineState state, string text, string nonce, DateTimeOffset? timestamp = null)
     {
@@ -141,7 +187,8 @@ public static class ChatTimelineReducer
             TurnActive = true,
             TurnStartedAt = timestamp,
             TurnEndedAt = null,
-            ProgressText = null
+            ProgressText = null,
+            ProgressRetryAtMs = null
         };
     }
 
@@ -151,7 +198,7 @@ public static class ChatTimelineReducer
     public static ChatTimelineState BeginLocalUserTurn(ChatTimelineState state, DateTimeOffset? timestamp)
     {
         state = ClearStreamingAtTurnBoundary(state);
-        return state with { TurnActive = true, TurnStartedAt = timestamp, TurnEndedAt = null, ProgressText = null };
+        return state with { TurnActive = true, TurnStartedAt = timestamp, TurnEndedAt = null, ProgressText = null, ProgressRetryAtMs = null };
     }
 
     // Hard turn boundary cleanup shared by both user-message entry points
@@ -186,7 +233,7 @@ public static class ChatTimelineReducer
         var entries = state.Entries;
         for (var i = 0; i < entries.Count; i++)
         {
-            if (entries[i].Kind == ChatTimelineItemKind.Assistant && entries[i].IsStreaming)
+            if (entries[i].Kind is ChatTimelineItemKind.Assistant or ChatTimelineItemKind.Reasoning && entries[i].IsStreaming)
             {
                 entries = entries.SetItem(i, entries[i] with { IsStreaming = false });
             }
@@ -198,6 +245,7 @@ public static class ChatTimelineReducer
             ActiveAssistantId = null,
             ActiveReasoningId = null,
             RunUsage = null,
+            ReasoningStream = null,
         };
     }
 
@@ -338,26 +386,44 @@ public static class ChatTimelineReducer
         }
 
         ChatToolCorrelationKey? correlationKey = null;
-        var isTerminalReplay = false;
+        var isTerminalReplay = !e.ActivatesTurn && !state.TurnActive;
         if (e.ToolCallId is { } toolCallId)
         {
             var key = ResolvePendingParentKey(state, e.RunId, toolCallId);
             correlationKey = key;
-            isTerminalReplay = state.TerminalToolCorrelations?.ContainsKey(key) == true;
+            isTerminalReplay |= state.TerminalToolCorrelations?.ContainsKey(key) == true;
             var existingIndex = FindToolEntryIndex(
                 state,
                 key,
                 allowTerminalLegacy: !string.IsNullOrWhiteSpace(e.RunId));
             if (existingIndex >= 0)
             {
+                if (e.Feedback is { } feedback && (feedback.Sequence <= state.Entries[existingIndex].ToolFeedbackSequence
+                    || feedback.PreparingInput && state.Entries[existingIndex].ToolResult != ChatToolCallStatus.InProgress))
+                    return state;
                 var presentation = new ChatToolPresentationEvent(
                     toolCallId,
                     e.ToolName,
                     e.IdentityStrength,
                     e.ToolArgs,
                     ActivatesTurn: state.TurnActive,
-                    RunId: e.RunId);
-                return ApplyToolPresentation(state, presentation);
+                    RunId: e.RunId,
+                    InputDetails: e.InputDetails);
+                var updated = ApplyToolPresentation(state, presentation);
+                if (e.ParentCallId is { Length: > 0 } && updated.Entries[existingIndex].ToolParentCallId is null)
+                    updated = updated with
+                    {
+                        Entries = updated.Entries.SetItem(existingIndex,
+                            updated.Entries[existingIndex] with { ToolParentCallId = e.ParentCallId }),
+                    };
+                if (e.HandoffInput is not null && e.ToolName == updated.Entries[existingIndex].ToolName)
+                    updated = updated with
+                    {
+                        Entries = updated.Entries.SetItem(existingIndex,
+                            updated.Entries[existingIndex] with { HandoffInput = e.HandoffInput }),
+                    };
+                return updated with { Entries = updated.Entries.SetItem(existingIndex,
+                    ApplyToolFeedback(updated.Entries[existingIndex], e.Feedback)) };
             }
         }
 
@@ -372,6 +438,7 @@ public static class ChatTimelineReducer
         var toolName = e.ToolName;
         var identityStrength = e.IdentityStrength;
         var toolArgs = CloneToolArgs(e.ToolArgs);
+        var inputDetails = e.InputDetails;
         var correlationIds = System.Collections.Immutable.ImmutableHashSet<string>.Empty;
 
         if (e.ToolCallId is { } tcId && correlationKey is { } parentKey)
@@ -385,7 +452,9 @@ public static class ChatTimelineReducer
                 {
                     toolName = pending.ToolName;
                     identityStrength = pending.IdentityStrength;
+                    inputDetails = pending.InputDetails ?? inputDetails;
                 }
+                inputDetails ??= pending.InputDetails;
                 toolArgs = MergeToolArgs(toolArgs, pending.ToolArgs);
                 correlationIds = MergeToolCorrelationIds(correlationIds, pending.CorrelationIds);
                 foreach (var correlationId in pending.CorrelationIds)
@@ -410,7 +479,11 @@ public static class ChatTimelineReducer
             ToolIdentityStrength: identityStrength,
             ToolCorrelationIds: correlationIds,
             ToolRunId: correlationKey?.RunId,
-            ToolLegacyTurn: correlationKey?.LegacyTurn ?? state.ToolLegacyTurn);
+            ToolLegacyTurn: correlationKey?.LegacyTurn ?? state.ToolLegacyTurn,
+            HandoffInput: e.ToolCallId is { Length: > 0 } ? e.HandoffInput : null,
+            ToolInputDetails: inputDetails,
+            ToolParentCallId: e.ToolCallId is { Length: > 0 } && e.ParentCallId is { Length: > 0 } ? e.ParentCallId : null);
+        entry = ApplyToolFeedback(entry, e.Feedback);
         if (correlationKey is { } outcomeParentKey)
         {
             foreach (var correlationId in correlationIds)
@@ -474,6 +547,32 @@ public static class ChatTimelineReducer
         };
     }
 
+    private static ChatTimelineItem ApplyToolFeedback(ChatTimelineItem entry, ChatToolFeedback? feedback)
+    {
+        if (feedback is null)
+            return entry with { ToolInputPreparing = false };
+        var reviews = entry.ToolReviews ?? ImmutableList<ChatToolReview>.Empty;
+        if (feedback.Review is { } review)
+        {
+            var index = reviews.FindIndex(item => item.Id == review.Id);
+            // A denial is an outcome, not a transient phase that a later start can erase.
+            if (index >= 0 && reviews[index].Status == "denied")
+                review = reviews[index];
+            reviews = index >= 0 ? reviews.SetItem(index, review) : reviews.Add(review);
+            if (reviews.Count > 16)
+                reviews = reviews.RemoveAt(0);
+        }
+        return entry with
+        {
+            ToolFeedbackSequence = feedback.Sequence,
+            ToolInputPreparing = entry.ToolResult == ChatToolCallStatus.InProgress &&
+                (feedback.PreparingInput || entry.ToolInputPreparing),
+            ToolLiveDiff = entry.ToolResult == ChatToolCallStatus.InProgress
+                ? feedback.Diff ?? entry.ToolLiveDiff : null,
+            ToolReviews = reviews,
+        };
+    }
+
     static ChatTimelineState ApplyToolPresentation(ChatTimelineState state, ChatToolPresentationEvent e)
     {
         if (string.IsNullOrWhiteSpace(e.ParentToolCallId))
@@ -510,6 +609,8 @@ public static class ChatTimelineReducer
                         ToolName = toolName,
                         IdentityStrength = strength,
                         ToolArgs = MergeToolArgs(existing.ToolArgs, e.ToolArgs),
+                        InputDetails = e.ToolName == toolName && e.IdentityStrength >= existing.IdentityStrength
+                            ? e.InputDetails ?? existing.InputDetails : existing.InputDetails,
                         CorrelationIds = MergeToolCorrelationIds(existing.CorrelationIds, correlationIds)
                     });
             }
@@ -527,7 +628,8 @@ public static class ChatTimelineReducer
                         e.IdentityStrength,
                         CloneToolArgs(e.ToolArgs),
                         correlationIds,
-                        state.NextToolCorrelationSequence));
+                        state.NextToolCorrelationSequence,
+                        e.InputDetails));
             }
 
             var terminalCorrelations = state.TerminalToolCorrelations
@@ -561,6 +663,8 @@ public static class ChatTimelineReducer
             ToolName = identityIsStronger ? e.ToolName : entry.ToolName,
             ToolIdentityStrength = identityIsStronger ? e.IdentityStrength : entry.ToolIdentityStrength,
             ToolArgs = MergeToolArgs(entry.ToolArgs, e.ToolArgs),
+            ToolInputDetails = identityIsStronger || e.ToolName == entry.ToolName
+                ? e.InputDetails ?? entry.ToolInputDetails : entry.ToolInputDetails,
             ToolCorrelationIds = mergedCorrelationIds
         };
 
@@ -603,7 +707,9 @@ public static class ChatTimelineReducer
     }
 
     static ChatTimelineState ApplyToolOutput(ChatTimelineState state, ChatToolOutputEvent e) =>
-        ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Success);
+        ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Success,
+            handoffReceipt: e.ToolCallId is { Length: > 0 } ? e.HandoffReceipt : null,
+            resultReference: e.ResultReference);
 
     static ChatTimelineState ApplyToolProgress(ChatTimelineState state, ChatToolProgressEvent e)
     {
@@ -632,7 +738,8 @@ public static class ChatTimelineReducer
 
     static ChatTimelineState ApplyToolError(ChatTimelineState state, ChatToolErrorEvent e) =>
         ApplyToolOutcome(
-            state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Error, e.ErrorTextQuality);
+            state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Error, e.ErrorTextQuality,
+            resultReference: e.ResultReference);
 
     static ChatTimelineState ApplyToolOutcome(
         ChatTimelineState state,
@@ -640,10 +747,12 @@ public static class ChatTimelineReducer
         string? toolCallId,
         string? runId,
         ChatToolCallStatus status,
-        ChatToolErrorTextQuality errorTextQuality = ChatToolErrorTextQuality.Unspecified)
+        ChatToolErrorTextQuality errorTextQuality = ChatToolErrorTextQuality.Unspecified,
+        OpenClaw.Shared.ChatToolHandoffReceipt? handoffReceipt = null,
+        ChatToolResultReference? resultReference = null)
     {
         var sequence = state.NextToolOutcomeSequence;
-        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality);
+        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality, handoffReceipt, resultReference);
         var key = toolCallId is { Length: > 0 }
             ? ResolveBufferedCorrelationKey(state, runId, toolCallId)
             : default(ChatToolCorrelationKey?);
@@ -656,7 +765,16 @@ public static class ChatTimelineReducer
         {
             var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
-                entries = entries.SetItem(idx, ApplyToolOutcome(entries[idx], incoming, recoveryRunId));
+            {
+                var entry = entries[idx];
+                // Ending a live turn advances the legacy epoch. Only a replay
+                // created in this still-idle epoch may recover without a run ID.
+                var recoverLegacyReplay = !state.TurnActive && entry.ToolRunId is null &&
+                    entry.ToolLegacyTurn == state.ToolLegacyTurn &&
+                    (key is null || state.TerminalToolCorrelations?.ContainsKey(key.Value) == true);
+                entries = entries.SetItem(idx,
+                    ApplyToolOutcome(entry, incoming, recoveryRunId, recoverLegacyReplay));
+            }
         }
 
         var pendingOutcomes = state.PendingToolOutcomes
@@ -695,7 +813,8 @@ public static class ChatTimelineReducer
     static ChatTimelineItem ApplyToolOutcome(
         ChatTimelineItem entry,
         ChatPendingToolOutcome incoming,
-        string? incomingRunId = null)
+        string? incomingRunId = null,
+        bool recoverLegacyReplay = false)
     {
         var currentStatus = entry.ToolResult ?? ChatToolCallStatus.InProgress;
         var currentPrecedence = ToolOutcomePrecedence(currentStatus);
@@ -714,8 +833,9 @@ public static class ChatTimelineReducer
         {
             if (currentStatus == ChatToolCallStatus.Interrupted
                 && incoming.Status == ChatToolCallStatus.Success
-                && !string.IsNullOrWhiteSpace(incomingRunId)
-                && string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal)
+                && (recoverLegacyReplay ||
+                    !string.IsNullOrWhiteSpace(incomingRunId) &&
+                    string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal))
                 && incoming.Sequence >= entry.ToolOutcomeSequence)
             {
                 return entry with
@@ -725,7 +845,9 @@ public static class ChatTimelineReducer
                         ? entry.ToolOutput
                         : incoming.Text,
                     ToolOutcomeSequence = incoming.Sequence,
-                    ToolErrorTextQuality = incomingErrorQuality
+                    ToolErrorTextQuality = incomingErrorQuality,
+                    HandoffReceipt = incoming.HandoffReceipt,
+                    ToolResultReference = incoming.ResultReference,
                 };
             }
 
@@ -736,7 +858,8 @@ public static class ChatTimelineReducer
                 return entry with
                 {
                     ToolOutput = incoming.Text,
-                    ToolOutcomeSequence = incoming.Sequence
+                    ToolOutcomeSequence = incoming.Sequence,
+                    ToolResultReference = incoming.ResultReference,
                 };
             }
             return entry;
@@ -745,11 +868,17 @@ public static class ChatTimelineReducer
         return entry with
         {
             ToolResult = incoming.Status,
+            ToolInputPreparing = false,
+            ToolLiveDiff = null,
             ToolOutput = string.IsNullOrEmpty(incoming.Text) && entry.ToolOutput is not null
                 ? entry.ToolOutput
                 : incoming.Text,
             ToolOutcomeSequence = incoming.Sequence,
-            ToolErrorTextQuality = incomingErrorQuality
+            ToolErrorTextQuality = incomingErrorQuality,
+            HandoffReceipt = incoming.Status == ChatToolCallStatus.Success
+                ? incoming.HandoffReceipt ?? entry.HandoffReceipt : null,
+            ToolResultReference = incoming.ResultReference ??
+                (incoming.Status == currentStatus && string.IsNullOrEmpty(incoming.Text) ? entry.ToolResultReference : null),
         };
     }
 
@@ -1063,9 +1192,115 @@ public static class ChatTimelineReducer
         };
     }
 
-    static ChatTimelineState UpsertAssistant(ChatTimelineState state, string text, bool replace, bool streaming, bool reconcilePrevious = false)
+    static ChatTimelineState UpsertAssistant(ChatTimelineState state, string text, bool replace, bool streaming, bool reconcilePrevious = false,
+        OpenClaw.Shared.ChatMessagePresentation? presentation = null, bool isContentPart = false,
+        bool replacesStreamText = false)
     {
         text ??= string.Empty;
+        if (replacesStreamText && presentation?.RunId is { } replacementRun)
+        {
+            var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User ||
+                entry.Presentation is { TurnBoundary: true } or { IsIndependent: true } ||
+                (entry.Presentation?.RunId ?? entry.ToolRunId) is { } run && run != replacementRun) + 1;
+            var replaced = state.Entries.Skip(start).Where(entry =>
+                entry.Kind == ChatTimelineItemKind.Assistant && entry.IsStreaming &&
+                entry.Presentation?.RunId == replacementRun &&
+                (entry.Presentation.MessageId is null || presentation.MessageId is null ||
+                    entry.Presentation.MessageId == presentation.MessageId)).ToArray();
+            if (replaced.Length > 0)
+            {
+                var ids = replaced.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+                var first = replaced[0] with { Text = text, IsStreaming = streaming, Presentation = presentation };
+                return state with
+                {
+                    Entries = state.Entries.Where(entry => entry.Id == first.Id || !ids.Contains(entry.Id))
+                        .Select(entry => entry.Id == first.Id ? first : entry).ToImmutableList(),
+                    ActiveAssistantId = first.Id,
+                };
+            }
+        }
+        // Unsigned parts use the web's ordered persisted-prefix fallback, within
+        // the current causal interval. Unrelated text is never a replacement.
+        if (isContentPart && presentation is { Phase: not null, RunId: not null, BlockId: null } &&
+            state.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.Assistant)?.Presentation?.Phase
+                is { } lastPhase && lastPhase != presentation.Phase)
+        {
+            var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User ||
+                entry.Presentation is { TurnBoundary: true } or { IsIndependent: true } ||
+                (entry.Presentation?.RunId ?? entry.ToolRunId) is { } run && run != presentation.RunId) + 1;
+            var incomingText = text.Trim();
+            var cursor = 0;
+            var lastMatch = -1;
+            var lastStart = 0;
+            for (var index = start; index < state.Entries.Count; index++)
+            {
+                var candidate = state.Entries[index];
+                if (candidate.Kind == ChatTimelineItemKind.Assistant &&
+                    SameAssistantSegment(candidate.Presentation, presentation) &&
+                    candidate.Presentation is { BlockId: null } &&
+                    candidate.Presentation.RunId == presentation.RunId)
+                {
+                    var existingText = candidate.Text.Trim();
+                    if (existingText.Length == 0 || incomingText.Length == 0)
+                        continue;
+                    while (cursor > 0 && cursor < incomingText.Length && char.IsWhiteSpace(incomingText[cursor]))
+                        cursor++;
+                    var remaining = incomingText[cursor..];
+                    if (existingText.StartsWith(remaining, StringComparison.Ordinal))
+                        return state with
+                        {
+                            Entries = state.Entries.SetItem(index, candidate with
+                            {
+                                IsStreaming = streaming,
+                            }),
+                        };
+                    if (remaining.StartsWith(existingText, StringComparison.Ordinal))
+                    {
+                        lastMatch = index;
+                        lastStart = cursor;
+                        cursor += existingText.Length;
+                    }
+                    else if (cursor > 0)
+                        break;
+                }
+            }
+            if (lastMatch >= 0 && state.Entries[lastMatch].IsStreaming)
+                return state with
+                {
+                    Entries = state.Entries.SetItem(lastMatch, state.Entries[lastMatch] with
+                    {
+                        Text = incomingText[lastStart..], IsStreaming = streaming,
+                    }),
+                };
+        }
+        // A supplied message/block identity can reconcile a cumulative snapshot in
+        // place across tool rows. Run IDs alone never identify a transcript row.
+        if (replace && presentation is { } incoming &&
+            (incoming.BlockId is not null || incoming.StreamItemId is not null))
+        {
+            for (var index = state.Entries.Count - 1; index >= 0; index--)
+            {
+                var candidate = state.Entries[index];
+                if (candidate.Kind == ChatTimelineItemKind.User)
+                    break;
+                if (candidate.Kind == ChatTimelineItemKind.Assistant &&
+                    SameAssistantSegment(candidate.Presentation, incoming, ignorePhase: true) &&
+                    candidate.Presentation?.BlockId == incoming.BlockId &&
+                    candidate.Presentation?.StreamItemId == incoming.StreamItemId)
+                {
+                    return state with
+                    {
+                        Entries = state.Entries.SetItem(index, candidate with
+                        {
+                            Text = text, IsStreaming = streaming,
+                            Presentation = incoming with { Phase = incoming.Phase ?? candidate.Presentation?.Phase },
+                        }),
+                    };
+                }
+                if (candidate.Presentation is { TurnBoundary: true } or { IsIndependent: true })
+                    break;
+            }
+        }
         if (state.ActiveAssistantId is { } aid)
         {
             var idx = state.Entries.FindIndex(e => e.Id == aid);
@@ -1079,7 +1314,9 @@ public static class ChatTimelineReducer
             // logic instead; its reconcile/byte-equal guards still collapse
             // the deltas-then-final case correctly because the streaming
             // preview remains marked IsStreaming=true.
-            if (idx >= 0 && idx == state.Entries.Count - 1)
+            if (idx >= 0 && idx == state.Entries.Count - 1 &&
+                (SameAssistantSegment(state.Entries[idx].Presentation, presentation) ||
+                 CanRefineUnphasedStream(state.Entries[idx], presentation, text)))
             {
                 var existing = state.Entries[idx];
                 // Even on the fast-path, if the incoming text is cumulative-
@@ -1100,14 +1337,15 @@ public static class ChatTimelineReducer
                 // agent.message.delta carrying " D: is mounted here." that
                 // would otherwise produce "...mounted here. D: is mounted here.".
                 var fastPathText = replace
-                    ? StripCumulativeTurnPrefix(state.Entries, text, idx)
+                    ? StripAssistantPrefix(state.Entries, text, idx, presentation)
                     : AppendWithOverlap(existing.Text, text);
                 return state with
                 {
                     Entries = state.Entries.SetItem(idx, existing with
                     {
                         Text = fastPathText,
-                        IsStreaming = streaming
+                        IsStreaming = streaming,
+                        Presentation = presentation ?? existing.Presentation,
                     })
                 };
             }
@@ -1170,6 +1408,8 @@ public static class ChatTimelineReducer
                     // this PR fixes for the exact-match case.
                     var hasInterveningEntries = (li < state.Entries.Count - 1);
                     var shouldMerge = !hasInterveningEntries &&
+                        (SameAssistantSegment(candidate.Presentation, presentation) ||
+                         CanRefineUnphasedStream(candidate, presentation, text)) &&
                         (string.Equals(candidate.Text, text, StringComparison.Ordinal)
                          || (reconcilePrevious && candidate.IsStreaming));
                     if (!shouldMerge)
@@ -1192,7 +1432,7 @@ public static class ChatTimelineReducer
                     // test).
                     var mergedText = string.Equals(candidate.Text, text, StringComparison.Ordinal)
                         ? text
-                        : StripCumulativeTurnPrefix(state.Entries, text, excludeIndex: li);
+                        : StripAssistantPrefix(state.Entries, text, li, presentation);
 
                     // Duplicate-resend / gateway-regression guard: if the
                     // incoming cumulative is fully consumed by the OTHER
@@ -1208,14 +1448,16 @@ public static class ChatTimelineReducer
                         Entries = state.Entries.SetItem(li, candidate with
                         {
                             Text = mergedText,
-                            IsStreaming = streaming
+                            IsStreaming = streaming,
+                            Presentation = presentation ?? candidate.Presentation,
                         })
                     };
                 }
                 // Stop scanning once we hit a User entry — that's a turn
                 // boundary, the assistant entry above it belongs to a
                 // previous turn and must not be reconciled into.
-                if (candidate.Kind == ChatTimelineItemKind.User)
+                if (candidate.Kind == ChatTimelineItemKind.User ||
+                    candidate.Presentation is { TurnBoundary: true } or { IsIndependent: true })
                     break;
             }
         }
@@ -1230,7 +1472,7 @@ public static class ChatTimelineReducer
         // bubble. Strip that prefix so the new bubble shows only the new
         // segment.
         var effectiveText = replace
-            ? StripCumulativeTurnPrefix(state.Entries, text, excludeIndex: -1)
+            ? StripAssistantPrefix(state.Entries, text, -1, presentation)
             : text;
 
         // DUPLICATE-RESEND: when the gateway re-emits a final chat.message
@@ -1249,7 +1491,8 @@ public static class ChatTimelineReducer
         var id = $"e{state.NextId}";
         return state with
         {
-            Entries = state.Entries.Add(new(id, ChatTimelineItemKind.Assistant, effectiveText, IsStreaming: streaming)),
+            Entries = state.Entries.Add(new(id, ChatTimelineItemKind.Assistant, effectiveText, IsStreaming: streaming,
+                Presentation: presentation)),
             NextId = state.NextId + 1,
             // INVARIANT: ActiveAssistantId is only ever assigned here — it is
             // always the id of the most recently *created* Assistant entry.
@@ -1259,6 +1502,46 @@ public static class ChatTimelineReducer
             // frontier.
             ActiveAssistantId = id
         };
+    }
+
+    private static bool SameAssistantSegment(
+        OpenClaw.Shared.ChatMessagePresentation? left,
+        OpenClaw.Shared.ChatMessagePresentation? right,
+        bool ignorePhase = false,
+        bool ignoreBlockId = false) =>
+        (ignorePhase || left?.Phase == right?.Phase) &&
+        (left?.RunId is null || right?.RunId is null || left.RunId == right.RunId) &&
+        (left?.MessageId is null || right?.MessageId is null || left.MessageId == right.MessageId) &&
+        (ignoreBlockId || left?.BlockId is null || right?.BlockId is null || left.BlockId == right.BlockId) &&
+        left?.StreamItemId == right?.StreamItemId &&
+        left?.ProvenanceKind == right?.ProvenanceKind && left?.SourceSessionKey == right?.SourceSessionKey &&
+        left?.SourceTool == right?.SourceTool && left?.SenderSession == right?.SenderSession &&
+        left?.SenderAgentId == right?.SenderAgentId &&
+        left?.AutomationRunId == right?.AutomationRunId &&
+        (right?.TurnBoundary != true || left?.MessageId is not null && left.MessageId == right.MessageId);
+
+    private static bool CanRefineUnphasedStream(
+        ChatTimelineItem entry, OpenClaw.Shared.ChatMessagePresentation? incoming, string text) =>
+        entry.IsStreaming && entry.Text.Length > 0 && text.Length > 0 &&
+        entry.Presentation is { Phase: null, RunId: not null } previous &&
+        incoming is { Phase: not null, RunId: not null } && previous.RunId == incoming.RunId &&
+        SameAssistantSegment(previous, incoming, ignorePhase: true) &&
+        (text.StartsWith(entry.Text, StringComparison.Ordinal) || entry.Text.StartsWith(text, StringComparison.Ordinal));
+
+    private static string StripAssistantPrefix(
+        System.Collections.Immutable.ImmutableList<ChatTimelineItem> entries,
+        string text, int excludeIndex, OpenClaw.Shared.ChatMessagePresentation? presentation)
+    {
+        // Explicit segments carry their own text, not the legacy flattened turn.
+        // Stripping another phase/run's prefix would silently remove authored text.
+        if (presentation is { Phase: not null } or { BlockId: not null } or { StreamItemId: not null } ||
+            presentation?.TurnBoundary == true || presentation?.IsIndependent == true)
+            return text;
+        if (presentation?.RunId is not null &&
+            entries.Any(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation?.RunId is { } run && run != presentation.RunId))
+            return text;
+        return StripCumulativeTurnPrefix(entries, text, excludeIndex);
     }
 
     /// <summary>
@@ -1410,25 +1693,42 @@ public static class ChatTimelineReducer
         return remaining;
     }
 
-    static ChatTimelineState UpsertReasoning(ChatTimelineState state, string text, bool replace)
+    static ChatTimelineState UpsertReasoning(ChatTimelineState state, string text, bool replace,
+        OpenClaw.Shared.ChatMessagePresentation? presentation = null, bool streaming = false, bool attachToAssistant = false)
     {
         if (state.ActiveReasoningId is { } rid)
         {
             var idx = state.Entries.FindIndex(e => e.Id == rid);
-            if (idx >= 0)
+            if (idx >= 0 && idx == state.Entries.Count - 1 &&
+                SameAssistantSegment(state.Entries[idx].Presentation, presentation))
             {
                 var existing = state.Entries[idx];
                 return state with
                 {
-                    Entries = state.Entries.SetItem(idx, existing with { Text = replace ? text : existing.Text + text })
+                    Entries = state.Entries.SetItem(idx, existing with
+                    {
+                        Text = replace ? text : existing.Text + text,
+                        Presentation = presentation ?? existing.Presentation,
+                        IsStreaming = streaming,
+                    })
                 };
             }
         }
 
         var id = $"e{state.NextId}";
+        var beforeAssistant = attachToAssistant && presentation?.RunId is not null
+            ? state.Entries.FindIndex(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation?.RunId == presentation.RunId &&
+                (presentation.MessageId is not null
+                    ? entry.Presentation.MessageId == presentation.MessageId
+                    : entry.Id == state.ActiveAssistantId) &&
+                SameAssistantSegment(entry.Presentation, presentation, ignorePhase: true, ignoreBlockId: true))
+            : -1;
         return state with
         {
-            Entries = state.Entries.Add(new(id, ChatTimelineItemKind.Reasoning, text)),
+            Entries = state.Entries.Insert(beforeAssistant >= 0 ? beforeAssistant : state.Entries.Count,
+                new(id, ChatTimelineItemKind.Reasoning, text,
+                IsStreaming: streaming, Presentation: presentation)),
             NextId = state.NextId + 1,
             ActiveReasoningId = id
         };
@@ -1520,7 +1820,7 @@ public static class ChatTimelineReducer
         for (var i = 0; i < entries.Count; i++)
         {
             if (i == preserveIdx) continue;
-            if (entries[i].Kind == ChatTimelineItemKind.Assistant && entries[i].IsStreaming)
+            if (entries[i].Kind is ChatTimelineItemKind.Assistant or ChatTimelineItemKind.Reasoning && entries[i].IsStreaming)
             {
                 entries = entries.SetItem(i, entries[i] with { IsStreaming = false });
             }
@@ -1573,6 +1873,7 @@ public static class ChatTimelineReducer
         {
             Entries = entries,
             TurnActive = false,
+            ReasoningStream = null,
             ActiveAssistantId = null,
             ActiveReasoningId = null,
             ActiveToolCallId = null,

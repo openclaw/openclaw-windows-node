@@ -184,7 +184,7 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
         public void Call(string name, params object[] args) =>
             _type.GetMethod(name, Members)!.Invoke(_instance, args);
         public void Request(int index, string key, string tailKey) =>
-            Call("Request", index, 240, key, tailKey, false, 0L);
+            Call("Request", index, 240, key, tailKey, false, 0L, false);
         public void Dispose() => ((IDisposable)_instance).Dispose();
     }
 }

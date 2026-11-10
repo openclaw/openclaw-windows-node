@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using System.Text.Json;
 #if !OPENCLAW_TRAY_TESTS
 using OpenClawTray.Helpers;
 #endif
@@ -48,6 +49,7 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
             // Cancellation is part of retiring the binding, before observers run
             // or another serialized transport write can use the old authority.
             cancellation.Cancel();
+            ToolDetailsInvalidated?.Invoke(this, EventArgs.Empty);
             StatusChanged?.Invoke(this, ConnectionStatus.Disconnected);
             if (next is not null)
             {
@@ -65,6 +67,7 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
                 EventHandler<AgentEventInfo> agent = (_, value) => Forward(() => AgentEventReceived?.Invoke(this, value));
                 EventHandler<ModelsListInfo> models = (_, value) => Forward(() => ModelsListUpdated?.Invoke(this, value));
                 EventHandler catalog = (_, _) => Forward(() => ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty));
+                EventHandler details = (_, _) => Forward(() => ToolDetailsInvalidated?.Invoke(this, EventArgs.Empty));
                 EventHandler<GatewayQuestionEvent> question = (_, value) => Forward(() => QuestionReceived?.Invoke(this, value));
                 EventHandler protocol = (_, _) => Forward(() => QuestionProtocolError?.Invoke(this, EventArgs.Empty));
                 next.StatusChanged += status;
@@ -75,6 +78,7 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
                 next.AgentEventReceived += agent;
                 next.ModelsListUpdated += models;
                 next.ModelCatalogInvalidated += catalog;
+                next.ToolDetailsInvalidated += details;
                 var questions = next as IChatQuestionGateway;
                 if (questions is not null) { questions.QuestionReceived += question; questions.QuestionProtocolError += protocol; }
                 _unsubscribe = () =>
@@ -87,6 +91,7 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
                     next.AgentEventReceived -= agent;
                     next.ModelsListUpdated -= models;
                     next.ModelCatalogInvalidated -= catalog;
+                    next.ToolDetailsInvalidated -= details;
                     if (questions is not null) { questions.QuestionReceived -= question; questions.QuestionProtocolError -= protocol; }
                 };
                 StatusChanged?.Invoke(this, next.CurrentStatus);
@@ -127,6 +132,9 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
     private Task Invoke(Func<IChatGatewayBridge, CancellationToken, Task> action) => Invoke(async (inner, token) => { await action(inner, token).ConfigureAwait(false); return true; });
 
     public bool IsConnected => Read(inner => inner.IsConnected, false);
+    public ChatToolDetailsProfileState ToolDetailsProfileState => Read(inner => inner.ToolDetailsProfileState, default);
+    public bool ToolDetailsAvailable => ToolDetailsProfileState.IsAvailable;
+    public long? ChatMessageReadConnectionEpoch => Read(inner => inner.ChatMessageReadConnectionEpoch, null);
     public ConnectionStatus CurrentStatus => Read(inner => inner.CurrentStatus, ConnectionStatus.Disconnected);
     public string? MainSessionKey => Read(inner => inner.MainSessionKey, null);
     public bool HasHandshakeSnapshot => Read(inner => inner.HasHandshakeSnapshot, false);
@@ -145,11 +153,20 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
     public Task<bool> CompactSessionAsync(string key, int maxLines = 400) => Invoke(inner => inner.CompactSessionAsync(key, maxLines));
     public Task<SessionCompactResult> CompactSessionDetailedAsync(string key) => Invoke(inner => inner.CompactSessionDetailedAsync(key));
     public Task RequestSessionsAsync() => Invoke(inner => inner.RequestSessionsAsync());
+    public Task<JsonElement> RequestAgentIdentityAsync(string agentId) => Invoke(inner => inner.RequestAgentIdentityAsync(agentId));
     public Task PatchSessionModelAsync(string key, string model) => Invoke(inner => inner.PatchSessionModelAsync(key, model));
     public Task ClearSessionModelAsync(string key) => Invoke(inner => inner.ClearSessionModelAsync(key));
     public Task PatchSessionThinkingLevelAsync(string key, string level) => Invoke(inner => inner.PatchSessionThinkingLevelAsync(key, level));
     public Task ClearSessionThinkingLevelAsync(string key) => Invoke(inner => inner.ClearSessionThinkingLevelAsync(key));
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? key) => Invoke(inner => inner.RequestChatHistoryAsync(key));
+    public Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string key, ChatHistoryPageRequest page) => Invoke(inner => inner.RequestOlderChatHistoryAsync(key, page));
+    public Task<ChatMessageReadResult> RequestChatMessageAsync(string key, string sessionId, string messageId, int maxChars,
+        long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        Invoke(async (inner, token) =>
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, cancellationToken);
+            return await inner.RequestChatMessageAsync(key, sessionId, messageId, maxChars, expectedConnectionEpoch, linked.Token).ConfigureAwait(false);
+        });
     public Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(string key, ChatMediaContentInfo media, CancellationToken cancellationToken = default) =>
         Invoke(async (inner, token) => { using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, cancellationToken); return await inner.ResolveAssistantMediaAsync(key, media, linked.Token).ConfigureAwait(false); });
     public Task<AssistantFileDownloadStatus> DownloadAssistantFileAsync(string key, ChatMediaContentInfo media, CancellationToken cancellationToken = default) =>
@@ -168,6 +185,7 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
     public event EventHandler<ModelsListInfo>? ModelsListUpdated;
     public event EventHandler? ModelCatalogInvalidated;
+    public event EventHandler? ToolDetailsInvalidated;
     public event EventHandler<GatewayQuestionEvent>? QuestionReceived;
     public event EventHandler? QuestionProtocolError;
 
@@ -193,6 +211,7 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
             AgentEventReceived = null;
             ModelsListUpdated = null;
             ModelCatalogInvalidated = null;
+            ToolDetailsInvalidated = null;
             QuestionReceived = null;
             QuestionProtocolError = null;
         }

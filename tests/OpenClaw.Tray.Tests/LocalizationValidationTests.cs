@@ -27,6 +27,11 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Usage page symbols: the lower-bound sign, the unavailable-value placeholder and
+        // the UTC abbreviation read the same in every supported language.
+        "Usage_AtLeastFormat",
+        "Usage_EmptyValue",
+        "Usage_TimeZone_Utc",
         // Custom model provider API types are protocol product names, and the
         // provider/model ID placeholders are literal identifier examples.
         "DefaultModelPage_CustomApiAnthropic.Content",
@@ -64,6 +69,8 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Board widget content-kind chip: the HTML file-format name.
+        "Dashboards_Widget_KindHtml",
         // Canonical product surface name, shared with the existing Dashboard action.
         "ChatDashboardButton.Content",
         // Native engine executable/product name. Keep the exact llama-server
@@ -84,6 +91,10 @@ public class LocalizationValidationTests
         // Punctuation-only layout format; localized parts are supplied by
         // separate placeholders and should keep the same visual separator.
         "ConfigPage_AccessSummaryFormat",
+        // Inbox layout formats: a localized label/title plus a count or state
+        // supplied by separate, already localized placeholders.
+        "Inbox_TabCountFormat",
+        "Inbox_RowAutomationNameFormat",
         // NodesPage detail labels — "Version", "Hardware", and "PATH" are
         // technical loanwords that read the same in every supported locale
         // in this app's audience. Translating them adds no clarity and
@@ -116,11 +127,9 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_NodeStatus_Disabled",
-        // About / Gateway info strings added as part of the Windows-native
-        // settings reorg are seeded in English across locales until the next
-        // translation pass lands. They are still present in every locale file
-        // so key parity stays strict; this set only documents deferred copy.
-        "SettingsPage_About.Text",
+        // Gateway info strings remain seeded in English across locales until
+        // the next translation pass; they are still present everywhere so
+        // resource-key parity remains strict.
         "SettingsPage_GatewayInfoExpander.Header",
         "SettingsPage_GatewayInfoLabel_Version.Text",
         "SettingsPage_GatewayInfoLabel_Protocol.Text",
@@ -265,8 +274,8 @@ public class LocalizationValidationTests
         "ConfigPage_ConfigIsReadOnly",
         // ConnectionPage gateway terminal controls — surfaced after PR #597
         // landed in master. Seeded English-only across all 5 locales using the
-        // same deferred-translation pattern as the AgentEventsPage
-        // / CronPage entries above. The Description_Format key takes the WSL
+        // same deferred-translation pattern as the CronPage entries above.
+        // The Description_Format key takes the WSL
         // distro name as {0} and is formatted in ConnectionPage.xaml.cs.
         "ConnectionPage_GatewayHostControlsDescription_Format",
         // GatewayHostAccess plan strings (terminal label / tooltip / disabled
@@ -285,16 +294,12 @@ public class LocalizationValidationTests
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
-        "Command_GoToAgentEvents_Title",
-        "Command_GoToAgentEvents_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
         "Command_GoToWorkspace_Subtitle",
         "Command_GoToChannels_Title",
         "Command_GoToChannels_Subtitle",
-        "Command_GoToInstances_Title",
-        "Command_GoToInstances_Subtitle",
         "Command_GoToConfig_Title",
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
@@ -631,15 +636,14 @@ public class LocalizationValidationTests
         // Approved Workspace copy is seeded consistently in English while
         // locale review is pending, matching the existing deferred-copy policy.
         || key.StartsWith("WorkspaceShell_", StringComparison.Ordinal)
-        // Title-bar status pill + notifications bell flyout strings. Seeded
-        // English-only across all five .resw files using the deferred-translation
-        // pattern; translations land in a follow-up.
+        // Title-bar status pill strings. Seeded English-only across all five
+        // .resw files using the deferred-translation pattern; translations
+        // land in a follow-up.
         || key.StartsWith("HubWindow_StatusFlyout_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_StatusPill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Pill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Role_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Bell_", StringComparison.Ordinal)
-        || key.StartsWith("NotificationsFlyout_", StringComparison.Ordinal)
         // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
         // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
         // five .resw files with English values. Translations land in a follow-up.
@@ -1128,7 +1132,7 @@ public class LocalizationValidationTests
 
             if (identicalLocales.Count != localeResw.Count)
             {
-                // These ordinary words are spelled identically in these languages.
+                // These ordinary words and compact duration units are identical in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
                     "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
@@ -1137,13 +1141,30 @@ public class LocalizationValidationTests
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
                         or "HubWindow_NavigationViewItem_145.Content"
-                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
+                        or "Inbox_TabMentions" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Dashboards_Title" or "HubWindow_NavDashboards.Content" or "Dashboards_Live" => ["nl-nl"],
+                    // Usage page cognates: the natural term in these languages.
+                    "Usage_Metric_Tokens" => ["nl-nl", "pt-br"],
+                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title" or "Usage_Options" => ["fr-fr"],
+                    "Usage_Facet_agent" or "Usage_Contributors_Agent" => ["fr-fr", "nl-nl"],
+                    "Usage_Facet_model" => ["nl-nl"],
+                    "Systems_Capability_Browser" or "Systems_Capability_Camera" => ["nl-nl"],
+                    "Systems_Capability_Canvas" => ["nl-nl", "pt-br"],
+                    "Systems_Capability_Notifications" or "Systems_Diagnostics" => ["fr-fr"],
+                    "Systems_Age_Days" => ["nl-nl", "pt-br"],
+                    "Systems_Age_Hours" => ["fr-fr", "pt-br"],
+                    "Systems_Age_Minutes" or "Systems_Age_Seconds" => ["fr-fr", "nl-nl", "pt-br"],
+                    "Systems_Stats_Title" => ["nl-nl"],
+                    "Systems_Number_0" => ["pt-br"],
+                    "Systems_Number_6" => ["fr-fr"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
                         "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],
+                    // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
+                    "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
                 };
                 if (naturalLoanwordLocales.Length > 0 &&

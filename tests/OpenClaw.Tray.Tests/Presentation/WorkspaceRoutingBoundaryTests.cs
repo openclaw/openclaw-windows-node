@@ -9,10 +9,15 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class WorkspaceRoutingBoundaryTests
 {
     [Theory]
-    [InlineData("workspace:unknown")]
-    [InlineData("workspace:agents:unknown")]
-    [InlineData("workspace:")]
-    public async Task UnknownRoute_ReturnsMcpErrorBeforeCreatingOrForwardingAnyWindow(string route)
+    [InlineData("workspace:unknown", "Unknown Workspace route")]
+    [InlineData("workspace:agents:unknown", "Unknown Workspace route")]
+    [InlineData("workspace:", "Unknown Workspace route")]
+    [InlineData("agentevents", "Unknown companion Settings route")]
+    [InlineData("agent:main:agentevents", "Unknown companion Settings route")]
+    [InlineData("unknown", "Unknown companion Settings route")]
+    public async Task UnknownRoute_ReturnsMcpErrorBeforeCreatingOrForwardingAnyWindow(
+        string route,
+        string expectedError)
     {
         var workspaceCalls = 0;
         var companionCalls = 0;
@@ -41,7 +46,7 @@ public sealed class WorkspaceRoutingBoundaryTests
         using var json = JsonDocument.Parse(response!);
         var result = json.RootElement.GetProperty("result");
         Assert.True(result.GetProperty("isError").GetBoolean());
-        Assert.Contains("Unknown Workspace route", result.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Contains(expectedError, result.GetProperty("content")[0].GetProperty("text").GetString());
         Assert.Equal(0, workspaceCalls);
         Assert.Equal(0, companionCalls);
     }
@@ -56,6 +61,8 @@ public sealed class WorkspaceRoutingBoundaryTests
     [InlineData("workspace:notifications", true)]
     [InlineData("workspace:agents", true)]
     [InlineData("workspace:sessions", true)]
+    [InlineData("general", false)]
+    [InlineData("command-center", false)]
     [InlineData("settings", false)]
     [InlineData("sessions", false)]
     [InlineData("cron", false)]
@@ -90,15 +97,48 @@ public sealed class WorkspaceRoutingBoundaryTests
     }
 
     [Fact]
+    public async Task AboutAdmission_KeepsItsOwnIdentityAndPropagatesTheHostResult()
+    {
+        string? section = null;
+        var host = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var admission = WorkspaceNavigation.DispatchAsync("about",
+            _ => throw new Xunit.Sdk.XunitException("About reached Workspace."),
+            tag => { section = WorkspaceNavigation.NormalizeSettingsTag(tag, "main"); return host.Task; },
+            _ => throw new Xunit.Sdk.XunitException("About reached Dashboard."));
+
+        Assert.Equal("about", section);
+        Assert.Equal(HubPageKind.About, HubPageRegistry.ResolvePage(section));
+        Assert.False(admission.IsCompleted);
+        host.SetResult(true);
+        Assert.True(await admission);
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("workspace:unknown")]
+    public void UnknownAdmissionRoute_DoesNotInvokeAnyHost(string route)
+    {
+        var calls = 0;
+        Assert.Throws<ArgumentException>(() =>
+        {
+            _ = WorkspaceNavigation.DispatchAsync(route,
+                _ => { calls++; return Task.FromResult(true); },
+                _ => { calls++; return Task.FromResult(true); },
+                _ => { calls++; return Task.FromResult(true); });
+        });
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
     public void NativeEntryPoints_UseTheValidatedBoundaryBeforeWindowSideEffects()
     {
         // retirement_condition: replace with native window tests when these adapters can run in Tray.Tests.
         var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
         var manager = File.ReadAllText(Path.Combine(root, "Services", "WindowManager.cs"));
         var workspace = File.ReadAllText(Path.Combine(root, "Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo, destination =>", manager);
-        Assert.Contains("tag => ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate, preserveCurrent: false, settingsTag: tag)", manager);
-        Assert.Contains("path => ((IAppCommands)Application.Current).OpenDashboard(path)", manager);
+        Assert.Contains("WorkspaceNavigation.DispatchAsync(navigateTo, destination =>", manager);
+        Assert.Matches(@"tag => Task.FromResult\(ShowWorkspace\(\s*WorkspaceDestination.Settings\(""settings""\), activate, preserveCurrent: false, settingsTag: tag\)\)", manager);
+        Assert.Contains("path => ((IAppCommands)Application.Current).TryOpenDashboardAsync(path)", manager);
         Assert.DoesNotContain("ShowCompanion", manager);
         Assert.Contains("WorkspaceNavigation.Dispatch(tag, _ => WorkspaceRouteRequested?.Invoke(tag), NavigateCompanion,",
             File.ReadAllText(Path.Combine(root, "Controls", "SettingsShellView.xaml.cs")));

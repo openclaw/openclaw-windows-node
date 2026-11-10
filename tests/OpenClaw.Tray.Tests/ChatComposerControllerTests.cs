@@ -1308,10 +1308,17 @@ public sealed class ChatComposerControllerTests
     [Fact]
     public async Task Dispose_VoiceCancellationCallbackCanWaitForReentrantControllerWork()
     {
+        static Task RunOnDedicatedThread(Action action) => Task.Factory.StartNew(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            action();
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
         var voiceRequestCalls = 0;
         CancellationToken voiceToken = default;
-        var voiceResult = new TaskCompletionSource<string?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        // Let ReceiveVoiceAsync finish on the dedicated completion thread. This
+        // checks lock ownership, not whether the shared pool schedules within 2 s.
+        var voiceResult = new TaskCompletionSource<string?>();
         var cleanupReached = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var actions = new ChatComposerHostActions(
@@ -1326,7 +1333,7 @@ public sealed class ChatComposerControllerTests
             null);
         var (vm, controller, _, _) = MakeController(actions);
         controller.TestOnlyVoiceOperationCleanedUp = () => cleanupReached.TrySetResult();
-        controller.StartVoiceRecording();
+        await RunOnDedicatedThread(controller.StartVoiceRecording);
         Assert.True(voiceToken.CanBeCanceled);
 
         Task? callbackWork = null;
@@ -1335,15 +1342,15 @@ public sealed class ChatComposerControllerTests
         using var registration = voiceToken.Register(() =>
         {
             callbackInvoked = true;
-            callbackWork = Task.Run(async () =>
+            callbackWork = RunOnDedicatedThread(() =>
             {
                 voiceResult.TrySetResult("late transcript");
-                await cleanupReached.Task;
+                cleanupReached.Task.GetAwaiter().GetResult();
             });
             callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
         });
 
-        var disposeTask = Task.Run(controller.Dispose);
+        var disposeTask = RunOnDedicatedThread(controller.Dispose);
         var exception = await Record.ExceptionAsync(
             async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
         if (callbackWork is not null)

@@ -4,7 +4,7 @@
 
 The Setup Engine is a **config-driven system** for provisioning an OpenClaw WSL gateway from scratch. It consists of two setup projects plus the tray host:
 
-1. **`OpenClaw.SetupEngine`** - Headless pipeline library. Runs 24 steps sequentially with full JSONL logging, transaction journal, and rollback support.
+1. **`OpenClaw.SetupEngine`** - Headless pipeline library. Runs 34 steps sequentially with full JSONL logging, transaction journal, and rollback support.
 2. **`OpenClaw.SetupEngine.UI`** - WinUI3 setup window/pages that wrap the same pipeline with a fluent wizard UI.
 3. **`OpenClaw.Tray.WinUI`** - The only shipped WinUI executable. It hosts `SetupWindow` directly and self-restarts after successful setup.
 
@@ -290,9 +290,8 @@ src/OpenClaw.SetupEngine.UI/
     └── CompletePage.xaml / .cs       # Mascot status badge, summary, startup toggle
 ```
 
-The pipeline runs 24 steps (see `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` for
-the authoritative order. This doc's step table below predates the 4 Tailscale steps and is not
-fully current). UI adds ~10 more files.
+The pipeline runs 34 steps (see `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` for
+the authoritative order). UI adds ~10 more files.
 
 ---
 
@@ -429,41 +428,51 @@ Environment-only knobs without a config-file equivalent:
 
 ---
 
-## Pipeline Steps (24 total)
+## Pipeline Steps (34 total)
 
-> Note: this table predates the 4 Tailscale setup steps; the current pipeline runs 24 steps
-> total. See `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` for the authoritative,
-> current order. Fixing this table fully is out of scope for the E0 file-split PR.
+> `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` is the authoritative order.
+> Update this table when that list changes.
 
-Executed sequentially. Each step is a small class (30–120 lines) in its own file under
-`src/OpenClaw.SetupEngine/` (e.g. `PreflightOsStep.cs`).
+Executed sequentially. Most steps are small classes in their own files under
+`src/OpenClaw.SetupEngine/` (e.g. `PreflightOsStep.cs`); Local AI steps share
+`LocalAiSetupSteps.cs` and `LocalAiGatewayConfiguration.cs`.
 
 | # | Step Class | What It Does |
 |---|-----------|-------------|
 | 1 | `ValidateDistroInstallPathStep` | Validate the configured WSL install path before destructive setup |
-| 2 | `PreflightOsStep` | Validate Windows 64-bit, version ≥ 22H2 |
-| 3 | `PreflightWslStep` | Verify WSL is installed and supports direct named clean installs |
-| 4 | `PreflightWindowsTailscaleStep` | Validate optional Windows Tailscale prerequisites |
-| 5 | `CleanupStaleDistroStep` | Unregister a leftover WSL distro only when durable app ownership and the live current-user registration base path agree, and remove an orphaned VHD directory automatically only with a path-bound marker; explicit destructive confirmation may override |
-| 6 | `CleanupStaleGatewayStep` | Stop orphaned gateway service, remove config |
-| 7 | `PreflightPortStep` | Check gateway port is available |
-| 8 | `CreateWslInstanceStep` | Directly install a fresh app-owned WSL distro; never export a user's Ubuntu distro |
-| 9 | `ConfigureWslInstanceStep` | Write wsl.conf, create user, set dirs |
-| 10 | `ValidateWslLockdownStep` | Verify WSL isolation settings are applied |
-| 11 | `InstallCliStep` | Run install script inside WSL |
-| 12 | `InstallTailscaleStep` | Install optional Tailscale support inside the managed WSL instance |
-| 13 | `AuthorizeTailscaleStep` | Authorize the configured Tailscale identity and trust mode |
-| 14 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
-| 15 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
-| 16 | `StartGatewayStep` | Start service, poll `/startupz` until started (90s timeout) |
-| 17 | `FinalizeTailscaleServeStep` | Apply the final Tailscale Serve endpoint after gateway startup |
-| 18 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
-| 19 | `PairOperatorStep` | WebSocket operator connection + device approval |
-| 20 | `PairNodeStep` | WebSocket node connection + capability registration |
-| 21 | `VerifyEndToEndStep` | End-to-end health check (operator → node round trip) |
-| 22 | `RunGatewayWizardStep` | Run/configure the gateway wizard unless skipped |
-| 23 | `WindowsNodeBootstrapContextStep` | Inject Windows-node context into the WSL workspace `AGENTS.md` |
-| 24 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
+| 2 | `PreflightOsStep` | Require 64-bit Windows and log the OS version |
+| 3 | `PreflightLocalAiHardwareStep` | Select a qualified NVIDIA GPU/runtime/model plan before setup mutates WSL, downloads artifacts or changes Gateway config |
+| 4 | `PreflightWslStep` | Verify WSL is installed and supports direct named clean installs |
+| 5 | `PreflightWindowsTailscaleStep` | Validate optional Windows Tailscale prerequisites |
+| 6 | `EnsureWslPlatformStep` | Perform the first WSL mutation after read-only inspection, before Local AI downloads |
+| 7 | `ReconcileLocalAiInstallationStep` | Reuse a complete manifest-owned Local AI installation after catalog verification |
+| 8 | `AcquireLocalAiRuntimeStep` | Install the pinned llama.cpp runtime archives as one atomic component |
+| 9 | `AcquireLocalAiModelStep` | Download the recipe-selected immutable GGUF model |
+| 10 | `PersistLocalAiManifestStep` | Record the Local AI ownership and qualification receipt |
+| 11 | `StartLocalAiRuntimeStep` | Start the Companion-owned llama-server router without preloading a model |
+| 12 | `ConfigureLocalAiWslNetworkingStep` | Enable mirrored WSL networking only with explicit consent |
+| 13 | `CleanupStaleDistroStep` | Unregister a leftover WSL distro only when durable app ownership and the live current-user registration base path agree, and remove an orphaned VHD directory automatically only with a path-bound marker; explicit destructive confirmation may override |
+| 14 | `CleanupStaleGatewayStep` | Stop orphaned gateway service, remove config |
+| 15 | `PreflightPortStep` | Check gateway port is available |
+| 16 | `CreateWslInstanceStep` | Directly install a fresh app-owned WSL distro; never export a user's Ubuntu distro |
+| 17 | `ConfigureWslInstanceStep` | Write wsl.conf, create user, set dirs |
+| 18 | `ValidateWslLockdownStep` | Verify WSL isolation settings are applied |
+| 19 | `InstallCliStep` | Run install script inside WSL |
+| 20 | `VerifyLocalAiWslStep` | Prove the app-owned WSL distro can reach the native loopback router |
+| 21 | `InstallTailscaleStep` | Install optional Tailscale support inside the managed WSL instance |
+| 22 | `AuthorizeTailscaleStep` | Authorize the configured Tailscale identity and trust mode |
+| 23 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
+| 24 | `ConfigureLocalAiGatewayStep` | Connect the Gateway to the Local AI provider and primary model |
+| 25 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
+| 26 | `StartGatewayStep` | Start service, poll `/startupz` until started (90s timeout) |
+| 27 | `FinalizeTailscaleServeStep` | Apply the final Tailscale Serve endpoint after gateway startup |
+| 28 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
+| 29 | `PairOperatorStep` | WebSocket operator connection + device approval |
+| 30 | `PairNodeStep` | WebSocket node connection + capability registration |
+| 31 | `VerifyEndToEndStep` | End-to-end health check (operator → node round trip) |
+| 32 | `RunGatewayWizardStep` | Run/configure the gateway wizard unless skipped |
+| 33 | `WindowsNodeBootstrapContextStep` | Inject Windows-node context into the WSL workspace `AGENTS.md` |
+| 34 | `StartKeepaliveStep` | Background WSL keepalive to prevent VM shutdown |
 
 Managed WSL setup passes the Node version pinned by `GatewayInstallPolicy` to
 the official installer, then verifies the installed runtime against that same
@@ -705,6 +714,12 @@ Structured JSONL logger. Records sanitized entries for:
 - Errors with stack traces
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
+
+The setup window owns the native Gateway `native-setup-*.jsonl` file sink and
+keeps it available while the staged session is active. When the window requests
+disposal, an active setup operation retains the sink through cancellation
+cleanup. The sink closes after the final operation lease ends. A missing or
+failed file sink still leaves entries in memory only.
 
 ### Uninstall onboarding reset
 
