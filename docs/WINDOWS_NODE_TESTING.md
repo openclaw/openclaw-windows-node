@@ -44,9 +44,15 @@ workaround from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
 [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865),
-not evidence of a released native WinUI fix. Keep the existing row-targeted
-`StartBringItemIntoView` scrolling rather than the application-side extent-only
-workaround from #1407.
+not evidence of a released native WinUI fix. Keep row-targeted navigation rather
+than the application-side extent-only workaround from #1407. The scroll owner
+stages `ItemsRepeater.GetOrCreateElement` and `UIElement.StartBringIntoView` across
+natural layout, with settled geometry and renewed identity checks. Do not restore
+the synchronous `ItemsView.StartBringItemIntoView` call: a captured native hang
+and compiled-runtime inspection match the recycled-container loop fixed by
+[microsoft/microsoft-ui-xaml#12320](https://github.com/microsoft/microsoft-ui-xaml/pull/12320).
+This application mitigation does not replace the runtime or prove that the separate
+animated-scroll layout-cycle issue is fixed.
 
 Rechecked on 2026-10-22: `0.1.0-preview.16` remains the latest published version,
 including previews, in the authoritative NuGet feeds for

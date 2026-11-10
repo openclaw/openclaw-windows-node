@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
-using OpenClawTray.Helpers;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
@@ -79,11 +78,9 @@ internal static class ReactorChatPendingMessages
                 Grid([GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                     OutlineIcon(WaitingIconData, "ChatQueueIconStyle", $"ChatQueueWaitingIcon_{message.Id}")
                         .VAlign(VerticalAlignment.Center).Margin(0, 0, gap, 0).Grid(column: 0),
-                    Border(TextBlock(FluentIconCatalog.Operator)
-                            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(IconSize)
-                            .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-                        .Size(avatarSize, avatarSize).CornerRadius(avatarSize / 2)
-                        .Background(Theme.Ref("PersonPictureEllipseFillThemeBrush"))
+                    PersonPicture().DisplayName(context.UserDisplayName)
+                        .Set(picture => picture.ProfilePicture = context.UserProfilePicture)
+                        .Size(avatarSize, avatarSize).IsHitTestVisible(false)
                         .AccessibilityView(AccessibilityView.Raw)
                         .AutomationId($"ChatQueueAvatar_{message.Id}")
                         .VAlign(VerticalAlignment.Center).Margin(0, 0, gap, 0).Grid(column: 1),

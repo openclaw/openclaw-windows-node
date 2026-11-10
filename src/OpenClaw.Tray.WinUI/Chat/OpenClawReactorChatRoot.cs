@@ -30,7 +30,9 @@ public sealed record OpenClawReactorChatRootProps(
     Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
     bool InitialThreadIsExplicitSelection = true,
-    IChatAgentRosterSource? AgentRosterSource = null);
+    IChatAgentRosterSource? AgentRosterSource = null,
+    string UserDisplayName = "",
+    ImageSource? UserProfilePicture = null);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -331,7 +333,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ? snapshot.Threads.Where(child => !child.IsArchived
                     && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
                 : [],
-            ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null);
+            ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null,
+            UserDisplayName: props.UserDisplayName,
+            UserProfilePicture: props.UserProfilePicture);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);

@@ -325,6 +325,13 @@ follow mode; moving away stops it. No renderer performs its own scroll loop.
 An explicit jump in an already laid-out view drains pending layout work before
 dispatch instead of waiting for a future layout-change event.
 Programmatic realization focus does not cancel navigation.
+Item-target navigation uses the existing `ItemsRepeater.GetOrCreateElement`,
+waits for stable rendered row geometry, then dispatches `UIElement.StartBringIntoView`
+after rechecking the row index, source identity and navigation generation.
+It never calls the synchronous `ItemsView.StartBringItemIntoView` path, whose
+recycled-container ancestor loop can hang the released runtime
+([upstream fix](https://github.com/microsoft/microsoft-ui-xaml/pull/12320)).
+Realization is bounded and is cancelled by input, completion, unload or replacement.
 A viewport resize can arm one additional discrete tail request if realizing variable-height
 rows moves the extent away from a followed tail. This correction waits for
 layout, a rendering boundary, and an idle scroll view. It adjusts the offset to
@@ -399,10 +406,13 @@ above the composer, separate from the virtualized transcript. `ReactorChatPendin
 owns this presentation; the provider still owns ordering, dispatch, cancellation and promotion.
 The panel uses `ChatCardBrush`, `ChatStrokeBrush`, the composer's 20px radius and
 the shared reading width and gutters. Rows use native outline list/return and trash icons
-at 14px, a 20px circular operator-avatar fallback (18px at widths <=560px),
+at 14px, a 20px native `PersonPicture` (18px at widths <=560px),
 selectable 13/18 primary text and an always-visible 32px trash target. The 13,6,4,6
 row insets keep the trash center 20px from the right content edge while retaining
 the larger native hit target. Column gaps are 8px, or 6px on narrow layouts.
+The avatar uses the sidebar's current user image and profile name, with the same
+native initials fallback and generic person when no profile is known. It is
+decorative to accessibility, leaving the row's message and status unchanged.
 These proportions follow the [web queue reference](https://github.com/openclaw/openclaw/blob/fe12d0af7389290693346e816bc345e756168115/ui/src/styles/chat/composer-queue-content.css),
 not its queue editing or reordering behavior. Native text
 selection and its Copy context action remain available without a separate hover footer.

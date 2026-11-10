@@ -131,6 +131,8 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _renderAfterLayout;
     private EventHandler<object>? _rendering;
     private EventHandler<object>? _confirming;
+    private EventHandler<object>? _realizing;
+    private int _realizationVersion;
     private readonly InitialTailConfirmation _confirmation = new();
     private readonly PointerEventHandler _cancelPointerNavigation;
     private readonly PointerEventHandler _readerPointerPressed;
@@ -346,7 +348,7 @@ file sealed class InitialTailPositioner : IDisposable
                 && TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount))
             {
                 if (_explicitJumpPending)
-                    ConfirmInitialLanding(initialRequest.Version, request, scrollToBottom: true);
+                    ConfirmInitialLanding(initialRequest.Version, request);
                 else
                 {
                     // Reflow needs an offset correction, not another synchronous item realization.
@@ -361,14 +363,14 @@ file sealed class InitialTailPositioner : IDisposable
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
     }
 
-    private void ConfirmInitialLanding(int version, TailNavigationRequest request, bool scrollToBottom = false)
+    private void ConfirmInitialLanding(int version, TailNavigationRequest request)
     {
         DetachConfirmation();
         var generation = _confirmation.Reset(GetRequestItem(request));
-        if (!StartTailRequest(request, scrollToBottom))
+        if (!StartTailRequest(request))
         {
             _confirmation.Invalidate();
-            AwaitLayout(renderAfterLayout: scrollToBottom);
+            AwaitLayout(renderAfterLayout: _explicitJumpPending);
             return;
         }
 
@@ -466,7 +468,7 @@ file sealed class InitialTailPositioner : IDisposable
             }
 
             _confirmation.BeginAttempt(GetRequestItem(request));
-            if (!StartTailRequest(request, _explicitJumpPending))
+            if (!StartTailRequest(request))
             {
                 CompleteInitialLanding();
                 OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not start.");
@@ -484,6 +486,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void CompleteInitialLanding()
     {
+        CancelRealization();
         DetachConfirmation();
         _confirmation.Invalidate();
         _initialPending = false;
@@ -716,7 +719,7 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
-    private bool StartTailRequest(TailNavigationRequest request, bool scrollToBottom = false)
+    private bool StartTailRequest(TailNavigationRequest request)
     {
         if (itemsView.ScrollView is not { IsLoaded: true } scrollView)
             return false;
@@ -732,21 +735,87 @@ file sealed class InitialTailPositioner : IDisposable
 
         _following = true;
         RestoreTailAnchor();
-        if (scrollToBottom)
+        if (scrollView.Content is not ItemsRepeater repeater)
+            return false;
+
+        CancelRealization();
+        // Avoid ItemsView's synchronous layout and recycled-container ancestor loop.
+        // The repeater retains virtualization while the row is arranged naturally.
+        var target = repeater.GetOrCreateElement(request.Index) as FrameworkElement;
+        if (target is null)
+            return false;
+        var version = _version;
+        var realizationVersion = _realizationVersion;
+        var requiresFollowing = !_initialPending;
+        var frames = 0;
+        var settledFrames = 0;
+        (double Extent, double Viewport, double Top, double Height)? previous = null;
+        _realizing = (_, _) =>
         {
-            scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight,
-                new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
-        }
-        else
-        {
-            itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
+            if (_disposed || version != _version || realizationVersion != _realizationVersion || !itemsView.IsLoaded
+                || !ReferenceEquals(scrollView, itemsView.ScrollView)
+                || !TailNavigationPolicy.CanDispatch(requiresFollowing, _following)
+                || !TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount))
             {
-                AnimationDesired = false,
-                VerticalAlignmentRatio = 1.0,
-            });
-        }
+                DetachRealization();
+                return;
+            }
+            if (++frames > InitialTailConfirmation.MaxObservedFrames)
+            {
+                DetachRealization();
+                OpenClawTray.Services.Logger.Warn("Chat tail realization did not settle.");
+                return;
+            }
+            if (!target.IsLoaded || target.ActualHeight <= 0
+                || repeater.GetElementIndex(target) != request.Index
+                || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
+            {
+                settledFrames = 0;
+                return;
+            }
+            var bounds = target.TransformToVisual(scrollView).TransformBounds(
+                new global::Windows.Foundation.Rect(0, 0, target.ActualWidth, target.ActualHeight));
+            var geometry = (scrollView.ExtentHeight, scrollView.ViewportHeight, bounds.Top, bounds.Height);
+            settledFrames = previous == geometry && scrollView.State == ScrollingInteractionState.Idle
+                ? settledFrames + 1 : 0;
+            previous = geometry;
+            if (settledFrames < InitialTailConfirmation.SettledFramesBeforeDecision)
+                return;
+
+            DetachRealization();
+            if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_disposed || version != _version || realizationVersion != _realizationVersion || !itemsView.IsLoaded
+                    || !TailNavigationPolicy.CanDispatch(requiresFollowing, _following)
+                    || !ReferenceEquals(scrollView, itemsView.ScrollView)
+                    || !TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+                    || repeater.GetElementIndex(target) != request.Index
+                    || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
+                    return;
+                target.StartBringIntoView(new BringIntoViewOptions
+                {
+                    AnimationDesired = false,
+                    VerticalAlignmentRatio = 1.0,
+                });
+            }))
+                OpenClawTray.Services.Logger.Warn("Chat tail realization could not be dispatched.");
+        };
+        CompositionTarget.Rendering += _realizing;
 
         return true;
+    }
+
+    private void DetachRealization()
+    {
+        if (_realizing is not null)
+            CompositionTarget.Rendering -= _realizing;
+        _realizing = null;
+    }
+
+    private void CancelRealization()
+    {
+        _realizationVersion++;
+        DetachRealization();
     }
 
     private object? GetRequestItem(TailNavigationRequest request) =>
@@ -773,6 +842,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachLayout()
     {
+        CancelRealization();
         DetachRendering();
         DetachConfirmation();
         _confirmation.Invalidate();

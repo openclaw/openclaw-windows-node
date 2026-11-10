@@ -1194,6 +1194,89 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
+    public async Task QueuedMessages_UseCurrentUserPhotoAndInitialsWithoutResettingComposer(int width)
+    {
+        MountedReactorChat? mounted = null;
+        await WithChatAsync(width, async (surface, host, session, provider) =>
+        {
+            PersonPicture? avatar = null;
+            TextBox? composer = null;
+            Microsoft.UI.Xaml.Media.Imaging.BitmapImage? image = null;
+            await ui.RunOnUIAsync(async () =>
+            {
+                session.ViewModel.SetDraft("Queued for the current user");
+                Assert.True(await session.Controller.SendAsync());
+                session.ViewModel.SetDraft("Keep this unsubmitted draft");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                avatar = FindControl<PersonPicture>(host, "ChatQueueAvatar_pending-1");
+                composer = FindControl<TextBox>(surface, "ChatComposerInput");
+                Assert.Equal("Ada Lovelace", avatar.DisplayName);
+                Assert.Null(avatar.ProfilePicture);
+                Assert.Contains(FindDescendants<TextBlock>(avatar), text => text.Text == "AL");
+                Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(avatar));
+                Assert.False(avatar.IsHitTestVisible);
+            });
+            await CaptureAsync(surface, $"PendingChat-UserInitials-{width}");
+
+            await ui.RunOnUIAsync(async () =>
+            {
+                using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                var bytes = Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2CouPIfAAQUAkx+3vkdAAAAAElFTkSuQmCC");
+                await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes));
+                stream.Seek(0);
+                image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+                await image.SetSourceAsync(stream);
+                mounted!.ApplyUserIdentity("Ada Lovelace", image);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(avatar, FindControl<PersonPicture>(host, "ChatQueueAvatar_pending-1"));
+                Assert.Same(image, avatar!.ProfilePicture);
+                var photo = Assert.Single(FindDescendants<Microsoft.UI.Xaml.Shapes.Ellipse>(avatar),
+                    ellipse => ellipse.Fill is ImageBrush brush && ReferenceEquals(brush.ImageSource, image));
+                Assert.Equal(Visibility.Visible, photo.Visibility);
+                Assert.Equal(1, photo.Opacity);
+                Assert.True(photo.ActualWidth > 0 && photo.ActualHeight > 0);
+                Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal("Keep this unsubmitted draft", composer!.Text);
+            });
+            await CaptureAsync(surface, $"PendingChat-UserPhoto-{width}");
+
+            await ui.RunOnUIAsync(() => mounted!.ApplyUserIdentity("Grace Hopper", null));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(avatar, FindControl<PersonPicture>(host, "ChatQueueAvatar_pending-1"));
+                Assert.Equal("Grace Hopper", avatar!.DisplayName);
+                Assert.Null(avatar.ProfilePicture);
+                Assert.Contains(FindDescendants<TextBlock>(avatar), text => text.Text == "GH");
+                Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal("Keep this unsubmitted draft", composer!.Text);
+            });
+            await ui.RunOnUIAsync(() => mounted!.ApplyUserIdentity("", null));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("", avatar!.DisplayName);
+                Assert.Null(avatar.ProfilePicture);
+                Assert.DoesNotContain(FindDescendants<TextBlock>(avatar), text => text.Text is "AL" or "GH");
+                Assert.Equal("Queued for the current user",
+                    AutomationProperties.GetName(FindControl<Border>(host, "ChatQueuedMessage_pending-1")));
+                Invoke(FindControl<Button>(host, "ChatQueuedMessageCancel_pending-1"));
+                Assert.Equal(("proof", "pending-1"), provider.LastCanceledMessage);
+                Assert.Equal("Keep this unsubmitted draft", composer!.Text);
+            });
+        }, scenario: "pending", userDisplayName: "Ada Lovelace", onMounted: value => mounted = value);
+    }
+
+    [Theory]
     [InlineData(320, "Please add a lunch break.\nKeep the afternoon flexible.", "Then summarize the plan.")]
     [InlineData(800, "yes", "what is missing on the other one?")]
     public async Task QueuedMessages_RenderCompactPanelAndPreserveSendLifecycle(int width, string first, string second)
@@ -1272,13 +1355,14 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(5, trash.Figures.Count);
                 Assert.Equal(new Point(3, 6), trash.Figures[0].StartPoint);
                 Assert.Equal(new Rect(3, 2, 18, 20), trash.Bounds);
-                var avatar = FindControl<Border>(firstRow, "ChatQueueAvatar_pending-1");
+                var avatar = FindControl<PersonPicture>(firstRow, "ChatQueueAvatar_pending-1");
                 Assert.Equal(width <= 560 ? 18 : 20, avatar.ActualWidth);
                 Assert.Equal(avatar.ActualWidth, avatar.ActualHeight);
                 Assert.Equal(width <= 560 ? 6 : 8, avatar.Margin.Right);
                 Assert.True(Bounds(cancel, surface).Right <= Bounds(panel, surface).Right);
                 Assert.InRange(Bounds(panel, surface).Right - (Bounds(removeIcon, surface).Left + 7), 20, 22);
-                Assert.Contains(FindDescendants<TextBlock>(firstRow), label => label.Text == "\uE77B");
+                Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(avatar));
+                Assert.False(avatar.IsHitTestVisible);
                 var reference = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ChatCardBrush}" Width="0" Height="0"><TextBlock Foreground="{ThemeResource ChatTextBrush}" /></Border>""");
                 var layout = Assert.IsType<Grid>(Assert.IsType<Border>(host.Content).Child);
@@ -2952,7 +3036,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         SandboxStatusStore? sandboxStatus = null,
         IChatDataProvider? renderProvider = null,
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
-        IChatAgentRosterSource? agentRosterSource = null)
+        IChatAgentRosterSource? agentRosterSource = null,
+        string userDisplayName = "",
+        Action<MountedReactorChat>? onMounted = null)
     {
         using var diagnosticScope = ui.Diagnostics.BeginChatScope();
         await ui.ResetContainerAsync();
@@ -2961,6 +3047,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             sandboxSettings ?? new SettingsManager(settingsDirectory.Path),
             new WinUIDispatcher(ui.Dispatcher));
         ReactorHostControl? host = null;
+        MountedReactorChat? mounted = null;
         ChatComposerSession? session = null;
         Border? surface = null;
         Window? proofWindow = null;
@@ -2997,10 +3084,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 if (scenario == "longtext")
                     session.ViewModel.SetDraft(string.Join("\n", Enumerable.Repeat(Draft, 8)));
                 host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
-                host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
-                    new(renderProvider ?? provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
-                        InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
-                        AgentRosterSource: agentRosterSource)));
+                var rootProps = new OpenClawReactorChatRootProps(
+                    renderProvider ?? provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
+                    InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
+                    AgentRosterSource: agentRosterSource, UserDisplayName: userDisplayName);
+                host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(rootProps));
                 surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
                     "Background=\"{ThemeResource NavigationViewContentBackground}\" />");
@@ -3010,6 +3098,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface.VerticalAlignment = VerticalAlignment.Top;
                 surface.RequestedTheme = themeScope.ElementTheme;
                 surface.Child = host;
+                mounted = new MountedReactorChat(surface, host, new(), rootProps);
+                onMounted?.Invoke(mounted);
                 proofWindow = new Window { Content = surface, SystemBackdrop = new MicaBackdrop() };
                 _captureWindow = proofWindow;
                 var windowPosition = ui.IsSlow || interactiveKeyboard ? 80 : -32000;
@@ -3036,13 +3126,18 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingWindow);
             await ui.RunOnUIAsync(() =>
             {
-                session?.Dispose();
                 if (surface is not null)
                 {
                     surface.Child = null;
                 }
                 diagnosticScope.SetPhase(NativeUiPhase.ChatDisposingHost);
-                host?.Dispose();
+                if (mounted is not null)
+                    mounted.Dispose();
+                else
+                {
+                    session?.Dispose();
+                    host?.Dispose();
+                }
                 diagnosticScope.SetPhase(NativeUiPhase.ChatClosingWindow);
                 proofWindow?.Close();
                 diagnosticScope.SetPhase(NativeUiPhase.ChatWindowClosed);
