@@ -209,6 +209,7 @@ internal static class ChatContentFormatting
         ChatThinkingEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatReasoningEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatReasoningDeltaEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatReasoningStreamEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatMessageEvent e => e with
         {
             Text = TruncateForChatEntry(e.Text),

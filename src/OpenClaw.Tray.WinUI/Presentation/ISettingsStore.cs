@@ -103,6 +103,7 @@ public interface ISettingsEditor
     bool LocationConsentGiven { set; }
     bool VoiceTtsEnabled { set; }
     bool ShowChatToolCalls { set; }
+    bool ShowChatThinking { set; }
 
     /// <summary>
     /// Pins or unpins one page for a saved-Gateway scope, applied to the live persisted list inside the
@@ -158,6 +159,7 @@ public sealed record SettingsSnapshot
         CameraRecordingConsentGiven = data.CameraRecordingConsentGiven,
         LocationConsentGiven = data.LocationConsentGiven,
         ShowChatToolCalls = data.ShowChatToolCalls,
+        ShowChatThinking = data.ShowChatThinking,
         PinnedPagesByGateway = data.PinnedPagesByGateway?.ToImmutableDictionary(
             entry => entry.Key, entry => entry.Value.ToImmutableArray(), StringComparer.Ordinal) ??
             ImmutableDictionary<string, ImmutableArray<string>>.Empty,
@@ -208,6 +210,7 @@ public sealed record SettingsSnapshot
     public bool LocationConsentGiven { get; init; }
 
     public bool ShowChatToolCalls { get; init; }
+    public bool ShowChatThinking { get; init; } = true;
 
     /// <summary>Immutable copy of the local sidebar page pins keyed by Gateway scope.</summary>
     public System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<string>> PinnedPagesByGateway { get; init; } =

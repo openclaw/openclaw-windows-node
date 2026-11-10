@@ -2937,27 +2937,26 @@ Gebruik een van deze opties:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Hulpmiddel · {0}</value>
   </data>
-  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} opdracht uitgevoerd</value></data>
-  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} opdrachten uitgevoerd</value></data>
-  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} bestand gelezen</value></data>
-  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} bestanden gelezen</value></data>
-  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} bestand bewerkt</value></data>
-  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} bestanden bewerkt</value></data>
-  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} bestand geschreven</value></data>
-  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} bestanden geschreven</value></data>
-  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} zoekopdracht uitgevoerd</value></data>
-  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} zoekopdrachten uitgevoerd</value></data>
-  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} pagina opgehaald</value></data>
-  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} pagina's opgehaald</value></data>
-  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} hulpmiddel gebruikt</value></data>
-  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} hulpmiddelen gebruikt</value></data>
-  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>{1} gebruikt</value></data>
-  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>{1} {0} keer gebruikt</value></data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} opdracht</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} opdrachten</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} leesactie</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} leesacties</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} wijziging</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} wijzigingen</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} schrijfactie</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} schrijfacties</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} zoekopdracht</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} zoekopdrachten</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} ophaalactie</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} ophaalacties</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} andere bewerking</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} andere bewerkingen</value></data>
   <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>{0} wordt uitgevoerd</value></data>
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Voltooid</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Samengevouwen</value></data>
   <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddelen. {2}.</value></data>
+  <data name="Chat_Activity_AutomationFormatOne" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddel. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Denken</value>
   </data>
@@ -4730,6 +4729,12 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
     <value>Details van toolaanroepen en tokengebruik inline in het gesprek weergeven.</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Header.Text" xml:space="preserve">
+    <value>Denkproces weergeven</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
+    <value>De door de assistent geleverde redenering in het gesprek weergeven.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacybeheer</value>
@@ -7638,6 +7643,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>Context comprimeren</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Opnieuw proberen na contextcompressie</value></data>
   <data name="Chat_Run_Retry" xml:space="preserve"><value>Modelaanvraag opnieuw proberen</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Opnieuw proberen over {0} s</value></data>
+  <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>Kan dit gesprek niet laden</value></data>
+  <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>Probeer opnieuw om de berichten te laden.</value></data>
+  <data name="Chat_History_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Chat_Run_Thinking" xml:space="preserve"><value>Nadenken</value></data>
   <data name="Chat_Run_Responding" xml:space="preserve"><value>Antwoorden</value></data>
   <data name="Chat_Run_Working" xml:space="preserve"><value>Bezig</value></data>
@@ -8067,6 +8076,53 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Chat_Activity_Worked" xml:space="preserve">
+    <value>Werk uitgevoerd</value>
+  </data>
+  <data name="Chat_Activity_WorkedFor" xml:space="preserve">
+    <value>{0} gewerkt</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsOne" xml:space="preserve">
+    <value>{0} toolaanroep</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsMany" xml:space="preserve">
+    <value>{0} toolaanroepen</value>
+  </data>
+  <data name="Chat_Tool_InputTooLarge" xml:space="preserve">
+    <value>De invoer van het hulpmiddel overschrijdt de veilige weergavelimiet.</value>
+  </data>
+  <data name="Chat_ToolRecovery_Preview" xml:space="preserve"><value>Dit is een afgekapt voorbeeld.</value></data>
+  <data name="Chat_ToolRecovery_Loading" xml:space="preserve"><value>Volledige uitvoer laden...</value></data>
+  <data name="Chat_ToolRecovery_Loaded" xml:space="preserve"><value>Volledige uitvoer geladen.</value></data>
+  <data name="Chat_ToolRecovery_Limited" xml:space="preserve"><value>De uitvoer blijft afgekapt op de veilige weergavelimiet.</value></data>
+  <data name="Chat_ToolRecovery_Unsupported" xml:space="preserve"><value>Deze Gateway ondersteunt het ophalen van volledige uitvoer niet.</value></data>
+  <data name="Chat_ToolRecovery_NotFound" xml:space="preserve"><value>Dit opgeslagen toolresultaat is niet meer beschikbaar.</value></data>
+  <data name="Chat_ToolRecovery_NotVisible" xml:space="preserve"><value>Dit toolresultaat is niet zichtbaar voor deze verbinding.</value></data>
+  <data name="Chat_ToolRecovery_Oversized" xml:space="preserve"><value>Dit resultaat overschrijdt de antwoordlimiet van de Gateway.</value></data>
+  <data name="Chat_ToolRecovery_Stale" xml:space="preserve"><value>Het gesprek is gewijzigd. Open de tooldetails opnieuw.</value></data>
+  <data name="Chat_ToolRecovery_Mismatched" xml:space="preserve"><value>Het ontvangen resultaat hoort niet bij deze toolaanroep.</value></data>
+  <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>De volledige uitvoer kon niet worden geladen.</value></data>
+  <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Volledige uitvoer vereist de opgeslagen resultaatidentiteit en een geverifieerd huidig account.</value></data>
+  <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Volledige uitvoer tonen</value></data>
+  <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
+  <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
+  <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>
+  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inactief</value></data>
+  <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
+  <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
+  <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>mislukt</value></data>
+  <data name="Chat_Tool_Completed" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Chat_Review_Required" xml:space="preserve"><value>Beoordeling door provider vereist</value></data>
+  <data name="Chat_Review_Warning" xml:space="preserve"><value>Waarschuwing van providerbeoordeling</value></data>
+  <data name="Chat_Review_Working" xml:space="preserve"><value>Providerbeoordeling wordt uitgevoerd</value></data>
+  <data name="Chat_Review_Approved" xml:space="preserve"><value>Providerbeoordeling goedgekeurd</value></data>
+  <data name="Chat_Review_Denied" xml:space="preserve"><value>De provider heeft het verzoek niet goedgekeurd</value></data>
+  <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Oudere geschiedenis is niet geladen. Probeer het opnieuw nadat het gesprek is herladen.</value></data>
+  <data name="Chat_Review_Web" xml:space="preserve"><value>Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
+  <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Time-out bij controle door provider</value></data>
+  <data name="Chat_Review_Aborted" xml:space="preserve"><value>Controle door provider geannuleerd</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Systeem toevoegen</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>Updateopdracht kopiëren</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>Systeemdetails samenvouwen</value></data>

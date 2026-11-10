@@ -18,6 +18,315 @@ namespace OpenClaw.Tray.Tests;
 [Collection("Chat telemetry")]
 public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 {
+    private static ChatHistoryInfo RecoveryHistory(bool truncated, string text, string messageId = "result-message",
+        string callId = "call", string runId = "r")
+    {
+        using var json = JsonDocument.Parse($$$"""
+            {"sessionId":"session","messages":[
+              {"role":"assistant","__openclaw":{"id":"input-message","runId":"r"},
+               "content":[{"type":"toolCall","id":"call","name":"read_file","arguments":{"path":"file.txt"}}]},
+              {"role":"toolResult","toolCallId":{{{JsonSerializer.Serialize(callId)}}},"toolName":"read_file",
+               "__openclaw":{"id":{{{JsonSerializer.Serialize(messageId)}}},"runId":{{{JsonSerializer.Serialize(runId)}}},
+                 "truncated":{{{(truncated ? "true" : "false")}}},"reason":"display-cap"},
+               "content":{{{JsonSerializer.Serialize(text)}}}}
+            ]}
+            """);
+        return ParseHistoryPayload(json.RootElement);
+    }
+
+    private static async Task<ChatToolOutputRequest> PrepareRecovery(
+        FakeBridge bridge, OpenClawChatDataProvider provider)
+    {
+        bridge.HistoryBehavior = _ => Task.FromResult(RecoveryHistory(true, "Bounded preview"));
+        bridge.ToolDetailsProfileState = new(1, true);
+        bridge.IsConnected = true;
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main", force: true);
+        var snapshot = await provider.LoadAsync();
+        var tool = Assert.Single(snapshot.Timelines["main"].Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal("result-message", tool.ToolResultReference!.MessageId);
+        Assert.Equal("session", tool.ToolResultReference.SessionId);
+        Assert.True(tool.ToolResultReference.IsTruncated);
+        Assert.Empty(bridge.MessageReads);
+        return new("main", snapshot.TimelineGenerations!.GetValueOrDefault("main"),
+            snapshot.HistoryRevisions!.GetValueOrDefault("main"), 1, tool.Id, "r", "call", "session", "result-message",
+            bridge.ToolDetailsProfileState);
+    }
+
+    [Theory]
+    [InlineData(false, ChatToolOutputStatus.Loaded)]
+    [InlineData(true, ChatToolOutputStatus.Limited)]
+    public async Task ToolRecovery_UsesResultLocatorAndPreservesServerLimit(bool truncated, ChatToolOutputStatus status)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            var full = new string('x', 9000) + " FULL RESULT TAIL";
+            bridge.MessageReadBehavior = _ => Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Available,
+                RecoveryHistory(truncated, full).Messages.Last()));
+            var result = await provider.LoadToolOutputAsync(request, CancellationToken.None);
+            Assert.Equal(status, result.Status);
+            Assert.EndsWith("FULL RESULT TAIL", result.Output);
+            Assert.Equal(("main", "session", "result-message", OpenClawChatDataProvider.MaxEntryTextBytes, 1L),
+                Assert.Single(bridge.MessageReads));
+            Assert.Equal("Bounded preview", (await provider.LoadAsync()).Timelines["main"].Entries
+                .Single(entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToolOutput);
+        }
+    }
+
+    [Fact]
+    public async Task ToolRecovery_LiveStructuredResultRetainsLoadedSessionIdentity()
+    {
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var (bridge, provider, _, _) = CreateProvider([MainSession()],
+            toolMetaCachePath: identity.Combine("tool-metadata.json"),
+            attachmentMetaCachePath: identity.Combine("attachment-metadata.json"),
+            lastChatStatePath: identity.Combine("last-state.json"));
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Send(string message) => processMessage.Invoke(client,
+            ["""{"type":"event","event":"chat","payload":{"sessionKey":"main","runId":"r","state":"delta","message":""" + message + "}}"]);
+        await using (provider)
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+                { SessionKey = "main", SessionId = "session" });
+            bridge.ToolDetailsProfileState = new(1, true);
+            bridge.IsConnected = true;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+            Send("""
+                {"role":"assistant","content":[{"type":"toolCall","id":"call","name":"read_file","arguments":{"path":"file.txt"}}]}
+                """);
+            Send("""
+                {"role":"toolResult","toolCallId":"call","toolName":"read_file",
+                 "__openclaw":{"id":"result-message","runId":"r","truncated":true,"reason":"display-cap"},
+                 "content":[{"type":"text","text":"Live bounded preview"}]}
+                """);
+            var snapshot = await provider.LoadAsync();
+            var tool = Assert.Single(snapshot.Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+            Assert.Equal("session", tool.ToolResultReference!.SessionId);
+            Assert.Equal("result-message", tool.ToolResultReference.MessageId);
+            var request = new ChatToolOutputRequest("main", snapshot.TimelineGenerations!.GetValueOrDefault("main"),
+                snapshot.HistoryRevisions!.GetValueOrDefault("main"), 1, tool.Id, "r", "call",
+                tool.ToolResultReference.SessionId!, tool.ToolResultReference.MessageId!, bridge.ToolDetailsProfileState);
+            bridge.MessageReadBehavior = _ => Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Available,
+                RecoveryHistory(false, "Recovered live output").Messages.Last()));
+            var result = await provider.LoadToolOutputAsync(request, CancellationToken.None);
+            Assert.Equal(ChatToolOutputStatus.Loaded, result.Status);
+            Assert.Equal("Recovered live output", result.Output);
+            Assert.Equal(("main", "session", "result-message", OpenClawChatDataProvider.MaxEntryTextBytes, 1L),
+                Assert.Single(bridge.MessageReads));
+        }
+    }
+
+    [Theory]
+    [InlineData(ChatMessageReadStatus.Unsupported, ChatToolOutputStatus.Unsupported)]
+    [InlineData(ChatMessageReadStatus.NotFound, ChatToolOutputStatus.NotFound)]
+    [InlineData(ChatMessageReadStatus.NotVisible, ChatToolOutputStatus.NotVisible)]
+    [InlineData(ChatMessageReadStatus.Oversized, ChatToolOutputStatus.Oversized)]
+    public async Task ToolRecovery_UnavailableIsNeverSuccessfulPreview(
+        ChatMessageReadStatus response, ChatToolOutputStatus expected)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            bridge.MessageReadBehavior = _ => Task.FromResult(new ChatMessageReadResult(response));
+            var result = await provider.LoadToolOutputAsync(request, CancellationToken.None);
+            Assert.Equal(expected, result.Status);
+            Assert.Null(result.Output);
+        }
+    }
+
+    [Fact]
+    public async Task ToolRecovery_LocalUtf8LimitIsNotReportedAsComplete()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            bridge.MessageReadBehavior = _ => Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Available,
+                RecoveryHistory(false, new string('\u754c', 100000)).Messages.Last()));
+            var result = await provider.LoadToolOutputAsync(request, CancellationToken.None);
+            Assert.Equal(ChatToolOutputStatus.Limited, result.Status);
+            Assert.True(System.Text.Encoding.UTF8.GetByteCount(result.Output!) <= OpenClawChatDataProvider.MaxEntryTextBytes);
+        }
+    }
+
+    [Theory]
+    [InlineData("result")]
+    [InlineData("entry")]
+    [InlineData("run")]
+    [InlineData("call")]
+    [InlineData("session")]
+    [InlineData("generation")]
+    [InlineData("history")]
+    public async Task ToolRecovery_InvalidLocatorCannotSend(string changed)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            request = changed switch
+            {
+                "result" => request with { ResultMessageId = "input-message" },
+                "entry" => request with { EntryId = "other" },
+                "run" => request with { RunId = "other" },
+                "call" => request with { ToolCallId = "other" },
+                "session" => request with { SessionId = "other" },
+                "generation" => request with { TimelineGeneration = request.TimelineGeneration + 1 },
+                _ => request with { HistoryRevision = request.HistoryRevision + 1 },
+            };
+            Assert.Equal(ChatToolOutputStatus.Stale, (await provider.LoadToolOutputAsync(request, CancellationToken.None)).Status);
+            Assert.Empty(bridge.MessageReads);
+        }
+    }
+
+    [Theory]
+    [InlineData("message")]
+    [InlineData("call")]
+    [InlineData("run")]
+    [InlineData("role")]
+    [InlineData("duplicates")]
+    [InlineData("outcome")]
+    public async Task ToolRecovery_RejectsDifferentCompletedResult(string mismatch)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            var message = RecoveryHistory(false, "Wrong result", mismatch == "message" ? "other" : "result-message",
+                mismatch == "call" ? "other" : "call", mismatch == "run" ? "other" : "r").Messages.Last();
+            if (mismatch == "role")
+                message.Role = "user";
+            if (mismatch == "duplicates")
+                message.ToolContent = [message.ToolContent[0], message.ToolContent[0]];
+            if (mismatch == "outcome")
+                message.ToolContent[0].IsError = true;
+            bridge.MessageReadBehavior = _ => Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Available, message));
+            var result = await provider.LoadToolOutputAsync(request, CancellationToken.None);
+            Assert.Equal(ChatToolOutputStatus.Mismatched, result.Status);
+            Assert.Null(result.Output);
+        }
+    }
+
+    [Theory]
+    [InlineData("connection")]
+    [InlineData("history")]
+    [InlineData("reset")]
+    [InlineData("session")]
+    public async Task ToolRecovery_ScopeChangeRejectsPendingAndFutureReads(string change)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            var completion = new TaskCompletionSource<ChatMessageReadResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            CancellationToken observed = default;
+            bridge.MessageReadBehavior = token => { observed = token; return completion.Task; };
+            var pending = provider.LoadToolOutputAsync(request, CancellationToken.None);
+            switch (change)
+            {
+                case "connection":
+                    bridge.ChatMessageReadConnectionEpoch = 2;
+                    bridge.RaiseStatus(ConnectionStatus.Disconnected);
+                    break;
+                case "history":
+                    await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+                    break;
+                case "reset":
+                    await provider.ExecuteLifecycleCommandAsync("main", ChatLifecycleCommandKind.Reset);
+                    break;
+                case "session":
+                    var replacement = MainSession();
+                    replacement.SessionId = "replacement";
+                    bridge.RaiseSessions([replacement]);
+                    break;
+            }
+            Assert.True(observed.IsCancellationRequested);
+            completion.SetResult(new(ChatMessageReadStatus.Available, RecoveryHistory(false, "Stale result").Messages.Last()));
+            Assert.Equal(ChatToolOutputStatus.Stale, (await pending).Status);
+            Assert.Equal(ChatToolOutputStatus.Stale, (await provider.LoadToolOutputAsync(request, CancellationToken.None)).Status);
+            Assert.Single(bridge.MessageReads);
+        }
+    }
+
+    [Fact]
+    public async Task ToolRecovery_ProfileRevalidationRetiresPendingReadEvenWhenAvailabilityReturns()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            var response = new TaskCompletionSource<ChatMessageReadResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            CancellationToken observed = default;
+            bridge.MessageReadBehavior = token => { observed = token; return response.Task; };
+            var pending = provider.LoadToolOutputAsync(request, CancellationToken.None);
+            bridge.RaiseToolDetailsProfile(new(2, false));
+            Assert.True(observed.IsCancellationRequested);
+            bridge.RaiseToolDetailsProfile(new(2, true));
+            response.SetResult(new(ChatMessageReadStatus.Available, RecoveryHistory(false, "Recovered").Messages.Last()));
+            Assert.Equal(ChatToolOutputStatus.Stale, (await pending).Status);
+            Assert.Equal(ChatToolOutputStatus.Stale, (await provider.LoadToolOutputAsync(request, CancellationToken.None)).Status);
+            Assert.Single(bridge.MessageReads);
+            var current = request with { Profile = bridge.ToolDetailsProfileState };
+            Assert.Equal(ChatToolOutputStatus.Loaded, (await provider.LoadToolOutputAsync(current, CancellationToken.None)).Status);
+            Assert.Equal(2, bridge.MessageReads.Count);
+        }
+    }
+
+    [Fact]
+    public async Task ToolRecovery_UnverifiedProfileNeverDispatches()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = await PrepareRecovery(bridge, provider);
+            Assert.Equal(ChatToolOutputStatus.Stale,
+                (await provider.LoadToolOutputAsync(request with { Profile = default }, CancellationToken.None)).Status);
+            bridge.RaiseToolDetailsProfile(default);
+            Assert.Equal(ChatToolOutputStatus.Stale, (await provider.LoadToolOutputAsync(request, CancellationToken.None)).Status);
+            Assert.Empty(bridge.MessageReads);
+        }
+    }
+
+    [Fact]
+    public async Task ToolRecovery_ReconnectedReaderCannotUsePreviousConnectionHistory()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var old = await PrepareRecovery(bridge, provider);
+            var history = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.HistoryBehavior = _ => history.Task;
+            bridge.MessageReadBehavior = _ => Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Available,
+                RecoveryHistory(false, "Recovered").Messages.Last()));
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.ChatMessageReadConnectionEpoch = 2;
+            bridge.RaiseToolDetailsProfile(new(2, true));
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            try
+            {
+                var rebound = old with { ConnectionEpoch = 2, Profile = bridge.ToolDetailsProfileState };
+                Assert.Equal(ChatToolOutputStatus.Stale,
+                    (await provider.LoadToolOutputAsync(rebound, CancellationToken.None)).Status);
+                Assert.Empty(bridge.MessageReads);
+            }
+            finally { history.TrySetResult(RecoveryHistory(true, "Current preview")); }
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var snapshot = await provider.LoadAsync();
+            var current = old with { ConnectionEpoch = 2, Profile = bridge.ToolDetailsProfileState,
+                HistoryRevision = snapshot.HistoryRevisions!.GetValueOrDefault("main") };
+            Assert.Equal(ChatToolOutputStatus.Loaded,
+                (await provider.LoadToolOutputAsync(current, CancellationToken.None)).Status);
+        }
+    }
+
     private sealed class ChatActivityCollector : IDisposable
     {
         private readonly ActivityListener _listener;
@@ -71,6 +380,13 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     private sealed class FakeBridge : IChatGatewayBridge
     {
         public bool IsConnected { get; set; }
+        public ChatToolDetailsProfileState ToolDetailsProfileState { get; set; }
+        public event EventHandler? ToolDetailsInvalidated;
+        public void RaiseToolDetailsProfile(ChatToolDetailsProfileState profile)
+        {
+            ToolDetailsProfileState = profile;
+            ToolDetailsInvalidated?.Invoke(this, EventArgs.Empty);
+        }
         public ConnectionStatus CurrentStatus { get; set; }
         public string? MainSessionKey { get; set; }
         public bool HasHandshakeSnapshot { get; set; }
@@ -87,6 +403,19 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         public Func<string, string, Task>? PatchSessionThinkingLevelBehavior { get; set; }
         public Func<string, Task>? ClearSessionThinkingLevelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
+        public Func<ChatHistoryPageRequest, Task<ChatHistoryInfo>>? OlderHistoryBehavior { get; set; }
+        public List<ChatHistoryPageRequest> OlderHistoryRequests { get; } = [];
+        public long? ChatMessageReadConnectionEpoch { get; set; } = 1;
+        public Func<CancellationToken, Task<ChatMessageReadResult>>? MessageReadBehavior { get; set; }
+        public List<(string Key, string Session, string Message, int MaxChars, long Epoch)> MessageReads { get; } = [];
+        public Task<ChatMessageReadResult> RequestChatMessageAsync(
+            string sessionKey, string sessionId, string messageId, int maxChars,
+            long expectedConnectionEpoch, CancellationToken cancellationToken)
+        {
+            MessageReads.Add((sessionKey, sessionId, messageId, maxChars, expectedConnectionEpoch));
+            return MessageReadBehavior?.Invoke(cancellationToken) ??
+                Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Unsupported));
+        }
         public Func<string, Task<JsonElement>>? AgentIdentityBehavior { get; set; }
         public List<string> RequestedAgentIdentityIds { get; } = new();
         public Func<string, Task>? AbortBehavior { get; set; }
@@ -237,6 +566,12 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             RequestedHistoryKeys.Add(sessionKey);
             return HistoryBehavior?.Invoke(sessionKey)
                 ?? Task.FromResult(new ChatHistoryInfo { SessionKey = sessionKey ?? "" });
+        }
+
+        public Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page)
+        {
+            OlderHistoryRequests.Add(page);
+            return OlderHistoryBehavior!(page);
         }
 
         public Task SendChatAbortAsync(string runId, string? sessionKey = null)
@@ -556,6 +891,84 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             maxHistorySequence: 10,
             requestStartedAt));
     }
+
+    [Fact]
+    public async Task HistoryInFlightRun_HydratesWorkingStateProgressAndBufferedText()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var startedAt = DateTimeOffset.UtcNow.AddSeconds(-42).ToUnixTimeMilliseconds();
+        bridge.HistoryBehavior = key => Task.FromResult(InFlightHistory(key, "run-1", startedAt));
+
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.True(timeline.TurnActive);
+            Assert.Equal(startedAt, timeline.TurnStartedAt?.ToUnixTimeMilliseconds());
+            Assert.Equal(
+                [ChatTimelineItemKind.User, ChatTimelineItemKind.ToolCall, ChatTimelineItemKind.Assistant],
+                timeline.Entries.Select(entry => entry.Kind).ToArray());
+            Assert.Equal("Checking the build", timeline.Entries[^1].Text);
+
+            await provider.StopResponseAsync("main");
+            Assert.Equal(["run-1"], bridge.AbortedRunIds);
+        }
+    }
+
+    [Fact]
+    public async Task HistoryInFlightRun_LiveRunWinsAndLifecycleEndSettlesAdoptedRun()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        bridge.HistoryBehavior = key => Task.FromResult(InFlightHistory(key, "stale-run", startedAtMs: null));
+
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "live-run"));
+            await provider.LoadHistoryAsync("main", force: true);
+
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.DoesNotContain(timeline.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+            Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Checking the build");
+        }
+
+        (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        bridge.HistoryBehavior = key => Task.FromResult(InFlightHistory(key, "run-2", startedAtMs: null));
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            Assert.True((await provider.LoadAsync()).Timelines["main"].TurnActive);
+
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
+            Assert.False((await provider.LoadAsync()).Timelines["main"].TurnActive);
+        }
+    }
+
+    private static ChatHistoryInfo InFlightHistory(string? key, string runId, long? startedAtMs) => new()
+    {
+        SessionKey = key ?? "",
+        Messages =
+        [
+            new ChatMessageInfo { SessionKey = key ?? "", Role = "user", Text = "Build it", OpenClawSeq = 1 },
+        ],
+        InFlightRun = new ChatInFlightRunInfo
+        {
+            RunId = runId,
+            Text = "Checking the build",
+            StartedAtMs = startedAtMs,
+            Events =
+            [
+                MakeAgentEvent(
+                    "tool",
+                    """{"phase":"start","name":"exec","toolCallId":"call-1","args":{"command":"dotnet build"}}""",
+                    key ?? "main",
+                    runId),
+            ],
+        },
+    };
 
     [Fact]
     public async Task CheckpointRestoreReplacement_DropsArchivedEntriesFromLoadedTimeline()
@@ -2241,6 +2654,149 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         Assert.Equal("gpt-5.4", snapshot.Threads[0].Model);
         Assert.Equal("openrouter", snapshot.Threads[0].ModelProvider);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task OlderHistory_CoalescesPageAndRejectsDisconnect(bool disconnect, bool boundary)
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main", SessionId = "instance", HasMore = true, OlderCursor = boundary ? null : "opaque-old",
+            Messages = [new() { Role = "assistant", Text = "Recent reply", Ts = 2000, OpenClawId = "recent" }],
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main");
+        var before = await provider.LoadAsync();
+        var recent = Assert.Single(before.Timelines["main"].Entries);
+        var older = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.OlderHistoryBehavior = _ => older.Task;
+        var loading = provider.LoadOlderHistoryAsync("main");
+        await provider.LoadOlderHistoryAsync("main");
+        Assert.Equal(boundary ? new(null, "instance", "recent") : new ChatHistoryPageRequest("opaque-old", "instance"),
+            Assert.Single(bridge.OlderHistoryRequests));
+        if (disconnect)
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        older.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main", SessionId = "instance",
+            Messages = [new() { Role = "user", Text = "Older question", Ts = 1000, OpenClawId = "older" }],
+        });
+        await loading;
+        var after = await provider.LoadAsync();
+        var entries = after.Timelines["main"].Entries;
+        Assert.Equal(disconnect ? ["Recent reply"] : ["Older question", "Recent reply"],
+            entries.Select(entry => entry.Text).ToArray());
+        Assert.Equal(recent.Id, entries.Last().Id);
+        Assert.Equal(before.HistoryRevisions!["main"], after.HistoryRevisions!["main"]);
+        Assert.Empty(after.OlderHistoryThreads!);
+    }
+
+    [Fact]
+    public async Task OlderHistory_WindowResetPreservesCachedMessagesAndOffersReload()
+    {
+        using var data = new OpenClaw.TestSupport.TempDirectory();
+        var (bridge, provider, _, notifications) = CreateProvider([MainSession()],
+            toolMetaCachePath: data.Combine("tool-metadata.json"),
+            attachmentMetaCachePath: data.Combine("attachment-metadata.json"),
+            lastChatStatePath: data.Combine("last-state.json"));
+        await using (provider)
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main", SessionId = "instance", HasMore = true, OlderCursor = "expired",
+                Messages = [new() { Role = "assistant", Text = "Cached reply", Ts = 2000, OpenClawId = "recent" }],
+            });
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main");
+            var before = await provider.LoadAsync();
+            bridge.OlderHistoryBehavior = _ =>
+            {
+                using var json = JsonDocument.Parse("""{"sessionId":"instance","windowReset":true,"messages":[]}""");
+                return Task.FromResult(ParseHistoryPayload(json.RootElement));
+            };
+            await provider.LoadOlderHistoryAsync("main");
+            var after = await provider.LoadAsync();
+            Assert.Equal(before.Timelines["main"].Entries, after.Timelines["main"].Entries);
+            Assert.Equal(before.HistoryRevisions!["main"], after.HistoryRevisions!["main"]);
+            Assert.Contains("main", after.FailedHistoryThreads!);
+            Assert.DoesNotContain("main", after.OlderHistoryThreads!);
+            Assert.Contains(notifications, notification => notification.Kind == ChatProviderNotificationKind.Error);
+
+            bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main", SessionId = "instance", OlderCursor = "fresh",
+                Messages = [new() { Role = "assistant", Text = "Cached reply", Ts = 2000, OpenClawId = "recent" }],
+            });
+            await provider.RetryHistoryAsync("main");
+            var reloaded = await provider.LoadAsync();
+            Assert.DoesNotContain("main", reloaded.FailedHistoryThreads!);
+            Assert.Contains("main", reloaded.OlderHistoryThreads!);
+            Assert.True(reloaded.HistoryRevisions!["main"] > after.HistoryRevisions!["main"]);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OlderHistory_ReunitesInvocationAndResultSplitAcrossPages(bool activeRun)
+    {
+        using var data = new OpenClaw.TestSupport.TempDirectory();
+        var (bridge, provider, _, _) = CreateProvider([MainSession()],
+            toolMetaCachePath: data.Combine("tool-metadata.json"),
+            attachmentMetaCachePath: data.Combine("attachment-metadata.json"),
+            lastChatStatePath: data.Combine("last-state.json"));
+        await using (provider)
+        {
+            var history = RecoveryHistory(true, "Saved result preview");
+            var invocation = history.Messages[0];
+            var result = history.Messages[1];
+            invocation.Ts = 1000;
+            result.Ts = 2000;
+            bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main", SessionId = "session", OlderCursor = "older",
+                Messages = [result],
+            });
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main");
+            if (activeRun)
+            {
+                bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
+                bridge.RaiseAgent(MakeAgentEvent("tool",
+                    """{"phase":"start","toolCallId":"call","name":"read_file","args":{"path":"live.txt"}}""",
+                    runId: "new-run"));
+            }
+            var before = await provider.LoadAsync();
+            var existing = Assert.Single(before.Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall && entry.ToolRunId == "r");
+            bridge.OlderHistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main", SessionId = "session", Messages = [invocation],
+            });
+            await provider.LoadOlderHistoryAsync("main");
+            var after = await provider.LoadAsync();
+            Assert.Equal(activeRun ? 2 : 1,
+                after.Timelines["main"].Entries.Count(entry => entry.Kind == ChatTimelineItemKind.ToolCall));
+            var tool = Assert.Single(after.Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall && entry.ToolRunId == "r");
+            Assert.Equal(existing.Id, tool.Id);
+            Assert.Equal(ChatToolCallStatus.Success, tool.ToolResult);
+            Assert.Equal("Saved result preview", tool.ToolOutput);
+            Assert.Equal("file.txt", tool.ToolArgs!["path"]!.GetValue<string>());
+            Assert.Equal(existing.ToolResultReference, tool.ToolResultReference);
+            Assert.Equal(before.Timelines["main"].TurnActive, after.Timelines["main"].TurnActive);
+            Assert.Equal(before.Timelines["main"].ActiveToolCalls, after.Timelines["main"].ActiveToolCalls);
+            if (activeRun)
+                Assert.Equal(
+                    before.Timelines["main"].Entries.Single(entry => entry.ToolRunId == "new-run"),
+                    after.Timelines["main"].Entries.Single(entry => entry.ToolRunId == "new-run"));
+            Assert.Equal(before.HistoryRevisions!["main"], after.HistoryRevisions!["main"]);
+        }
     }
 
     [Fact]
@@ -10410,6 +10966,146 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             });
     }
 
+    [Theory]
+    [InlineData(true, false, false, "Saved thought")]
+    [InlineData(false, false, false, "Live thought")]
+    [InlineData(false, true, false, null)]
+    [InlineData(false, false, true, null)]
+    public async Task ThinkingFinal_UsesSavedContentOrOnlyTheUnreceiptedNonemptyTail(
+        bool savedThought, bool emptyTail, bool receipt, string? expectedThought)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+            bridge.RaiseAgent(MakeAgentEvent("thinking", """{"itemId":"i","text":"Live thought"}""", runId: "r"));
+            Assert.Equal("Live thought", snapshots[^1].Timelines["main"].ReasoningStream!.Items[0].Text);
+            if (emptyTail)
+                bridge.RaiseAgent(MakeAgentEvent("thinking", """{"itemId":"tail","text":""}""", runId: "r"));
+            if (receipt)
+                bridge.RaiseAgent(MakeAgentEvent("thinking",
+                    """{"phase":"persisted","itemId":"i","messageRunId":"r","messageId":"saved-other"}""", runId: "r"));
+            bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Ans"}""", runId: "r"));
+            var answerId = Assert.Single(snapshots[^1].Timelines["main"].Entries).Id;
+            using var json = JsonDocument.Parse("""
+                {"messages":[{"role":"assistant","phase":"final_answer","__openclaw":{"id":"m","runId":"r"},"content":[
+                """ + (savedThought ? """{"type":"thinking","thinking":"Saved thought"},""" : "") +
+                """{"type":"text","text":"Answer"}]}]}""");
+            var final = Assert.Single(ParseHistoryPayload(json.RootElement).Messages);
+            final.State = "final";
+            bridge.RaiseChat(final);
+            var timeline = snapshots[^1].Timelines["main"];
+            Assert.Equal(expectedThought is null ? ["Answer"] : new[] { expectedThought, "Answer" },
+                timeline.Entries.Select(entry => entry.Text));
+            Assert.Equal(answerId, timeline.Entries[^1].Id);
+            Assert.Null(timeline.ReasoningStream);
+            Assert.False(timeline.TurnActive);
+            Assert.All(timeline.Entries, entry => Assert.False(entry.IsStreaming));
+        }
+    }
+
+    [Fact]
+    public async Task PhasedSnapshots_ReconcileCumulativeBlocksAndMatchHistoryWithoutCrossingSessions()
+    {
+        const string prefix = """
+            {"type":"text","text":"Checking","textSignature":"{\"v\":1,\"id\":\"c\",\"phase\":\"commentary\"}"},
+            {"type":"tool_use","id":"call","name":"read_file","input":{"path":"file.txt"}},
+            {"type":"tool_result","tool_use_id":"call","content":"literal output"},
+            """;
+        static ChatMessageInfo Snapshot(string parts, bool final)
+        {
+            using var json = JsonDocument.Parse("""
+                {"messages":[{"role":"assistant","__openclaw":{"id":"m","runId":"r"},"content":[
+                """ + parts + "]}]}");
+            var message = Assert.Single(ParseHistoryPayload(json.RootElement).Messages);
+            message.State = final ? "final" : "delta";
+            return message;
+        }
+        var partial = Snapshot(prefix + """
+            {"type":"text","text":"Ans","textSignature":"{\"v\":1,\"id\":\"a\",\"phase\":\"final_answer\"}"}
+            """, false);
+        var final = Snapshot(prefix + """
+            {"type":"text","text":"Answer","textSignature":"{\"v\":1,\"id\":\"a\",\"phase\":\"final_answer\"}"}
+            """, true);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+            bridge.RaiseChat(partial);
+            var before = snapshots[^1].Timelines["main"].Entries;
+            Assert.Equal(["Checking", "file.txt", "Ans"], before.Select(entry => entry.Text));
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r"));
+            bridge.RaiseChat(final);
+            var live = snapshots[^1].Timelines["main"].Entries;
+            Assert.Equal(["Checking", "file.txt", "Answer"], live.Select(entry => entry.Text));
+            Assert.Equal(before.Select(entry => entry.Id), live.Select(entry => entry.Id));
+            Assert.Equal("commentary", live[0].Presentation!.Phase);
+            Assert.Equal("final_answer", live[2].Presentation!.Phase);
+            Assert.Equal("r", live[1].ToolRunId);
+            Assert.Equal(ChatToolCallStatus.Success, live[1].ToolResult);
+            Assert.Equal("literal output", live[1].ToolOutput);
+            Assert.All(live, entry => Assert.False(entry.IsStreaming));
+
+            var late = Snapshot(prefix + """
+                {"type":"text","text":"STALE","textSignature":"{\"v\":1,\"id\":\"a\",\"phase\":\"final_answer\"}"}
+                """, false);
+            bridge.RaiseChat(late);
+            Assert.Equal("Answer", snapshots[^1].Timelines["main"].Entries[^1].Text);
+            var other = Snapshot("""
+                {"type":"text","text":"Other answer","textSignature":"{\"v\":1,\"id\":\"a\",\"phase\":\"final_answer\"}"}
+                """, true);
+            other.SessionKey = "other";
+            bridge.RaiseChat(other);
+            Assert.Equal("Answer", snapshots[^1].Timelines["main"].Entries[^1].Text);
+
+            var (historyBridge, historyProvider, historySnapshots, _) = CreateProvider([MainSession()]);
+            await using (historyProvider)
+            {
+                historyBridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+                {
+                    SessionKey = "main", Messages = [final],
+                });
+                await historyProvider.LoadHistoryAsync("main");
+                var history = historySnapshots[^1].Timelines["main"].Entries;
+                Assert.Equal(["Checking", "file.txt", "Answer"], history.Select(entry => entry.Text));
+                Assert.Equal("r", history[1].ToolRunId);
+                Assert.Equal(ChatToolCallStatus.Success, history[1].ToolResult);
+                Assert.Equal("commentary", history[0].Presentation!.Phase);
+                Assert.Equal("final_answer", history[2].Presentation!.Phase);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandoffHistory_UsesRealCallPairingAndPublicAcknowledgmentAfterResume()
+    {
+        using var json = JsonDocument.Parse("""
+            {"messages":[
+              {"role":"assistant","__openclaw":{"runId":"r"},"content":[
+                {"type":"text","text":"Starting"},
+                {"type":"toolCall","id":"yield","name":"sessions_yield","arguments":{"context":"private"}}
+              ]},
+              {"role":"toolResult","toolCallId":"yield","toolName":"sessions_yield","__openclaw":{"runId":"r"},
+                "details":{"status":"yielded","acknowledgment":"I will resume"}},
+              {"role":"assistant","__openclaw":{"runId":"resumed"},"content":"Answer"}
+            ]}
+            """);
+        var history = ParseHistoryPayload(json.RootElement);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(history);
+            await provider.LoadHistoryAsync("main");
+            var entries = snapshots[^1].Timelines["main"].Entries;
+            var tool = Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+            Assert.Equal("I will resume", tool.ConfirmedHandoff!.Acknowledgment);
+            Assert.Null(tool.ToolArgs);
+            var rows = ChatToolActivityPresentation.Project(entries, "agent:a:dashboard:d", 0);
+            Assert.All(rows, row => Assert.False(row.IsCompletedWork));
+            Assert.Equal(["Starting", "I will resume", "Answer"], rows.Select(row => row.Entry!.Text));
+        }
+    }
+
     [Fact]
     public async Task LoadHistoryAsync_StructuredOrphanResult_SynthesizesCompletedTool()
     {
@@ -10598,14 +11294,22 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task LoadHistoryAsync_WhenRequestFails_NotifiesAndAllowsRetry()
+    public async Task LoadHistoryAsync_WhenRequestFails_PublishesFailureUntilExplicitRetry()
     {
         var calls = 0;
-        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        var fail = true;
+        var retries = new List<Func<Task>>();
+        var (bridge, provider, snapshots, notifications) = CreateProvider(
+            new[] { MainSession() },
+            historyRetryScheduler: (_, _, retry) =>
+            {
+                retries.Add(retry);
+                return Task.CompletedTask;
+            });
         bridge.HistoryBehavior = _ =>
         {
             calls++;
-            if (calls == 1)
+            if (fail)
                 throw new InvalidOperationException("history down");
 
             return Task.FromResult(new ChatHistoryInfo
@@ -10618,20 +11322,56 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             });
         };
         await provider.LoadAsync();
-        snapshots.Clear();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
 
         await provider.LoadHistoryAsync("main");
+        for (var retryIndex = 0; retryIndex < retries.Count; retryIndex++)
+            await retries[retryIndex]();
 
+        Assert.Equal(3, retries.Count);
         Assert.Contains(notifications, n =>
             n.Kind == ChatProviderNotificationKind.Error &&
             n.Message?.Contains("history down") == true);
-        Assert.Empty(snapshots);
+        Assert.Contains("main", snapshots[^1].FailedHistoryThreads!);
 
+        // The root requests non-forced history on every render; a failed thread
+        // must wait for the visible Retry action instead of reloading in a loop.
+        var failedCalls = calls;
         await provider.LoadHistoryAsync("main");
+        Assert.Equal(failedCalls, calls);
 
-        Assert.Equal(2, calls);
+        fail = false;
+        await provider.RetryHistoryAsync("main");
+
+        Assert.Equal(failedCalls + 1, calls);
+        Assert.DoesNotContain("main", snapshots[^1].FailedHistoryThreads ?? new HashSet<string>());
         Assert.Contains(snapshots[^1].Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "recovered");
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_FailureIsHiddenWhileDisconnectedAndClearedByReconnect()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => throw new InvalidOperationException("history down");
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+
+        // Disconnected failures are terminal immediately but not presented.
+        await provider.LoadHistoryAsync("main");
+        Assert.Empty(snapshots[^1].FailedHistoryThreads ?? new HashSet<string>());
+
+        // Reconnect clears the block, so the root's next non-forced load runs.
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        Assert.DoesNotContain("main", snapshots[^1].FailedHistoryThreads ?? new HashSet<string>());
+        var calls = 0;
+        bridge.HistoryBehavior = _ =>
+        {
+            calls++;
+            return Task.FromResult(new ChatHistoryInfo { SessionKey = "main" });
+        };
+        await provider.LoadHistoryAsync("main");
+        Assert.True(calls > 0);
     }
 
     [Fact]
@@ -10833,7 +11573,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         var rows = ChatToolActivityPresentation.Project(snapshots[^1].Timelines["main"].Entries, "main", 1);
         var row = Assert.Single(rows);
-        Assert.Same(entry, row.Entry);
+        Assert.Same(entry, Assert.Single(row.Tools));
     }
 
     [Fact]
@@ -10859,7 +11599,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             snapshots[^1].Timelines["main"].Entries,
             "main",
             1));
-        Assert.Same(entry, row.Entry);
+        Assert.Same(entry, Assert.Single(row.Tools));
     }
 
     [Fact]
@@ -11656,7 +12396,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
         Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
-        Assert.Equal("line one\nline two", entry.ToolOutput);
+        Assert.Equal(" line one \nline two", entry.ToolOutput);
     }
 
     [Fact]
@@ -11664,7 +12404,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
-        var explicitError = new string('e', 5000);
+        var explicitError = new string('e', 300 * 1024);
 
         bridge.RaiseAgent(MakeAgentEvent("tool",
             """{"phase":"start","name":"exec","toolCallId":"tool-1"}"""));
@@ -11683,7 +12423,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
         Assert.DoesNotContain("partial output", entry.ToolOutput, StringComparison.Ordinal);
         Assert.StartsWith(new string('e', 100), entry.ToolOutput, StringComparison.Ordinal);
-        Assert.EndsWith("(truncated)", entry.ToolOutput, StringComparison.Ordinal);
+        Assert.EndsWith("bytes truncated]", entry.ToolOutput, StringComparison.Ordinal);
         Assert.True(entry.ToolOutput!.Length < explicitError.Length);
     }
 
@@ -11709,7 +12449,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
 
-        var huge = new string('x', 10000);
+        var huge = new string('x', 300 * 1024);
         bridge.RaiseAgent(MakeAgentEvent("tool",
             """{"phase":"start","name":"read","args":{"path":"/big.txt"}}"""));
         var resultJson = "{\"phase\":\"result\",\"name\":\"read\",\"result\":{\"content\":\"" + huge + "\"}}";
@@ -11718,7 +12458,8 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         var entry = snapshots[^1].Timelines["main"].Entries[0];
         Assert.NotNull(entry.ToolOutput);
         Assert.True(entry.ToolOutput!.Length < huge.Length, "expected truncation");
-        Assert.EndsWith("(truncated)", entry.ToolOutput);
+        Assert.EndsWith("bytes truncated]", entry.ToolOutput);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(entry.ToolOutput) <= OpenClawChatDataProvider.MaxEntryTextBytes);
     }
 
     [Fact]
