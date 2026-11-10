@@ -825,57 +825,6 @@ jobs:
         -RequireAllTestsPassed
         -HangTimeoutSeconds 120
 
-    - name: Run mock Gateway application scenarios
-      id: gateway-fixture
-      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
-      timeout-minutes: 30
-      shell: pwsh
-      run: >
-        ./scripts/test-gateway-fixture.ps1
-        -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
-        -ArtifactsDirectory .\TestResults\GatewayFixture
-        -Screenshots
-
-    - name: Run latest stable profile compatibility
-      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
-      timeout-minutes: 15
-      shell: pwsh
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        $ErrorActionPreference = 'Stop'
-        $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the latest stable release.' }
-        $assets = @($release.assets | Where-Object { $_.name -match '^OpenClawTray-[^/\\]+-win-x64\.zip$' })
-        if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
-          throw 'Latest stable must have one x64 portable archive with a published SHA256 digest.'
-        }
-        $asset = $assets[0]
-        $archive = Join-Path $env:RUNNER_TEMP ("gateway-fixture-stable-" + [guid]::NewGuid().ToString('N') + '.zip')
-        $expanded = [IO.Path]::ChangeExtension($archive, $null)
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
-        $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-        if ($digest -ne $asset.digest.Substring(7)) { throw 'Stable archive SHA256 does not match its release metadata.' }
-        Expand-Archive -LiteralPath $archive -DestinationPath $expanded
-        $apps = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter OpenClaw.Tray.WinUI.exe)
-        if ($apps.Count -ne 1) { throw 'Stable archive must contain exactly one Companion executable.' }
-        $artifacts = Join-Path $env:GITHUB_WORKSPACE 'TestResults\GatewayFixture'
-        New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
-        @{
-          releaseTag = $release.tag_name
-          releaseUrl = $release.html_url
-          publishedAt = $release.published_at
-          archiveUrl = $asset.browser_download_url
-          archiveSha256 = $digest
-          appPath = $apps[0].FullName
-          appSha256 = (Get-FileHash -LiteralPath $apps[0].FullName -Algorithm SHA256).Hash
-          candidateCheckout = (git rev-parse HEAD)
-        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifacts 'stable-release.json')
-        ./scripts/test-gateway-fixture.ps1 `
-          -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
-          -StableAppPath $apps[0].FullName `
-          -ArtifactsDirectory $artifacts
-
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
       id: a11y
@@ -935,6 +884,137 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: test-results-ui
+        path: TestResults/
+        if-no-files-found: warn
+
+  gateway-fixture:
+    name: Mock Gateway application and compatibility tests
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    runs-on: windows-latest
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests-Local
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore UI test projects
+      run: |
+        dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
+
+    - name: Build UI test projects
+      id: ui-build
+      run: |
+        dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+
+    # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
+    # framework MSIX. The hosted runner image does not preinstall it, so install
+    # the runtime matching the repo-level WindowsAppSDK version.
+    - name: Install WindowsAppRuntime
+      id: ui-runtime
+      shell: pwsh
+      run: |
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Configure UI desktop
+      id: ui-desktop
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
+    - name: Run mock Gateway application scenarios
+      id: gateway-fixture
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 30
+      shell: pwsh
+      run: >
+        ./scripts/test-gateway-fixture.ps1
+        -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        -ArtifactsDirectory .\TestResults\GatewayFixture
+        -Screenshots
+
+    - name: Run latest stable profile compatibility
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the latest stable release.' }
+        $assets = @($release.assets | Where-Object { $_.name -match '^OpenClawTray-[^/\\]+-win-x64\.zip$' })
+        if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+          throw 'Latest stable must have one x64 portable archive with a published SHA256 digest.'
+        }
+        $asset = $assets[0]
+        $archive = Join-Path $env:RUNNER_TEMP ("gateway-fixture-stable-" + [guid]::NewGuid().ToString('N') + '.zip')
+        $expanded = [IO.Path]::ChangeExtension($archive, $null)
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
+        $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+        if ($digest -ne $asset.digest.Substring(7)) { throw 'Stable archive SHA256 does not match its release metadata.' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+        $apps = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter OpenClaw.Tray.WinUI.exe)
+        if ($apps.Count -ne 1) { throw 'Stable archive must contain exactly one Companion executable.' }
+        $artifacts = Join-Path $env:GITHUB_WORKSPACE 'TestResults\GatewayFixture'
+        New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
+        @{
+          releaseTag = $release.tag_name
+          releaseUrl = $release.html_url
+          publishedAt = $release.published_at
+          archiveUrl = $asset.browser_download_url
+          archiveSha256 = $digest
+          appPath = $apps[0].FullName
+          appSha256 = (Get-FileHash -LiteralPath $apps[0].FullName -Algorithm SHA256).Hash
+          candidateCheckout = (git rev-parse HEAD)
+        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifacts 'stable-release.json')
+        ./scripts/test-gateway-fixture.ps1 `
+          -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
+          -StableAppPath $apps[0].FullName `
+          -ArtifactsDirectory $artifacts
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-gateway-fixture
         path: TestResults/
         if-no-files-found: warn
 
@@ -1700,7 +1780,7 @@ jobs:
   ci-gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
+    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -1719,6 +1799,7 @@ jobs:
         TRAY_RESULT: ${{ needs.tray-tests.result }}
         UI_REQUIRED: ${{ needs.change-classification.outputs.ui_tests }}
         UI_RESULT: ${{ needs.ui-tests.result }}
+        GATEWAY_FIXTURE_RESULT: ${{ needs.gateway-fixture.result }}
         SETUP_E2E_REQUIRED: ${{ needs.change-classification.outputs.setup_e2e }}
         SETUP_E2E_RESULT: ${{ needs.setup-e2e.result }}
         REVOCATION_E2E_REQUIRED: ${{ needs.change-classification.outputs.revocation_e2e }}
@@ -1745,6 +1826,7 @@ jobs:
           -TrayResult $env:TRAY_RESULT `
           -UiRequired $env:UI_REQUIRED `
           -UiResult $env:UI_RESULT `
+          -GatewayFixtureResult $env:GATEWAY_FIXTURE_RESULT `
           -SetupE2eRequired $env:SETUP_E2E_REQUIRED `
           -SetupE2eResult $env:SETUP_E2E_RESULT `
           -RevocationE2eRequired $env:REVOCATION_E2E_REQUIRED `
