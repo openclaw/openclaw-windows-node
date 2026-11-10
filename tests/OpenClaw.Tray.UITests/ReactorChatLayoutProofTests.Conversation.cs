@@ -279,10 +279,18 @@ public sealed partial class ReactorChatLayoutProofTests
             async Task ScrollAwayAsync()
             {
                 // Establish reader intent through the normal transcript keyboard-focus path.
-                await ui.RunOnUIAsync(() => Assert.True(FindDescendants<Button>(transcriptScroll)
-                    .Last(button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
-                        .StartsWith("ChatCopy_", StringComparison.Ordinal))
-                    .Focus(FocusState.Keyboard)));
+                await ui.RunOnUIAsync(() =>
+                {
+                    var repeater = Assert.Single(FindDescendants<ItemsRepeater>(transcriptScroll));
+                    // Enter an earlier realized item, not the last physical child, which may be recycled.
+                    var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
+                        .Select(index => repeater.TryGetElement(index)).OfType<ItemContainer>()
+                        .SelectMany(row => FindDescendants<Button>(row))
+                        .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
+                                .StartsWith("ChatCopy_", StringComparison.Ordinal));
+                    Assert.True(reader.Focus(FocusState.Keyboard));
+                });
                 await SettleAsync();
                 // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.
                 await ui.RunOnUIAsync(() =>
