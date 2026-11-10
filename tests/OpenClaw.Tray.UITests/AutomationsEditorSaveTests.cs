@@ -143,7 +143,7 @@ public sealed class AutomationsEditorSaveTests(UIThreadFixture ui)
                     return;
                 }
 
-                // Run after Reactor's TextChanged handler, before any parent reconciliation.
+                // Observe native TextChanged after the property binding, before any parent reconciliation.
                 // The rendered props stay blank; the missing prompt keeps this off the wire.
                 var input = Assert.Single(FindLogical<TextBox>(root), box =>
                     AutomationProperties.GetAutomationId(box) == "AutomationEditorName");

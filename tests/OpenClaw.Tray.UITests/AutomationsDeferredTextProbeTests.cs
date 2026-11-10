@@ -1,4 +1,4 @@
-// Temporary mounted diagnostic for AutomationEditor's controlled text fields.
+// Mounted regression and event diagnostics for AutomationEditor's native text binding.
 // Run with FullyQualifiedName~AutomationsDeferredTextProbeTests. Event artifacts contain
 // synthetic markers and lengths only. Internal token reflection is observational, not a fix.
 using System.Reflection;
@@ -9,13 +9,14 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Xunit.Abstractions;
+using OpenClawTray.Automations;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
 
 namespace OpenClaw.Tray.UITests;
 
 /// <summary>
-/// Records native event/model/render ordering without changing Reactor or the editor.
+/// Exercises the production editor binding and records native event/model/render ordering.
 /// Owned-window UIA client writes are not real-keystroke or cross-process application proof.
 /// </summary>
 [Collection(UICollection.Name)]
@@ -73,8 +74,8 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
                 probe.Mark("programmatic-prime");
                 probe.Replace!(Primed);
             });
-            // A normal controlled replacement can leave H2's token behind. Observe it;
-            // never inject, clear or otherwise manipulate Reactor's suppression state.
+            // Observe the same programmatic-prime boundary as the failing baseline.
+            // Never inject, clear or otherwise manipulate Reactor's suppression state.
             await SettleAsync();
             await ui.RunOnUIAsync(async () =>
             {
@@ -181,7 +182,7 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
         global::Windows.Foundation.TypedEventHandler<TextBox, TextBoxTextChangingEventArgs>? changing = null;
         void Mark(string phase) => events.Add(
             $"{++sequence:D3} {phase} native={Value(input?.Text ?? "")} model={Value(model)}");
-        Element Field() => TextBox(model, value =>
+        Element Field() => AutomationTextInput.TextBox(model, value =>
             {
                 Mark($"model-callback value={Value(value)}");
                 model = value;
@@ -284,6 +285,83 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
                         JsonSerializer.Serialize(new { ReconcileAfterNativeInput = reconcileAfterNativeInput, Events = events }));
                 }
             }
+        }
+    }
+
+    [Theory]
+    [InlineData(ControlKind.TextBox)]
+    [InlineData(ControlKind.AutoSuggestBox)]
+    public async Task Binding_UsesCurrentCallbackAndRetiresItOnUnmount(ControlKind kind)
+    {
+        await ui.ResetContainerAsync();
+        ReactorHostControl? host = null;
+        FrameworkElement? control = null;
+        Element? current = null;
+        var oldValues = new List<string>();
+        var currentValues = new List<string>();
+        Element Field(string value, Action<string> changed) => kind == ControlKind.TextBox
+            ? AutomationTextInput.TextBox(value, changed)
+            : AutomationTextInput.AutoSuggestBox(value, changed);
+        void Reconcile(string value)
+        {
+            var next = Field(value, currentValues.Add);
+            Assert.Same(control, host!.Reconciler.Reconcile(current, next, control, static () => { }));
+            current = next;
+        }
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host = new ReactorHostControl { Width = 560 };
+                current = Field(Seed, oldValues.Add);
+                control = Assert.IsAssignableFrom<FrameworkElement>(host.Reconciler.Mount(current, static () => { }));
+                host.Content = control;
+                ui.Container.Children.Add(host);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                control is { IsLoaded: true, XamlRoot: not null }
+                && (control is TextBox || FindDescendants<TextBox>(control).Any()), "callback lifetime input mounted"));
+            await ui.RunOnUIAsync(async () =>
+            {
+                Assert.Empty(oldValues); // Initial owner value is not a user edit.
+                Reconcile(Seed); // Same text, new callback, same native control.
+                var input = control is TextBox box ? box : Assert.Single(FindDescendants<TextBox>(control!));
+                await NativeTextValueInput.SetAsync(ui.TestWindow, input, Edit);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Empty(oldValues);
+                Assert.Equal(new[] { Edit }, currentValues);
+                Reconcile(Replacement);
+                Reconcile("");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var property = kind == ControlKind.TextBox ? TextBox.TextProperty : AutoSuggestBox.TextProperty;
+                Assert.Equal("", (string)control!.GetValue(property));
+                Assert.Equal(new[] { Edit }, currentValues); // Model writes never echo into either callback.
+                host!.Reconciler.UnmountChild(control);
+                host.Content = null;
+                control.SetValue(property, "after-unmount");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Empty(oldValues);
+                Assert.Equal(new[] { Edit }, currentValues);
+            });
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (host is null) return;
+                ui.Container.Children.Remove(host);
+                host.Content = null;
+                host.Dispose();
+            });
         }
     }
 
@@ -407,10 +485,10 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
                 setText(value);
             }
             Element field = probe.Kind == ControlKind.TextBox
-                ? TextBox(text, Changed).AutomationName("Deferred text probe").IsReadOnly(nonTextProp).Set(native => native.TabIndex = 0)
-                : (AutoSuggestBox(text, Changed, Changed).AutomationName("Deferred text probe") with { OnSuggestionChosen = Changed }).IsEnabled(!nonTextProp);
+                ? AutomationTextInput.TextBox(text, Changed).AutomationName("Deferred text probe").IsReadOnly(nonTextProp).Set(native => native.TabIndex = 0)
+                : (AutomationTextInput.AutoSuggestBox(text, Changed).AutomationName("Deferred text probe") with { OnSuggestionChosen = Changed }).IsEnabled(!nonTextProp);
             return VStack(4, TextBlock($"tick {tick}"),
-                field.AutomationId("DeferredTextProbe").OnMount(probe.Attach).OnUnmount(_ => probe.Detach()));
+                field.AutomationId("DeferredTextProbe").OnMount(probe.Attach).OnUnmountAdd(_ => probe.Detach()));
         }
     }
 }

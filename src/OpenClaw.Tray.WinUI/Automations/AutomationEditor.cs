@@ -329,14 +329,14 @@ internal sealed class AutomationEditor : Component<AutomationEditorProps>
 
     private static Element Text(string header, string value, Action<string> changed, string automationId, string? placeholder = null, bool multiline = false, bool showHeader = true)
     {
-        var box = TextBox(value, changed, placeholder, showHeader ? header : null).AutomationId(automationId).AutomationName(header);
+        var box = AutomationTextInput.TextBox(value, changed, placeholder, showHeader ? header : null).AutomationId(automationId).AutomationName(header);
         if (automationId == "AutomationEditorName")
             box = box.Set(native => native.TabIndex = 0);
         return multiline ? box.AcceptsReturn(true).TextWrapping(TextWrapping.Wrap).MinHeight(96) : box;
     }
 
     private static Element Suggest(string header, string value, IReadOnlyList<string> suggestions, Action<string> changed, string automationId, string? placeholder = null) =>
-        (AutoSuggestBox(value, changed, changed) with
+        (AutomationTextInput.AutoSuggestBox(value, changed) with
         {
             OnSuggestionChosen = changed,
             Header = header,
