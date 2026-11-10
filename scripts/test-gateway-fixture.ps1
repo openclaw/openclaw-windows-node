@@ -8,6 +8,9 @@ StableAppPath selects the released-profile compatibility case instead of the ord
 application smoke. Both executables must advertise fixture isolation support.
 NativeInputProof explicitly authorizes native wheel input in the ordinary fixture UI
 child on an exclusive interactive desktop. It does not select the separate keyboard lane.
+.PARAMETER NoBuild
+Use test projects already built for the selected configuration and native runtime.
+Both the IntegrationTests and UITests projects must have matching canonical outputs.
 #>
 [CmdletBinding()]
 param(
@@ -17,6 +20,7 @@ param(
     [string]$Configuration = 'Debug',
     [string]$ArtifactsDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'openclaw-gateway-fixture-artifacts'),
     [string]$StableAppPath,
+    [switch]$NoBuild,
     [switch]$Screenshots,
     [switch]$NativeInputProof,
     [switch]$KeyboardProof
@@ -31,16 +35,17 @@ New-Item -ItemType Directory -Path $resultsDirectory -Force | Out-Null
 $arch = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
 if ($arch -notin @('X64', 'Arm64')) { throw "Unsupported architecture: $arch" }
 $rid = if ($arch -eq 'Arm64') { 'win-arm64' } else { 'win-x64' }
-$platform = if ($arch -eq 'Arm64') { 'ARM64' } else { 'x64' }
 
 function New-FixtureTestStartInfo {
     param([string]$Project, [string]$Filter, [string]$ResultName, [switch]$EnableKeyboardProof)
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
     $start.UseShellExecute = $false
     $start.WorkingDirectory = $repoRoot
-    foreach ($argument in @('test', (Join-Path $repoRoot $Project), '-c', $Configuration,
-        '-r', $rid, "-p:Platform=$platform", '-p:DevBuild=false', '--filter', $Filter,
-        '--results-directory', $resultsDirectory, '--logger', "trx;LogFileName=$ResultName.trx")) {
+    $testArguments = @('test', (Join-Path $repoRoot $Project), '-c', $Configuration,
+        '-r', $rid, '-p:DevBuild=false', '--filter', $Filter,
+        '--results-directory', $resultsDirectory, '--logger', "trx;LogFileName=$ResultName.trx")
+    if ($NoBuild) { $testArguments += @('--no-build', '--no-restore') }
+    foreach ($argument in $testArguments) {
         $start.ArgumentList.Add($argument)
     }
     $start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'

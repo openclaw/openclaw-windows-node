@@ -185,38 +185,62 @@ public sealed class InteractiveGatewayRuntime : IAsyncDisposable
             if (run.Scenario == "slow")
                 for (var i = 0; i < 12; i++)
                     if (!await StepAsync(run, () => ChatAsync(run, "status", new { phase = "starting_model" }))) return;
-            if (run.Scenario is "tools" or "tool-error")
+            if (run.Scenario is "tools" or "tool-error" or "tool-powershell")
             {
                 var id = $"{run.Id}-tool";
-                if (!await StepAsync(run, async () =>
+                var name = run.Scenario == "tool-powershell" ? "powershell" : "read";
+                object input = run.Scenario == "tool-powershell"
+                    ? new { command = "$files = Get-ChildItem -Path $env:TEMP\nif ($files) { Write-Output 'Synthetic preview only' }" }
+                    : new { path = "fixture.txt" };
+                var output = run.Scenario switch
                 {
-                    var message = AddMessage(run.Session, "assistant", "");
-                    message["content"] = JsonSerializer.SerializeToNode(new[] { new { type = "toolCall", id, name = "read", arguments = new { path = "fixture.txt" } } });
-                    message["stopReason"] = "toolUse";
-                    await AgentAsync(run, "tool", new { phase = "start", name = "read", toolCallId = id, args = new { path = "fixture.txt" } });
-                })) return;
-                if (!await StepAsync(run, async () =>
-                {
-                    var text = run.Scenario == "tool-error" ? "Synthetic tool failure." : "Synthetic file contents.";
-                    var result = AddMessage(run.Session, "toolResult", text);
-                    result["toolCallId"] = id;
-                    result["toolName"] = "read";
-                    result["isError"] = run.Scenario == "tool-error";
-                    await AgentAsync(run, "tool", new
-                    {
-                        phase = "result", name = "read", toolCallId = id, isError = run.Scenario == "tool-error",
-                        result = new { content = new[] { new { type = "text", text } } }
-                    });
-                })) return;
+                    "tool-error" => "Synthetic tool failure.",
+                    "tool-powershell" => "Name\n----\nfixture.txt\n\nSynthetic preview only. Nothing executed.",
+                    _ => "Synthetic file contents.",
+                };
+                if (!await StepAsync(run, () => ToolStartAsync(run, id, name, input))) return;
+                if (!await StepAsync(run, () => ToolResultAsync(run, id, name, output,
+                    run.Scenario == "tool-error"))) return;
             }
             if (run.Scenario == "agent-activity")
             {
+                // The real Gateway pairs each activity item with a tool stream event and transcript entry.
                 var id = $"{run.Id}-command";
+                var patchId = $"{run.Id}-patch";
                 if (!await StepAsync(run, () => AgentAsync(run, "job", new { state = "running", title = "Synthetic activity" }))) return;
-                if (!await StepAsync(run, () => AgentAsync(run, "item", new { kind = "command", phase = "start", toolCallId = id, name = "exec", command = "echo fixture-only" }))) return;
-                if (!await StepAsync(run, () => AgentAsync(run, "command_output", new { phase = "end", toolCallId = id, status = "completed", output = "Synthetic output. Nothing executed." }))) return;
-                if (!await StepAsync(run, () => AgentAsync(run, "item", new { kind = "patch", phase = "start", toolCallId = $"{run.Id}-patch", name = "apply_patch", title = "Synthetic patch" }))) return;
-                if (!await StepAsync(run, () => AgentAsync(run, "patch", new { phase = "end", toolCallId = $"{run.Id}-patch", summary = "Synthetic patch summary. No files changed." }))) return;
+                if (!await StepAsync(run, async () =>
+                {
+                    await AgentAsync(run, "item", new { kind = "command", phase = "start", toolCallId = id, name = "exec", command = "echo fixture-only" });
+                    await ToolStartAsync(run, id, "exec", new { command = "echo fixture-only" });
+                })) return;
+                if (!await StepAsync(run, async () =>
+                {
+                    await AgentAsync(run, "command_output", new { phase = "end", toolCallId = id, status = "completed", output = "Synthetic output. Nothing executed." });
+                    await ToolResultAsync(run, id, "exec", "Synthetic output. Nothing executed.", isError: false);
+                })) return;
+                if (!await StepAsync(run, async () =>
+                {
+                    await AgentAsync(run, "item", new { kind = "patch", phase = "start", toolCallId = patchId, name = "apply_patch", title = "Synthetic patch" });
+                    await ToolStartAsync(run, patchId, "apply_patch", new { path = "fixture.txt" });
+                })) return;
+                if (!await StepAsync(run, async () =>
+                {
+                    await AgentAsync(run, "patch", new { phase = "end", toolCallId = patchId, summary = "Synthetic patch summary. No files changed." });
+                    await ToolResultAsync(run, patchId, "apply_patch", "Synthetic patch summary. No files changed.", isError: false);
+                })) return;
+            }
+            if (run.Scenario == "nested-tools")
+            {
+                // A wrapper call whose children carry the Gateway's recorded parentToolCallId.
+                var wrapper = $"{run.Id}-wrapper";
+                var read = $"{run.Id}-nested-read";
+                var exec = $"{run.Id}-nested-exec";
+                if (!await StepAsync(run, () => ToolStartAsync(run, wrapper, "exec", new { command = "fixture-wrapper" }))) return;
+                if (!await StepAsync(run, () => ToolStartAsync(run, read, "read", new { path = "fixture.txt" }, wrapper))) return;
+                if (!await StepAsync(run, () => ToolResultAsync(run, read, "read", "Synthetic file contents.", isError: false))) return;
+                if (!await StepAsync(run, () => ToolStartAsync(run, exec, "exec", new { command = "echo fixture-only" }, wrapper))) return;
+                if (!await StepAsync(run, () => ToolResultAsync(run, exec, "exec", "Synthetic nested failure.", isError: true))) return;
+                if (!await StepAsync(run, () => ToolResultAsync(run, wrapper, "exec", "Synthetic wrapper output. Nothing executed.", isError: false))) return;
             }
             if (run.Scenario.StartsWith("question-", StringComparison.Ordinal))
             {
@@ -261,6 +285,8 @@ public sealed class InteractiveGatewayRuntime : IAsyncDisposable
                 if (!await DeltaAsync(run, $"Approval decision: {decision}. No command was executed. ")) return;
             }
             if (!await DeltaAsync(run, "This is a **synthetic streaming answer**.\n\n")) return;
+            if (run.Scenario == "nested-tools" &&
+                !await DeltaAsync(run, "[CI attempt 2](https://github.com/openclaw/openclaw-windows-node/actions) is running on `6f37c2d82`. Docs: https://docs.openclaw.ai\n\n")) return;
             if (run.Scenario == "disconnect")
             {
                 if (!await StepAsync(run, () => _disconnect(_lifetime.Token))) return;
@@ -298,6 +324,31 @@ public sealed class InteractiveGatewayRuntime : IAsyncDisposable
         else
             await AgentAsync(run, "assistant", new { delta });
     });
+
+    private Task ToolStartAsync(Run run, string id, string name, object args, string? parentId = null)
+    {
+        var message = AddMessage(run.Session, "assistant", "");
+        var call = JsonSerializer.SerializeToNode(new { type = "toolCall", id, name, arguments = args })!;
+        if (parentId is not null) call["parentToolCallId"] = parentId;
+        message["content"] = new JsonArray(call);
+        message["stopReason"] = "toolUse";
+        return parentId is null
+            ? AgentAsync(run, "tool", new { phase = "start", name, toolCallId = id, args })
+            : AgentAsync(run, "tool", new { phase = "start", name, toolCallId = id, parentToolCallId = parentId, args });
+    }
+
+    private Task ToolResultAsync(Run run, string id, string name, string text, bool isError)
+    {
+        var result = AddMessage(run.Session, "toolResult", text);
+        result["toolCallId"] = id;
+        result["toolName"] = name;
+        result["isError"] = isError;
+        return AgentAsync(run, "tool", new
+        {
+            phase = "result", name, toolCallId = id, isError,
+            result = new { content = new[] { new { type = "text", text } } }
+        });
+    }
 
     private Task AgentAsync(Run run, string stream, object data) => _publish("agent", new
     {

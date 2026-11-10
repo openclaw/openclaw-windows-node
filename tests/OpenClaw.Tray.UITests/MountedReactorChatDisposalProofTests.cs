@@ -81,7 +81,7 @@ public sealed class MountedReactorChatDisposalProofTests
             {
                 AttachFiles = _ => { },
             };
-            var mounted = new MountedReactorChat(target, host, callbacks, session);
+            var mounted = new MountedReactorChat(target, host, callbacks, new(provider, session));
 
             // First call performs real teardown.
             mounted.Dispose();
@@ -97,6 +97,7 @@ public sealed class MountedReactorChatDisposalProofTests
 
             Assert.Null(secondCallException);
             Assert.Null(thirdCallException);
+            mounted.ApplyUserIdentity("No longer mounted", null);
             Assert.Null(target.Child);
             Assert.Null(callbacks.AttachFiles);
 
@@ -208,7 +209,7 @@ public sealed class MountedReactorChatDisposalProofTests
             target.Child = reactor;
             var recordings = 0;
             using var mounted = new MountedReactorChat(target, reactor,
-                new() { TriggerVoiceRecording = () => recordings++ }, session);
+                new() { TriggerVoiceRecording = () => recordings++ }, new(new NoopChatDataProvider(), session));
             const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
             typeof(ChatPage).GetField("_reactorHost", fields)!.SetValue(page, mounted);
             typeof(ChatPage).GetField("_pageActive", fields)!.SetValue(page, true);

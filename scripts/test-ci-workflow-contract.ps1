@@ -765,7 +765,8 @@ foreach ($token in @(
         '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
         '-ArtifactsDirectory .\TestResults\GatewayFixture',
         '-Screenshots',
-        '-NativeInputProof'
+        '-NativeInputProof',
+        '-NoBuild'
     )) {
     Assert-Contains -Text $fixtureStep -Expected $token -Message "Mock Gateway CI step is missing '$token'."
 }
@@ -790,6 +791,15 @@ Assert-NotContains -Text $uiJob -Unexpected './scripts/test-gateway-fixture.ps1'
     -Message 'Fixture scenarios must not remain on the serial native UI path.'
 Assert-Contains -Text $fixtureJob -Expected 'uses: actions/cache/restore@v6' `
     -Message 'The new fixture runner must not add another shared NuGet cache writer.'
+$fixtureRestore = Get-StepBlock -Text $fixtureJob -Name 'Restore UI test projects'
+$fixtureBootstrapIndex = $fixtureRestore.IndexOf('./scripts/Initialize-ReactorPackages.ps1', [StringComparison]::Ordinal)
+$fixtureRestoreIndex = $fixtureRestore.IndexOf('dotnet restore tests/OpenClaw.Tray.UITests', [StringComparison]::Ordinal)
+if ($fixtureBootstrapIndex -lt 0 -or $fixtureRestoreIndex -lt 0 -or
+    $fixtureBootstrapIndex -ge $fixtureRestoreIndex) {
+    throw 'The fixture runner must initialize the verified local Reactor feed before restoring UI tests.'
+}
+Assert-Contains -Text $fixtureRestore -Expected "`$ErrorActionPreference = 'Stop'" `
+    -Message 'The fixture restore must stop if Reactor package initialization fails.'
 foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
     if ((Get-StepBlock -Text $uiJob -Name $name).Trim() -cne
         (Get-StepBlock -Text $fixtureJob -Name $name).Trim()) {
@@ -798,6 +808,10 @@ foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
 }
 Assert-Contains -Text $fixtureJob -Expected 'dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore' `
     -Message 'The fixture lane must build the current candidate UI test graph.'
+Assert-Contains -Text $fixtureRestore -Expected 'dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64' `
+    -Message 'The prebuilt fixture lane must restore its profile and compatibility test project.'
+Assert-Contains -Text $fixtureJob -Expected 'dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore' `
+    -Message 'The prebuilt fixture lane must build profile and compatibility tests before invoking the runner.'
 Assert-Contains -Text $fixtureJob -Expected "ref: `${{ inputs.promotion_source_sha || github.sha }}" `
     -Message 'The fixture lane must use the exact candidate checkout, including alpha promotion.'
 Assert-Contains -Text $fixtureJob -Expected '*promotion-version-tag' `
@@ -848,7 +862,13 @@ foreach ($token in @('always()', 'test-results-gateway-fixture', 'path: TestResu
         -Message "The independent fixture diagnostic archive must be retained: '$token'."
 }
 $fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
+Assert-NotContains -Text $fixtureRunner -Unexpected '-p:Platform=' `
+    -Message 'The fixture runner must reuse the RID-selected canonical outputs instead of rebuilding a separate Platform graph.'
+Assert-Contains -Text $fixtureRunner -Expected "if (`$NoBuild) { `$testArguments += @('--no-build', '--no-restore') }" `
+    -Message 'Prebuilt fixture execution must not spend its test deadline rebuilding or restoring.'
 $releasedProfileStep = Get-StepBlock -Text $fixtureJob -Name 'Run latest stable profile compatibility'
+Assert-Contains -Text $releasedProfileStep -Expected '-NoBuild' `
+    -Message 'Released-profile compatibility must reuse the same prebuilt integration tests.'
 foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
         'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
     Assert-Contains -Text $releasedProfileStep -Expected $token `
@@ -880,8 +900,8 @@ if ($startInfoFunction.Count -ne 1) { throw 'Expected one fixture child ProcessS
     . ([scriptblock]::Create($Definition))
     $repoRoot = $Root
     $Configuration = 'Debug'
+    $NoBuild = $false
     $rid = 'win-x64'
-    $platform = 'x64'
     $resultsDirectory = Join-Path $Root 'TestResults'
     $resolvedApp = Join-Path $Root 'candidate.exe'
     $resolvedStableApp = $null
@@ -906,6 +926,12 @@ if ($startInfoFunction.Count -ne 1) { throw 'Expected one fixture child ProcessS
             if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne '0') {
                 throw 'Profile and upgrade children must not inherit native-input authorization.'
             }
+        }
+        $NoBuild = $true
+        $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'profile' -ResultName 'prebuilt'
+        if (-not $start.ArgumentList.Contains('--no-build') -or -not $start.ArgumentList.Contains('--no-restore') -or
+            @($start.ArgumentList | Where-Object { $_ -like '-p:Platform=*' }).Count -ne 0) {
+            throw 'Prebuilt fixture execution must retain canonical RID outputs without building or restoring.'
         }
         if ($env:OPENCLAW_RUN_KEYBOARD_PROOF -ne '1') { throw 'Child launch planning changed the parent input opt-in.' }
     } finally { $env:OPENCLAW_RUN_KEYBOARD_PROOF = $inherited }
