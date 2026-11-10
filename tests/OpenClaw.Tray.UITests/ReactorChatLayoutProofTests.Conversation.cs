@@ -7,6 +7,7 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.Chat;
@@ -15,6 +16,7 @@ using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Chat;
 using OpenClawTray.Services;
+using Windows.Foundation;
 using static OpenClaw.Tray.UITests.TestSupport;
 
 namespace OpenClaw.Tray.UITests;
@@ -279,8 +281,9 @@ public sealed partial class ReactorChatLayoutProofTests
             async Task ScrollAwayAsync()
             {
                 // Establish reader intent through the normal transcript keyboard-focus path.
-                await ui.RunOnUIAsync(() =>
+                await ui.RunOnUIAsync(async () =>
                 {
+                    var items = Assert.Single(FindDescendants<ItemsView>(surface));
                     var repeater = Assert.Single(FindDescendants<ItemsRepeater>(transcriptScroll));
                     // Enter an earlier realized item, not the last physical child, which may be recycled.
                     var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
@@ -289,7 +292,25 @@ public sealed partial class ReactorChatLayoutProofTests
                         .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
                             Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
                                 .StartsWith("ChatCopy_", StringComparison.Ordinal));
-                    Assert.True(reader.Focus(FocusState.Keyboard));
+                    var entered = false;
+                    TypedEventHandler<UIElement, GettingFocusEventArgs> onReaderFocus = (_, args) =>
+                    {
+                        if (args.FocusState == FocusState.Keyboard)
+                            entered = true;
+                    };
+                    items.AddHandler(UIElement.GettingFocusEvent, onReaderFocus, true);
+                    try
+                    {
+                        // A successful Focus call on the already focused control raises no new reader-input event.
+                        Assert.True(composer!.Focus(FocusState.Programmatic));
+                        Assert.True(reader.Focus(FocusState.Keyboard));
+                        await WaitForRenderedConditionAsync(() => entered,
+                            "transcript keyboard focus reaches the navigation owner");
+                    }
+                    finally
+                    {
+                        items.RemoveHandler(UIElement.GettingFocusEvent, onReaderFocus);
+                    }
                 });
                 await SettleAsync();
                 // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.

@@ -322,6 +322,9 @@ Initial transcript tail navigation retains its native layout gate. Entering a
 transcript control through keyboard focus cancels pending automatic
 navigation just as pointer and keyboard input do. Focus at the tail can retain
 follow mode; moving away stops it. No renderer performs its own scroll loop.
+The owner observes synchronous `GettingFocus`, including handled events, and
+uses the event's requested focus state. A child control can consume `GotFocus`,
+and its asynchronous delivery can occur after focus has moved again.
 An explicit jump in an already laid-out view drains pending layout work before
 dispatch instead of waiting for a future layout-change event.
 Programmatic realization focus does not cancel navigation.

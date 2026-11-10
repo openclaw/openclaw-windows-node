@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 using WinUIAnnotatedScrollBar = Microsoft.UI.Xaml.Controls.AnnotatedScrollBar;
 using WinUIItemsView = Microsoft.UI.Xaml.Controls.ItemsView;
 using WinUIScrollView = Microsoft.UI.Xaml.Controls.ScrollView;
@@ -136,6 +137,7 @@ file sealed class InitialTailPositioner : IDisposable
     private readonly InitialTailConfirmation _confirmation = new();
     private readonly PointerEventHandler _cancelPointerNavigation;
     private readonly PointerEventHandler _readerPointerPressed;
+    private readonly TypedEventHandler<UIElement, GettingFocusEventArgs> _readerGettingFocus;
     private bool _disclosureAnchored;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
@@ -156,10 +158,11 @@ file sealed class InitialTailPositioner : IDisposable
         this.itemsView = itemsView;
         _cancelPointerNavigation = (_, _) => CancelPendingNavigation();
         _readerPointerPressed = (_, args) => OnReaderInput(args.OriginalSource, mayToggleDisclosure: true);
+        _readerGettingFocus = OnReaderFocus;
         itemsView.AddHandler(UIElement.PointerPressedEvent, _readerPointerPressed, true);
         itemsView.AddHandler(UIElement.PointerWheelChangedEvent, _cancelPointerNavigation, true);
         itemsView.PreviewKeyDown += OnNavigationKeyDown;
-        itemsView.GotFocus += OnReaderFocus;
+        itemsView.AddHandler(UIElement.GettingFocusEvent, _readerGettingFocus, true);
         itemsView.SizeChanged += OnSizeChanged;
         itemsView.Loaded += OnLoaded;
         itemsView.Unloaded += OnUnloaded;
@@ -413,6 +416,10 @@ file sealed class InitialTailPositioner : IDisposable
                     DetachConfirmation();
                     QueueInitialTailRetry(version, generation);
                     break;
+                case InitialTailLanding.CorrectOffset:
+                    DetachConfirmation();
+                    QueueInitialTailRetry(version, generation, correctOffset: true);
+                    break;
                 case InitialTailLanding.GiveUp:
                     var diagnostics = _confirmation.Diagnostics;
                     var attemptDiagnostics = _confirmation.AttemptDiagnostics;
@@ -451,7 +458,7 @@ file sealed class InitialTailPositioner : IDisposable
         catch (Exception) { }
     }
 
-    private void QueueInitialTailRetry(int version, int generation)
+    private void QueueInitialTailRetry(int version, int generation, bool correctOffset = false)
     {
         // Starting a native bring from Rendering can deadlock the WinUI layout pass.
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
@@ -467,8 +474,28 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            _confirmation.BeginAttempt(GetRequestItem(request));
-            if (!StartTailRequest(request))
+            var targetItem = GetRequestItem(request);
+            correctOffset &= _confirmation.CanCorrectOffset(targetItem);
+            _confirmation.BeginAttempt(targetItem);
+            if (correctOffset)
+            {
+                if (_scrollView is not { IsLoaded: true } scrollView
+                    || !ReferenceEquals(scrollView, itemsView.ScrollView))
+                {
+                    _confirmation.Invalidate();
+                    AwaitLayout();
+                    return;
+                }
+
+                // An indexed bring can complete without moving restored, virtualized history.
+                // Correct to the live extent within the existing retry budget, not the stale bring target.
+                _following = true;
+                var correlationId = scrollView.ScrollTo(
+                    scrollView.HorizontalOffset, scrollView.ScrollableHeight,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                _confirmation.OffsetCorrectionStarted(correlationId);
+            }
+            else if (!StartTailRequest(request))
             {
                 CompleteInitialLanding();
                 OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not start.");
@@ -645,9 +672,9 @@ file sealed class InitialTailPositioner : IDisposable
             _scrollView.VerticalAnchorRatio = 1.0;
     }
 
-    private void OnReaderFocus(object sender, RoutedEventArgs args)
+    private void OnReaderFocus(UIElement sender, GettingFocusEventArgs args)
     {
-        if (args.OriginalSource is Control { FocusState: FocusState.Keyboard })
+        if (args.FocusState == FocusState.Keyboard)
             CancelPendingNavigation();
     }
 
@@ -912,7 +939,7 @@ file sealed class InitialTailPositioner : IDisposable
         itemsView.Unloaded -= OnUnloaded;
         itemsView.SizeChanged -= OnSizeChanged;
         itemsView.PreviewKeyDown -= OnNavigationKeyDown;
-        itemsView.GotFocus -= OnReaderFocus;
+        itemsView.RemoveHandler(UIElement.GettingFocusEvent, _readerGettingFocus);
         itemsView.RemoveHandler(UIElement.PointerPressedEvent, _readerPointerPressed);
         itemsView.RemoveHandler(UIElement.PointerWheelChangedEvent, _cancelPointerNavigation);
     }

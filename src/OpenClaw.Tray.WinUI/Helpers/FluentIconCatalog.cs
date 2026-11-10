@@ -56,6 +56,7 @@ static class FluentIconCatalog
     public const string Settings = "\uE713";       // Settings
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
+    public const string Help = "\uE897";           // Help — account menu Help & about
     public const string Notifications = "\uEA8F";  // Ringer
     public const string DashboardView = "\uF246";  // ViewDashboard
     public const string Plugins = "\uEA86";        // Puzzle
