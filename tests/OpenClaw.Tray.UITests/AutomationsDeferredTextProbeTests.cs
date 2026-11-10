@@ -339,12 +339,15 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                var property = kind == ControlKind.TextBox ? TextBox.TextProperty : AutoSuggestBox.TextProperty;
-                Assert.Equal("", (string)control!.GetValue(property));
+                var nativeControl = Assert.IsAssignableFrom<FrameworkElement>(control);
+                var property = kind == ControlKind.TextBox
+                    ? global::Microsoft.UI.Xaml.Controls.TextBox.TextProperty
+                    : global::Microsoft.UI.Xaml.Controls.AutoSuggestBox.TextProperty;
+                Assert.Equal("", (string)nativeControl.GetValue(property));
                 Assert.Equal(new[] { Edit }, currentValues); // Model writes never echo into either callback.
-                host!.Reconciler.UnmountChild(control);
+                host!.Reconciler.UnmountChild(nativeControl);
                 host.Content = null;
-                control.SetValue(property, "after-unmount");
+                nativeControl.SetValue(property, "after-unmount");
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
