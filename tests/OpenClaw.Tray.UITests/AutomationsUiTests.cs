@@ -89,7 +89,8 @@ public sealed partial class GatewayFixtureUiTests
             Invoke(FindById(run, "AutomationAgendaMore:Hour")!);
             await WaitUiAsync(run, () => FindById(run, "AutomationAgendaMore:Hour")?.Current.Name == "Show fewer",
                 "hour group expanded");
-            Invoke(FindById(run, "AutomationsNew")!);
+            await ScrollAutomationsToTopAsync(run);
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "AutomationsNew"), "new editor after agenda expansion");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "editor before resizing");
             Invoke(FindById(run, "AutomationEditorSave")!);
             await WaitUiAsync(run, () => FindText(run, "Enter a name.") is not null
