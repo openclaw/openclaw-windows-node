@@ -168,6 +168,129 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FreshBlankName_RetainsNativeEditAcrossImmediateReconcile(bool reconcileBeforeTextChanged)
+    {
+        await ui.ResetContainerAsync();
+        ReactorHostControl? host = null;
+        TextBox? input = null;
+        Element? current = null;
+        var model = "";
+        var events = new List<string>();
+        var sequence = 0;
+        TextChangedEventHandler? changed = null;
+        global::Windows.Foundation.TypedEventHandler<TextBox, TextBoxTextChangingEventArgs>? changing = null;
+        void Mark(string phase) => events.Add(
+            $"{++sequence:D3} {phase} native={Value(input?.Text ?? "")} model={Value(model)}");
+        Element Field() => TextBox(model, value =>
+            {
+                Mark($"model-callback value={Value(value)}");
+                model = value;
+            }).AutomationName("Fresh blank Name probe").Set(native => native.TabIndex = 0);
+        void Reconcile()
+        {
+            var next = Field();
+            var result = host!.Reconciler.Reconcile(current, next, input, static () => { });
+            Assert.Same(input, result);
+            current = next;
+            host.Content = result;
+        }
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host = new ReactorHostControl { Width = 560 };
+                current = Field();
+                input = Assert.IsType<TextBox>(host.Reconciler.Mount(current, static () => { }));
+                host.Content = input;
+                ui.Container.Children.Add(host);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => input is { IsLoaded: true, XamlRoot: not null, ActualWidth: > 0 }, "fresh blank native Name mounted"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("", input!.Text);
+                Assert.Equal("", model);
+                changing = (_, _) => Mark("native-TextChanging");
+                changed = (_, _) => Mark("native-TextChanged");
+                input.TextChanging += changing;
+                input.TextChanged += changed;
+                Mark("unprimed-input-begin");
+                Assert.IsAssignableFrom<IValueProvider>(new TextBoxAutomationPeer(input)
+                    .GetPattern(PatternInterface.Value)).SetValue(Edit);
+                Mark("uia-input-returned");
+                if (reconcileBeforeTextChanged)
+                {
+                    // Exercise the actual controlled-property owner before yielding, without
+                    // manufacturing a model update or touching Reactor's suppression tokens.
+                    Mark("unrelated-reconcile-begin");
+                    Reconcile();
+                    Mark("unrelated-reconcile-end");
+                }
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Mark("settled-input");
+                Assert.Equal(Edit, input!.Text);
+                Assert.Equal(Edit, model);
+                // A native input preservation fix must still apply intentional owner changes.
+                model = Replacement;
+                Reconcile();
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Mark("settled-replacement");
+                Assert.Equal(Replacement, input!.Text);
+                Assert.Equal(Replacement, model);
+                model = "";
+                Reconcile();
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Mark("settled-reset");
+                Assert.Equal("", input!.Text);
+                Assert.Equal("", model);
+            });
+        }
+        finally
+        {
+            try
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Mark("teardown");
+                    if (input is not null)
+                    {
+                        if (changing is not null) input.TextChanging -= changing;
+                        if (changed is not null) input.TextChanged -= changed;
+                    }
+                    if (host is not null)
+                    {
+                        ui.Container.Children.Remove(host);
+                        host.Content = null;
+                        host.Dispose();
+                    }
+                });
+            }
+            finally
+            {
+                output.WriteLine(string.Join(Environment.NewLine, events));
+                var root = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS");
+                if (!string.IsNullOrWhiteSpace(root))
+                {
+                    Directory.CreateDirectory(root);
+                    File.WriteAllText(Path.Combine(root, $"deferred-text-fresh-name-immediate-{reconcileBeforeTextChanged}.json"),
+                        JsonSerializer.Serialize(new { ReconcileBeforeTextChanged = reconcileBeforeTextChanged, Events = events }));
+                }
+            }
+        }
+    }
+
     private async Task SettleAsync()
     {
         // Drain queued UI work without sleeping or retrying an input assertion.
