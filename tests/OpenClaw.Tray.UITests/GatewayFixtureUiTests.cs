@@ -967,8 +967,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Owner",
-                "authenticated profile in footer");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture",
+                "authenticated profile first name in footer");
             var owner = FindById(run, "WorkspaceOwner")!;
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Personal workspace", owner.Current.HelpText);
@@ -983,10 +983,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Shared Person · Shared owner",
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture · Shared owner",
                 "named shared Gateway owner label in footer");
             var owner = FindById(run, "WorkspaceOwner")!;
-            Assert.Equal("Fixture Shared Person · Shared owner", owner.Current.Name);
+            Assert.Equal("Fixture · Shared owner", owner.Current.Name);
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             await WaitForAuthenticatedOwnerPhotoAsync(run);
         }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("gateway-owner", "Fixture Shared Person"));
@@ -999,14 +999,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Owner",
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture",
                 "named profile without avatar eligibility hints in footer");
             var owner = FindById(run, "WorkspaceOwner")!;
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             await WaitForAuthenticatedOwnerPhotoAsync(run);
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsOwner") is
-                { Current.IsOffscreen: false, Current.Name: "Fixture Owner" },
+                { Current.IsOffscreen: false, Current.Name: "Fixture" },
                 "authenticated owner in newly created Settings footer");
             if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
                 await WaitUiAsync(run, () => OwnerPhotoPainted(run, "SettingsOwner", "settings-owner-profile.png"),
