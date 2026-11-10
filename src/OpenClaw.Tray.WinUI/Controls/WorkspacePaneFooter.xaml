@@ -75,7 +75,7 @@
             <FontIcon x:Name="DashboardGlyph" Glyph="&#xF246;" FontSize="16"
                       AutomationProperties.AccessibilityView="Raw"/>
         </Button>
-        <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="2"
+        <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="2" Click="OnNotificationsClick"
                 Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}" Padding="0"
                 CornerRadius="{ThemeResource ControlCornerRadius}"
                 Style="{StaticResource SubtleButtonStyle}" VerticalAlignment="Center">
