@@ -3,6 +3,49 @@
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 
+### Connect your AI presentation
+
+`AiSetupPage` uses the native setup shell with a speech bubble, mascot and
+canonical route timeline on the left at wide sizes. The heading and runtime
+provider/model choices remain left-aligned on the right. At smaller sizes the
+same mounted controls stack inside the shell scroller; Refresh, compatibility
+and provider cancellation actions remain in the fixed footer.
+
+Provider rows use flat separators, not a fixed sign-in catalog. Discovery,
+optional conversation discovery, Local AI consent and recovery, hidden API-key
+inputs, and exact activation verification retain their existing owners.
+`ProviderSetupDialog` remains the single page-owned, secret-clearing native
+dialog for every Gateway-supplied prompt kind. Its device-code treatment does
+not assume a provider, authorization URL, code or expiry.
+
+### Verified AI completion presentation
+
+`AiReadyPage` uses the same responsive shell and canonical Ready milestone.
+The verified model summary comes from the current completion proof, never from
+design sample data. The single flat action opens Chat for the verified agent.
+`SetupWindow` retains pre-restart finalization through `SetupCompletionPreparation`;
+`SetupNativeHandoffLauncher` verifies the restart preparation before mounting Ready.
+`SetupReadyCoordinator` rechecks the captured route before Chat navigation without
+repeating setup finalization.
+Loading feedback and the failure-only Back to AI setup action remain in the
+fixed footer. This page does not claim node pairing or command approval, and
+does not replace the separate legacy, failure or restart `CompletePage`.
+
+### Legacy, failure and Windows restart completion presentation
+
+`CompletePage` uses the responsive setup shell, with state-specific speech and
+the existing success, failure or restart mascot. It has no canonical route
+timeline because these outcomes do not supply a Ready stage. The legacy summary
+uses flat rows; real setup errors, fallback retry, setup logs and Local AI server
+diagnostics remain visible and scrollable. Actions stay in the fixed footer.
+
+The restart state follows the restart design, not the verified AI Chat action.
+It explains that Windows restarts the whole computer and asks the user to save
+work. Yes, restart now remains an explicit action through the existing launcher;
+No, I'm not ready yet still closes setup without restarting. Startup preference,
+completion persistence, native handoff and all existing health gates retain
+their current owners.
+
 Native Local AI setup displays the current phase and completed steps while checking
 GPU readiness, verifying cached runtime/model files, starting the model, publishing
 the provider, reconnecting and testing real Gateway inference. File verification
@@ -67,7 +110,8 @@ readiness promptly instead of waiting for the full recovery deadline.
 
 Native installation keeps Back at the left and Cancel setup (or Retry setup) at
 the right, using the same content-sized, 100 px minimum buttons as earlier setup
-screens. Progress stays centered on its own row and action labels can wrap.
+screens. The canonical stage rail joins the shared responsive hero; action labels
+can wrap in the fixed footer. Terminal status scrolls into view without animation.
 
 The Gateway chooser shows Local AI availability in a subtle, transparent status row
 below all three choices and above "Remote, local MCP or set up later", not inside
@@ -77,6 +121,13 @@ apply. A successful native-support check enables the native choice without a
 redundant success line. The accent icon tile follows native availability: native
 uses it when available, otherwise WSL does. Unavailable/checking native support
 and Windows Update recovery remain visible in their existing support card.
+
+The Gateway chooser uses the responsive `SetupPageShell` and `SetupStepIndicator`.
+The wide layout places the mascot, speech and canonical stage timeline beside
+left-aligned task content. Compact windows scroll the mounted content while Back
+and Next remain outside the scroller. Native, WSL and existing Gateway choices,
+support recovery, Local AI status and alternative routes retain their existing
+behavior. Selection does not install anything or persist settings.
 
 ### Shortened local onboarding (native and WSL)
 
@@ -286,7 +337,13 @@ An already installed healthy development/patch package skips installation. Store
 Retry checks registration again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
-Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
+Native progress renders its existing support, package, profile and verification
+rows in the shared responsive shell. It shows only native installation facts,
+including the acquisition deadline and deployment-after-cancellation disclosure.
+Retry and Cancel stay reachable in the fixed footer. Terminal status scrolls
+into view without animation. The existing installer/session owners retain
+acquisition, cancellation, retry and automatic AI handoff.
+Normal completion uses the same
 verified-model heading and single Chat action as WSL, without a native-only
 Gateway/capabilities summary. Gateway details and Windows permissions remain in
 their existing Connection and Permissions settings. AI readiness does not imply
@@ -349,6 +406,14 @@ contract and offers classic setup explicitly. That compatibility path retains
 `wizard.start` with `mode: "local"` and `installDaemon: false`, its validated
 optional-tail handoff and native configured-Gateway summary. It is not entered
 for authentication errors, malformed responses or uncertain provider writes.
+
+The classic compatibility page uses the shared responsive setup shell, not a
+new provider flow. Gateway-returned questions, typed choices, security/provider
+consent, protected inputs, live output and terminal recovery remain dynamic.
+The shell owns vertical scrolling and keeps the existing explicit actions in a
+fixed wrapping footer. Active-question scrolling targets the shell so long transcripts and logs
+cannot hide the question or move the footer. Resizing preserves the mounted
+prompt, focus, draft answer and route milestones without restarting the wizard.
 
 For the isolated package, `clawctl gateway-service` owns the Gateway process,
 sign-in recovery and isolated session. Companion starts it through the package
@@ -433,23 +498,68 @@ supported and retains the classic OpenClaw onboard wizard for older gateways.
 
 ### Native presentation
 
-The shared Setup window starts at 720 x 820 DIPs and has a native presenter
+The shared Setup window starts at 1120 x 720 DIPs and has a native presenter
 minimum of 720 x 560 DIPs. `SetupWindowSizing` rounds those dimensions up to
 physical pixels using the actual HWND DPI. `SetupWindow` reapplies the minimum
 when its XamlRoot, monitor position or presenter changes and detaches the
 subscriptions on close. DPI updates do not call Resize or reset the user's size.
 The window remains movable, resizable and maximizable; page content scrolls
-between its fixed header/footer at the minimum. This is a window constraint,
+between its fixed footer and page-specific header at the minimum. This is a window constraint,
 not a root-Grid minimum that would merely clip a smaller HWND.
 
 The preferred minimum is not silently weakened for a smaller monitor. At 100%
 it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
-Setup uses a 720-by-820 window with a scrolling body, centered vector mascot
-and wrapping heading. The 180-DIP mascot frame includes its motion/glow gutter;
+The welcome/trust page (`SecurityNoticePage`), gateway chooser (`WelcomePage`),
+capabilities (`CapabilitiesPage`), alternative routes (`AdvancedSetupPage`),
+WSL review (`GatewaySetupPage`) and its details (`GatewaySetupDetailPage`),
+installation (`ProgressPage` and `NativeGatewaySetupPage`),
+native connection (`SetupNativeConnectionPage`), classic compatibility
+(`WizardPage`), AI setup (`AiSetupPage`), verified completion (`AiReadyPage`)
+and legacy completion (`CompletePage`) use `SetupPageShell`.
+Its four presentation slots hold the hero, header, body and fixed footer.
+At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
+the mascot, speech bubble and milestone rail sit beside the heading and content.
+Below either threshold, the hero, header and body stack inside the same scroller.
+The slots remain mounted while resizing, and **Get started** stays outside the
+scroller. The complete safety warning and `https://trust.openclaw.ai` link remain
+reachable. **Get started** uses the existing gateway-chooser navigation action;
+showing the shell does not grant access, persist choices or start installation.
+
+The migrated pages use `SetupStepIndicator` with canonical route stages.
+`CompletePage` has no progress indicator because it has no canonical stage.
+Active wizard-question scrolling uses the shell's single scroller.
+The 180-DIP mascot frame includes its motion/glow gutter;
 the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
 background and high-contrast fallbacks.
+
+Native proof captures standard and minimum HWND viewports with isolated data.
+Settings-card input waits for the actual `Click` event before assertions.
+Gallery label checks respect both the window bounds and shell scroll clipping.
+Scrolled frames without heading or footer text require a fully visible body
+label. A stacked viewport containing no body content is explicitly classified
+as hero-only; its label cannot substitute for later body-frame proof.
+Axe scans run in a separate test process because Axe.Windows excludes its own
+process. The scanner validates the exact target PID and HWND, uses the existing
+rule exclusions, and must write a success receipt.
+Exact label matches from either full-image OCR analysis are retained.
+A scaled retry cannot discard a label recognized in the original unchanged PNG.
+Capital-I/l OCR ambiguities remain explicitly marked as OCR failures.
+An otherwise exact OCR phrase, an exact visible native label, and human review
+of the original pixels are all required for that evidence split.
+Provider verification retains the existing inline-progress policy. Recovery
+reopens the same owned dialog; proof waits for its new `Opened` event and layout
+before invoking **Check again**, not a button from the closing template.
+Provider-input capture also waits for `Opened` and the finite native popup fade-in.
+The download progress bar uses its current download activity as its accessible
+label, so screen readers receive the same live measurement shown on the page.
+Model-picker proof brings each real model option into view and captures it.
+It does not infer coverage from a native popup's zero-valued scroll extent.
+Windowed model popups use their own raw `PrintWindow` capture. Proof validates
+their exact current PID, owning setup HWND, foreground owner and unobscured
+native bounds. These popup images are paired with full setup-window frames.
+No desktop fallback, unowned-window capture or image composition is used.
 
 Capabilities, installation review and AI provider setup use native controls.
 The [screen details](#screen-details) below own their behavior and consent rules;
@@ -465,7 +575,7 @@ Showing the page creates no pending handoff and performs no finalization.
 The final screen has one action: **Talk to my agent**, which opens Chat for the
 verified agent. There is no recommendation badge or prompt implying multiple
 destinations.
-There are no bottom Return or Skip buttons; the progress dots remain. Selecting
+There are no bottom Return or Skip buttons; the canonical timeline remain. Selecting
 a card is the final action, with no extra Finish button. This removes the new
 Channels and Skills setup destinations; ordinary Dashboard access from
 Connection settings and the tray remains unchanged. The Chat action does not
@@ -587,7 +697,7 @@ Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery
 model verification, or native startup). The aggregate pre-publication verification
 deadline uses neutral readiness guidance because it includes both connection and model
 work; it does not incorrectly attribute a connection stall to model inference.
-The chooser displays localized phase-specific
+The finishing and Ready pages display localized phase-specific
 guidance and local diagnostics record only the phase/type, never raw package output,
 model content or credentials.
 
@@ -756,11 +866,69 @@ Existing/Remote then review capabilities and enter focused AI setup
 using the committed registry. They never run WSL workspace finalization.
 MCP-only/Deferred persist reviewed settings/startup and complete without AI or
 WSL. MCP-only opens Companion Settings; deferred setup opens Connection settings.
-Verified focused AI routes use the native chooser. `AdvancedSetupRequested` is only the explicit classic Settings fallback,
+Verified focused AI routes use the native Chat action. `AdvancedSetupRequested` is only the explicit classic Settings fallback,
 not the normal native route. Connection verification, credentials and commit
 remain native host responsibilities. Progress indicators
 come from `OnboardingFlowPolicy`, not a fixed six-page count. Local AI recovery
 does not replay the introductory pages.
+
+`AdvancedSetupPage` applies the same responsive shell and timeline to its existing
+four route actions. Existing Gateway, Remote Gateway, Local MCP only and deferred
+setup remain immediate native card actions, not a new selection or confirmation
+flow. Connection-host errors and the explicit classic Settings fallback remain
+visible and scrollable, with Back fixed outside the content.
+
+The welcome/trust rail is the standalone `SetupStepIndicator` component. It
+groups only stages supplied by that policy. Welcome,
+Gateway and Capabilities form **Choose your PC tools**; GatewayReview and Install
+form **Set up**; AiSetup forms **Connect your AI**; Ready forms **Start chatting**.
+Groups absent from the selected route are omitted, including AI/chat for
+MCP-only and deferred routes. Current/completed labels derive from the supplied
+stage position, not a second completion model. The accessible progress
+announcement uses the grouped milestone position and count, matching the visible
+rail (for example, four milestones for managed WSL and native setup).
+The dot indicator remains a separate `SetupProgressIndicator` component.
+Both satisfy `ISetupProgressIndicator`, so the host supplies the same route
+without knowing their layouts. The Gateway chooser, capabilities and alternative
+routes also adopt that timeline through the shared shell.
+
+The reusable timeline also accepts `SetupStepItem` records with a title,
+an `Upcoming`, `Current` or `Completed` state, and optional helper text.
+Completed steps form a prefix, at most one step is current, and upcoming
+steps follow it. Invalid state combinations are rejected before changing the
+mounted content. Callers own the status and helper copy; the component does
+not query installation or connection services.
+
+The native template follows the Figma timeline: small outlined future nodes,
+a semantic success check for completed nodes, and an accent current node
+with a soft glow. Title/helper sizes are 13/12 DIPs, with wrapping instead of
+fixed screenshot coordinates. Control-local `ThemeResource` setters follow
+the window's requested theme, including a light window on a dark system.
+Meaningful helper text retains native readable contrast instead of reproducing
+the design's low-opacity completed caption.
+
+Step changes use one finite 280ms pop/connector-fill transition. Windows
+reduced motion, `IsAnimationEnabled=false`, hidden hosts, off-viewport content,
+and unload settle the indicator immediately. Repeated identical updates do
+not restart the transition. Unload releases composition glow resources and
+Windows preference subscriptions. `SetupStepIndicatorTests` covers both
+supplied states, generic reuse, wrapping, invalid-input atomicity and lifecycle.
+`OnboardingWindowsFlowTests.ManagedFlow_NavigationAnimatesTheNewMilestoneWithoutRecreatingItsRows`
+exercises the actual capabilities-to-review navigation and observes the new
+page's finite transition, grouped announcement and stable rows after refresh.
+It reviews synthetic inspection facts without installing a Gateway.
+
+`SetupWelcomeShellTests` covers native default/minimum reachability, stable
+controls and focus across layout thresholds, route-specific milestones, legacy
+dot compatibility, and the existing welcome action. Its native accessibility proof
+scans the actual setup HWND; the general Accessibility category scans Hub pages
+and does not substitute for this check. `OnboardingSetupGalleryTests.WelcomeShellProof`
+captures the production Welcome and other adopted setup pages in light/dark
+at the new size, using the existing source/build freeze and foreground gates.
+Gallery inputs are synthetic, not installation or real Gateway evidence.
+Actual monitor DPI, Windows text scaling, high contrast and reduced-motion
+settings need separate host-supported proof. A fixed-size XAML root is only
+layout evidence, not monitor-DPI evidence.
 
 The injected `ISetupNativeConnectionHost` owns connection checks and commits.
 The editor draft is not serialized into `SetupConfig`; see
@@ -947,11 +1115,6 @@ replacement is reviewed on the WSL setup page before Install; explicit
 consent is bound to the exact distro name, and unproven ownership still requires
 the engine's destructive confirmation. External saved Gateways stay untouched.
 
-The gateway-choice scroll viewport owns the 560-DIP maximum width and stretches
-its list content. Keep the width constraint on the viewport, not on the nested
-ListView, so the choices share the header's center line as the window resizes.
-Back, Next, and the step indicator remain outside the scrolling area.
-
 ### Local setup progress
 `SetupInstallationProgress` maps real pipeline events to prepare, install and
 connect/check phases. Local AI recovery uses its own install label. Counts include
@@ -959,6 +1122,14 @@ completed and skipped steps, not estimated percentages; only a running phase
 spins. Unknown step IDs require an explicit phase mapping and test coverage.
 Detailed activity is collapsed by default; actionable authorization and real
 download progress remain visible outside it.
+Installation uses the shared responsive shell and canonical stage rail with flat
+phase rows. The overview bar counts actual completed or skipped steps, not elapsed
+time or an estimated download percentage. The shell owns vertical page scrolling;
+`InstallContent` is a presentation panel, while logs
+keep their bounded native scroller. The installed/resume milestone uses the same
+mounted hero and heading, with its existing onboard action in the fixed footer.
+Restart-required and terminal pipeline failures keep their existing completion route;
+the progress page does not add a Windows-restart action or change cancellation.
 
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. If the WSL platform is missing or its optional component is not initialized, setup requests administrator approval to install it, re-inspects readiness, and reports when a Windows restart is required. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. Cleanup automatically unregisters a distro only when durable OpenClaw evidence is paired with exactly one readable current-user WSL registration whose canonical base path matches the expected managed install path. Automatic orphan-directory cleanup requires a marker bound to that exact path. An unproven same-named distro or leftover data directory is preserved unless the user explicitly confirms its permanent replacement in the setup UI or passes `--confirm-destructive`. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
@@ -979,7 +1150,13 @@ Profiles use vertical, full-width native single-selection rows with the system
 selection indicator, selected background and keyboard behavior. Strict, Balanced
 (Recommended) and Open appear without a redundant section heading. The adjacent
 **Fine-tune** expander shows the selected-capability summary.
-Gateway choices, the Balanced preset and the final Chat choice share the
+`CapabilitiesPage` uses the responsive `SetupPageShell` with a mascot speech
+and canonical stage timeline beside the task in wide windows. Profiles and
+individual tools use flat, divided native rows. Compact windows scroll the
+mounted content while Back and the route-specific primary action remain fixed.
+Native installation disclosure and independent transport, sharing and startup
+choices remain on this page.
+Gateway choices and the Balanced preset share the
 `RecommendedBadge` control: a localized caption with an accent outline, 8 px
 horizontal and 4 px vertical padding, and disabled-state brushes inherited from
 the choice's enabled state. The Balanced label has no parenthetical suffix;
@@ -1026,8 +1203,12 @@ probe. WSL browser/auth-key sign-in is distinct from Windows sign-in and from th
 separate, default-off identity-trust toggle. Auth keys remain session-only.
 Serve is private tailnet access, not Funnel.
 
-The WSL review shows its current installation blocker directly below the
-centered heading, before optional choices. `SetupAccessDraft.GetInstallRequirements`
+The WSL review uses a left-aligned **Ready to install** heading and flat native
+installation rows beside the mascot and canonical stage rail in wide layouts.
+At compact sizes, the same mounted content scrolls above the fixed Back/Install
+footer. Exact commands expand inside the shell scroller without hiding the actions.
+The current installation blocker precedes installation rows and optional choices.
+`SetupAccessDraft.GetInstallRequirements`
 is the shared source for both `CanInstall` and this presentation, including
 incomplete or stale inspection, exact-target replacement consent, Local AI,
 networking consent and Tailscale readiness. When replacement is required, the
@@ -1045,6 +1226,11 @@ Networking review returns to its caller: review to networking to review, or
 Local AI to networking to Local AI. Recovery mode, pinned model and explicit
 networking consent remain intact. Reviewing a requirement performs no WSL
 changes; installation remains the separate mutation boundary.
+Local AI, Tailscale and networking details retain their separate existing routes.
+They use the shared responsive hero, left-aligned title and fixed action footer.
+Local AI and Tailscale controls use flat themed rows; their required consent,
+hardware/model diagnostics, Windows sign-in status and session-only auth key
+remain in the scrollable body. Resizing does not recreate the controls or draft.
 
 ### Connect your AI
 
@@ -1284,9 +1470,11 @@ not guess that reference from a catalog ID. Cancellation or an uncertain reply
 does not replay a mutation. Insufficient operator scopes remain an explicit
 error, not a reason to fall back or use node credentials.
 
-After verification, the native chooser finalizes Windows-node workspace guidance
-and the reviewed startup preference before restart. Dashboard management remains
-in Connection settings and the tray menu, not above Workspace chat. Windows
+After verification, `SetupWindow` finalizes applicable Windows-node workspace
+guidance and the reviewed startup preference before restart through
+`SetupCompletionPreparation`. The post-restart Chat action never repeats
+finalization. Dashboard management remains in Connection settings and the tray
+menu, not above Workspace chat. Windows
 capability consent remains in native Permissions, not in the web dashboard.
 
 ### Classic OpenClaw onboard (compatibility)
@@ -1343,8 +1531,12 @@ gateway address, a setup code or shared token, and optional SSH host, user and
 ports. SSH uses existing OpenSSH keys/configuration, not a separate key store.
 The browser-only profile route is not implemented through native credentials.
 
-The connection editor shows the Gateway-stage progress indicator above a
-separate row of wrapping Back, Cancel, Check and Next actions.
+The connection editor uses the shared responsive shell with a mascot, speech
+bubble and route-aware Gateway milestone rail. The address, protected setup-code
+and token inputs and optional SSH rows share one vertical
+scroller. Flat native rows retain their existing labels and input controls.
+Back, Cancel, Check and Next remain in a fixed, wrapping footer. Resizing keeps
+the same controls, focus and in-memory draft; it does not recheck or save a connection.
 Connection results stay outside the scrollable form, above the navigation
 actions, so a failed check and its retry guidance remain visible without
 scrolling on shorter windows.

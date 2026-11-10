@@ -95,6 +95,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private string? ExpectedGatewayId => _localUse?.Expected?.GatewayId ?? _args?.ExpectedGatewayId;
     private readonly ProviderArtworkSession _artworkSession = new();
     private GatewayAiSetupClient? Client => _controller?.Client;
+    private ScrollViewer ChoicesScroller => AiShell.Scroller;
 
     public AiSetupPage()
     {
@@ -1288,8 +1289,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     }
                     _providerRestoreFocus = focus;
                     _providerRestoreBringOnFocus = bringOnFocus;
-                    _providerRestoreOffset = backdrop.VerticalOffset;
-                    ChoicesScroller.ChangeView(null, backdrop.VerticalOffset, null, disableAnimation: true);
+                    _providerRestoreOffset = GetFocusVisibleOffset(ChoicesScroller, focus, backdrop.VerticalOffset);
+                    ChoicesScroller.ChangeView(null, _providerRestoreOffset, null, disableAnimation: true);
                 }
                 finally
                 {
@@ -1299,6 +1300,33 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             }))
                 Trace.TraceWarning("AI setup could not restore the provider chooser after dialog close.");
         }, onError: ReportFailure);
+    }
+
+    private static double GetFocusVisibleOffset(ScrollViewer scroller, Control focus, double preferredOffset)
+    {
+        var content = scroller.Content as DependencyObject;
+        DependencyObject? ancestor = focus;
+        while (ancestor is not null && !ReferenceEquals(ancestor, content))
+            ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor);
+        if (ancestor is null)
+            return Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
+
+        var root = scroller.XamlRoot?.Content as FrameworkElement;
+        if (root is null)
+            return Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
+
+        var bounds = focus.TransformToVisual(root).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, focus.ActualWidth, focus.ActualHeight));
+        var viewport = scroller.TransformToVisual(root).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, scroller.ViewportWidth, scroller.ViewportHeight));
+        var targetOffset = Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
+        var projectedTop = bounds.Top + scroller.VerticalOffset - targetOffset;
+        if (projectedTop < viewport.Top)
+            targetOffset = scroller.VerticalOffset + bounds.Top - viewport.Top;
+        else if (projectedTop + bounds.Height > viewport.Bottom)
+            targetOffset = scroller.VerticalOffset + bounds.Bottom - viewport.Bottom;
+
+        return Math.Clamp(targetOffset, 0, scroller.ScrollableHeight);
     }
 
     private void CancelProviderViewportRestore()

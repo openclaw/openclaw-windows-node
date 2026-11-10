@@ -11,24 +11,25 @@ namespace OpenClaw.Tray.UITests;
 internal static class OnboardingSetupGalleryData
 {
     internal sealed record Scene(string Id, string Family, string State);
-    internal sealed record HeaderContract(Type PageType, string Text, string? ControlName = null, string? ContainerName = null);
+    internal sealed record HeaderContract(Type PageType, string Text, string ControlName);
 
     internal static HeaderContract HeaderFor(Scene scene) => scene.Family switch
     {
-        "security" => new(typeof(SecurityNoticePage), "Welcome to OpenClaw"),
-        "welcome" => new(typeof(WelcomePage), "Set up OpenClaw"),
-        "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route"),
+        "security" => new(typeof(SecurityNoticePage), "Meet your new sidekick.", "WelcomeTitle"),
+        "welcome" => new(typeof(WelcomePage), "Where should OpenClaw live?", "GatewayTitle"),
+        "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route", "AdvancedTitle"),
         "connection" => new(typeof(SetupNativeConnectionPage), "Connect to a gateway", "TitleText"),
-        "capabilities" or "branch" => new(typeof(CapabilitiesPage), "PC capabilities"),
-        "review" => new(typeof(GatewaySetupPage), "WSL Gateway setup"),
+        "capabilities" or "branch" => new(typeof(CapabilitiesPage), "What can your assistant use?", "CapabilitiesTitle"),
+        "review" => new(typeof(GatewaySetupPage), "Ready to install", "ReviewTitle"),
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),
         "networking" => new(typeof(GatewaySetupDetailPage), "WSL networking consent", "DetailTitle"),
-        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Set up your AI", "TitleText"),
+        "native-install" => new(typeof(NativeGatewaySetupPage), "Install a local native gateway", "TitleText"),
+        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Connect your AI", "TitleText"),
         "preview" when scene.State.StartsWith("wizard", StringComparison.Ordinal) =>
-            new(typeof(WizardPage), "OpenClaw onboard"),
+            new(typeof(WizardPage), "OpenClaw onboard", "HeadingText"),
         "preview" when scene.State == "milestone" =>
-            new(typeof(ProgressPage), "Gateway installed", ContainerName: "MilestonePanel"),
+            new(typeof(ProgressPage), "Gateway installed", "TitleText"),
         "preview" => new(typeof(ProgressPage), "Making room for your agent", "TitleText"),
         "complete" => new(typeof(CompletePage), scene.State switch
         {

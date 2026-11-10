@@ -8,7 +8,7 @@
     xmlns:icons="using:OpenClawTray.Helpers"
     NavigationCacheMode="Disabled">
 
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
+    <controls:SetupPageShell x:Name="GatewayShell">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
                 <VisualState x:Name="WslRecommendedState" />
@@ -23,26 +23,39 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <StackPanel Grid.Row="0" HorizontalAlignment="Stretch" Spacing="4">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious"
-                                      HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_Copy_GatewayTitle" Text="Set up OpenClaw"
-                       Style="{StaticResource TitleTextBlockStyle}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Uid="Onboarding_Copy_GatewayIntro" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="560"
-                       Style="{StaticResource BodyTextBlockStyle}"
+        <controls:SetupPageShell.Hero>
+            <StackPanel HorizontalAlignment="Stretch" Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <TextBlock x:Uid="Onboarding_Gateway_Speech" Text="Pick a home for me."
+                                   FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious"
+                                          HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0"
+                                            HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+          <StackPanel Spacing="12">
+            <TextBlock x:Name="GatewayTitle" x:Uid="Onboarding_Copy_GatewayTitle" Text="Where should OpenClaw live?"
+                       FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                       AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
+            <TextBlock x:Uid="Onboarding_Copy_GatewayIntro" TextWrapping="Wrap"
+                       FontFamily="Segoe UI Variable" FontSize="18"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       HorizontalAlignment="Center"
                        Text="The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later." />
-        </StackPanel>
+          </StackPanel>
+        </controls:SetupPageShell.Header>
 
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,0"
-                      MaxWidth="560"
-                      HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Stretch"
-                      IsTabStop="False"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
+        <controls:SetupPageShell.Body>
           <StackPanel Spacing="12">
             <ListView x:Name="GatewayChoiceSelector" x:Uid="Onboarding_Copy_GatewaySelector"
                       AutomationProperties.Name="Gateway setup method"
@@ -59,7 +72,8 @@
                               AutomationProperties.LiveSetting="Polite"
                               HorizontalContentAlignment="Stretch"
                               VerticalContentAlignment="Center"
-                              Padding="16,12">
+                              Padding="16,12" CornerRadius="0"
+                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
                         <Border x:Name="WslIconBackground" Grid.Column="0" Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center">
@@ -92,7 +106,8 @@
                               AutomationProperties.Name="Connect to an existing Gateway"
                               HorizontalContentAlignment="Stretch"
                               VerticalContentAlignment="Center"
-                              Padding="16,12">
+                              Padding="16,12" CornerRadius="0"
+                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
                         <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
                                 Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
@@ -139,7 +154,7 @@
                     <StackPanel x:Name="NativeSupportStatusPanel" Orientation="Horizontal" Spacing="8">
                         <ProgressRing x:Name="NativeCheckProgress" Width="16" Height="16"
                                       IsActive="True" AutomationProperties.Name="Checking native gateway support" />
-                        <TextBlock x:Name="NativeSupportStatus" TextWrapping="Wrap" MaxWidth="460"
+                        <TextBlock x:Name="NativeSupportStatus" TextWrapping="Wrap" MaxWidth="400"
                                    AutomationProperties.AutomationId="WelcomeNativeSupportStatus"
                                    AutomationProperties.LiveSetting="Polite"
                                    Style="{StaticResource CaptionTextBlockStyle}" />
@@ -174,23 +189,24 @@
                     <Button x:Uid="Onboarding_V2_Retry" Content="Try again" Click="Next_Click" />
                 </InfoBar.ActionButton>
             </InfoBar>
-            <HyperlinkButton x:Uid="Onboarding_V2_AlternativeRoutes" Content="Remote, local MCP or set up later"
+            <HyperlinkButton x:Name="AlternativesButton" x:Uid="Onboarding_V2_AlternativeRoutes"
+                             Content="Remote, local MCP or set up later" HorizontalAlignment="Left"
                              Click="Alternatives_Click" />
           </StackPanel>
-        </ScrollViewer>
+        </controls:SetupPageShell.Body>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <controls:SetupPageShell.Footer>
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
             <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" AutomationProperties.AutomationId="WelcomeBackButton"
-                    Grid.Column="0" Content="Back"
-                    MinWidth="100" HorizontalAlignment="Left"
+                    Grid.Column="1" Content="Back"
+                    MinWidth="100" MinHeight="40" HorizontalAlignment="Right"
                     Click="Back_Click" />
             <Button x:Name="NextButton" x:Uid="Onboarding_V2_Next" AutomationProperties.AutomationId="WelcomeNextButton"
-                    Grid.Column="1" Content="Next"
-                    MinWidth="100" HorizontalAlignment="Right"
+                    Grid.Column="2" Content="Next"
+                    MinWidth="140" MinHeight="40" HorizontalAlignment="Right"
                     Style="{StaticResource AccentButtonStyle}"
                     Click="Next_Click" />
-        </Grid>
-    </Grid>
+          </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

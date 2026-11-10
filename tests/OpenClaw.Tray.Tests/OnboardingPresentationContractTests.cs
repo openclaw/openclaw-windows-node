@@ -97,6 +97,7 @@ public sealed class OnboardingPresentationContractTests
     [InlineData("SecurityNoticePage")]
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
+    [InlineData("AdvancedSetupPage")]
     [InlineData("GatewaySetupPage")]
     [InlineData("GatewaySetupDetailPage")]
     [InlineData("ProgressPage")]
@@ -107,9 +108,55 @@ public sealed class OnboardingPresentationContractTests
     {
         var xaml = Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml");
         Assert.Contains("controls:OnboardingMascot", xaml);
-        Assert.Contains("controls:SetupProgressIndicator", xaml);
+        Assert.Contains("controls:SetupStepIndicator", xaml);
         Assert.DoesNotContain("of 6", xaml);
         Assert.DoesNotContain("OpenClawMascot.png", xaml);
+    }
+
+    [Fact]
+    public void CompatibilityWizard_PreservesNamedHostAndUsesShellForActiveQuestionScrolling()
+    {
+        var document = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\WizardPage.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement Named(string name) => Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute(x + "Name") == name);
+        Assert.Equal("SetupPageShell", Named("WizardShell").Name.LocalName);
+        Assert.Equal("SetupPageShell.Footer", Named("NavigationFooter").Parent!.Name.LocalName);
+        var actions = Named("NavigationFooter").Elements()
+            .Where(element => element.Name.LocalName is "Button" or "DropDownButton").ToArray();
+        Assert.Equal(3, actions.Length);
+        foreach (var action in actions)
+        {
+            Assert.Equal("0", (string?)action.Attribute("MinWidth"));
+            Assert.Equal("40", (string?)action.Attribute("MinHeight"));
+            Assert.Equal("{StaticResource WrappedFooterAction}", (string?)action.Attribute("ContentTemplate"));
+        }
+        Assert.Equal("StackPanel", Named("MainScroller").Name.LocalName);
+        Assert.Equal("40", (string?)Named("HeadingText").Attribute("FontSize"));
+        Assert.Equal("18", (string?)Named("StatusText").Attribute("FontSize"));
+        Assert.Equal("PasswordBox", Named("SecretInput").Name.LocalName);
+        Assert.Equal("OpenGatewayTerminal_Click", (string?)Named("ConsoleRecoveryTerminalButton").Attribute("Click"));
+        Assert.Equal("WizardConsoleRecoveryTerminal",
+            (string?)Named("ConsoleRecoveryTerminalButton").Attribute("AutomationProperties.AutomationId"));
+        var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\WizardPage.xaml.cs");
+        Assert.Contains("var scroller = WizardShell.Scroller;", source);
+        Assert.Contains("scroller.ChangeView(null, target, null, disableAnimation: true);", source);
+        Assert.DoesNotContain("MainScroller.ChangeView", source);
+    }
+
+    [Theory]
+    [InlineData("en-us")]
+    [InlineData("fr-fr")]
+    [InlineData("nl-nl")]
+    [InlineData("pt-br")]
+    [InlineData("zh-cn")]
+    [InlineData("zh-tw")]
+    public void CompatibilityWizardSpeech_HasEverySupportedLocale(string language)
+    {
+        var resources = XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{language}\Resources.resw"));
+        var speech = Assert.Single(resources.Descendants("data"),
+            item => (string?)item.Attribute("name") == "Onboarding_Wizard_CompatibilitySpeech");
+        Assert.False(string.IsNullOrWhiteSpace(speech.Element("value")?.Value));
     }
 
     [Fact]
@@ -331,7 +378,19 @@ public sealed class OnboardingPresentationContractTests
             Assert.Equal("StackPanel", mascot.Parent!.Name.LocalName);
             Assert.Null(mascot.Parent.Attribute("Height"));
             var progress = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "FlowProgress");
-            Assert.Equal("2", (string?)progress.Parent!.Attribute("Grid.Row"));
+            if (page == "CapabilitiesPage")
+            {
+                Assert.Equal("SetupStepIndicator", progress.Name.LocalName);
+                Assert.Equal("SetupPageShell.Hero", progress.Parent!.Parent!.Name.LocalName);
+                Assert.Contains(xaml.Descendants(), element => element.Name.LocalName == "SetupPageShell.Footer");
+            }
+            else if (page == "GatewaySetupPage")
+            {
+                Assert.Same(mascot.Parent, progress.Parent);
+                Assert.Contains(progress.Ancestors(), element => element.Name.LocalName == "SetupPageShell.Hero");
+                var footer = Assert.Single(xaml.Descendants(), element => element.Name.LocalName == "SetupPageShell.Footer");
+                Assert.Equal(2, footer.Descendants().Count(element => element.Name.LocalName == "Button"));
+            }
             Assert.DoesNotContain(progress.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
         }
     }

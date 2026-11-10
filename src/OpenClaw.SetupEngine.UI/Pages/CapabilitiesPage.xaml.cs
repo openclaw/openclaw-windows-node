@@ -63,6 +63,7 @@ public sealed partial class CapabilitiesPage : Page
             icon.IsTextScaleFactorEnabled = false;
             var card = new SettingsCard
             {
+                Style = (Style)Resources["CapabilityRowStyle"],
                 Header = label,
                 Description = SetupLocalization.GetString($"PermissionsPage_Cap_{resourceName}_Description"),
                 HeaderIcon = icon,

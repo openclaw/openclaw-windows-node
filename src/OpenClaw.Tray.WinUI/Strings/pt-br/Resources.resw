@@ -6773,6 +6773,15 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
   <data name="Onboarding_Flow_Position" xml:space="preserve"><value>Etapa {0} de {1}</value></data>
+  <data name="Onboarding_Milestone_Tools" xml:space="preserve"><value>Escolha as ferramentas do seu PC</value></data>
+  <data name="Onboarding_Milestone_ToolsDescription" xml:space="preserve"><value>Comece com o acesso que combina com você.</value></data>
+  <data name="Onboarding_Milestone_Setup" xml:space="preserve"><value>Configurar</value></data>
+  <data name="Onboarding_Milestone_SetupDescription" xml:space="preserve"><value>O OpenClaw está sendo instalado. Você pode continuar usando seu PC.</value></data>
+  <data name="Onboarding_Milestone_Ai" xml:space="preserve"><value>Conecte sua IA</value></data>
+  <data name="Onboarding_Milestone_Chat" xml:space="preserve"><value>Comece a conversar</value></data>
+  <data name="Onboarding_Milestone_Current" xml:space="preserve"><value>{0}, etapa atual</value></data>
+  <data name="Onboarding_Milestone_Complete" xml:space="preserve"><value>{0}, etapa concluída</value></data>
+  <data name="Onboarding_Milestone_Upcoming" xml:space="preserve"><value>{0}, a seguir</value></data>
   <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>Não foi possível abrir o Chat. Feche a configuração e abra o OpenClaw novamente.</value></data>
   <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>O gateway está instalado, mas a configuração de IA não abriu. Abra a configuração novamente para continuar sem reinstalar.</value></data>
   <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>Seu PC, suas permissões</value></data>
@@ -6783,8 +6792,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Iniciar o OpenClaw ao entrar</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Canais, integrações e configurações do gateway</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>O OpenClaw é seu assistente de IA para realizar tarefas no seu PC.</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Configure sua IA</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>O OpenClaw conecta um assistente de IA às ferramentas do seu PC. Você escolhe o que ele pode fazer e pode mudar isso a qualquer momento.</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Conecte sua IA</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Descobrir conversas existentes dos provedores (opcional)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Iniciando a configuração do provedor…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>Aguardando seu provedor…</value></data>
@@ -6872,6 +6881,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Conexão verificada. Nada foi salvo. Avançar verificará novamente e salvará este Gateway.</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Não foi possível confirmar o resultado da conexão. Revise o Gateway ativo em Companion Settings antes de continuar.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Escolha outra forma de configuração</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>Há mais de uma maneira.</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>Conecte-se de outra forma ou continue sem um Gateway.</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existente</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Use uma conexão salva ou existente. Sem instalação do WSL.</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Gateway remoto</value></data>
@@ -6883,7 +6894,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>O editor de conexão não está disponível neste host de configuração</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Abra a configuração no aplicativo Companion para usar o editor de conexão nativo.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Voltar</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Recursos do PC</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>O que seu assistente pode usar?</value></data>
+  <data name="Onboarding_Capabilities_Speech.Text" xml:space="preserve"><value>Você escolhe o que posso usar.</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Escolha o que os agentes podem usar neste PC. Essas escolhas não concedem acesso de privacidade do Windows nem aprovação de execução.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Ofereça os recursos deste PC por um Gateway conectado.</value></data>
@@ -6908,8 +6920,10 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>Esta substituição pode excluir permanentemente os dados do WSL</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Somente a instalação WSL nomeada será substituída. Outras conexões Gateway salvas permanecem disponíveis.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Voltar à revisão</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Configuração do Gateway WSL</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Revise o que será alterado antes de iniciar a instalação.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Pronto para instalar</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Veja o que acontecerá neste PC.</value></data>
+  <data name="Onboarding_V2_ReviewSpeech.Text" xml:space="preserve"><value>Este é o plano.</value></data>
+  <data name="Onboarding_V2_ReviewRestartNotice.Text" xml:space="preserve"><value>O Windows pode pedir aprovação de administrador, e pode ser necessário reiniciar. Salve seu trabalho primeiro.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Serviço Gateway local</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6920,7 +6934,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Revise as escolhas obrigatórias</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Revise os pré-requisitos selecionados de Local AI e Tailscale e confirme qualquer substituição do WSL antes de instalar.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Instalar</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Boas-vindas ao OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Conheça seu novo parceiro.</value></data>
+  <data name="Onboarding_Welcome_GetStarted.Content" xml:space="preserve"><value>Começar</value></data>
+  <data name="Onboarding_Welcome_Speech.Text" xml:space="preserve"><value>Olá. Vamos configurar tudo para você.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Converse com sua IA</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Use o Chat nativo com um provedor de IA de sua escolha.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Deixe os agentes ajudarem neste PC</value></data>
@@ -6929,7 +6945,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Execute um Gateway WSL privado aqui ou conecte-se a um existente.</value></data>
   <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Antes de começar</value></data>
   <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>Os agentes de IA são poderosos e dar acesso ao seu PC envolve riscos. Eles podem cometer erros, alterar ou excluir arquivos ou expor informações privadas.&#x0a;&#x0a;Você pode controlar e limitar o acesso do OpenClaw ao seu PC.</value></data>
-  <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Continuar</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Remoto, MCP local ou configurar depois</value></data>
   <data name="Onboarding_V2_LocalAiCard.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6961,6 +6976,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Confirmação registrada para esta instalação WSL.</value></data>
   <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>É necessária confirmação explícita antes da substituição.</value></data>
   <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailSpeech.Text" xml:space="preserve"><value>Vamos revisar os detalhes.</value></data>
+  <data name="Onboarding_V2_DetailIntro.Text" xml:space="preserve"><value>Revise estas configurações antes de continuar.</value></data>
   <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
   <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>Consentimento de rede do WSL</value></data>
   <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>Substituir o Gateway WSL</value></data>
@@ -7068,6 +7085,14 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Iniciar e verificar a conexão</value></data>
   <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Atividade detalhada</value></data>
   <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Preparando espaço para seu agente</value></data>
+  <data name="Onboarding_V4_InstallationSpeech.Text" xml:space="preserve"><value>Estou cuidando disso...</value></data>
+  <data name="Onboarding_V4_InstalledTitle" xml:space="preserve"><value>Gateway instalado</value></data>
+  <data name="Onboarding_V4_InstalledSubtitle" xml:space="preserve"><value>Seu Gateway OpenClaw privado está em execução neste PC.</value></data>
+  <data name="Onboarding_V4_InstalledSpeech" xml:space="preserve"><value>Gateway instalado.</value></data>
+  <data name="Onboarding_V4_MilestoneNext.Text" xml:space="preserve"><value>A seguir: OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneNextDescription.Text" xml:space="preserve"><value>Algumas perguntas rápidas. Escolha seu provedor de IA, modelo e chave para conectar seu agente.</value></data>
+  <data name="Onboarding_V4_MilestoneContinue.Content" xml:space="preserve"><value>Iniciar OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneUnavailable" xml:space="preserve"><value>Outra tarefa de configuração ainda está ativa. Aguarde a conclusão e inicie OpenClaw onboard.</value></data>
   <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>Uma etapa de cada vez. Acompanhe os detalhes abaixo.</value></data>
   <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Restaurando a IA local</value></data>
   <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Preparar e verificar a IA local</value></data>
@@ -7132,7 +7157,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Fechar</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Saiba mais sobre riscos e segurança</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Configurar o OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Onde o OpenClaw deve morar?</value></data>
+  <data name="Onboarding_Gateway_Speech.Text" xml:space="preserve"><value>Escolha um lar para mim.</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>O Gateway conecta seu assistente de IA aos seus aplicativos e ferramentas. Escolha onde ele será executado. Você pode alterar isso depois.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Método de configuração do Gateway</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Escolha um método de configuração do Gateway.</value></data>
@@ -7418,6 +7444,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Ainda instalando o Gateway pela Microsoft Store. Isso pode levar vários minutos ({0} min decorridos).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet concluído. Verificando o registro do Gateway e seus aliases de execução antes de continuar...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>O Companion preparará seu Gateway e ajudará você a conectar sua IA.</value></data>
+  <data name="Onboarding_Native_ProgressSpeech.Text" xml:space="preserve"><value>Vamos configurar seu Gateway.</value></data>
+  <data name="Onboarding_Native_ProgressDeadline.Text" xml:space="preserve"><value>A instalação e a verificação do pacote compartilham um limite padrão de 30 minutos. O Windows pode concluir a implantação após o cancelamento. Tentar novamente verifica o registro outra vez.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Recuperação do Gateway</value></data>
   <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Abrir terminal</value></data>
   <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Reiniciar Gateway</value></data>
@@ -7889,6 +7917,14 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>O tempo da fala da Gateway esgotou. A síntese pode ter terminado. Verifique a Gateway antes de tentar de novo. Não houve nova tentativa automática.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>A fala da Gateway falhou. Verifique a configuração de voz e a cota do provedor. Não houve alternativa local nem nova tentativa automática.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
+  <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Vamos verificar sua conexão.</value></data>
+  <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Vamos terminar de conectar sua IA.</value></data>
+  <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Escolha um cérebro para mim.</value></data>
+  <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Pronto quando você estiver.</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>Tudo pronto.</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>Vamos resolver isso.</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>Quase lá.</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>Salve seu trabalho primeiro. Reiniciar o Windows reinicia este computador, não apenas o OpenClaw. Você pode optar por não reiniciar agora e reabrir o OpenClaw após reiniciar.</value></data>
   <data name="Inbox_Title.Text" xml:space="preserve"><value>Caixa de entrada</value></data>
   <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Dispensar exibidos</value></data>
   <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Configurações de notificação</value></data>

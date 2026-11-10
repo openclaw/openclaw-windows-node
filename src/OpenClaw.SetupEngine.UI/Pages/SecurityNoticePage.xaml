@@ -7,44 +7,56 @@
     xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
     NavigationCacheMode="Disabled">
 
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-
-        <StackPanel Grid.Row="0" HorizontalAlignment="Stretch" Spacing="4">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Idle"
-                                      HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_V2_WelcomeTitle" Text="Welcome to OpenClaw"
-                       Style="{StaticResource TitleTextBlockStyle}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Name="WelcomeDescription" x:Uid="Onboarding_Flow_WelcomeDescription"
-                       TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       HorizontalAlignment="Center"
-                       Text="OpenClaw is your AI assistant for getting things done on your PC." />
-        </StackPanel>
-
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="640" HorizontalContentAlignment="Stretch">
+    <controls:SetupPageShell x:Name="WelcomeShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel HorizontalAlignment="Stretch" Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="12">
+                        <TextBlock x:Uid="Onboarding_Welcome_Speech" Text="Hi. Let's get you set up."
+                                   TextWrapping="Wrap" FontSize="16" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Idle"
+                                          HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress"
+                                                Margin="24,8,0,0" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="WelcomeTitle" x:Uid="Onboarding_V2_WelcomeTitle" Text="Meet your new sidekick."
+                           FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
+                <TextBlock x:Name="WelcomeDescription" x:Uid="Onboarding_Flow_WelcomeDescription"
+                           TextWrapping="Wrap" FontFamily="Segoe UI Variable" FontSize="18"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="OpenClaw connects an AI assistant to the tools on your PC. You choose what it can do, and you can change that any time." />
+            </StackPanel>
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
             <StackPanel Spacing="8">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel Spacing="0">
                 <tk:SettingsCard x:Name="PcFeature" x:Uid="Onboarding_V2_WelcomePc"
-                                 Background="Transparent" BorderThickness="0" CornerRadius="0"
+                                 Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="0,12"
                                  Header="Let agents help on this PC" Description="Choose which PC capabilities to enable. Windows permissions and execution approvals remain separate." />
                 <tk:SettingsCard x:Name="GatewayFeature" x:Uid="Onboarding_V2_WelcomeGateway"
-                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0"
+                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,12"
                                  Header="Keep your Gateway under your control" Description="Run a private WSL Gateway here or connect to an existing one." />
                 <tk:SettingsCard x:Name="ChatFeature" x:Uid="Onboarding_V2_WelcomeChat"
-                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0"
+                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,12"
                                  Header="Chat with your AI" Description="Use native Chat with an AI provider you choose." />
-                </StackPanel>
-                </Border>
-                <InfoBar x:Uid="Onboarding_V2_WelcomeTrust" Margin="0,8,0,0"
+                <InfoBar x:Name="SafetyNotice" x:Uid="Onboarding_V2_WelcomeTrust" Margin="0,8,0,0"
                          IsOpen="True" IsClosable="False" Severity="Warning"
                          Title="Before you get started"
                          Message="AI agents are powerful and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information.&#x0a;&#x0a;You can control and limit OpenClaw’s access to your PC.">
                     <InfoBar.ActionButton>
-                        <HyperlinkButton x:Uid="Onboarding_Copy_SafetyLink" Content="Learn more about risks and safety"
+                        <HyperlinkButton x:Name="SafetyLink" x:Uid="Onboarding_Copy_SafetyLink" Content="Learn more about risks and safety"
                                          NavigateUri="https://trust.openclaw.ai">
                             <HyperlinkButton.ContentTemplate>
                                 <DataTemplate>
@@ -55,15 +67,12 @@
                     </InfoBar.ActionButton>
                 </InfoBar>
             </StackPanel>
-        </ScrollViewer>
-
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button Grid.Column="1" x:Name="ContinueButton" x:Uid="Onboarding_V2_Continue" Content="Continue"
-                    MinWidth="100" HorizontalAlignment="Right"
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+            <Button x:Name="ContinueButton" x:Uid="Onboarding_Welcome_GetStarted" Content="Get started"
+                    MinWidth="140" MinHeight="40" HorizontalAlignment="Right"
                     Style="{StaticResource AccentButtonStyle}"
                     Click="Continue_Click" />
-        </Grid>
-    </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

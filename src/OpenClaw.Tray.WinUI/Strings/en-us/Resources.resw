@@ -6789,6 +6789,15 @@ Make sure the gateway is running.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
   <data name="Onboarding_Flow_Position" xml:space="preserve"><value>Step {0} of {1}</value></data>
+  <data name="Onboarding_Milestone_Tools" xml:space="preserve"><value>Choose your PC tools</value></data>
+  <data name="Onboarding_Milestone_ToolsDescription" xml:space="preserve"><value>Start with the access that suits you.</value></data>
+  <data name="Onboarding_Milestone_Setup" xml:space="preserve"><value>Set up</value></data>
+  <data name="Onboarding_Milestone_SetupDescription" xml:space="preserve"><value>OpenClaw installs. You can keep using your PC.</value></data>
+  <data name="Onboarding_Milestone_Ai" xml:space="preserve"><value>Connect your AI</value></data>
+  <data name="Onboarding_Milestone_Chat" xml:space="preserve"><value>Start chatting</value></data>
+  <data name="Onboarding_Milestone_Current" xml:space="preserve"><value>{0}, current step</value></data>
+  <data name="Onboarding_Milestone_Complete" xml:space="preserve"><value>{0}, completed</value></data>
+  <data name="Onboarding_Milestone_Upcoming" xml:space="preserve"><value>{0}, upcoming</value></data>
   <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>Setup could not open Chat. Close setup and reopen OpenClaw.</value></data>
   <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>The gateway is installed, but AI setup could not open. Reopen setup to continue without reinstalling.</value></data>
   <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>Your PC, your permissions</value></data>
@@ -6799,8 +6808,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Channels, integrations and gateway settings</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is your AI assistant for getting things done on your PC.</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Set up your AI</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw connects an AI assistant to the tools on your PC. You choose what it can do, and you can change that any time.</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Connect your AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Discover existing provider conversations (optional)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Starting provider setup…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>Waiting for your provider…</value></data>
@@ -6866,6 +6875,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>This code expires in {0} minutes.</value></data>
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>The provider did not accept this answer. Review the current step and try again.</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Connect to a gateway</value></data>
+  <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Let's check your connection.</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Check the connection without saving it. Next checks again and saves this gateway before you review this PC's access.</value></data>
   <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway address</value></data>
   <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Setup code</value></data>
@@ -6888,6 +6898,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Connection checked. Nothing was saved. Next will check again and save this gateway.</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>The connection outcome could not be confirmed. Review the active gateway in Companion Settings before continuing.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choose another setup route</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>There's more than one way.</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>Connect another way or continue without a Gateway.</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Existing Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Use a saved or existing connection. No WSL installation.</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Remote Gateway</value></data>
@@ -6899,7 +6911,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>Connection editor is unavailable in this setup host</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Open setup from the Companion app to use its native connection editor.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Back</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>PC capabilities</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>What can your assistant use?</value></data>
+  <data name="Onboarding_Capabilities_Speech.Text" xml:space="preserve"><value>You choose what I can use.</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Choose what agents may use on this PC. These choices do not grant Windows privacy access or execution approval.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Offer this PC's capabilities through a connected Gateway.</value></data>
@@ -6924,8 +6937,10 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>This replacement can permanently delete WSL data</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Only the named WSL installation is replaced. Other saved Gateway connections stay available.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Return to review</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway setup</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Review what will change before installation starts.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Ready to install</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Here's what will happen on this PC.</value></data>
+  <data name="Onboarding_V2_ReviewSpeech.Text" xml:space="preserve"><value>Here's the plan.</value></data>
+  <data name="Onboarding_V2_ReviewRestartNotice.Text" xml:space="preserve"><value>Windows may ask for administrator approval, and a restart may be needed. Save your work first.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Local Gateway service</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6936,7 +6951,9 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Review the required choices</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Review selected Local AI and Tailscale prerequisites, and confirm any WSL replacement before installing.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Install</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Welcome to OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Meet your new sidekick.</value></data>
+  <data name="Onboarding_Welcome_GetStarted.Content" xml:space="preserve"><value>Get started</value></data>
+  <data name="Onboarding_Welcome_Speech.Text" xml:space="preserve"><value>Hi. Let's get you set up.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Chat with your AI</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Use native Chat with an AI provider you choose.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Let agents help on this PC</value></data>
@@ -6945,7 +6962,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Run a private WSL Gateway here or connect to an existing one.</value></data>
   <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Before you get started</value></data>
   <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI agents are powerful and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information.&#x0a;&#x0a;You can control and limit OpenClaw’s access to your PC.</value></data>
-  <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Continue</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Try again</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Remote, local MCP or set up later</value></data>
   <data name="Onboarding_V2_LocalAiCard.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6977,6 +6993,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Confirmation recorded for this WSL installation.</value></data>
   <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>Explicit confirmation is required before replacement.</value></data>
   <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailSpeech.Text" xml:space="preserve"><value>Let's review the details.</value></data>
+  <data name="Onboarding_V2_DetailIntro.Text" xml:space="preserve"><value>Review these settings before you continue.</value></data>
   <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
   <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL networking consent</value></data>
   <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>Replace the WSL Gateway</value></data>
@@ -7085,6 +7103,14 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Start and check connection</value></data>
   <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Detailed activity</value></data>
   <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Making room for your agent</value></data>
+  <data name="Onboarding_V4_InstallationSpeech.Text" xml:space="preserve"><value>Working on it...</value></data>
+  <data name="Onboarding_V4_InstalledTitle" xml:space="preserve"><value>Gateway installed</value></data>
+  <data name="Onboarding_V4_InstalledSubtitle" xml:space="preserve"><value>Your private OpenClaw gateway is up and running on this PC.</value></data>
+  <data name="Onboarding_V4_InstalledSpeech" xml:space="preserve"><value>Gateway installed.</value></data>
+  <data name="Onboarding_V4_MilestoneNext.Text" xml:space="preserve"><value>Up next: OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneNextDescription.Text" xml:space="preserve"><value>A few quick questions. Choose your AI provider, model, and key to connect your agent.</value></data>
+  <data name="Onboarding_V4_MilestoneContinue.Content" xml:space="preserve"><value>Start OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneUnavailable" xml:space="preserve"><value>Another setup task is still active. Wait for it to finish, then start OpenClaw onboard.</value></data>
   <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>One step at a time. You can follow the details below.</value></data>
   <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Restoring Local AI</value></data>
   <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Prepare and check Local AI</value></data>
@@ -7149,7 +7175,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Learn more about risks and safety</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Set up OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Where should OpenClaw live?</value></data>
+  <data name="Onboarding_Gateway_Speech.Text" xml:space="preserve"><value>Pick a home for me.</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway setup method</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Choose one Gateway setup method.</value></data>
@@ -7435,6 +7462,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Still installing the Gateway from Microsoft Store. This can take several minutes ({0} min elapsed).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet completed. Verifying Gateway registration and execution aliases before continuing...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway, then help you connect your AI.</value></data>
+  <data name="Onboarding_Native_ProgressSpeech.Text" xml:space="preserve"><value>Let's set up your Gateway.</value></data>
+  <data name="Onboarding_Native_ProgressDeadline.Text" xml:space="preserve"><value>Package installation and verification share a 30-minute limit by default. Windows may finish deployment after cancellation. Retry checks registration again.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway recovery</value></data>
   <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Open terminal</value></data>
   <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Restart Gateway</value></data>
@@ -7904,6 +7933,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Let's finish connecting your AI.</value></data>
+  <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Pick a brain for me.</value></data>
+  <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Ready when you are.</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>All set.</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>Let's sort this out.</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>Almost there.</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>Save your work first. Restarting Windows restarts this computer, not just OpenClaw. You can choose not to restart now and reopen OpenClaw after you restart.</value></data>
   <data name="Inbox_Title.Text" xml:space="preserve"><value>Inbox</value></data>
   <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Dismiss shown</value></data>
   <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notification settings</value></data>

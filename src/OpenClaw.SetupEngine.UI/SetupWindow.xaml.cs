@@ -69,6 +69,7 @@ public sealed partial class SetupWindow : Window
     private int _nativeNavigationGeneration;
     private readonly WslViabilityProbe _wslViabilityProbe = new(InspectWslViabilityAsync);
     private bool _startAtLocalAiRecoveryReview;
+    private OnboardingStage? _lastFlowStage;
     private bool _pinLocalAiRecoveryModel;
     private LocalAiRecoveryConfigurationBaseline _localAiRecoveryBaseline = null!;
 
@@ -948,8 +949,11 @@ public sealed partial class SetupWindow : Window
     internal void RefreshFlowProgress()
     {
         if (RootFrame.Content is not FrameworkElement page ||
-            page.FindName("FlowProgress") is not SetupProgressIndicator progress)
+            page.FindName("FlowProgress") is not ISetupProgressIndicator progress)
+        {
+            _lastFlowStage = null;
             return;
+        }
 
         var stage = page switch
         {
@@ -961,10 +965,11 @@ public sealed partial class SetupWindow : Window
             AiReadyPage => OnboardingStage.Ready,
             _ => OnboardingStage.AiSetup,
         };
-        progress.Update(
-            OnboardingFlowPolicy.GetStages(AccessDraft.Route, _config, _startAtLocalAiRecoveryReview,
-                includeReadyChoice: page is not WizardPage),
-            stage);
+        var stages = OnboardingFlowPolicy.GetStages(AccessDraft.Route, _config, _startAtLocalAiRecoveryReview,
+            includeReadyChoice: page is not WizardPage);
+        var currentStage = stages.Contains(stage) ? stage : (OnboardingStage?)null;
+        progress.Update(stages, stage, _lastFlowStage);
+        _lastFlowStage = currentStage;
     }
 
     private OnboardingMascot? ActiveMascot =>

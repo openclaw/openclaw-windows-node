@@ -104,6 +104,11 @@ public sealed class StartupWindowUiTests(ITestOutputHelper output)
             if (corruptIdentity)
                 Assert.Contains("Stored device identity load failed during setup detection", ReadLog(profile));
         }
+        catch (Exception exception)
+        {
+            output.WriteLine($"Startup verification failed before fixture cleanup: {exception}");
+            throw;
+        }
         finally
         {
             if (!app.HasExited)
@@ -140,7 +145,7 @@ public sealed class StartupWindowUiTests(ITestOutputHelper output)
         {
             Assert.Contains(windows, window => IsSetup(window) &&
                 window.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.NameProperty, "Welcome to OpenClaw")) is not null);
+                    new PropertyCondition(AutomationElement.NameProperty, "Meet your new sidekick.")) is not null);
         }
         output.WriteLine($"{phase}: setup={windows.Count(IsSetup)}, workspace={windows.Count(IsWorkspace)}");
     }

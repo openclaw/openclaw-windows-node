@@ -26,6 +26,7 @@
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <RootNamespace>OpenClaw.Tray.UITests</RootNamespace>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
     <DefineConstants Condition="'$(LocalAiProofBaseline)' == 'true'">$(DefineConstants);LOCAL_AI_BASELINE</DefineConstants>
 
     <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the
@@ -59,6 +60,33 @@
     <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
+
+  <!--
+    UIThreadFixture bootstraps the registered Windows App Runtime. The production
+    tray stays self-contained, but its SDK SelfContained.targets emits native
+    framework files as None/CopyToOutputDirectory items that flow through the
+    project reference into GetCopyToOutputDirectoryItems. Do not copy its Input
+    module into this framework-bootstrapped testhost: loading both copies registers
+    InputNonClientPointerSource twice and fail-fasts when SetupWindow enables its
+    title bar. Keep the exclusion at this consumer, not the production project.
+  -->
+  <Target Name="UseFrameworkInputRuntime" AfterTargets="GetCopyToOutputDirectoryItems">
+    <ItemGroup>
+      <_FrameworkInputRuntimeCopy Include="@(AllItemsFullPathWithTargetPath)"
+                                  Condition="'%(TargetPath)' == 'Microsoft.UI.Input.dll'" />
+      <_SourceItemsToCopyToOutputDirectory Remove="@(_FrameworkInputRuntimeCopy)" />
+      <_SourceItemsToCopyToOutputDirectoryAlways Remove="@(_FrameworkInputRuntimeCopy)" />
+      <_SourceItemsToCopyToOutputDirectoryIfDifferent Remove="@(_FrameworkInputRuntimeCopy)" />
+      <AllItemsFullPathWithTargetPath Remove="@(_FrameworkInputRuntimeCopy)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Normal incremental builds also retire the one conflicting pre-fix output.
+       A lock is a build failure, not permission to stop an unrelated process. -->
+  <Target Name="RemoveStaleAppLocalInputRuntime" BeforeTargets="BeforeBuild"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <Delete Files="$(TargetDir)Microsoft.UI.Input.dll" />
+  </Target>
 
   <Target Name="UseSourceSetupAssetsForPriConsumerCopy"
           AfterTargets="AddPriPayloadFilesToCopyToOutputDirectoryItems">
