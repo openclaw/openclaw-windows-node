@@ -1526,10 +1526,10 @@
     <value>原始 JSON</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
-    <value>結構描述無法使用</value>
+    <value>設定無法使用</value>
   </data>
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
-    <value>無法載入閘道設定結構描述。請使用網頁儀表板編輯設定。</value>
+    <value>請重新整理以再次載入閘道設定和結構描述。你也可以開啟閘道面板。</value>
   </data>
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>開啟儀表板</value>
@@ -5766,13 +5766,13 @@
     <value>設定無法使用</value>
   </data>
   <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
-    <value>無法呈現閘道設定。請重新整理後再試一次。</value>
+    <value>無法載入或顯示閘道設定。請重新整理後再試。</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
     <value>架構無法使用</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
-    <value>無法呈現閘道架構。原始 JSON 仍可作為唯讀預覽使用。</value>
+    <value>無法載入或顯示閘道結構描述。請重新整理後再試。</value>
   </data>
   <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
     <value>閘道正在重新啟動</value>
@@ -8669,4 +8669,7 @@
   <data name="Usage_Export_Close" xml:space="preserve"><value>關閉</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>最近 7 天</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="ConfigPage_DraftConnectionChanged" xml:space="preserve">
+    <value>連線或設定檔已變更。草稿已保留，但無法在此套用。請捨棄草稿，然後載入目前的閘道設定。</value>
+  </data>
 </root>

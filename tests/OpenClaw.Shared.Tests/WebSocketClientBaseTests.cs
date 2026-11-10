@@ -1597,6 +1597,18 @@ internal sealed class LoopbackWebSocketServer : IDisposable
     public async Task<string> ReceiveTextAsync(CancellationToken cancellationToken = default)
     {
         var socket = await _firstAcceptedSocket.Task.WaitAsync(cancellationToken);
+        return await ReceiveTextAsync(socket, cancellationToken);
+    }
+
+    public Task<string> ReceiveTextFromConnectionAsync(int connectionIndex, CancellationToken cancellationToken = default)
+    {
+        WebSocket socket;
+        lock (_acceptedSockets) socket = _acceptedSockets[connectionIndex];
+        return ReceiveTextAsync(socket, cancellationToken);
+    }
+
+    private static async Task<string> ReceiveTextAsync(WebSocket socket, CancellationToken cancellationToken)
+    {
         var buffer = new byte[64 * 1024];
         var result = await socket.ReceiveAsync(buffer, cancellationToken);
         if (result.MessageType != WebSocketMessageType.Text || !result.EndOfMessage)

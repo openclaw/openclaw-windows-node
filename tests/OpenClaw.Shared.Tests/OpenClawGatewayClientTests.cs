@@ -12,7 +12,7 @@ using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
-public class OpenClawGatewayClientTests
+public partial class OpenClawGatewayClientTests
 {
     [Theory]
     [InlineData("true", true)]

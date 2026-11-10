@@ -557,6 +557,15 @@ public sealed partial class GatewayFixtureUiTests
             var section = FindInApp(run, new AndCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem),
                 new PropertyCondition(AutomationElement.NameProperty, "\U0001F4C1 Optional Navigation")))!;
+            if (section is null)
+            {
+                try { output.WriteLine(OwnedWindowCapture.ReadConfigTreeAutomation(run, window)); }
+                catch (Exception diagnosticError)
+                {
+                    // Diagnostics must not replace the original lookup assertion or expose raw native errors.
+                    output.WriteLine($"ConfigTreeUIA: capture unavailable ({diagnosticError.GetType().Name}).");
+                }
+            }
             Assert.NotNull(section);
             section.SetFocus();
             Send(run, window, "{ENTER}");

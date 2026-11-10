@@ -1573,10 +1573,10 @@ Use one of these options:
     <value>Raw JSON</value>
   </data>
   <data name="ConfigPage_TextBlock_95.Text" xml:space="preserve">
-    <value>Schema not available</value>
+    <value>Configuration unavailable</value>
   </data>
   <data name="ConfigPage_TextBlock_98.Text" xml:space="preserve">
-    <value>The gateway configuration schema could not be loaded. Use the web dashboard to edit settings.</value>
+    <value>Refresh to retry loading the gateway configuration and schema. You can also open the gateway panel.</value>
   </data>
   <data name="OpenDashboardButton.Content" xml:space="preserve">
     <value>Open Dashboard</value>
@@ -5771,13 +5771,13 @@ Make sure the gateway is running.</value>
     <value>Config unavailable</value>
   </data>
   <data name="ConfigPage_RenderConfigUnavailableMessage" xml:space="preserve">
-    <value>The gateway config could not be rendered. Refresh and try again.</value>
+    <value>The gateway config could not be loaded or rendered. Refresh and try again.</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableTitle" xml:space="preserve">
     <value>Schema unavailable</value>
   </data>
   <data name="ConfigPage_RenderSchemaUnavailableMessage" xml:space="preserve">
-    <value>The gateway schema could not be rendered. Raw JSON remains available as a read-only preview.</value>
+    <value>The gateway schema could not be loaded or rendered. Refresh and try again.</value>
   </data>
   <data name="ConfigPage_StatusGatewayRestartingTitle" xml:space="preserve">
     <value>Gateway restarting</value>
@@ -8740,4 +8740,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Usage_Export_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>Last 7 days</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="ConfigPage_DraftConnectionChanged" xml:space="preserve">
+    <value>The connection or profile changed. Your draft is retained but cannot be applied here. Discard it, then load the current gateway configuration.</value>
+  </data>
 </root>
