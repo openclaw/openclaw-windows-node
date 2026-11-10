@@ -1693,6 +1693,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                         $"details={TestSupport.FindDescendants<FrameworkElement>(surface).Count(element => AutomationProperties.GetAutomationId(element) == "SystemsDetails")}, " +
                         $"selected={controller.State.SelectedId}.");
                 Assert.Equal("node:studio", controller.State.SelectedId);
+                await WaitForSelectedRowAsync(surface, controller, "node:studio", SystemKind.Node);
                 Assert.Equal(2, TestSupport.FindDescendants<FrameworkElement>(surface)
                     .Count(element => AutomationProperties.GetAutomationId(element) == "SystemsDetails"));
                 Assert.Equal("Studio", Find<TextBlock>(surface, "SystemsSelectedName").Text);
@@ -2058,6 +2059,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         Border surface = null!;
         ReactorHostControl host = null!;
         ResourceDictionary resources = null!;
+        SystemRow? initialSelection = null;
         Windows.Graphics.SizeInt32? previousWindowSize = null;
         var navigated = new List<string>();
         try
@@ -2079,6 +2081,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 Application.Current.Resources.MergedDictionaries.Add(resources);
                 controller.UpdateInputs(Inputs());
                 configure(controller);
+                initialSelection = controller.State.CanRead ? controller.State.Selected : null;
                 var actions = new SystemsPageActions
                 {
                     PostUi = action => ui.Dispatcher.TryEnqueue(() => action()),
@@ -2110,6 +2113,10 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 () => $"requested={width}x{height}, fitNativeViewport={fitNativeViewport}, " +
                     $"surface={surface.ActualWidth}x{surface.ActualHeight}, xamlRoot={surface.XamlRoot?.Size}, " +
                     $"window={ui.TestWindow.AppWindow.Size}, root={TryFind<FrameworkElement>(surface, "SystemsPageRoot")?.ActualSize}"));
+            // A laid-out root precedes Loaded-driven expansion and the selected header render.
+            // Loading, empty, inaccessible and unresolved-selection scenarios have no row to await.
+            if (initialSelection is { } selected)
+                await ui.RunOnUIAsync(() => WaitForSelectedRowAsync(surface, controller, selected.Id, selected.Kind));
             await assertion(surface, controller, navigated);
         }
         finally
@@ -2132,6 +2139,25 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     ui.TestWindow.AppWindow.Resize(size);
             });
         }
+    }
+
+    // Observe the requested selection, never repair it. Controller publication precedes its native header.
+    private static async Task WaitForSelectedRowAsync(FrameworkElement surface, SystemsController controller,
+        string rowId, SystemKind kind)
+    {
+        await WaitForRowSectionAsync<FrameworkElement>(surface, rowId,
+            kind == SystemKind.Client ? "SystemsPresenceDetails" : "SystemsDetails");
+        await TestSupport.WaitForRenderedConditionAsync(() =>
+        {
+            var row = TryFind<Expander>(surface, "SystemsRow_" + rowId);
+            return controller.State.SelectedId == rowId && row is { IsLoaded: true, IsExpanded: true } &&
+                TryFind<TextBlock>(row, "SystemsSelectedName") is
+                    { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0, Visibility: Visibility.Visible };
+        }, $"selected header is rendered on {rowId}",
+            () => $"selected={controller.State.SelectedId}, rendered={TryFind<TextBlock>(surface, "SystemsSelectedName")?.Text}");
+        Assert.Equal(rowId, controller.State.SelectedId);
+        Assert.Same(Find<TextBlock>(Find<Expander>(surface, "SystemsRow_" + rowId), "SystemsSelectedName"),
+            Find<TextBlock>(surface, "SystemsSelectedName"));
     }
 
     // Loaded row expansion deliberately takes another Reactor render after the page root mounts.

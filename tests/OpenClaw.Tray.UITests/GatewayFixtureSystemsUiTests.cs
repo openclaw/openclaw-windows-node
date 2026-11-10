@@ -86,21 +86,27 @@ public sealed partial class GatewayFixtureUiTests
         OwnedWindowCapture.Save(run, window, "Light-systems-separated-cards.png",
             FindById(run, "SystemsRow_node:fixture-macbook")!, FindById(run, "SystemsRow_node:fixture-studio")!);
         await run.InvokeAsync("app.navigate", new { page = "systems:gateway" });
-        await WaitUiAsync(run, () => FindById(run, "SystemsSessions") is not null &&
-            FindById(run, "SystemsDiagnostics") is not null, "expanded Gateway details loaded");
+        AutomationElement? GatewayDetail(string id) => FindById(run, "SystemsRow_gateway")?.FindFirst(
+            TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+        // Section panels have no UIA peer. Observe the shipped accessible heading and real row state.
+        await WaitUiAsync(run, () => FindById(run, "SystemsRow_gateway") is { } gateway &&
+            gateway.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expansion) &&
+            ((ExpandCollapsePattern)expansion).Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
+            GatewayDetail("SystemsSessionsHeading") is not null && GatewayDetail("SystemsDiagnostics") is not null,
+            "deep-linked Gateway is expanded with accessible sessions and diagnostics");
         scroll = FindById(run, "SystemsPageScroll")!;
         pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
         viewport = scroll.Current.BoundingRectangle;
         range = viewport.Height * (100 / pattern.Current.VerticalViewSize - 1);
         Assert.True(range > 0, "The populated Systems fixture must expose its expanded Gateway details through ordinary scrolling.");
         var currentOffset = pattern.Current.VerticalScrollPercent / 100 * range;
-        var targetOffset = currentOffset + FindById(run, "SystemsSessions")!.Current.BoundingRectangle.Top - viewport.Top - 16;
+        var targetOffset = currentOffset + GatewayDetail("SystemsSessionsHeading")!.Current.BoundingRectangle.Top - viewport.Top - 16;
         pattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(targetOffset / range * 100, 0, 100));
-        await WaitUiAsync(run, () => FindById(run, "SystemsSessions") is { Current.IsOffscreen: false } &&
-            FindById(run, "SystemsDiagnostics") is { Current.IsOffscreen: false },
+        await WaitUiAsync(run, () => GatewayDetail("SystemsSessionsHeading") is { Current.IsOffscreen: false } &&
+            GatewayDetail("SystemsDiagnostics") is { Current.IsOffscreen: false },
             "Gateway sessions and diagnostics scrolled into the current Settings viewport");
         OwnedWindowCapture.Save(run, window, "Light-systems-gateway-details.png",
-            FindById(run, "SystemsSessions")!, FindById(run, "SystemsDiagnostics")!);
+            GatewayDetail("SystemsSessionsHeading")!, GatewayDetail("SystemsDiagnostics")!);
         await run.WriteReportAsync("passed");
         output.WriteLine($"Existing card separation: {run.ArtifactsDirectory}\\Light-systems-separated-cards.png");
     }
@@ -237,12 +243,11 @@ public sealed partial class GatewayFixtureUiTests
         {
             var record = new Dictionary<string, object?> { ["requestedHostWidth"] = requested, ["theme"] = "Light", ["paneCollapsed"] = collapsed };
             records.Add(record);
+            var paneToggled = false;
             try
             {
                 await run.InvokeAsync("app.navigate", new { page = "systems" });
                 await WaitUiAsync(run, () => FindById(run, "SystemsPageScroll") is not null, "baseline Systems scroll");
-                if (collapsed)
-                    Invoke(FindById(run, "SettingsTogglePane")!);
                 var target = requested == 520 || collapsed ? 1000 * scale : requested * scale + chrome;
                 var targetWindow = Math.Min(display.Width, Math.Max(1000 * scale, target));
                 Assert.True(SystemsSetWindowPos(hwnd, IntPtr.Zero, display.X, display.Y,
@@ -257,13 +262,29 @@ public sealed partial class GatewayFixtureUiTests
                     var width = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
                     // UIA bounds are clipped to native non-client/display bounds. Do not
                     // assume their chrome delta stays pixel-identical after moving the HWND.
-                    var inRange = collapsed ? width > baselineHost.Width + 100 * scale
-                        : targetWindow > baseline.Width + 2 ? width > baselineHost.Width + 2
+                    var inRange = targetWindow > baseline.Width + 2 ? width > baselineHost.Width + 2
                         : width > 0 && width <= targetWindow;
                     var stable = Math.Abs(width - previousHostWidth) < .1;
                     previousHostWidth = width;
                     return inRange && stable;
                 }, "page-host layout settled after native resize");
+                if (collapsed)
+                {
+                    // Compare pane states at the same native window size, not the initial wider window.
+                    var expandedHostWidth = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
+                    record["expandedPaneHostWidthDip"] = expandedHostWidth / scale;
+                    Invoke(FindById(run, "SettingsTogglePane")!);
+                    paneToggled = true;
+                    previousHostWidth = -1;
+                    await WaitUiAsync(run, () =>
+                    {
+                        var width = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
+                        var stable = Math.Abs(width - previousHostWidth) < .1;
+                        previousHostWidth = width;
+                        return width > expandedHostWidth + 100 * scale && width <= targetWindow && stable &&
+                            Math.Abs(Window().Current.BoundingRectangle.Width - targetWindow) <= 2;
+                    }, "collapsed pane releases host width at the same native window size");
+                }
                 var measuredBeforeTierCheck = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width / scale;
                 var expectedTier = requested == 520 || collapsed ? OpenClawTray.Presentation.PageWidthTier.Medium
                     : OpenClawTray.Presentation.PageResponsiveLayout.TierFor(requested);
@@ -344,7 +365,7 @@ public sealed partial class GatewayFixtureUiTests
                 await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "responsive-manifest.json"),
                     JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
                 // Recovery is scoped to this run's HWND and precedes the next independent state.
-                if (collapsed && FindById(run, "SettingsTogglePane") is { } toggle)
+                if (paneToggled && FindById(run, "SettingsTogglePane") is { } toggle)
                     Invoke(toggle);
                 Assert.True(SystemsSetWindowPos(hwnd, IntPtr.Zero, display.X, display.Y,
                     (int)Math.Round(baselineWidth), (int)Math.Round(baselineHeight), 0x0014));
