@@ -575,7 +575,7 @@ Before capture, verify that `project.assets.json` resolves the pinned
 package provenance with the evidence. NU1603 is not successful integration, and
 exact version resolution alone does not establish app API compatibility. For a
 direct restore, first bootstrap preview.17 as described in
-[Reactor chat compatibility proof](WINDOWS_NODE_TESTING.md#reactor-chat-compatibility-proof).
+[Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof).
 
 The same filter includes editor lifetime regressions: an unsaved draft survives
 reconnect and a delayed save cannot close a newer editor. Host-side
