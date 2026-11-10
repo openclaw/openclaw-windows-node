@@ -51,6 +51,28 @@ public sealed partial class GatewayFixtureUiTests
                                 return true;
                         return false;
                     }
+                    var titleBar = FindById(run, "WorkspaceTitleBar")
+                        ?? throw new InvalidOperationException("The native Workspace title bar is missing.");
+                    Assert.Equal(run.AppProcessId, titleBar.Current.ProcessId);
+                    Assert.Equal(ControlType.TitleBar, titleBar.Current.ControlType);
+                    var chromeRoot = TreeWalker.RawViewWalker.GetParent(titleBar)
+                        ?? throw new InvalidOperationException("The native Workspace chrome owner is missing.");
+                    Assert.Equal(run.AppProcessId, chromeRoot.Current.ProcessId);
+                    Assert.True(IsWithin(chromeRoot, hub));
+                    Assert.Equal(hwnd, GetAncestor(new IntPtr(chromeRoot.Current.NativeWindowHandle), 2));
+                    AutomationElement? FindChrome(string id)
+                    {
+                        // Chrome is a native sibling of page content. Do not descend into
+                        // an embedded WebView before searching the later overlay controls.
+                        var control = chromeRoot.FindFirst(TreeScope.Children,
+                            new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+                        if (control is not null)
+                        {
+                            Assert.Equal(run.AppProcessId, control.Current.ProcessId);
+                            Assert.Equal(ControlType.Button, control.Current.ControlType);
+                        }
+                        return control;
+                    }
                     void AssertPointOwner(CronPoint point) =>
                         Assert.Equal(hwnd, GetAncestor(WindowFromPoint(point), 2));
                     async Task ClickToggleAsync(string id, string expectedId)
@@ -67,7 +89,7 @@ public sealed partial class GatewayFixtureUiTests
                         Assert.NotEqual(IntPtr.Zero, previousDpi);
                         try
                         {
-                            var button = FindById(run, id)
+                            var button = FindChrome(id)
                                 ?? throw new InvalidOperationException($"Pinned pane button {id} is missing.");
                             Assert.Equal(run.AppProcessId, button.Current.ProcessId);
                             Assert.False(button.Current.IsOffscreen);
@@ -119,8 +141,8 @@ public sealed partial class GatewayFixtureUiTests
                         }
                         finally { DashboardSetThreadDpiAwarenessContext(previousDpi); }
                         await WaitUiAsync(run, () =>
-                            FindById(run, id) is null or { Current.IsOffscreen: true } &&
-                            FindById(run, expectedId) is { Current.IsOffscreen: false },
+                            FindChrome(id) is null or { Current.IsOffscreen: true } &&
+                            FindChrome(expectedId) is { Current.IsOffscreen: false },
                             $"physical center click on {id} changed the pane to {expectedId}");
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"pinned-click-{id}-{Guid.NewGuid():N}.json"),
                             JsonSerializer.Serialize(new
@@ -130,7 +152,7 @@ public sealed partial class GatewayFixtureUiTests
                             }));
                     }
                     await NativeKeyboardProof.ActivateAsync(hwnd);
-                    var negativeBounds = FindById(run, "WorkspaceTogglePane")!.Current.BoundingRectangle;
+                    var negativeBounds = FindChrome("WorkspaceTogglePane")!.Current.BoundingRectangle;
                     var negativePoint = new CronPoint
                     {
                         X = (int)Math.Round(negativeBounds.Left + negativeBounds.Width / 2),
@@ -147,7 +169,7 @@ public sealed partial class GatewayFixtureUiTests
                         Assert.NotEqual(IntPtr.Zero, occluder);
                         Assert.Equal(occluder, GetAncestor(WindowFromPoint(negativePoint), 2));
                         Assert.Throws<Xunit.Sdk.EqualException>(() => AssertPointOwner(negativePoint));
-                        Assert.False(FindById(run, "WorkspaceTogglePane")!.Current.IsOffscreen);
+                        Assert.False(FindChrome("WorkspaceTogglePane")!.Current.IsOffscreen);
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "pinned-hit-occlusion-negative.json"),
                             JsonSerializer.Serialize(new
                             {
@@ -175,11 +197,11 @@ public sealed partial class GatewayFixtureUiTests
                             {
                                 await ClickToggleAsync("WorkspaceTogglePane", "WorkspaceReopenPane");
                             }
-                            else if (FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } reopen)
+                            else if (FindChrome("WorkspaceReopenPane") is { Current.IsOffscreen: false })
                             {
                                 await ClickToggleAsync("WorkspaceReopenPane", "WorkspaceTogglePane");
                             }
-                            await WaitUiAsync(run, () => FindById(run, collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane")
+                            await WaitUiAsync(run, () => FindChrome(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane")
                                 is { Current.IsOffscreen: false }, "pinned pane state");
                             double? previousHostWidth = null;
                             var lastHostRead = DateTimeOffset.MinValue;
@@ -235,11 +257,11 @@ public sealed partial class GatewayFixtureUiTests
                             }, "pinned geometry retained after the physical pane roundtrip");
                             if (collapsed)
                             {
-                                var reopen = FindById(run, "WorkspaceReopenPane")!;
+                                var reopen = FindChrome("WorkspaceReopenPane")!;
                                 var toggleBounds = reopen.Current.BoundingRectangle;
                                 foreach (var id in new[] { "SettingsBack", "SettingsForward" })
                                 {
-                                    var history = FindById(run, id)!;
+                                    var history = FindChrome(id)!;
                                     Assert.True(toggleBounds.Right <= history.Current.BoundingRectangle.Left,
                                         $"Pinned reopen overlaps {id}.");
                                 }
@@ -247,7 +269,7 @@ public sealed partial class GatewayFixtureUiTests
                                 await WaitUiAsync(run, () => reopen.Current.HasKeyboardFocus, "pinned reopen keyboard focus");
                                 foreach (var id in new[] { "SettingsBack", "SettingsForward" })
                                 {
-                                    var history = FindById(run, id)!;
+                                    var history = FindChrome(id)!;
                                     if (!history.Current.IsEnabled)
                                         continue;
                                     NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
