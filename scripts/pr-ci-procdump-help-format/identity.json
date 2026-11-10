@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "kind": "observational-identity-pins",
+  "productCommit": "e56258fd0a835969b417f8d0236baf86760e3139",
+  "productTree": "22ba737e3122d589787701a16ee2e2bbd234bdb0",
+  "archiveSha256": "5fe68e81632f13188930affff20a9a9910170bae654360850d3108cead708a2d",
+  "executableSha256": "22c2a2b09ade73a342a18dab838354385f73fc98e324b9903fd61fff949c5124",
+  "fileVersion": "12.2.0.0",
+  "previousStdoutSha256": "3543e973a357d949d68135ad96fe9d9da63f62d96664258a88d7ea4dad70411a",
+  "priorRunId": "42753908952",
+  "priorReceiptSha256": "293ac5cab0771e5c6db6b3e84565f9e42ebbe49fa8158f9acad9a2cba56e0485"
+}

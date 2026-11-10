@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><AssemblyName>OpenClaw.Barrier.Collector</AssemblyName><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.VisualStudio.TestPlatform.ObjectModel"><HintPath>$(ObjectModelPath)</HintPath><Private>false</Private></Reference>
+    <Compile Include="../../pr-ci-observe-only/Observer/Binding.cs" Link="Binding.cs" />
+    <Compile Include="../../pr-ci-observe-only/Observer/ObserverContract.cs" Link="ObserverContract.cs" />
+    <Compile Include="../../pr-ci-observe-only/Observer/BlameIdentity.cs" Link="BlameIdentity.cs" />
+    <Compile Include="../../pr-ci-observe-only/BarrierGate.cs" Link="BarrierGate.cs" />
+  </ItemGroup>
+  <Target Name="RequireActualObjectModel" BeforeTargets="ResolveReferences"><Error Condition="!Exists('$(ObjectModelPath)')" Text="Observed ObjectModel required." /></Target>
+</Project>
