@@ -43,19 +43,55 @@ public sealed partial class GatewayFixtureUiTests
                                 return true;
                         return false;
                     }
-                    void AssertToggleHit(string id)
+                    async Task AssertToggleHitAsync(string id)
                     {
-                        var button = FindById(run, id)
-                            ?? throw new InvalidOperationException($"Pinned pane button {id} is missing.");
-                        Assert.False(button.Current.IsOffscreen);
-                        Assert.True(button.Current.IsEnabled);
-                        var bounds = button.Current.BoundingRectangle;
-                        Assert.True(bounds.Width > 0 && bounds.Height > 0);
-                        var point = new System.Windows.Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-                        var hit = AutomationElement.FromPoint(point);
-                        var belongsToButton = IsWithin(hit, button);
-                        Assert.True(belongsToButton,
-                            $"Pinned pane button {id} is occluded at its center by {hit.Current.AutomationId}.");
+                        run.EnsureRunning();
+                        Assert.Equal(run.AppProcessId, hub.Current.ProcessId);
+                        // PrintWindow captures an owned HWND even behind other windows. Desktop
+                        // point queries need a separately qualified foreground and physical-DPI context.
+                        await NativeKeyboardProof.ActivateAsync(hwnd);
+                        var previousDpi = DashboardSetThreadDpiAwarenessContext(new IntPtr(-4));
+                        Assert.NotEqual(IntPtr.Zero, previousDpi);
+                        try
+                        {
+                            var button = FindById(run, id)
+                                ?? throw new InvalidOperationException($"Pinned pane button {id} is missing.");
+                            Assert.Equal(run.AppProcessId, button.Current.ProcessId);
+                            Assert.False(button.Current.IsOffscreen);
+                            Assert.True(button.Current.IsEnabled);
+                            var bounds = button.Current.BoundingRectangle;
+                            Assert.True(bounds.Width > 0 && bounds.Height > 0);
+                            var point = new DashboardCursorPoint
+                            {
+                                X = (int)Math.Round(bounds.Left + bounds.Width / 2),
+                                Y = (int)Math.Round(bounds.Top + bounds.Height / 2)
+                            };
+                            var nativeHit = DashboardWindowFromPoint(point);
+                            var nativeRoot = DashboardGetAncestor(nativeHit, 2);
+                            var foreground = DashboardForegroundWindow();
+                            var hit = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+                            var belongsToButton = IsWithin(hit, button);
+                            var nativeBounds = DashboardRect(hwnd);
+                            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"pinned-hit-{id}-{Guid.NewGuid():N}.json"),
+                                JsonSerializer.Serialize(new
+                                {
+                                    id, run.AppProcessId, window = $"0x{hwnd:X}", foreground = $"0x{foreground:X}",
+                                    nativeHit = $"0x{nativeHit:X}", nativeRoot = $"0x{nativeRoot:X}", point.X, point.Y, bounds,
+                                    windowBounds = new { nativeBounds.Left, nativeBounds.Top, nativeBounds.Right, nativeBounds.Bottom },
+                                    scale = DashboardWindowDpi(hwnd) / 96d,
+                                    buttonRuntimeId = button.GetRuntimeId(), hitRuntimeId = hit.GetRuntimeId(),
+                                    hitProcessId = hit.Current.ProcessId, hitClass = hit.Current.ClassName,
+                                    hitId = hit.Current.AutomationId, hitType = hit.Current.ControlType.ProgrammaticName,
+                                    hitBounds = hit.Current.BoundingRectangle, belongsToButton
+                                }));
+                            Assert.Equal(hwnd, foreground);
+                            Assert.Equal(hwnd, nativeRoot);
+                            Assert.Equal(run.AppProcessId, hit.Current.ProcessId);
+                            Assert.True(belongsToButton,
+                                $"Pinned pane button {id} is occluded or lacks an exact UIA hit at its center: " +
+                                $"{hit.Current.ClassName}/{hit.Current.AutomationId}, PID {hit.Current.ProcessId}. See pinned-hit receipt.");
+                        }
+                        finally { DashboardSetThreadDpiAwarenessContext(previousDpi); }
                     }
                     foreach (var board in new[] { false, true })
                     {
@@ -71,13 +107,13 @@ public sealed partial class GatewayFixtureUiTests
                             var collapsed = paneState == "collapsed";
                             if (collapsed)
                             {
-                                AssertToggleHit("WorkspaceTogglePane");
+                                await AssertToggleHitAsync("WorkspaceTogglePane");
                                 Invoke(FindById(run, "WorkspaceTogglePane")
                                     ?? throw new InvalidOperationException("Workspace collapse control is missing."));
                             }
                             else if (FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } reopen)
                             {
-                                AssertToggleHit("WorkspaceReopenPane");
+                                await AssertToggleHitAsync("WorkspaceReopenPane");
                                 Invoke(reopen);
                             }
                             await WaitUiAsync(run, () => FindById(run, collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane")
@@ -100,7 +136,20 @@ public sealed partial class GatewayFixtureUiTests
                             }, "settled pinned host and visible expanded pane actions");
                             var name = $"dashboards-{theme}-pinned-{surface}-{paneState}.png";
                             await WaitForDashboardPixelsAsync(run, hub, name,
-                                board ? ["99.97", "Uptime", "Tickets closed"] : ["Dashboards"]);
+                                board ? ["99.97", "Uptime"] : ["Dashboards"]);
+                            if (board)
+                            {
+                                // Native reports may grow beyond the initial viewport. Prove them
+                                // separately, then restore the top before inset and hit testing.
+                                await WaitForDashboardPixelsAsync(run, hub, name.Replace(".png", "-report.png", StringComparison.Ordinal),
+                                    ["Tickets closed", "128"], widgetId: "BoardWidget_weekly-report");
+                                var boardScroll = (ScrollPattern)FindById(run, "DashboardPageScroll")!
+                                    .GetCurrentPattern(ScrollPattern.Pattern);
+                                if (boardScroll.Current.VerticallyScrollable)
+                                    boardScroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                                await WaitUiAsync(run, () => !boardScroll.Current.VerticallyScrollable ||
+                                    boardScroll.Current.VerticalScrollPercent <= 0.1, "pinned board restored to top");
+                            }
                             var host = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
                             var viewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!.Current.BoundingRectangle;
                             if (!collapsed)
@@ -109,7 +158,7 @@ public sealed partial class GatewayFixtureUiTests
                             var measuredHostMargin = (host.Top - openHostTop!.Value) / scale;
                             Assert.InRange(Math.Abs(measuredInset - (collapsed ? 56 : 0)), 0, 1);
                             Assert.InRange(Math.Abs(measuredHostMargin), 0, 1);
-                            AssertToggleHit(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane");
+                            await AssertToggleHitAsync(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane");
                             if (collapsed)
                             {
                                 var reopen = FindById(run, "WorkspaceReopenPane")!;
@@ -861,6 +910,15 @@ public sealed partial class GatewayFixtureUiTests
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool DashboardGetWindowRect(IntPtr window, out DashboardNativeRect rect);
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetThreadDpiAwarenessContext")]
+    private static extern IntPtr DashboardSetThreadDpiAwarenessContext(IntPtr context);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "WindowFromPoint")]
+    private static extern IntPtr DashboardWindowFromPoint(DashboardCursorPoint point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetAncestor")]
+    private static extern IntPtr DashboardGetAncestor(IntPtr window, uint flags);
+
     [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool DashboardSetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
@@ -970,9 +1028,15 @@ public sealed partial class GatewayFixtureUiTests
                     Invoke(opsCard!);
                     // This host's UIA provider can stop at the WebView pane.
                     // Verify the visible HTML and native report through owned-window pixels.
+                    // Maximize does not guarantee that every board row fits the logical viewport.
+                    // Reveal and capture each widget, retaining every text and plotted-ink assertion.
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-overview.png",
-                        ["99.97", "Uptime", "Tickets closed", "Deployments this week"],
-                        requireDeploymentPlot: true);
+                        ["99.97", "Uptime"], widgetId: "BoardWidget_status-card");
+                    await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-report.png",
+                        ["Tickets closed", "128"], widgetId: "BoardWidget_weekly-report");
+                    await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-deployments.png",
+                        ["Deployments this week", "Mon to Sun"], requireDeploymentPlot: true,
+                        widgetId: "BoardWidget_deploy-chart");
                     AxeHelper.AssertNoAccessibilityErrors(new IntPtr(hub.Current.NativeWindowHandle),
                         context: $"Dashboards widgets ({theme})", targetProcessId: run.AppProcessId);
                     ScrollAncestorToBottom(run, FindById(run, "BoardWidget_broken-widget")!);
@@ -1103,15 +1167,99 @@ public sealed partial class GatewayFixtureUiTests
         }
     }
 
+    private static async Task<AutomationElement> RevealDashboardWidgetAsync(
+        GatewayFixtureRun run, AutomationElement hub, string widgetId, string imageName)
+    {
+        await WaitUiAsync(run, () => FindById(run, widgetId) is { Current.BoundingRectangle.Width: > 0, Current.BoundingRectangle.Height: > 0 },
+            $"measured widget {widgetId}");
+        var widget = FindById(run, widgetId)!;
+        var viewport = FindById(run, "DashboardPageScroll")
+            ?? throw new InvalidOperationException("The board page viewport is unavailable.");
+        Assert.Equal(run.AppProcessId, hub.Current.ProcessId);
+        Assert.Equal(run.AppProcessId, widget.Current.ProcessId);
+        Assert.Equal(run.AppProcessId, viewport.Current.ProcessId);
+        Assert.False(viewport.Current.IsOffscreen);
+        var scroll = (ScrollPattern)viewport.GetCurrentPattern(ScrollPattern.Pattern);
+        var before = widget.Current.BoundingRectangle;
+        var viewportBefore = viewport.Current.BoundingRectangle;
+        var percentBefore = scroll.Current.VerticalScrollPercent;
+        double? requested = null;
+        try
+        {
+            if (!VisibleTargetFitsViewport(before, viewportBefore, widget.Current.IsOffscreen))
+            {
+                Assert.True(scroll.Current.VerticallyScrollable, $"Clipped widget {widgetId} has no scrollable viewport.");
+                requested = DashboardWidgetScrollPercent(before, viewportBefore, percentBefore, scroll.Current.VerticalViewSize);
+                scroll.SetScrollPercent(ScrollPattern.NoScroll, requested.Value);
+                await WaitUiAsync(run, () => VisibleTargetFitsViewport(widget.Current.BoundingRectangle,
+                    viewport.Current.BoundingRectangle, widget.Current.IsOffscreen || viewport.Current.IsOffscreen),
+                    $"fully visible widget {widgetId} after native page scroll");
+            }
+            return widget;
+        }
+        finally
+        {
+            var scale = DashboardWindowDpi(new IntPtr(hub.Current.NativeWindowHandle)) / 96d;
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory,
+                Path.GetFileNameWithoutExtension(imageName) + ".viewport.json"), JsonSerializer.Serialize(new
+                {
+                    widgetId, run.AppProcessId, scale,
+                    window = hub.Current.BoundingRectangle, before, viewportBefore, percentBefore, requested,
+                    after = widget.Current.BoundingRectangle, viewportAfter = viewport.Current.BoundingRectangle,
+                    percentAfter = scroll.Current.VerticalScrollPercent,
+                    contained = VisibleTargetFitsViewport(widget.Current.BoundingRectangle,
+                        viewport.Current.BoundingRectangle, widget.Current.IsOffscreen || viewport.Current.IsOffscreen)
+                }));
+        }
+    }
+
+    private static double DashboardWidgetScrollPercent(System.Windows.Rect target, System.Windows.Rect viewport,
+        double currentPercent, double viewSize)
+    {
+        if (target.IsEmpty || viewport.IsEmpty || target.Width <= 0 || viewport.Width <= 0 ||
+            !double.IsFinite(target.Left) || !double.IsFinite(target.Right) ||
+            !double.IsFinite(viewport.Left) || !double.IsFinite(viewport.Right) ||
+            !double.IsFinite(currentPercent) || currentPercent is < 0 or > 100 ||
+            !double.IsFinite(viewSize) || viewSize is <= 0 or >= 100 ||
+            !double.IsFinite(target.Top) || !double.IsFinite(target.Bottom) || target.Height <= 0 ||
+            !double.IsFinite(viewport.Top) || !double.IsFinite(viewport.Bottom) || viewport.Height <= 0 ||
+            target.Height > viewport.Height || target.Left < viewport.Left || target.Right > viewport.Right)
+            throw new InvalidOperationException("The complete widget cannot be qualified in the measured native viewport.");
+        // Center a clipped widget to leave measured slack on both sides instead of depending on edge rounding.
+        var delta = viewport.Contains(target) ? 0 : (target.Top + target.Height / 2) - (viewport.Top + viewport.Height / 2);
+        var scrollableHeight = viewport.Height * (100 / viewSize - 1);
+        return Math.Clamp(currentPercent + 100 * delta / scrollableHeight, 0, 100);
+    }
+
+    [Theory]
+    [InlineData(200, 50, 0, 25, 58.333333)]
+    [InlineData(-60, 40, 40, 25, 10)]
+    [InlineData(10, 40, 35, 25, 35)]
+    public void WidgetReveal_UsesMeasuredViewportAndScrollExtent(double top, double height,
+        double percent, double viewSize, double expected) =>
+        Assert.Equal(expected, DashboardWidgetScrollPercent(new System.Windows.Rect(10, top, 80, height),
+            new System.Windows.Rect(0, 0, 100, 100), percent, viewSize), precision: 6);
+
+    [Theory]
+    [InlineData(101, 0, 25)]
+    [InlineData(50, 0, 100)]
+    [InlineData(50, -1, 25)]
+    [InlineData(50, 0, 0)]
+    [InlineData(50, double.NaN, 25)]
+    public void WidgetReveal_RejectsUnqualifiedGeometry(double height, double percent, double viewSize) =>
+        Assert.Throws<InvalidOperationException>(() => DashboardWidgetScrollPercent(new System.Windows.Rect(10, 200, 80, height),
+            new System.Windows.Rect(0, 0, 100, 100), percent, viewSize));
+
     private static async Task WaitForDashboardPixelsAsync(GatewayFixtureRun run, AutomationElement hub,
-        string imageName, string[] expectedText, bool requireDeploymentPlot = false)
+        string imageName, string[] expectedText, bool requireDeploymentPlot = false, string? widgetId = null)
     {
         var engine = OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"))
             ?? throw new InvalidOperationException("English Windows OCR is required to verify the sandbox's rendered pixels.");
         await run.WaitForAsync(async () =>
         {
             await DismissDashboardContainmentNoticeAsync(run, hub, imageName);
-            OwnedWindowCapture.Save(run, hub, imageName);
+            var widget = widgetId is null ? null : await RevealDashboardWidgetAsync(run, hub, widgetId, imageName);
+            OwnedWindowCapture.Save(run, hub, imageName, widget is null ? [] : [widget]);
             var path = Path.Combine(run.ArtifactsDirectory, imageName);
             var file = await StorageFile.GetFileFromPathAsync(path);
             using var stream = await file.OpenReadAsync();
@@ -1120,7 +1268,7 @@ public sealed partial class GatewayFixtureUiTests
             var result = await engine.RecognizeAsync(bitmap);
             File.WriteAllText(Path.ChangeExtension(path, ".ocr.txt"), result.Text);
             return expectedText.All(text => result.Text.Contains(text, StringComparison.OrdinalIgnoreCase))
-                && (!requireDeploymentPlot || DeploymentPlotHasVisibleInk(path, result));
+                && (!requireDeploymentPlot || DeploymentPlotHasVisibleInk(path, result, widgetId));
         }, $"visible dashboard pixels: {string.Join(", ", expectedText)}", TimeSpan.FromSeconds(30));
     }
 
@@ -1170,7 +1318,7 @@ public sealed partial class GatewayFixtureUiTests
             JsonSerializer.Serialize(new { present = true, dismissed = true, noticeImage, title }));
     }
 
-    private static bool DeploymentPlotHasVisibleInk(string imagePath, OcrResult content)
+    private static bool DeploymentPlotHasVisibleInk(string imagePath, OcrResult content, string? widgetId)
     {
         var title = content.Lines.FirstOrDefault(line => line.Text.Contains("Deployments this week", StringComparison.OrdinalIgnoreCase));
         var caption = content.Lines.FirstOrDefault(line => line.Text.Contains("Mon to Sun", StringComparison.OrdinalIgnoreCase));
@@ -1180,8 +1328,20 @@ public sealed partial class GatewayFixtureUiTests
         var top = title.Words.Max(word => word.BoundingRect.Bottom);
         var height = caption.Words.Min(word => word.BoundingRect.Top) - top;
         using var image = new System.Drawing.Bitmap(imagePath);
-        // This fixture chart spans all 12 columns, with no sibling to its right.
-        var width = image.Width - left;
+        // Bind the ink crop to the asserted widget, not the rest of the window.
+        using var receipt = JsonDocument.Parse(File.ReadAllText(Path.ChangeExtension(imagePath, ".json")));
+        var widget = receipt.RootElement.GetProperty("assertions").EnumerateArray()
+            .Single(element => element.GetProperty("AutomationId").GetString() == widgetId);
+        var widgetLeft = widget.GetProperty("left").GetDouble();
+        var widgetTop = widget.GetProperty("top").GetDouble();
+        var widgetRight = widgetLeft + widget.GetProperty("Width").GetDouble();
+        var widgetBottom = widgetTop + widget.GetProperty("Height").GetDouble();
+        if (left < widgetLeft || top < widgetTop || height <= 0 ||
+            caption.Words.Max(word => word.BoundingRect.Bottom) > widgetBottom)
+            return false;
+        var width = widgetRight - left;
+        if (width <= 0)
+            return false;
         // The middle of this fixture's SVG contains only the plotted curve,
         // not its header, caption or card border. A flat crop cannot prove it rendered.
         var area = System.Drawing.Rectangle.Intersect(

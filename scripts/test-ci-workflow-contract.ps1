@@ -748,7 +748,8 @@ foreach ($token in @(
         './scripts/test-gateway-fixture.ps1',
         '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
         '-ArtifactsDirectory .\TestResults\GatewayFixture',
-        '-Screenshots'
+        '-Screenshots',
+        '-NativeInputProof'
     )) {
     Assert-Contains -Text $fixtureStep -Expected $token -Message "Mock Gateway CI step is missing '$token'."
 }
@@ -819,13 +820,63 @@ Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtu
 foreach ($token in @(
         "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
         "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
-        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:`$NativeInputProof",
         "'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof",
         "`$start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if (`$EnableKeyboardProof) { '1' } else { '0' }",
         '[int]$counters.total -le 0 -or [int]$counters.passed -ne [int]$counters.total'
     )) {
     Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture runner lost its explicit-app, category or all-pass contract: '$token'."
 }
+# Exercise the production child-launch construction without launching dotnet or native input.
+$fixtureTokens = $null
+$fixtureParseErrors = $null
+$fixtureAst = [Management.Automation.Language.Parser]::ParseInput($fixtureRunner, [ref]$fixtureTokens, [ref]$fixtureParseErrors)
+if ($fixtureParseErrors.Count -ne 0) { throw 'Fixture runner must parse before its launch contract is checked.' }
+$startInfoFunction = @($fixtureAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-FixtureTestStartInfo'
+}, $true))
+if ($startInfoFunction.Count -ne 1) { throw 'Expected one fixture child ProcessStartInfo owner.' }
+& {
+    param($Definition, $Root)
+    . ([scriptblock]::Create($Definition))
+    $repoRoot = $Root
+    $Configuration = 'Debug'
+    $rid = 'win-x64'
+    $platform = 'x64'
+    $resultsDirectory = Join-Path $Root 'TestResults'
+    $resolvedApp = Join-Path $Root 'candidate.exe'
+    $resolvedStableApp = $null
+    $artifacts = $resultsDirectory
+    $Screenshots = $true
+    $inherited = $env:OPENCLAW_RUN_KEYBOARD_PROOF
+    try {
+        $env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+        foreach ($enabled in @($false, $true)) {
+            $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'Category=GatewayFixture&KeyboardProof!=Required' -ResultName 'fixture-ui' -EnableKeyboardProof:$enabled
+            $expected = if ($enabled) { '1' } else { '0' }
+            if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne $expected -or $start.UseShellExecute -or
+                $start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] -ne $resolvedApp -or
+                $start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] -ne '1' -or
+                -not $start.ArgumentList.Contains('Category=GatewayFixture&KeyboardProof!=Required')) {
+                throw "Fixture UI native input must follow the explicit child option ($enabled), preserving owned-app/filter binding."
+            }
+        }
+        foreach ($resultName in @('fixture-profile-app', 'fixture-released-profile')) {
+            $resolvedStableApp = if ($resultName -eq 'fixture-released-profile') { Join-Path $Root 'stable.exe' } else { $null }
+            $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'profile' -ResultName $resultName
+            if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne '0') {
+                throw 'Profile and upgrade children must not inherit native-input authorization.'
+            }
+        }
+        if ($env:OPENCLAW_RUN_KEYBOARD_PROOF -ne '1') { throw 'Child launch planning changed the parent input opt-in.' }
+    } finally { $env:OPENCLAW_RUN_KEYBOARD_PROOF = $inherited }
+} $startInfoFunction[0].Extent.Text $repoRootPath
+if ([regex]::Matches($fixtureRunner, [regex]::Escape('-EnableKeyboardProof:$NativeInputProof')).Count -ne 1) {
+    throw 'The ordinary UI child must be the sole consumer of NativeInputProof.'
+}
+Assert-NotContains -Text $fixtureStep -Unexpected 'OPENCLAW_RUN_KEYBOARD_PROOF' -Message 'Fixture native input must use the explicit child option, not a step/global environment bypass.'
+Assert-NotContains -Text $releasedProfileStep -Unexpected '-NativeInputProof' -Message 'Released-profile compatibility must not request native wheel input.'
+
 foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-dump-type"', '"none"')) {
     Assert-Contains -Text $runner -Expected $token `
         -Message "CI test runner is missing hang diagnostic argument '$token'."

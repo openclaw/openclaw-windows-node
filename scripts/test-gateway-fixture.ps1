@@ -6,6 +6,8 @@ Requires a Windows desktop and a built app with fixture isolation support. Missi
 desktop/runtime support and skipped/zero-test runs are failures, not successful proof.
 StableAppPath selects the released-profile compatibility case instead of the ordinary
 application smoke. Both executables must advertise fixture isolation support.
+NativeInputProof explicitly authorizes native wheel input in the ordinary fixture UI
+child on an exclusive interactive desktop. It does not select the separate keyboard lane.
 #>
 [CmdletBinding()]
 param(
@@ -16,6 +18,7 @@ param(
     [string]$ArtifactsDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'openclaw-gateway-fixture-artifacts'),
     [string]$StableAppPath,
     [switch]$Screenshots,
+    [switch]$NativeInputProof,
     [switch]$KeyboardProof
 )
 $ErrorActionPreference = 'Stop'
@@ -30,7 +33,7 @@ if ($arch -notin @('X64', 'Arm64')) { throw "Unsupported architecture: $arch" }
 $rid = if ($arch -eq 'Arm64') { 'win-arm64' } else { 'win-x64' }
 $platform = if ($arch -eq 'Arm64') { 'ARM64' } else { 'x64' }
 
-function Invoke-FixtureTests {
+function New-FixtureTestStartInfo {
     param([string]$Project, [string]$Filter, [string]$ResultName, [switch]$EnableKeyboardProof)
     $start = [Diagnostics.ProcessStartInfo]::new('dotnet')
     $start.UseShellExecute = $false
@@ -41,7 +44,7 @@ function Invoke-FixtureTests {
         $start.ArgumentList.Add($argument)
     }
     $start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'
-    # Prevent inherited settings from authorizing keyboard input in the ordinary lane.
+    # Native input requires this child's explicit runner option, never an inherited opt-in.
     $start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if ($EnableKeyboardProof) { '1' } else { '0' }
     $start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = $resolvedApp
     $start.Environment.Remove('OPENCLAW_GATEWAY_FIXTURE_STABLE_APP') | Out-Null
@@ -51,6 +54,13 @@ function Invoke-FixtureTests {
     $start.Environment['OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS'] = $artifacts
     $start.Environment['OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS'] = if ($Screenshots) { '1' } else { '0' }
     $start.Environment['OPENCLAW_REPO_ROOT'] = $repoRoot
+    return $start
+}
+
+function Invoke-FixtureTests {
+    param([string]$Project, [string]$Filter, [string]$ResultName, [switch]$EnableKeyboardProof)
+    $start = New-FixtureTestStartInfo -Project $Project -Filter $Filter -ResultName $ResultName `
+        -EnableKeyboardProof:$EnableKeyboardProof
     $process = [Diagnostics.Process]::Start($start)
     try {
         if (-not $process.WaitForExit(900000)) {
@@ -74,7 +84,7 @@ if ($resolvedStableApp) {
     Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'
 } else {
     Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'
+    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:$NativeInputProof
     if ($KeyboardProof) {
         Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
     }

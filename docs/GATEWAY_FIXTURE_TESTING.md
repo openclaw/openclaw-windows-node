@@ -201,14 +201,18 @@ deletion failure does not hide an earlier process failure.
 
 ## Run the application smoke
 
+Use an authorized, exclusive interactive desktop. The complete ordinary UI
+selection includes native mouse-wheel input to the owned foreground fixture
+window, so request that proof explicitly:
+
 ```powershell
-.\scripts\test-gateway-fixture.ps1 -AppPath $app
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -NativeInputProof
 ```
 
 For screenshots, use owned-window native capture (no Windows App CLI installation is needed):
 
 ```powershell
-.\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots -NativeInputProof
 ```
 
 The script runs profile/preflight and polling tests, real-process MCP tests, and native UI
@@ -216,11 +220,19 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
-On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
-separate foreground keyboard fixture lane as well. It enables native input only
-in that child test process and rejects failed, skipped, and zero-test runs. The
-default fixture lane excludes those keyboard-dependent cases; it does not claim
-their proof.
+`-NativeInputProof` enables the strict native-input opt-in only in the ordinary
+fixture UI child process. Profile/preflight and released-profile children retain
+that stricter opt-in at `0`, and inherited environment variables cannot enable it.
+Existing fixture-keyboard journeys retain their own fixture/foreground guards. Without
+the switch, the wheel-bearing selection fails closed; it never omits wheel
+assertions or reports complete proof from UIA scrolling alone. The test still
+checks the owned HWND, foreground state, exact injected event count and cursor
+restoration. No machine-wide setting or CI identity override is used.
+
+Add `-KeyboardProof` separately to select the existing keyboard-only fixture lane
+as well. That option enables only its own child and still rejects failed,
+skipped, and zero-test runs. The ordinary UI filter continues to exclude those
+keyboard-only cases; `-NativeInputProof` does not select them.
 
 ### Saved Gateway ownership and released profiles
 
@@ -268,9 +280,10 @@ mismatch, failed case, or zero/skipped selection is not compatibility proof.
 
 The ordinary `windows-latest` CI UI job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
-`Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
-the child test processes and selects `Category=GatewayFixture` without keyboard-only
-cases, including the
+`Directory.Build.props`. Its dedicated step passes `-NativeInputProof` to the
+wrapper on that owned interactive runner. The wrapper enables native input only
+in the ordinary fixture UI child and selects `Category=GatewayFixture` without
+keyboard-only cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
 run receipts and owned-window screenshots are uploaded in `test-results-ui`
@@ -537,7 +550,7 @@ the same smoke against a non-Dev Release build without an attached debugger:
 ```powershell
 .\build.ps1 -Project WinUI -Configuration Release
 $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
-.\scripts\test-gateway-fixture.ps1 -AppPath $releaseApp -Configuration Release -Screenshots
+.\scripts\test-gateway-fixture.ps1 -AppPath $releaseApp -Configuration Release -Screenshots -NativeInputProof
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
