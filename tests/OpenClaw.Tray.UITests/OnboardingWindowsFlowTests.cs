@@ -25,6 +25,23 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Fact]
+    public async Task SetupWindow_UsesOneFrameworkInputRuntime()
+    {
+        Assert.False(File.Exists(Path.Combine(AppContext.BaseDirectory, "Microsoft.UI.Input.dll")),
+            "The framework-bootstrapped UI testhost must not deploy an app-local Input runtime.");
+        await WithWindowAsync((_, _, _) =>
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            var input = Assert.Single(process.Modules.Cast<System.Diagnostics.ProcessModule>(),
+                module => string.Equals(module.ModuleName, "Microsoft.UI.Input.dll", StringComparison.OrdinalIgnoreCase));
+            var packageDirectory = new DirectoryInfo(Path.GetDirectoryName(input.FileName)!);
+            Assert.StartsWith("Microsoft.WindowsAppRuntime.", packageDirectory.Name);
+            output.WriteLine($"SetupWindow loaded one framework Input module: {packageDirectory.Name}");
+            return Task.CompletedTask;
+        });
+    }
+
     [Theory]
     [InlineData(SetupGatewayRoute.Existing, false)]
     [InlineData(SetupGatewayRoute.Remote, false)]

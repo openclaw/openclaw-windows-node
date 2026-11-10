@@ -476,7 +476,9 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
             var viewportSettled = true;
             scroll.ViewChanged += (_, e) => viewportSettled = !e.IsIntermediate;
             var more = Find<SettingsExpander>(page, "MoreExpander");
+            Assert.Equal(Visibility.Visible, more.Visibility);
             more.IsExpanded = true;
+            await TestSupport.WaitForSettingsExpanderSettledAsync(ui, more, expanded: true);
             await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             var picker = Find<ComboBox>(page, "ApiProviderPicker");
@@ -484,6 +486,10 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
             var selected = picker.SelectedItem;
             var input = Find<PasswordBox>(page, "ApiKeyInput");
             input.Password = "synthetic-popup-test-key";
+            // Visibility and selection change before the form's new extent is measured.
+            // Stage the viewport from that layout, not the previous collapsed extent.
+            page.UpdateLayout();
+            await ui.YieldToRenderAsync();
             scroll.ChangeView(null, scroll.ScrollableHeight, null, disableAnimation: true);
             await OnboardingNativeProof.NextCompositionAsync();
             await WaitAsync(() => Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
@@ -570,6 +576,7 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
         }, theme: theme, width: width, configure: transport =>
         {
             transport.IncludeDensityChoices = true;
+            transport.IncludeMoreProvider = true;
             transport.CancelStatus = "running";
             transport.WizardStep = new() { Id = "synthetic-confirm", Type = "confirm", Title = "Synthetic provider consent" };
         });
