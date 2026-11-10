@@ -24,9 +24,9 @@ internal static class UsageProviderAttention
             .OrderByDescending(window => window.UsedPercent).FirstOrDefault();
 
     public static IReadOnlyList<ProviderUsageSnapshot> Select(ProviderUsageSummary providers, DateTimeOffset now) =>
-        providers.Providers.Select(provider => (Provider: provider, Window: HighestWindow(provider, now)))
-            .Where(item => item.Window is not null)
-            .OrderByDescending(item => item.Window!.UsedPercent).Select(item => item.Provider).ToList();
+        providers.Providers.Select(provider => (Provider: provider, QuotaWindow: HighestWindow(provider, now)))
+            .Where(item => item.QuotaWindow is not null)
+            .OrderByDescending(item => item.QuotaWindow!.UsedPercent).Select(item => item.Provider).ToList();
 }
 
 /// <summary>
