@@ -306,6 +306,7 @@ public sealed partial class GatewayFixtureUiTests
                     "empty agent has the zero-count failing tile");
                 var failing = FindById(run, "AutomationsTileFailing")!;
                 Assert.Equal(ControlType.Button, failing.Current.ControlType);
+                Assert.Equal("Failing: 0", failing.Current.Name);
                 Assert.False(failing.Current.IsEnabled);
             }
             if (!emptyAgent) Assert.Null(FindById(run, "AutomationExpander:scheduled-059"));
@@ -355,7 +356,9 @@ public sealed partial class GatewayFixtureUiTests
                 { Current.HasKeyboardFocus: true, Current.IsOffscreen: false },
                 "failing tile reveals, scrolls to and focuses the real inventory row");
             var row = FindById(run, "AutomationExpander:flaky-report")!;
-            Capture(run, "automations-failing-tile-reveal.png", "AutomationsTileFailing", "AutomationExpander:flaky-report");
+            Assert.Equal("Vendor report", FindById(run, "CronJobTitle:flaky-report")!.Current.Name);
+            Assert.NotNull(FindById(run, "AutomationAttentionBadge:flaky-report"));
+            Capture(run, "automations-failing-tile-reveal.png", "CronJobTitle:flaky-report", "AutomationAttentionBadge:flaky-report");
             Assert.Equal("AutomationExpander:flaky-report", row.Current.AutomationId);
         }, scenario: GatewayScenario.CreateAutomations());
     }
@@ -510,7 +513,12 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.StartsWith("Open chat:", FindById(run, "AutomationRowChat:morning-brief")!.Current.Name);
                 AssertAutomationsPageReadScope(run.Gateway.Requests, "main");
                 await ScanStateAsync("populated");
-                Capture(run, "automations-list.png", "AutomationsHeadline", "AutomationSeeRuns:flaky-report");
+                var failing = Assert.IsType<AutomationElement>(FindById(run, "AutomationsTileFailing"));
+                Assert.Equal("Failing: 1", failing.Current.Name);
+                Assert.True(failing.Current.IsEnabled);
+                // The headline and summary share the initial viewport; the row-specific
+                // failure badge is captured separately after its reveal action.
+                Capture(run, "automations-list.png", "AutomationsHeadline", "AutomationsTileFailing");
             });
             await ProofStateAsync("new-editor", async () =>
             {
