@@ -52,7 +52,7 @@ public sealed class InboxProjectionTests
         ]);
 
         var entry = Assert.Single(inbox.Entries);
-        Assert.Equal(Now.AddMinutes(-1), entry.Notification.CreatedAt);
+        Assert.Equal(Now.AddMinutes(-1), entry.CreatedAt);
         Assert.Equal(1, inbox.Badge.Count);
     }
 

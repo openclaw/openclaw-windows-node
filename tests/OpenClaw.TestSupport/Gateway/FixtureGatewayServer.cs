@@ -63,6 +63,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _agentsListGate;
     private JsonElement? _agentsRoster;
     private bool _agentsListUnsupported;
+    private bool _systemsInventoryUnavailable;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource? _connectionHandshakeGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
@@ -418,6 +419,16 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _agentsListUnsupported = true;
     }
 
+    /// <summary>Injects a real inventory-read failure for isolated Systems recovery proof.</summary>
+    public void SetSystemsInventoryUnavailable(bool unavailable)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            _systemsInventoryUnavailable = unavailable;
+        }
+    }
+
     public void HoldAgentsList()
     {
         lock (_sync)
@@ -535,6 +546,23 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             }
             await changed.WaitAsync(wait.Token);
         }
+    }
+
+    /// <summary>One canonical top-level exec request for the read-only Inbox scenario.
+    /// The authenticated transport is unchanged. This never issues a resolvable approval ID.</summary>
+    public async Task PublishInboxFeedApprovalAsync(CancellationToken cancellationToken = default)
+    {
+        var targets = AcquireConnections(onlyOpen: true);
+        try
+        {
+            if (targets.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
+            var payload = _scenario.CreateInboxLiveApproval();
+            await PublishEventAsync(targets, new { type = "event", @event = "exec.approval.requested", payload }, cancellationToken);
+            // PublishEventAsync returns after the first successful send, not a broadcast.
+            lock (_sync) _events.Add(new GatewayFixtureEvent("exec.approval.requested", 1));
+        }
+        finally { ReleaseConnections(targets); }
     }
 
     public async Task PublishAgentEventAsync(
@@ -876,13 +904,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     readResponse = null;
                 JsonElement? agentsRoster;
                 bool agentsListUnsupported;
+                bool systemsInventoryUnavailable;
                 lock (_sync)
                 {
                     agentsRoster = method == "agents.list" ? _agentsRoster : null;
                     agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                    systemsInventoryUnavailable = method == "environments.list" && _systemsInventoryUnavailable;
                 }
                 if (agentsListUnsupported)
                     throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
+                if (systemsInventoryUnavailable)
+                    throw new FixtureRequestException("UNAVAILABLE", "Fixture Systems inventory is temporarily unavailable.");
                 payload = readResponse is not null ? readResponse(parameters)
                     : agentsRoster is { } roster ? roster
                     : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)

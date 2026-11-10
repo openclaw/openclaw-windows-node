@@ -293,7 +293,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private UIElement RenderEnumField(string path, string label,
         JsonElement enumEl, JsonElement config, Action<object?> onChanged)
     {
-        var combo = new ComboBox { Header = label, MinWidth = 200 };
+        var combo = new ComboBox { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
 
         var currentVal = config.ValueKind == JsonValueKind.String ? config.GetString() : null;
         foreach (var item in enumEl.EnumerateArray())
@@ -331,7 +331,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         {
             Header = label,
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            MinWidth = 200
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
         if (config.ValueKind == JsonValueKind.Number)
             numBox.Value = config.GetDouble();
@@ -351,7 +351,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private UIElement RenderStringField(string path, string label,
         JsonElement config, Action<object?> onChanged)
     {
-        var textBox = new TextBox { Header = label, MinWidth = 300 };
+        var textBox = new TextBox { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
         if (config.ValueKind == JsonValueKind.String)
             textBox.Text = config.GetString() ?? "";
         else if (config.ValueKind != JsonValueKind.Undefined
@@ -372,7 +372,8 @@ public sealed partial class SchemaConfigEditor : UserControl
         var pwBox = new PasswordBox
         {
             Header = label,
-            Width = 350,
+            MaxWidth = 350,
+            HorizontalAlignment = HorizontalAlignment.Left,
             PlaceholderText = config.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(config.GetString())
                 ? "Leave blank to keep existing value"
                 : ""
@@ -590,7 +591,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         var textBox = new TextBox
         {
             Text = value,
-            MinWidth = 250,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Height = 34,
             PlaceholderText = itemType switch
             {
@@ -870,7 +871,7 @@ public sealed partial class SchemaConfigEditor : UserControl
             Header = label,
             Text = FormatScalar(config),
             IsReadOnly = true,
-            MinWidth = 300,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Foreground = SecondaryBrush
         };
     }
@@ -920,7 +921,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                         Header = GetLabel(childPath, prop.Name),
                         Value = value.GetDouble(),
                         SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-                        MinWidth = 200
+                        HorizontalAlignment = HorizontalAlignment.Stretch
                     };
                     numBox.ValueChanged += (s, e) =>
                     {
@@ -938,7 +939,8 @@ public sealed partial class SchemaConfigEditor : UserControl
                         var pwBox = new PasswordBox
                         {
                             Header = GetLabel(childPath, prop.Name),
-                            Width = 350,
+                            MaxWidth = 350,
+                            HorizontalAlignment = HorizontalAlignment.Left,
                             PlaceholderText = hasExistingValue ? "Leave blank to keep existing value" : ""
                         };
                         pwBox.PasswordChanged += (s, e) =>
@@ -953,7 +955,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                     }
                     else
                     {
-                        var textBox = new TextBox { Header = GetLabel(childPath, prop.Name), Text = value.GetString() ?? "", MinWidth = 300 };
+                        var textBox = new TextBox { Header = GetLabel(childPath, prop.Name), Text = value.GetString() ?? "", HorizontalAlignment = HorizontalAlignment.Stretch };
                         textBox.TextChanged += (s, e) =>
                         {
                             if (_loading) return;

@@ -47,13 +47,15 @@ public sealed class CiNugetCacheWorkflowTests
 
         Assert.DoesNotContain("NUGET_PACKAGES:", otherJobs, StringComparison.Ordinal);
         Assert.DoesNotContain("nuget-core-", otherJobs, StringComparison.Ordinal);
-        Assert.Equal(8, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
+        // The independent Gateway fixture job also restores the shared cache.
+        const int sharedCacheLaneCount = 9;
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
         Assert.Equal(
-            8,
+            sharedCacheLaneCount,
             CountOccurrences(
                 otherJobs,
                 "key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}"));
-        Assert.Equal(8, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
     }
 
     [Fact]
