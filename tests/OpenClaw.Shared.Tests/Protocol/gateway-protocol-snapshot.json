@@ -78,7 +78,7 @@
       "responseFields": [
         "key", "isMain", "status", "hasActiveRun", "hasActiveSubagentRun", "providerReview", "model", "label", "channel", "displayName",
         "derivedTitle", "modelProvider", "provider", "subject", "groupChannel", "room",
-        "space", "chatType", "execNode", "parentSessionKey", "spawnDepth", "origin",
+        "space", "chatType", "execNode", "placement", "parentSessionKey", "spawnDepth", "origin",
         "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "reasoningLevel", "reasoningDefault", "verboseLevel",
         "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
         "contextTokens", "updatedAt", "startedAt", "endedAt", "lastRunId", "runtimeMs", "pinned", "pinnedAt", "unread", "markedUnreadAt", "createdAt", "archived"

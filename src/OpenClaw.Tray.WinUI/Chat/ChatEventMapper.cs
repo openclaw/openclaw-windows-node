@@ -707,9 +707,11 @@ internal static class ChatEventMapper
         if (string.IsNullOrEmpty(requestId))
             return new(null);
 
-        var host = StringProperty(evt.Data, "host");
+        var hostStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "host"));
+        var host = hostStatus.Text;
         var commandStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "command"));
-        var title = StringProperty(evt.Data, "title");
+        var titleStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "title"));
+        var title = titleStatus.Text;
         var messageStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "message"));
         var detail = string.IsNullOrEmpty(messageStatus.Text)
             ? commandStatus.Text
@@ -725,7 +727,9 @@ internal static class ChatEventMapper
 
         var canReviewInFull = !string.IsNullOrWhiteSpace(commandStatus.Text)
             && !commandStatus.Truncated && !commandStatus.Oversized && !commandStatus.UnsafeConcealment
-            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment;
+            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment
+            && !hostStatus.Truncated && !hostStatus.Oversized && !hostStatus.UnsafeConcealment
+            && !titleStatus.Truncated && !titleStatus.Oversized && !titleStatus.UnsafeConcealment;
         var mapped = new ChatPermissionRequestEvent(
             requestId,
             !string.IsNullOrEmpty(title) ? title : "Exec approval",

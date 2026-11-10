@@ -30,12 +30,14 @@ public sealed class HubSearchCatalogTests
         if (connected)
         {
             Assert.Equal("Config", Assert.Single(items, item => item.Target.Value == "config").Title);
-            Assert.Equal("Systems", Assert.Single(items, item => item.Target.Value == "instances").Title);
+            var systems = Assert.Single(items, item => item.Target.Value == "systems");
+            Assert.Equal("Systems", systems.Title);
+            Assert.Equal("/settings/devices", systems.DashboardPath);
             Assert.Equal("Automations", Assert.Single(items, item => item.Target.Value == "agent:main:cron").Title);
         }
         else
         {
-            Assert.DoesNotContain(items, item => item.Target.Value is "config" or "instances" or "agent:main:cron");
+            Assert.DoesNotContain(items, item => item.Target.Value is "config" or "systems" or "agent:main:cron");
         }
         Assert.Equal("Connection", Assert.Single(items, item => item.Target.Value == "connection").Title);
         var models = Assert.Single(items, item => item.Title == "Models");

@@ -133,6 +133,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal VoiceService? VoiceService => _nodeService?.VoiceService ?? _standaloneVoiceService;
     /// <summary>The full device ID of the local node service (if running).</summary>
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
+    internal IReadOnlyCollection<string> OwnNodeIds => BuildOwnNodeIds();
     /// <summary>Live node service instance used by settings surfaces for MCP status.</summary>
     internal NodeService? ActiveNodeService => _nodeService;
     internal ExecApprovalsStore ExecApprovalsStore =>
@@ -229,6 +230,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
+    /// <summary>Inbound pairing approvals; the Systems page shows their count and routes decisions to Connection.</summary>
+    internal PairingApprovalCoordinator? PairingApprovals => _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
     
@@ -267,6 +270,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private AppNotificationService? _appNotificationService;
     private SettingsPersistenceNotification? _settingsPersistenceNotification;
     internal AppNotificationService? AppNotifications => _appNotificationService;
+    private InboxGatewaySource? _inboxGatewaySource;
+    /// <summary>Inbox rows, tab counts and badge: app notifications plus live Gateway facts.</summary>
+    internal InboxFeed? InboxFeed { get; private set; }
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastSandboxRiskNotificationKey;
@@ -783,6 +789,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
+        _inboxGatewaySource = new InboxGatewaySource(new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!));
+        InboxFeed = new InboxFeed(_appNotificationService, _inboxGatewaySource);
         _settingsPersistenceNotification = new SettingsPersistenceNotification(
             _settings, new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!),
             _appNotificationService, LocalizationHelper.GetString);
@@ -2340,6 +2348,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Delegate all 27 event subscriptions to GatewayService
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
+        _inboxGatewaySource?.AttachClient(e.NewClient);
 
         // Configure new client
         if (e.NewClient is { } client)

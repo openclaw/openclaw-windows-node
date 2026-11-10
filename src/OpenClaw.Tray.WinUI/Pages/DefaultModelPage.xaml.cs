@@ -24,6 +24,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class DefaultModelPage : Page
 {
+    private const double CompactActionsWidth = 720;
     private DefaultModelPageViewModel? _viewModel;
     private IReadOnlyList<DefaultModelOption>? _renderedOptions;
     private bool _suppressSelection;
@@ -38,6 +39,7 @@ public sealed partial class DefaultModelPage : Page
     public DefaultModelPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         DataContextChanged += OnDataContextChanged;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -45,6 +47,14 @@ public sealed partial class DefaultModelPage : Page
         _providerDialog.RefreshRequested += OnProviderDialogRefresh;
         _providerDialog.CancelRequested += OnProviderDialogCancel;
         _providerDialog.ExternalLinkRequested += OnProviderDialogExternalLink;
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var orientation = e.NewSize.Width < CompactActionsWidth ? Orientation.Vertical : Orientation.Horizontal;
+        ModelActions.Orientation = orientation;
+        ProviderApiKeyPanel.Orientation = orientation;
+        ProviderSignInPanel.Orientation = orientation;
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)

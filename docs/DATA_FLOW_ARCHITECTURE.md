@@ -126,7 +126,7 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | ConnectionPage | Status, NodePairList, DevicePairList, Channels, UsageCost, Sessions, GatewaySelf |
 | SessionsPage | Sessions, ModelsList |
 | UsagePage | Usage, UsageCost, UsageStatus |
-| InstancesPage | Nodes, Presence |
+| SystemsPage | Status, Nodes, Presence, Sessions, NodePairList, DevicePairList (plus `SystemsInventoryChanged` and `NodeHostStatsReceived` client events) |
 | ConfigPage | Config, ConfigSchema |
 | CronPage | CronList, CronStatus, CronRuns |
 | WorkspacePage | AgentFilesList, AgentFileContent |
@@ -134,6 +134,17 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 
 Pages that don't observe AppState: ChatPage, SettingsPage, SandboxPage,
 VoiceSettingsPage.
+
+Systems inventory comes from `environments.list`, with `node.list` and
+`system.info` supplying exact-identity joins and reported resources.
+`node.hostStats` events update those resources; no local sampler feeds the
+page directly. Windows host sampling is published to the Gateway first.
+`sessions.list` provides related loaded sessions, while `node.pair.list` and
+`device.pair.list` provide pairing awareness. Missing desktop flags remain
+unknown; invalid resource ranges are unavailable, never zero-usage
+substitutes. Legacy inventory derives only from the live Gateway handshake,
+reported nodes and presence. Local device identity marks "this device"; local
+time supports receipt/freshness, not invented Gateway records or measurements.
 
 Workspace is the only application chat host. Its retained `ChatPage` observes
 the app-owned `OpenClawChatDataProvider`, not a Settings frame or a tray popup.
