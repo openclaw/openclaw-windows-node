@@ -131,7 +131,7 @@ internal static class UsageHeader
     private static Element RangeRow(UsagePageState state, UsagePageController controller, UsagePageLayout layout)
     {
         var filters = state.Filters;
-        var advanced = !state.ServerFiltersUnavailable && state.Dashboard is not null;
+        var advanced = !state.ServerFiltersUnavailable && state.SupportsOverview == true;
         var segments = SelectorBar(new[] { "Usage_Preset_Today", "Usage_Preset_7d", "Usage_Preset_30d", "Usage_Preset_Custom" }
                     .Select(key => SelectorBarItem(S(key))).ToArray(), Array.IndexOf(Presets, filters.Preset),
                     index => { if (index >= 0 && index < Presets.Length) controller.SetPreset(Presets[index]); })
@@ -185,7 +185,7 @@ internal static class UsageHeader
 
     private static Element AgentMenu(UsagePageState state, UsagePageController controller)
     {
-        var values = state.Dashboard!.FilterOptions.TryGetValue("agent", out var agents) ? agents : [];
+        var values = state.Dashboard?.FilterOptions.TryGetValue("agent", out var agents) == true ? agents : [];
         return MenuFlyout(DropDownButton(S("Usage_Facet_agent")).AutomationName(S("Usage_Facet_agent")).AutomationId("UsageFacet_agent"),
             values.Select(agent => (MenuFlyoutItemBase)ToggleMenuItem(agent,
                 state.Filters.Query.Split(' ').Contains("agent:" + agent),

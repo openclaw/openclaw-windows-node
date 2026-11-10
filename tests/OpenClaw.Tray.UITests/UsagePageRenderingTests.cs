@@ -1799,6 +1799,54 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     }
 
     [Fact]
+    public async Task QueryFailure_KeepsTheSameEditableSearchAndDoesNotRelabelOldFigures()
+    {
+        await WithUsagePageAsync(Report(true), new RecordingCommands(), async (host, gateway) =>
+        {
+            await WaitForAsync(host, "UsageQuery");
+            AutoSuggestBox query = null!;
+            var pending = new TaskCompletionSource<UsageReadResult<SessionsUsageReport>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await ui.RunOnUIAsync(() =>
+            {
+                query = Get<AutoSuggestBox>(host, "UsageQuery");
+                Assert.True(query.Focus(FocusState.Programmatic));
+                gateway.Pending = pending;
+                gateway.Controller!.SetQuery("agent:missing");
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                query.Text == "agent:missing" && Find<FrameworkElement>(host, "UsageRefreshing") is not null,
+                "submitted query remains mounted while loading"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(query, Get<AutoSuggestBox>(host, "UsageQuery"));
+                Assert.Contains(FindDescendants<DependencyObject>(query), element =>
+                    ReferenceEquals(element, FocusManager.GetFocusedElement(host.XamlRoot)));
+                Assert.Null(gateway.Controller!.State.Dashboard);
+            });
+            pending.SetResult(UsageReadResult<SessionsUsageReport>.Failed("Synthetic query failure"));
+            await WaitForAsync(host, "UsageErrorBanner");
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(query, Get<AutoSuggestBox>(host, "UsageQuery"));
+                Assert.True(query.IsEnabled);
+                Assert.Null(gateway.Controller!.State.Dashboard);
+                gateway.Pending = null;
+                gateway.Controller.ClearQuery();
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                query.Text == "" && Find<FrameworkElement>(host, "UsageDaily") is { ActualHeight: > 0 }
+                    && Find<FrameworkElement>(host, "UsageErrorBanner") is null,
+                "cleared query and recovered data committed"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(query, Get<AutoSuggestBox>(host, "UsageQuery"));
+                Assert.Equal("", query.Text);
+                Assert.Null(Find<FrameworkElement>(host, "UsageErrorBanner"));
+            });
+        });
+    }
+
+    [Fact]
     public async Task OptionsChartAndContributorControlsActOnTheMountedPage()
     {
         await WithUsagePageAsync(Report(serverOverview: true), new RecordingCommands(), async (host, gateway) =>

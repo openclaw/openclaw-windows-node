@@ -12,6 +12,16 @@ public sealed partial class GatewayFixtureUiTests
 {
     private static readonly TimeSpan UsageResizeSampleInterval = TimeSpan.FromMilliseconds(300);
 
+    private static void AssertUsagePointOwner(IntPtr window, CronPoint point) =>
+        Assert.Equal(window, GetAncestor(WindowFromPoint(point), 2));
+
+    [DllImport("user32.dll", EntryPoint = "CreateWindowExW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr UsageCreateOccluder(uint extendedStyle, string className, string title,
+        uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr parameter);
+
+    [DllImport("user32.dll", EntryPoint = "DestroyWindow", SetLastError = true)]
+    private static extern bool UsageDestroyOccluder(IntPtr window);
+
     private sealed record UsageDiagnosticBounds(bool IsEmpty, double? Left, double? Top, double? Width, double? Height);
 
     // UIA can return Rect.Empty for an offscreen peer. Keep that fact without serializing infinities.
@@ -106,10 +116,10 @@ public sealed partial class GatewayFixtureUiTests
                     runtimeId = element.GetRuntimeId(), pid = element.Current.ProcessId,
                     hwnd = element.Current.NativeWindowHandle, automationId = element.Current.AutomationId,
                     className = element.Current.ClassName, controlType = element.Current.ControlType.ProgrammaticName,
-                    bounds = element.Current.BoundingRectangle,
+                    bounds = UsageBoundsForDiagnostic(element.Current.BoundingRectangle),
                 };
                 var hitSequence = 0;
-                void AssertToggleHit(string id)
+                async Task ClickToggleAsync(string id, string expectedId)
                 {
                     var button = FindById(run, id)
                         ?? throw new InvalidOperationException($"Missing pinned Usage pane button {id}.");
@@ -120,19 +130,22 @@ public sealed partial class GatewayFixtureUiTests
                     var targetIdentity = button.GetRuntimeId();
                     var windowState = Describe(window);
                     var ancestry = new List<object>();
+                    object[] hitChildren = [];
                     var owned = false;
                     string? error = null;
                     void WriteReceipt(string phase) =>
                         File.WriteAllText(receipt, JsonSerializer.Serialize(new
                         {
                             utc = DateTimeOffset.UtcNow, phase, point, expectedPid = run.AppProcessId,
-                            window = windowState, target, ancestry, owned, error,
+                            window = windowState, target, ancestry, hitChildren, owned, error,
                         }, new JsonSerializerOptions { WriteIndented = true }));
                     WriteReceipt("before-point-query");
                     try
                     {
                         Assert.True(bounds.Width > 0 && bounds.Height > 0);
                         var hit = AutomationElement.FromPoint(point);
+                        hitChildren = hit.FindAll(TreeScope.Children, Condition.TrueCondition)
+                            .Cast<AutomationElement>().Select(Describe).ToArray();
                         for (AutomationElement? current = hit; current is not null;
                              current = TreeWalker.RawViewWalker.GetParent(current))
                         {
@@ -153,7 +166,38 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.Equal(run.AppProcessId, button.Current.ProcessId);
                     Assert.False(button.Current.IsOffscreen);
                     Assert.True(button.Current.IsEnabled);
-                    Assert.True(owned, $"{id} center hit is not the button or its RawView descendant. Receipt: {receipt}");
+                    // WinAppSDK's bridge can stop a UIA point query above its InputSite child.
+                    // The actual center click must change the pane; bridge ancestry alone never passes.
+                    var nativePoint = new CronPoint { X = (int)point.X, Y = (int)point.Y };
+                    uint sent;
+                    var previousDpi = UsageSetThreadDpiAwarenessContext(new IntPtr(-4));
+                    try
+                    {
+                        AssertUsagePointOwner(handle, nativePoint);
+                        Assert.True(SetCursorPos(nativePoint.X, nativePoint.Y));
+                        Assert.True(GetCursorPos(out var cursor));
+                        Assert.Equal(nativePoint, cursor);
+                        AssertOwnedForeground(handle, GetForegroundWindow);
+                        AssertUsagePointOwner(handle, cursor);
+                        var input = new[]
+                        {
+                            new CronInput { Mouse = new CronMouse { Flags = 2 } },
+                            new CronInput { Mouse = new CronMouse { Flags = 4 } },
+                        };
+                        sent = SendInput(2, input, Marshal.SizeOf<CronInput>());
+                        if (sent == 1) SendInput(1, [input[1]], Marshal.SizeOf<CronInput>());
+                        Assert.Equal(2u, sent);
+                    }
+                    finally { UsageSetThreadDpiAwarenessContext(previousDpi); }
+                    await WaitUiAsync(run, () =>
+                        FindById(run, id) is null or { Current.IsOffscreen: true } &&
+                        FindById(run, expectedId) is { Current.IsOffscreen: false },
+                        $"physical center click on {id} changed the pane to {expectedId}");
+                    File.WriteAllText(Path.ChangeExtension(receipt, ".click.json"), JsonSerializer.Serialize(new
+                    {
+                        id, expectedId, point, expectedPid = run.AppProcessId,
+                        uiaTargetOwned = owned, injectedEvents = sent, paneTransitionObserved = true,
+                    }, new JsonSerializerOptions { WriteIndented = true }));
                 }
                 async Task StableGeometry(bool collapsed, string stateName)
                 {
@@ -203,26 +247,54 @@ public sealed partial class GatewayFixtureUiTests
                 // Existing fixture rejects session creation through the ordinary sidebar action.
                 await TriggerError();
                 var contentIdentity = FindById(run, "UsagePageRoot")!.GetRuntimeId();
+                await NativeKeyboardProof.ActivateAsync(handle);
+                var negativeBounds = FindById(run, "WorkspaceTogglePane")!.Current.BoundingRectangle;
+                var negativePoint = new CronPoint
+                {
+                    X = (int)(negativeBounds.Left + negativeBounds.Width / 2),
+                    Y = (int)(negativeBounds.Top + negativeBounds.Height / 2),
+                };
+                // A real topmost test-owned window must make the exact-point owner gate reject.
+                var previousDpi = UsageSetThreadDpiAwarenessContext(new IntPtr(-4));
+                var occluder = IntPtr.Zero;
+                try
+                {
+                    occluder = UsageCreateOccluder(0x08000008, "BUTTON", "Usage hit-test negative control",
+                        0x90000000, negativePoint.X - 20, negativePoint.Y - 20, 40, 40,
+                        IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                    Assert.NotEqual(IntPtr.Zero, occluder);
+                    Assert.Equal(occluder, GetAncestor(WindowFromPoint(negativePoint), 2));
+                    Assert.Throws<Xunit.Sdk.EqualException>(() => AssertUsagePointOwner(handle, negativePoint));
+                    Assert.False(FindById(run, "WorkspaceTogglePane")!.Current.IsOffscreen);
+                    File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "pane-hit-occlusion-negative.json"),
+                        JsonSerializer.Serialize(new { point = new { negativePoint.X, negativePoint.Y }, rejected = true, injectedEvents = 0 }));
+                }
+                finally
+                {
+                    if (occluder != IntPtr.Zero) Assert.True(UsageDestroyOccluder(occluder));
+                    UsageSetThreadDpiAwarenessContext(previousDpi);
+                }
                 foreach (var (collapsed, stateName) in new[] { (false, "open"), (true, "collapsed"), (false, "reopened") })
                 {
                     if (collapsed)
                     {
                         await NativeKeyboardProof.ActivateAsync(handle);
-                        AssertToggleHit("WorkspaceTogglePane");
-                        Invoke(FindById(run, "WorkspaceTogglePane")!);
+                        await ClickToggleAsync("WorkspaceTogglePane", "WorkspaceReopenPane");
                     }
                     else if (FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } reopen)
                     {
                         await NativeKeyboardProof.ActivateAsync(handle);
-                        AssertToggleHit("WorkspaceReopenPane");
-                        Invoke(reopen);
+                        await ClickToggleAsync("WorkspaceReopenPane", "WorkspaceTogglePane");
                     }
                     var buttonId = collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane";
                     await WaitUiAsync(run, () => FindById(run, buttonId) is { Current.IsOffscreen: false },
                         "observed pinned Usage pane state");
                     await StableGeometry(collapsed, stateName);
                     await NativeKeyboardProof.ActivateAsync(handle);
-                    AssertToggleHit(buttonId);
+                    var oppositeId = collapsed ? "WorkspaceTogglePane" : "WorkspaceReopenPane";
+                    await ClickToggleAsync(buttonId, oppositeId);
+                    await ClickToggleAsync(oppositeId, buttonId);
+                    await StableGeometry(collapsed, stateName + "-after-click");
                     var content = FindById(run, "UsagePageRoot")!;
                     Assert.Equal(contentIdentity, content.GetRuntimeId());
                     var titleBottom = FindById(run, "WorkspaceTitleBar")!.Current.BoundingRectangle.Bottom;
@@ -263,18 +335,17 @@ public sealed partial class GatewayFixtureUiTests
                             NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab);
                             await WaitUiAsync(run, () => history.Current.HasKeyboardFocus, $"real Tab to enabled {id}");
                         }
+
                         NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab);
                         await WaitUiAsync(run, () => IsWithin(AutomationElement.FocusedElement, content),
                             "real Tab from history into Usage content");
                         await NativeKeyboardProof.ActivateAsync(handle);
-                        AssertToggleHit("WorkspaceReopenPane");
-                        Invoke(FindById(run, "WorkspaceReopenPane")!);
+                        await ClickToggleAsync("WorkspaceReopenPane", "WorkspaceTogglePane");
                         await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { Current.IsOffscreen: false },
                             "sidebar reopened for actual error retrigger");
                         await TriggerError();
                         await NativeKeyboardProof.ActivateAsync(handle);
-                        AssertToggleHit("WorkspaceTogglePane");
-                        Invoke(FindById(run, "WorkspaceTogglePane")!);
+                        await ClickToggleAsync("WorkspaceTogglePane", "WorkspaceReopenPane");
                         await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false },
                             "collapsed error recapture");
                         await StableGeometry(true, "collapsed-retriggered");
