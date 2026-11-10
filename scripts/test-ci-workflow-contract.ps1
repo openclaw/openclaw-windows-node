@@ -712,6 +712,8 @@ Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+Assert-Contains -Text $trayUiStep -Expected "-CollectNativeFailureMetadata" `
+    -Message "Tray UI failures must retain safe native fault metadata."
 $trayUiCrashWindow = Get-StepBlock -Text $uiJob -Name "Mark Tray UI crash metadata window"
 Assert-Contains -Text $trayUiCrashWindow -Expected "GITHUB_OUTPUT" `
     -Message "Tray UI crash metadata must be bounded by an explicit start time."

@@ -9,7 +9,7 @@ internal static class HubSearchCatalog
     internal static readonly (string Tag, string Path)[] Counterparts =
     [
         ("connection", "/settings/connection"), ("sessions", "/sessions"), ("skills", "/skills"),
-        ("instances", "/settings/devices"),
+        ("systems", "/settings/devices"),
         ("cron", "/automations"), ("config", "/settings/general"), ("usage", "/usage")
     ];
 

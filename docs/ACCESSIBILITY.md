@@ -12,6 +12,20 @@ dotnet test tests\OpenClaw.Tray.UITests --no-build -c Debug -r win-x64 --filter 
 
 Those tests launch the app in a real Windows desktop process and scan pages for WCAG violations through Axe.Windows. Failures are summarized in the GitHub Actions step summary and written to `Accessibility.trx`.
 
+The preceding framework UI lane preserves failed test exit codes and writes
+`native-failure.json` with allowlisted Application Error module/exception metadata
+and installed Windows App Runtime versions. It does not collect memory dumps,
+event messages, command lines, paths or environment values. Missing event access
+is reported as unavailable, not successful native diagnosis. Testhost phase logs
+distinguish COM-wrapper initialization from Windows App SDK bootstrap.
+Watchdog-terminated hangs may have no Application Error event; use the phase logs
+and interrupted-test sequence in that case. An instrumented passing run does not
+erase an earlier crash or establish its cause.
+The test application writes unhandled exception types, HRESULTs and managed method
+names directly to the standard error stream. This bypasses per-test console
+buffering that can lose the last diagnostic on native fail-fast. Exception messages,
+data, file paths and locals are not included, and exceptions remain unhandled.
+
 Failure diagnostics retain rule IDs, bounded rule descriptions and canonical
 control types with scan-result ordinals. They omit UIA names, automation IDs
 (which can be data-derived), arbitrary properties and desktop focus state.
@@ -83,30 +97,27 @@ pairing.
 
 ### Settings navigation keyboard contract
 
-The Settings pane toggle exposes **Expand navigation** or **Collapse navigation**
-according to its state. Escape closes an expanded pane only while focus is in
-its navigation controls and returns focus to the toggle. Page controls keep
-their own Escape behavior; native search flyouts, menus and ContentDialogs
-handle dismissal before the shell. Collapsing the pane does not change the page.
-`WorkspaceWindowProofTests.SettingsNavigation_EscapeReturnsFocus_WithoutClosingFromPageOrSearch`
-checks the mounted Settings boundary in Light and Dark themes.
+Back to app and an unhandled Escape leave full Settings for the retained app
+destination. Window-owned `SettingsEscapePolicy` preserves native editors,
+flyouts, menus and dialogs as the first Escape owners; it does not collapse the
+Settings rail. The pane toggle retains the user's saved preference.
+`WorkspaceWindowProofTests.SettingsBackToApp_ReturnsToAppDestinationInSameWindow`
+covers mouse, Enter and Escape activation, retained chat and notification focus.
+`WorkspaceNavigationTests.SettingsEscape_LeavesFullSettingsOnlyWhenNothingElseOwnsEscape`
+covers the policy exclusions.
 
-Workspace retains its 800-DIP minimum width. `WorkspaceSettingsLayout` uses
-the host width, not an embedded page's smaller content width, to prepare
-below-720-DIP rail presentation without changing destination or history.
-That branch is unreachable through normal resizing while the minimum remains
-800. Narrow expansion is temporary; returning to wide restores the saved pane
-preference and requested embedding. Resize waits for a modal dialog to close
-without replacing a pending navigation request or remounting the page.
-Source guards do not establish native focus, layout, six-locale reachability
-or text-scaling proof; those require the authorized isolated current-build lane.
+Workspace still has an 800-DIP minimum width. The below-720-DIP rail is not a
+supported window-size claim. Width-driven shell embedding and temporary narrow
+rail preferences are superseded by the canonical shared foundation. Page-owned
+responsive layouts still use their allocated content width.
+`SettingsPageInsetTests.Shell_DeliversFullAndEmbeddedInsetsWithoutMovingBackdropOrReplacingContent`
+covers the optional content inset and preserves ordinary pages' existing padding.
 
 The integrated Config, Local AI, Default Model, Voice, Notifications, Event
-Stream and Diagnostics layouts use each page's allocated width after rail or
-sidebar subtraction. Action rows stack below 720 DIPs; Config additionally
-measures its editor grid at 728 DIPs and retains its tree and draft controls
-while stacking tree/detail panes. `SchemaConfigEditor` stretches generated
-fields within their available width. Source guards and XAML parsing do not
-establish populated native rendering, focus retention or text-scaling proof.
+Stream and Diagnostics source adapts to allocated width after rail/sidebar
+subtraction. Config measures its editor grid and keeps draft controls mounted
+while stacking tree/detail panes. Source guards and XAML parsing do not prove
+native layout, focus retention, text scaling or six-locale reachability; these
+still require current-build native proof before any window-minimum reduction.
 
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

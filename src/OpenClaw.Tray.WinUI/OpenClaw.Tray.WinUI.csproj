@@ -99,7 +99,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <!-- Upgrade both Reactor packages together and rerun the chat proofs in docs/WINDOWS_NODE_TESTING.md. -->
+    <!-- Keep both released Reactor packages aligned and rerun the chat/Systems proofs in docs/WINDOWS_NODE_TESTING.md. -->
     <PackageReference Include="Microsoft.UI.Reactor" Version="0.1.0-preview.17" />
     <PackageReference Include="Microsoft.UI.Reactor.Advanced" Version="0.1.0-preview.17" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />

@@ -1797,33 +1797,19 @@ Use one of these options:
   <data name="NodesPage_Action_Forget" xml:space="preserve">
     <value>Forget</value>
   </data>
-  <data name="NodesPage_Action_MoreOptions" xml:space="preserve">
-    <value>More options</value>
-  </data>
+
   <data name="NodesPage_Label_Version" xml:space="preserve">
     <value>Version</value>
   </data>
-  <data name="NodesPage_Label_Hardware" xml:space="preserve">
-    <value>Hardware</value>
-  </data>
+
   <data name="NodesPage_Label_Network" xml:space="preserve">
     <value>Network</value>
   </data>
-  <data name="NodesPage_Label_Approved" xml:space="preserve">
-    <value>Approved</value>
-  </data>
-  <data name="NodesPage_Label_Connected" xml:space="preserve">
-    <value>Connected</value>
-  </data>
-  <data name="NodesPage_Label_LastSeen" xml:space="preserve">
-    <value>Seen</value>
-  </data>
-  <data name="NodesPage_Label_Capabilities" xml:space="preserve">
-    <value>Capabilities</value>
-  </data>
-  <data name="NodesPage_Label_Permissions" xml:space="preserve">
-    <value>Permissions</value>
-  </data>
+
+
+
+
+
   <data name="NodesPage_Label_PathEnv" xml:space="preserve">
     <value>PATH</value>
   </data>
@@ -3480,24 +3466,12 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>
   </data>
-  <data name="InstancesPage_Title.Text" xml:space="preserve">
-    <value>Instances</value>
-  </data>
-  <data name="InstancesPage_Subtitle.Text" xml:space="preserve">
-    <value>Latest presence beacons from OpenClaw nodes.</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Message" xml:space="preserve">
-    <value>Connect to a gateway to see live instance data.</value>
-  </data>
-  <data name="InstancesPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No instances reported yet.</value>
-  </data>
-  <data name="InstancesPage_ContextMenu_CopyDebug" xml:space="preserve">
-    <value>Copy debug summary</value>
-  </data>
+
+
+
+
+
+
   <data name="InstancesPage_Status_Active" xml:space="preserve">
     <value>Active</value>
   </data>
@@ -3540,45 +3514,27 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionPage_NodePairing_Subtitle.Text" xml:space="preserve">
     <value>Operators and Windows nodes waiting for approval to connect to this gateway.</value>
   </data>
-  <data name="InstancesPage_RefreshLabel.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="InstancesPage_CapabilitiesCount_Format" xml:space="preserve">
-    <value>{0} capabilities</value>
-  </data>
-  <data name="InstancesPage_CommandsCount_Format" xml:space="preserve">
-    <value>{0} commands</value>
-  </data>
-  <data name="InstancesPage_Presence_AccessibilityFormat" xml:space="preserve">
-    <value>{0} presence</value>
-  </data>
+
+
+
+
   <data name="InstancesPage_UpdateReason_Tooltip_Format" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker). Raw: {0}</value>
   </data>
   <data name="InstancesPage_UpdateReason_Tooltip_NoReason" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected: no active presence</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active: last seen {0}</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle: last seen {0}</value>
-  </data>
+
+
+
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive: last seen {0}</value>
-  </data>
+
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
   </data>
-  <data name="InstanceManage_CopyNodeId_AccessibilityName" xml:space="preserve">
-    <value>Copy node ID</value>
-  </data>
+
   <data name="InstancesPage_TimeAgo_Seconds_Format" xml:space="preserve">
     <value>{0}s ago</value>
   </data>
@@ -4263,15 +4219,9 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="DebugPage_OpenFile.Text" xml:space="preserve">
     <value>Open file</value>
   </data>
-  <data name="InstancesPage_PairingApprovalRequired.Text" xml:space="preserve">
-    <value>Pairing approval required</value>
-  </data>
-  <data name="InstancesPage_ANodeHasConnected.Text" xml:space="preserve">
-    <value>A node has connected but its capabilities won't activate until you approve the pairing request.</value>
-  </data>
-  <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
-    <value>Review on Connection page</value>
-  </data>
+
+
+
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>Permissions</value>
   </data>
@@ -5468,12 +5418,8 @@ Make sure the gateway is running.</value>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
     <value>Go to Inbox</value>
   </data>
-<data name="Command_GoToInstances_Subtitle" xml:space="preserve">
-    <value>Gateway instances</value>
-  </data>
-  <data name="Command_GoToInstances_Title" xml:space="preserve">
-    <value>Go to Instances</value>
-  </data>
+
+
   <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
     <value>Capabilities, exec policy &amp; allowlists</value>
   </data>
@@ -8555,4 +8501,381 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Settings</value>
     <comment>Large title at the top of the Settings sidebar.</comment>
   </data>
+  <data name="Systems_Title" xml:space="preserve">
+    <value>Systems</value>
+  </data>
+  <data name="Systems_Inventory" xml:space="preserve">
+    <value>Machines</value>
+  </data>
+  <data name="Systems_Refresh_Name" xml:space="preserve">
+    <value>Refresh machines</value>
+  </data>
+  <data name="Systems_Loading" xml:space="preserve">
+    <value>Loading machines…</value>
+  </data>
+  <data name="Systems_Empty" xml:space="preserve">
+    <value>No machines are available to this account.</value>
+  </data>
+  <data name="Systems_Missing_Title" xml:space="preserve">
+    <value>This machine is no longer listed</value>
+  </data>
+  <data name="Systems_Missing_Hint" xml:space="preserve">
+    <value>Refresh the inventory or choose another machine. Your selection has not been changed.</value>
+  </data>
+  <data name="Systems_Group_Workers" xml:space="preserve">
+    <value>Workers</value>
+  </data>
+  <data name="Systems_Kind_Host" xml:space="preserve">
+    <value>Gateway host</value>
+  </data>
+  <data name="Systems_Kind_Node" xml:space="preserve">
+    <value>Paired node</value>
+  </data>
+  <data name="Systems_Kind_Worker" xml:space="preserve">
+    <value>Worker</value>
+  </data>
+  <data name="Systems_Kind_Client" xml:space="preserve">
+    <value>Connected app</value>
+  </data>
+  <data name="Systems_Status_Online" xml:space="preserve">
+    <value>Online</value>
+  </data>
+  <data name="Systems_Status_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="Systems_Status_Starting" xml:space="preserve">
+    <value>Starting</value>
+  </data>
+  <data name="Systems_Status_Stopping" xml:space="preserve">
+    <value>Stopping</value>
+  </data>
+  <data name="Systems_Status_Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Systems_Status_Unknown" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="Systems_Status_Name" xml:space="preserve">
+    <value>Status: {0}</value>
+  </data>
+  <data name="Systems_ThisDevice" xml:space="preserve">
+    <value>This PC</value>
+  </data>
+  <data name="Systems_AwaitingApproval" xml:space="preserve">
+    <value>Awaiting approval</value>
+  </data>
+  <data name="Systems_Desktop" xml:space="preserve">
+    <value>Desktop</value>
+  </data>
+  <data name="Systems_CopyDebug" xml:space="preserve">
+    <value>Copy debug info</value>
+  </data>
+  <data name="Systems_CopyIdentifier" xml:space="preserve">
+    <value>Copy identifier</value>
+  </data>
+  <data name="Systems_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Systems_OpenConnection" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="Systems_Disconnected_Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="Systems_Disconnected_Message" xml:space="preserve">
+    <value>Reconnect to refresh machines. The last reported information is shown.</value>
+  </data>
+  <data name="Systems_ReadAccess_Title" xml:space="preserve">
+    <value>Read access required</value>
+  </data>
+  <data name="Systems_ReadAccess_Message" xml:space="preserve">
+    <value>Operator read access is required to view machines.</value>
+  </data>
+  <data name="Systems_PartialErrors_Title" xml:space="preserve">
+    <value>Some machine information could not be refreshed.</value>
+  </data>
+  <data name="Systems_Offline_Title" xml:space="preserve">
+    <value>This machine is offline</value>
+  </data>
+  <data name="Systems_Pairing_TitleOne" xml:space="preserve">
+    <value>1 device wants to join</value>
+  </data>
+  <data name="Systems_Pairing_Message" xml:space="preserve">
+    <value>Approve only if you started this on that device.</value>
+  </data>
+  <data name="Systems_Pairing_OwnNodeMessage" xml:space="preserve">
+    <value>This PC is waiting for pairing approval. Its capabilities and commands stay inactive until approval.</value>
+  </data>
+  <data name="Systems_Pairing_Review" xml:space="preserve">
+    <value>Review</value>
+  </data>
+  <data name="Systems_Stats_Title" xml:space="preserve">
+    <value>Resources</value>
+  </data>
+  <data name="Systems_Stats_None" xml:space="preserve">
+    <value>This machine has not reported resource statistics.</value>
+  </data>
+  <data name="Systems_Stats_Load" xml:space="preserve">
+    <value>Load (1 min)</value>
+  </data>
+  <data name="Systems_Stats_Cores" xml:space="preserve">
+    <value>{0} cores</value>
+  </data>
+  <data name="Systems_Stats_Cpu" xml:space="preserve">
+    <value>CPU count</value>
+  </data>
+  <data name="Systems_Stats_CpuCores" xml:space="preserve">
+    <value>logical cores</value>
+  </data>
+  <data name="Systems_Stats_Memory" xml:space="preserve">
+    <value>Memory used</value>
+  </data>
+  <data name="Systems_Stats_Disk" xml:space="preserve">
+    <value>Disk available</value>
+  </data>
+  <data name="Systems_Stats_DiskPath" xml:space="preserve">
+    <value>Disk available ({0})</value>
+  </data>
+  <data name="Systems_Stats_OfTotal" xml:space="preserve">
+    <value>of {0}</value>
+  </data>
+  <data name="Systems_Stats_Sampled" xml:space="preserve">
+    <value>Reported {0} ago</value>
+  </data>
+  <data name="Systems_Details_Title" xml:space="preserve">
+    <value>Machine details</value>
+  </data>
+  <data name="Systems_Field_Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Systems_Field_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Systems_Field_Platform" xml:space="preserve">
+    <value>Platform</value>
+  </data>
+  <data name="Systems_Field_Activity" xml:space="preserve">
+    <value>Activity</value>
+  </data>
+  <data name="Systems_Field_LastInput" xml:space="preserve">
+    <value>Last input</value>
+  </data>
+  <data name="Systems_Field_Roles" xml:space="preserve">
+    <value>Roles</value>
+  </data>
+  <data name="Systems_Field_Hostname" xml:space="preserve">
+    <value>Host name</value>
+  </data>
+  <data name="Systems_Field_OperatingSystem" xml:space="preserve">
+    <value>Operating system</value>
+  </data>
+  <data name="Systems_Field_Processor" xml:space="preserve">
+    <value>CPU model</value>
+  </data>
+  <data name="Systems_Field_Address" xml:space="preserve">
+    <value>LAN address</value>
+  </data>
+  <data name="Systems_Field_Runtime" xml:space="preserve">
+    <value>Node version</value>
+  </data>
+  <data name="Systems_Field_Uptime" xml:space="preserve">
+    <value>Uptime</value>
+  </data>
+  <data name="Systems_Field_Hardware" xml:space="preserve">
+    <value>Hardware</value>
+  </data>
+  <data name="Systems_Field_LastConnected" xml:space="preserve">
+    <value>Last connected</value>
+  </data>
+  <data name="Systems_Field_LastDisconnected" xml:space="preserve">
+    <value>Last disconnected</value>
+  </data>
+  <data name="Systems_Field_LastSeen" xml:space="preserve">
+    <value>Last seen</value>
+  </data>
+  <data name="Systems_Field_Approved" xml:space="preserve">
+    <value>Approved</value>
+  </data>
+  <data name="Systems_Field_WorkerState" xml:space="preserve">
+    <value>Worker state</value>
+  </data>
+  <data name="Systems_Field_WorkerError" xml:space="preserve">
+    <value>Worker error</value>
+  </data>
+  <data name="Systems_Field_Issue" xml:space="preserve">
+    <value>Issue</value>
+  </data>
+  <data name="Systems_Issue_UpdateRequired" xml:space="preserve">
+    <value>Update required. Run openclaw update on this machine, then reconnect it.</value>
+  </data>
+  <data name="Systems_Duration_DaysHours" xml:space="preserve">
+    <value>{0} d {1} hr</value>
+  </data>
+  <data name="Systems_Duration_HoursMinutes" xml:space="preserve">
+    <value>{0} hr {1} min</value>
+  </data>
+  <data name="Systems_Duration_Minutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="Systems_Desktop_Title_Offline" xml:space="preserve">
+    <value>This machine is offline</value>
+  </data>
+  <data name="Systems_Desktop_Title_NotReady" xml:space="preserve">
+    <value>This machine is not ready</value>
+  </data>
+  <data name="Systems_Desktop_Title_NoDesktop" xml:space="preserve">
+    <value>No desktop available</value>
+  </data>
+  <data name="Systems_Desktop_Locked" xml:space="preserve">
+    <value>Locked</value>
+  </data>
+  <data name="Systems_Desktop_Unlocked" xml:space="preserve">
+    <value>Unlocked</value>
+  </data>
+  <data name="Systems_Sessions_Title" xml:space="preserve">
+    <value>Related sessions</value>
+  </data>
+  <data name="Systems_Sessions_None" xml:space="preserve">
+    <value>No related sessions in the loaded list.</value>
+  </data>
+  <data name="Systems_Relation_Placement" xml:space="preserve">
+    <value>Placed here</value>
+  </data>
+  <data name="Systems_Relation_RetainedPlacement" xml:space="preserve">
+    <value>Retained placement</value>
+  </data>
+  <data name="Systems_Relation_Runner" xml:space="preserve">
+    <value>Runner</value>
+  </data>
+  <data name="Systems_Relation_ExecBinding" xml:space="preserve">
+    <value>Configured exec target</value>
+  </data>
+  <data name="Systems_Relation_Gateway" xml:space="preserve">
+    <value>Local session context</value>
+  </data>
+  <data name="Systems_Capabilities_Title" xml:space="preserve">
+    <value>Capabilities</value>
+  </data>
+  <data name="Systems_Capability_Disabled" xml:space="preserve">
+    <value>{0} turned off</value>
+  </data>
+  <data name="Systems_Capability_PendingDeclared" xml:space="preserve">
+    <value>Waiting for approval: {0}</value>
+  </data>
+  <data name="Command_GoToSystems_Title" xml:space="preserve">
+    <value>Go to Systems</value>
+  </data>
+  <data name="Command_GoToSystems_Subtitle" xml:space="preserve">
+    <value>Gateway host, nodes and workers</value>
+  </data>
+  <data name="Systems_Stats_LoadMeter" xml:space="preserve">
+    <value>{0}% of cores</value>
+  </data>
+  <data name="Systems_Stats_UsedMeter" xml:space="preserve">
+    <value>{0}% used</value>
+  </data>
+  <data name="Systems_Stats_LiveBadge" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="Systems_Stats_LastKnownBadge" xml:space="preserve">
+    <value>Last known</value>
+  </data>
+  <data name="Systems_OpenWeb" xml:space="preserve">
+    <value>Open in web</value>
+  </data>
+  <data name="Systems_OpenWeb_Name" xml:space="preserve">
+    <value>Open Systems in the web interface</value>
+  </data>
+  <data name="Systems_OpenWeb_Help" xml:space="preserve">
+    <value>Opens the Gateway's Systems page in your browser. Select this machine there to continue.</value>
+  </data>
+  <data name="Systems_OpenWeb_RootName" xml:space="preserve">
+    <value>Open the Gateway web interface</value>
+  </data>
+  <data name="Systems_OpenWeb_RootHelp" xml:space="preserve">
+    <value>Opens the Gateway web interface in your browser. This Gateway does not report a Systems page.</value>
+  </data>
+  <data name="Systems_Manage_PairingRequired" xml:space="preserve">
+    <value>Pairing access is required to rename or remove this node.</value>
+  </data>
+  <data name="Systems_Sessions_ViewAll" xml:space="preserve">
+    <value>View all sessions</value>
+  </data>
+  <data name="Systems_AddSystem" xml:space="preserve"><value>Add a system</value></data>
+  <data name="Systems_CopyUpdate" xml:space="preserve"><value>Copy update command</value></data>
+  <data name="Systems_CollapseSystem" xml:space="preserve"><value>Collapse system details</value></data>
+  <data name="Systems_ExpandSystem" xml:space="preserve"><value>Expand system details</value></data>
+  <data name="Systems_NotSeen" xml:space="preserve"><value>Last seen {0}</value></data>
+  <data name="Systems_Diagnostics" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="Systems_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Systems_OpenChat_Name" xml:space="preserve"><value>Open chat: {0}</value></data>
+  <data name="Systems_Capability_NotReported" xml:space="preserve"><value>Not reported</value></data>
+  <data name="Systems_Capability_Allowed" xml:space="preserve"><value>Allowed</value></data>
+  <data name="Systems_Capability_TurnedOff" xml:space="preserve"><value>Turned off</value></data>
+  <data name="Systems_Capability_System" xml:space="preserve"><value>System tools</value></data>
+  <data name="Systems_Capability_Shell" xml:space="preserve"><value>Shell commands</value></data>
+  <data name="Systems_Capability_Screen" xml:space="preserve"><value>Screen capture</value></data>
+  <data name="Systems_Capability_Camera" xml:space="preserve"><value>Camera</value></data>
+  <data name="Systems_Capability_Browser" xml:space="preserve"><value>Browser</value></data>
+  <data name="Systems_Capability_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="Systems_Capability_Clipboard" xml:space="preserve"><value>Clipboard</value></data>
+  <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio input</value></data>
+  <data name="Systems_ManagePermissions" xml:space="preserve"><value>Manage permissions</value></data>
+  <data name="Systems_Connection" xml:space="preserve"><value>Connection</value></data>
+  <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connect to the Gateway to use this action.</value></data>
+  <data name="Systems_ConnectedApps" xml:space="preserve"><value>Connected apps</value></data>
+  <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Devices and Gateway</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway {0}</value></data>
+  <data name="Systems_Issues" xml:space="preserve"><value>Issues</value></data>
+  <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Last known offline</value></data>
+  <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Last known online</value></data>
+  <data name="Systems_LoadFailed" xml:space="preserve"><value>Load failed.</value></data>
+  <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>This pairing request is no longer available.</value></data>
+  <data name="Systems_RequestTimeout" xml:space="preserve"><value>Request timed out after {0} s.</value></data>
+  <data name="Systems_ForgetTitle" xml:space="preserve"><value>Forget {0}?</value></data>
+  <data name="Systems_Forgotten" xml:space="preserve"><value>Forgot {0}.</value></data>
+  <data name="Systems_RenameSucceeded" xml:space="preserve"><value>The node was renamed.</value></data>
+  <data name="Systems_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Systems_AddSystemSteps" xml:space="preserve"><value>1. Install a supported OpenClaw node app on the other device.
+2. Connect it to this Gateway.
+3. Open Connection to review its pairing request.</value></data>
+  <data name="Systems_Number_0" xml:space="preserve"><value>zero</value></data>
+  <data name="Systems_Number_1" xml:space="preserve"><value>one</value></data>
+  <data name="Systems_Number_2" xml:space="preserve"><value>two</value></data>
+  <data name="Systems_Number_3" xml:space="preserve"><value>three</value></data>
+  <data name="Systems_Number_4" xml:space="preserve"><value>four</value></data>
+  <data name="Systems_Number_5" xml:space="preserve"><value>five</value></data>
+  <data name="Systems_Number_6" xml:space="preserve"><value>six</value></data>
+  <data name="Systems_Number_7" xml:space="preserve"><value>seven</value></data>
+  <data name="Systems_Number_8" xml:space="preserve"><value>eight</value></data>
+  <data name="Systems_Number_9" xml:space="preserve"><value>nine</value></data>
+  <data name="Systems_Age_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} h</value></data>
+  <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Systems_HowToReconnect" xml:space="preserve"><value>How to reconnect</value></data>
+  <data name="Systems_ForgetConsequence" xml:space="preserve"><value>It's unpaired from {0}. To come back, it has to ask for approval again.</value></data>
+  <data name="Systems_Field_Paired" xml:space="preserve"><value>Paired</value></data>
+  <data name="Systems_AddSystemIntro" xml:space="preserve"><value>Pair a PC, Mac or phone so agents can use it.</value></data>
+  <data name="Systems_ForgetAction" xml:space="preserve"><value>Forget</value></data>
+  <data name="Systems_SecondsAgo" xml:space="preserve"><value>{0} seconds ago</value></data>
+  <data name="Systems_Desktop_Available" xml:space="preserve"><value>Available</value></data>
+  <data name="Systems_Capability_Files" xml:space="preserve"><value>Files</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>This PC is connected to {0} as a node.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>This PC is waiting for approval on {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>This PC is not reported as a connected node on {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>Can't reach {0}. Other systems show what was last reported at {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>Can't reach {0}. No system report is available.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} of {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Last reported online</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Issues: {0}. Show the first system that needs attention.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Systems summary</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Needs approval</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Needs re-approval</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Update required</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Needs Windows permission</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Reported error</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Wants to join</value></data>
 </root>

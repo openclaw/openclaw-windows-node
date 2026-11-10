@@ -283,8 +283,6 @@ public class LocalizationValidationTests
         "Command_GoToWorkspace_Subtitle",
         "Command_GoToChannels_Title",
         "Command_GoToChannels_Subtitle",
-        "Command_GoToInstances_Title",
-        "Command_GoToInstances_Subtitle",
         "Command_GoToConfig_Title",
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
@@ -1155,7 +1153,7 @@ public class LocalizationValidationTests
 
             if (identicalLocales.Count != localeResw.Count)
             {
-                // These ordinary words are spelled identically in these languages.
+                // These ordinary words and compact duration units are identical in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
                     "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
@@ -1166,6 +1164,15 @@ public class LocalizationValidationTests
                         or "HubWindow_NavigationViewItem_145.Content"
                         or "Inbox_TabMentions" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Systems_Capability_Browser" or "Systems_Capability_Camera" => ["nl-nl"],
+                    "Systems_Capability_Canvas" => ["nl-nl", "pt-br"],
+                    "Systems_Capability_Notifications" or "Systems_Diagnostics" => ["fr-fr"],
+                    "Systems_Age_Days" => ["nl-nl", "pt-br"],
+                    "Systems_Age_Hours" => ["fr-fr", "pt-br"],
+                    "Systems_Age_Minutes" or "Systems_Age_Seconds" => ["fr-fr", "nl-nl", "pt-br"],
+                    "Systems_Stats_Title" => ["nl-nl"],
+                    "Systems_Number_0" => ["pt-br"],
+                    "Systems_Number_6" => ["fr-fr"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
                         "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
                     "Search_Dashboard_Plugins" => ["pt-br"],

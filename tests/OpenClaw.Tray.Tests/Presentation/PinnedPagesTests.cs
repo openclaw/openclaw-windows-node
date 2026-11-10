@@ -318,7 +318,7 @@ public sealed class PinnedPagesTests
         Assert.Equal("agent:C:workspace", PinnedPages.ResolveRoute("workspace", "C"));
         Assert.Equal("agent:main:cron", PinnedPages.ResolveRoute("cron", null));
         Assert.Equal("usage", PinnedPages.ResolveRoute("usage", "C"));
-        Assert.Equal("instances", PinnedPages.ResolveRoute("instances", "A"));
+        Assert.Equal("systems", PinnedPages.ResolveRoute("instances", "A"));
     }
 
     [Fact]
@@ -371,6 +371,9 @@ public sealed class PinnedPagesTests
         Assert.Contains("EmbeddedOperationInfo.Severity = OperationInfo.Severity", presentation);
         Assert.Contains("EmbeddedOperationInfo.Message = OperationInfo.Message", presentation);
         Assert.DoesNotContain("OperationInfo.IsOpen = false", presentation);
+        Assert.Contains("EmbeddedOperationInfo.Severity = severity", operation);
+        Assert.Contains("EmbeddedOperationInfo.Message = message", operation);
+        Assert.DoesNotContain("_settings is { ContentOnly: true }", operation);
         Assert.Contains("SettingsSection.Children.Insert(0, view)", window);
         Assert.Contains("AccessibilityView.Raw", pins);
         Assert.Contains("SelectsOnInvoked = false", pins);

@@ -179,6 +179,8 @@ internal sealed class GatewayService
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         if (sender != _currentClient) return;
+        var statusClient = _currentClient;
+        var statusEpoch = statusClient?.SessionMutationConnectionEpoch;
 
         DiagnosticsJsonlService.Write("connection.status", new
         {
@@ -193,6 +195,9 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(statusClient, _currentClient) ||
+                statusClient?.SessionMutationConnectionEpoch != statusEpoch)
+                return;
             if (status == ConnectionStatus.Connected)
             {
                 _state.AuthFailureMessage = null;
@@ -215,6 +220,8 @@ internal sealed class GatewayService
     private void OnAuthenticationFailed(object? sender, string message)
     {
         if (sender != _currentClient) return;
+        var authClient = _currentClient;
+        var authEpoch = authClient?.SessionMutationConnectionEpoch;
 
         Logger.Error($"Authentication failed: {message}");
         DiagnosticsJsonlService.Write("connection.auth_failed", new { message });
@@ -224,6 +231,9 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(authClient, _currentClient) ||
+                authClient?.SessionMutationConnectionEpoch != authEpoch)
+                return;
             _state.AuthFailureMessage = message;
             AuthenticationFailed?.Invoke(this, message);
         });
@@ -323,14 +333,15 @@ internal sealed class GatewayService
 
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
     {
-        if (sender != _currentClient) return;
+        if (sender != _currentClient || sender is not IOperatorGatewayClient client) return;
+        var generation = _clientGeneration;
+        var epoch = client.SessionMutationConnectionEpoch;
+        if (!client.IsConnectedToGateway) return;
 
         var activeKeys = new HashSet<string>(sessions.Select(s => s.Key), StringComparer.Ordinal);
 
         // Throttled preview request (capture client ref for safety)
-        var client = _currentClient;
-        if (client != null &&
-            sessions.Length > 0 &&
+        if (sessions.Length > 0 &&
             DateTime.UtcNow - _lastPreviewRequestUtc > TimeSpan.FromSeconds(5))
         {
             _lastPreviewRequestUtc = DateTime.UtcNow;
@@ -340,6 +351,10 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(client, _currentClient) ||
+                generation != _clientGeneration || !client.IsConnectedToGateway ||
+                epoch != client.SessionMutationConnectionEpoch)
+                return;
             _state.Sessions = sessions;
             _state.PruneSessionPreviews(activeKeys);
         });

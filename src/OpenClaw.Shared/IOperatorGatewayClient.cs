@@ -44,6 +44,10 @@ public interface IOperatorGatewayClient
     event EventHandler? SelfProfileChanged { add { } remove { } }
     /// <summary>Raw <c>cron</c> Gateway event payload (job ran, changed, or was removed).</summary>
     event EventHandler<JsonElement>? CronEventReceived { add { } remove { } }
+    /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
+    event EventHandler<string>? SystemsInventoryChanged { add { } remove { } }
+    /// <summary>A node published new host statistics.</summary>
+    event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<bool>? AgentsListUnsupportedChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentFilesListUpdated;

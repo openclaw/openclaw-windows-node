@@ -910,6 +910,8 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("48", (string?)chrome.Attribute("Width"));
         Assert.Equal("56", (string?)chrome.Attribute("Height"));
         Assert.Null(chrome.Attribute("Background"));
+        Assert.True(settings.ElementsAfterSelf().Contains(chrome),
+            "Pane buttons must stay above full-frame page backdrops.");
         Assert.Equal((string?)collapse.Attribute("Margin"), (string?)reopen.Attribute("Margin"));
         Assert.Equal("2", (string?)content.Attribute("Grid.Row"));
         Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "NavigationView.FooterMenuItems");
