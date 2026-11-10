@@ -144,6 +144,15 @@ mock-Gateway scenarios step explicitly uses 1500 seconds inside its unchanged
 30-minute outer bound. Timeouts still terminate only the owned test process tree;
 missing reports, zero tests, failures and skipped selected tests still fail proof.
 
+The same hosted job also builds the unsigned non-Dev Release app and runs both
+`CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining` variants.
+`Invoke-CiTest.ps1 -Configuration Release -ExpectedTestCount 2 -RequireAllTestsPassed`
+requires exactly two passing cases. Captures, TRX and the compiled app assembly
+for configuration/identity verification are retained under `TestResults\GatewayFixtureRelease`.
+This targeted Release check does not replace the ordinary Debug fixture inventory.
+Only that fixture build sets `RequireSignedCleanupHost=false`; signed release
+packaging retains its normal signing requirement.
+
 ```powershell
 .\build.ps1
 $app = '.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'

@@ -426,6 +426,9 @@ the queue at 160px or one third of the viewport height, whichever is smaller, so
 larger queues do not displace the composer. Promotion removes the queued row and
 shows the provider's normal sent message once. Empty queues remove the panel,
 without remounting the composer. This applies to Workspace's ChatPage.
+If acceptance arrives after that run has completed, the conversation owner places
+the sent message before its matching live output without reopening the completed
+turn or disturbing a newer response. Remaining queued messages can then drain.
 See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech

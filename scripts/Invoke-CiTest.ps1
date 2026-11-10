@@ -15,7 +15,9 @@ param(
     [switch]$CaptureHostExit,
     [ValidateSet('Unchanged', 'Enabled', 'Disabled')][string]$AnimationPreference = 'Unchanged',
     [switch]$AllowUserAnimationPreferenceChange,
-    [switch]$RequireAllTestsPassed
+    [switch]$RequireAllTestsPassed,
+    [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
+    [ValidateRange(1, 2147483647)][int]$ExpectedTestCount
 )
 
 Set-StrictMode -Version Latest
@@ -35,7 +37,7 @@ $testArguments = [System.Collections.Generic.List[string]]::new()
     $Project,
     "--no-build",
     "-c",
-    "Debug"
+    $Configuration
 ) | ForEach-Object { $testArguments.Add($_) }
 
 if (-not [string]::IsNullOrWhiteSpace($Runtime)) {
@@ -159,6 +161,9 @@ if ($script:testExitCode -ne 0) {
     exit $script:testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped:(-not $RequireAllTestsPassed)
+if ($PSBoundParameters.ContainsKey('ExpectedTestCount') -and $result.discovered -ne $ExpectedTestCount) {
+    throw "Expected $ExpectedTestCount selected tests, but the report contains $($result.discovered)."
+}
 Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))
 Write-Host "CI TRX: $($invocation.report)"
 # Ordinary CI retains environment-gated skips. This is not native/custom proof.

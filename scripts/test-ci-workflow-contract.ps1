@@ -791,6 +791,27 @@ if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
 }
 
 $fixtureJob = Get-JobBlock "gateway-fixture"
+$releaseFixtureBuild = Get-StepBlock -Text $fixtureJob -Name 'Build Release correlation fixture'
+foreach ($token in @('dotnet build tests/OpenClaw.Tray.UITests -c Release -r win-x64 --no-restore -p:DevBuild=false -p:RequireSignedCleanupHost=false',
+        'if ($LASTEXITCODE -ne 0)', 'TestResults\GatewayFixtureRelease\compiled',
+        'win-x64\OpenClaw.Tray.WinUI.dll')) {
+    Assert-Contains -Text $releaseFixtureBuild -Expected $token -Message "Release fixture build lost '$token'."
+}
+$releaseFixtureStep = Get-StepBlock -Text $fixtureJob -Name 'Run Release correlation fixture'
+foreach ($token in @("steps.release-fixture-build.outcome == 'success'",
+        "steps.ui-runtime.outcome == 'success'", "steps.ui-desktop.outcome == 'success'",
+        'timeout-minutes: 15', "OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'",
+        "OPENCLAW_RUN_KEYBOARD_PROOF: '0'", "OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'",
+        '\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
+        '\TestResults\GatewayFixtureRelease\captures', './scripts/Invoke-CiTest.ps1',
+        '-Configuration Release', '-ResultsDirectory TestResults\GatewayFixtureRelease',
+        '-TrxFileName GatewayFixtureRelease.trx', '-Runtime win-x64',
+        '-Filter "FullyQualifiedName~GatewayFixtureUiTests.CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining"',
+        '-ExpectedTestCount 2', '-RequireAllTestsPassed', '-HangTimeoutSeconds 300',
+        '-CollectNativeFailureMetadata', '-CaptureHostExit')) {
+    Assert-Contains -Text $releaseFixtureStep -Expected $token -Message "Targeted Release fixture lost '$token'."
+}
+Assert-NotContains -Text $releaseFixtureStep -Unexpected 'continue-on-error:' -Message 'Release correlation proof must fail closed.'
 $fixtureStep = Get-StepBlock -Text $fixtureJob -Name "Run mock Gateway application scenarios"
 foreach ($token in @(
         'timeout-minutes: 30',
@@ -1008,8 +1029,51 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 12) {
-    throw "Expected 10 non-E2E project runs including Automations plus both animation-preference proofs to use Invoke-CiTest.ps1, found $runnerUses."
+if ($runnerUses -ne 13) {
+    throw "Expected 13 wrapped project runs including targeted Release correlation proof, found $runnerUses."
+}
+$runnerParseErrors = $null
+$runnerAst = [Management.Automation.Language.Parser]::ParseInput($runner, [ref]$null, [ref]$runnerParseErrors)
+if ($runnerParseErrors.Count) { throw 'CI test runner must parse before checking its configuration contract.' }
+$argumentStart = @($runnerAst.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.AssignmentStatementAst] -and $_.Left.ToString() -eq '$testArguments'
+})[0].Extent.StartOffset
+$argumentEnd = @($runnerAst.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.AssignmentStatementAst] -and $_.Left.ToString() -eq '$script:testExitCode'
+})[0].Extent.StartOffset
+$argumentStatements = $runnerAst.EndBlock.Statements | Where-Object {
+    $_.Extent.StartOffset -ge $argumentStart -and $_.Extent.StartOffset -lt $argumentEnd
+}
+$argumentProbe = [scriptblock]::Create($runnerAst.ParamBlock.Extent.Text + "`n" +
+    (($argumentStatements | ForEach-Object { $_.Extent.Text }) -join "`n") + "`n`$testArguments")
+foreach ($configuration in @($null, 'Debug', 'Release')) {
+    $parameters = @{ Project = 'unused'; ResultsDirectory = 'unused'; TrxFileName = 'probe.trx' }
+    if ($configuration) { $parameters.Configuration = $configuration }
+    $arguments = @(& $argumentProbe @parameters)
+    $expectedConfiguration = if ($configuration) { $configuration } else { 'Debug' }
+    if ($arguments[[Array]::IndexOf($arguments, '-c') + 1] -cne $expectedConfiguration -or
+        $arguments -notcontains '--no-build') { throw 'CI configuration selection changed or rebuild was admitted.' }
+}
+$countGuard = @($runnerAst.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.IfStatementAst] -and
+    $_.Extent.Text.Contains('$result.discovered -ne $ExpectedTestCount')
+})
+if ($countGuard.Count -ne 1) { throw 'Expected one selected-count admission guard.' }
+$countProbe = [scriptblock]::Create($runnerAst.ParamBlock.Extent.Text + "`n" + $countGuard[0].Extent.Text)
+foreach ($actual in @(1, 2, 3)) {
+    $result = [pscustomobject]@{ discovered = $actual }
+    $rejected = $false
+    try { & $countProbe -Project unused -ResultsDirectory unused -TrxFileName probe.trx -ExpectedTestCount 2 }
+    catch { $rejected = $true }
+    if ($rejected -ne ($actual -ne 2)) { throw "Selected-count admission was incorrect for $actual results." }
+}
+$result = [pscustomobject]@{ discovered = 3 }
+& $countProbe -Project unused -ResultsDirectory unused -TrxFileName probe.trx
+foreach ($invalid in @(0, -1)) {
+    $rejected = $false
+    try { & $countProbe -Project unused -ResultsDirectory unused -TrxFileName probe.trx -ExpectedTestCount $invalid }
+    catch [Management.Automation.ParameterBindingException] { $rejected = $true }
+    if (-not $rejected) { throw "Invalid expected count was accepted: $invalid." }
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."

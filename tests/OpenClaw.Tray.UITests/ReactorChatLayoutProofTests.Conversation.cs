@@ -281,26 +281,88 @@ public sealed partial class ReactorChatLayoutProofTests
             async Task ScrollAwayAsync()
             {
                 // Temporary hosted-failure evidence. Observe only; native Idle can precede scroll completion.
-                var trace = new List<string>();
+                const int criticalLimit = 24;
+                const int firstGeometryLimit = 8;
+                const int lastGeometryLimit = 32;
+                var criticalTrace = new List<(int Sequence, string Text)>();
+                var firstGeometry = new List<(int Sequence, string Text)>();
+                var lastGeometry = new Queue<(int Sequence, string Text)>();
                 var clock = System.Diagnostics.Stopwatch.StartNew();
-                var dropped = 0;
-                void Observe(string phase, Func<string>? details = null)
+                var sequence = 0;
+                var droppedCritical = 0;
+                var droppedGeometry = 0;
+                void Observe(string phase, Func<string>? details = null, bool critical = true)
                 {
-                    if (trace.Count >= 64) { dropped++; return; }
+                    var currentSequence = ++sequence;
+                    if (critical && criticalTrace.Count >= criticalLimit) { droppedCritical++; return; }
+                    string text;
                     try
                     {
-                        trace.Add(FormattableString.Invariant(
-                            $"{clock.Elapsed.TotalMilliseconds:F3}ms {phase}: offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; anchor={transcriptScroll.VerticalAnchorRatio}; state={transcriptScroll.State}; {details?.Invoke()}"));
+                        text = FormattableString.Invariant(
+                            $"{currentSequence} {clock.Elapsed.TotalMilliseconds:F3}ms {phase}: offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; anchor={transcriptScroll.VerticalAnchorRatio}; state={transcriptScroll.State}; {details?.Invoke()}");
                     }
                     catch (Exception error)
                     {
-                        trace.Add($"{phase}: observationError={error.GetType().Name}; hresult=0x{error.HResult:X8}");
+                        text = FormattableString.Invariant(
+                            $"{currentSequence} {clock.Elapsed.TotalMilliseconds:F3}ms {phase}: observationError={error.GetType().Name}; hresult=0x{error.HResult:X8}");
+                    }
+                    var entry = (currentSequence, text);
+                    if (critical)
+                        criticalTrace.Add(entry);
+                    else if (firstGeometry.Count < firstGeometryLimit)
+                        firstGeometry.Add(entry);
+                    else
+                    {
+                        if (lastGeometry.Count == lastGeometryLimit)
+                        {
+                            lastGeometry.Dequeue();
+                            droppedGeometry++;
+                        }
+                        lastGeometry.Enqueue(entry);
                     }
                 }
-                string Observations() => $"readerTrace(dropped={dropped}):\n{string.Join("\n", trace)}";
-                void ViewChanged(ScrollView sender, object args) => Observe("view");
-                void ExtentChanged(ScrollView sender, object args) => Observe("extent");
-                void StateChanged(ScrollView sender, object args) => Observe("state");
+                string RealizedGeometry()
+                {
+                    try
+                    {
+                        var repeater = transcriptScroll.Content as ItemsRepeater;
+                        var count = repeater?.ItemsSourceView.Count ?? 0;
+                        string Describe(string name, Func<UIElement?> read)
+                        {
+                            try
+                            {
+                                if (read() is not FrameworkElement element)
+                                    return $"{name}: not-realized";
+                                var row = element as ItemContainer ??
+                                    Ancestors(element).OfType<ItemContainer>().FirstOrDefault();
+                                var index = row is null ? (int?)null : repeater?.GetElementIndex(row);
+                                var bounds = element.TransformToVisual(transcriptScroll).TransformBounds(
+                                    new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+                                return FormattableString.Invariant(
+                                    $"{name}: index={index}; loaded={element.IsLoaded}; top={bounds.Top}; bottom={bounds.Bottom}; height={bounds.Height}; width={bounds.Width}");
+                            }
+                            catch (Exception error)
+                            {
+                                return $"{name}: observationError={error.GetType().Name}; hresult=0x{error.HResult:X8}";
+                            }
+                        }
+                        return $"realizedGeometry(count={count}):\n" +
+                            Describe("anchor", () => transcriptScroll.CurrentAnchor) + "\n" +
+                            Describe("first", () => count > 0 ? repeater!.TryGetElement(0) : null) + "\n" +
+                            Describe("last", () => count > 0 ? repeater!.TryGetElement(count - 1) : null);
+                    }
+                    catch (Exception error)
+                    {
+                        return $"realizedGeometry: observationError={error.GetType().Name}; hresult=0x{error.HResult:X8}";
+                    }
+                }
+                string Observations() =>
+                    $"readerTrace(observed={sequence}; droppedCritical={droppedCritical}; droppedGeometry={droppedGeometry}):\n" +
+                    string.Join("\n", criticalTrace.Concat(firstGeometry).Concat(lastGeometry)
+                        .OrderBy(entry => entry.Sequence).Select(entry => entry.Text)) + "\n" + RealizedGeometry();
+                void ViewChanged(ScrollView sender, object args) => Observe("view", critical: false);
+                void ExtentChanged(ScrollView sender, object args) => Observe("extent", critical: false);
+                void StateChanged(ScrollView sender, object args) => Observe("state", critical: false);
                 void Completed(ScrollView sender, ScrollingScrollCompletedEventArgs args) =>
                     Observe("completed", () => $"correlation={args.CorrelationId}");
                 void Bringing(ScrollView sender, ScrollingBringingIntoViewEventArgs args) =>

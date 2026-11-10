@@ -201,14 +201,12 @@ public sealed partial class GatewayFixtureUiTests
                 }
                 async Task StableGeometry(bool collapsed, string stateName)
                 {
-                    System.Windows.Rect Bounds(string id)
+                    System.Windows.Rect? Bounds(string id)
                     {
-                        var peer = FindById(run, id)
-                            ?? throw new InvalidOperationException($"Missing pinned Usage control peer: {id}.");
+                        var peer = FindById(run, id);
+                        if (peer is null) return null;
                         var bounds = peer.Current.BoundingRectangle;
-                        Assert.True(!bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0,
-                            $"Pinned Usage control {id} has no measured bounds: {bounds}.");
-                        return bounds;
+                        return !bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0 ? bounds : null;
                     }
                     string? previous = null;
                     var consecutive = 0;
@@ -223,10 +221,12 @@ public sealed partial class GatewayFixtureUiTests
                             button = Bounds(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane"),
                             feedback = Bounds("WorkspaceEmbeddedOperationFeedback"),
                         };
+                        var ready = geometry.titleBar.HasValue && geometry.viewport.HasValue &&
+                            geometry.marker.HasValue && geometry.button.HasValue && geometry.feedback.HasValue;
                         var current = JsonSerializer.Serialize(geometry);
-                        consecutive = previous == current ? consecutive + 1 : 0;
-                        previous = current;
-                        samples.Add(new { utc = DateTimeOffset.UtcNow, geometry, consecutive });
+                        consecutive = ready && previous == current ? consecutive + 1 : 0;
+                        previous = ready ? current : null;
+                        samples.Add(new { utc = DateTimeOffset.UtcNow, geometry, ready, consecutive });
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"pane-layout-{stateName}.json"),
                             JsonSerializer.Serialize(samples, new JsonSerializerOptions { WriteIndented = true }));
                         if (consecutive >= 3) return true;
