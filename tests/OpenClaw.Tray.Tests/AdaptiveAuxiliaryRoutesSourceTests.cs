@@ -40,6 +40,39 @@ public sealed class AdaptiveAuxiliaryRoutesSourceTests
     }
 
     [Fact]
+    public void NotificationsUseSharedInboxWithConstrainedTextAndSeparateActions()
+    {
+        // Inbox replaced the page-local row builder. Keep the text/action geometry
+        // guard at that owner; InboxSettingsCompositionTests covers page binding.
+        var markup = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Controls", "InboxView.xaml"));
+        var list = Named(markup, "ItemsList");
+        Assert.Contains(list.Descendants(), element =>
+            element.Name.LocalName == "Setter" &&
+            element.Attribute("Property")?.Value == "HorizontalContentAlignment" &&
+            element.Attribute("Value")?.Value == "Stretch");
+        var details = list.Descendants().Single(element =>
+            element.Attribute("Text")?.Value == "{Binding Details}");
+        Assert.Equal("Wrap", details.Attribute("TextWrapping")?.Value);
+        var metadata = list.Descendants().Single(element =>
+            element.Attribute("Text")?.Value == "{Binding Metadata}");
+        Assert.Equal("Wrap", metadata.Attribute("TextWrapping")?.Value);
+        Assert.Equal("*", metadata.Parent!.Elements().First().Elements().First()
+            .Attribute("Width")?.Value);
+
+        var action = list.Descendants().Single(element =>
+            element.Attribute("Click")?.Value == "OnActionClick");
+        Assert.Equal("{Binding ActionLabel}", action.Attribute("Content")?.Value);
+        Assert.Equal("{Binding}", action.Attribute("Tag")?.Value);
+        Assert.NotSame(metadata.Parent, action.Parent);
+        var dismiss = list.Descendants().Single(element =>
+            element.Attribute("Click")?.Value == "OnDismissClick");
+        Assert.Equal("{Binding DismissAutomationName}", dismiss.Attribute("AutomationProperties.Name")?.Value);
+        Assert.Equal("1", dismiss.Attribute("Grid.Column")?.Value);
+        Assert.Equal("Grid", dismiss.Parent!.Name.LocalName);
+    }
+
+    [Fact]
     public void DiagnosticsToolbarsAdaptWithoutChangingTelemetryOrDetailState()
     {
         var markup = Load("DebugPage");

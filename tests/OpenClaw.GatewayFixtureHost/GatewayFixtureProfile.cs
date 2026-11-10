@@ -30,7 +30,7 @@ public sealed class GatewayFixtureProfile : IDisposable
     public bool ConnectGateway { get; }
 
     public GatewayFixtureProfile(Uri endpoint, string token, bool enableNodeBrowserProxy = false,
-        bool connectGateway = true)
+        string appTheme = "Light", bool connectGateway = true)
     {
         ValidateEndpoint(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -72,7 +72,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 VoiceAudioFeedback = false,
                 UseLegacyWebChat = false,
                 ShowCompletedSessions = true,
-                AppTheme = "Light",
+                AppTheme = appTheme,
                 OpenTelemetryEndpoint = null
             };
             File.WriteAllText(Path.Combine(DataDirectory, "settings.json"), settings.ToJson());

@@ -2403,7 +2403,7 @@ public sealed partial class ConnectionPage : Page
     // ─── Operator card navigation ────────────────────────────────────
 
     private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions");
-    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances");
+    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("systems");
 
     // ─── Node card navigation ────────────────────────────────────────
 

@@ -99,7 +99,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <!-- Keep Core and Advanced aligned on the published release used by the repository bootstrap. -->
+    <!-- Keep the released Core and Advanced packages aligned, including the inherited
+         recycled-anchor workaround and upstream Markdown list layout. -->
     <PackageReference Include="Microsoft.UI.Reactor" Version="0.1.0-preview.17" />
     <PackageReference Include="Microsoft.UI.Reactor.Advanced" Version="0.1.0-preview.17" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />

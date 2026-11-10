@@ -37,6 +37,31 @@ public sealed partial class GatewayFixtureProtocolTests
                 days.Select(day => day.Date));
     }
 
+    [Theory]
+    [InlineData("systems-inventory", false)]
+    [InlineData("systems-empty", true)]
+    public async Task RealClient_SystemsScenariosRetainInventoryAndIndependentUsageReads(string name, bool empty)
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.LoadBuiltin(name);
+        Assert.Equal(name, scenario.Name);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+
+        var inventory = await client.SendWizardRequestAsync("node.list", new { });
+        var nodes = inventory.GetProperty("nodes").EnumerateArray().ToArray();
+        Assert.Equal(empty, nodes.Length == 0);
+        if (!empty)
+            Assert.Contains(nodes, node => node.GetProperty("nodeId").GetString() == SystemsFixture.StudioNodeId);
+
+        var usage = await client.GetSessionsUsageAsync(UsageWeek(overview: false));
+        Assert.Equal(UsageReadStatus.Ok, usage.Status);
+        Assert.NotEmpty(usage.Value!.Sessions);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
+            "node.rename", new { nodeId = SystemsFixture.StudioNodeId, displayName = "Not applied" }));
+    }
+
     [Fact]
     public async Task RealClient_UsageReadsReturnTypedOverviewSessionDetailAndProviderPlans()
     {

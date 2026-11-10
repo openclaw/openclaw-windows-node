@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots|usage-analytics] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -24,6 +24,7 @@ internal static class Program
         var scenarioName = GatewayScenario.BrowseName;
         string? interaction = null;
         UsageAnalyticsMode? usageMode = null;
+        var theme = "Light";
         var enableNodeBrowserProxy = false;
         var foreignBrowserControl = false;
         for (var index = 0; index < args.Length; index++)
@@ -39,7 +40,7 @@ internal static class Program
                 foreignBrowserControl = true;
                 continue;
             }
-            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction" or "--usage-mode"))
+            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction" or "--usage-mode" or "--theme"))
             {
                 Console.Error.WriteLine($"Unknown or incomplete option: {args[index]}");
                 return 2;
@@ -57,6 +58,7 @@ internal static class Program
                 }
                 usageMode = mode;
             }
+            else if (args[index] == "--theme") theme = args[++index];
             else if (int.TryParse(args[++index], out var duration) && duration is >= 1 and <= 86400)
                 durationSeconds = duration;
             else
@@ -71,9 +73,14 @@ internal static class Program
             return 2;
         }
         if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name
-            or UsageAnalyticsFixture.Name))
+            or UsageAnalyticsFixture.Name or SystemsFixture.InventoryName or SystemsFixture.EmptyName))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
+            return 2;
+        }
+        if (theme is not ("Light" or "Dark"))
+        {
+            Console.Error.WriteLine("--theme must be Light or Dark.");
             return 2;
         }
         using var stop = new CancellationTokenSource();
@@ -95,7 +102,8 @@ internal static class Program
                 appPath, artifacts, stop.Token,
                 enableNodeBrowserProxy: enableNodeBrowserProxy,
                 foreignBrowserControl: foreignBrowserControl,
-                scenario: scenario);
+                scenario: scenario,
+                appTheme: theme);
             if (interaction is not null) run.Gateway.Interactive!.Playback.Select(interaction);
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             Console.WriteLine($"Fixture ready. App PID: {run.AppProcessId}");
