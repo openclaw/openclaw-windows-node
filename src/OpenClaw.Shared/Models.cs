@@ -1781,10 +1781,9 @@ public static class ModelFormatting
 // ── Agent Events ──
 
 /// <summary>
-/// Chat message broadcast by the gateway via a "chat" event. Emitted for
-/// both user echoes and final assistant messages. Streaming deltas are not
-/// currently produced by the gateway; consumers should treat each message as
-/// the complete final text for the given role.
+/// Chat content broadcast by the gateway via "chat" or "session.message".
+/// Content may reconcile a transcript independently of live turn admission;
+/// only an explicit final state is a terminal message.
 /// </summary>
 public class ChatMessageInfo
 {
@@ -1804,6 +1803,10 @@ public class ChatMessageInfo
 
     /// <summary>Explicit append-stream replacement, scoped by the live event's run identity.</summary>
     public bool ReplacesStreamText { get; set; }
+
+    /// <summary>A persisted session.message update, not admission of a live response.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsTranscriptSnapshot { get; set; }
 
     /// <summary>Set by synchronous chat consumers when this frame must not produce a notification.</summary>
     [System.Text.Json.Serialization.JsonIgnore]

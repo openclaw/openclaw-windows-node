@@ -10,8 +10,15 @@ public static class ChatTimelineReducer
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
 
-    public static bool CanApplyRetainedToolOutcome(ChatTimelineState state, ChatEvent? evt)
+    public static bool CanApplyRetainedToolEvent(ChatTimelineState state, ChatEvent? evt)
     {
+        if (!state.TurnActive && evt is ChatToolStartEvent { RunId.Length: > 0, ToolCallId.Length: > 0 } start)
+        {
+            var parentKey = ResolvePendingParentKey(state, start.RunId, start.ToolCallId);
+            return state.TerminalToolCorrelations?.ContainsKey(parentKey) == true &&
+                (state.PendingToolPresentations?.ContainsKey(parentKey) == true ||
+                 state.PendingToolOutcomes?.ContainsKey(parentKey) == true);
+        }
         var (runId, toolCallId) = evt switch
         {
             ChatToolOutputEvent output => (output.RunId, output.ToolCallId),
@@ -20,9 +27,12 @@ public static class ChatTimelineReducer
         };
         if (string.IsNullOrWhiteSpace(runId) || string.IsNullOrWhiteSpace(toolCallId))
             return false;
-        var key = CurrentCorrelationKey(state, runId, toolCallId);
+        var key = ResolveBufferedCorrelationKey(state, runId, toolCallId);
         return state.TerminalToolCorrelations?.ContainsKey(key) == true &&
-            FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0;
+            (FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0 ||
+             !state.TurnActive &&
+             (state.PendingToolPresentations?.ContainsKey(key) == true ||
+              state.PendingToolOutcomes?.ContainsKey(key) == true));
     }
 
     public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
@@ -72,13 +82,13 @@ public static class ChatTimelineReducer
             },
             ChatProgressEvent e => state with { ProgressText = e.Text, ProgressRetryAtMs = e.RetryAtMs },
             ChatRunUsageEvent e => ApplyRunUsage(state, e),
-            ChatReasoningEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: true, e.Presentation, e.IsStreaming, e.AttachToAssistant),
+            ChatReasoningEvent e => UpsertReasoning(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, e.Presentation, e.IsStreaming, e.AttachToAssistant),
             ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false, e.Presentation, streaming: true),
             ChatReasoningStreamEvent e => ApplyReasoningStream(state, e),
             ChatReasoningReceiptEvent e => ApplyReasoningReceipt(state, e),
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true, presentation: e.Presentation),
-            ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
+            ChatMessageEvent e => UpsertAssistant(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
             ChatBackgroundFinalEvent e => ApplyBackgroundFinal(state, e.Text),
             ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
@@ -374,12 +384,12 @@ public static class ChatTimelineReducer
         }
 
         ChatToolCorrelationKey? correlationKey = null;
-        var isTerminalReplay = false;
+        var isTerminalReplay = !e.ActivatesTurn && !state.TurnActive;
         if (e.ToolCallId is { } toolCallId)
         {
             var key = ResolvePendingParentKey(state, e.RunId, toolCallId);
             correlationKey = key;
-            isTerminalReplay = state.TerminalToolCorrelations?.ContainsKey(key) == true;
+            isTerminalReplay |= state.TerminalToolCorrelations?.ContainsKey(key) == true;
             var existingIndex = FindToolEntryIndex(
                 state,
                 key,
@@ -526,7 +536,7 @@ public static class ChatTimelineReducer
             Entries = state.Entries.Add(entry),
             NextId = state.NextId + 1,
             // Only update legacy positional slot for events without a correlation ID.
-            ActiveToolCallId = e.ToolCallId is null ? id : state.ActiveToolCallId,
+            ActiveToolCallId = !isTerminalReplay && e.ToolCallId is null ? id : state.ActiveToolCallId,
             ActiveToolCalls = activeToolCalls,
             PendingToolPresentations = pendingPresentations,
             PendingToolOutcomes = pendingOutcomes,
