@@ -337,6 +337,10 @@ file sealed class InitialTailPositioner : IDisposable
                     DetachConfirmation();
                     QueueInitialTailRetry(version, generation);
                     break;
+                case InitialTailLanding.CorrectOffset:
+                    DetachConfirmation();
+                    QueueInitialTailRetry(version, generation, correctOffset: true);
+                    break;
                 case InitialTailLanding.GiveUp:
                     var diagnostics = _confirmation.Diagnostics;
                     var attemptDiagnostics = _confirmation.AttemptDiagnostics;
@@ -375,7 +379,7 @@ file sealed class InitialTailPositioner : IDisposable
         catch (Exception) { }
     }
 
-    private void QueueInitialTailRetry(int version, int generation)
+    private void QueueInitialTailRetry(int version, int generation, bool correctOffset = false)
     {
         // Starting a native bring from Rendering can deadlock the WinUI layout pass.
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
@@ -391,8 +395,28 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            _confirmation.BeginAttempt(GetRequestItem(request));
-            if (!StartTailRequest(request))
+            var targetItem = GetRequestItem(request);
+            correctOffset &= _confirmation.CanCorrectOffset(targetItem);
+            _confirmation.BeginAttempt(targetItem);
+            if (correctOffset)
+            {
+                if (_scrollView is not { IsLoaded: true } scrollView
+                    || !ReferenceEquals(scrollView, itemsView.ScrollView))
+                {
+                    _confirmation.Invalidate();
+                    AwaitLayout();
+                    return;
+                }
+
+                // An indexed bring can complete without moving restored, virtualized history.
+                // Correct to the live extent within the existing retry budget, not the stale bring target.
+                _following = true;
+                var correlationId = scrollView.ScrollTo(
+                    scrollView.HorizontalOffset, scrollView.ScrollableHeight,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                _confirmation.OffsetCorrectionStarted(correlationId);
+            }
+            else if (!StartTailRequest(request))
             {
                 CompleteInitialLanding();
                 OpenClawTray.Services.Logger.Warn("Chat initial tail navigation retry could not start.");
