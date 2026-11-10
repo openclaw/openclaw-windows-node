@@ -96,6 +96,9 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
             .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
             .BorderThickness(BoardGridLayout.BorderWidth)
             .CornerRadius(10)
+            // Whole-widget identity belongs on a native group peer, not decorative Border chrome.
+            .Semantics(role: "group")
+            .AccessibilityView(AccessibilityView.Content)
             .AutomationName(LocalizationHelper.Format("Dashboards_Widget_CellFormat", widget.Label) + ", " + props.KindLabel)
             .AutomationId("BoardWidget_" + widget.Name);
         return DashboardsArt.Enter(cell, props.ReducedMotion);

@@ -7,6 +7,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
+using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml.Automation;
@@ -378,6 +379,46 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             });
     }
 
+    [Theory]
+    [InlineData("Light", 600)]
+    [InlineData("Dark", 900)]
+    public Task NativeReportCard_IsAnAccessibleGroupWithFullBoundsAndReachableChildren(string theme, double width) =>
+        WithMountedAsync(() => Expander("Native report peer root",
+            Component<ReactorBoardWidgetCell, BoardWidgetCellProps>(Cell(
+            Plugin("weekly-report", "session:report", """
+            {"blocks":[{"type":"metrics","items":[{"label":"Tickets closed","value":"128"}]},
+                       {"type":"links","items":[{"label":"Runbook","url":"https://example.com/runbook"}]}]}
+            """) with { Title = "Weekly report" }, BoardWidgetBodyKind.Report) with { KindLabel = "Report" }))
+                .Set(control => control.IsExpanded = true)
+                .HAlign(HorizontalAlignment.Stretch)
+                .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+                .AutomationId("NativeReportPeerRoot"), host =>
+        {
+            // Start at a real ancestor peer: the plain Reactor host has no native peer of its own.
+            var root = FrameworkElementAutomationPeer.CreatePeerForElement(ById<Expander>(host, "NativeReportPeerRoot"));
+            Assert.NotNull(root);
+            var group = Assert.Single(WalkPeers(root!), peer => peer.GetAutomationId() == "BoardWidget_weekly-report");
+            Assert.Equal(AutomationControlType.Group, group.GetAutomationControlType());
+            Assert.Equal("Dashboard widget: Weekly report, Report", group.GetName());
+            Assert.True(group.IsControlElement());
+            Assert.True(group.IsContentElement());
+            Assert.False(group.IsKeyboardFocusable());
+            Assert.Null(group.GetPattern(PatternInterface.Invoke));
+            Assert.Null(group.GetPattern(PatternInterface.SelectionItem));
+            var card = ById<FrameworkElement>(host, "BoardWidget_weekly-report");
+            var bounds = group.GetBoundingRectangle();
+            Assert.True(bounds.Width > 0 && bounds.Height > 0);
+            var scale = card.XamlRoot.RasterizationScale;
+            Assert.InRange(Math.Abs(bounds.Width - card.ActualWidth * scale), 0, 1);
+            Assert.InRange(Math.Abs(bounds.Height - card.ActualHeight * scale), 0, 1);
+            var children = WalkPeers(group).Skip(1).ToArray();
+            Assert.Contains(children, peer => peer.GetName() == "Tickets closed");
+            Assert.Contains(children, peer => peer.GetName() == "128");
+            var link = Assert.Single(children, peer => peer.GetName() == "Runbook"
+                && peer.GetAutomationControlType() == AutomationControlType.Hyperlink);
+            Assert.IsAssignableFrom<IInvokeProvider>(link.GetPattern(PatternInterface.Invoke));
+        }, theme: theme, width: width);
+
     [Fact]
     public Task ReportTable_UntypedPayloadCellsStayLeftAlignedWithoutGuessingDatesOrCurrency() =>
         WithMountedAsync(() => Component<ReactorBoardWidgetCell, BoardWidgetCellProps>(Cell(
@@ -478,8 +519,8 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
                 new BoardViewProps(state, client, new BoardSessionTarget(key, "main"), 1, width)), host =>
             {
-                var tallCard = ById<Border>(host, "BoardWidget_tall");
-                var shortCard = ById<Border>(host, "BoardWidget_short");
+                var tallCard = ById<FrameworkElement>(host, "BoardWidget_tall");
+                var shortCard = ById<FrameworkElement>(host, "BoardWidget_short");
                 Assert.InRange(Math.Abs(tallCard.ActualHeight - shortCard.ActualHeight), 0, 1);
                 Assert.True(tallCard.ActualHeight > 4 * 56 + 3 * 12, "Report remains capped at its saved grid height.");
                 Assert.Empty(FindDescendants<ScrollViewer>(tallCard));
@@ -524,17 +565,18 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
                 new BoardViewProps(state, client, new BoardSessionTarget(key, "main"), 1, 984)), host =>
             {
-                var tallCard = ById<Border>(host, "BoardWidget_tall");
-                var boundedCard = ById<Border>(host, "BoardWidget_website");
+                var tallCard = ById<FrameworkElement>(host, "BoardWidget_tall");
+                var boundedCard = ById<FrameworkElement>(host, "BoardWidget_website");
                 Assert.InRange(Math.Abs(tallCard.ActualHeight - boundedCard.ActualHeight), 0, 1);
-                var boundedContent = Assert.IsType<Grid>(boundedCard.Child);
+                var chrome = Assert.IsType<Border>(Assert.Single(Assert.IsAssignableFrom<Panel>(boundedCard).Children));
+                var boundedContent = Assert.IsType<Grid>(chrome.Child);
                 Assert.InRange(Math.Abs(boundedContent.ActualHeight - (4 * 56 + 3 * 12 - 2)), 0, 1);
                 Assert.Equal(VerticalAlignment.Top, boundedContent.VerticalAlignment);
                 Assert.InRange(Math.Abs(Bounds(tallCard, host).Top - Bounds(boundedCard, host).Top), 0, 1);
                 Assert.Contains(FindDescendants<HyperlinkButton>(boundedCard), button =>
                     AutomationProperties.GetAutomationId(button) == "BoardWebsiteOpen_website");
-            }, ready: host => FindDescendants<Border>(host).Any(border =>
-                AutomationProperties.GetAutomationId(border) == "BoardWidget_website"), width: 984,
+            }, ready: host => FindDescendants<FrameworkElement>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "BoardWidget_website"), width: 984,
             capture: "mixed-report-website");
     }
 
