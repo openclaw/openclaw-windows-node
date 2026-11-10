@@ -1441,9 +1441,11 @@ public class BrowserProxyCapabilityTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task BrowserProxy_ProcessProxyRouting_IsIsolated(bool useDefaultHandler)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task TicketedLoopbackTransport_ProcessProxyRouting_IsIsolated(bool useDefaultHandler, bool boardDocument)
     {
         var testHost = FindBrowserProxyTestHost();
         using var directory = new TempDirectory();
@@ -1456,6 +1458,8 @@ public class BrowserProxyCapabilityTests
         int gatewayPort = controlPort - 2;
         int proxyConnections = 0;
         int controlConnections = 0;
+        string? proxyRequest = null;
+        string? controlRequest = null;
         using var stop = new CancellationTokenSource();
         Task proxyAccepts = Task.Run(async () =>
         {
@@ -1467,7 +1471,8 @@ public class BrowserProxyCapabilityTests
                     Interlocked.Increment(ref proxyConnections);
                     await using NetworkStream stream = accepted.GetStream();
                     var buffer = new byte[4096];
-                    _ = await stream.ReadAsync(buffer, stop.Token);
+                    var read = await stream.ReadAsync(buffer, stop.Token);
+                    proxyRequest = Encoding.UTF8.GetString(buffer, 0, read);
                     await stream.WriteAsync(
                         "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(),
                         stop.Token);
@@ -1488,8 +1493,12 @@ public class BrowserProxyCapabilityTests
                 Interlocked.Increment(ref controlConnections);
                 await using NetworkStream stream = accepted.GetStream();
                 var buffer = new byte[4096];
-                _ = await stream.ReadAsync(buffer, stop.Token);
-                byte[] response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}"u8.ToArray();
+                var read = await stream.ReadAsync(buffer, stop.Token);
+                controlRequest = Encoding.UTF8.GetString(buffer, 0, read);
+                var body = boardDocument ? "<!doctype html><p>synthetic board</p>" : "{\"ok\":true}";
+                byte[] response = Encoding.UTF8.GetBytes(
+                    $"HTTP/1.1 200 OK\r\nContent-Type: {(boardDocument ? "text/html" : "application/json")}\r\n" +
+                    $"Content-Length: {Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}");
                 await stream.WriteAsync(response, stop.Token);
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -1505,7 +1514,7 @@ public class BrowserProxyCapabilityTests
             CreateNoWindow = true
         };
         start.ArgumentList.Add(testHost);
-        start.ArgumentList.Add("--browser-proxy");
+        start.ArgumentList.Add(boardDocument ? "--board-document" : "--browser-proxy");
         start.ArgumentList.Add(gatewayPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
         start.ArgumentList.Add(useDefaultHandler ? "default-handler" : "production");
         foreach (var variable in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
@@ -1534,6 +1543,16 @@ public class BrowserProxyCapabilityTests
                 $"Proxy fixture exited {child.ExitCode}: {error}\n{output}");
             Assert.Equal(useDefaultHandler ? 1 : 0, Volatile.Read(ref proxyConnections));
             Assert.Equal(useDefaultHandler ? 0 : 1, Volatile.Read(ref controlConnections));
+            if (boardDocument)
+            {
+                Assert.Contains("/__openclaw__/board/k/w/index.html?bt=synthetic-view-ticket",
+                    useDefaultHandler ? proxyRequest : controlRequest);
+                if (!useDefaultHandler)
+                {
+                    Assert.Null(proxyRequest);
+                    Assert.Contains("<!doctype html><p>synthetic board</p>", output);
+                }
+            }
         }
         finally
         {
@@ -2040,7 +2059,8 @@ public class CanvasCapabilityTests
     [Fact]
     public async Task A2UIPush_WithJsonlPath_ReadsFile()
     {
-        var cap = new CanvasCapability(NullLogger.Instance);
+        var cap = new CanvasCapability(NullLogger.Instance,
+            async (path, _, stop) => await File.ReadAllBytesAsync(path, stop));
         CanvasA2UIArgs? received = null;
         cap.A2UIPushRequested += (s, a) => received = a;
 

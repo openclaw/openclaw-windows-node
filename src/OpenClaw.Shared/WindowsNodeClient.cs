@@ -7,6 +7,8 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using OpenClaw.Shared.FileTransfer;
 using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared;
@@ -69,6 +71,9 @@ public class WindowsNodeClient : WebSocketClientBase
     // at 8. When full, the gateway receives an immediate "node busy, retry" error response.
     private readonly SemaphoreSlim _invokeSemaphore = new(8, 8);
     private readonly InvocationCancellationRegistry _activeInvocations = new();
+    private readonly PendingRequestRegistry _progressRequests = new();
+    private readonly ConcurrentDictionary<string, GatewayFileInvocation> _fileInvocations = new();
+    private static readonly TimeSpan ProgressAckTimeout = TimeSpan.FromSeconds(5);
 
     // Events
     public event EventHandler<NodeInvokeRequest>? InvokeReceived;
@@ -140,6 +145,7 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override Task OnConnectedAsync()
     {
         _isConnected = false;
+        _progressRequests.OpenConnection();
         _handshakeChallengeGate.Reset(CurrentConnectionGeneration);
         Volatile.Write(ref _pendingConnectRequestId, null);
         TransportConnected?.Invoke(this, EventArgs.Empty);
@@ -287,8 +293,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         try
         {
-            // Log raw messages at debug level (visible in dbgview, not in log file noise)
-            _logger.Debug($"[NODE RX] {TokenSanitizer.Sanitize(json)}");
+            // Invocation arguments and progress can contain file data. Never log raw frames.
             
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
@@ -383,6 +388,9 @@ public class WindowsNodeClient : WebSocketClientBase
             case "node.invoke.cancel":
                 await HandleNodeInvokeCancelAsync(root, "payload", responseId: null);
                 break;
+            case "node.invoke.input":
+                HandleFileInput(root, sourceConnectionGeneration);
+                break;
             case "health":
                 if (root.TryGetProperty("payload", out var payload))
                 {
@@ -454,6 +462,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         if (string.Equals(decision, "approved", StringComparison.OrdinalIgnoreCase))
         {
+            CancelTransportInvocations();
             _isPendingApproval = false;
             _isPaired = true;
             _pairingBlocked = false; // Allow reconnect after approval
@@ -471,6 +480,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
         if (string.Equals(decision, "rejected", StringComparison.OrdinalIgnoreCase))
         {
+            CancelTransportInvocations();
             _isPendingApproval = false;
             _isPaired = false;
             _pairingApprovedAwaitingReconnect = false;
@@ -569,6 +579,9 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         var sessionKey = ExtractGatewayNodeInvokeSessionKey(payload);
+        if (payload.TryGetProperty("nodeId", out var targetNode) &&
+            targetNode.GetString() != _deviceIdentity.DeviceId)
+            return;
         
         _logger.Info($"[NODE] Invoking command: {command}");
         
@@ -627,19 +640,116 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
-        _ = Task.Run(
-            () => ExecuteGatewayCapabilityAsync(
+        var generation = CurrentConnectionGeneration;
+        var deadline = CreateInvocationDeadline(payload, invocation!.Token);
+        GatewayFileInvocation? fileInvocation = null;
+        if (NeedsFileChannel(command, args))
+        {
+            if (_fileInvocations.Count >= 4)
+            {
+                invocation.Dispose();
+                deadline.Dispose();
+                _invokeSemaphore.Release();
+                await SendGatewayResultAndCompleteTelemetryAsync(telemetry,
+                    () => SendNodeInvokeResultAsync(requestId, false, null, "file transfer capacity full"),
+                    NodeToolErrorCategory.NodeBusy);
+                return;
+            }
+            fileInvocation = new GatewayFileInvocation(generation,
+                (seq, chunk, ct) => SendFileProgressAsync(requestId, generation, seq, chunk, ct), deadline.Token);
+            _fileInvocations[requestId] = fileInvocation;
+            request.FileChannel = fileInvocation.Channel;
+        }
+        var ownedFileInvocation = fileInvocation;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ExecuteGatewayCapabilityAsync(
                 request,
                 capability,
-                response => SendNodeInvokeResultAsync(
+                response => IsCurrentConnectionGeneration(generation) ? SendNodeInvokeResultAsync(
                     requestId,
                     response.Ok,
                     response.Payload,
                     response.Error,
-                    response.ErrorCode),
-                error => SendNodeInvokeResultAsync(requestId, false, null, error),
-                invocation!),
+                    response.ErrorCode, generation, FileCommandParser.Commands.Contains(command)) : Task.CompletedTask,
+                error => IsCurrentConnectionGeneration(generation) ? SendNodeInvokeResultAsync(requestId, false, null, error,
+                    errorCode: FileCommandParser.Commands.Contains(command) ? "INVALID_REQUEST" : null,
+                    generation: generation, fileCommand: FileCommandParser.Commands.Contains(command)) : Task.CompletedTask,
+                invocation!, deadline.Token);
+            }
+            finally
+            {
+                if (ownedFileInvocation != null)
+                {
+                    _fileInvocations.TryRemove(new KeyValuePair<string, GatewayFileInvocation>(requestId, ownedFileInvocation));
+                    await ownedFileInvocation.DisposeAsync();
+                }
+                deadline.Dispose();
+            }
+        },
             CancellationToken.None);
+    }
+
+    private static bool NeedsFileChannel(string command, JsonElement args) =>
+        args.ValueKind == JsonValueKind.Object &&
+        !(args.TryGetProperty("preflightOnly", out var preflight) && preflight.ValueKind == JsonValueKind.True) &&
+        (command == "file.create" ||
+            (command == "file.fetch" && args.TryGetProperty("transport", out var transport) &&
+                transport.ValueKind == JsonValueKind.String && transport.GetString() == "binary"));
+
+    private static CancellationTokenSource CreateInvocationDeadline(JsonElement payload, CancellationToken ct)
+    {
+        var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (payload.TryGetProperty("timeoutMs", out var value) && value.ValueKind == JsonValueKind.Number &&
+            value.TryGetDouble(out var ms) && double.IsFinite(ms) && ms > 0 &&
+            ms <= FileLimits.SafeInteger && Math.Truncate(ms) == ms)
+            deadline.CancelAfter((int)Math.Min(ms, FileLimits.TransferTimeoutMs));
+        return deadline;
+    }
+
+    private void HandleFileInput(JsonElement root, long generation)
+    {
+        if (!root.TryGetProperty("payload", out var payload) ||
+            !payload.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String ||
+            !payload.TryGetProperty("nodeId", out var node) || node.GetString() != _deviceIdentity.DeviceId ||
+            !_fileInvocations.TryGetValue(id.GetString()!, out var invocation) || invocation.Generation != generation)
+            return;
+        try
+        {
+            var seq = FileFrameChannel.SafeInteger(payload.GetProperty("seq"));
+            invocation.Receive(seq, payload.GetProperty("payloadJSON").GetString()!);
+        }
+        catch { invocation.Channel.Abort(); }
+    }
+
+    private async ValueTask<Task> SendFileProgressAsync(string invokeId, long generation, long seq, string chunk, CancellationToken ct)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var pending = _progressRequests.RegisterApproval(id, "node.invoke.progress");
+        try
+        {
+            var frame = JsonSerializer.Serialize(new
+            {
+                type = "req", id, method = "node.invoke.progress",
+                @params = new { invokeId, nodeId = _deviceIdentity.DeviceId, seq, chunk }
+            }, FileTransportJson.Options);
+            if (!await SendRawAsync(frame, generation, ct).ConfigureAwait(false))
+                throw new OperationCanceledException(ct);
+            return WaitForReceiptAsync();
+        }
+        catch { _progressRequests.TryRemove(pending.Handle); throw; }
+
+        async Task WaitForReceiptAsync()
+        {
+            try
+            {
+                if (!await pending.Task.WaitAsync(ProgressAckTimeout, ct).ConfigureAwait(false))
+                    throw new FileCommandException("PROGRESS_REJECTED", "Gateway rejected file progress.");
+            }
+            finally { _progressRequests.TryRemove(pending.Handle); }
+        }
     }
     
     private async Task SendNodeInvokeResultAsync(
@@ -647,7 +757,9 @@ public class WindowsNodeClient : WebSocketClientBase
         bool success,
         object? payload,
         string? error,
-        string? errorCode = null)
+        string? errorCode = null,
+        long? generation = null,
+        bool fileCommand = false)
     {
         // Gateway expects: id (not requestId), nodeId, ok, payload (not result)
         var response = new
@@ -665,9 +777,35 @@ public class WindowsNodeClient : WebSocketClientBase
             }
         };
         
-        var json = JsonSerializer.Serialize(response, s_ignoreNullOptions);
+        string json;
+        try
+        {
+            json = SerializeInvokeResult(response, fileCommand);
+        }
+        catch (Exception ex) when (fileCommand && IsFileSerializationFailure(ex))
+        {
+            // A failed serialization must still settle the invocation on the wire.
+            await SendNodeInvokeResultAsync(requestId, false, null,
+                ex is FileCommandException file ? file.Message : "File result could not be serialized.",
+                ex is FileCommandException typed ? typed.Code : "INVALID_RESULT", generation);
+            return;
+        }
         _logger.Info($"[NODE] Sending invoke result for {requestId}: ok={success}");
-        await SendRawAsync(json);
+        if (generation.HasValue)
+            await SendRawAsync(json, generation.Value, CancellationToken);
+        else
+            await SendRawAsync(json);
+    }
+
+    private static bool IsFileSerializationFailure(Exception ex) =>
+        ex is JsonException or NotSupportedException or InvalidOperationException or ArgumentException or FileCommandException;
+
+    private static string SerializeInvokeResult(object response, bool fileCommand)
+    {
+        var json = JsonSerializer.Serialize(response, fileCommand ? FileTransportJson.Options : s_ignoreNullOptions);
+        if (fileCommand && System.Text.Encoding.UTF8.GetByteCount(json) > FileTransportJson.ResultEnvelopeBytes)
+            throw new FileCommandException("FILE_TOO_LARGE", "File result exceeds its transport limit.");
+        return json;
     }
     
     private Task HandleConnectChallengeAsync(JsonElement root) =>
@@ -867,6 +1005,11 @@ public class WindowsNodeClient : WebSocketClientBase
         var responseId = root.TryGetProperty("id", out var idProp)
             ? idProp.GetString()
             : null;
+        if (_progressRequests.TryTake(responseId, out var progress) && progress is ApprovalRequestResolution ack)
+        {
+            ack.TryComplete(root.TryGetProperty("ok", out var accepted) && accepted.ValueKind == JsonValueKind.True);
+            return;
+        }
         var pendingConnectRequestId = Volatile.Read(ref _pendingConnectRequestId);
         var isConnectResponse =
             !string.IsNullOrWhiteSpace(pendingConnectRequestId) &&
@@ -1016,6 +1159,35 @@ public class WindowsNodeClient : WebSocketClientBase
 
             RaiseStatusChanged(ConnectionStatus.Connected);
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
+            if (_isPaired)
+                StartHostStatsPublishing();
+        }
+    }
+
+    private Timer? _hostStatsTimer;
+
+    /// <summary>Publishes host statistics so the Gateway's Systems inventory can show this machine's resources.</summary>
+    private void StartHostStatsPublishing()
+    {
+        StopHostStatsPublishing();
+        var timer = new Timer(_ => _ = PublishHostStatsAsync(), null, TimeSpan.Zero, Systems.HostStatsSampler.Interval);
+        if (Interlocked.CompareExchange(ref _hostStatsTimer, timer, null) is not null)
+            timer.Dispose();
+    }
+
+    private void StopHostStatsPublishing() => Interlocked.Exchange(ref _hostStatsTimer, null)?.Dispose();
+
+    private async Task PublishHostStatsAsync()
+    {
+        try
+        {
+            if (!_isConnected || !_isPaired || Systems.HostStatsSampler.Sample() is not { } payload)
+                return;
+            await SendNodeEventAsync(Systems.HostStatsSampler.EventName, payload).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Host statistics publish failed: {ex.Message}");
         }
     }
 
@@ -1456,7 +1628,7 @@ public class WindowsNodeClient : WebSocketClientBase
             () => ExecuteGatewayCapabilityAsync(
                 request,
                 capability,
-                SendInvokeResponseAsync,
+                response => SendInvokeResponseAsync(response, FileCommandParser.Commands.Contains(command)),
                 error => SendErrorResponseAsync(requestId, error),
                 invocation!),
             CancellationToken.None);
@@ -1467,10 +1639,14 @@ public class WindowsNodeClient : WebSocketClientBase
         INodeCapability capability,
         Func<NodeInvokeResponse, Task> sendResponse,
         Func<string, Task> sendErrorResponse,
-        InvocationCancellationRegistry.InvocationCancellation invocation)
+        InvocationCancellationRegistry.InvocationCancellation invocation,
+        CancellationToken? deadline = null)
     {
         using var activeInvocation = invocation;
-        var cancellationToken = activeInvocation.Token;
+        using var execution = CancellationTokenSource.CreateLinkedTokenSource(
+            deadline ?? activeInvocation.Token,
+            request.FileChannel is FileFrameChannel channel ? channel.Token : activeInvocation.Token);
+        var cancellationToken = execution.Token;
         var telemetry = request.Telemetry!;
         var stopwatch = Stopwatch.StartNew();
         var executeActivity = telemetry.StartChild(NodeToolInvocation.ExecuteSpanName);
@@ -1512,16 +1688,16 @@ public class WindowsNodeClient : WebSocketClientBase
             }
 
             var diagnostic = response.Diagnostic;
-            var outcome = diagnostic != null || !response.Ok
+            var outcome = diagnostic != null || !response.Ok || response.FileOutcome is { Ok: false }
                 ? NodeToolOutcome.Failure
                 : NodeToolOutcome.Success;
             var category = diagnostic?.ErrorCategory ??
-                (response.Ok ? NodeToolErrorCategory.None : NodeToolErrorCategory.CapabilityFailure);
+                (outcome == NodeToolOutcome.Success ? NodeToolErrorCategory.None : NodeToolErrorCategory.CapabilityFailure);
             NodeToolInvocation.CompleteChild(
                 executeActivity,
                 outcome,
                 category,
-                diagnostic?.ExecutionMode,
+                diagnostic?.ExecutionMode ?? FileOutcomeTelemetry.ExecutionMode(response),
                 sandboxDenialReason: diagnostic?.SandboxDenialReason);
             executeActivityCompleted = true;
 
@@ -1532,7 +1708,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     telemetry,
                     outcome,
                     category,
-                    diagnostic?.ExecutionMode);
+                    diagnostic?.ExecutionMode ?? FileOutcomeTelemetry.ExecutionMode(response));
             }
             catch (Exception sendEx)
             {
@@ -1548,8 +1724,8 @@ public class WindowsNodeClient : WebSocketClientBase
             RaiseInvokeCompleted(
                 request.Id,
                 request.Command,
-                response.Ok,
-                response.Error,
+                response.Ok && response.FileOutcome is not { Ok: false },
+                response.FileOutcome?.Message ?? response.Error,
                 stopwatch.Elapsed);
         }
         // slopwatch-ignore: SW003 Caller cancellation has a protocol response; shutdown cancellation does not.
@@ -1565,17 +1741,24 @@ public class WindowsNodeClient : WebSocketClientBase
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            var localCancellation = !activeInvocation.Token.IsCancellationRequested;
+            var category = localCancellation ? NodeToolErrorCategory.Timeout : NodeToolErrorCategory.Other;
             if (!executeActivityCompleted)
             {
                 NodeToolInvocation.CompleteChild(
                     executeActivity,
                     NodeToolOutcome.Canceled,
-                    NodeToolErrorCategory.Other);
+                    category);
             }
             CompleteToolTelemetry(
                 telemetry,
                 NodeToolOutcome.Canceled,
-                NodeToolErrorCategory.Other);
+                category);
+            if (localCancellation)
+            {
+                try { await sendErrorResponse("File channel closed or request timed out"); }
+                catch { }
+            }
         }
         catch (Exception ex)
         {
@@ -1756,6 +1939,9 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
+        if (container.TryGetProperty("nodeId", out var node) &&
+            (node.ValueKind != JsonValueKind.String || node.GetString() != _deviceIdentity.DeviceId))
+            return;
         var cancelled = _activeInvocations.TryCancel(requestId);
         _logger.Info(cancelled
             ? $"[NODE] Cancelled node.invoke request: {requestId}"
@@ -1835,7 +2021,7 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
     
-    private async Task SendInvokeResponseAsync(NodeInvokeResponse response)
+    private async Task SendInvokeResponseAsync(NodeInvokeResponse response, bool fileCommand = false)
     {
         var msg = new
         {
@@ -1846,7 +2032,19 @@ public class WindowsNodeClient : WebSocketClientBase
             error = response.Ok ? null : new { code = response.ErrorCode, message = response.Error }
         };
         
-        await SendRawAsync(JsonSerializer.Serialize(msg, s_ignoreNullOptions));
+        string json;
+        try { json = SerializeInvokeResult(msg, fileCommand); }
+        catch (Exception ex) when (fileCommand && IsFileSerializationFailure(ex))
+        {
+            await SendInvokeResponseAsync(new NodeInvokeResponse
+            {
+                Id = response.Id, Ok = false,
+                ErrorCode = ex is FileCommandException file ? file.Code : "INVALID_RESULT",
+                Error = ex is FileCommandException typed ? typed.Message : "File result could not be serialized."
+            });
+            return;
+        }
+        await SendRawAsync(json);
         
         _logger.Info($"Sent invoke response: ok={response.Ok}");
     }
@@ -1953,7 +2151,8 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnDisconnected()
     {
-        _activeInvocations.CancelAll();
+        StopHostStatsPublishing();
+        CancelTransportInvocations();
         _isConnected = false;
         Volatile.Write(ref _pendingConnectRequestId, null);
         // Don't reset pairing state when disconnected due to pairing — gateway
@@ -1967,7 +2166,8 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnError(Exception ex)
     {
-        _activeInvocations.CancelAll();
+        StopHostStatsPublishing();
+        CancelTransportInvocations();
         _isConnected = false;
         if (!_pairingBlocked)
         {
@@ -1978,6 +2178,14 @@ public class WindowsNodeClient : WebSocketClientBase
 
     protected override void OnDisposing()
     {
+        StopHostStatsPublishing();
+        CancelTransportInvocations();
+    }
+
+    private void CancelTransportInvocations()
+    {
         _activeInvocations.CancelAll();
+        foreach (var invocation in _fileInvocations.Values) invocation.Channel.Abort();
+        _progressRequests.Drain();
     }
 }

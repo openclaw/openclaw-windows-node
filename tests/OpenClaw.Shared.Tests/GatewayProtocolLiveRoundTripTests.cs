@@ -107,6 +107,41 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         await client.DisconnectAsync();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OlderHistory_UsesOpaqueCursorOrCanonicalBoundaryOnWire(bool boundary)
+    {
+        using var server = new LoopbackGatewayServer();
+        var request = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.OnMethod("chat.history", parameters =>
+        {
+            request.TrySetResult(parameters.Clone());
+            return new { sessionId = "instance", messages = Array.Empty<object>() };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        var page = boundary ? new ChatHistoryPageRequest(null, "instance", "first-message")
+            : new ChatHistoryPageRequest("opaque:older", "instance");
+        await client.RequestChatHistoryAsync("agent:main:main", page: page);
+        var sent = await request.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("agent:main:main", sent.GetProperty("sessionKey").GetString());
+        Assert.Equal(3 * 1024 * 1024, sent.GetProperty("maxBytes").GetInt32());
+        Assert.Equal(boundary ? 1 : 1000, sent.GetProperty("limit").GetInt32());
+        Assert.Equal(!boundary, sent.TryGetProperty("cursor", out var cursor));
+        if (boundary)
+        {
+            Assert.Equal("first-message", sent.GetProperty("messageId").GetString());
+            Assert.Equal("instance", sent.GetProperty("sessionId").GetString());
+        }
+        else
+        {
+            Assert.Equal("opaque:older", cursor.GetString());
+            Assert.False(sent.TryGetProperty("messageId", out _));
+        }
+        await client.DisconnectAsync();
+    }
+
     [Fact]
     public async Task ApplicationRpc_BeforeHelloOk_DoesNotReachWire()
     {

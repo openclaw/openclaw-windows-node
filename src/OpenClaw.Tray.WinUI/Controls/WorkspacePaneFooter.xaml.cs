@@ -29,10 +29,11 @@ public sealed partial class WorkspacePaneFooter : UserControl
     private readonly double _paneButtonHeight;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
     private string _automationIdPrefix = "Workspace";
-    private AppNotificationService? _notifications;
+    private InboxFeed? _inbox;
     private InboxViewCommands? _inboxCommands;
     private string _ownerName = "";
     private string _connectionLabel = "";
+    private string? _updateText;
 
     /// <summary>Raised when the Dashboard button is invoked.</summary>
     internal event EventHandler? DashboardRequested;
@@ -95,9 +96,25 @@ public sealed partial class WorkspacePaneFooter : UserControl
         var style = BadgeStyle(accent);
         OwnerStatusDot.Style = style;
         OwnerAvatarStatusDot.Style = style;
-        AutomationProperties.SetHelpText(OwnerButton, label);
+        ApplyOwnerHelpText();
         ApplyOwnerToolTip();
     }
+
+    /// <summary>Shows the avatar update dot; <paramref name="updateText"/> is appended to the account help text.</summary>
+    internal void ApplyUpdateAvailable(string? updateText)
+    {
+        _updateText = updateText;
+        OwnerUpdateDot.Visibility = string.IsNullOrEmpty(updateText) ? Visibility.Collapsed : Visibility.Visible;
+        ApplyOwnerHelpText();
+        ApplyOwnerToolTip();
+    }
+
+    private void ApplyOwnerHelpText() =>
+        AutomationProperties.SetHelpText(OwnerButton, OwnerStatusText);
+
+    private string OwnerStatusText =>
+        string.IsNullOrEmpty(_updateText) ? _connectionLabel
+        : string.IsNullOrEmpty(_connectionLabel) ? _updateText : $"{_connectionLabel}. {_updateText}";
 
     /// <summary>Applies the Inbox badge: hidden at zero, capped text, caution tone while an approval waits.</summary>
     internal void ApplyInboxBadge(InboxBadge badge, string helpText)
@@ -111,9 +128,9 @@ public sealed partial class WorkspacePaneFooter : UserControl
     }
 
     /// <summary>Supplies the Inbox shown by the bell flyout and the window commands its rows use.</summary>
-    internal void BindNotifications(AppNotificationService notifications, InboxViewCommands commands)
+    internal void BindNotifications(InboxFeed inbox, InboxViewCommands commands)
     {
-        _notifications = notifications;
+        _inbox = inbox;
         _inboxCommands = commands;
     }
 
@@ -127,7 +144,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     {
         HideFlyouts();
         NotificationContent.Unbind();
-        _notifications = null;
+        _inbox = null;
         _inboxCommands = null;
     }
 
@@ -138,9 +155,14 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     private void OnNotificationsOpening(object sender, object e)
     {
-        if (_notifications is null || _inboxCommands is not { } commands) return;
+        if (_inbox is null || _inboxCommands is not { } commands) return;
         // Every Inbox command leaves the flyout before navigating.
-        NotificationContent.Initialize(_notifications, new InboxViewCommands(
+        NotificationContent.Initialize(_inbox, new InboxViewCommands(
+            route =>
+            {
+                NotificationsFlyout.Hide();
+                commands.OpenGatewayRoute(route);
+            },
             (route, sessionKey) =>
             {
                 NotificationsFlyout.Hide();
@@ -154,8 +176,20 @@ public sealed partial class WorkspacePaneFooter : UserControl
             () =>
             {
                 NotificationsFlyout.Hide();
+                commands.OpenDashboard();
+            },
+            () =>
+            {
+                NotificationsFlyout.Hide();
                 commands.OpenPage?.Invoke();
-            }));
+            },
+            commands.AskOpenClaw is { } ask
+                ? question =>
+                {
+                    NotificationsFlyout.Hide();
+                    ask(question);
+                }
+                : null));
     }
 
     private void OnNotificationsClosed(object sender, object e) => NotificationContent.Unbind();
@@ -169,7 +203,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     private void ApplyOwnerToolTip() =>
         ToolTipService.SetToolTip(OwnerButton, _layout == WorkspacePaneFooterLayout.Rail
-            ? string.IsNullOrEmpty(_connectionLabel) ? _ownerName : $"{_ownerName}\n{_connectionLabel}"
+            ? string.IsNullOrEmpty(OwnerStatusText) ? _ownerName : $"{_ownerName}\n{OwnerStatusText}"
             : null);
 
     private void ApplyLayout()

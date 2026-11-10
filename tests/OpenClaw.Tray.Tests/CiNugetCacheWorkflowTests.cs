@@ -23,6 +23,7 @@ public sealed class CiNugetCacheWorkflowTests
         "tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj",
         "tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj",
         "tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj",
+        "tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj",
     ];
 
     [Fact]
@@ -46,13 +47,15 @@ public sealed class CiNugetCacheWorkflowTests
 
         Assert.DoesNotContain("NUGET_PACKAGES:", otherJobs, StringComparison.Ordinal);
         Assert.DoesNotContain("nuget-core-", otherJobs, StringComparison.Ordinal);
-        Assert.Equal(8, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
+        // The independent Gateway fixture job also restores the shared cache.
+        const int sharedCacheLaneCount = 9;
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
         Assert.Equal(
-            8,
+            sharedCacheLaneCount,
             CountOccurrences(
                 otherJobs,
                 "key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}"));
-        Assert.Equal(8, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
     }
 
     [Fact]
@@ -77,7 +80,7 @@ public sealed class CiNugetCacheWorkflowTests
         var cacheStep = ExtractStep(coreJob, "Cache NuGet packages", "Restore core test projects");
 
         var projectGraph = GetProjectGraph(root);
-        Assert.Equal(9, projectGraph.Count);
+        Assert.Equal(11, projectGraph.Count);
 
         foreach (var buildInput in GetBuildInputs(root, projectGraph))
             Assert.Contains($"'{buildInput}'", cacheStep, StringComparison.Ordinal);

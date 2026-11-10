@@ -57,6 +57,7 @@ internal sealed class TestApp : Application, IXamlMetadataProvider
         var resourceCache = localization.GetField("s_resourceManager", BindingFlags.NonPublic | BindingFlags.Static)
             ?? throw new MissingFieldException(localization.FullName, "s_resourceManager");
         resourceCache.SetValue(null, productResources);
+        UnhandledException += (_, args) => OpenClaw.TestSupport.NativeTestFailureTrace.Write(args.Exception);
         UnhandledException += CreateExceptionReporter(diagnostics, NativeUiExceptionSource.WinUiUnhandled);
     }
 

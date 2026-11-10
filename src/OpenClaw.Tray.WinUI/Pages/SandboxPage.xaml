@@ -34,7 +34,11 @@
 
             </Grid>
 
+            <InfoBar x:Name="UploadCleanupWarning" x:Uid="SandboxPage_UploadCleanupWarning"
+                     Severity="Warning" IsOpen="False" IsClosable="False" />
+
             <Expander x:Name="ScopeExpander"
+                      AutomationProperties.AutomationId="ScopeExpander"
                       AutomationProperties.LabeledBy="{Binding ElementName=ScopeExpanderLabel}"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch"
@@ -72,10 +76,10 @@
                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}"
                                   VerticalAlignment="Top"
                                   Margin="0,2,0,0" />
-                        <TextBlock Grid.Column="1" TextWrapping="Wrap">
+                        <TextBlock Grid.Column="1" AutomationProperties.AutomationId="SandboxContainedOperations" TextWrapping="Wrap">
                             <Run x:Uid="SandboxPage_CommandsTheAgentRuns" Text="Commands the agent runs through the Windows node (" />
                             <Run x:Uid="SandboxPage_SystemRun" Text="system.run" FontFamily="Consolas" />
-                            <Run x:Uid="SandboxPage_AreContainedByThe" Text=") are contained by the settings below." />
+                            <Run x:Uid="SandboxPage_AreContainedByThe" Text=") and file actions use the Sandbox settings below." />
                         </TextBlock>
                     </Grid>
 

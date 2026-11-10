@@ -11,6 +11,7 @@ param(
     [string]$Runtime,
     [string]$Filter,
     [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0,
+    [switch]$CollectNativeFailureMetadata,
     [switch]$CaptureHostExit,
     [ValidateSet('Unchanged', 'Enabled', 'Disabled')][string]$AnimationPreference = 'Unchanged',
     [switch]$AllowUserAnimationPreferenceChange,
@@ -144,6 +145,17 @@ if ($AnimationPreference -ne 'Unchanged' -or $isNativeUiProject) {
 
 if ($null -eq $script:testExitCode) { throw 'The test command did not return an exit code.' }
 if ($script:testExitCode -ne 0) {
+    if ($CollectNativeFailureMetadata) {
+        try {
+            . (Join-Path $PSScriptRoot "NativeTestFailureMetadata.ps1")
+            Write-CiNativeFailureMetadata -StartedUtc $invocation.startedUtc `
+                -TestCommandExitCode $script:testExitCode `
+                -OutputPath (Join-Path $ResultsDirectory "native-failure.json")
+        } catch {
+            Write-Warning ("Secondary native diagnostic failure ({0}); preserving test exit code {1}." -f
+                $_.Exception.GetType().Name, $script:testExitCode)
+        }
+    }
     exit $script:testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped:(-not $RequireAllTestsPassed)
