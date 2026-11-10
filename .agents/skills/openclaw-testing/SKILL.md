@@ -193,18 +193,21 @@ Windows desktop, and emits inventory-bound evidence. CI runs the same
 accessibility category through its own prebuilt test-lane command.
 
 For deterministic real-app chat and navigation behavior, build the exact app and
-use the fixture. Runtime regressions require both Debug and production-shaped,
+use the fixture on an authorized exclusive interactive desktop. The complete
+fixture UI selection includes owned foreground wheel input, explicitly enabled
+with `-NativeInputProof`; its exact opt-in, foreground and injected-event guards
+remain mandatory. Runtime regressions require both Debug and production-shaped,
 non-Dev Release runs:
 
 ```powershell
 .\build.ps1
 $debugApp = '.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
-.\scripts\test-gateway-fixture.ps1 -AppPath $debugApp
+.\scripts\test-gateway-fixture.ps1 -AppPath $debugApp -NativeInputProof
 
 .\build.ps1 -Project WinUI -Configuration Release
 $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
 .\scripts\test-gateway-fixture.ps1 `
-  -AppPath $releaseApp -Configuration Release -Screenshots
+  -AppPath $releaseApp -Configuration Release -Screenshots -NativeInputProof
 ```
 
 Use `win-arm64` on a native ARM64 host. The fixture proves the real app,

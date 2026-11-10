@@ -819,9 +819,13 @@ public sealed class WorkspaceWindowProofTests
         var scale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
         Assert.InRange((customize.Top - initialHomeBounds.Top) / scale, -1, 4);
         Assert.True(customize.Right <= initialHomeBounds.Right + 1);
-        // NavigationViewItemSeparator is decorative and has no automation peer.
-        // Its native spacing separates Home from the first and only section header.
-        Assert.InRange((sessionsHeader.Top - initialHomeBounds.Bottom) / scale, 4, 48);
+        var defaultPin = Find(workspaceElement, "WorkspacePinnedPage:dashboards");
+        Assert.Equal(pid, defaultPin.Current.ProcessId);
+        Assert.False(defaultPin.Current.IsOffscreen);
+        var defaultPinBounds = defaultPin.Current.BoundingRectangle;
+        Assert.InRange((defaultPinBounds.Top - initialHomeBounds.Bottom) / scale, -1, 8);
+        // The decorative separator follows the default pin, not Home. Keep the same gap contract.
+        Assert.InRange((sessionsHeader.Top - defaultPinBounds.Bottom) / scale, 4, 48);
         foreach (var obsolete in new[] { "Pages", "Pin pages here with the customize button." })
             Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.NameProperty, obsolete)));

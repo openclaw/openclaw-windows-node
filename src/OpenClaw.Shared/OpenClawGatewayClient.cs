@@ -396,6 +396,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _hasHandshakeSnapshot, false);
         Volatile.Write(ref _advertisedServerMethods, Array.Empty<string>());
         Volatile.Write(ref _advertisedServerCapabilities, Array.Empty<string>());
+        ResetBoardHelloFacts();
         Interlocked.Increment(ref _serverHandshakeGeneration);
         _pendingRequests.Drain(
             new GatewayConnectionLostException(
@@ -2871,6 +2872,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             Volatile.Write(
                 ref _advertisedServerCapabilities,
                 GatewayServerMethodAdvertisement.ParseCapabilities(payload));
+            CaptureBoardHelloFacts(payload);
             Interlocked.Increment(ref _serverHandshakeGeneration);
             // Write the key first, then publish the readiness flag. Pair with
             // Volatile.Read on the public getters so a reader observing
@@ -3948,6 +3950,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ConfigurationChanged?.Invoke(this, EventArgs.Empty);
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 SystemsInventoryChanged?.Invoke(this, "config.changed");
+                break;
+            case "board.changed":
+            case "board.command":
+                HandleBoardEvent(eventType!, root);
                 break;
             case "chat.metadata.changed":
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
@@ -5380,7 +5386,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (item.TryGetProperty("model", out var model))
         {
             var newModel = model.GetString();
-            if (session.Model != newModel)
+            // A freshly parsed row has no previous model; only a real change is worth logging.
+            if (session.Model is not null && session.Model != newModel)
                 _logger.Info($"[SESSION] {session.Key}: model changed '{session.Model}' → '{newModel}'");
             session.Model = newModel;
         }

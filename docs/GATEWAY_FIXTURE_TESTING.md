@@ -140,7 +140,7 @@ passes `-NoBuild` to reuse their matching configuration and RID outputs. Local
 runs build the test projects by default. Neither path adds a separate MSBuild
 `Platform` output tree. Each test-project invocation retains a 900-second default
 deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. The ordinary hosted
-mock-Gateway scenarios step explicitly uses 1200 seconds inside its unchanged
+mock-Gateway scenarios step explicitly uses 1500 seconds inside its unchanged
 30-minute outer bound. Timeouts still terminate only the owned test process tree;
 missing reports, zero tests, failures and skipped selected tests still fail proof.
 
@@ -203,16 +203,26 @@ published token file, within the existing startup deadline. Missing-file,
 permission and other I/O failures are not hidden.
 The token value is never included in readiness diagnostics.
 
+Teardown retains process handles for the fixture app and its confirmed nested
+WebView2 descendants before stopping the app tree. It reaps those owned
+processes before deleting the isolated profile. Process, listener and profile
+cleanup failures remain separate errors in the teardown aggregate; a profile
+deletion failure does not hide an earlier process failure.
+
 ## Run the application smoke
 
+Use an authorized, exclusive interactive desktop. The complete ordinary UI
+selection includes native mouse-wheel input to the owned foreground fixture
+window, so request that proof explicitly:
+
 ```powershell
-.\scripts\test-gateway-fixture.ps1 -AppPath $app
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -NativeInputProof
 ```
 
 For screenshots, use owned-window native capture (no Windows App CLI installation is needed):
 
 ```powershell
-.\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots -NativeInputProof
 ```
 
 The script runs profile/preflight and polling tests, real-process MCP tests, and native UI
@@ -220,11 +230,19 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
-On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
-separate foreground keyboard fixture lane as well. It enables native input only
-in that child test process and rejects failed, skipped, and zero-test runs. The
-default fixture lane excludes those keyboard-dependent cases; it does not claim
-their proof.
+`-NativeInputProof` enables the strict native-input opt-in only in the ordinary
+fixture UI child process. Profile/preflight and released-profile children retain
+that stricter opt-in at `0`, and inherited environment variables cannot enable it.
+Existing fixture-keyboard journeys retain their own fixture/foreground guards. Without
+the switch, the wheel-bearing selection fails closed; it never omits wheel
+assertions or reports complete proof from UIA scrolling alone. The test still
+checks the owned HWND, foreground state, exact injected event count and cursor
+restoration. No machine-wide setting or CI identity override is used.
+
+Add `-KeyboardProof` separately to select the existing keyboard-only fixture lane
+as well. That option enables only its own child and still rejects failed,
+skipped, and zero-test runs. The ordinary UI filter continues to exclude those
+keyboard-only cases; `-NativeInputProof` does not select them.
 
 ### Saved Gateway ownership and released profiles
 
@@ -272,9 +290,10 @@ mismatch, failed case, or zero/skipped selection is not compatibility proof.
 
 The dedicated `windows-latest` Gateway fixture job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
-`Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
-the child test processes and selects `Category=GatewayFixture` without keyboard-only
-cases, including the
+`Directory.Build.props`. Its dedicated step passes `-NativeInputProof` to the
+wrapper on that owned interactive runner. The wrapper enables native input only
+in the ordinary fixture UI child and selects `Category=GatewayFixture` without
+keyboard-only cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
 run receipts and owned-window screenshots are uploaded in `test-results-gateway-fixture`
@@ -988,7 +1007,7 @@ the same smoke against a non-Dev Release build without an attached debugger:
 ```powershell
 .\build.ps1 -Project WinUI -Configuration Release
 $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
-.\scripts\test-gateway-fixture.ps1 -AppPath $releaseApp -Configuration Release -Screenshots
+.\scripts\test-gateway-fixture.ps1 -AppPath $releaseApp -Configuration Release -Screenshots -NativeInputProof
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
@@ -1123,6 +1142,71 @@ Backend and independent app instances can run concurrently. UI tests are
 serialized on a shared desktop; focus-dependent GUI workers need separate
 Windows sessions or VMs. Interactive streaming uses the same per-instance
 server/profile ownership described below.
+
+## Dashboards without a real Gateway
+
+The opt-in `dashboards` scenario serves synthetic boards for the Dashboards
+page: a multi-tab board with HTML, report, website, pending, rejected,
+broken, MCP app and disabled-plugin widgets, plus release, research and empty
+boards. Widget documents and the sandbox proxy are served from loopback, so
+no real board or capability grant is touched:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards
+```
+
+Pass `-Theme Dark` to seed the disposable profile for dark-theme proof.
+Omitting `-Theme` uses `Light`:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards -Theme Dark
+```
+
+The focused native regression runs both themes, captures the gallery, HTML and
+report widgets, approval/error states, tabs, the website link card and an empty
+board, and scans the populated gallery and board with Axe.Windows. It also
+asserts that the gallery sends no `board.get` before a card opens and that no
+board mutation, grant, or action request is sent. English Windows OCR verifies
+visible widget text in owned-window captures because UI Automation on some
+hosts stops at the WebView pane. A pixel guard also requires the deployment
+curve's plot area to have a luminance range of at least 64; a blank SVG cannot
+pass merely because its heading rendered. The companion mounted tests
+(`DashboardWidgetCellTests`) verify widget recovery messages, website links
+without an embedded browser, and the web Dashboards handoff. The scenario needs
+no outbound network: websites are links, not embedded pages, and the run uses no
+production Gateway or browser credentials.
+
+The gallery fixture includes six main-agent boards to exercise Fresh today and
+the filter threshold. The title-bar Back button is exercised after visiting the
+website tab. `DashboardWidgetCellTests.GalleryStates_KeepFailuresDistinctFromEmptyAndDenied`
+also mounts the actual Reactor gallery for empty, loading, read-denied,
+first-load error, stale-refresh, and 30-row states. Set
+`OPENCLAW_DASHBOARD_STATE_ARTIFACTS` to a dedicated local directory to save
+light/dark RenderTargetBitmap captures of those native controls; these do not
+capture Mica or HTML WebViews and are separate from owned-window fixture proof.
+
+On an authorized Windows desktop, after building the explicit app:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = '<dedicated-artifact-directory>'
+$env:OPENCLAW_TRAY_DATA_DIR = '<dedicated-test-profile>'
+$env:OPENCLAW_TRAY_LOCAL_DATA_DIR = '<dedicated-test-local-directory>'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -c Debug -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~DashboardsRenderNativeReports|FullyQualifiedName~DashboardWidgetCellTests'
+```
+
+For x64 use `-r win-x64 -p:Platform=x64`. Inspect the saved PNGs as well as the
+test results. This is synthetic Gateway/UI proof, not real Gateway pairing, a
+browser launch, or a working MCP app host, which remains deferred to the web
+Dashboards.
+
+Fixture teardown retains handles to WebView browser children whose parent ID
+and start time match the owned app, and stops only those processes. A sharing
+violation while their Crashpad files close is retried for at most 10 seconds.
+Set `OPENCLAW_FIXTURE_CLEANUP_TIMEOUT_SECONDS` before starting the test host to
+override that bound. Other cleanup errors and expired sharing violations fail.
 
 ## Interactive chat without a real Gateway
 

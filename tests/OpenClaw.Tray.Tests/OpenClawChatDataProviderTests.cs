@@ -1716,18 +1716,34 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         {
             bridge.RaiseStatus(ConnectionStatus.Connected);
             await provider.LoadHistoryAsync("main", force: true);
-            var result = await provider.ExecuteLifecycleCommandAsync(
-                "main",
-                ChatLifecycleCommandKind.Compact);
+            var compacted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnChanged(object? sender, ChatDataChangedEventArgs args)
+            {
+                if (args.Snapshot.Timelines.TryGetValue("main", out var timeline) &&
+                    timeline.Entries is [{ Kind: ChatTimelineItemKind.Status }])
+                    compacted.TrySetResult();
+            }
 
-            Assert.True(result.Succeeded);
-            for (var attempt = 0; attempt < 40 && bridge.RequestedHistoryKeys.Count < 3; attempt++)
-                await Task.Delay(100);
+            provider.Changed += OnChanged;
+            try
+            {
+                var result = await provider.ExecuteLifecycleCommandAsync(
+                    "main",
+                    ChatLifecycleCommandKind.Compact);
 
-            Assert.Equal(3, bridge.RequestedHistoryKeys.Count);
-            var timeline = (await provider.LoadAsync()).Timelines["main"];
-            var compactedEntry = Assert.Single(timeline.Entries);
-            Assert.Equal(ChatTimelineItemKind.Status, compactedEntry.Kind);
+                Assert.True(result.Succeeded);
+                // Request admission precedes committing and publishing the retried history.
+                await compacted.Task.WaitAsync(TimeSpan.FromSeconds(4));
+
+                Assert.Equal(3, bridge.RequestedHistoryKeys.Count);
+                var timeline = (await provider.LoadAsync()).Timelines["main"];
+                var compactedEntry = Assert.Single(timeline.Entries);
+                Assert.Equal(ChatTimelineItemKind.Status, compactedEntry.Kind);
+            }
+            finally
+            {
+                provider.Changed -= OnChanged;
+            }
         }
     }
 

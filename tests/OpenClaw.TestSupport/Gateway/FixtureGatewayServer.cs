@@ -51,6 +51,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly GatewayScenario _scenario;
     private readonly byte[] _tokenHash;
     private readonly TcpListener _listener;
+    private readonly TcpListener? _sandboxListener;
+    private readonly Task _sandboxLoop = Task.CompletedTask;
     private readonly CancellationTokenSource _lifetime;
     private readonly object _sync = new();
     private readonly List<Task> _connections = [];
@@ -155,6 +157,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         Endpoint = new Uri($"ws://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
+        if (scenario.Boards is { } boards)
+        {
+            // The widget sandbox proxy needs its own origin, like the Gateway's sandbox listener.
+            _sandboxListener = new TcpListener(IPAddress.Loopback, 0);
+            _sandboxListener.Start();
+            boards.SandboxPort = ((IPEndPoint)_sandboxListener.LocalEndpoint).Port;
+            _sandboxLoop = SandboxLoopAsync(_sandboxListener);
+        }
         _acceptLoop = AcceptLoopAsync();
     }
 
@@ -757,6 +767,43 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    private async Task SandboxLoopAsync(TcpListener listener)
+    {
+        try
+        {
+            while (true)
+            {
+                var tcp = await listener.AcceptTcpClientAsync(_lifetime.Token);
+                _ = ServeSandboxAsync(tcp);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (SocketException) when (_lifetime.IsCancellationRequested) { }
+        finally { listener.Stop(); }
+    }
+
+    private async Task ServeSandboxAsync(TcpClient tcp)
+    {
+        using (tcp)
+        {
+            try
+            {
+                var stream = tcp.GetStream();
+                var path = RequestPath(await ReadRequestHeadAsync(stream, _lifetime.Token));
+                if (path?.Split('?', 2)[0] == FixtureBoards.SandboxPath)
+                {
+                    if (_scenario.Boards!.BeforeSandboxResponse is { } beforeResponse)
+                        await beforeResponse(_lifetime.Token);
+                    await WriteHttpAsync(stream, 200, "text/html; charset=utf-8", FixtureBoards.SandboxDocument(),
+                        FixtureBoards.SandboxContentSecurityPolicy(), _lifetime.Token);
+                }
+                else
+                    await WriteHttpAsync(stream, 404, "text/plain", "Not Found", null, _lifetime.Token);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or OperationCanceledException or SocketException) { }
+        }
+    }
+
     private async Task ServeConnectionAsync(TcpClient tcp, int connectionId)
     {
         using (tcp)
@@ -771,6 +818,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 var stream = tcp.GetStream();
                 var head = await ReadRequestHeadAsync(stream, connection.Token);
+                if (_scenario.Boards is { } boards && RequestPath(head) is { } path &&
+                    path.StartsWith(FixtureBoards.BoardPathPrefix, StringComparison.Ordinal))
+                {
+                    // Ticketed widget documents share the Gateway origin, like the real board HTTP route.
+                    var (status, body) = boards.ServeWidget(path);
+                    await WriteHttpAsync(stream, status, "text/html; charset=utf-8", body, null, connection.Token);
+                    return;
+                }
                 if (await TryServeAvatarAsync(stream, head, connection.Token))
                     return;
                 socket = await UpgradeAsync(stream, head, connection.Token);
@@ -1248,6 +1303,25 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         return Encoding.ASCII.GetString(headers.ToArray()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
     }
 
+    private static string? RequestPath(string[] lines)
+    {
+        var parts = lines.Length == 0 ? [] : lines[0].Split(' ');
+        return parts.Length == 3 && parts[0] == "GET" && parts[2] == "HTTP/1.1" ? parts[1] : null;
+    }
+
+    private static async Task WriteHttpAsync(
+        NetworkStream stream, int status, string contentType, string body, string? csp, CancellationToken ct)
+    {
+        var bytes = Encoding.UTF8.GetBytes(body);
+        var reason = status switch { 200 => "OK", 401 => "Unauthorized", 404 => "Not Found", _ => "Error" };
+        var head = $"HTTP/1.1 {status} {reason}\r\nContent-Type: {contentType}\r\nContent-Length: {bytes.Length}\r\n" +
+            "Cache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n" +
+            (csp is null ? "" : $"Content-Security-Policy: {csp}\r\n") + "\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await stream.WriteAsync(bytes, ct);
+        await stream.FlushAsync(ct);
+    }
+
     /// <summary>
     /// Serves the one plain-HTTP route the Companion window needs besides the WebSocket: the authenticated
     /// scenario profile photo. Any other HTTP request is left for the upgrade check, which rejects and records it.
@@ -1357,6 +1431,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _chatAbortGate = null;
         }
         await _acceptLoop;
+        await _sandboxLoop;
         Task[] connections;
         lock (_sync) connections = _connections.ToArray();
         try { await Task.WhenAll(connections); }

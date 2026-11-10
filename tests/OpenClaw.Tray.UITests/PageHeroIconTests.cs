@@ -49,6 +49,7 @@ public sealed class PageHeroIconTests(UIThreadFixture ui)
                 "page hero SVG host mounted"));
             await ui.RunOnUIAsync(() =>
             {
+                Assert.False(Assert.IsType<TextBlock>(Find(surface, "IconHeroTitle")).IsTabStop);
                 var host = Assert.IsType<Border>(Find(surface, "CronPageMarker"));
                 var image = Assert.IsType<Image>(host.Child);
                 var svg = Assert.IsType<SvgImageSource>(image.Source);

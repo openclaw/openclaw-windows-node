@@ -55,11 +55,13 @@ if (args is ["--file-worker-cache", var productDirectory, var cacheRoot, var cac
     }
 }
 
-if (args is ["--browser-proxy", var gatewayPortText, var proxyMode]
+if (args is [var transport, var gatewayPortText, var proxyMode]
+    && transport is "--browser-proxy" or "--board-document"
     && int.TryParse(gatewayPortText, out var gatewayPort)
     && proxyMode is "production" or "default-handler")
 {
-    var destination = new Uri($"http://127.0.0.1:{gatewayPort + 2}/tabs");
+    var destination = new Uri($"http://127.0.0.1:{gatewayPort + 2}/" +
+        (transport == "--board-document" ? "__openclaw__/board/k/w/index.html?bt=synthetic-view-ticket" : "tabs"));
     var expectedProxy = new Uri(Environment.GetEnvironmentVariable("HTTP_PROXY")
         ?? throw new InvalidOperationException("The proxy fixture requires HTTP_PROXY."));
     // Initialize the cached proxy before the capability, so the old transport cannot pass by accident.
@@ -68,6 +70,23 @@ if (args is ["--browser-proxy", var gatewayPortText, var proxyMode]
     {
         Console.Error.WriteLine("The process proxy fixture is not effective for loopback.");
         return 65;
+    }
+
+    if (transport == "--board-document")
+    {
+        using var loader = new OpenClaw.Shared.Dashboards.BoardWidgetDocumentLoader(
+            proxyMode == "default-handler" ? new HttpClientHandler() : null);
+        try
+        {
+            var document = await loader.LoadAsync(destination, CancellationToken.None);
+            Console.WriteLine(document);
+            return document == "<!doctype html><p>synthetic board</p>" ? 0 : 1;
+        }
+        catch (OpenClaw.Shared.Dashboards.BoardWidgetDocumentException ex)
+        {
+            Console.Error.WriteLine(ex.Failure);
+            return 1;
+        }
     }
 
     var capability = new BrowserProxyCapability(
