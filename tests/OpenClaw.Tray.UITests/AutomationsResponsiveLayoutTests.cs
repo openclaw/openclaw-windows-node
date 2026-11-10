@@ -489,17 +489,26 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                         "The native client crops the required page-host height.");
                 }
             });
+            OwnedWindowCapture.WindowGeometry? qualifiedCapture = null;
+            if (capture && width < 400)
+            {
+                // The required client and mounted layout were qualified above. Preserve that
+                // exact native frame rather than applying the ordinary window-width heuristic.
+                qualifiedCapture = OwnedWindowCapture.ReadCurrentProcessGeometry(proofHandle);
+                Assert.Equal(requestedClient.Width, qualifiedCapture.ClientPixels.Width);
+                Assert.Equal(requestedClient.Height, qualifiedCapture.ClientPixels.Height);
+            }
+            void CaptureQualifiedViewport(string name) => OwnedWindowCapture.SaveCurrentProcessWindow(
+                proofHandle, runId, artifacts, name, qualifiedCapture);
             if (capture)
             {
-                OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, $"automations-responsive-{width}-Light-details.png");
+                CaptureQualifiedViewport($"automations-responsive-{width}-Light-details.png");
                 await ui.RunOnUIAsync(() => Assert.IsType<ScrollView>(Find(surface!, "CronPageMarker"))
                     .ScrollTo(0, 0, new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
                 await ui.YieldToRenderAsync();
-                OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, $"automations-responsive-{width}-Light.png");
+                CaptureQualifiedViewport($"automations-responsive-{width}-Light.png");
             }
-            await AssertPageScrollAsync(surface!, width, capture
-                ? name => OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, name)
-                : null);
+            await AssertPageScrollAsync(surface!, width, capture ? CaptureQualifiedViewport : null);
             if (capture && (actionsBelowTitle || width == 937))
             {
                 var rowOffset = await ui.RunOnUIAsync(() =>
@@ -538,8 +547,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                             targets = targets.Select(id => new { id, bounds = Bounds(Find(surface!, id), surface!) }),
                         }));
                 });
-                await CaptureViewportFrameAsync(surface!, rowOffset,
-                    name => OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts, name),
+                await CaptureViewportFrameAsync(surface!, rowOffset, CaptureQualifiedViewport,
                     $"automations-header-action-{width}-Light.png");
                 await ScrollPageAsync(surface!, 0);
             }

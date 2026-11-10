@@ -81,16 +81,19 @@ internal static class OwnedWindowCapture
         SaveCore(run.AppProcessId, run.Profile.RunId, run.ArtifactsDirectory, window, name, assertedElements, cancellationToken);
     }
 
-    internal static void SaveCurrentProcessWindow(IntPtr handle, string runId, string artifactsDirectory, string name)
+    internal static void SaveCurrentProcessWindow(IntPtr handle, string runId, string artifactsDirectory, string name,
+        WindowGeometry? qualifiedGeometry = null)
     {
         GetWindowThreadProcessId(handle, out var owner);
         Assert.Equal((uint)Environment.ProcessId, owner);
         Assert.Equal(handle, GetForegroundWindow());
-        SaveCore(Environment.ProcessId, runId, artifactsDirectory, AutomationElement.FromHandle(handle), name, []);
+        SaveCore(Environment.ProcessId, runId, artifactsDirectory, AutomationElement.FromHandle(handle), name, [],
+            qualifiedGeometry: qualifiedGeometry);
     }
 
     private static void SaveCore(int appProcessId, string runId, string artifactsDirectory, AutomationElement window,
-        string name, AutomationElement[] assertedElements, CancellationToken cancellationToken = default)
+        string name, AutomationElement[] assertedElements, CancellationToken cancellationToken = default,
+        WindowGeometry? qualifiedGeometry = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var handle = new IntPtr(window.Current.NativeWindowHandle);
@@ -103,7 +106,8 @@ internal static class OwnedWindowCapture
         {
             Assert.True(GetWindowRect(handle, out var rect));
             var bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
-            Assert.True(bounds.Width >= 400 && bounds.Height >= 300);
+            AssertCaptureGeometry(bounds, qualifiedGeometry,
+                qualifiedGeometry is null ? null : ReadCurrentProcessGeometry(handle));
             var assertions = assertedElements.Select(element =>
             {
                 Assert.Equal(appProcessId, element.Current.ProcessId);
@@ -125,6 +129,8 @@ internal static class OwnedWindowCapture
             }
             Assert.True(GetWindowRect(handle, out var after));
             Assert.Equal(rect, after);
+            if (qualifiedGeometry is not null)
+                AssertCaptureGeometry(bounds, qualifiedGeometry, ReadCurrentProcessGeometry(handle));
             // Exclude the title bar and native border: a rendered caption around blank content is not proof.
             var colors = new HashSet<int>();
             for (var y = 70; y < image.Height - 20; y += Math.Max(1, image.Height / 100))
@@ -138,12 +144,35 @@ internal static class OwnedWindowCapture
             File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonSerializer.Serialize(new
             {
                 RunId = runId, AppProcessId = appProcessId, hwnd = $"0x{handle:X}",
-                capturedAtUtc = DateTimeOffset.UtcNow, bounds, sampledContentColors = colors.Count,
+                capturedAtUtc = DateTimeOffset.UtcNow, bounds, qualifiedGeometry, sampledContentColors = colors.Count,
                 sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
                 assertions, method = "PrintWindow(PW_RENDERFULLCONTENT); owned HWND only; synthetic Gateway"
             }, new JsonSerializerOptions { WriteIndented = true }));
         }
         finally { SetThreadDpiAwarenessContext(previousDpi); }
+    }
+
+    /// <summary>
+    /// Ordinary captures keep their minimum bounds. A caller that already proved an exact
+    /// native viewport may instead pin that HWND/process/DPI/client/frame geometry for capture.
+    /// This admits a narrow image, not its layout, foreground, pixels or accessibility.
+    /// </summary>
+    internal static void AssertCaptureGeometry(Rectangle bounds, WindowGeometry? qualifiedGeometry = null,
+        WindowGeometry? measuredGeometry = null)
+    {
+        Assert.True(bounds.Width > 0 && bounds.Height >= 300);
+        if (qualifiedGeometry is null)
+        {
+            Assert.True(bounds.Width >= 400);
+            return;
+        }
+        Assert.NotNull(measuredGeometry);
+        Assert.Equal(qualifiedGeometry, measuredGeometry);
+        Assert.Equal(qualifiedGeometry.WindowPixels, bounds);
+        Assert.True(qualifiedGeometry.Dpi > 0 && qualifiedGeometry.ProcessId > 0);
+        Assert.True(qualifiedGeometry.ClientPixels.Width > 0 && qualifiedGeometry.ClientPixels.Height > 0);
+        Assert.True(bounds.Width >= qualifiedGeometry.ClientPixels.Width
+            && bounds.Height >= qualifiedGeometry.ClientPixels.Height);
     }
 
     [StructLayout(LayoutKind.Sequential)]

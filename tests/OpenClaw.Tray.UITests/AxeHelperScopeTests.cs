@@ -1,4 +1,5 @@
 using Axe.Windows.Core.Enums;
+using System.Drawing;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -18,6 +19,85 @@ public sealed class AxeHelperScopeTests
     public void ClosedLoopResize_UsesMeasuredHostDeltaAndPreservesShellMinimum(
         int currentPixels, double desiredHostDip, double measuredHostDip, double scale, int expectedPixels) =>
         Assert.Equal(expectedPixels, OwnedWindowCapture.CorrectedWindowWidthPixels(currentPixels, desiredHostDip, measuredHostDip, scale));
+
+    [Theory]
+    [InlineData(379, 395)]
+    [InlineData(380, 396)]
+    public void CaptureGeometry_AdmitsTheExactQualifiedNarrowFrame(int clientWidth, int windowWidth)
+    {
+        var qualified = CaptureGeometry() with
+        {
+            ClientPixels = new Rectangle(0, 0, clientWidth, 900),
+            WindowPixels = new Rectangle(40, 40, windowWidth, 939),
+        };
+        OwnedWindowCapture.AssertCaptureGeometry(qualified.WindowPixels, qualified, qualified with { });
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+            OwnedWindowCapture.AssertCaptureGeometry(qualified.WindowPixels));
+    }
+
+    [Theory]
+    [InlineData(400, 300, true)]
+    [InlineData(399, 300, false)]
+    [InlineData(400, 299, false)]
+    [InlineData(0, 300, false)]
+    public void CaptureGeometry_OrdinaryThresholdsRemainUnchanged(int width, int height, bool admitted)
+    {
+        var bounds = new Rectangle(40, 40, width, height);
+        if (admitted) OwnedWindowCapture.AssertCaptureGeometry(bounds);
+        else Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => OwnedWindowCapture.AssertCaptureGeometry(bounds));
+    }
+
+    [Theory]
+    [InlineData("hwnd")]
+    [InlineData("pid")]
+    [InlineData("process-start")]
+    [InlineData("dpi")]
+    [InlineData("client")]
+    [InlineData("frame-size")]
+    [InlineData("frame-position")]
+    public void CaptureGeometry_RejectsIdentityOrGeometryDrift(string change)
+    {
+        var qualified = CaptureGeometry();
+        var measured = change switch
+        {
+            "hwnd" => qualified with { Hwnd = "0x456" },
+            "pid" => qualified with { ProcessId = 202 },
+            "process-start" => qualified with { ProcessStartedUtc = qualified.ProcessStartedUtc.AddSeconds(1) },
+            "dpi" => qualified with { Dpi = 120 },
+            "client" => qualified with { ClientPixels = new Rectangle(0, 0, 380, 900) },
+            "frame-size" => qualified with { WindowPixels = new Rectangle(40, 40, 396, 939) },
+            "frame-position" => qualified with { WindowPixels = new Rectangle(41, 40, 395, 939) },
+            _ => throw new ArgumentOutOfRangeException(nameof(change)),
+        };
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+            OwnedWindowCapture.AssertCaptureGeometry(measured.WindowPixels, qualified, measured));
+    }
+
+    [Fact]
+    public void CaptureGeometry_RequiresMeasurementAndRejectsMismatchedBounds()
+    {
+        var qualified = CaptureGeometry();
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+            OwnedWindowCapture.AssertCaptureGeometry(qualified.WindowPixels, qualified));
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+            OwnedWindowCapture.AssertCaptureGeometry(new Rectangle(40, 40, 396, 939), qualified, qualified));
+    }
+
+    [Theory]
+    [InlineData(0, 900)]
+    [InlineData(379, 0)]
+    [InlineData(396, 900)]
+    [InlineData(379, 940)]
+    public void CaptureGeometry_RejectsEmptyOrClippedQualifiedClient(int width, int height)
+    {
+        var invalid = CaptureGeometry() with { ClientPixels = new Rectangle(0, 0, width, height) };
+        Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+            OwnedWindowCapture.AssertCaptureGeometry(invalid.WindowPixels, invalid, invalid));
+    }
+
+    private static OwnedWindowCapture.WindowGeometry CaptureGeometry() => new(
+        "0x123", 101, new DateTime(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc), 96,
+        new Rectangle(40, 40, 395, 939), new Rectangle(0, 0, 379, 900), new Size(1940, 1100));
 
     [Theory]
     [InlineData(101, 101, false, false)]
