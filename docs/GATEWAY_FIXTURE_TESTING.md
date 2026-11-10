@@ -771,6 +771,11 @@ to Wide, checking column counts, sibling bounds, text clipping/ellipsis,
 one-row mast actions, card insets/alignment and export feedback. These are
 geometry/renderer checks, not real-shell screenshot acceptance.
 
+Pinned Usage keyboard proof retains main's native tab cycle: pane/history,
+title bar, Dashboard, Notifications, then visible page content. Exact intermediate
+focus and a reverse/forward content roundtrip guard against skipped controls and
+focus traps; visual adjacency is not the native XAML tab order.
+
 `UsageResponsive_RealShellCapturesMeasuredWidthsAndCollapsedNavigation` uses
 the isolated released-Gateway fixture and owned-HWND PrintWindow capture.
 Its per-state manifest records measured host/content widths, the shared tier,

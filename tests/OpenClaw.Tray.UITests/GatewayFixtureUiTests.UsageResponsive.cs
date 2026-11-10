@@ -336,9 +336,84 @@ public sealed partial class GatewayFixtureUiTests
                             await WaitUiAsync(run, () => history.Current.HasKeyboardFocus, $"real Tab to enabled {id}");
                         }
 
+                        // History is the last Root child. Native Tab order wraps through the
+                        // title bar and its visible actions before returning to page content.
+                        void RecordTabFocus(string step)
+                        {
+                            int? focusedPid = null;
+                            object? ownedFocus = null;
+                            string? observationError = null;
+                            try
+                            {
+                                var focused = AutomationElement.FocusedElement;
+                                focusedPid = focused?.Current.ProcessId;
+                                if (focused is not null && focusedPid == run.AppProcessId)
+                                    ownedFocus = Describe(focused);
+                            }
+                            catch (ElementNotAvailableException error)
+                            {
+                                observationError = error.Message;
+                            }
+                            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"tab-{theme}-{step}.json"),
+                                JsonSerializer.Serialize(new
+                                {
+                                    step, expectedPid = run.AppProcessId,
+                                    foregroundWindow = GetForegroundWindow().ToString("X"),
+                                    focusedPid, ownedFocus, observationError,
+                                }, new JsonSerializerOptions { WriteIndented = true }));
+                        }
+                        async Task TabToShellControl(string id, ControlType controlType, bool reverse = false)
+                        {
+                            var expectedFocus = FindById(run, id)
+                                ?? throw new InvalidOperationException($"Missing title-bar focus target {id}.");
+                            Assert.Equal(run.AppProcessId, expectedFocus.Current.ProcessId);
+                            Assert.Equal(controlType, expectedFocus.Current.ControlType);
+                            Assert.True(expectedFocus.Current.IsEnabled);
+                            Assert.False(expectedFocus.Current.IsOffscreen);
+                            NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab, shift: reverse);
+                            try
+                            {
+                                await WaitUiAsync(run, () => expectedFocus.Current.HasKeyboardFocus,
+                                    $"real {(reverse ? "Shift+Tab" : "Tab")} to {id}");
+                            }
+                            finally { RecordTabFocus((reverse ? "reverse-" : "") + id); }
+                            AssertOwnedForeground(handle, GetForegroundWindow);
+                            Assert.Equal(expectedFocus.GetRuntimeId(), AutomationElement.FocusedElement.GetRuntimeId());
+                        }
+                        bool HasVisibleContentFocus()
+                        {
+                            if (AutomationElement.FocusedElement is not { } focused) return false;
+                            var bounds = focused.Current.BoundingRectangle;
+                            return focused.Current.ProcessId == run.AppProcessId && focused.Current.HasKeyboardFocus
+                                && !focused.Current.IsOffscreen && bounds.Width > 0 && bounds.Height > 0
+                                && content.Current.BoundingRectangle.Contains(bounds) && IsWithin(focused, content);
+                        }
+                        Assert.True(FindById(run, "WorkspaceTitleBarOwner") is null or { Current.IsOffscreen: true });
+                        await TabToShellControl("WorkspaceTitleBar", ControlType.TitleBar);
+                        await TabToShellControl("WorkspaceTitleBarDashboard", ControlType.Button);
+                        await TabToShellControl("WorkspaceTitleBarNotifications", ControlType.Button);
+                        Assert.True(FindById(run, "WorkspaceNotificationsOpenPage") is null or { Current.IsOffscreen: true },
+                            "Tab focus must not open the notifications flyout.");
                         NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab);
-                        await WaitUiAsync(run, () => IsWithin(AutomationElement.FocusedElement, content),
-                            "real Tab from history into Usage content");
+                        try
+                        {
+                            await WaitUiAsync(run, HasVisibleContentFocus,
+                                "real Tab from title-bar actions into visible Usage content");
+                        }
+                        finally { RecordTabFocus("Usage-content"); }
+                        AssertOwnedForeground(handle, GetForegroundWindow);
+                        var firstContentFocus = AutomationElement.FocusedElement.GetRuntimeId();
+                        OwnedWindowCapture.Save(run, window, $"Usage-{theme}-pinned-keyboard-content.png",
+                            AutomationElement.FocusedElement);
+                        await TabToShellControl("WorkspaceTitleBarNotifications", ControlType.Button, reverse: true);
+                        NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab);
+                        try
+                        {
+                            await WaitUiAsync(run, () => HasVisibleContentFocus() &&
+                                firstContentFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()),
+                                "real Tab returns to the same Usage control without trapping focus");
+                        }
+                        finally { RecordTabFocus("Usage-content-return"); }
                         await NativeKeyboardProof.ActivateAsync(handle);
                         await ClickToggleAsync("WorkspaceReopenPane", "WorkspaceTogglePane");
                         await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { Current.IsOffscreen: false },
