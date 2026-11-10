@@ -401,6 +401,21 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => transcriptScroll.VerticalAnchorRatio == 1,
+                "bottom anchoring restored after the corrected jump"));
+            await CaptureAsync(surface, "Feedback-resized-jump-latest");
+
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
+            await PublishAsync();
+            await AwaitBottomAsync();
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
+                "\n\n" + string.Join("\n\n", Enumerable.Repeat("Keep following after the corrected jump.", 20))));
+            await PublishAsync();
+            await AwaitBottomAsync();
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
