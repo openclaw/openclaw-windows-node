@@ -764,6 +764,7 @@ foreach ($token in @(
         './scripts/test-gateway-fixture.ps1',
         '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
         '-ArtifactsDirectory .\TestResults\GatewayFixture',
+        '-TestTimeoutSeconds 1200',
         '-Screenshots',
         '-NativeInputProof',
         '-NoBuild'
@@ -867,6 +868,8 @@ Assert-NotContains -Text $fixtureRunner -Unexpected '-p:Platform=' `
 Assert-Contains -Text $fixtureRunner -Expected "if (`$NoBuild) { `$testArguments += @('--no-build', '--no-restore') }" `
     -Message 'Prebuilt fixture execution must not spend its test deadline rebuilding or restoring.'
 $releasedProfileStep = Get-StepBlock -Text $fixtureJob -Name 'Run latest stable profile compatibility'
+Assert-NotContains -Text $releasedProfileStep -Unexpected '-TestTimeoutSeconds' `
+    -Message 'The longer deadline belongs only to the ordinary mock-Gateway scenarios step.'
 Assert-Contains -Text $releasedProfileStep -Expected '-NoBuild' `
     -Message 'Released-profile compatibility must reuse the same prebuilt integration tests.'
 foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
@@ -891,6 +894,28 @@ $fixtureTokens = $null
 $fixtureParseErrors = $null
 $fixtureAst = [Management.Automation.Language.Parser]::ParseInput($fixtureRunner, [ref]$fixtureTokens, [ref]$fixtureParseErrors)
 if ($fixtureParseErrors.Count -ne 0) { throw 'Fixture runner must parse before its launch contract is checked.' }
+# Exercise the real parameter binder without resolving or launching an app.
+$fixtureTimeoutProbe = [scriptblock]::Create($fixtureAst.ParamBlock.Extent.Text + "`n[int](`$TestTimeoutSeconds * 1000)")
+if ((& $fixtureTimeoutProbe -AppPath 'unused-built-app.exe') -ne 900000) {
+    throw 'Existing fixture callers must retain the 900-second default.'
+}
+foreach ($case in @(@{ Seconds = 1; Milliseconds = 1000 }, @{ Seconds = 1200; Milliseconds = 1200000 },
+        @{ Seconds = 1800; Milliseconds = 1800000 })) {
+    if ((& $fixtureTimeoutProbe -AppPath 'unused-built-app.exe' -TestTimeoutSeconds $case.Seconds) -ne $case.Milliseconds) {
+        throw "Fixture timeout conversion failed for $($case.Seconds) seconds."
+    }
+}
+foreach ($invalid in @(0, -1, 1801, [int]::MaxValue, ([long][int]::MaxValue + 1), [double]::PositiveInfinity)) {
+    try {
+        & $fixtureTimeoutProbe -AppPath 'unused-built-app.exe' -TestTimeoutSeconds $invalid | Out-Null
+        throw "Fixture timeout accepted invalid or overflowing value: $invalid."
+    }
+    catch [System.Management.Automation.ParameterBindingException] { }
+}
+foreach ($token in @('$process.WaitForExit($TestTimeoutSeconds * 1000)', '$process.Kill($true)',
+        '$process.ExitCode -ne 0', 'if (-not (Test-Path -LiteralPath $resultFile))')) {
+    Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture timeout/result admission lost '$token'."
+}
 $startInfoFunction = @($fixtureAst.FindAll({ param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-FixtureTestStartInfo'
 }, $true))

@@ -11,6 +11,9 @@ child on an exclusive interactive desktop. It does not select the separate keybo
 .PARAMETER NoBuild
 Use test projects already built for the selected configuration and native runtime.
 Both the IntegrationTests and UITests projects must have matching canonical outputs.
+.PARAMETER TestTimeoutSeconds
+Finite deadline for each test-project invocation, from 1 to 1800 seconds.
+Defaults to 900 seconds. A timeout still terminates only the owned process tree.
 #>
 [CmdletBinding()]
 param(
@@ -23,7 +26,9 @@ param(
     [switch]$NoBuild,
     [switch]$Screenshots,
     [switch]$NativeInputProof,
-    [switch]$KeyboardProof
+    [switch]$KeyboardProof,
+    [ValidateRange(1, 1800)]
+    [int]$TestTimeoutSeconds = 900
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -68,9 +73,9 @@ function Invoke-FixtureTests {
         -EnableKeyboardProof:$EnableKeyboardProof
     $process = [Diagnostics.Process]::Start($start)
     try {
-        if (-not $process.WaitForExit(900000)) {
+        if (-not $process.WaitForExit($TestTimeoutSeconds * 1000)) {
             $process.Kill($true)
-            throw "$ResultName exceeded 15 minutes. Stopped only the owned test process tree."
+            throw "$ResultName exceeded $TestTimeoutSeconds seconds. Stopped only the owned test process tree."
         }
         if ($process.ExitCode -ne 0) { throw "$ResultName failed (exit $($process.ExitCode)). Results: $resultsDirectory" }
     } finally {

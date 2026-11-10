@@ -138,7 +138,11 @@ app is never discovered or selected implicitly.
 CI builds the UI and integration test projects before running the fixture and
 passes `-NoBuild` to reuse their matching configuration and RID outputs. Local
 runs build the test projects by default. Neither path adds a separate MSBuild
-`Platform` output tree, and the fixture execution deadline is unchanged.
+`Platform` output tree. Each test-project invocation retains a 900-second default
+deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. The ordinary hosted
+mock-Gateway scenarios step explicitly uses 1200 seconds inside its unchanged
+30-minute outer bound. Timeouts still terminate only the owned test process tree;
+missing reports, zero tests, failures and skipped selected tests still fail proof.
 
 ```powershell
 .\build.ps1
