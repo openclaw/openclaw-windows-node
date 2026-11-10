@@ -69,11 +69,22 @@ public sealed class PageHeroFocusRetentionTests(UIThreadFixture ui)
                     renderer!.Mount(_ => Render());
                     ui.Container.UpdateLayout();
                 });
+                // Mount queues reconciliation. Width can already match before the retained
+                // action host receives its new attached properties; wait for that actual boundary.
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                     () => Find(surface!, "FocusHero") is Border { ActualWidth: > 0 } hero &&
                         Math.Abs(hero.ActualWidth - width) < 1 &&
-                        Find(surface!, "FocusAdd") is Button { ActualWidth: > 0 },
-                    "responsive action placement settled"));
+                        Find(surface!, "FocusAdd") is Button { ActualWidth: > 0 } &&
+                        originalParent is Grid actionHost &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetRow(actionHost) == (narrow ? 1 : 0) &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetColumn(actionHost) == (narrow ? 1 : 2) &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(actionHost) == (narrow ? 2 : 1),
+                    "responsive action placement committed on the retained host",
+                    () => $"Width={surface!.ActualWidth}; narrow={narrow}; " +
+                        $"row={Microsoft.UI.Xaml.Controls.Grid.GetRow((Grid)originalParent!)}; " +
+                        $"column={Microsoft.UI.Xaml.Controls.Grid.GetColumn((Grid)originalParent!)}; " +
+                        $"span={Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan((Grid)originalParent!)}"));
+                await ui.YieldToRenderAsync();
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.Same(originalAction, Find(surface!, "FocusAdd"));
