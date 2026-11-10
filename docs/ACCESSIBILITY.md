@@ -120,8 +120,6 @@ while stacking tree/detail panes. Source guards and XAML parsing do not prove
 native layout, focus retention, text scaling or six-locale reachability; these
 still require current-build native proof before any window-minimum reduction.
 
-Dashboards retains its standalone session route and native reader state.
-
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.
 
 ## Account menu metadata

@@ -47,7 +47,7 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
         var (retryToken, setRetryToken) = UseState(0);
         var web = props.OpenWebDashboards;
 
-        var header = Header(widget, props.KindLabel);
+        var header = Header(widget);
         var body = props.Body switch
         {
             BoardWidgetBodyKind.Frame => Frame(props, hostState, setHostState, retryToken, setRetryToken),
@@ -104,7 +104,7 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
         return DashboardsArt.Enter(cell, props.ReducedMotion);
     }
 
-    private static Element Header(BoardWidget widget, string kindLabel)
+    private static Element Header(BoardWidget widget)
     {
         var capabilities = DashboardsPresentation.CapabilityLines(widget);
         var granted = widget.GrantState == BoardWidgetGrantState.Granted && capabilities.Length > 0

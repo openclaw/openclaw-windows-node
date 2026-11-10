@@ -1,27 +1,17 @@
 # Native Dashboards
 
-This page describes the native Windows **Dashboards** surface: what it shows,
-which Gateway contracts it uses, how widget content is isolated, and how its
-behavior maps to the upstream OpenClaw web Dashboards page. Ownership rows live
-in the [architecture ledger](ARCHITECTURE.md); this page does not restate them.
+**Dashboards** is a native reader for Gateway-authored session boards, not a
+builder, health overview or replacement for the browser Control UI. This guide
+covers navigation, supported content, Gateway contracts and isolation.
+Ownership lives in the [architecture ledger](ARCHITECTURE.md).
 
 Upstream reference: `openclaw/openclaw@5089aa71b681ee275515f2de037b7813d73b45c3`
 (`ui/src/pages/dashboards/`, `ui/src/components/board/`,
 `ui/src/components/mcp-app-*`, `ui/src/lib/board/`, `src/gateway/board-*`,
 `src/gateway/server-methods/board.ts`, `src/gateway/server-methods/mcp-app.ts`).
-The Windows implementation reproduces the information and capabilities, not
-the web code structure.
-
-## Concepts
-
-- A **dashboard** is a session's **board**: tabs plus a 12-column grid of
-  widgets, read with `board.get`. Agents build boards; this is not the browser
-  Control UI (the existing singular **Dashboard** action) or a health overview.
-- A **widget** has one content kind: `html`, `mcp-app`, or `plugin`. HTML
-  content is untrusted web content and runs in an isolated WebView2 sandbox.
-  Plugin widgets with a trusted core kind render natively. MCP app content is
-  not hosted on Windows.
-- The **gallery** lists every session that has a board for the selected agent.
+A board contains tabs and a 12-column widget grid. The gallery lists sessions
+with boards for the selected agent. HTML widgets use isolated WebView2;
+supported core plugins render natively; MCP apps remain placeholders.
 
 ## Scope
 
@@ -68,8 +58,6 @@ restoring focus to the exact originating card (including a Fresh today card).
 If it disappeared, focus falls back to the named gallery heading.
 The gallery is not persisted offline: disconnect retains the page hero and
 shows an error InfoBar with Open Connection directly below it, not cached boards.
-Board content and ticket/sandbox ownership
-are unchanged.
 
 Board tabs select named native panels, with automation control relationships.
 Overflow tabs open through More tabs and return focus to the selected tab.
@@ -79,39 +67,21 @@ does not manufacture category details or subscription records.
 
 ## Responsive layout
 
-The page measures its Reactor host, not the window. Geometry, tiers and
-identity colours follow the [Dashboards design contract](../DESIGN.md#dashboards-expressive-extension);
-shell/history allocation follows the Settings page history-band allocation row in
-the [architecture ledger](ARCHITECTURE.md). Resizing retains board/session
-identity and mounted widget documents. The hero, tabs and content scroll
-together in a native vertical `ScrollViewer`, without a sticky header,
-horizontal scrolling or a full-page decorative backdrop.
+The [design contract](../DESIGN.md#dashboards-expressive-extension) owns
+host-width tiers, card geometry, colour and action placement. Shared PageHero
+and Settings inset owners remain authoritative: page resizing never switches
+shell embedding, changes saved pane preferences or intercepts Escape.
+Resizing retains board/session identity and mounted widget documents.
 
-The reader consumes the canonical shared hero and Settings inset contract.
-Page width tiers do not switch shell embedding, change saved pane preferences,
-or intercept Escape. The shared shell owns Back to app and Escape; Workspace
-Back first returns an open board to its retained gallery.
-
-The mast uses a native bordered **Open in web** button followed by Refresh.
-The action group aligns to the content column's right edge. Header actions use
-stock buttons and FontIcons, with native sizing, brushes and interaction states.
-In Narrow, actions move under the copy and the browser command moves into
-More options. Search gets its own row below Wide. Grid cells own placement
-and spacing independently of entrance motion; last-row cards do not stretch
-into empty columns.
-
-A stock button paints each gallery card's full surface and owns keyboard focus,
-hover and pressed states. The coloured cover and identity badge remain decorative
-content. Open chat is a separate sibling in an auto-sized footer, not a button
-nested inside the board action. Card content can grow without a fixed minimum
-height, and the card does not apply its own hover translation.
+The hero, tabs and content scroll together vertically, without a sticky header,
+horizontal scrolling or a full-page backdrop. Stock buttons own gallery-card
+focus, hover and pressed states; decorative identity content has no separate
+interaction. Open chat remains a sibling action, never a nested button. Cards
+grow with content and do not apply a hover translation.
 
 Mounted tests cover Wide, Medium and Narrow hosts; full-shell captures are a
 separate proof. The shell's minimum width does not imply it can expose every
 supported mounted-page width.
-
-Windows is a native **reader** for agent-created boards. It covers what people
-check daily and links to the Gateway's web Dashboards for the rest.
 
 | Area | Windows | Where the rest lives |
 |---|---|---|
@@ -141,13 +111,10 @@ so Windows does not construct them. **Copy session key** gives the stable
 identity to find the board there. The native `dashboards?session=&agent=` hub
 tag is an in-app route, never a browser URL.
 
-Copy session key reports success or failure in the same neutral flyout surface
-as Usage: `FlyoutPresenterBackground`, `FlyoutBorderThemeBrush`, `ThemeShadow`,
-and a severity-colored icon. The toast auto-dismisses after four seconds.
-It is bottom-centered (maximum width 480, margin 20), with its native theme
-explicitly forwarded from the page. A stable Reactor announcement region
-announces failures assertively and success politely after the menu/commit turn.
-It is page-owned because the shared persistent banner filters success notices.
+Copy session key uses the themed result toast defined in the design contract,
+dismissed after four seconds. A stable Reactor announcement region announces
+failure assertively and success politely after the menu/commit turn. The
+page owns it because the shared persistent banner filters success notices.
 
 ## Gateway contract
 
@@ -284,29 +251,14 @@ a local relay page in a dedicated WebView2.
 
 ## Platform dependencies
 
-Core and Advanced package references target the published Reactor
-`0.1.0-preview.17`. Restore and build must not use the former
-`0.1.0-preview.12.usage-theme.2` version override or source-built backport.
-`build.ps1` and the affected CI restore lanes run
-`scripts\Initialize-ReactorPackages.ps1`, which downloads the two official GitHub
-release packages into the ignored `artifacts\reactor-packages` feed and verifies
-pinned SHA-256 digests. For direct `dotnet restore` on a fresh checkout, run that
-script first. Repository `NuGet.Config` maps only the two Reactor package IDs to
-that feed and retains nuget.org for other packages. No version override, private
-package feed or machine-wide configuration change is needed.
-The earlier backport screenshots are historical evidence, not proof of the
-published preview.17 runtime; rerun mounted and native theme/scroll proof after
-the upgrade.
+Use the repository's published Reactor packages and
+[normal dependency setup](../DEVELOPMENT.md#build-individual-projects), not
+historical source-built backports or version overrides. Windows App SDK remains
+owned by `Directory.Build.props`. Dependency changes require fresh reader
+theme, scroll, HTML and announcement proof plus shared chat compatibility;
+earlier screenshots and results are not current-source evidence.
 
-The shared Windows App SDK version remains owned by `Directory.Build.props`.
-Integrating the canonical shared hero and shell with this dependency train
-requires fresh reader theme, scrolling, HTML and announcement proof, plus
-the chat Markdown link/list/table contract. Earlier results do not validate
-the integrated source.
-
-- Panel `Padding` and `CornerRadius` on `Grid` require Reactor preview.13 or
-  later, so widget chrome uses `Border` for padding, stroke and corners.
-- WinUI `WebView2` paints an opaque theme backplate even when
-  `DefaultBackgroundColor` is transparent, so frameless widgets show a solid
-  fill behind their content. The widget host already requests a transparent
-  background and picks up the fix when it ships in WinUI.
+Widget chrome uses native Borders for padding, stroke and corners. WinUI
+WebView2 currently paints an opaque theme backplate even when the host requests
+a transparent `DefaultBackgroundColor`; frameless HTML can therefore show a
+solid fill behind its content.

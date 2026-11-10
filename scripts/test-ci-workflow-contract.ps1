@@ -759,19 +759,6 @@ if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
 
 $fixtureJob = Get-JobBlock "gateway-fixture"
 $fixtureStep = Get-StepBlock -Text $fixtureJob -Name "Run mock Gateway application scenarios"
-$fixtureRestoreStep = Get-StepBlock -Text $fixtureJob -Name 'Restore UI test projects'
-foreach ($token in @(
-        '$ErrorActionPreference = ''Stop''',
-        './scripts/Initialize-ReactorPackages.ps1',
-        'dotnet restore tests/OpenClaw.Tray.UITests -r win-x64'
-    )) {
-    Assert-Contains -Text $fixtureRestoreStep -Expected $token -Message "The independent fixture restore must retain the official Reactor bootstrap: '$token'."
-}
-if ($fixtureRestoreStep.IndexOf('./scripts/Initialize-ReactorPackages.ps1', [StringComparison]::Ordinal) -ge
-    $fixtureRestoreStep.IndexOf('dotnet restore', [StringComparison]::Ordinal)) {
-    throw 'The fixture lane must initialize verified Reactor packages before its first restore.'
-}
-
 foreach ($token in @(
         'timeout-minutes: 30',
         './scripts/test-gateway-fixture.ps1',

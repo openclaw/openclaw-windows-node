@@ -48,15 +48,6 @@ not evidence of a released native WinUI fix. Keep the existing row-targeted
 `StartBringItemIntoView` scrolling rather than the application-side extent-only
 workaround from #1407.
 
-Normal builds and CI bootstrap the digest-pinned official GitHub release assets
-into an ignored repository-local feed. Before a direct restore on a fresh
-checkout, run `.\scripts\Initialize-ReactorPackages.ps1`. The script rejects
-corrupt cached/downloaded packages; it does not fall back to a source build or
-modify machine-wide NuGet settings. Keep both package references aligned. The
-core package requires `System.Drawing.Common` `10.0.14` or newer; the tray's
-direct reference meets that floor. Earlier preview.16 evidence is historical,
-not proof that the preview.17 compatibility scenarios pass.
-
 Historical check on 2026-10-22: `0.1.0-preview.16` was the latest published version,
 including previews, in the authoritative NuGet feeds for
 [Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)

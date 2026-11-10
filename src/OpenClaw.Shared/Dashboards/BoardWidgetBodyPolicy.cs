@@ -39,14 +39,12 @@ public static class BoardWidgetBodyPolicy
 
     public static BoardWidgetBodyKind Resolve(BoardWidget widget, IReadOnlyList<PluginWidgetKind> advertisedKinds)
     {
-        if (widget.ContentKind == BoardWidgetContentKind.McpApp)
-            return widget.GrantState == BoardWidgetGrantState.Pending ? BoardWidgetBodyKind.NeedsApproval
-                : widget.GrantState == BoardWidgetGrantState.Rejected ? BoardWidgetBodyKind.Rejected
-                : BoardWidgetBodyKind.McpApp;
         if (widget.GrantState == BoardWidgetGrantState.Pending)
             return BoardWidgetBodyKind.NeedsApproval;
         if (widget.GrantState == BoardWidgetGrantState.Rejected)
             return BoardWidgetBodyKind.Rejected;
+        if (widget.ContentKind == BoardWidgetContentKind.McpApp)
+            return BoardWidgetBodyKind.McpApp;
         if (widget.ContentKind == BoardWidgetContentKind.Html || !string.IsNullOrEmpty(widget.FrameUrl))
             return string.IsNullOrEmpty(widget.FrameUrl) || string.IsNullOrEmpty(widget.ViewTicket)
                 ? BoardWidgetBodyKind.Unavailable

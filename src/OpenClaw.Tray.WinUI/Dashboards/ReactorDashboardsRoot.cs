@@ -144,7 +144,6 @@ internal sealed class ReactorDisconnectedDashboards : Component<DashboardsRootPr
 
 internal static class DashboardsGlyphs
 {
-    public const string Back = "\uE72B";
     public const string Refresh = "\uE72C";
     public const string Search = "\uE721";
     public const string Chat = "\uE8BD";
