@@ -112,6 +112,15 @@ public partial class App
         }
 
         var connectionManager = _connectionManager;
+        var usageProviderReads = _usageProviderReads;
+        if (usageProviderReads is not null)
+            steps.Add(new AppShutdownStep("Usage provider reads", () =>
+            {
+                usageProviderReads.Dispose();
+                if (ReferenceEquals(_usageProviderReads, usageProviderReads))
+                    _usageProviderReads = null;
+                return ValueTask.CompletedTask;
+            }));
         if (connectionManager is not null)
         {
             steps.Add(new AppShutdownStep("gateway client", async () =>

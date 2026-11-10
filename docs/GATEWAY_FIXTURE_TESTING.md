@@ -608,6 +608,214 @@ PRI and compiled page resources beside the native UI test assembly. It does not
 use this Gateway scenario or prove usage reconciliation. Run it serially with
 the fixture UI test and computer-use, not concurrently on the same desktop.
 
+## Usage analytics proof
+
+The `usage-analytics` scenario opens the Settings Usage page against synthetic
+`sessions.usage` and `usage.status` replies. Data is deterministic and anchored
+to the requested date range, so every preset shows populated charts. Twelve
+sessions cover several agents, channels, providers and models, plus cache,
+error and tool activity. Every other scenario also answers `sessions.usage`,
+which the Gateway does not advertise in `hello-ok`. The fixture models the
+native page's range, detail and bounded browsing reads, not web-only heatmaps,
+creator attribution, recent/multi-session selection or prompt-context analysis.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario usage-analytics
+```
+
+Enter one of these modes in the host console, then select Refresh on the page.
+For unattended runs, pass `-UsageMode <mode>` to start in that mode:
+
+| Mode | Replies |
+|---|---|
+| `populated` | Complete usage with sessions, details and provider plans |
+| `empty` | A complete report with no sessions |
+| `partial` | Lower-bound totals with `cacheStatus` pending and stale sessions |
+| `legacy` | `sessions.usage` fails as an unknown method, like a Gateway older than any setup installs, so the page shows its update notice and provider plans only |
+| `released` | Like released Gateways through 2026.10.9, including `extended-stable` 2026.9.36: `sessions.usage` rejects the overview parameters with the released schema error, so the page retries with full rows and shows its basic view without search, sort or paging |
+
+The app remembers unknown methods for the life of a connection. After leaving
+`legacy`, reconnect from Connection settings before refreshing, or start a new
+run with `-UsageMode`.
+
+Disconnect the app from Connection settings to show the disconnected banner.
+The fixture proves rendering and the native client contract, not a real
+Gateway's session aggregation or cost estimates. **Open in web** and the
+row's **Open chat** button use the app's normal Dashboard launcher and chat routes;
+the fixture does not serve the Gateway's web Usage page, so prove those
+handoffs against a real Gateway.
+
+The native Usage page is a read-only analysis surface. The default installed
+Gateway view has no server search, sort or paging. It previews ten loaded rows,
+then reveals ten more at a time; the coverage note distinguishes a reported
+total from an unknown population beyond the 1,000-row cap. The advanced view
+adds those server controls, without pretending a loaded-row drilldown is an
+exhaustive search.
+
+The hero shows estimated range cost and contributor details only when reported
+data supports them. Agent cost shares require complete priced totals; independent
+model aggregates do not claim an agent-to-model relationship. The header retains
+Open in web and Export CSV actions, with the range bar directly below it.
+Cross-year ranges retain both years; the tooltip and accessibility help
+retain the full dates and reporting zone. On Wide hosts, custom date pickers
+sit beside the presets, with server search on a separate row when available.
+Medium and Narrow hosts retain stacked controls. **Options** holds reporting-day
+boundaries and session-family counting. **Daily usage** contains cost/tokens,
+chart/table, token/cache facts and defined activity counts. Provider allowance
+windows at or above 75% carry a **Near limit** badge on their allowance row,
+with its **See what's using it** action. Missing allowance percentages are not
+zero usage, and billing amounts or absent/zero billing limits never invent an
+allowance percentage. Disconnected rows retain their last-reported context.
+There is no separate Needs you section. **Usage breakdown** retains all contributor
+buckets behind a top-five plus Other legend and opens loaded sessions. Session
+details expand inline, and the trailing row chat button passes the exact key.
+No chart selection changes the requested range.
+
+Usage facts come from authenticated Gateway reads, not local inventory or
+fixture generators in production:
+
+| Gateway owner | Native projection and surfaces |
+| --- | --- |
+| `sessions.usage` range read | Cost/token totals, reported or loaded session count, dated trend, contributor buckets and session rows |
+| `sessions.usage` single-key read | Expanded session model, token/cache counters, messages, tools and errors |
+| `usage.status` | Independently scoped provider allowance windows, reset times, plans, errors and billing amounts |
+
+`UsageJsonParser` preserves missing numeric counters separately from explicit
+zero. Charts and the metric-aware daily table contain only reported dates;
+missing calendar days are not synthesized as zero-cost rows. A reported row with
+a missing selected counter remains unavailable. The 30-day mast names the first
+and last reported dates and states how many days were reported. Both the daily
+series and headline totals come from the same `sessions.usage` snapshot, never
+from a separate `usage.cost` read. Provider windows
+or billing entries without valid numbers are omitted instead of inventing a
+zero allowance or balance. Missing aggregate counts render unavailable, and CSV
+cells stay blank for absent counters. Merged contributor counters are known
+only when every subtotal reported them; incomplete shares and extrema are
+withheld. Missing session usage does not imply a Gateway computing status, and
+a reported nonzero population cannot become an empty success or complete CSV.
+Calendar ranges, local/UTC formatting,
+selection, connection/loading state and presentation-only ranking are client
+state or deterministic transformations, not additional Gateway facts. Synthetic
+records are confined to the test Gateway scenarios.
+
+`PageResponsiveLayout` selects tiers from the page host width, not the window:
+Wide starts at 1,000 DIP, Medium at 720 DIP, and Narrow supports hosts down to
+480 DIP. The daily/allowance stage and contributor/detail pairs stack below
+Wide. The hero uses a card-local accent tint, not a page-wide glow.
+Native Border padding
+owns their insets; bounded explanatory text stays left-aligned.
+Session and provider card rows have separate rounded borders with exactly
+`PageResponsiveLayout.GapInner` (DESIGN spacing2, 8 DIP) between adjacent cards,
+including expanded session details. Native session and contributor expanders
+retain independent open states without closing other panels or scrolling on
+ordinary expansion. Session panels reuse loaded summaries; only the active
+detail read is controller-owned. Native Expander animation follows Windows
+animation preferences without a separate entrance-transition host.
+Dense tables and legends keep their own spacing. The daily table grows to its
+content and uses the page's scroll viewer, not an internal scrolling region.
+Average and range-wide peak claims remain withheld when reported dates do not
+cover the requested calendar range. When available, the daily-average value is labelled directly on the dashed plot line as well
+as in the card header and chart accessibility description. Bars use the solid
+native accent. Left/Right moves native focus and day selection within the chart;
+each bar exposes its date and available counters. The
+secondary activity strip uses four columns or a two-by-two grid, with
+single-line trimmed labels and full-text tooltips. A metric pivot on its own
+row aligns its first label with the card heading. The session-list badge counts
+the actual loaded rows; a separate line states shown and loaded counts. The
+range-wide population remains in the mast and range facts. Incomplete totals
+have a partial tag and reason immediately beside the headline, while missing
+prices retain their distinct explanation.
+
+CSV export re-reads the selected range before opening the system Save dialog.
+If a sessions file would omit rows or still-computing usage, a native
+ContentDialog offers **Export daily totals** or **Close**. Its coverage facts
+come from the export read, not a request limit. When no total was reported, the
+dialog says so. The daily alternative keeps the original range and must pass
+its own completeness check; it is not a bypass for partial data.
+
+After a successful save, a page-local in-app notification shows the actual saved
+file name and **Open folder**. Reactor's announcement region announces errors
+assertively. Actionable results dismiss after seven seconds and passive errors
+after four (override with
+`OPENCLAW_USAGE_NOTIFICATION_MS`). Cancelling Save produces no success
+notification. Gateway/page changes fence pending export work, and missing prices
+remain blank CSV costs rather than zero. Suggested file names include the
+actual reporting dates.
+Results sit bottom-center, 20 logical pixels above the page edge, at up to
+480 logical pixels wide. Native flyout fill/stroke and ThemeShadow provide
+their neutral surface; only the severity icon is colored.
+The export dialog keeps its frozen facts while resizing. Its footer stacks
+primary-first on Narrow. The dialog body reconciles viewport updates through
+Reactor's released overlay lifecycle.
+
+For deterministic light/dark captures and interaction checks without a shared
+Gateway, use the mounted native page tests:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_VISUAL_TEST = '1'
+$env:OPENCLAW_VISUAL_TEST_DIR = '<absolute-local-evidence-directory>'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 --filter 'FullyQualifiedName~UsagePageRenderingTests|FullyQualifiedName~UsageChartColorTests'
+```
+
+Select `win-x64` on an x64 host. The mounted matrix includes installed,
+advanced, sparse, bounded, empty, offline, loading, first-read failure,
+refresh failure, no-read-access, unsupported and computing states. The page
+issues reads only, so a connection with read permission but no write permission
+has the same analysis controls. These captures prove the native renderer over
+recorded responses, not a live provider account, real Gateway or browser launch.
+The export popup tests invoke the real menu/dialog/notification workflow but
+intercept file saving and folder opening, so they do not mutate user documents.
+The mounted resize cases exercise 1,400, 1,000, 760 and 520 DIP hosts and return
+to Wide, checking column counts, sibling bounds, text clipping/ellipsis,
+one-row mast actions, card insets/alignment and export feedback. These are
+geometry/renderer checks, not real-shell screenshot acceptance.
+
+Pinned Usage keyboard proof retains main's native tab cycle: pane/history,
+title bar, Dashboard, Notifications, then visible page content. Exact intermediate
+focus and a reverse/forward content roundtrip guard against skipped controls and
+focus traps; visual adjacency is not the native XAML tab order.
+
+`UsageResponsive_RealShellCapturesMeasuredWidthsAndCollapsedNavigation` uses
+the isolated released-Gateway fixture and owned-HWND PrintWindow capture.
+Its per-state manifest records measured host/content widths, the shared tier,
+window rectangles in pixels and DIP, and image hashes. The Hub's unchanged
+800 DIP window minimum and expanded pane prevent a real-shell 520 DIP host; the native pass
+therefore captures the shell minimum with the pane open and collapsed.
+It samples host/navigation bounds at least 300 ms apart before capture.
+Run native proof only on an authorized, serial desktop slot with a fresh
+explicit app binary. Inspect the PNGs; a passed geometry test or a rendered
+bitmap does not establish visible shell acceptance.
+
+Reactor preview.17 includes the dialog theme and pooled-background fixes that
+previously required a task-local preview.12 backport. Validate the released
+package identities and loaded DLL hashes, not the historical local override.
+Usage retains the aligned Core/Advanced preview.17 pair when integrating the
+shared page foundation and Windows App SDK 2.6.5. Its declarative export
+`ContentDialog` needs inherited theme and host-disposal handling, and its pooled
+count-pill `Border` needs resource-backed background precedence. The mounted
+`ExportBlock_OffersDailyTotalsThenShowsTheSavedToastAndFolderAction` cases
+assert the actual Light/Dark dialog theme; the count-pill regression below
+checks the native brush. These are dependency regression requirements, not
+evidence that the newly merged package combination has passed native proof.
+`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
+Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
+build or run commands; `build.ps1` and building through `run-app-local.ps1`
+already do this. The initializer verifies the official preview.17 release
+digests without changing global NuGet configuration or clearing its cache.
+A successful build alone is not dark-dialog proof.
+The count-pill contrast regression also checks the actual native brush after
+pooled reuse. A pooled Border must release a local null background when its
+theme style owns that property; a correctly defined resource alone does not
+prove that it was painted.
+
+Usage retains figures during a same-query refresh, but clears them when the
+date range, reporting zone, scope or server filters change. A failed new query
+must not relabel old values. Basic browsing retains its row limit while
+disclosing at most one extra selected loaded session. Missing prices qualify
+cost independently of token completeness and suppress unsupported exact
+contributor percentages and costliest-session claims.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:

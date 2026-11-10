@@ -1987,36 +1987,6 @@
   <data name="CancelButton.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>總成本</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>要求</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>權杖</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>提供者</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 天</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 天</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>正在載入提供者…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>未設定任何提供者</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>提供者明細</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>每日成本</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>工作區</value>
   </data>
@@ -2328,9 +2298,6 @@
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>使用量與成本</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>在瀏覽器中開啟</value>
@@ -4833,12 +4800,6 @@
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>開啟連線</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>正在載入每日成本…</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>此期間內無每日使用量</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>測試語音輸入</value>
@@ -8260,4 +8221,173 @@
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>設定</value>
   </data>
+  <data name="Usage_Title" xml:space="preserve"><value>用量</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} 至 {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1}（時區）</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>重新整理</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>正在重新整理用量</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>匯出 CSV</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>正在匯出</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>工作階段 (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>每日合計 (CSV)</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>已儲存 {0}。</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>連線到閘道後才能匯出用量。</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>無法讀取或儲存用量報告。請再試一次。</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>用量資料不完整。請重新整理後再試，或縮小日期範圍。</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>此範圍內的工作階段數超過單次匯出的上限。請縮小日期範圍或篩選條件後再試。</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>此閘道不提供此項目。</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>閘道未連線。</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>要求失敗。</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>範圍</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>開始日期</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>結束日期</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>至</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>時區</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>範圍類型</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>顯示</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>今天</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 天</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 天</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>目前執行個體</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>歷史沿襲</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>權杖</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>部分結果</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>部分用量仍在計算中，合計可能會增加。</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>已選取</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>搜尋工作階段</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>篩選工作階段</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>部分篩選器已被忽略</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>代理程式</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>模型</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>正在載入用量</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>目前還沒有可統計的內容</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>此日期範圍內沒有使用記錄。開始一段對話，或選擇更大的日期範圍檢視更多歷史記錄。</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>檢視用量需要讀取權限</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>此連線沒有 operator.read 範圍。請以讀取權限重新配對以檢視用量。</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>無法載入用量</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>閘道未傳回用量。請再試一次。</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>閘道回報：{0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>再試一次</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>部分結果</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>閘道提前停止讀取用量。合計只包含已讀取的部分。</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>正在更新</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>用量資料可能不完整。正在自動檢查更新的合計。</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>用量資料可能不完整。自動檢查已暫停；請選取「重新整理」再次檢查。</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}：{1} 個權杖，{2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}：尚未載入</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>尚未載入</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>日期</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>訊息</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>工具呼叫</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>快取命中率</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>工作階段</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>錯誤</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>沒有代理程式資料</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>未定價</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} 個錯誤</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>提供者配額</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>正在載入提供者用量</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>沒有提供者回報方案用量。</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>提供者用量無法使用。</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>正在重新整理提供者用量。</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>未回報配額資訊。</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0}，共 {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1}（額度）</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>工作階段</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>排序工作階段</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>費用最高</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>錯誤最多</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>訊息最多</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>最近</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>權杖最多</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>範圍內沒有工作階段</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>第 {0} 至 {1} 個，共 {2} 個</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>上一頁</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>下一頁</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>正在計算</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>選取以檢視詳細資料。</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>{0} 的詳細資料</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>工作階段摘要</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>部分詳細資料無法載入</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>無法載入{0}：{1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>輸入 {0} · 輸出 {1}</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} 個項目沒有價格</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>持續時間</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} 個錯誤</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} 個項目沒有價格</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>最新的在前</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>此範圍內有 {0} 個工作階段</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>此範圍內有 {0} 個工作階段</value></data>
+  <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>預估費用</value></data>
+  <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} 個用量項目沒有已知價格，因此預估費用可能低於實際費用。</value></data>
+  <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} 個用量項目沒有已知價格，因此預估費用可能低於實際費用。</value></data>
+  <data name="Usage_OpenWeb" xml:space="preserve"><value>在網頁中開啟</value></data>
+  <data name="Usage_OpenWebHint" xml:space="preserve"><value>在瀏覽器中開啟閘道的用量頁面，檢視時間軸、對話記錄和其他詳細分析。不會帶入目前的日期範圍、篩選條件和選取的工作階段。</value></data>
+  <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>已載入 {0}/{1} 個工作階段；總計包含所有工作階段。</value></data>
+  <data name="Usage_Contributors_Title" xml:space="preserve"><value>用量明細</value></data>
+  <data name="Usage_Contributors_Label" xml:space="preserve"><value>來源類型</value></data>
+  <data name="Usage_Contributors_Agent" xml:space="preserve"><value>代理程式</value></data>
+  <data name="Usage_Contributors_Model" xml:space="preserve"><value>模型</value></data>
+  <data name="Usage_Contributors_Provider" xml:space="preserve"><value>提供者</value></data>
+  <data name="Usage_Unsupported_Title" xml:space="preserve"><value>此閘道不支援用量</value></data>
+  <data name="Usage_Unsupported_Message" xml:space="preserve"><value>請更新閘道以在此檢視費用、權杖與工作階段。</value></data>
+  <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>已載入前 {0} 個工作階段；可能還有更多。</value></data>
+  <data name="Usage_AllowanceWarningFormat" xml:space="preserve"><value>{0} 配額已使用 {1}</value></data>
+  <data name="Usage_Automation" xml:space="preserve"><value>自動化</value></data>
+  <data name="Usage_BusiestDayFormat" xml:space="preserve"><value>用量最高的一天：{0}，{1}</value></data>
+  <data name="Usage_CacheWrittenFormat" xml:space="preserve"><value>快取讀取 · 寫入 {0}</value></data>
+  <data name="Usage_Chart" xml:space="preserve"><value>圖表</value></data>
+  <data name="Usage_ChartView" xml:space="preserve"><value>圖表或表格</value></data>
+  <data name="Usage_ComputingFormat" xml:space="preserve"><value>仍在計算 {0} 個工作階段</value></data>
+  <data name="Usage_CostliestLoaded" xml:space="preserve"><value>已載入工作階段中費用最高者</value></data>
+  <data name="Usage_DailyAverageFormat" xml:space="preserve"><value>每日平均 {0}</value></data>
+  <data name="Usage_Detail_CacheSplit" xml:space="preserve"><value>快取讀取 · 寫入</value></data>
+  <data name="Usage_Detail_InputOutput" xml:space="preserve"><value>輸入 · 輸出</value></data>
+  <data name="Usage_Detail_ShareFormat" xml:space="preserve"><value>佔費用的 {0}（{1}）</value></data>
+  <data name="Usage_Detail_ToolsFormat" xml:space="preserve"><value>{0}（{1} 個不同工具）</value></data>
+  <data name="Usage_FromAutomation" xml:space="preserve"><value>來自自動化</value></data>
+  <data name="Usage_Highlights" xml:space="preserve"><value>重點</value></data>
+  <data name="Usage_LastKnownFormat" xml:space="preserve"><value>上次已知狀態 · {0}</value></data>
+  <data name="Usage_LoadedSessions" xml:space="preserve"><value>已載入的工作階段</value></data>
+  <data name="Usage_Mast_30d" xml:space="preserve"><value>過去 30 天</value></data>
+  <data name="Usage_Mast_7d" xml:space="preserve"><value>過去 7 天</value></data>
+  <data name="Usage_Mast_Today" xml:space="preserve"><value>今天截至目前</value></data>
+  <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>已載入的工作階段中沒有符合項目。</value></data>
+  <data name="Usage_OpenChat" xml:space="preserve"><value>開啟聊天</value></data>
+  <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>開啟聊天：{0}</value></data>
+  <data name="Usage_Options" xml:space="preserve"><value>選項</value></data>
+  <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>本地時間（{0}）</value></data>
+  <data name="Usage_OtherFormat" xml:space="preserve"><value>其他（{0}）</value></data>
+  <data name="Usage_PerDay" xml:space="preserve"><value>每日用量</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>沒有已回報的日期</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>主要來自 {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>主要模型：{0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>接近限額</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>已回報 {0} 天</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>顯示 {0} 個 · 已載入 {1} 個</value></data>
+  <data name="Usage_Preset_Custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Usage_ResetAtFormat" xml:space="preserve"><value>重設時間：{0}</value></data>
+  <data name="Usage_SeeUsing" xml:space="preserve"><value>檢視用量來源</value></data>
+  <data name="Usage_SeeUsingProviderFormat" xml:space="preserve"><value>檢視 {0} 的用量來源</value></data>
+  <data name="Usage_ShowLess" xml:space="preserve"><value>收合</value></data>
+  <data name="Usage_ShowMoreFormat" xml:space="preserve"><value>再顯示 {0} 項</value></data>
+  <data name="Usage_ShowMoreLoaded" xml:space="preserve"><value>顯示更多已載入的工作階段</value></data>
+  <data name="Usage_ShowOnlyFormat" xml:space="preserve"><value>僅顯示 {0}</value></data>
+  <data name="Usage_Table" xml:space="preserve"><value>表格</value></data>
+  <data name="Usage_NoProviderUsageFormat" xml:space="preserve"><value>未回報 {0} 的彙總用量。</value></data>
+  <data name="Usage_Sessions_PartialLoadedFormat" xml:space="preserve"><value>已載入 {0}/{1} 個工作階段；總計仍不完整。</value></data>
+  <data name="Usage_Activity_MessageSplitFormat" xml:space="preserve"><value>您 {0} 則，代理程式 {1} 則</value></data>
+  <data name="Usage_Export_BlockedTitle" xml:space="preserve"><value>暫時無法匯出工作階段</value></data>
+  <data name="Usage_Export_BlockedMessage" xml:space="preserve"><value>此範圍內的部分工作階段尚未載入或仍在統計中，因此檔案將不完整。</value></data>
+  <data name="Usage_Export_CoverageFormat" xml:space="preserve"><value>已載入 {0}/{1} 個工作階段</value></data>
+  <data name="Usage_Export_CoverageUnknownFormat" xml:space="preserve"><value>已載入 {0} 個工作階段；未回報總數</value></data>
+  <data name="Usage_Export_DailyAlternative" xml:space="preserve"><value>匯出每日總計</value></data>
+  <data name="Usage_Export_OpenFolder" xml:space="preserve"><value>開啟資料夾</value></data>
+  <data name="Usage_Export_Error_OpenFolder" xml:space="preserve"><value>Windows 無法開啟匯出資料夾。</value></data>
+  <data name="Usage_Export_Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="Usage_Export_Range7d" xml:space="preserve"><value>最近 7 天</value></data>
+  <data name="Usage_Export_Range30d" xml:space="preserve"><value>最近 30 天</value></data>
 </root>
