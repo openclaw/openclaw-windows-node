@@ -896,12 +896,20 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("56", (string?)slot.Attribute("Height"));
         var collapse = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CollapsePaneButton");
         Assert.Same(reopen.Parent, collapse.Parent);
-        var chrome = reopen.Parent!;
+        var chrome = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "PaneToggleChrome");
         var settings = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SettingsSection");
+        var history = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SettingsHistoryBar");
+        Assert.Same(chrome, reopen.Parent);
         Assert.Same(settings.Parent, chrome.Parent);
+        Assert.Same(navigation.Parent!.Parent, chrome.Parent);
+        var layers = chrome.Parent!.Elements().ToList();
+        Assert.True(layers.IndexOf(settings) < layers.IndexOf(chrome));
+        Assert.True(layers.IndexOf(chrome) < layers.IndexOf(history));
+        Assert.Equal("1", (string?)chrome.Attribute("Grid.Row"));
         Assert.Equal("{Binding Visibility, ElementName=NavigationSection}", (string?)chrome.Attribute("Visibility"));
         Assert.Equal("48", (string?)chrome.Attribute("Width"));
         Assert.Equal("56", (string?)chrome.Attribute("Height"));
+        Assert.Null(chrome.Attribute("Background"));
         Assert.True(settings.ElementsAfterSelf().Contains(chrome),
             "Pane buttons must stay above full-frame page backdrops.");
         Assert.Equal((string?)collapse.Attribute("Margin"), (string?)reopen.Attribute("Margin"));

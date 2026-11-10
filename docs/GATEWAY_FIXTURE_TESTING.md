@@ -266,39 +266,41 @@ The normal connection timestamp may advance. This proves profile compatibility,
 not installer/update execution, Store migration, real native/WSL lifecycle, or
 production credentials.
 
-The hosted UI lane separately downloads the latest stable x64 portable archive
+The hosted Gateway fixture lane separately downloads the latest stable x64 portable archive
 and verifies its published SHA256 before this case runs. `stable-release.json`
 records the archive and candidate checkout identity; `stable-run.json`,
 `run.json`, `profile-compatibility.json`, and `fixture-released-profile.trx`
-retain the two executable identities and actual result in `test-results-ui`.
+retain the two executable identities and actual result in `test-results-gateway-fixture`.
 No private keys or raw profile files are published. A missing baseline, digest
 mismatch, failed case, or zero/skipped selection is not compatibility proof.
 
-The ordinary `windows-latest` CI UI job runs this script against its explicitly
+The dedicated `windows-latest` Gateway fixture job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
 `Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
 the child test processes and selects `Category=GatewayFixture` without keyboard-only
 cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
-run receipts and owned-window screenshots are uploaded in `test-results-ui`
+run receipts and owned-window screenshots are uploaded in `test-results-gateway-fixture`
 under `GatewayFixture`, including on failure. Other keyboard/compositor proof
 opt-ins, production-shaped Release proof, real Gateway, WSL and MXC validation
 remain separate; this hosted smoke does not replace them.
 
 The disposable hosted runner configures a 1920x1080 desktop before UI tests and
 verifies a work area large enough for the 1300x950 wide-window proof. Its actual
-screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results-ui`.
+screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results-gateway-fixture`.
 The original two-width and visible-content assertions remain unchanged. The local
 fixture runner does not change your desktop resolution.
 
-Fixture scenarios still execute if an earlier test suite fails, provided the UI
-build, runtime installation and desktop preflight succeeded and the job was not
-cancelled. The earlier failure remains a job failure; it cannot hide the fixture
-result or prevent its screenshots from being collected.
+The fixture job starts after change classification, independently of the native
+UI job, whenever `ui_tests` is selected. CI Gate requires both jobs to succeed;
+a failed, cancelled or unexpectedly skipped fixture job cannot pass the gate.
+Fixture scenarios require successful build, runtime installation and desktop
+preflight. Stable-profile compatibility still runs after a scenario failure when
+those prerequisites succeeded, preserving separate results and screenshots.
 
 For failed fixture tests, browse screenshots without downloading a ZIP: open the workflow run's
-**Summary** and find **Mock Gateway screenshots** in the UI job summary.
+**Summary** and find **Mock Gateway screenshots** in the Gateway fixture job summary.
 The index contains only failed tests and interrupted runs with a failure capture,
 grouped by test with failure captures first. Click a capture filename to open its PNG
 in the browser. GitHub sign-in is required. Each PNG also appears individually
@@ -306,8 +308,8 @@ under **Artifacts**, with a test/capture name and unique fixture run ID.
 These previews use unarchived GitHub artifacts, retain the repository's normal
 artifact retention, and are published only when the fixture step fails.
 Successful tests do not create screenshot summary entries or individual PNG
-artifacts; their captures stay inside `test-results-ui\GatewayFixture`.
-The `test-results-ui` ZIP remains the complete diagnostic download, including
+artifacts; their captures stay inside `test-results-gateway-fixture\GatewayFixture`.
+The `test-results-gateway-fixture` ZIP remains the complete diagnostic download, including
 TRX, request logs, run receipts and original screenshot paths. If no capture was
 produced, the summary says so; inspect the fixture step for a build/startup failure.
 
@@ -448,6 +450,98 @@ preservation and explicit replacement, switching jobs and schedule kinds,
 and resetting for a new job. Artifacts include owned-window editor captures
 and the exact synthetic schedules read back after accepted saves. This proves
 the app/fixture wire path, not production Gateway persistence or scheduling.
+
+## Systems inventory proof
+
+The `systems-inventory` and `systems-empty` scenarios back the native Systems
+page. `systems-inventory` serves `environments.list`, `system.info`, `node.list`
+with host statistics, pending node and device pairings, and presence beacons
+for connected apps. Session rows carry placement and exec
+bindings so machines show related sessions. Timestamps are relative to the
+current time, and host statistics change between reads. Node rename and removal
+still receive the read-only protocol error; Systems routes pairing decisions to
+the Connection page and opens deeper machine and desktop administration in the
+web interface. `systems-empty` returns an empty inventory.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario systems-inventory
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario systems-inventory -Theme Dark
+```
+
+Navigate with local MCP `app.navigate` and `{"page":"systems"}`, or open one
+machine with `{"page":"systems:node:fixture-studio"}`. `-Theme` (Light by
+default, or Dark) sets the isolated profile's app theme, because local MCP cannot
+change it.
+
+The page is one scroll, not a master-detail list. Select an inventory row to
+expand it inline; other rows can remain expanded independently.
+`systems:<id>` still opens exactly that row, and an unavailable id keeps its
+missing-selection explanation. "Devices and Gateway" always shows the full
+inventory in online-first order, with no search, status filter or sort controls.
+The shared hero reports this PC's observed Gateway attachment. Online and Issues
+are its only summary tiles; backup reads and badges remain closed. Pending pairing
+requests appear first as separate Wants to join rows. Other attention badges stay
+on their actual machine/worker rows. Issues reveals the first badged row without
+hiding the inventory; there is no separate Issues view. Workers and Connected
+apps retain their groups. Pairing review routes to Connection, not inline approval.
+Presence does not create machine rows or connection topology.
+
+For native mounted-control proof on an authorized desktop, use the host's RID
+(`win-arm64` on native ARM64):
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
+  -r win-arm64 --filter 'FullyQualifiedName~SystemsPageProofTests'
+```
+
+This covers inline row invocation, the minimum-height scroll, pending recovery,
+read-only access, resource disclosure, management confirmation epochs, the single
+page-level direct Open in web action, Issues jump without hidden inventory, independent
+expanders and narrow recovery-action layout, and the Capabilities column width
+and gap. It is not screenshot proof. Capture the hero, row badges and
+expanded row in light, dark and narrow layouts from the current fixture build. Verify
+the native CommandBar overflow and keyboard focus, collapsed Diagnostics,
+separate CPU count/load and the icon-only chat action. The fixture cannot prove
+real pairing or live desktop control.
+
+`GatewayFixtureUiTests.SystemsDesign_RealAppLightAndDark` launches an isolated
+real app for each theme and captures the loaded page, expanded machine, Add
+system dialog and cancelled Forget dialog. Set `OPENCLAW_RUN_GATEWAY_FIXTURE_UI=1`,
+`OPENCLAW_GATEWAY_FIXTURE_APP` to the current executable and
+`OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS` to an evidence directory before selecting
+that test. Captures use the existing owned-window capture helper. Mounted
+`RenderTargetBitmap` exports can omit compositor surfaces, opacity or inherited
+theme brushes; do not treat them as equivalent native screenshot evidence.
+
+`SystemsPage_OmitsConnectionMapInLightAndDark` verifies that the fixture-mounted
+page has no connection-map elements in either theme. `SystemsInventory_ExistingSeparatedCards`
+captures separated inventory rows, then scrolls the expanded Gateway's related
+sessions and Diagnostics into view before capture. `SystemsHero_TopAndScrolled`
+captures the scrolling hero with an unchanged scroll viewport.
+`SystemsHero_FullHostLightAndDark` captures wide and medium native shell widths
+in both themes. Widths below 720 use the existing mounted viewport route without
+lowering the production 800-DIP minimum. These renamed hero cases are source-only
+until their granted lane executes; earlier backdrop screenshots do not prove the
+new header. Fixture captures remain synthetic proof.
+
+Add a system opens three instructions and forwards to Connection. Forget names
+the node, displays only reported platform, last-seen and approval facts, and
+defaults to Cancel. A successful rename or forget shows a four-second in-page
+notification; errors remain in the dialog and are announced assertively.
+
+The page polls the selected machine's reported measurements every `OPENCLAW_SYSTEMS_POLL_SECONDS`
+(default 15, minimum 5) and reloads the inventory once per burst of Gateway
+events, `OPENCLAW_SYSTEMS_EVENT_REFRESH_MS` (default 1500) after the first one.
+Paired Windows nodes publish host statistics immediately after handshake and every
+`OPENCLAW_NODE_HOST_STATS_INTERVAL_SECONDS` (default 60).
+
+Node wire fixtures must therefore correlate command replies rather than assume
+the next frame is a reply. `NodeExecDenialWireTests` acknowledges only validated
+`node.event` requests for `node.host.stats`, using the Gateway's
+`handled: true, reason: "updated"` payload. Wrong invocation ids, unexpected
+methods or events, and malformed statistics fail the fixture. Continued
+statistics cannot extend its existing invocation cancellation deadline.
 
 ## Targeted context-usage proof
 
