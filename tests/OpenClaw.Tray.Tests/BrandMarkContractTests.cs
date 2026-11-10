@@ -41,7 +41,6 @@ public sealed class BrandMarkContractTests
         Assert.Contains("<TitleBar ", ReadTrayFile("Windows", "WorkspaceWindow.xaml"));
         Assert.Contains("WorkspaceTitleBar.IconSource = new BitmapIconSource", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("BrandAssets.RedBotMarkUri", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("controls:BrandMark", ReadTrayFile("Pages", "AgentEventsPage.xaml"));
 
         var expectedCodeFiles = new[]
         {

@@ -91,8 +91,12 @@ Remove-Item "$env:LOCALAPPDATA\OpenClawTray" -Recurse -Force -ErrorAction Silent
 Remove-Item "$env:APPDATA\OpenClawTray\setup-state.json" -Force -ErrorAction SilentlyContinue
 ```
 
-Or use the validation script if it is available separately:
+From a repository checkout, `scripts\validate-wsl-gateway-uninstall.ps1` runs a
+scripted local Gateway uninstall and records pre- and postconditions. Use
+`-Mode PostconditionOnly` to check state after a manual cleanup without
+removing anything:
 
 ```powershell
-.\validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive
+.\scripts\validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive
+.\scripts\validate-wsl-gateway-uninstall.ps1 -Mode PostconditionOnly
 ```

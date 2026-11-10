@@ -9,6 +9,7 @@ public sealed record MxcRequestContext
     public required string SystemDirectory { get; init; }
     public required IReadOnlyList<MxcUserFolder> UserFolders { get; init; }
     public required IReadOnlyList<string> ProtectedPaths { get; init; }
+    public IReadOnlyList<string> ExecutorPrivatePaths { get; init; } = [];
 
     public static MxcRequestContext Capture(string settingsDirectory)
     {
@@ -57,6 +58,15 @@ public sealed record MxcRequestContext
             SystemDirectory = Environment.SystemDirectory,
             UserFolders = folders.AsReadOnly(),
             ProtectedPaths = denied.AsReadOnly(),
+            ExecutorPrivatePaths =
+            [
+                NodeSandboxExecutor.GetDefaultScratchRoot(null, local),
+                NodeSandboxExecutor.GetDefaultScratchRoot(
+                    Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"), local),
+                NodeSandboxExecutor.GetPayloadCacheRoot(NodeSandboxExecutor.GetDefaultScratchRoot(null, local)),
+                NodeSandboxExecutor.GetPayloadCacheRoot(NodeSandboxExecutor.GetDefaultScratchRoot(
+                    Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"), local)),
+            ],
         };
     }
 

@@ -352,10 +352,15 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
                 Assert.Equal(2, paths.Length);
                 var expectedColor = new global::Windows.UI.ViewManagement.UISettings()
                     .GetColorValue(global::Windows.UI.ViewManagement.UIColorType.AccentDark1);
+                Assert.Equal(1, claw!.Opacity);
                 foreach (var path in paths)
                 {
                     Assert.Equal(0, path.StrokeThickness);
-                    Assert.Equal(expectedColor, Assert.IsType<SolidColorBrush>(path.Fill).Color);
+                    Assert.Equal(1, path.Opacity);
+                    var fill = Assert.IsType<SolidColorBrush>(path.Fill);
+                    Assert.Equal(1, fill.Opacity);
+                    Assert.Equal(255, fill.Color.A);
+                    Assert.Equal(expectedColor, fill.Color);
                 }
                 jaw = paths.Single(path => path.RenderTransform is RotateTransform);
                 var transform = Assert.IsType<RotateTransform>(jaw.RenderTransform);

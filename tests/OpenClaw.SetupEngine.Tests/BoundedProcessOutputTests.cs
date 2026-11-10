@@ -9,6 +9,7 @@ public sealed class BoundedProcessOutputTests
     {
         using var process = StartExitingProcess();
         Assert.NotNull(process);
+        Assert.True(process.WaitForExit(3_000), "The short-lived probe process did not exit.");
 
         var never = new TaskCompletionSource<string>(
             TaskCreationOptions.RunContinuationsAsynchronously).Task;

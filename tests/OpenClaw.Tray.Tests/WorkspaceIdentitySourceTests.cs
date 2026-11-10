@@ -128,11 +128,18 @@ public sealed class WorkspaceIdentitySourceTests
 
     [Theory]
     [InlineData("""{"profile":{"id":"gateway-owner","displayName":"  Barbara  "}}""", "Barbara · Shared owner")]
+    [InlineData("""{"profile":{"id":"gateway-owner","displayName":"Barbara Person"}}""", "Barbara · Shared owner")]
     [InlineData("""{"profile":{"id":"gateway-owner","displayName":"   ","emails":["owner@example.test"]}}""", "Shared owner")]
     [InlineData("""{"profile":{"id":"gateway-owner","emails":["owner@example.test"]}}""", "Shared owner")]
     [InlineData("""{"profile":{"id":"gateway-owner"}}""", "Shared owner")]
     [InlineData("""{"profile":{"id":"person","displayName":"Ada"}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"  Ada Lovelace  "}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Ada\tAugusta\nLovelace"}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Ada\u00a0Lovelace"}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Mary-Jane Watson"}}""", "Mary-Jane")]
+    [InlineData("""{"profile":{"id":"person","displayName":"\u674e\u660e"}}""", "\u674e\u660e")]
     [InlineData("""{"profile":{"id":"person","emails":["ada@example.test"]}}""", "ada@example.test")]
+    [InlineData("""{"profile":{"id":"person with spaces"}}""", "person with spaces")]
     [InlineData("""{"profile":{"id":"person"}}""", "person")]
     public async Task FooterShowsSavedSharedOwnerNameWithMarkerButNeverItsEmailOrId(string profile, string expected)
     {
@@ -163,6 +170,28 @@ public sealed class WorkspaceIdentitySourceTests
         await source.RefreshAsync(invalidate: true);
         Assert.Null(source.SharedOwnerName);
         Assert.Equal("Shared owner", Label(source));
+    }
+
+    [Fact]
+    public async Task FooterShortensOnlyTheSavedNameAndClearsItOnDisconnect()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(Profile("Ada Lovelace"));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Equal("Ada", Label(source));
+        Assert.Equal("Ada Lovelace", source.DisplayName);
+
+        proxy.Response = () => Task.FromResult(Profile(null, "ada@example.test"));
+        await source.RefreshAsync(invalidate: true);
+        Assert.Equal("ada@example.test", Label(source));
+
+        proxy.Response = () => Task.FromResult(Profile("Grace Hopper"));
+        await source.RefreshAsync(invalidate: true);
+        Assert.Equal("Grace", Label(source));
+        source.SetConnection(null, ConnectionStatus.Disconnected);
+        Assert.Equal("Owner", Label(source));
     }
 
     [Fact]
@@ -590,6 +619,8 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Contains("LocalizationHelper.Format(\"WorkspaceShell_SharedOwnerNamedFormat\", ownerName)", source);
         Assert.Contains("footer.ApplyIdentity(label, name ?? \"\")", source);
         Assert.Contains("footer.ApplyAvatar(_ownerImage)", source);
+        Assert.Contains("_chat.ApplyUserIdentity(name ?? \"\", _ownerImage)", source);
+        Assert.Contains("_chat.ApplyUserIdentity(_identity.DisplayName ?? \"\", image)", source);
         Assert.DoesNotContain("settings/profile", source);
         Assert.DoesNotContain("SetUpProfile", source);
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })

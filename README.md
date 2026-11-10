@@ -67,7 +67,7 @@ OpenClaw applies more than one trust check:
 - **Permissions** controls what this PC advertises.
 - **Connection** shows pairing and reapproval requests.
 - **Command Center** explains commands filtered by gateway policy and provides copyable repair commands for safe capabilities.
-- **Advanced > Config** provides a schema-guided editor for the connected gateway's configuration.
+- **Config** provides a schema-guided editor for the connected gateway's configuration.
 
 After changing gateway command policy, approve any `pending-reapproval` request shown by the app and reconnect the node. The app never silently opts into privacy-sensitive gateway commands.
 
@@ -214,10 +214,17 @@ the same runtime resolver as the app build and rejects a missing or outdated com
 Direct WinUI builds require a runtime identifier:
 
 ```powershell
+.\scripts\Initialize-ReactorPackages.ps1
 dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64
 dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-arm64
 dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64 -p:PackageMsix=true
 ```
+
+The initializer verifies the published Reactor packages in the repository-local
+feed selected by `NuGet.Config`. Run it before direct restore/build/run commands
+or the first Visual Studio restore. `build.ps1` and `run-app-local.ps1` perform
+this step automatically when building; `-NoBuild` uses existing output without
+acquiring packages. No global NuGet configuration or cache is changed.
 
 ### Run
 

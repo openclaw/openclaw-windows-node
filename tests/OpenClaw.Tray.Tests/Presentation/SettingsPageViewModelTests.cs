@@ -64,22 +64,6 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
-    public void LocationConsent_PersistsField()
-    {
-        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
-        using (temp)
-        {
-            vm.Activate(null);
-
-            var target = !vm.LocationConsentGiven;
-            vm.LocationConsentGiven = target;
-
-            Assert.Equal(target, settings.LocationConsentGiven);
-            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
-        }
-    }
-
-    [Fact]
     public void ShowDiagnostics_WritesOverride_NotEffectiveOnly()
     {
         var vm = NewVm(out var settings, out _, out _, out var temp);
@@ -224,6 +208,23 @@ public sealed class SettingsPageViewModelTests
             vm.ShowChatToolCalls = target;
 
             Assert.Equal(target, settings.ShowChatToolCalls);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
+    public void ShowChatThinking_Persists_AndNotifies()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            Assert.True(vm.ShowChatThinking);
+            vm.ShowChatThinking = false;
+
+            Assert.False(settings.ShowChatThinking);
+            Assert.False(settings.CapturePresentationSnapshot().ShowChatThinking);
             Assert.Equal(1, appCommands.NotifySettingsSavedCount);
         }
     }

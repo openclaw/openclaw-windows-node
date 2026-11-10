@@ -32,7 +32,7 @@
                             CornerRadius="8"
                             Padding="12"
                             Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                             <FontIcon x:Name="SttCapabilityNoticeIcon"
                                       Glyph="&#xE7BA;"
                                       FontSize="14"
@@ -40,7 +40,7 @@
                                       VerticalAlignment="Top"
                                       Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <StackPanel Spacing="6">
+                            <StackPanel Grid.Column="1" Spacing="6">
                                 <TextBlock x:Uid="VoiceSettingsPage_SttCapabilityDisabledNotice"
                                            Text="Speech-to-text is disabled. Configure models here, then enable the capability in Permissions when you're ready."
                                            Style="{StaticResource CaptionTextBlockStyle}"
@@ -51,7 +51,7 @@
                                                  Click="OnOpenPermissionsClick"
                                                  Padding="0"/>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
                     <TextBlock x:Uid="VoiceSettingsPage_ModelRequirementText" x:Name="ModelRequirementText"
                                Text="Voice input is not ready until at least one speech model is downloaded."
@@ -60,13 +60,13 @@
                                TextWrapping="Wrap"/>
 
                     <ComboBox x:Uid="VoiceSettingsPage_ModelCombo" x:Name="ModelCombo" Header="Model Size"
-                              SelectionChanged="OnModelChanged" Width="320">
+                              SelectionChanged="OnModelChanged" MaxWidth="320" HorizontalAlignment="Left">
                         <ComboBoxItem x:Uid="VoiceSettingsPage_ModelTiny"  Content="Tiny (~75 MB): Fast, basic accuracy" Tag="tiny"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_ModelBase"  Content="Base (~142 MB): Good balance"        Tag="base"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_ModelSmall" Content="Small (~466 MB): High accuracy"      Tag="small"/>
                     </ComboBox>
 
-                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <StackPanel x:Name="DownloadActions" Orientation="Horizontal" Spacing="12">
                         <Button x:Name="DownloadButton" Click="OnDownloadClick"
                                 AutomationProperties.LabeledBy="{Binding ElementName=DownloadButtonText}"
                                 Style="{StaticResource AccentButtonStyle}">
@@ -76,6 +76,7 @@
                             </StackPanel>
                         </Button>
                         <TextBlock x:Name="ModelStatusText" VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
@@ -141,7 +142,7 @@
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="VoiceSettingsPage_LanguageHeader" x:Name="LanguageHeaderText" Text="Language" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <ComboBox x:Uid="VoiceSettingsPage_LanguageCombo" x:Name="LanguageCombo"
-                              SelectionChanged="OnLanguageChanged" Width="200">
+                              SelectionChanged="OnLanguageChanged" MaxWidth="200" HorizontalAlignment="Left">
                         <ComboBoxItem x:Uid="VoiceSettingsPage_LangAuto" Content="Auto-detect" Tag="auto"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_LangEn"   Content="English"     Tag="en"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_LangEs"   Content="Spanish"     Tag="es"/>
@@ -165,8 +166,8 @@
 
                     <Slider x:Uid="VoiceSettingsPage_SilenceSlider" x:Name="SilenceSlider" Header="Silence timeout (seconds)"
                             Minimum="0.5" Maximum="5" StepFrequency="0.5"
-                            ValueChanged="OnSilenceChanged" Width="250"
-                            HorizontalAlignment="Left"/>
+                            ValueChanged="OnSilenceChanged" MaxWidth="250"
+                            HorizontalAlignment="Stretch"/>
 
                     <ToggleSwitch x:Uid="VoiceSettingsPage_TtsResponseToggle" x:Name="TtsResponseToggle" Toggled="OnTtsResponseToggled"
                                   Header="Read responses aloud"/>
@@ -193,7 +194,7 @@
                             CornerRadius="8"
                             Padding="12"
                             Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                             <FontIcon x:Name="TtsCapabilityNoticeIcon"
                                       Glyph="&#xE7BA;"
                                       FontSize="14"
@@ -201,7 +202,7 @@
                                       VerticalAlignment="Top"
                                       Foreground="{ThemeResource SystemFillColorCautionBrush}"
                                       AutomationProperties.AccessibilityView="Raw"/>
-                            <StackPanel Spacing="6">
+                            <StackPanel Grid.Column="1" Spacing="6">
                                 <TextBlock x:Uid="VoiceSettingsPage_TtsCapabilityDisabledNotice"
                                            Text="Text-to-speech is disabled. Configure providers and voices here, then enable the capability in Permissions when you're ready."
                                            Style="{StaticResource CaptionTextBlockStyle}"
@@ -212,7 +213,7 @@
                                                  Click="OnOpenPermissionsClick"
                                                  Padding="0"/>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
 
                     <ToggleSwitch x:Name="GatewayVoiceToggle" x:Uid="VoiceSettingsPage_GatewayVoice"
@@ -227,7 +228,7 @@
                     </StackPanel>
 
                     <ComboBox x:Uid="VoiceSettingsPage_TtsProviderCombo" x:Name="TtsProviderCombo" Header="Provider"
-                              SelectionChanged="OnTtsProviderChanged" Width="360">
+                              SelectionChanged="OnTtsProviderChanged" MaxWidth="360" HorizontalAlignment="Left">
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsKokoro"     Content="Kokoro (local neural voices)"         Tag="kokoro"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsPiper"      Content="Piper (local neural voices)"          Tag="piper"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsWindows"    Content="Windows (built-in neural voices)"     Tag="windows"/>
@@ -238,8 +239,8 @@
                     <!-- Kokoro voice picker (local neural TTS via kokoro.cpp) -->
                     <StackPanel x:Name="KokoroVoicePanel" Spacing="8" Visibility="Collapsed">
                         <ComboBox x:Uid="VoiceSettingsPage_KokoroVoiceCombo" x:Name="KokoroVoiceCombo" Header="Voice"
-                                  SelectionChanged="OnKokoroVoiceChanged" Width="400"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                  SelectionChanged="OnKokoroVoiceChanged" MaxWidth="400" HorizontalAlignment="Left"/>
+                        <StackPanel x:Name="KokoroActions" Orientation="Horizontal" Spacing="8">
                             <Button x:Name="KokoroDownloadButton" Click="OnKokoroDownloadClick"
                                     AutomationProperties.LabeledBy="{Binding ElementName=KokoroDownloadButtonText}"
                                     Width="180" MinHeight="32">
@@ -260,7 +261,7 @@
                             </Button>
                         </StackPanel>
                         <ProgressBar x:Name="KokoroDownloadProgress" Visibility="Collapsed"
-                                     IsIndeterminate="False" Maximum="100" Height="6" Width="400" HorizontalAlignment="Left"/>
+                                     IsIndeterminate="False" Maximum="100" Height="6" MaxWidth="400" HorizontalAlignment="Stretch"/>
                         <TextBlock x:Name="KokoroStatusText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
@@ -273,8 +274,8 @@
                     <!-- Piper voice picker (local neural TTS via Sherpa-ONNX) -->
                     <StackPanel x:Name="PiperVoicePanel" Spacing="8" Visibility="Collapsed">
                         <ComboBox x:Uid="VoiceSettingsPage_PiperVoiceCombo" x:Name="PiperVoiceCombo" Header="Voice"
-                                  SelectionChanged="OnPiperVoiceChanged" Width="400"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                  SelectionChanged="OnPiperVoiceChanged" MaxWidth="400" HorizontalAlignment="Left"/>
+                        <StackPanel x:Name="PiperActions" Orientation="Horizontal" Spacing="8">
                             <Button x:Name="PiperDownloadButton" Click="OnPiperDownloadClick"
                                     AutomationProperties.LabeledBy="{Binding ElementName=PiperDownloadButtonText}"
                                     Width="180" MinHeight="32">
@@ -295,7 +296,7 @@
                             </Button>
                         </StackPanel>
                         <ProgressBar x:Name="PiperDownloadProgress" Visibility="Collapsed"
-                                     IsIndeterminate="False" Maximum="100" Height="6" Width="400" HorizontalAlignment="Left"/>
+                                     IsIndeterminate="False" Maximum="100" Height="6" MaxWidth="400" HorizontalAlignment="Stretch"/>
                         <TextBlock x:Name="PiperStatusText"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
@@ -308,7 +309,7 @@
                     <!-- Windows voice picker -->
                     <StackPanel x:Name="WindowsVoicePanel" Spacing="8" Visibility="Collapsed">
                         <ComboBox x:Uid="VoiceSettingsPage_WindowsVoiceCombo" x:Name="WindowsVoiceCombo" Header="Voice"
-                                  SelectionChanged="OnWindowsVoiceChanged" Width="300"/>
+                                  SelectionChanged="OnWindowsVoiceChanged" MaxWidth="300" HorizontalAlignment="Left"/>
                         <Button x:Name="PreviewVoiceButton" Click="OnPreviewVoiceClick"
                                 AutomationProperties.LabeledBy="{Binding ElementName=PreviewVoiceLabel}"
                                 Width="140">
@@ -322,26 +323,26 @@
                     <!-- ElevenLabs settings -->
                     <StackPanel x:Name="ElevenLabsPanel" Spacing="8" Visibility="Collapsed">
                         <PasswordBox x:Uid="VoiceSettingsPage_ElevenLabsApiKeyBox" x:Name="ElevenLabsApiKeyBox" Header="API Key"
-                                     PasswordChanged="OnElevenLabsKeyChanged" Width="300"/>
+                                     PasswordChanged="OnElevenLabsKeyChanged" MaxWidth="300" HorizontalAlignment="Left"/>
                         <TextBox x:Uid="VoiceSettingsPage_ElevenLabsVoiceIdBox" x:Name="ElevenLabsVoiceIdBox" Header="Voice ID"
-                                 TextChanged="OnElevenLabsVoiceIdChanged" Width="300"
+                                 TextChanged="OnElevenLabsVoiceIdChanged" MaxWidth="300" HorizontalAlignment="Left"
                                  PlaceholderText="e.g. 21m00Tcm4TlvDq8ikWAM"/>
                         <TextBox x:Uid="VoiceSettingsPage_ElevenLabsModelBox" x:Name="ElevenLabsModelBox" Header="Model (optional)"
-                                 TextChanged="OnElevenLabsModelChanged" Width="300"
+                                 TextChanged="OnElevenLabsModelChanged" MaxWidth="300" HorizontalAlignment="Left"
                                  PlaceholderText="e.g. eleven_turbo_v2"/>
                     </StackPanel>
 
                     <StackPanel x:Name="MiniMaxPanel" Spacing="8" Visibility="Collapsed">
                         <PasswordBox x:Uid="VoiceSettingsPage_MiniMaxApiKeyBox" x:Name="MiniMaxApiKeyBox" Header="API Key"
-                                     PasswordChanged="OnMiniMaxKeyChanged" Width="300"/>
+                                     PasswordChanged="OnMiniMaxKeyChanged" MaxWidth="300" HorizontalAlignment="Left"/>
                         <TextBox x:Uid="VoiceSettingsPage_MiniMaxVoiceIdBox" x:Name="MiniMaxVoiceIdBox" Header="Voice ID"
-                                 TextChanged="OnMiniMaxVoiceIdChanged" Width="300"
+                                 TextChanged="OnMiniMaxVoiceIdChanged" MaxWidth="300" HorizontalAlignment="Left"
                                  PlaceholderText="e.g. male-qn-qingse"/>
                         <TextBox x:Uid="VoiceSettingsPage_MiniMaxModelBox" x:Name="MiniMaxModelBox" Header="Model"
-                                 TextChanged="OnMiniMaxModelChanged" Width="300"
+                                 TextChanged="OnMiniMaxModelChanged" MaxWidth="300" HorizontalAlignment="Left"
                                  PlaceholderText="speech-2.8-hd"/>
                         <ComboBox x:Uid="VoiceSettingsPage_MiniMaxRegionCombo" x:Name="MiniMaxRegionCombo" Header="Region"
-                                  SelectionChanged="OnMiniMaxRegionChanged" Width="300">
+                                  SelectionChanged="OnMiniMaxRegionChanged" MaxWidth="300" HorizontalAlignment="Left">
                             <ComboBoxItem x:Uid="VoiceSettingsPage_MiniMaxRegionGlobal" Content="Global" Tag="global_en"/>
                             <ComboBoxItem x:Uid="VoiceSettingsPage_MiniMaxRegionChina" Content="China" Tag="cn_zh"/>
                         </ComboBox>
@@ -352,12 +353,13 @@
             <!-- Privacy notice -->
             <Border Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
                     CornerRadius="8" Padding="12">
-                <StackPanel Orientation="Horizontal" Spacing="8">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                     <FontIcon Glyph="&#xE8D7;" FontSize="16" Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
                     <TextBlock x:Uid="VoiceSettingsPage_PrivacyNote" x:Name="PrivacyNoteText"
+                               Grid.Column="1"
                                Text="Piper, Windows, and speech recognition run on this device. Cloud TTS providers send response text to their services for synthesis; microphone audio is not sent to them."
                                Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"/>
-                </StackPanel>
+                </Grid>
             </Border>
 
         </StackPanel>

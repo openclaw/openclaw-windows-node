@@ -55,7 +55,7 @@
   },
   "clientFoundationCommit": "2cae69ba",
   "_clientFoundationCommitNote": "The commit on main that introduced the typed gateway protocol client (OpenClawGatewayClient.Protocol.cs + GatewayProtocolModels.cs) this guard cross-checks.",
-  "snapshotUpdated": "2026-10-19",
+  "snapshotUpdated": "2026-11-06",
   "scopePrefixes": ["sessions.", "agents.files.", "commands."],
   "methods": [
     {
@@ -76,13 +76,14 @@
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
-        "key", "isMain", "status", "hasActiveRun", "model", "label", "channel", "displayName",
+        "key", "isMain", "status", "hasActiveRun", "hasActiveSubagentRun", "providerReview", "model", "label", "channel", "displayName",
         "derivedTitle", "modelProvider", "provider", "subject", "groupChannel", "room",
-        "space", "chatType", "execNode", "parentSessionKey", "spawnDepth", "origin",
-        "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "verboseLevel",
+        "space", "chatType", "execNode", "placement", "parentSessionKey", "spawnDepth", "origin",
+        "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "reasoningLevel", "reasoningDefault", "verboseLevel",
         "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
-        "contextTokens", "updatedAt", "startedAt", "pinned", "pinnedAt", "unread", "markedUnreadAt", "createdAt", "archived"
-      ]
+        "contextTokens", "updatedAt", "startedAt", "endedAt", "lastRunId", "runtimeMs", "pinned", "pinnedAt", "unread", "markedUnreadAt", "createdAt", "archived"
+      ],
+      "notes": "Optional terminal-run duration and reasoning preferences verified at b896457970bfa1b2cef23ea16f3731ba73436b0c: src/config/sessions/session-run-lifecycle-projection.ts, src/gateway/session-utils-row.ts, ui/src/pages/chat/chat-turn-presentation.ts and ui/src/pages/chat/chat-reasoning.ts. Child liveness and detail-only providerReview verified in packages/gateway-protocol/src/session-row-fields.ts and schema/sessions-provider-review.ts at the same commit. Compact omission is not a deletion receipt. Missing fields remain unavailable; runtimeMs is consumed only for an exact terminal run/session match."
     },
     {
       "method": "sessions.subscribe",
@@ -110,6 +111,17 @@
       "kind": "request",
       "windowsUsage": "used",
       "requestFields": ["keys", "limit", "maxChars"]
+    },
+    {
+      "method": "sessions.usage",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [
+        "startDate", "endDate", "agentId", "agentScope", "mode", "timeZone", "utcOffset", "groupBy",
+        "key", "limit", "projection", "query", "offset", "sort", "sortDirection"
+      ],
+      "requestFieldsSource": "public Dictionary<string, object?> ToParameters(",
+      "_note": "Unadvertised upstream (core-descriptors advertise:false). SessionsUsageQuery sends the subset of the web client's requestSessionUsage the native page uses; creator, day/hour/session selection, recent keys and context weight are left to the web page. The deprecated range/includeHistorical inputs are intentionally not sent."
     },
     {
       "method": "sessions.patch",
