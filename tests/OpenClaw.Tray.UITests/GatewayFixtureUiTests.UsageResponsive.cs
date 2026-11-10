@@ -629,14 +629,30 @@ public sealed partial class GatewayFixtureUiTests
             Assert.True(scale > 0);
             double HostWidth() => FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
             double PaneItemWidth() => FindById(run, "SettingsNavConnection")!.Current.BoundingRectangle.Width / scale;
+            (double Host, double Pane)? ReadWidths()
+            {
+                try
+                {
+                    // Responsive reconciliation can temporarily remove either UIA peer. Missing
+                    // geometry is not a zero-width sample and cannot establish layout stability.
+                    if (FindById(run, "UsagePageRoot") is not { Current.IsOffscreen: false } host ||
+                        FindById(run, "SettingsNavConnection") is not { Current.IsOffscreen: false } pane) return null;
+                    var hostWidth = host.Current.BoundingRectangle.Width / scale;
+                    var paneWidth = pane.Current.BoundingRectangle.Width / scale;
+                    return double.IsFinite(hostWidth) && hostWidth > 0 && double.IsFinite(paneWidth) && paneWidth > 0
+                        ? (hostWidth, paneWidth) : null;
+                }
+                catch (ElementNotAvailableException) { return null; }
+            }
             async Task StableHost()
             {
-                var previous = (Host: HostWidth(), Pane: PaneItemWidth());
+                var previous = ReadWidths();
                 await run.WaitForAsync(async () =>
                 {
                     await Task.Delay(UsageResizeSampleInterval);
-                    var current = (Host: HostWidth(), Pane: PaneItemWidth());
-                    var stable = Math.Abs(previous.Host - current.Host) < 0.01 && Math.Abs(previous.Pane - current.Pane) < 0.01;
+                    var current = ReadWidths();
+                    var stable = previous is { } before && current is { } after &&
+                        Math.Abs(before.Host - after.Host) < 0.01 && Math.Abs(before.Pane - after.Pane) < 0.01;
                     previous = current;
                     return stable;
                 }, "stable measured Usage host and navigation widths sampled 300 ms apart");
@@ -672,16 +688,23 @@ public sealed partial class GatewayFixtureUiTests
                                 return rect.Width == expected.Width && rect.Height == expected.Height;
                             }, $"exact {name} window pixel bounds");
                         }
-                        await WaitUiAsync(run, () => Math.Abs(HostWidth() - beforeHost) > 1, $"changed {name} host width");
+                        await WaitUiAsync(run, () => ReadWidths() is { } measured &&
+                            Math.Abs(measured.Host - beforeHost) > 1, $"changed {name} host width");
                         await StableHost();
                         System.Windows.Rect? previousAnchor = null;
                         await WaitUiAsync(run, () =>
                         {
-                            var anchor = FindById(run, "UsageExport")!.Current.BoundingRectangle;
+                            if (FindById(run, "UsageExport") is not { Current.IsOffscreen: false } export)
+                            {
+                                previousAnchor = null;
+                                return false;
+                            }
+                            var anchor = export.Current.BoundingRectangle;
                             var frame = UsageWindowBounds(handle);
                             var stable = previousAnchor is { } previous && previous == anchor;
                             previousAnchor = anchor;
-                            return stable && anchor.Left >= frame.Left && anchor.Top >= frame.Top &&
+                            return stable && !anchor.IsEmpty && anchor.Width > 0 && anchor.Height > 0 &&
+                                anchor.Left >= frame.Left && anchor.Top >= frame.Top &&
                                 anchor.Right <= frame.Right && anchor.Bottom <= frame.Bottom;
                         }, "stable mast action fully inside the resized Hub");
                         var bounds = UsageWindowBounds(handle);
