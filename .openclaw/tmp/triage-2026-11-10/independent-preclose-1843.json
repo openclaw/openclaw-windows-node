@@ -1,0 +1,70 @@
+{
+  "url": "https://github.com/openclaw/openclaw-windows-node/issues/1843",
+  "title": "[Bug] Companion v2026.10.5-alpha.4 WSL setup fails: pinned Node 24.19.0 rejected by install-cli (requires 24.22.1+)",
+  "subtitle": "openclaw/openclaw-windows-node #1843",
+  "badge": {
+    "label": "Open",
+    "tone": "positive"
+  },
+  "author": "urielcast18",
+  "authorUrl": "https://github.com/urielcast18",
+  "createdAt": "2026-10-22T18:17:45Z",
+  "updatedAt": "2026-11-10T19:58:36Z",
+  "metadata": [
+    {
+      "label": "Comments",
+      "value": "5"
+    }
+  ],
+  "revision": "2026-11-10T19:58:36Z",
+  "body": "## Summary\n\nA clean local WSL Gateway setup through **OpenClaw Companion v2026.10.5-alpha.4 (Windows x64)** fails at `install-cli` because the setup engine pins **Node.js 24.19.0**, but the current OpenClaw CLI installer requires **Node.js 24.22.1+ or 26.12.1+**.\n\nThis blocks onboarding even though the Windows/WSL preflight steps succeed.\n\n## Environment\n\n- OpenClaw Companion: `v2026.10.5-alpha.4` (Windows x64 installer)\n- OS: Windows 11 x64, build `26200.6584` (reported by WSL)\n- Installation path: **Install a local Gateway (WSL)**\n- WSL distro: Ubuntu 24.04 as app-owned `OpenClawGateway`\n- Permissions preset: Strict\n\n## Actual behavior\n\nThe setup progresses through WSL compatibility checks and Gateway preparation, then fails at the CLI installation step:\n\n```text\nStep 'install-cli' failed: CLI install failed (exit 1):\nERROR: Node 24.19.0 is unsupported; use Node 24.22.1+ or Node 26.12.1+.\n```\n\nThe preceding log confirmed the installer invoked `wsl.exe --install --distribution Ubuntu-24.04 --name OpenClawGateway ... --no-launch --web-download`, and this subsequent failure occurs at `install-cli`. An earlier attempt had failed during `wsl-create` with exit `-1` and no output, but the latest attempt progressed beyond WSL creation.\n\n## Source evidence\n\nThe **released tag** pins an incompatible version in `src/OpenClaw.SetupEngine/GatewayInstallPolicy.cs`:\n\n- [v2026.10.5-alpha.4: `NodeVersion = \"24.19.0\"`](https://github.com/openclaw/openclaw-windows-node/blob/v2026.10.5-alpha.4/src/OpenClaw.SetupEngine/GatewayInstallPolicy.cs)\n- [Current `main`: `NodeVersion = \"24.22.1\"`](https://github.com/openclaw/openclaw-windows-node/blob/main/src/OpenClaw.SetupEngine/GatewayInstallPolicy.cs)\n\nThis appears to be a **release/source version drift** rather than missing WSL support or a user-provided Node installation problem.\n\nRelated older reports with the same failure pattern for a previous pinned Node version: #1364 and #1394.\n\n## Expected behavior\n\nThe graphical Windows Companion setup should select a Node.js version accepted by the OpenClaw CLI installer and complete local Gateway setup without requiring users to manually modify WSL or install another runtime.\n\n## Request\n\nCould you publish a refreshed **Windows x64 Companion installer** incorporating the corrected Node pin, or provide an official GUI-supported recovery/update path for installations already blocked at `install-cli`?\n\nNo security controls or WSL isolation settings were disabled during these attempts.",
+  "bodyTruncated": false,
+  "comments": [
+    {
+      "id": "issuecomment-6348119356",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1843#issuecomment-6348119356",
+      "author": "clawsweeper[bot]",
+      "createdAt": "2026-10-22T18:24:21Z",
+      "body": "Codex review: this still needs some work.\n\n**Summary**\nKeep open: the runtime correction is merged, but no published Companion release contains it, and this issue explicitly requests an installer or GUI recovery for the affected release.\n\nReproducibility: no. current-main failure was reproduced: source and regression assertions use Node 24.22.1, while the affected release source corroborates the reported 24.19.0 argument; no builds, tests, or installers ran during this read-only review.\n\n**Maintainer decision needed**\n- **Question:** Should the merged runtime correction receive a refreshed x64 installer now or ship in the next scheduled Companion release?\n- **Recommendation:** **Publish a refreshed installer:** Include the merged runtime correction, verify fresh WSL setup and failed-setup recovery on x64, and provide a visible GUI update or recovery route.\n- **Why:** The code correction is complete, but choosing and publishing a release remains necessary to satisfy the reported onboarding recovery request.\n\n**Next step**\nChoose a release containing the merged runtime correction and provide a visible GUI update or recovery action, then verify fresh x64 WSL setup and retry from the affected installer.\n\n\n<details>\n<summary>Review details</summary>\n\nBest possible solution:\n\nDeliver the corrected runtime in a refreshed x64 installer with a visible update or recovery action that lets affected users retry the setup wizard.\n\nDo we have a high-confidence way to reproduce the issue?\n\nNo current-main failure was reproduced: source and regression assertions use Node 24.22.1, while the affected release source corroborates the reported 24.19.0 argument; no builds, tests, or installers ran during this read-only review.\n\nIs this the best way to solve the issue?\n\nThe merged pin correction addresses the runtime rejection, but another code-fix PR would duplicate completed work; delivery and verification of the released installer are the remaining steps.\n\nAGENTS.md: found and applied where relevant.\n\nRemaining risk / open question:\n\n- No published installer containing the corrected runtime was found.\n- Fresh x64 setup and recovery from the affected released installer have not been verified in this review.\n\nCodex review notes: model internal, reasoning medium; reviewed against [bef07da01911](https://github.com/openclaw/openclaw-windows-node/commit/bef07da01911fa78ed5ab728ab9248bbb1ec0466); fix evidence: commit [51f18c1222c9](https://github.com/openclaw/openclaw-windows-node/commit/51f18c1222c996fb6fa2eb4d7e8d668492103a0e), main fix timestamp 2026-10-22T06:52:53Z.\n\n</details>\n\n<details>\n<summary>Label changes</summary>\n\nLabel changes:\n\n- add `P0`: The reported graphical first-run WSL installation cannot complete on the published build, and no verified in-product recovery is available.\n- add `impact:ux-release-blocker`: An ordinary installer user is blocked before a useful Gateway run and needs a refreshed installer or supported GUI recovery.\n- add `issue-rating: 🦪 silver shellfish`: Current issue advisory state selects this label.\n- add `clawsweeper:not-repro-on-main`: Current issue advisory state selects this label.\n- add `clawsweeper:no-new-fix-pr`: Current issue advisory state selects this label.\n- add `clawsweeper:fix-shape-clear`: Current issue advisory state selects this label.\n- add `clawsweeper:needs-maintainer-review`: Current issue advisory state selects this label.\n\nLabel justifications:\n\n- `P0`: The reported graphical first-run WSL installation cannot complete on the published build, and no verified in-product recovery is available.\n- `impact:ux-release-blocker`: An ordinary installer user is blocked before a useful Gateway run and needs a refreshed installer or supported GUI recovery.\n\n</details>\n\n<details>\n<summary>Evidence reviewed</summary>\n\nWhat I checked:\n\n- **Explicit release recovery request:** The full report identifies v2026.10.5-alpha.4, supplies the install-cli rejection, acknowledges the corrected main pin, and explicitly requests a refreshed x64 installer or official GUI recovery; the discussion and timeline contain",
+      "bodyTruncated": true
+    },
+    {
+      "id": "issuecomment-6482489439",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1843#issuecomment-6482489439",
+      "author": "polemarxos",
+      "createdAt": "2026-10-28T22:38:05Z",
+      "body": "issue is resolved? cause i get same error with windows store version and from site",
+      "bodyTruncated": false
+    },
+    {
+      "id": "issuecomment-6551100541",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1843#issuecomment-6551100541",
+      "author": "bilalakram00082-glitch",
+      "createdAt": "2026-11-01T00:21:10Z",
+      "body": "I have the same problem on Windows 10 Enterprise 22H2 (build 19045.6466). The OpenClaw Windows app v2026.9.8-1 fails at the install-cli step with \"CLI install failed (exit 1)\". The error says the bundled Node.js is 24.19.0, but this release requires Node 24.22.1 or newer. Retrying doesn't fix it.",
+      "bodyTruncated": false
+    },
+    {
+      "id": "issuecomment-6689024970",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1843#issuecomment-6689024970",
+      "author": "seralifatih",
+      "createdAt": "2026-11-06T15:51:14Z",
+      "body": "Still blocked on Windows 10 (19045) as of Nov 6 with v2026.10.5-alpha.4. The fix from #1824 is on main but no release includes it yet. Could a refreshed x64 installer be published? Happy to test it.",
+      "bodyTruncated": false
+    },
+    {
+      "id": "issuecomment-6777804026",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1843#issuecomment-6777804026",
+      "author": "roboclaw-bot",
+      "createdAt": "2026-11-10T19:58:36Z",
+      "body": "The refreshed installer is now published. v2026.11.1, released November 7, includes OpenClawCompanion-Setup-x64.exe and the Node 24.22.1 correction from #1824 (fix(setup): install a Node runtime supported by the Gateway). The release tag itself pins 24.22.1, and the fixing PR records successful real WSL setup with that runtime. Closing this specific 24.19.0 rejection as fixed. Update Companion using the v2026.11.1 installer and retry the normal setup flow; no manual WSL/runtime edits or data reset are required by this correction. If it still reports 24.19.0 after updating, please reopen with the running Companion version and sanitized install-cli error. Store rollout timing and unrelated setup failures are not implied by this closure.\n\nRelease: https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.1\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1843:triage -->\n",
+      "bodyTruncated": false
+    }
+  ],
+  "commentsTotal": 5,
+  "commentsTruncated": false,
+  "files": [],
+  "filesTotal": 0,
+  "filesTruncated": false,
+  "partial": true
+}

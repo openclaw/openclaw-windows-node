@@ -1,0 +1,46 @@
+{
+  "url": "https://github.com/openclaw/openclaw-windows-node/issues/1821",
+  "title": "fix(usage): opening Usage keeps the 7-day totals",
+  "subtitle": "openclaw/openclaw-windows-node #1821",
+  "badge": {
+    "label": "Open",
+    "tone": "positive"
+  },
+  "author": "SebTardif",
+  "authorUrl": "https://github.com/SebTardif",
+  "createdAt": "2026-10-22T03:33:07Z",
+  "updatedAt": "2026-11-10T19:58:31Z",
+  "metadata": [
+    {
+      "label": "Comments",
+      "value": "2"
+    }
+  ],
+  "revision": "2026-11-10T19:58:31Z",
+  "body": "## What Problem\n\nOpening Usage replaces the selected 7-day totals with the 30-day snapshot.\n\nPull request creation is refused for this account (`CreatePullRequest` FORBIDDEN, REST create 404). The branch is on the fork.\n\nCompare: https://github.com/openclaw/openclaw-windows-node/compare/main...SebTardif:fix/f037-usage-period?expand=1\n\nHead: `70a4c754316209006ec493c92bda01df3be167df` on `SebTardif:fix/f037-usage-period`\n\n## User Impact\n\nUsage opens on 7 Days and keeps that period. A 30-day cost that arrived earlier does not move the selector or replace the totals. Choosing 30 Days still requests 30 days.\n\n## Why\n\nThe page refresh asked for the selected period and also for a fixed 30-day cost. The first cost payload was applied even when its day count did not match the selector, and the selector then moved to that period. The branch requests status plus the selected period only. A payload applies when its day count is unspecified or within one day of the selection. The handshake may still request 30 days for the rest of the app. That payload does not paint the Usage page while 7 Days is selected.\n\n## Evidence\n\nBefore this change, `ShouldApply_RejectsFirstMismatchedResponse` failed: a 30-day payload was accepted for a 7-day selection.\n\n`./build.ps1` succeeded in the worktree. The Usage page sources were saved at 20:11 and the win-x64 exe was written at 20:13 local time on 2026-10-21.\n\nShared tests passed 4638, skipped 24, total 4662.\n\nTray tests passed 4462, skipped 0, total 4462. That run includes `UsageCostApplicationPolicyTests`.\n\n## Real Behavior Proof\n\n- Environment tested: Windows, non-dev win-x64 tray from that head, isolated `OPENCLAW_TRAY_DATA_DIR`, fixture gateway on port 61053.\n- Commit tested: `70a4c754316209006ec493c92bda01df3be167df`\n- Steps: start the tray against the fixture, wait for the handshake cost, then open `openclaw://hub/usage` and read the period selector with UI Automation.\n- Evidence: at 20:14:12 the activity log recorded `[usage] 30d usage $0.00`. At 20:15:19 the usage deep link was handled and the log recorded `[usage] 7d usage $0.00`. UI Automation then read Usage selected, `TotalCostText` `$0.00`, `Period7DaysItem` selected true, `Period30DaysItem` selected false, and `DailyEmptyText` `No daily usage for this period`.\n- Observed result: after a 30-day handshake payload, opening Usage stayed on 7 Days and showed the applied cost for the selected period.\n- Screenshot: no. Evidence is the tray log and the UI Automation selection state.\n- Not verified: the fixture total is `$0.00` for every period, so the dollar amount alone does not identify the period. The selector state and the 7-day activity line do. The 30 Days control was not clicked in this run.\n\n## Required proof pools\n\n- `none`: no installer, WSL gateway, MXC, or ARM64 pool applies. The Usage selector trace is above.\n\n## Security Impact\n\n- New permissions or capabilities? No\n- Secrets or tokens handling changed? No\n- New or changed network calls? No\n- Command or tool execution surface changed? No\n- Data access scope changed? No\n",
+  "bodyTruncated": false,
+  "comments": [
+    {
+      "id": "issuecomment-6332088720",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1821#issuecomment-6332088720",
+      "author": "clawsweeper[bot]",
+      "createdAt": "2026-10-22T03:39:04Z",
+      "body": "Codex review: this still needs some work.\n\n**Summary**\nCurrent main still applies the first mismatched 30-day snapshot and changes the 7-day selection; the contributor’s fork contains a focused candidate repair, but no open fixing PR was found.\n\nReproducibility: Source establishes a deterministic path: cache a 30-day handshake response, open a fresh UsagePage with its default seven-day selection, and Initialize accepts the cache and synchronizes the selector to 30; no app, builds, or tests were run during this read-only review.\n\n**Next step**\nFix first-response period handling and establish a failing regression where cached 30-day data cannot change a seven-day selection or its totals.\n\n\n<details>\n<summary>Review details</summary>\n\nBest possible solution:\n\nMake the selected period authoritative for Usage rendering while retaining visible recovery when a gateway cannot supply that range.\n\nDo we have a high-confidence way to reproduce the issue?\n\nSource establishes a deterministic path: cache a 30-day handshake response, open a fresh UsagePage with its default seven-day selection, and Initialize accepts the cache and synchronizes the selector to 30; no app, builds, or tests were run during this read-only review.\n\nIs this the best way to solve the issue?\n\nThe fork addresses the central race at the page boundary, but the final repair should also cover legacy-gateway loading recovery and use observable period-specific assertions rather than relying on source-string checks and identical zero-dollar totals.\n\nAGENTS.md: found and applied where relevant.\n\nRemaining risk / open question:\n\n- Rejecting mismatched responses without handling gateways that ignore the requested range can restore endless loading and leave the period selector disabled.\n- The contributor’s reported UI proof does not distinguish period totals or verify switching to 30 Days.\n\nCodex review notes: model internal, reasoning medium; reviewed against [2dfb4c78ef05](https://github.com/openclaw/openclaw-windows-node/commit/2dfb4c78ef053cbd9a32a02d9162972f17765408).\n\n</details>\n\n<details>\n<summary>Label changes</summary>\n\nLabel changes:\n\n- add `P2`: The defect affects the Usage page’s selected range and displayed totals, with limited blast radius and a focused repair boundary.\n- add `impact:ux-friction`: Opening Usage unexpectedly changes the selected period, confusing users about which totals they are viewing.\n- add `issue-rating: 🦞 diamond lobster`: Current issue advisory state selects this label.\n- add `clawsweeper:source-repro`: Current issue advisory state selects this label.\n- add `clawsweeper:queueable-fix`: Current issue advisory state selects this label.\n- add `clawsweeper:fix-shape-clear`: Current issue advisory state selects this label.\n\nLabel justifications:\n\n- `P2`: The defect affects the Usage page’s selected range and displayed totals, with limited blast radius and a focused repair boundary.\n- `impact:ux-friction`: Opening Usage unexpectedly changes the selected period, confusing users about which totals they are viewing.\n\n</details>\n\n<details>\n<summary>Evidence reviewed</summary>\n\nAcceptance criteria:\n\n- ./build.ps1\n- dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --filter FullyQualifiedName~UsageCostApplicationPolicyTests\n- dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --no-restore\n- dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore\n- On an authorized isolated Windows fixture run, verify distinct seven-day and thirty-day totals, cached and delayed mismatches, switching both directions, reconnect, and recoverable range-unavailable behavior; capture current-head mounted controls and request parameters.\n\nWhat I checked:\n\n- **Current-main failure path:** Initialize applies cached cost through ShouldApplyUsageCost before requesting fresh data. The policy accepts any first response, and UpdateUsageCost calls SyncSelectorToServerDays, which changes both _currentPeriodDays and the selected control to 30. ([`src/OpenClaw.Tray.WinUI/Pages/UsagePage.xaml.cs:77`](https://github.com/open",
+      "bodyTruncated": true
+    },
+    {
+      "id": "issuecomment-6777802381",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1821#issuecomment-6777802381",
+      "author": "roboclaw-bot",
+      "createdAt": "2026-11-10T19:58:31Z",
+      "body": "Closing as superseded by the Usage implementation merged in #1895 (feat(usage): rebuild the Usage page with the web page's sessions, charts and filters), commit 9d36f5c8bfa0e35d3e33a057d7aa95a3c06cb577. The old first-response policy and AppState cost subscription are gone. Usage now defaults to a seven-day date query, captures the selected range for each request and discards superseded replies; ownership and delayed-response regressions cover that boundary. This is fixed on main, not a claim that the rewrite is already in v2026.11.1. The still-open #1863 (fix(usage): opening Usage keeps the 7-day totals) needs a separate supersession review so its retired page implementation is not reintroduced.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1821:triage -->\n",
+      "bodyTruncated": false
+    }
+  ],
+  "commentsTotal": 2,
+  "commentsTruncated": false,
+  "files": [],
+  "filesTotal": 0,
+  "filesTruncated": false,
+  "partial": true
+}

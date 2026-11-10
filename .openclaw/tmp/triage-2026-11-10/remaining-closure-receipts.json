@@ -1,0 +1,37 @@
+[
+  {
+    "number": 1764,
+    "status": "returned",
+    "stateReason": "completed",
+    "state": "closed",
+    "closedAt": "2026-11-10T20:01:37Z"
+  },
+  {
+    "number": 1821,
+    "status": "returned",
+    "stateReason": "completed",
+    "state": "closed",
+    "closedAt": "2026-11-10T20:01:41Z"
+  },
+  {
+    "number": 1843,
+    "status": "returned",
+    "stateReason": "completed",
+    "state": "closed",
+    "closedAt": "2026-11-10T20:01:44Z"
+  },
+  {
+    "number": 1887,
+    "status": "returned",
+    "stateReason": "completed",
+    "state": "closed",
+    "closedAt": "2026-11-10T20:01:47Z"
+  },
+  {
+    "number": 1975,
+    "status": "returned",
+    "stateReason": "not_planned",
+    "state": "closed",
+    "closedAt": "2026-11-10T20:01:50Z"
+  }
+]

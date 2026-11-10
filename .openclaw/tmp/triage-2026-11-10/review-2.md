@@ -1,0 +1,959 @@
+# Windows issue review: batch 3 of 4
+
+Reviewed all **31 assigned issues** and **83 comments** from the complete 124-issue / 93-open-PR snapshot. Assignment: ascending issue number, zero-based index modulo 4 = 2.
+
+Source: `e59374c064f43d68f5c72d070d4c89ef2d20ec3b`. Main remained unchanged on uncached recheck. No GitHub mutations or source edits.
+
+## Summary
+
+- **keep-open: 15**
+- **needs-info: 1**
+- **existing-pr: 9**
+- **close-fixed: 2**
+- **close-obsolete: 1**
+- **simple-fix: 3**
+
+Best closure candidates: **#1754** (exact guidance repair), **#1821** (old Usage path removed by merged replacement), **#1887** (windowless cleanup-host repair; Store rollout caveat retained).
+Best small fix: **#2011**. Also bounded: **#2003** and **#2007**, both with existing contributor branches to reuse and credit.
+
+## Verification and limits
+
+Executed triage infrastructure tests: **71 passed, 0 failed, 0 skipped**. No Windows app build or product tests ran; no native hosts were launched or provisioned. Source and tests were inspected. Existing PR proof is attributed evidence, not this reviewer execution.
+
+- Complete body and all comments read for every assigned snapshot issue. Additional PR state/source fetched selectively; this is issue triage, not a full exact-head PR landing review.
+- Some normal GitHub reads were served by shared cache. Main and all three closure PR merge receipts were explicitly rechecked with OCTOPOOL_FRESH=1. Parent must refresh each issue immediately before external mutation.
+- No closure is based on age, stale labels, unconfirmed bot claims or merely absence of reproduction.
+- Only these two authorized review artifacts were written; no source/commit/publication/label/comment/closure changes.
+
+## Important status corrections
+
+- #1549 is now merged, contrary to the old #1414 bot review.
+- #1754 exact guidance repair #1914 is merged and listed in v2026.11.1.
+- #1887 console-host repair #1782 is merged and listed in v2026.11.1; #2056 is orphan cleanup, not the same installed flash fix.
+- #1821 old Usage mechanism was replaced today by #1895; #1863 remains open and needs separate supersession review.
+- #1564 upstream original #162418 was replaced by merged #190936; current core CSS is round, but affected Companion/IME after-proof remains open.
+- #1680 was freshly reconfirmed on v2026.11.1; FOS_FORCEFILESYSTEM is already present.
+- #2031, #2035 and #2041 have open fork PRs, not upstream merged fixes.
+
+## Complete issue table
+
+| Issue | Classification | Disposition | Confidence |
+|---|---|---|---|
+| [#1153](https://github.com/openclaw/openclaw-windows-node/issues/1153) Windows Hub v2026.7.1 is blocked by Smart App Control because OpenClaw.Chat.dll is unsigned | bug / release trust | **keep-open** | 98% |
+| [#1236](https://github.com/openclaw/openclaw-windows-node/issues/1236) Enable Companion App to use session backed OpenClaw | enhancement / umbrella tracker | **keep-open** | 98% |
+| [#1414](https://github.com/openclaw/openclaw-windows-node/issues/1414) [Bug] Windows Companion crashes when opening older sessions that work in browser Dashboard | bug / native chat crash | **keep-open** | 95% |
+| [#1434](https://github.com/openclaw/openclaw-windows-node/issues/1434) Setup failing after cli is installed | bug / WSL setup launch failure | **keep-open** | 95% |
+| [#1525](https://github.com/openclaw/openclaw-windows-node/issues/1525) [Feature]: Multi-conversation support in single-agent mode - "New conversation" button + tabbed conversations - Desktop Mode | enhancement / conversation workspace | **keep-open** | 99% |
+| [#1564](https://github.com/openclaw/openclaw-windows-node/issues/1564) Typing in maximized 4K Companion WebView2 has delayed frame presentation | bug / upstream Control UI rendering performance | **needs-info** | 97% |
+| [#1572](https://github.com/openclaw/openclaw-windows-node/issues/1572) Gate the managed-local provenance probe so it cannot start wsl.exe during Windows session teardown | bug / shutdown lifecycle | **keep-open** | 99% |
+| [#1579](https://github.com/openclaw/openclaw-windows-node/issues/1579) Connect your AI: OpenRouter OAuth device sign-in does not complete | bug / provider onboarding | **keep-open** | 97% |
+| [#1676](https://github.com/openclaw/openclaw-windows-node/issues/1676) Inno "Installed apps" registration stays at the original version after in-app updates — the stale-metadata sequence behind #1592 | bug / installed metadata | **existing-pr** | 99% |
+| [#1680](https://github.com/openclaw/openclaw-windows-node/issues/1680) [Bug] Windows app still crashes (0xc0000409, ntdll) when clicking the attach/paperclip button — persists in v2026.9.8-1 | bug / native picker fail-fast | **keep-open** | 99% |
+| [#1701](https://github.com/openclaw/openclaw-windows-node/issues/1701) Native Gateway: browser status/profiles blocked by listener ownership verification | bug / security-sensitive native endpoint authorization | **keep-open** | 99% |
+| [#1714](https://github.com/openclaw/openclaw-windows-node/issues/1714) Companion hangs after connecting to remote Gateway (node bootstrap_token_invalid loop, then freeze loading large chat history); Settings unreachable | bug / chat hang plus node pairing | **existing-pr** | 98% |
+| [#1754](https://github.com/openclaw/openclaw-windows-node/issues/1754) [Windows ARM64] Companion gives misleading build guidance when Native Gateway capability check fails | bug / native eligibility guidance | **close-fixed** | 99% |
+| [#1762](https://github.com/openclaw/openclaw-windows-node/issues/1762) Native chat composer: Up/Down arrow recall of sent messages | enhancement / keyboard recall | **keep-open** | 99% |
+| [#1821](https://github.com/openclaw/openclaw-windows-node/issues/1821) fix(usage): opening Usage keeps the 7-day totals | bug / superseded Usage implementation | **close-obsolete** | 98% |
+| [#1836](https://github.com/openclaw/openclaw-windows-node/issues/1836) fix(chat): reject an oversized clipboard image before decoding it | bug / clipboard resource bounds | **keep-open** | 99% |
+| [#1870](https://github.com/openclaw/openclaw-windows-node/issues/1870) Store native-gateway onboarding cannot complete GitHub Copilot setup despite a working saved sign-in | bug / Copilot saved-sign-in onboarding | **keep-open** | 97% |
+| [#1887](https://github.com/openclaw/openclaw-windows-node/issues/1887) Gateway cleanup scheduled task flashes a console window every minute and steals keyboard focus | bug / scheduled cleanup console flash | **close-fixed** | 96% |
+| [#1903](https://github.com/openclaw/openclaw-windows-node/issues/1903) [Bug] Native MSIX Gateway: startup connect is rejected while the Gateway state is `starting`, and Companion never retries | bug / native startup readiness with ownership policy | **keep-open** | 99% |
+| [#1944](https://github.com/openclaw/openclaw-windows-node/issues/1944) [Bug] Screen reader cannot read chat messages one at a time in the Companion window | bug / chat accessibility | **existing-pr** | 99% |
+| [#1955](https://github.com/openclaw/openclaw-windows-node/issues/1955) `winget uninstall` removes the local WSL gateway without asking | bug / destructive default requiring policy decision | **keep-open** | 99% |
+| [#1976](https://github.com/openclaw/openclaw-windows-node/issues/1976) Local AI: Effort Off doesn't stop llama-server thinking, and newer gateways return HTTP 500 for unsupported levels | bug / Local AI reasoning configuration | **existing-pr** | 99% |
+| [#2003](https://github.com/openclaw/openclaw-windows-node/issues/2003) Copied browser SSH line skips the user and host check | bug / copied command validation | **simple-fix** | 98% |
+| [#2007](https://github.com/openclaw/openclaw-windows-node/issues/2007) Tray tooltip includes the tool command or URL | bug / passive UI credential exposure | **simple-fix** | 97% |
+| [#2011](https://github.com/openclaw/openclaw-windows-node/issues/2011) State wipe crashes at import on Python 3.11 and 3.13 | bug / maintenance script interpreter compatibility | **simple-fix** | 99% |
+| [#2031](https://github.com/openclaw/openclaw-windows-node/issues/2031) system.which treats a drive-relative name as a PATH hit | bug / Windows PATH discovery | **existing-pr** | 99% |
+| [#2035](https://github.com/openclaw/openclaw-windows-node/issues/2035) Checkpoint restore clears the visible chat before the new history arrives | bug / checkpoint transcript replacement | **existing-pr** | 99% |
+| [#2041](https://github.com/openclaw/openclaw-windows-node/issues/2041) MSIX storage validation can pass without proving the token or distro was cleared | bug / validation false pass | **existing-pr** | 99% |
+| [#2071](https://github.com/openclaw/openclaw-windows-node/issues/2071) Fix dangerous implicit state machines (audit lanes) | tracker / coordinated five-lane lifecycle audit | **existing-pr** | 99% |
+| [#2075](https://github.com/openclaw/openclaw-windows-node/issues/2075) Stop queued operator reconnects from reviving a disconnected gateway | bug / queued reconnect lifecycle | **existing-pr** | 99% |
+| [#2097](https://github.com/openclaw/openclaw-windows-node/issues/2097) Native Gateway setup aborts on the default 10-second health RPC deadline | bug / native setup health RPC deadline | **keep-open** | 99% |
+
+Confidence is confidence in the recommended disposition, not merge readiness or test completion. Proposed comments below are drafts only.
+
+## #1153: Windows Hub v2026.7.1 is blocked by Smart App Control because OpenClaw.Chat.dll is unsigned
+
+**bug / release trust | keep-open | 98% recommendation confidence**
+
+First-party signing and optional-updater crash containment are implemented, but the issue explicitly retains whole-app SAC-On acceptance. The latest human failure identifies unsigned Updatum, not the already-corrected OpenClaw.Chat.dll. Store distribution is a separate trust path, not evidence for unpackaged acceptance.
+
+Discussion coverage: body and all 7 snapshot comments read.
+
+### Evidence
+
+- [scripts/Test-ReleaseExecutableSignatures.ps1:44-63](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/Test-ReleaseExecutableSignatures.ps1#L44-L63)
+- [src/OpenClaw.Tray.WinUI/Services/UpdateBackendLoader.cs:23-51](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Services/UpdateBackendLoader.cs#L23-L51)
+- [tests/OpenClaw.Tray.Tests/UpdateBackendLoaderTests.cs:173](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/UpdateBackendLoaderTests.cs#L173)
+- https://github.com/openclaw/openclaw-windows-node/pull/1182
+- https://github.com/openclaw/openclaw-windows-node/pull/1731
+- https://github.com/openclaw/openclaw-windows-node/issues/1153#issuecomment-5351908821
+- https://github.com/openclaw/openclaw-windows-node/issues/1153#issuecomment-6092911906
+
+### Missing proof
+
+- Official current unpackaged release under enforcing SAC, including third-party dependencies and recovery.
+
+### Exact proposed comment
+
+> Keeping this open for the remaining SAC-On acceptance, not for the original missing first-party signature. #1182 (fix(release): sign all first-party payload binaries) and #1731 (fix: keep Companion usable when Windows blocks the updater) are merged and remain on main. The release verifier still deliberately excludes third-party DLLs from OpenClaw signing. Next step: validate an official current unpackaged release with SAC On through startup, Direct connection and updater-denial recovery while preserving saved state. Store availability and missing-DLL tests do not substitute for that result.
+
+Posting policy: Post only as a substantive status correction; do not repeat prior generic reproduction requests.
+
+## #1236: Enable Companion App to use session backed OpenClaw
+
+**enhancement / umbrella tracker | keep-open | 98% recommendation confidence**
+
+Native eligibility, dedicated native profiles and package-owned isolated runtime are implemented. This is a broad capability program, not a stale bug: migration, full lifecycle/update management and the scope of tool containment remain separate deliverables. New-profile setup explicitly does not migrate WSL.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.SetupEngine/NativeGatewaySetupEligibility.cs:15-35](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/NativeGatewaySetupEligibility.cs#L15-L35)
+- [src/OpenClaw.SetupEngine/NativeGatewaySetupService.cs:68-76](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/NativeGatewaySetupService.cs#L68-L76)
+- [docs/ARCHITECTURE.md:205-222](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/docs/ARCHITECTURE.md#L205-L222)
+- [tests/OpenClaw.Connection.Tests/IsolatedGatewayRuntimeTests.cs:772](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Connection.Tests/IsolatedGatewayRuntimeTests.cs#L772)
+- https://github.com/openclaw/openclaw-windows-node/issues/1236#issuecomment-5514691890
+
+### Missing proof
+
+- Explicit remaining acceptance criteria and migration/rollback plan.
+- End-to-end proof of the remaining management and containment scope.
+
+### Exact proposed comment
+
+> Keeping this as the native/session-backed Gateway umbrella. Current main provides capability-based onboarding and package-owned isolated startup, but NativeGatewaySetupService explicitly creates a new profile rather than migrating WSL. Next step: refresh the checklist to distinguish delivered onboarding from remaining migration/rollback, management/update UI and Gateway-wide containment guarantees, then track those deliverables with their existing owners. New native setup is not evidence that migration or every tool-containment requirement is complete.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1414: [Bug] Windows Companion crashes when opening older sessions that work in browser Dashboard
+
+**bug / native chat crash | keep-open | 95% recommendation confidence**
+
+The durable bot review is outdated: #1549 is now merged and the current project uses Reactor preview.17. That progress does not demonstrate the affected older history now opens. Open #2083 and #1935 cover related native scrolling freezes, not an established identical terminating exception.
+
+Discussion coverage: body and all 4 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj:105-106](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj#L105-L106)
+- [src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs:293-381](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs#L293-L381)
+- [tests/OpenClaw.Tray.Tests/ChatTimelinePresentationTests.cs:85](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/ChatTimelinePresentationTests.cs#L85)
+- https://github.com/openclaw/openclaw-windows-node/pull/1549
+- https://github.com/openclaw/openclaw-windows-node/pull/2083
+- https://github.com/openclaw/openclaw-windows-node/pull/1935
+
+### Missing proof
+
+- Affected-session current-build reproduction or explicit reporter recovery.
+- Terminating stack distinguishing a crash from the related scrolling hang.
+
+### Exact proposed comment
+
+> Status correction: #1549 (fix(chat): adopt Reactor preview.16 session-switch crash workaround) has now merged, and current main uses Reactor preview.17. This still does not establish recovery for the older sessions in this report. Keep the issue open. Maintainer next step: test an affected older-history fixture against the current native renderer and compare its terminating stack with #2083 (fix(chat): switching conversations can land on old messages or freeze the chat) and #1935 (fix(chat): chat freezes when opening tall message history), rather than opening a parallel speculative fix. The existing request for a redacted stack remains sufficient; no repeated generic information request is needed.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1434: Setup failing after cli is installed
+
+**bug / WSL setup launch failure | keep-open | 95% recommendation confidence**
+
+The reported configure-stage access denial is not proved fixed by the stdin script transport correction. Current CommandRunner still resolves bare wsl.exe without a supplied safe working directory. The report lacks enough launch context to choose a correct narrow repair; existing tests cover stdin, not this native denial.
+
+Discussion coverage: body and all 3 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.SetupEngine/CommandRunner.cs:390-425](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/CommandRunner.cs#L390-L425)
+- [src/OpenClaw.SetupEngine/ConfigureGatewayStep.cs:82-101](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/ConfigureGatewayStep.cs#L82-L101)
+- [tests/OpenClaw.SetupEngine.Tests/SetupStepsTests.cs:6433](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/SetupStepsTests.cs#L6433)
+- https://github.com/openclaw/openclaw-windows-node/issues/1434
+- https://github.com/openclaw/openclaw-windows-node/pull/1476
+
+### Missing proof
+
+- Affected launch context and current native reproduction.
+- Baseline-failing regression before selecting path/cwd repair.
+
+### Exact proposed comment
+
+> Keeping this open: #1476 (fix(setup): keep WSL PATH scripts off the wsl.exe argv path) changed script transport, but does not establish that the reported access-denied process launch is fixed. Current RunInWslAsync still starts bare wsl.exe. Next step is a maintainer-controlled comparison of the configure launch with an absolute executable and safe working directory, preserving the native error code and sanitized launch context. The existing request for the affected Companion build and launch diagnostics is already on the issue; repeating it or assuming Temp permissions are the root cause would not advance the investigation.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1525: [Feature]: Multi-conversation support in single-agent mode - "New conversation" button + tabbed conversations - Desktop Mode
+
+**enhancement / conversation workspace | keep-open | 99% recommendation confidence**
+
+Conversation creation, sidebar switching and activity indicators now exist. The remaining request for tabs, per-conversation draft/scroll state and keyboard cycling is not implemented or explicitly declined.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs:843-885](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs#L843-L885)
+- [src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs:913](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs#L913)
+- [src/OpenClaw.Tray.WinUI/Chat/OpenClawReactorChatRoot.cs:97-107](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/OpenClawReactorChatRoot.cs#L97-L107)
+- [src/OpenClaw.Tray.WinUI/Chat/ChatComposerSession.cs:7-13](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ChatComposerSession.cs#L7-L13)
+- https://github.com/openclaw/openclaw-windows-node/issues/1525
+
+### Missing proof
+
+- Product decision and explicit tab lifetime/state contract.
+
+### Exact proposed comment
+
+> The New conversation action and sidebar working/unread indicators are implemented, so those portions can be marked delivered. Keep the remaining tabbed-workspace request open: current chat still has one selected conversation and mount-local composer state. Next step is to define the minimal tab contract, including close-without-delete, session-local drafts and scroll position, and keyboard cycling, before implementation. The existing sidebar should remain the owner for session creation and catalog navigation.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1564: Typing in maximized 4K Companion WebView2 has delayed frame presentation
+
+**bug / upstream Control UI rendering performance | needs-info | 97% recommendation confidence**
+
+Important new completion evidence: upstream original #162418 is closed because credited replacement #190936 merged, not abandoned. Current core CSS uses corner-shape: round. The original issue explicitly distinguishes reversible Edge proof from manual Companion/IME after-proof, which is still absent. No Companion host change is warranted.
+
+Discussion coverage: body and all 6 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs:961-991](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs#L961-L991)
+- https://github.com/openclaw/openclaw/pull/190936
+- https://github.com/openclaw/openclaw/pull/162418#issuecomment-6571632386
+- https://github.com/openclaw/openclaw/commit/b0fdadd6b3448af5e23c45794465d48d97944fbe
+- https://github.com/openclaw/openclaw/blob/c301da9dca8d39ad57192d7fc01b22b2ed19e452/ui/src/styles/chat/startup-layout.css#L46-L50
+
+### Missing proof
+
+- Manual affected Companion WebView2/IME after-check with a Gateway bundle containing the merged fix.
+
+### Exact proposed comment
+
+> The upstream fix has landed: openclaw/openclaw#190936 (fix(ui): avoid typing stalls in software-rendered chat panes), commit b0fdadd6b3448af5e23c45794465d48d97944fbe, superseded #162418 (fix(ui): avoid typing stalls in large software-rendered chat panes). Current core uses round clipping and the replacement added a red/green browser regression. No Companion graphics workaround is needed. For the remaining acceptance check, can you confirm continuously focused typing and IME behavior in the maximized Companion WebView after updating the Gateway to a build containing that commit, and include the Gateway/Companion versions? A short result is sufficient; please do not upload raw traces containing session metadata.
+
+Posting policy: New, specific question based on newly verified merged replacement; do not ask for original traces again.
+
+## #1572: Gate the managed-local provenance probe so it cannot start wsl.exe during Windows session teardown
+
+**bug / shutdown lifecycle | keep-open | 99% recommendation confidence**
+
+Both production launch boundaries remain unguarded. The second is schtasks.exe, not wsl.exe. The reporter explicitly requires the shared production signal tracked in #1575; no such signal is present, so an unwired local false default would not fix released behavior.
+
+Discussion coverage: body and all 3 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Connection/ManagedLocalGatewayPortProvenanceService.cs:95-115](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/ManagedLocalGatewayPortProvenanceService.cs#L95-L115)
+- [src/OpenClaw.Connection/ManagedLocalGatewayPortProvenanceService.cs:193-211](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/ManagedLocalGatewayPortProvenanceService.cs#L193-L211)
+- [tests/OpenClaw.Connection.Tests/ManagedLocalGatewayPortProvenanceServiceTests.cs:61-63](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Connection.Tests/ManagedLocalGatewayPortProvenanceServiceTests.cs#L61-L63)
+- https://github.com/openclaw/openclaw-windows-node/issues/1575
+- https://github.com/openclaw/openclaw-windows-node/issues/1572#issuecomment-5932156562
+
+### Missing proof
+
+- Shared production signal and wiring.
+- Both zero-start regressions plus real shutdown observation after implementation.
+
+### Exact proposed comment
+
+> Keeping this open and dependent on #1575. Both process starts are still unguarded on main; the second starts schtasks.exe, so the zero-launch contract must cover that path as well as the WSL probe. Next step: land the shared, production-wired session-ending signal, then consume it immediately before both starts with refusal logging and deterministic injected-starter tests. Do not add a separate always-false seam or treat Environment.HasShutdownStarted as the Windows session-ending contract.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1579: Connect your AI: OpenRouter OAuth device sign-in does not complete
+
+**bug / provider onboarding | keep-open | 97% recommendation confidence**
+
+Later human comments already answer the original version/trace request and identify two failures: isolated-session browser launch/wizard settlement, and OpenRouter auto-route rejection. The latter has an upstream reported fix, but neither that fix nor an explicit-model workaround establishes end-to-end OAuth completion in Companion.
+
+Discussion coverage: body and all 7 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs:195-199](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs#L195-L199)
+- [src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs:329-357](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs#L329-L357)
+- [tests/OpenClaw.SetupEngine.Tests/GatewayAiSetupClientTests.cs:271](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/GatewayAiSetupClientTests.cs#L271)
+- https://github.com/openclaw/openclaw-windows-node/issues/1579#issuecomment-6310059447
+- https://github.com/openclaw/openclaw-windows-node/issues/1579#issuecomment-6310700268
+- https://github.com/openclaw/openclaw/pull/173292
+
+### Missing proof
+
+- Current Store-native OAuth browser handoff, wizard settlement and exact-model verification.
+- Confirmation that installed Gateway includes the reported upstream route fix.
+
+### Exact proposed comment
+
+> The October 21 follow-ups provide the missing versions and isolate two problems, so another generic logs/version request is unnecessary. Keep this open for the isolated-session browser handoff and terminal wizard outcome. The openrouter/auto route-label correction and specific-model workaround do not prove that OAuth started in Companion completes. Next step: verify a current packaged Gateway sends the authorization URL to the interactive Companion and delivers a settled activation receipt after callback, then verify the selected model without starting a second authorization. Keep provider credentials and raw callback URLs out of posted evidence.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1676: Inno "Installed apps" registration stays at the original version after in-app updates — the stale-metadata sequence behind #1592
+
+**bug / installed metadata | existing-pr | 99% recommendation confidence**
+
+Reporter corrected the initial reinstall claim: Setup registration updates correctly; in-app ZIP update leaves stale metadata. Current Updatum backend still installs ZIP without registry reconciliation. #1959 owns the exact fix. #1960 is explicitly adjacent alpha selection, not a repair for #1676.
+
+Discussion coverage: body and all 4 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Services/UpdatumUpdateBackend.cs:22-34](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Services/UpdatumUpdateBackend.cs#L22-L34)
+- https://github.com/openclaw/openclaw-windows-node/issues/1676#issuecomment-6051222245
+- https://github.com/openclaw/openclaw-windows-node/pull/1959
+- https://github.com/openclaw/openclaw-windows-node/pull/1960
+
+### Missing proof
+
+- Merge and signed Windows 11 installed upgrade/metadata-preservation proof for #1959.
+
+### Exact proposed comment
+
+> Tracked by #1959 (fix: Installed apps shows an old version after in-app updates); please keep this open until that repair lands and its update-path validation is complete. The corrected report narrows the bug to in-app ZIP updates: the apparent Setup-reinstall failure came from a packaged registry view. #1960 (fix(windows): honor alpha channel when selecting Companion updates) is adjacent, not a second fix for this metadata bug. Next step is review and signed Windows upgrade proof for the existing #1959 implementation, not a duplicate PR.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1680: [Bug] Windows app still crashes (0xc0000409, ntdll) when clicking the attach/paperclip button — persists in v2026.9.8-1
+
+**bug / native picker fail-fast | keep-open | 99% recommendation confidence**
+
+Newest reporter evidence on Nov 9-10 confirms v2026.11.1 still crashes; closure is unsafe. Source already uses owner HWND and IFileOpenDialog/FOS_FORCEFILESYSTEM, so the latest proposed flag is not a missing fix. Module lists and heuristic stack scans are not a symbolized root cause.
+
+Discussion coverage: body and all 13 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Helpers/Win32FilePickerHelper.cs:37-50](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Helpers/Win32FilePickerHelper.cs#L37-L50)
+- [src/OpenClaw.Tray.WinUI/Helpers/Win32FilePickerHelper.cs:171-175](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Helpers/Win32FilePickerHelper.cs#L171-L175)
+- https://github.com/openclaw/openclaw-windows-node/issues/1680#issuecomment-6732362933
+- https://github.com/openclaw/openclaw-windows-node/issues/1680#issuecomment-6756065901
+- https://github.com/openclaw/openclaw-windows-node/pull/1699
+
+### Missing proof
+
+- Privacy-reviewed symbolized unwind and causal isolation of native picker/shell-extension failure.
+- Actual fixed-build reproduction on the affected machine.
+
+### Exact proposed comment
+
+> The November 9-10 evidence confirms this still reproduces on v2026.11.1, so it should remain open. #1699 (fix(chat): attaching several files at once fails silently) addresses a later selection stage, not this pre-dialog fail-fast. Current code already uses IFileOpenDialog with FOS_FORCEFILESYSTEM and an owner HWND; that flag does not exclude shell extensions. Next step: a maintainer should arrange a private, approved dump handoff and obtain a true symbolized faulting-thread unwind, then compare the affected shell environment with an isolated clean one. No further generic version request is needed, and full dumps should not be posted publicly.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1701: Native Gateway: browser status/profiles blocked by listener ownership verification
+
+**bug / security-sensitive native endpoint authorization | keep-open | 99% recommendation confidence**
+
+Source confirms no production native browser-listener authorization branch. Non-WSL records only reach FixtureLoopbackListenerOwner, which explicitly rejects normal runs. Gateway-port ownership cannot authorize a different browser-control port.
+
+Discussion coverage: body and all 3 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/App.xaml.cs:2475-2512](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/App.xaml.cs#L2475-L2512)
+- [src/OpenClaw.Connection/FixtureLoopbackListenerOwner.cs:10-23](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/FixtureLoopbackListenerOwner.cs#L10-L23)
+- [tests/OpenClaw.Shared.Tests/CapabilityTests.cs:966](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Shared.Tests/CapabilityTests.cs#L966)
+- https://github.com/openclaw/openclaw-windows-node/issues/1701#issuecomment-6453537396
+
+### Missing proof
+
+- Package/browser-port attestation contract.
+- Credential-safe native discovery/invocation and foreign-listener negative proof.
+
+### Exact proposed comment
+
+> Current main still has no production Native Gateway browser-listener authorization path. The non-WSL fallback is fixture-only and fails closed during ordinary use. Keep this open. Next step is a native-runtime/package contract for fresh ownership proof of the actual browser-control port, then status/profiles tests plus foreign and replaced listener rejection. Do not authorize that port merely because the Gateway port is trusted or because pairing succeeded. The reporter already asked the right contract questions; another logs request is not needed.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1714: Companion hangs after connecting to remote Gateway (node bootstrap_token_invalid loop, then freeze loading large chat history); Settings unreachable
+
+**bug / chat hang plus node pairing | existing-pr | 98% recommendation confidence**
+
+Corroborating report proves the hang can occur with only 44 events and with node disabled; users.self falls back. Native scrolling candidates #2083/#1935 and retention work #1685 exist, so do not create another pagination fix. Node bootstrap envelope is a distinct unresolved symptom not automatically closed by a chat PR.
+
+Discussion coverage: body and all 3 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs:293-381](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs#L293-L381)
+- [src/OpenClaw.Shared/WindowsNodeClient.cs:1361](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/WindowsNodeClient.cs#L1361)
+- [tests/OpenClaw.Tray.Tests/ChatTimelinePresentationTests.cs:85](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/ChatTimelinePresentationTests.cs#L85)
+- https://github.com/openclaw/openclaw-windows-node/issues/1714#issuecomment-6255689509
+- https://github.com/openclaw/openclaw-windows-node/pull/2083
+- https://github.com/openclaw/openclaw-windows-node/pull/1935
+- https://github.com/openclaw/openclaw-windows-node/pull/1685
+
+### Missing proof
+
+- Affected startup/native history and Settings responsiveness on a landed candidate.
+- Separate structured node rejection envelope and durable role-token handoff proof.
+
+### Exact proposed comment
+
+> Keep this open, with the native hang routed to the existing scrolling work: #2083 (fix(chat): switching conversations can land on old messages or freeze the chat) and #1935 (fix(chat): chat freezes when opening tall message history). #1685 (fix: retain companion sessions and bound large history loading) is related but does not yet prove freeze prevention. The 44-event corroboration rules out assuming only large histories are affected, and users.self already falls back. Next step is affected-history/current-head responsiveness and Settings-access proof on those candidates. Keep the node bootstrap rejection separate until its exact role/credential response is verified; a chat fix alone must not close that part.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1754: [Windows ARM64] Companion gives misleading build guidance when Native Gateway capability check fails
+
+**bug / native eligibility guidance | close-fixed | 99% recommendation confidence**
+
+#1914 merged 2026-10-30 as 280d6a8d and appears in v2026.11.1 release notes. Current resources name isolation-session capability, explain that newer Windows alone does not guarantee it, make update guidance conditional, and offer WSL/existing alternatives. Six-locale and native renderer tests protect exactly this copy contract. No claim is made that the OS capability itself was repaired.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Strings/en-us/Resources.resw:7300-7311](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Strings/en-us/Resources.resw#L7300-L7311)
+- [src/OpenClaw.SetupEngine/NativeGatewaySetupEligibility.cs:23-27](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/NativeGatewaySetupEligibility.cs#L23-L27)
+- [tests/OpenClaw.Tray.Tests/NativeGatewaySetupUxContractTests.cs:440-461](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/NativeGatewaySetupUxContractTests.cs#L440-L461)
+- [tests/OpenClaw.Tray.UITests/NativeGatewayEligibilityTextTests.cs:18](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.UITests/NativeGatewayEligibilityTextTests.cs#L18)
+- https://github.com/openclaw/openclaw-windows-node/pull/1914
+- https://github.com/openclaw/openclaw-windows-node/commit/280d6a8deb39c67861e5d536fc351614acd13306
+- https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.1
+
+### Missing proof
+
+- No current affected-device OS-capability diagnosis; not required to resolve this presentation-only defect.
+- This review inspected existing tests and PR proof, but did not execute Windows tests.
+
+### Exact proposed comment
+
+> Closing the misleading-guidance bug as fixed by #1914 (fix(onboarding): explain unavailable native capability on updated Windows), merged as 280d6a8deb39c67861e5d536fc351614acd13306 and included in v2026.11.1. The guidance now names the unavailable isolation-session capability, explains that a newer Windows version alone does not guarantee availability, and offers WSL or an existing Gateway. All six locale contracts and the native renderer have focused coverage, while the live capability gate is unchanged. This closes the Companion wording defect, not a claim to have fixed or diagnosed Windows capability rollout.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1762: Native chat composer: Up/Down arrow recall of sent messages
+
+**enhancement / keyboard recall | keep-open | 99% recommendation confidence**
+
+Up/Down is still only consumed for slash popup handling; ordinary non-Enter keys return. Existing Enter-send fix is not recall. History scope/draft restoration must be specified within current composer ownership.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Chat/ReactorChatComposer.cs:440-500](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ReactorChatComposer.cs#L440-L500)
+- [docs/ARCHITECTURE.md:1115-1118](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/docs/ARCHITECTURE.md#L1115-L1118)
+- https://github.com/openclaw/openclaw-windows-node/issues/1762
+- https://github.com/openclaw/openclaw-windows-node/pull/1674
+
+### Missing proof
+
+- Accepted activation/history lifetime policy and native keyboard implementation.
+
+### Exact proposed comment
+
+> Keeping this feature request open. Current native composer still handles Up/Down only for the slash popup; #1674 (fix(chat): make Enter send from the multiline composer) does not add recall. Next step: define bounded session-local recall and draft restoration, with empty-draft activation as the smallest initial contract and slash-popup priority preserved. Implement state in the existing composer view model/controller and verify native multiline, selection and keyboard behavior rather than adding history state to the Reactor view.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1821: fix(usage): opening Usage keeps the 7-day totals
+
+**bug / superseded Usage implementation | close-obsolete | 98% recommendation confidence**
+
+The entire old AppState UsageCost push/first-response policy was removed by merged #1895 today. New page queries sessions.usage with captured date filters, defaults to seven days, and drops superseded results by generation. Old #1863 remains open but targets retired owners; it should be reconciled separately, not blindly landed.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Pages/UsagePage.xaml.cs:42-62](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Pages/UsagePage.xaml.cs#L42-L62)
+- [src/OpenClaw.Tray.WinUI/Presentation/Usage/UsageFilters.cs:26-43](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Presentation/Usage/UsageFilters.cs#L26-L43)
+- [src/OpenClaw.Tray.WinUI/Presentation/Usage/UsagePageController.cs:460-484](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Presentation/Usage/UsagePageController.cs#L460-L484)
+- [tests/OpenClaw.Tray.Tests/Usage/UsagePageControllerTests.cs:197-213](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/Usage/UsagePageControllerTests.cs#L197-L213)
+- [tests/OpenClaw.Tray.Tests/Usage/UsagePageOwnershipTests.cs:12-35](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/Usage/UsagePageOwnershipTests.cs#L12-L35)
+- [docs/ARCHITECTURE.md:934-937](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/docs/ARCHITECTURE.md#L934-L937)
+- https://github.com/openclaw/openclaw-windows-node/pull/1895
+- https://github.com/openclaw/openclaw-windows-node/commit/9d36f5c8bfa0e35d3e33a057d7aa95a3c06cb577
+- https://github.com/openclaw/openclaw-windows-node/pull/1863
+- https://github.com/openclaw/openclaw-windows-node/actions/runs/42795070620
+
+### Missing proof
+
+- No local Windows execution in this review; merged replacement reports green required CI and native fixture evidence.
+- Release delivery of the newly merged rewrite remains separate from main-code closure.
+
+### Exact proposed comment
+
+> Closing as superseded by the Usage implementation merged in #1895 (feat(usage): rebuild the Usage page with the web page's sessions, charts and filters), commit 9d36f5c8bfa0e35d3e33a057d7aa95a3c06cb577. The old first-response policy and AppState cost subscription are gone. Usage now defaults to a seven-day date query, captures the selected range for each request and discards superseded replies; ownership and delayed-response regressions cover that boundary. This is fixed on main, not a claim that the rewrite is already in v2026.11.1. The still-open #1863 (fix(usage): opening Usage keeps the 7-day totals) needs a separate supersession review so its retired page implementation is not reintroduced.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1836: fix(chat): reject an oversized clipboard image before decoding it
+
+**bug / clipboard resource bounds | keep-open | 99% recommendation confidence**
+
+Current WinRT clipboard path decodes and PNG-encodes before checking 10 MiB. The offered branch turns encoded attachment limit into decoded memory limit, rejecting ordinary 4K screenshots (~31.6 MiB BGRA). This needs an explicit independent memory budget and visible failure behavior, not blind adoption.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Chat/ChatComposerControllerClipboard.cs:132-150](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ChatComposerControllerClipboard.cs#L132-L150)
+- [src/OpenClaw.Shared/ChatAttachment.cs:45](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/ChatAttachment.cs#L45)
+- [tests/OpenClaw.Tray.UITests/ChatComposerControllerPasteFencingProofTests.cs:143](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.UITests/ChatComposerControllerPasteFencingProofTests.cs#L143)
+- https://github.com/openclaw/openclaw-windows-node/compare/main...SebTardif:fix/f045-clipboard-pixel-budget?expand=1
+
+### Missing proof
+
+- Approved decoded-memory limit and compatibility policy.
+- Native rejection-before-decode plus normal screenshot and visible-error proof.
+
+### Exact proposed comment
+
+> Keeping this open: main still allocates the bitmap before its encoded-size check. The proposed 10 MiB decoded cap would also reject ordinary 4K BGRA screenshots, so it should not be merged as an invisible compatibility change. Next step: choose a separate decoded-memory ceiling, check dimensions before GetSoftwareBitmapAsync, retain the encoded cap and provide visible rejection feedback. Extend the existing native paste tests for oversized input, ordinary screenshots, cancellation and no full decode on rejection; the contributor branch is a starting point, not completed proof.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1870: Store native-gateway onboarding cannot complete GitHub Copilot setup despite a working saved sign-in
+
+**bug / Copilot saved-sign-in onboarding | keep-open | 97% recommendation confidence**
+
+Report already supplies exact builds, successful saved-profile CLI inference and continued wizard failure. Current setup uses live setup activation/verify RPCs, not demonstrated offline models status. No evidence equates this to upstream offline SecretRef issue or establishes a complete fix.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs:329-357](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs#L329-L357)
+- [src/OpenClaw.SetupEngine/GatewayAiSetupTransport.cs:115-133](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/GatewayAiSetupTransport.cs#L115-L133)
+- [tests/OpenClaw.SetupEngine.Tests/GatewayAiSetupClientTests.cs:335](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/GatewayAiSetupClientTests.cs#L335)
+- [tests/OpenClaw.SetupEngine.Tests/GatewayAiSetupClientTests.cs:529](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/GatewayAiSetupClientTests.cs#L529)
+- https://github.com/openclaw/openclaw-windows-node/issues/1870
+- https://github.com/openclaw/openclaw/issues/181686
+
+### Missing proof
+
+- Correlated failing live setup RPC and working agent/profile route.
+- Current Store-native end-to-end recovery.
+
+### Exact proposed comment
+
+> Keeping this open. The report already establishes working saved Copilot sign-ins and successful Gateway inference, so another request to repeat browser authorization or verify the subscription would miss the failure. Next step is to compare the exact agent/profile and sanitized activation/verification RPC outcome used by Companion with the working CLI activation. Current Companion calls the live setup RPCs; the similarly worded offline SecretRef issue is not yet proof of the same cause. Repair the existing saved-sign-in handoff and verify that native onboarding completes without terminal edits or bypassing model verification.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1887: Gateway cleanup scheduled task flashes a console window every minute and steals keyboard focus
+
+**bug / scheduled cleanup console flash | close-fixed | 96% recommendation confidence**
+
+#1782 merged as ef1df54d and is listed in v2026.11.1. Production registration now delegates to a durable GUI-subsystem helper using CreateNoWindow at process creation. PR contains calibrated before/after Scheduler observations and x64/ARM64 lifecycle proof; this is stronger than merely hidden PowerShell flags. #2056 is separate leftover-task cleanup, explicitly not the installed Store flash fix.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.SetupEngine/GatewayPackageCleanup.ps1:81-83](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/GatewayPackageCleanup.ps1#L81-L83)
+- [src/OpenClaw.GatewayCleanupHost/Program.cs:22-42](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.GatewayCleanupHost/Program.cs#L22-L42)
+- [tests/OpenClaw.SetupEngine.Tests/GatewayCleanupTaskTests.cs:35-90](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/GatewayCleanupTaskTests.cs#L35-L90)
+- https://github.com/openclaw/openclaw-windows-node/pull/1782
+- https://github.com/openclaw/openclaw-windows-node/commit/ef1df54dfe95a8b0a2ae8033425561136d8a70ef
+- https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.1
+- https://github.com/openclaw/openclaw-windows-node/pull/2056
+
+### Missing proof
+
+- Exact affected Store installation after update and current Store rollout version not independently verified.
+- Official-signed SAC acceptance is a separate release gate; supplied runtime evidence uses test-signed/local builds.
+
+### Exact proposed comment
+
+> Closing the installed cleanup-task flash bug as fixed by #1782 (fix(setup): stop console flashes when Gateway cleanup runs), merged as ef1df54dfe95a8b0a2ae8033425561136d8a70ef and included in v2026.11.1. The task now uses a durable GUI helper with creation-time CreateNoWindow; the PR records positive-control and before/after Scheduler observations, including x64 and ARM64 cleanup behavior. The correction is in Companion, not a Gateway-only update, and normal Companion startup refreshes its registered task. #2056 (fix(setup): clean uninstall leaves a Gateway cleanup task running) separately tracks orphaned tasks after clean-uninstall and is not being closed here. Store rollout/version acceptance and broader SAC policy proof remain distinct release checks.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1903: [Bug] Native MSIX Gateway: startup connect is rejected while the Gateway state is `starting`, and Companion never retries
+
+**bug / native startup readiness with ownership policy | keep-open | 99% recommendation confidence**
+
+Initial starting still bypasses the owned-start poll and is rejected before credential authorization. Existing test intentionally rejects pre-existing unready service, so passive observation must preserve no-start/no-stop ownership and fresh listener attestation. Do not blanket-retry UnknownListener or unhealthy.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Connection/NativeGateway/IsolatedGatewayRuntime.cs:103-140](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/NativeGateway/IsolatedGatewayRuntime.cs#L103-L140)
+- [tests/OpenClaw.Connection.Tests/IsolatedGatewayRuntimeTests.cs:769-784](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Connection.Tests/IsolatedGatewayRuntimeTests.cs#L769-L784)
+- [docs/ARCHITECTURE.md:626-692](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/docs/ARCHITECTURE.md#L626-L692)
+- https://github.com/openclaw/openclaw-windows-node/issues/1903
+
+### Missing proof
+
+- Maintainer decision revising pre-existing-start no-wait contract.
+- Deterministic passive-wait tests and real cold-boot native connection proof.
+
+### Exact proposed comment
+
+> Keeping this open: an initial starting status still fails before the WebSocket is created, while only a start requested by this runtime enters bounded readiness polling. The existing pre-existing-service test deliberately encodes that distinction. Next step is a bounded passive starting-to-running observation that acquires no start/stop ownership and still requires fresh complete listener proof before credentials are sent, with an explicit update to the documented contract. Do not broaden the change into retries of arbitrary unhealthy or unknown-listener failures. Prove cancellation, timeout, replacement-listener rejection and automatic connection after the delayed cold start.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1944: [Bug] Screen reader cannot read chat messages one at a time in the Companion window
+
+**bug / chat accessibility | existing-pr | 99% recommendation confidence**
+
+Current main retains IsTabStop(false) on message containers, while #2070 owns the exact accessibility repair and contains current native/NVDA evidence. Do not treat generic accessibility baseline as this fix or create duplicate work.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs:247-274](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs#L247-L274)
+- [src/OpenClaw.Tray.WinUI/Chat/ToolCallCardRenderer.cs:180](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ToolCallCardRenderer.cs#L180)
+- [tests/OpenClaw.Tray.Tests/ChatTimelinePresentationTests.cs:1818](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/ChatTimelinePresentationTests.cs#L1818)
+- https://github.com/openclaw/openclaw-windows-node/pull/2070
+
+### Missing proof
+
+- Landing and accepted current-head native accessibility validation of #2070.
+
+### Exact proposed comment
+
+> The exact repair is in #2070 (fix(chat): screen readers hear each message's text, time and tool position). Keep this issue open until that PR is reviewed and landed. It includes focusable named message rows, Up/Down navigation and distinct tool positions, with native UIA/NVDA evidence rather than naming-only assertions. Next step: review its current-head keyboard and message-action coverage and resolve the recorded CI/host-proof boundaries; no duplicate implementation is needed.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1955: `winget uninstall` removes the local WSL gateway without asking
+
+**bug / destructive default requiring policy decision | keep-open | 99% recommendation confidence**
+
+Current installer explicitly sets cleanup requested=true for silent uninstall after migration checks. Tests/docs encode intentional behavior; report offers ready preserve-by-default implementation but no approved decision. This is data-loss risk and not safely closable or a trivial cleanup change.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [installer.iss:542-573](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/installer.iss#L542-L573)
+- [tests/OpenClaw.Tray.Tests/InstallerIssAssertionTests.cs:97](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/InstallerIssAssertionTests.cs#L97)
+- [scripts/Uninstall-LocalGateway.ps1:884](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/Uninstall-LocalGateway.ps1#L884)
+- https://github.com/openclaw/openclaw-windows-node/issues/1955
+
+### Missing proof
+
+- Explicit maintainer policy decision.
+- Signed installer/winget preservation and removal proof on disposable owned data.
+
+### Exact proposed comment
+
+> Keep this open as a data-preservation decision. Current silent uninstall still chooses Gateway cleanup automatically, whereas the interactive prompt defaults to No. I recommend preserving the local Gateway by default and requiring explicit /RemoveLocalGateway=yes for unattended deletion, while retaining all Store/migration ownership guards. Next step is maintainer approval of that compatibility change, followed by the contributor's focused implementation and signed disposable-machine proof for ordinary winget uninstall, explicit removal and migration-preservation cases. Do not test this on a real user Gateway or close it by changing documentation alone.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #1976: Local AI: Effort Off doesn't stop llama-server thinking, and newer gateways return HTTP 500 for unsupported levels
+
+**bug / Local AI reasoning configuration | existing-pr | 99% recommendation confidence**
+
+#2012 owns qualified Qwen effort support, legacy provider migration and canvas preservation. Its verified Gateway floor is 2026.9.8, not the issue-proposed 2026.6.5. It explicitly leaves Bonsai, Nemotron Bolt and custom profiles outside complete scope; umbrella must survive partial merge.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Connection/LocalAi/LlamaServerRouterConfiguration.cs:297](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/LocalAi/LlamaServerRouterConfiguration.cs#L297)
+- [src/OpenClaw.Connection/LocalAi/LocalAiGatewayProviderDefinition.cs:124](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/LocalAi/LocalAiGatewayProviderDefinition.cs#L124)
+- [src/OpenClaw.Tray.WinUI/A2UI/Actions/GatewayActionTransport.cs:116-122](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/A2UI/Actions/GatewayActionTransport.cs#L116-L122)
+- https://github.com/openclaw/openclaw-windows-node/pull/2012
+
+### Missing proof
+
+- Windows product and native Gateway migration proof for #2012.
+- Real full-weight Qwen3.8 and remaining model-template qualification.
+
+### Exact proposed comment
+
+> Continue through #2012 (fix: honor Effort Off for qualified Qwen local AI models), not a second fix. Its request evidence raises the usable Gateway floor to 2026.9.8: accepting configuration on 2026.6.5 did not mean Off reached inference as none. Keep #1976 open for the full model scope even if that PR lands, since Bonsai, Nemotron Bolt and custom profiles still lack qualified effort metadata. Next step is Windows native-provider migration, real catalog-model inference, composer effort and canvas-preservation proof for the existing candidate.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2003: Copied browser SSH line skips the user and host check
+
+**bug / copied command validation | simple-fix | 98% recommendation confidence**
+
+Two current copy formatters concatenate saved values without ValidateUserAndHost; helper already exists. No active upstream PR in the full snapshot. Contributor branch 42c9d1b was inspected and should be reused with attribution, but it duplicates regex policy and allows a partial host-only destination; recommended minimal contract is full placeholder unless both values pass the existing validator.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Services/CommandCenterStateBuilder.cs:399-407](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Services/CommandCenterStateBuilder.cs#L399-L407)
+- [src/OpenClaw.Tray.WinUI/Helpers/CommandCenterTextHelper.cs:322-333](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Helpers/CommandCenterTextHelper.cs#L322-L333)
+- [src/OpenClaw.Shared/SshTunnelCommandLine.cs:24-32](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/SshTunnelCommandLine.cs#L24-L32)
+- [tests/OpenClaw.Tray.Tests/CommandCenterBrowserSetupGuidanceTests.cs:40](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/CommandCenterBrowserSetupGuidanceTests.cs#L40)
+- https://github.com/openclaw/openclaw-windows-node/issues/2003#issuecomment-6642815243
+- https://github.com/SebTardif/openclaw-windows-node/commit/42c9d1b027d30dae2712d649a902b46557bc3c7d
+
+### Missing proof
+
+- Baseline-failing behavioral tests of both builders.
+- Windows clipboard output, required build/Shared/Tray floor and scoped security review.
+
+### Bounded fix plan
+
+Two formatter call sites plus one shared copy formatter if needed; reuse existing validation rather than fork its regex.
+
+Trim user/host, require both nonempty, call ValidateUserAndHost inside a narrow ArgumentException catch, return user@host only on success and otherwise full placeholder; apply to both builders.
+
+- Focused shared SSH validator/copy tests and CommandCenterBrowserSetupGuidanceTests, with actual outputs from both call sites.
+- ./build.ps1; Shared and Tray tests with actual nonzero execution.
+- Native copy action using inert invalid text; inspect clipboard without executing it; rubber-duck/security review.
+
+Existing contributor commit: `42c9d1b027d30dae2712d649a902b46557bc3c7d`.
+
+### Exact proposed comment
+
+> This is a small source-confirmed repair, and the contributor already has branch fix/2003-ssh-copy-host-check at 42c9d1b. Next step: reuse that work with attribution, route both copy builders through the existing trimmed ValidateUserAndHost contract and emit the complete <user>@<host> placeholder whenever either value is missing or invalid. Add behavioral tests of both output paths for ampersands, pipes, leading hyphens, partial values and valid destinations. This is copied-text validation only; do not change tunnel execution or run the unsafe copied command. Security review and visible clipboard proof remain required before publication.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2007: Tray tooltip includes the tool command or URL
+
+**bug / passive UI credential exposure | simple-fix | 97% recommendation confidence**
+
+HandleToolEvent still truncates command/query/url before any sanitizer and emits Label to tooltip and tracked session. Existing SanitizeLogMessage handles URL credentials and sensitive options fail-closed. Contributor patch ba7cca08 exists but its tests are helper/source-shape only; integration and non-URL credentials need coverage.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Shared/OpenClawGatewayClient.cs:4388-4454](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/OpenClawGatewayClient.cs#L4388-L4454)
+- [src/OpenClaw.Shared/TokenSanitizer.cs:202-232](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/TokenSanitizer.cs#L202-L232)
+- [src/OpenClaw.Tray.WinUI/Services/TrayTooltipBuilder.cs:51-53](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Services/TrayTooltipBuilder.cs#L51-L53)
+- [tests/OpenClaw.Shared.Tests/OpenClawGatewayClientTests.cs:4435-4440](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Shared.Tests/OpenClawGatewayClientTests.cs#L4435-L4440)
+- https://github.com/openclaw/openclaw-windows-node/issues/2007#issuecomment-6642816958
+- https://github.com/SebTardif/openclaw-windows-node/commit/ba7cca08efd65d51f29cb28cbf46268fa9f0c882
+
+### Missing proof
+
+- Complete event-to-tooltip regression rather than source-string-only tests.
+- Current-head native tooltip and required build/Shared/Tray verification.
+
+### Bounded fix plan
+
+HandleToolEvent label construction plus focused regression tests; preserve raw tool payload ownership.
+
+Apply existing fail-closed sanitization to complete label input before first-line/60-character display truncation; retain tool name/phase and sanitize every affected passive label source. Reuse contributor patch intent but prefer the existing comprehensive sanitizer over a new URL-only policy.
+
+- Feed synthetic tool events through the real client and assert ActivityChanged Label, DisplayText and tray tooltip contain no inert credential sentinel.
+- Cover URL userinfo/query/fragment, --token options, key=value secrets, safe labels and result-to-idle behavior.
+- ./build.ps1; Shared/Tray tests; native tooltip inspection with synthetic data; rubber-duck/security review.
+
+Existing contributor commit: `ba7cca08efd65d51f29cb28cbf46268fa9f0c882`.
+
+### Exact proposed comment
+
+> The event-to-tooltip path still stores raw command/query/URL text before truncation. The contributor's fix/2007-tooltip-tool-label branch at ba7cca08 is available and should retain credit. Next step: sanitize before the 60-character truncation using the existing fail-closed token/URL sanitization contract, not URL-component stripping alone. Add an event-to-AgentActivity.DisplayText-to-tooltip regression covering URL userinfo/query/fragment, a command containing a URL and ordinary secret command options, plus safe text and tool phase. Keep this open until the bounded repair, security review and native tooltip proof pass.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2011: State wipe crashes at import on Python 3.11 and 3.13
+
+**bug / maintenance script interpreter compatibility | simple-fix | 99% recommendation confidence**
+
+Exact source retains Python-3.14-only regex anchor at module import and unguarded Path.is_junction calls unavailable on 3.11. Small complete fix is compatible \Z plus early explicit Python>=3.12 guard, not unsafe junction fallback. No active upstream PR or supplied fork fix found.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [scripts/wipe_openclaw_state.py:104](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/wipe_openclaw_state.py#L104)
+- [scripts/wipe_openclaw_state.py:742-748](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/wipe_openclaw_state.py#L742-L748)
+- [scripts/wipe_openclaw_state.py:790-806](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/wipe_openclaw_state.py#L790-L806)
+- [scripts/wipe_openclaw_state.py:1130-1134](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/wipe_openclaw_state.py#L1130-L1134)
+- [scripts/test-wipe-openclaw-state.ps1:77-80](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/test-wipe-openclaw-state.ps1#L77-L80)
+- https://github.com/openclaw/openclaw-windows-node/issues/2011
+- https://docs.python.org/3/whatsnew/3.14.html#re
+- https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_junction
+
+### Missing proof
+
+- Windows interpreter matrix and isolated harness execution.
+- Required build/Shared/Tray closeout after any code change.
+
+### Bounded fix plan
+
+One regex literal, early interpreter prerequisite and targeted script tests/documented Python minimum.
+
+Use \Z in DEV_PATCH; require Python 3.12+ before module-level platform initialization/inventory can act, so 3.11 emits a controlled error rather than a traceback. Preserve junction refusal and all deletion guards.
+
+- Use installed 3.11/3.12/3.13/3.14 interpreters without provisioning: 3.11 must clearly refuse before inventory; supported versions import successfully.
+- Test exact 1/2/15-character tokens, mixed-case package suffix, trailing hyphen/newline, invalid characters and 16-character rejection.
+- scripts/test-wipe-openclaw-state.ps1 in isolated fixtures only; ./build.ps1 plus Shared and Tray tests.
+
+Deletion utility, so do not implement a fallback that follows junctions or run --yes against user state.
+
+### Exact proposed comment
+
+> Confirmed in current source. The smallest complete fix is to replace the regex end anchor \z with \Z and reject Python below 3.12 with a clear prerequisite message before inventory or mutation. Changing only the regex leaves 3.11 junction handling broken; treating a missing is_junction method as false would be unsafe. Next step: add interpreter-startup/token-boundary regressions and a 3.11 early-refusal test, then run the existing isolated wipe harness on supported Python versions. No real state wipe is needed or authorized for that validation.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2031: system.which treats a drive-relative name as a PATH hit
+
+**bug / Windows PATH discovery | existing-pr | 99% recommendation confidence**
+
+Current guard rejects separators only, so drive-relative C:tool reaches Path.Combine. Author has an open fork PR #1 targeting fork main, not upstream; no duplicate repair should be created without dispositioning that candidate. Windows fixture must derive current drive and isolate PATH/PATHEXT.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Shared/Capabilities/SystemCapability.cs:176-205](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/Capabilities/SystemCapability.cs#L176-L205)
+- [tests/OpenClaw.Shared.Tests/CapabilityTests.cs:198-203](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Shared.Tests/CapabilityTests.cs#L198-L203)
+- https://github.com/SebTardif/openclaw-windows-node/pull/1
+- https://github.com/SebTardif/openclaw-windows-node/commit/4fcec8e48bb6f381b9c9d9bc4227911a768c80b6
+
+### Missing proof
+
+- Upstream integration of fork PR.
+- Isolated Windows failing regression and system.which MCP invocation proof.
+
+### Exact proposed comment
+
+> The drive-relative lookup defect remains on main. An existing candidate is SebTardif/openclaw-windows-node#1 (fix: reject drive-relative names in system.which); it targets the fork, so it is not an upstream fix yet. Next step is review/upstream integration of that work with a deterministic Windows fixture whose drive, PATH and PATHEXT are isolated, plus a normal cmd lookup control. Keep executable discovery separate from execution-approval resolution and prove MCP discovery/invocation after the change. No duplicate implementation is needed.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2035: Checkpoint restore clears the visible chat before the new history arrives
+
+**bug / checkpoint transcript replacement | existing-pr | 99% recommendation confidence**
+
+Current BeginHistoryReplacement still clears timeline and metadata before IO and tests explicitly pin it. Existing fork PR #5 has advanced beyond body commit to 2c2c8c1d and owns candidate. Merely removing clear would retain archived rows under ordinary history merge, so not trivial.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Chat/ChatConversationState.cs:185-199](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Chat/ChatConversationState.cs#L185-L199)
+- [tests/OpenClaw.Tray.Tests/ChatRuntimeOwnersTests.cs:260-285](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Tray.Tests/ChatRuntimeOwnersTests.cs#L260-L285)
+- [docs/ARCHITECTURE.md:1016](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/docs/ARCHITECTURE.md#L1016)
+- https://github.com/SebTardif/openclaw-windows-node/pull/5
+- https://github.com/SebTardif/openclaw-windows-node/commit/2c2c8c1d15adcef8ddcb3d7c0b944b183a2a88ee
+
+### Missing proof
+
+- Upstream integrated candidate and replacement-specific behavioral regressions.
+- Visible pending/failure/current-head checkpoint restore proof.
+
+### Exact proposed comment
+
+> Keep this open and review the existing fork candidate, SebTardif/openclaw-windows-node#5 (fix: keep the chat visible until a checkpoint history commits), whose current head is 2c2c8c1d. Main still clears rows and metadata before replacement IO. Next step is upstream integration with pending/failure retention, atomic removal of pre-restore rows absent from restored history, preservation of post-restore arrivals and stale-generation rejection. Update the explicit replacement ownership/test contract together; removing the initial clear alone would not satisfy the required reconciliation.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2041: MSIX storage validation can pass without proving the token or distro was cleared
+
+**bug / validation false pass | existing-pr | 99% recommendation confidence**
+
+Validator still reads nonexistent success/postconditions fields while engine writes outcome/exitCode; final exit ignores absent cleanup evidence. Author fork PR #9 is open. Fail-closed patch alone may leave all real runs failing until truthful cleanup evidence is supplied; do not fabricate postconditions.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [scripts/validate-msix-storage-paths.ps1:846-870](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/validate-msix-storage-paths.ps1#L846-L870)
+- [scripts/validate-msix-storage-paths.ps1:1182-1188](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/scripts/validate-msix-storage-paths.ps1#L1182-L1188)
+- [src/OpenClaw.SetupEngine/Program.cs:376-377](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine/Program.cs#L376-L377)
+- https://github.com/SebTardif/openclaw-windows-node/pull/9
+- https://github.com/SebTardif/openclaw-windows-node/commit/82fb1d60ebd49a9cfa1b16f9d51e6e37efc62abb
+
+### Missing proof
+
+- Actual-validator regression and complete source of cleanup postconditions.
+- Dedicated disposable Windows MSIX cleanup lifecycle proof.
+
+### Exact proposed comment
+
+> Current main still has the result-contract mismatch and false-pass path. Continue from SebTardif/openclaw-windows-node#9 (fix: fail the MSIX storage verdict without engine confirmation), not a duplicate patch. Next step: regress the actual final validator path so missing/false cleanup evidence fails, parse outcome and exitCode correctly, and define truthful ownership-scoped token/distro postconditions from observation. Do not synthesize those postconditions from a successful engine exit. A dedicated disposable Windows lifecycle run is still needed before this validator can be trusted as cleanup proof.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2071: Fix dangerous implicit state machines (audit lanes)
+
+**tracker / coordinated five-lane lifecycle audit | existing-pr | 99% recommendation confidence**
+
+All five lanes have published open PRs and explicit handoff. Source still contains unfenced reconnect, unsynchronized MCP start and update-before-listener order. Tracker completion explicitly requires all lanes merged with regressions, not mere publication or a bot label.
+
+Discussion coverage: body and all 2 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Tray.WinUI/Services/NodeService.cs:794-839](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/Services/NodeService.cs#L794-L839)
+- [src/OpenClaw.Shared/WebSocketClientBase.cs:551-558](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Shared/WebSocketClientBase.cs#L551-L558)
+- [src/OpenClaw.Tray.WinUI/App.xaml.cs:1116-1127](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Tray.WinUI/App.xaml.cs#L1116-L1127)
+- [src/OpenClaw.Connection/GatewayConnectionManager.cs:3351-3365](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/GatewayConnectionManager.cs#L3351-L3365)
+- https://github.com/openclaw/openclaw-windows-node/issues/2071#issuecomment-6719988339
+- https://github.com/openclaw/openclaw-windows-node/pull/2078
+- https://github.com/openclaw/openclaw-windows-node/pull/2079
+- https://github.com/openclaw/openclaw-windows-node/pull/2080
+- https://github.com/openclaw/openclaw-windows-node/pull/2081
+- https://github.com/openclaw/openclaw-windows-node/pull/2082
+
+### Missing proof
+
+- All five PRs merged with required exact-head checks and lane-specific proof.
+- MCP revocation and accepted cron lifecycle coverage must retain their documented boundaries.
+
+### Exact proposed comment
+
+> Keep the umbrella open for landing, not new implementation. All five lanes already have candidates: #2078 (fix(node): local MCP server can stay running or vanish when toggled during a restart), #2079 (fix: fail pending Gateway requests promptly after transport loss), #2080 (fix: accept forwarded launches during startup update prompts), #2081 (fix: keep queued reconnects from reviving disconnected gateways), and #2082 (fix: keep older Run Now attempts from clearing newer runs). Next step is exact-head review, resolution of recorded CI/proof blockers and individual landing. Close this tracker only after its five merged-regression acceptance criteria are met; publication and local results alone are not completion.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2075: Stop queued operator reconnects from reviving a disconnected gateway
+
+**bug / queued reconnect lifecycle | existing-pr | 99% recommendation confidence**
+
+Current scheduler checks generation before ReconnectIfCurrentAsync takes semaphore, allowing disconnect interleaving. #2081 owns exact lease/generation repair and active gateway removal intent; no duplicate needed.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.Connection/GatewayConnectionManager.cs:3351-3365](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/GatewayConnectionManager.cs#L3351-L3365)
+- [src/OpenClaw.Connection/GatewayConnectionManager.cs:1177](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.Connection/GatewayConnectionManager.cs#L1177)
+- [tests/OpenClaw.Connection.Tests/GatewayConnectionManagerTests.cs:4607](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.Connection.Tests/GatewayConnectionManagerTests.cs#L4607)
+- https://github.com/openclaw/openclaw-windows-node/pull/2081
+- https://github.com/openclaw/openclaw-windows-node/issues/2071#issuecomment-6719988339
+
+### Missing proof
+
+- Landing and required exact-head checks for #2081; native disconnect/removal behavior scope retained.
+
+### Exact proposed comment
+
+> This is already implemented for review in #2081 (fix: keep queued reconnects from reviving disconnected gateways), within #2071. Main still checks the lifecycle before acquiring the reconnect semaphore. Next step is exact-head review/landing of the existing attempt-lease repair and its deterministic queued-disconnect tests, preserving user intent, Gateway identity and cancellation checks without reacquiring the semaphore recursively. Keep the issue open until the repair lands and the recorded CI/proof blockers are resolved.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+
+## #2097: Native Gateway setup aborts on the default 10-second health RPC deadline
+
+**bug / native setup health RPC deadline | keep-open | 99% recommendation confidence**
+
+VerifyHealthAsync still calls gateway health --json without --timeout; outer four-minute CLI process budget does not alter 10-second RPC deadline. Report already has logs; increasing timeout may be bounded but successful longer-deadline setup is not established, so not a confident simple fix.
+
+Discussion coverage: body and all 1 snapshot comments read.
+
+### Evidence
+
+- [src/OpenClaw.SetupEngine.UI/NativeGatewaySetupHost.cs:122-127](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/src/OpenClaw.SetupEngine.UI/NativeGatewaySetupHost.cs#L122-L127)
+- [tests/OpenClaw.SetupEngine.Tests/NativeGatewayCliTimeoutTests.cs:7-16](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/NativeGatewayCliTimeoutTests.cs#L7-L16)
+- [tests/OpenClaw.SetupEngine.Tests/NativeGatewaySetupTests.cs:731-747](https://github.com/openclaw/openclaw-windows-node/blob/e59374c064f43d68f5c72d070d4c89ef2d20ec3b/tests/OpenClaw.SetupEngine.Tests/NativeGatewaySetupTests.cs#L731-L747)
+- https://github.com/openclaw/openclaw-windows-node/issues/2097
+- https://github.com/openclaw/openclaw/issues/196251
+- https://github.com/openclaw/openclaw-windows-node/pull/1990
+
+### Missing proof
+
+- Actual delayed successful health response or diagnosed persistent failure on the reported packaged setup path.
+- Current-head final setup completion/cancellation/retry proof, not arguments-only assertions.
+
+### Exact proposed comment
+
+> Keeping this open at the Windows setup owner. Current VerifyHealthAsync still inherits the CLI health RPC deadline; #1990 (fix(setup): native Gateway setup times out validating configuration when the packaged CLI is slow) changed the outer process budget, not that deadline. The original report already supplies the logs, so there is no need to resubmit them. Next step: exercise the packaged native Gateway/Ollama completion path with a bounded setup-specific RPC timeout, prove whether health eventually succeeds, and preserve cancellation plus visible Retry recovery. The 14.13-second process duration alone is not evidence that the Gateway was healthy at that time.
+
+Posting policy: Proposed text only. Parent decides whether posting materially advances the issue; avoid redundant status comments.
+

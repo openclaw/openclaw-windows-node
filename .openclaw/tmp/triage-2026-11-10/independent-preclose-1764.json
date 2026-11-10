@@ -1,0 +1,62 @@
+{
+  "url": "https://github.com/openclaw/openclaw-windows-node/issues/1764",
+  "title": "Windows Node MXC sandbox — whoami fails with 0xC0000142",
+  "subtitle": "openclaw/openclaw-windows-node #1764",
+  "badge": {
+    "label": "Open",
+    "tone": "positive"
+  },
+  "author": "jadus1210-crypto",
+  "authorUrl": "https://github.com/jadus1210-crypto",
+  "createdAt": "2026-10-18T19:48:11Z",
+  "updatedAt": "2026-11-10T19:58:27Z",
+  "metadata": [
+    {
+      "label": "Comments",
+      "value": "4"
+    }
+  ],
+  "revision": "2026-11-10T19:58:27Z",
+  "body": "Environment\n\nOpenClaw Windows Companion: 2026.10.4-alpha.6\n\nOpenClaw Gateway: 2026.10.4\n\nWindows 11 Home, build 26200\n\nAMD Ryzen 7 5700X, 32 GB RAM\n\nGateway: WSL2 Ubuntu 24.04\n\nWindows Node: connected and paired\n\nSteps to reproduce\n\nKeep the MXC sandbox enabled.\n\nExecute whoami using exec with host=node.\n\nDo not supply custom environment variables.\n\nActual result\n\n(Command exited with code -1073741502)\n\nExit code: 0xC0000142 (STATUS_DLL_INIT_FAILED).\n\nMXC diagnostics\n\ntier: base-container\n\nneedsDaclAugmentation: false\n\nisolationSessionAvailable: true\n\nwarnings: []\n\nenvKeys: []\n\nallowWindowsUi: false\n\ncontainment: mxc\n\nExecution is approved, but the process exits without stdout or stderr.\n\nAdditional findings\n\nThe Gateway and Windows Node remain connected.\n\nNo reparse points were detected in the examined OpenClawTray directories.\n\nNo matching events were found in the Windows Application or CodeIntegrity logs using the tested filters.\n\nPrevious version 2026.9.8-1 failed with CreateProcessSecurityEnvironment / 0x800701C0.\n\nExpected result\n\nThe sandboxed command whoami should execute successfully without disabling MXC.\n\nQuestion\n\nIs this a known MXC AppContainer issue on Windows 11 build 26200? Is there a supported fix that preserves sandbox isolation?",
+  "bodyTruncated": false,
+  "comments": [
+    {
+      "id": "issuecomment-6254413828",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6254413828",
+      "author": "clawsweeper[bot]",
+      "createdAt": "2026-10-18T19:53:58Z",
+      "body": "Codex review: this still needs some work.\n\n**Summary**\nKeep this issue open: its diagnostics match a known Win32k-denial failure, but the existing compatibility setting has not been verified on the affected host.\n\nReproducibility: The report supplies a concrete command, exit status and active sandbox policy, but this read-only review ran no Windows reproduction or tests; current source establishes policy emission rather than the native failure.\n\n**Maintainer decision needed**\n- **Question:** Does this host succeed with the existing Windows UI API compatibility setting, or does it require a separate MXC launch investigation?\n- **Recommendation:** **Collect a controlled compatibility comparison:** Capture the same whoami request and sanitized node diagnostics before and after an operator-approved change to Allow Windows UI APIs, keeping MXC enabled and other policy unchanged.\n- **Why:** The reported policy matches an earlier proven failure mechanism, but source and historical proof cannot establish the result on this installation.\n\n**Next step**\nCapture a controlled whoami compatibility comparison with sanitized invocation and node diagnostics before choosing a code repair.\n\n**Security**\nNone.\n\n\n<details>\n<summary>Review details</summary>\n\nBest possible solution:\n\nProvide a verified contained execution path with clear in-product guidance explaining any required Windows UI API permission and its security tradeoff.\n\nDo we have a high-confidence way to reproduce the issue?\n\nThe report supplies a concrete command, exit status and active sandbox policy, but this read-only review ran no Windows reproduction or tests; current source establishes policy emission rather than the native failure.\n\nIs this the best way to solve the issue?\n\nA controlled test of the existing compatibility setting is the best first step because earlier evidence demonstrates this mechanism, while disabling MXC or assuming the open SDK migration fixes this host would be unsupported.\n\nAGENTS.md: found and applied where relevant.\n\nRemaining risk / open question:\n\n- No affected-host comparison establishes whether the existing Windows UI API compatibility setting resolves whoami startup.\n- The reported BaseContainer probe does not establish reliable child-process execution on this Windows installation.\n\nCodex review notes: model internal, reasoning medium; reviewed against [61979d6170a0](https://github.com/openclaw/openclaw-windows-node/commit/61979d6170a0bd3351e21ca5053d6fca5be959c6).\n\n</details>\n\n<details>\n<summary>Label changes</summary>\n\nLabel changes:\n\n- add `P2`: A concrete sandboxed command fails, but the supported compatibility setting has not been tested and no broader outage is established.\n- add `impact:other`: The observed impact is Windows node child-process startup failure.\n- add `issue-rating: 🦪 silver shellfish`: Current issue advisory state selects this label.\n- add `clawsweeper:no-new-fix-pr`: Current issue advisory state selects this label.\n- add `clawsweeper:needs-maintainer-review`: Current issue advisory state selects this label.\n\nLabel justifications:\n\n- `P2`: A concrete sandboxed command fails, but the supported compatibility setting has not been tested and no broader outage is established.\n- `impact:other`: The observed impact is Windows node child-process startup failure.\n\n</details>\n\n<details>\n<summary>Evidence reviewed</summary>\n\nWhat I checked:\n\n- **Concrete affected-host report:** The complete issue reports whoami exiting with 0xC0000142 on Companion 2026.10.4-alpha.6, with containment=mxc, allowWindowsUi=false and no custom environment; its discussion and timeline contain no successful compatibility retest or linked fixing PR.\n- **Current policy retains explicit Win32k opt-in:** MxcPolicyBuilder reads SystemRunAllowWindowsUi, and MxcConfigBuilder emits Disable=!allowWindows with container or desktop isolation accordingly; only PowerShell-family executables receive the explicit prelaunch UI-access diagnostic. ([`src/OpenClaw.Shared/Mxc/MxcConfigBuilder.cs:82`](https://github.com/openclaw/openclaw-windows-node/blob/61979d6170a0bd33",
+      "bodyTruncated": true
+    },
+    {
+      "id": "issuecomment-6258607388",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6258607388",
+      "author": "jadus1210-crypto",
+      "createdAt": "2026-10-19T02:51:23Z",
+      "body": "**Compatibility test result — SUCCESS**\n\nI tested the existing **Allow Windows UI APIs** compatibility setting on the affected Windows 11 host.\n\n- OpenClaw Companion: `2026.10.4-alpha.6`\n- MXC sandbox: enabled\n- Windows UI APIs: enabled through the Sandbox UI\n- Command: `whoami` via `exec`, `host=node`\n- No custom environment variables\n\n**Result:**\n```text\nnick12\\jadus\nExit code: 0\n```\n\nPreviously, the same command failed with `0xC0000142` when Windows UI APIs were disabled.\n\nThis strongly supports Win32k denial as the cause of the failure.\n\nThe command response did not include MXC logs confirming `allowWindowsUi=True`. The compatibility setting was visibly enabled in the Windows Companion UI.\n\nThe next step is to confirm the effective sandbox policy in sanitized logs and clarify the security trade-off of leaving this compatibility option enabled.",
+      "bodyTruncated": false
+    },
+    {
+      "id": "issuecomment-6558190112",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6558190112",
+      "author": "clawsweeper[bot]",
+      "createdAt": "2026-11-01T12:51:46Z",
+      "body": "ClawSweeper status: review started.\n\nI am starting a fresh review of this issue: Windows Node MXC sandbox — whoami fails with 0xC0000142 This is item 1/1 in the current shard. Shard 0/1.\n\nThis temporary status tracks the active review worker. The completed review will appear in the durable ClawSweeper review comment.\n\nCrustacean status: shell secured, claws on keyboard, evidence pebbles being sorted.\n\n<!-- clawsweeper-review-status:started item=1764 sha=a256d49feb2bc01c2d76a8b8ae1cefc59320f3ec25ce3f860ce83afc0d0c1934 started_at=2026-11-01T12:51:45.938Z lease_expires_at=2026-11-01T13:32:45.938Z owner=github-run-41308446266-1 v=1 -->\n\n<!-- clawsweeper-review-lease item=1764 -->",
+      "bodyTruncated": false
+    },
+    {
+      "id": "issuecomment-6777800721",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6777800721",
+      "author": "roboclaw-bot",
+      "createdAt": "2026-11-10T19:58:27Z",
+      "body": "Closing the original Win32k-denial case as obsolete on current main. The affected-host follow-up confirmed that the same whoami command succeeds with MXC still enabled when Windows UI API compatibility is enabled. #1726 (feat: upgrade Windows node sandboxing to MXC 1.0 .NET SDK) subsequently made that compatibility policy fixed and retired the old toggle; current code and regression tests keep container isolation and input-injection restrictions. This does not claim that every 0xC0000142 cause is solved. If it recurs on a build containing that change, please reopen with the exact version and sanitized effective-containment result, without disabling MXC.\n\nAffected-host confirmation: https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6258607388\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1764:triage -->\n",
+      "bodyTruncated": false
+    }
+  ],
+  "commentsTotal": 4,
+  "commentsTruncated": false,
+  "files": [],
+  "filesTotal": 0,
+  "filesTruncated": false,
+  "partial": true
+}

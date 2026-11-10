@@ -1,0 +1,304 @@
+[
+  {
+    "number": 1701,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:57:32.056972+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-10-28T03:23:52Z",
+      "comments": 3,
+      "state_reason": null
+    },
+    "commentBody": "Consolidating duplicate report #1975 here, without treating the underlying bug as fixed. The newer report confirms that browser status and doctor still fail on Companion and CLI 2026.11.1: https://github.com/openclaw/openclaw-windows-node/issues/1975#issuecomment-6730900436. Both reports use a non-SSH Native Gateway and hit browser-listener ownership verification before authentication is sent. This issue remains the canonical tracking item for a supported native browser-port ownership contract and status/profiles proof. Preserve rejection of foreign or replaced listeners; do not disable the check.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1701:triage -->\n",
+    "commentId": 6777781432,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1701#issuecomment-6777781432",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-10-28T03:23:52Z",
+      "comments": 3
+    }
+  },
+  {
+    "number": 1330,
+    "action": "close",
+    "startedAt": "2026-11-10T19:57:39.064936+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-07T03:18:46Z",
+      "comments": 7,
+      "state_reason": null
+    },
+    "commentBody": "Closing as resolved for the reported mid-word bullet clipping. The September 28 follow-up confirms it no longer reproduces, and the active Reactor renderer now has long bulleted/numbered-list wrapping and narrow-to-wide resize regression coverage. #1549 (fix(chat): adopt Reactor preview.16 session-switch crash workaround) also carries the upstream Grid-based list layout. This does not close the separate chat scrolling or native-crash reports. If list text is still cut off on a current build, please reopen with the failing Markdown, pane width and display scaling.\n\nReporter-side confirmation: https://github.com/openclaw/openclaw-windows-node/issues/1330#issuecomment-5862598488\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1330:triage -->\n",
+    "commentId": 6777784013,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1330#issuecomment-6777784013",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  },
+  {
+    "number": 1421,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:57:44.150031+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-10-24T08:38:40Z",
+      "comments": 3,
+      "state_reason": null
+    },
+    "commentBody": "@voyager787 The renderer mitigation in #1549 (fix(chat): adopt Reactor preview.16 session-switch crash workaround) has merged, and current main uses preview.17, but that is not proof that this specific crash is resolved. Does opening the same preserved conversation still terminate Companion after updating through its normal update UI? If it does, please share the exact Companion version and a redacted symbolized exception/stack below ArrangeOverride. Please do not reset the conversation or publish a full memory dump.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1421:triage -->\n",
+    "commentId": 6777786653,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1421#issuecomment-6777786653",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-10-24T08:38:40Z",
+      "comments": 3
+    }
+  },
+  {
+    "number": 1442,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:57:53.605753+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-09T03:22:21Z",
+      "comments": 4,
+      "state_reason": null
+    },
+    "commentBody": "@duonghoangg111-max The follow-up already confirms successful login as the openclaw user, so repeating that setup is not the next step. Please provide the affected Companion, Gateway and Claude CLI versions, and clarify whether claude disappears after only quitting/reopening Companion, or only after pressing Install/retrying setup. A redacted diagnostic identifying the Gateway service user and whether claude is found in that service context would separate authentication from reinstall cleanup. Please do not reinstall the distro or copy credentials for this investigation.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1442:triage -->\n",
+    "commentId": 6777790114,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1442#issuecomment-6777790114",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-11-09T03:22:21Z",
+      "comments": 4
+    }
+  },
+  {
+    "number": 1564,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:58:03.017570+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-01T15:18:32Z",
+      "comments": 6,
+      "state_reason": null
+    },
+    "commentBody": "@DragonLi-Mi The upstream fix has landed: [openclaw/openclaw#190936](https://github.com/openclaw/openclaw/pull/190936) (fix(ui): avoid typing stalls in software-rendered chat panes), commit b0fdadd6b3448af5e23c45794465d48d97944fbe, superseded [openclaw/openclaw#162418](https://github.com/openclaw/openclaw/pull/162418) (fix(ui): avoid typing stalls in large software-rendered chat panes). Current core uses round clipping and the replacement added a red/green browser regression. No Companion graphics workaround is needed. For the remaining acceptance check, can you confirm continuously focused typing and IME behavior in the maximized Companion WebView after updating the Gateway to a build containing that commit, and include the Gateway/Companion versions? A short result is sufficient; please do not upload raw traces containing session metadata.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1564:triage -->\n",
+    "commentId": 6777793419,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1564#issuecomment-6777793419",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-11-01T15:18:32Z",
+      "comments": 6
+    }
+  },
+  {
+    "number": 1706,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:58:12.232158+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-10T03:20:31Z",
+      "comments": 3,
+      "state_reason": null
+    },
+    "commentBody": "@phamvanminh991 This is still unresolved, and reinstalling the system .NET runtime is not a confirmed fix for the self-contained Companion package. You already supplied the CoreCLR version and exception code. For the next useful detail: reproduce one launch, open Start > Event Viewer > Windows Logs > Application, and look for an Application Error entry at the same time as the .NET Runtime entry. Please report whether that adjacent entry exists and its fault offset, omitting computer/user names and personal path prefixes. A maintainer can then arrange private native-stack collection if needed. Do not post a full crash dump publicly.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1706:triage -->\n",
+    "commentId": 6777796612,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1706#issuecomment-6777796612",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-11-10T03:20:31Z",
+      "comments": 3
+    }
+  },
+  {
+    "number": 1754,
+    "action": "close",
+    "startedAt": "2026-11-10T19:58:21.587695+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-10-30T22:37:20Z",
+      "comments": 2,
+      "state_reason": "reopened"
+    },
+    "commentBody": "Closing the misleading-guidance bug as fixed by #1914 (fix(onboarding): explain unavailable native capability on updated Windows), merged as 280d6a8deb39c67861e5d536fc351614acd13306 and included in v2026.11.1. The guidance now names the unavailable isolation-session capability, explains that a newer Windows version alone does not guarantee availability, and offers WSL or an existing Gateway. All six locale contracts and the native renderer have focused coverage, while the live capability gate is unchanged. This closes the Companion wording defect, not a claim to have fixed or diagnosed Windows capability rollout.\n\nRelease: https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.1\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1754:triage -->\n",
+    "commentId": 6777799159,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1754#issuecomment-6777799159",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  },
+  {
+    "number": 1764,
+    "action": "close",
+    "startedAt": "2026-11-10T19:58:26.171861+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-01T12:52:07Z",
+      "comments": 3,
+      "state_reason": null
+    },
+    "commentBody": "Closing the original Win32k-denial case as obsolete on current main. The affected-host follow-up confirmed that the same whoami command succeeds with MXC still enabled when Windows UI API compatibility is enabled. #1726 (feat: upgrade Windows node sandboxing to MXC 1.0 .NET SDK) subsequently made that compatibility policy fixed and retired the old toggle; current code and regression tests keep container isolation and input-injection restrictions. This does not claim that every 0xC0000142 cause is solved. If it recurs on a build containing that change, please reopen with the exact version and sanitized effective-containment result, without disabling MXC.\n\nAffected-host confirmation: https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6258607388\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1764:triage -->\n",
+    "commentId": 6777800721,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1764#issuecomment-6777800721",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  },
+  {
+    "number": 1821,
+    "action": "close",
+    "startedAt": "2026-11-10T19:58:30.825453+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-10-22T03:39:11Z",
+      "comments": 1,
+      "state_reason": null
+    },
+    "commentBody": "Closing as superseded by the Usage implementation merged in #1895 (feat(usage): rebuild the Usage page with the web page's sessions, charts and filters), commit 9d36f5c8bfa0e35d3e33a057d7aa95a3c06cb577. The old first-response policy and AppState cost subscription are gone. Usage now defaults to a seven-day date query, captures the selected range for each request and discards superseded replies; ownership and delayed-response regressions cover that boundary. This is fixed on main, not a claim that the rewrite is already in v2026.11.1. The still-open #1863 (fix(usage): opening Usage keeps the 7-day totals) needs a separate supersession review so its retired page implementation is not reintroduced.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1821:triage -->\n",
+    "commentId": 6777802381,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1821#issuecomment-6777802381",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  },
+  {
+    "number": 1843,
+    "action": "close",
+    "startedAt": "2026-11-10T19:58:35.542500+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-06T15:51:14Z",
+      "comments": 4,
+      "state_reason": null
+    },
+    "commentBody": "The refreshed installer is now published. v2026.11.1, released November 7, includes OpenClawCompanion-Setup-x64.exe and the Node 24.22.1 correction from #1824 (fix(setup): install a Node runtime supported by the Gateway). The release tag itself pins 24.22.1, and the fixing PR records successful real WSL setup with that runtime. Closing this specific 24.19.0 rejection as fixed. Update Companion using the v2026.11.1 installer and retry the normal setup flow; no manual WSL/runtime edits or data reset are required by this correction. If it still reports 24.19.0 after updating, please reopen with the running Companion version and sanitized install-cli error. Store rollout timing and unrelated setup failures are not implied by this closure.\n\nRelease: https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.1\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1843:triage -->\n",
+    "commentId": 6777804026,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1843#issuecomment-6777804026",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  },
+  {
+    "number": 1846,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:58:39.946086+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-07T03:19:25Z",
+      "comments": 3,
+      "state_reason": null
+    },
+    "commentBody": "@adamant064 The snapshot fallback gap is present, but the CPU-initialization explanation is still a hypothesis. For one failed snap, please report only the hexadecimal HRESULT from the local camera.snap failure line and whether “MediaCapture initialized” and “CapturePhotoToStreamAsync completed” appeared for that attempt. Do not paste raw exception text, device IDs or a log tail. That distinguishes initialization, photo capture and encoding before selecting a bounded fallback; permission failures and cancellation must not trigger retries.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1846:triage -->\n",
+    "commentId": 6777806704,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1846#issuecomment-6777806704",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-11-07T03:19:25Z",
+      "comments": 3
+    }
+  },
+  {
+    "number": 1882,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:58:49.242015+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-10T03:20:58Z",
+      "comments": 2,
+      "state_reason": null
+    },
+    "commentBody": "@sbennun-art Keeping this as the Local AI ownership-warning report, separate from the Bolt receipt issue. The report identifies the branch being tested and the launch command, but not the exact compiled commit. Which commit SHA produced the screenshot, and was a model process already running before the isolated setup began? Please provide those facts without private paths or receipt contents. The next regression should reproduce rejected review with changed ownership and refresh the available actions, without deleting ownership evidence or bypassing Stop.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1882:triage -->\n",
+    "commentId": 6777810177,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1882#issuecomment-6777810177",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-11-10T03:20:58Z",
+      "comments": 2
+    }
+  },
+  {
+    "number": 1887,
+    "action": "close",
+    "startedAt": "2026-11-10T19:58:58.497292+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-10-27T13:29:17Z",
+      "comments": 1,
+      "state_reason": null
+    },
+    "commentBody": "Closing the installed cleanup-task flash bug as fixed by #1782 (fix(setup): stop console flashes when Gateway cleanup runs), merged as ef1df54dfe95a8b0a2ae8033425561136d8a70ef and included in v2026.11.1. The task now uses a durable GUI helper with creation-time CreateNoWindow; the PR records positive-control and before/after Scheduler observations, including x64 and ARM64 cleanup behavior. The correction is in Companion, not a Gateway-only update, and normal Companion startup refreshes its registered task. #2056 (fix(setup): clean uninstall leaves a Gateway cleanup task running) separately tracks orphaned tasks after clean-uninstall and is not being closed here. Store rollout/version acceptance and broader SAC policy proof remain distinct release checks.\n\nRelease: https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.1\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1887:triage -->\n",
+    "commentId": 6777812629,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1887#issuecomment-6777812629",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  },
+  {
+    "number": 1902,
+    "action": "comment",
+    "startedAt": "2026-11-10T19:59:03.223495+00:00",
+    "status": "verified",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-10-28T05:42:17Z",
+      "comments": 1,
+      "state_reason": null
+    },
+    "commentBody": "@168062576-tech The outage is valid, but the repair owner is not yet established. Can the lock’s recorded starttime be compared with the actual start time and executable type of that PID, and can you identify the installed Gateway package version? Share only the comparison result and public package version, not the lock file or raw process dump. A live old Gateway and a recycled unrelated PID require different fixes. Keep this open; Companion should not delete authority locks or kill a process solely because it no longer owns the listening port.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1902:triage -->\n",
+    "commentId": 6777815187,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1902#issuecomment-6777815187",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "after": {
+      "state": "open",
+      "updated_at": "2026-10-28T05:42:17Z",
+      "comments": 1
+    }
+  },
+  {
+    "number": 1975,
+    "action": "close",
+    "startedAt": "2026-11-10T19:59:12.143920+00:00",
+    "status": "comment-only",
+    "before": {
+      "state": "open",
+      "updated_at": "2026-11-09T02:37:20Z",
+      "comments": 3,
+      "state_reason": null
+    },
+    "commentBody": "Consolidating this report into #1701 (Native Gateway: browser status/profiles blocked by listener ownership verification). Both reports hit the same production gap: a non-SSH Native Gateway has no managed WSL distro, and the browser-listener callback falls back to a fixture-only check before sending HTTP credentials. This is not fixed. Your November 9 confirmation on Companion/CLI 2026.11.1 remains important evidence: https://github.com/openclaw/openclaw-windows-node/issues/1975#issuecomment-6730900436. Keeping #1701 open for native browser-port attestation and status/profiles proof, including rejection of foreign/replaced listeners. No ownership checks should be disabled.\n\n<!-- roboclaw-issue-cleanup:2026-11-10:1975:triage -->\n",
+    "commentId": 6777817576,
+    "commentUrl": "https://github.com/openclaw/openclaw-windows-node/issues/1975#issuecomment-6777817576",
+    "commentAuthor": "roboclaw-bot",
+    "commentVerified": true,
+    "reason": "Issue changed before close; needs reconciliation"
+  }
+]
