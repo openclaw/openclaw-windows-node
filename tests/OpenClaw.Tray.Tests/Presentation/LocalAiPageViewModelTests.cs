@@ -11,6 +11,33 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class LocalAiPageViewModelTests
 {
     [Theory]
+    [InlineData(null, "wss://user:synthetic-password@gateway.example:18789/proxy/chat?token=synthetic-query#synthetic-fragment", "wss://gateway.example:18789/proxy/chat")]
+    [InlineData(null, "wss://gateway.example:18789/proxy/chat", "wss://gateway.example:18789/proxy/chat")]
+    [InlineData("Home Gateway", "wss://user:synthetic-password@gateway.example:18789/proxy/chat?token=synthetic-query#synthetic-fragment", "Home Gateway")]
+    [InlineData("", "wss://gateway.example:18789/proxy/chat?token=synthetic-query", "")]
+    [InlineData(null, null, null)]
+    [InlineData(null, "", "")]
+    public void GatewayDetail_SanitizesOnlyUrlFallbackAndPreservesSnapshot(
+        string? name, string? gatewayUrl, string? expectedDetail)
+    {
+        var snapshot = GatewayConnectionSnapshot.Idle with
+        {
+            GatewayName = name,
+            GatewayUrl = gatewayUrl,
+        };
+        var runtimeHost = new FakePermissionsPageRuntimeHost { ConnectionSnapshot = snapshot };
+        using var gatewaySource = new PermissionsPageRuntimeSource(runtimeHost);
+        using var viewModel = new LocalAiPageViewModel(
+            new FakeLocalAiRuntime(CreateInstalledSnapshot()), gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
+
+        Assert.Equal(expectedDetail, viewModel.GatewayDetail);
+        Assert.Same(snapshot, runtimeHost.ConnectionSnapshot);
+        Assert.Equal(gatewayUrl, gatewaySource.Current.ConnectionSnapshot.GatewayUrl);
+        Assert.Equal(name, gatewaySource.Current.ConnectionSnapshot.GatewayName);
+    }
+
+    [Theory]
     [InlineData(LocalAiRuntimeState.Stopped)]
     [InlineData(LocalAiRuntimeState.Healthy)]
     public async Task NativeSelectionBlocksStartAndRestartButPreservesRecoveryActions(LocalAiRuntimeState state)

@@ -10,6 +10,23 @@ public sealed class TrayMenuPresenterTests
     private static readonly DateTime NowUtc = new(2026, 8, 2, 19, 0, 0, DateTimeKind.Utc);
 
     [Theory]
+    [InlineData("wss://user:synthetic-password@gateway.example:18789/proxy/chat?token=synthetic-query#synthetic-fragment", "wss://gateway.example:18789/proxy/chat")]
+    [InlineData("wss://gateway.example:18789/proxy/chat?token=synthetic-query", "wss://gateway.example:18789/proxy/chat")]
+    [InlineData("wss://gateway.example:18789/proxy/chat#synthetic-fragment", "wss://gateway.example:18789/proxy/chat")]
+    [InlineData("wss://gateway.example:18789/proxy/chat", "wss://gateway.example:18789/proxy/chat")]
+    [InlineData(null, null)]
+    public void GatewayFlyout_HidesUrlSecretsWithoutChangingConnectionSnapshot(string? gatewayUrl, string? expectedDetail)
+    {
+        var snapshot = DetailedSnapshot() with { GatewayUrl = gatewayUrl };
+
+        var gateway = Find(Present(snapshot), "connection");
+        var status = Assert.Single(gateway.Children, item => item.Kind == TrayMenuElementKind.StatusCard);
+
+        Assert.Equal(expectedDetail, status.Detail);
+        Assert.Equal(gatewayUrl, snapshot.GatewayUrl);
+    }
+
+    [Theory]
     [InlineData(null, ConnectionStatus.Connected, true, true, "Connected - toggle off to disconnect")]
     [InlineData(null, ConnectionStatus.Connecting, true, false, "Connecting - toggle off to disconnect")]
     [InlineData(null, ConnectionStatus.Disconnected, false, true, "Disconnected - toggle on to connect")]
