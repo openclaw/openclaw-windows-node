@@ -231,7 +231,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             return () => { cancellation.Cancel(); cancellation.Dispose(); };
         }), feedback);
         var expansionEpoch = UseRef(state.ConnectionEpoch);
-        var selectionKey = $"{state.ConnectionEpoch}:{state.SelectionRequest}";
+        // Initial inventory can choose a default without an explicit Select request.
+        var selectionKey = $"{state.ConnectionEpoch}:{state.SelectionRequest}:{state.SelectedId}";
         UseEffect((Func<Action>)(() =>
         {
             if (expansionEpoch.Current != state.ConnectionEpoch)
@@ -593,7 +594,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 groups.Add(PageHero.WithMotion(VStack(PageResponsiveLayout.GapInner, requests.Select(request =>
                     PairingRow(request, state, actions, layout, rowControls).WithKey("pairing:" + request.Key)).ToArray())
                     .AutomationId("SystemsPairingRows"),
-                    !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled));
+                    !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled).WithKey("pairing-group"));
             var devices = visible.Where(row => row.Kind is SystemKind.Host or SystemKind.Node).ToArray();
             if (devices.Length > 0)
                 groups.Add(InventoryGroup(S("DevicesAndGateway"), SystemKind.Host, devices,
@@ -641,7 +642,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .AutomationName(heading)
             .AutomationId(automationId);
         if (!showHeading)
-            return content;
+            return content.WithKey(automationId);
         return VStack(4,
             HStack(8,
                 Border(null).Size(8, 8).CornerRadius(4).Background(Theme.Ref(SystemsHue.ForKind(kind).Brush))
@@ -650,7 +651,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
                     .HeadingLevel(AutomationHeadingLevel.Level2))
                 .Margin(4, 0, 0, 0),
-            content);
+            content).WithKey(automationId);
     }
 
     private static Element InventoryItem(SystemRow row, SystemsViewState state, SystemsPageActions actions, SystemsLayout layout)

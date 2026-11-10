@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
@@ -251,9 +252,9 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     public async Task UnknownCapabilities_UseSentenceCaseLabelsInsteadOfRawIds()
     {
         await WithPageAsync(900, controller => controller.Select("node:studio"),
-            async (surface, _, _) => await ui.RunOnUIAsync(() =>
+            async (surface, _, _) => await ui.RunOnUIAsync(async () =>
             {
-                var section = Find<FrameworkElement>(surface, "SystemsCapabilities");
+                var section = await WaitForRowSectionAsync<FrameworkElement>(surface, "node:studio", "SystemsCapabilities");
                 var labels = TestSupport.FindDescendants<TextBlock>(section).Select(text => text.Text).ToArray();
                 Assert.Contains("Files", labels);
                 Assert.Contains("Remote files", labels);
@@ -287,12 +288,59 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             var group = Find<StackPanel>(surface, "SystemsDevicesGroup");
             await TestSupport.WaitForRenderedConditionAsync(() => group.Children.OfType<Expander>().Count() == 3 &&
                 group.Children.OfType<Expander>().All(card => card.ActualHeight > 0), "three separate native inventory rows rendered");
-            Assert.Equal(OpenClawTray.Presentation.PageResponsiveLayout.GapInner, group.Spacing);
+            // Inventory chooses the first node even without an explicit Select. Establish
+            // that initial realization before preparing either side of this state matrix.
+            Assert.Equal("node:gap-1", controller.State.SelectedId);
+            await WaitForRowSectionAsync<FrameworkElement>(surface, "node:gap-1", "SystemsDetails");
             var cards = group.Children.OfType<Expander>().ToArray();
+            Border ContentChrome(Expander card)
+            {
+                var chrome = Assert.IsType<Grid>(VisualTreeHelper.GetChild(card, 0));
+                var clip = Assert.Single(chrome.Children.OfType<Border>(), element => element.Name == "ExpanderContentClip");
+                return Assert.IsType<Border>(clip.Child);
+            }
+            if (!expanded)
+            {
+                // State-changing preparation is separate from the read-only readiness helper.
+                foreach (var card in cards)
+                    card.IsExpanded = false;
+            }
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+            {
+                if (expanded)
+                {
+                    var details = TryFind<FrameworkElement>(cards[0], "SystemsDetails");
+                    if (!cards[0].IsExpanded || details is not { ActualHeight: > 0 }) return false;
+                    var bounds = Bounds(details, cards[0]);
+                    if (bounds.Top < 0 || bounds.Bottom > cards[0].ActualHeight + .5) return false;
+                }
+                foreach (var card in expanded ? cards.Skip(1) : cards)
+                    if (card.IsExpanded || ContentChrome(card).Visibility != Visibility.Collapsed) return false;
+                return cards.Zip(cards.Skip(1), (previous, current) =>
+                    Math.Abs(Bounds(current, group).Top - Bounds(previous, group).Bottom - 8) <= .5).All(gap => gap);
+            }, expanded ? "expanded row translation and eight-DIP gaps settle" : "all rows collapse and eight-DIP gaps settle",
+                () => string.Join("; ", cards.Select(card =>
+                    $"{AutomationProperties.GetAutomationId(card)} expanded={card.IsExpanded}, size={card.ActualSize}, content={ContentChrome(card).Visibility}")));
+            Assert.Equal(expanded, cards[0].IsExpanded);
+            Assert.All(cards.Skip(1), card => Assert.False(card.IsExpanded));
+            if (!expanded)
+                Assert.Null(controller.State.SelectedId);
+            Assert.Equal(OpenClawTray.Presentation.PageResponsiveLayout.GapInner, group.Spacing);
             for (var index = 0; index < cards.Length; index++)
             {
-                Assert.Equal(new Thickness(1), cards[index].BorderThickness);
-                Assert.Equal(new CornerRadius(8), cards[index].CornerRadius);
+                // The stock Expander composes its outline from a complete header border
+                // and a content border without a top edge. Do not impose the retired card style.
+                Assert.Same(DependencyProperty.UnsetValue, cards[index].ReadLocalValue(Control.BorderThicknessProperty));
+                Assert.Same(DependencyProperty.UnsetValue, cards[index].ReadLocalValue(Control.CornerRadiusProperty));
+                var chrome = Assert.IsType<Grid>(VisualTreeHelper.GetChild(cards[index], 0));
+                var header = Assert.Single(chrome.Children.OfType<ToggleButton>(), element => element.Name == "ExpanderHeader");
+                var clip = Assert.Single(chrome.Children.OfType<Border>(), element => element.Name == "ExpanderContentClip");
+                var content = Assert.IsType<Border>(clip.Child);
+                Assert.Equal("ExpanderContent", content.Name);
+                Assert.Equal(new Thickness(1), header.BorderThickness);
+                Assert.Equal(new Thickness(1, 0, 1, 1), content.BorderThickness);
+                Assert.True(header.CornerRadius.TopLeft > 0 && header.CornerRadius.TopRight > 0);
+                Assert.True(content.CornerRadius.BottomLeft > 0 && content.CornerRadius.BottomRight > 0);
                 if (index == 0) continue;
                 var previous = cards[index - 1].TransformToVisual(group).TransformBounds(
                     new Rect(0, 0, cards[index - 1].ActualWidth, cards[index - 1].ActualHeight));
@@ -302,8 +350,10 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             }
             if (expanded)
             {
-                Assert.Equal("node:gap-1", controller.State.SelectedId);
-                Assert.NotNull(Find<FrameworkElement>(cards[0], "SystemsDetails"));
+                var details = Find<FrameworkElement>(cards[0], "SystemsDetails");
+                var bounds = Bounds(details, cards[0]);
+                Assert.True(bounds.Top >= 0 && bounds.Bottom <= cards[0].ActualHeight + .5,
+                    "Expanded contents stay inside their own bordered row.");
             }
             Find<Expander>(surface, "SystemsRow_node:gap-2").IsExpanded = true;
             await TestSupport.WaitForRenderedConditionAsync(() => controller.State.SelectedId == "node:gap-2",
@@ -571,11 +621,12 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     public async Task PendingPairingRow_WrapsGuidanceAndKeepsItsBadgeWithinNarrowRoute()
     {
         const string deviceName = "Studio node awaiting approval from the remote Gateway";
+        const string platform = "Windows 11 Enterprise on a remotely managed development workstation";
         var expectedMessage = SystemsText.S("Pairing_Message");
         await WithPageAsync(900, controller => controller.UpdateInputs(Inputs() with
         {
             PendingApprovals = [PendingApproval.FromNode(new PairingRequest
-                { RequestId = "join", NodeId = "new-device", DisplayName = deviceName })],
+                { RequestId = "join", NodeId = "new-device", DisplayName = deviceName, Platform = platform })],
         }), async (surface, _, _) => await ui.RunOnUIAsync(async () =>
         {
             await TestSupport.WaitForRenderedConditionAsync(
@@ -591,6 +642,9 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 text => text.Text == expectedMessage + " " + deviceName);
             var action = Assert.Single(TestSupport.FindDescendants<TextBlock>(card),
                 text => text.Text == SystemsText.S("Pairing_Review"));
+            Assert.Contains(platform, message.Text, StringComparison.Ordinal);
+            await TestSupport.WaitForRenderedConditionAsync(() => message.ActualWidth > 0 && action.ActualHeight > 0,
+                "reported platform and pairing guidance laid out");
             var cardBounds = Bounds(card, surface);
             var messageBounds = Bounds(message, surface);
             var actionBounds = Bounds(action, surface);
@@ -710,7 +764,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
 
     [Theory]
     [InlineData(1400, 3, 4)]
-    [InlineData(1000, 3, 2)]
+    [InlineData(1000, 3, 3)]
     [InlineData(999, 1, 5)]
     [InlineData(760, 1, 3)]
     [InlineData(520, 1, 2)]
@@ -760,7 +814,11 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     Find<Border>(surface, "SystemsStat_disk").ActualWidth > 0 &&
                     Find<StackPanel>(surface, "SystemsStatRows").Children.OfType<Grid>()
                         .All(grid => grid.ColumnDefinitions.Count == statColumns * 2 - 1),
-                    "Host-driven responsive layout reconciled");
+                    "Host-driven responsive layout reconciled",
+                    () => $"host={Find<FrameworkElement>(surface, "SystemsPageRoot").ActualWidth}, " +
+                        $"details={Find<Grid>(surface, "SystemsDetailsGrid").ActualWidth}, " +
+                        $"statistics={Find<StackPanel>(surface, "SystemsStatRows").ActualWidth}, " +
+                        $"columns={string.Join(",", Find<StackPanel>(surface, "SystemsStatRows").Children.OfType<Grid>().Select(grid => grid.ColumnDefinitions.Count))}");
                 var root = Find<FrameworkElement>(surface, "SystemsPageRoot");
                 // Fractional physical pixels can round a 999 DIP host by less than half a DIP.
                 Assert.InRange(Math.Abs(width - root.ActualWidth), 0, .5);
@@ -1086,10 +1144,14 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     "offline row owns its recovery action");
                 Invoke(Find<HyperlinkButton>(offline, "SystemsIssueAction_node:machine-3_0"));
                 Assert.Equal(["connection"], navigated);
+                var deviceGroup = Find<StackPanel>(surface, "SystemsDevicesGroup");
                 controller.UpdateInputs(Inputs() with { LocalNodeId = "not-reported" });
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                     !Find<TextBlock>(surface, "SystemsMastSubtitle").Text.Contains("connected to Home as a node", StringComparison.Ordinal),
                     "An identity without a reported live node does not claim node connectivity");
+                Assert.Same(deviceGroup, Find<StackPanel>(surface, "SystemsDevicesGroup"));
+                Assert.Same(offline, Find<Expander>(surface, "SystemsRow_node:machine-3"));
+                Assert.True(offline.IsLoaded, "Removing the pairing group must not detach an existing machine row.");
                 controller.Select("node:machine-1");
                 var selected = Find<Expander>(surface, "SystemsRow_node:machine-1");
                 await TestSupport.WaitForRenderedConditionAsync(() => selected.IsExpanded &&
@@ -1102,8 +1164,9 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.True(gatewayRow.IsExpanded);
                 foreach (var row in new[] { gatewayRow, offline, selected })
                 {
-                    Find<FrameworkElement>(row, "SystemsCapabilities");
-                    Find<FrameworkElement>(row, "SystemsStatistics");
+                    var rowId = AutomationProperties.GetAutomationId(row)["SystemsRow_".Length..];
+                    await WaitForRowSectionAsync<FrameworkElement>(surface, rowId, "SystemsCapabilities");
+                    await WaitForRowSectionAsync<FrameworkElement>(surface, rowId, "SystemsStatistics");
                 }
                 var capabilities = Find<FrameworkElement>(selected, "SystemsCapabilities");
                 var resources = Find<FrameworkElement>(selected, "SystemsStatistics");
@@ -1115,6 +1178,33 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.True(r.Y > c.Y);
             }), inventory: inventory, width: width);
         }
+    }
+
+    [Fact]
+    public async Task DelayedInitialInventory_ExpandsDefaultRowWithoutAnotherSelection()
+    {
+        var gateway = new PageGateway(new GatewayNodeInfo { NodeId = "studio", DisplayName = "Studio" },
+            legacyInventory: false, inventory: null, inventoryError: null);
+        gateway.HoldNextLoad();
+        await WithPageAsync(600, _ => { }, async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
+        {
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+                TryFind<FrameworkElement>(surface, "SystemsLoading") is { IsLoaded: true, ActualHeight: > 0 },
+                "initial inventory is still pending after the loading view mounts");
+            await ui.YieldToRenderAsync();
+            Assert.Null(controller.State.SelectedId);
+            gateway.CompleteHeldLoad();
+            await WaitForRowSectionAsync<FrameworkElement>(surface, "gateway", "SystemsCapabilities");
+            Assert.Equal("gateway", controller.State.SelectedId);
+            var row = Find<Expander>(surface, "SystemsRow_gateway");
+            row.IsExpanded = false;
+            await ui.YieldToRenderAsync();
+            Assert.Null(controller.State.SelectedId);
+            await controller.RefreshAsync();
+            await ui.YieldToRenderAsync();
+            Assert.Same(row, Find<Expander>(surface, "SystemsRow_gateway"));
+            Assert.False(row.IsExpanded, "A later inventory refresh must not undo the user's collapse.");
+        }), pageGateway: gateway);
     }
 
     [Fact]
@@ -1311,7 +1401,9 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         await WithPageAsync(600, controller => controller.Select("node:studio"),
             async (surface, _, _) => await ui.RunOnUIAsync(async () =>
             {
-                var declaration = Find<TextBlock>(surface, "SystemsPendingDeclarations");
+                var declaration = await WaitForRowSectionAsync<TextBlock>(surface, "node:studio", "SystemsPendingDeclarations");
+                Assert.Empty(node.Capabilities);
+                Assert.Empty(node.Commands);
                 if (capability)
                     Assert.Contains(SystemsText.S("Capability_Screen"), declaration.Text, StringComparison.Ordinal);
                 else
@@ -1549,9 +1641,9 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             PendingDeclaredCapabilities = ["clipboard"],
         };
         await WithPageAsync(600, controller => controller.Select("node:studio"),
-            async (surface, _, _) => await ui.RunOnUIAsync(() =>
+            async (surface, _, _) => await ui.RunOnUIAsync(async () =>
             {
-                var capabilities = Find<FrameworkElement>(surface, "SystemsCapabilities");
+                var capabilities = await WaitForRowSectionAsync<FrameworkElement>(surface, "node:studio", "SystemsCapabilities");
                 var names = TestSupport.FindDescendants<FrameworkElement>(capabilities).Select(AutomationProperties.GetName).ToArray();
                 Assert.Contains(SystemsText.S("Capability_Screen") + ": " + SystemsText.S("Capability_TurnedOff"), names);
                 Assert.Contains("CAMERA: " + SystemsText.S("Capability_NotReported"), names);
@@ -1668,9 +1760,11 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Theory]
-    [InlineData(4)]
-    [InlineData(5)]
-    public async Task ResourceTiles_StretchOnlyASingleTrailingTile(int tileCount)
+    [InlineData(4, 560, 2)]
+    [InlineData(5, 560, 2)]
+    [InlineData(4, 1000, 3)]
+    [InlineData(5, 1000, 3)]
+    public async Task ResourceTiles_StretchOnlyASingleTrailingTile(int tileCount, double width, int columns)
     {
         var now = DateTimeOffset.UtcNow;
         var node = new GatewayNodeInfo
@@ -1688,11 +1782,12 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                     TryFind<StackPanel>(surface, "SystemsStatRows") is { } rows &&
-                    rows.Children.OfType<Grid>().All(grid => grid.ColumnDefinitions.Count == 3) &&
+                    rows.Children.OfType<Grid>().All(grid => grid.ColumnDefinitions.Count == columns * 2 - 1) &&
                     TestSupport.FindDescendants<Border>(rows).Count(tile =>
                         AutomationProperties.GetAutomationId(tile).StartsWith("SystemsStat_", StringComparison.Ordinal) &&
                         tile.ActualWidth >= 160) == tileCount,
-                    "all reported resource tiles settle into two minimum-width columns");
+                    "all reported resource tiles settle into the expected minimum-width columns",
+                    () => $"host={width}, statistics={TryFind<StackPanel>(surface, "SystemsStatRows")?.ActualWidth}, expectedColumns={columns}");
                 var rows = Find<StackPanel>(surface, "SystemsStatRows");
                 var tiles = TestSupport.FindDescendants<Border>(rows).Where(tile =>
                     AutomationProperties.GetAutomationId(tile).StartsWith("SystemsStat_", StringComparison.Ordinal)).ToArray();
@@ -1701,14 +1796,14 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.Equal(expectedIds, tiles.Select(AutomationProperties.GetAutomationId).ToArray());
                 foreach (var (tile, index) in tiles.Select((tile, index) => (tile, index)))
                 {
-                    var trailingSingle = tileCount % 2 == 1 && index == tileCount - 1;
-                    Assert.Equal(trailingSingle ? 3 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(tile));
+                    var trailingSingle = tileCount % columns == 1 && index == tileCount - 1;
+                    Assert.Equal(trailingSingle ? columns * 2 - 1 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(tile));
                     Assert.InRange(Math.Abs(tile.ActualWidth -
                         (trailingSingle ? rows.ActualWidth : tiles[0].ActualWidth)), 0, 1);
                 }
                 foreach (var row in rows.Children.OfType<Grid>())
                     AssertSiblingsDoNotOverlap(row);
-            }), node, width: 1000);
+            }), node, width: width);
     }
 
     [Fact]
@@ -1828,9 +1923,9 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             MemoryTotalBytes = 1024, MemoryFreeBytes = 256,
             Disks = [new DiskStats("/", 1024, 512), new DiskStats("/data", 2048, 1024)],
         };
-        await WithPageAsync(600, _ => { }, async (surface, _, _) => await ui.RunOnUIAsync(() =>
+        await WithPageAsync(600, _ => { }, async (surface, _, _) => await ui.RunOnUIAsync(async () =>
         {
-            Assert.NotNull(Find<FrameworkElement>(surface, "SystemsStat_cpu"));
+            await WaitForRowSectionAsync<FrameworkElement>(surface, "gateway", "SystemsStat_cpu");
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsStat_load"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsStat_disk:/"));
             Assert.NotNull(Find<FrameworkElement>(surface, "SystemsStat_disk:/data"));
@@ -1896,7 +1991,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         {
             await ui.RunOnUIAsync(async () =>
             {
-                var bar = Find<Microsoft.UI.Xaml.Controls.CommandBar>(surface, "SystemsCommandBar");
+                var bar = await WaitForRowSectionAsync<Microsoft.UI.Xaml.Controls.CommandBar>(surface, "node:studio", "SystemsCommandBar");
                 bar.IsOpen = true;
                 await ui.YieldToRenderAsync();
                 Invoke(FindCommand(surface, "SystemsForgetNode"));
@@ -2011,7 +2106,10 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 () => TestSupport.FindDescendants<FrameworkElement>(surface).Any(element =>
                     AutomationProperties.GetAutomationId(element) == "SystemsPageRoot" && element.ActualHeight > 0) &&
                     (!fitNativeViewport || surface.XamlRoot.Size.Width >= width && surface.XamlRoot.Size.Height >= height),
-                "Systems page mounted and laid out"));
+                "Systems page mounted and laid out",
+                () => $"requested={width}x{height}, fitNativeViewport={fitNativeViewport}, " +
+                    $"surface={surface.ActualWidth}x{surface.ActualHeight}, xamlRoot={surface.XamlRoot?.Size}, " +
+                    $"window={ui.TestWindow.AppWindow.Size}, root={TryFind<FrameworkElement>(surface, "SystemsPageRoot")?.ActualSize}"));
             await assertion(surface, controller, navigated);
         }
         finally
@@ -2034,6 +2132,25 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     ui.TestWindow.AppWindow.Resize(size);
             });
         }
+    }
+
+    // Loaded row expansion deliberately takes another Reactor render after the page root mounts.
+    // Wait for the requested row's actual visible section; never expand it or change selection here.
+    private static async Task<T> WaitForRowSectionAsync<T>(FrameworkElement surface, string rowId, string sectionId)
+        where T : FrameworkElement
+    {
+        await TestSupport.WaitForRenderedConditionAsync(() =>
+        {
+            var row = TryFind<Expander>(surface, "SystemsRow_" + rowId);
+            return row is { IsLoaded: true, IsExpanded: true } &&
+                TryFind<T>(row, sectionId) is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0, Visibility: Visibility.Visible };
+        }, $"{rowId} realizes visible {sectionId}", () =>
+        {
+            var row = TryFind<Expander>(surface, "SystemsRow_" + rowId);
+            return $"rowLoaded={row?.IsLoaded}, expanded={row?.IsExpanded}, rowSize={row?.ActualSize}, " +
+                $"sectionSize={(row is null ? null : TryFind<T>(row, sectionId)?.ActualSize)}";
+        });
+        return Find<T>(Find<Expander>(surface, "SystemsRow_" + rowId), sectionId);
     }
 
     private static T Find<T>(DependencyObject root, string id) where T : FrameworkElement =>
