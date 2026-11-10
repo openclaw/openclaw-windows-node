@@ -510,6 +510,7 @@ $overlapLanes = [ordered]@{
     "core-tests" = "core_tests"
     "tray-tests" = "tray_tests"
     "ui-tests" = "ui_tests"
+    "gateway-fixture" = "ui_tests"
     "setup-e2e" = "setup_e2e"
     "revocation-e2e" = "revocation_e2e"
     "network-e2e" = "network_e2e"
@@ -588,8 +589,8 @@ foreach ($token in @(
         'restore-keys: nuget-${{ runner.os }}-'
     )) {
     $count = ([regex]::Matches($nonCoreWorkflow, [regex]::Escape($token))).Count
-    if ($count -ne 8) {
-        throw "Expected 8 unchanged non-core cache entries for '$token', found $count."
+    if ($count -ne 9) {
+        throw "Expected 9 non-core cache entries for '$token', found $count."
     }
 }
 Assert-NotContains `
@@ -600,6 +601,18 @@ Assert-NotContains `
     -Text $nonCoreWorkflow `
     -Unexpected "nuget-core-" `
     -Message "Only the core job may use the isolated NuGet cache key."
+
+# Shared-key consumers must never register a post-job cache save. A duplicate
+# writer can spend minutes archiving packages before losing the reservation.
+foreach ($lane in @("tray-tests", "ui-tests", "setup-e2e", "revocation-e2e",
+        "network-e2e", "build-x64", "build-arm64", "build-msix")) {
+    $cacheStep = Get-StepBlock -Text (Get-JobBlock $lane) -Name "Cache NuGet packages"
+    $action = if ($lane -eq "tray-tests") { "actions/cache@v6" } else { "actions/cache/restore@v6" }
+    Assert-Contains -Text $cacheStep -Expected "uses: $action" `
+        -Message "Shared NuGet cache lane '$lane' must use '$action'."
+    Assert-Contains -Text $cacheStep -Expected "continue-on-error: true" `
+        -Message "Cache availability must not gate '$lane'."
+}
 
 $trayJob = Get-JobBlock "tray-tests"
 foreach ($token in @(
@@ -742,7 +755,21 @@ if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
     throw 'Tray UI crash metadata must exclude unrelated application failures.'
 }
 
-$fixtureStep = Get-StepBlock -Text $uiJob -Name "Run mock Gateway application scenarios"
+$fixtureJob = Get-JobBlock "gateway-fixture"
+$fixtureStep = Get-StepBlock -Text $fixtureJob -Name "Run mock Gateway application scenarios"
+$fixtureRestoreStep = Get-StepBlock -Text $fixtureJob -Name 'Restore UI test projects'
+foreach ($token in @(
+        '$ErrorActionPreference = ''Stop''',
+        './scripts/Initialize-ReactorPackages.ps1',
+        'dotnet restore tests/OpenClaw.Tray.UITests -r win-x64'
+    )) {
+    Assert-Contains -Text $fixtureRestoreStep -Expected $token -Message "The independent fixture restore must retain the official Reactor bootstrap: '$token'."
+}
+if ($fixtureRestoreStep.IndexOf('./scripts/Initialize-ReactorPackages.ps1', [StringComparison]::Ordinal) -ge
+    $fixtureRestoreStep.IndexOf('dotnet restore', [StringComparison]::Ordinal)) {
+    throw 'The fixture lane must initialize verified Reactor packages before its first restore.'
+}
+
 foreach ($token in @(
         'timeout-minutes: 30',
         './scripts/test-gateway-fixture.ps1',
@@ -760,14 +787,32 @@ Assert-Contains -Text $accessibilityStep `
 foreach ($token in @('continue-on-error:', 'OPENCLAW_RUN_MXC_E2E', 'OPENCLAW_RUN_E2E')) {
     Assert-NotContains -Text $fixtureStep -Unexpected $token -Message "Mock Gateway CI must run by default without real Gateway opt-ins: '$token'."
 }
-Assert-Contains -Text $uiJob -Expected 'runs-on: windows-latest' `
+Assert-Contains -Text $fixtureJob -Expected 'runs-on: windows-latest' `
     -Message "Mock Gateway application scenarios must use the ordinary Windows hosted runner."
-if ($uiJob.IndexOf('name: Install WindowsAppRuntime', [StringComparison]::Ordinal) -ge
-    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -or
-    $uiJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal) -ge
-    $uiJob.IndexOf('name: Verify DevBuild identity marker', [StringComparison]::Ordinal)) {
-    throw 'Mock Gateway scenarios must run after matching WindowsAppRuntime installation and before DevBuild changes the app identity.'
+if ($fixtureJob.IndexOf('name: Install WindowsAppRuntime', [StringComparison]::Ordinal) -ge
+    $fixtureJob.IndexOf('name: Run mock Gateway application scenarios', [StringComparison]::Ordinal)) {
+    throw 'Mock Gateway scenarios must run after matching WindowsAppRuntime installation.'
 }
+foreach ($token in @('DevBuild=true', 'Run Tray UI Tests', 'Run Accessibility Tests')) {
+    Assert-NotContains -Text $fixtureJob -Unexpected $token `
+        -Message "The fixture job must keep its non-Dev identity and not duplicate native UI tests: '$token'."
+}
+Assert-NotContains -Text $uiJob -Unexpected './scripts/test-gateway-fixture.ps1' `
+    -Message 'Fixture scenarios must not remain on the serial native UI path.'
+Assert-Contains -Text $fixtureJob -Expected 'uses: actions/cache/restore@v6' `
+    -Message 'The new fixture runner must not add another shared NuGet cache writer.'
+foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
+    if ((Get-StepBlock -Text $uiJob -Name $name).Trim() -cne
+        (Get-StepBlock -Text $fixtureJob -Name $name).Trim()) {
+        throw "Native UI and fixture lanes must retain equivalent runtime/desktop preparation: '$name'."
+    }
+}
+Assert-Contains -Text $fixtureJob -Expected 'dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore' `
+    -Message 'The fixture lane must build the current candidate UI test graph.'
+Assert-Contains -Text $fixtureJob -Expected "ref: `${{ inputs.promotion_source_sha || github.sha }}" `
+    -Message 'The fixture lane must use the exact candidate checkout, including alpha promotion.'
+Assert-Contains -Text $fixtureJob -Expected '*promotion-version-tag' `
+    -Message 'Fixture candidate versioning must preserve the promotion tag setup.'
 $runtimeStep = Get-StepBlock -Text $uiJob -Name 'Install WindowsAppRuntime'
 foreach ($token in @('Directory.Build.props', 'MicrosoftWindowsAppSDKVersion', '$channel/$version/windowsappruntimeinstall-x64.exe', '$LASTEXITCODE -ne 0')) {
     Assert-Contains -Text $runtimeStep -Expected $token -Message "UI runtime installation must match the candidate SDK and fail closed: '$token'."
@@ -789,16 +834,16 @@ foreach ($entry in @(
     @{ name = 'Install WindowsAppRuntime'; id = 'ui-runtime' },
     @{ name = 'Configure UI desktop'; id = 'ui-desktop' }
 )) {
-    Assert-Contains -Text (Get-StepBlock -Text $uiJob -Name $entry.name) -Expected "id: $($entry.id)" `
+    Assert-Contains -Text (Get-StepBlock -Text $fixtureJob -Name $entry.name) -Expected "id: $($entry.id)" `
         -Message "Fixture launch prerequisite must expose its real step outcome: '$($entry.id)'."
 }
-$screenshotPreparation = Get-StepBlock -Text $uiJob -Name 'Prepare mock Gateway screenshot publisher'
+$screenshotPreparation = Get-StepBlock -Text $fixtureJob -Name 'Prepare mock Gateway screenshot publisher'
 foreach ($token in @('always()', "steps.gateway-fixture.outcome == 'failure'", 'npm ci', '--ignore-scripts')) {
     Assert-Contains -Text $screenshotPreparation -Expected $token -Message "Screenshot uploader preparation must run after failed fixtures and use locked dependencies: '$token'."
 }
 Assert-NotContains -Text $screenshotPreparation -Unexpected "steps.gateway-fixture.outcome == 'success'" `
     -Message 'Successful fixture runs must keep screenshots only in the complete diagnostic archive.'
-$screenshotPublication = Get-StepBlock -Text $uiJob -Name 'Publish browsable mock Gateway screenshots'
+$screenshotPublication = Get-StepBlock -Text $fixtureJob -Name 'Publish browsable mock Gateway screenshots'
 foreach ($token in @('always()', "steps.screenshot-publisher.outcome == 'success'", 'actions/github-script@v9', 'await report.run({ core, context })')) {
     Assert-Contains -Text $screenshotPublication -Expected $token -Message "Screenshot previews must publish after test failures through the Actions artifact runtime: '$token'."
 }
@@ -808,8 +853,13 @@ $uiUpload = Get-StepBlock -Text $uiJob -Name 'Upload Test Results'
 foreach ($token in @('always()', 'test-results-ui', 'path: TestResults/')) {
     Assert-Contains -Text $uiUpload -Expected $token -Message "The complete UI diagnostic archive must be retained: '$token'."
 }
+$fixtureUpload = Get-StepBlock -Text $fixtureJob -Name 'Upload Test Results'
+foreach ($token in @('always()', 'test-results-gateway-fixture', 'path: TestResults/')) {
+    Assert-Contains -Text $fixtureUpload -Expected $token `
+        -Message "The independent fixture diagnostic archive must be retained: '$token'."
+}
 $fixtureRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw
-$releasedProfileStep = Get-StepBlock -Text $uiJob -Name 'Run latest stable profile compatibility'
+$releasedProfileStep = Get-StepBlock -Text $fixtureJob -Name 'Run latest stable profile compatibility'
 foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
         'stable-release.json', '-StableAppPath $apps[0].FullName', '-ArtifactsDirectory $artifacts')) {
     Assert-Contains -Text $releasedProfileStep -Expected $token `
@@ -1246,7 +1296,7 @@ $ciGateJob = Get-JobBlock "ci-gate"
 foreach ($token in @(
         "name: CI Gate",
         "if: `${{ always() }}",
-        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
+        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
         "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
         "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
@@ -1260,6 +1310,8 @@ foreach ($token in @(
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
         "-UiRequired `$env:UI_REQUIRED",
+        "GATEWAY_FIXTURE_RESULT: `${{ needs.gateway-fixture.result }}",
+        "-GatewayFixtureResult `$env:GATEWAY_FIXTURE_RESULT",
         "-SetupE2eRequired `$env:SETUP_E2E_REQUIRED",
         "-RevocationE2eRequired `$env:REVOCATION_E2E_REQUIRED",
         "-NetworkE2eRequired `$env:NETWORK_E2E_REQUIRED",

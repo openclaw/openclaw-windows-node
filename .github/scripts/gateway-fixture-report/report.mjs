@@ -75,10 +75,10 @@ export async function publishScreenshots({ root, artifactClient, runUrl, summary
   const lines = [
     "## Mock Gateway screenshots",
     "",
-    "Only failed-test captures are previewed. Successful captures remain in **test-results-ui**.",
+    "Only failed-test captures are previewed. Successful captures remain in **test-results-gateway-fixture**.",
     "Click a capture to view the PNG in your browser (GitHub sign-in required).",
     "These show the real Companion app connected to the synthetic mock Gateway, not a production Gateway.",
-    "The complete TRX, logs and receipts remain in **test-results-ui** under Artifacts.",
+    "The complete TRX, logs and receipts remain in **test-results-gateway-fixture** under Artifacts.",
     "",
   ];
   // A failed build may leave no fixture directory. Other filesystem errors remain failures.
