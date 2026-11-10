@@ -7075,7 +7075,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
-  <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
   <data name="WorkspaceShell_Tasks" xml:space="preserve"><value>Tasks</value></data>
   <data name="WorkspaceShell_Meetings" xml:space="preserve"><value>Meetings</value></data>
@@ -7186,14 +7185,26 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
   <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
   <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
-  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair device</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair a device</value></data>
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
-  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help &amp; about</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
   <data name="WorkspaceShell_Support" xml:space="preserve"><value>Obtenir de l’assistance</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>Aucune passerelle</value></data>
+  <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Passerelle actuelle</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Passerelle actuelle. {0}</value></data>
+  <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Ajouter une passerelle…</value></data>
+  <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Reconnecter</value></data>
+  <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Paramètres de connexion</value></data>
+  <data name="WorkspaceShell_AccountGatewayDashboard" xml:space="preserve"><value>Paramètres de la passerelle dans le tableau de bord</value></data>
+  <data name="WorkspaceShell_AccountRetry" xml:space="preserve"><value>Réessayer maintenant</value></data>
+  <data name="WorkspaceShell_AccountUpdateBadge" xml:space="preserve"><value>Mise à jour</value></data>
+  <data name="WorkspaceShell_AccountUpdateAvailable" xml:space="preserve"><value>Mise à jour disponible</value></data>
+  <data name="WorkspaceShell_AccountSettingsUpdateFormat" xml:space="preserve"><value>{0}. Mise à jour disponible</value></data>
   <data name="WorkspaceShell_CommandCenter" xml:space="preserve"><value>Command center</value></data>
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
