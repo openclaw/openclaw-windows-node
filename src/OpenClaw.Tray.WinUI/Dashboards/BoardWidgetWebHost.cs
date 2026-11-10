@@ -84,10 +84,29 @@ internal sealed class BoardWidgetWebHost : Control
     {
         var previousFrameUrl = _request?.Widget.FrameUrl;
         var previousAttempt = _request?.Attempt ?? 0;
+        var previousCurrent = _request?.DocumentCurrent ?? true;
+        var ownerChanged = _request is { } previous &&
+            (!ReferenceEquals(previous.ConnectionOwner, request.ConnectionOwner) ||
+             previous.ConnectionRevision != request.ConnectionRevision);
         _request = request;
+        if (!request.DocumentCurrent)
+        {
+            // A fetched snapshot may remain visible, but unfinished work cannot cross a connection.
+            if (ownerChanged && _state?.Status != BoardWidgetWebHostStatus.Ready)
+            {
+                Teardown(closeWebView: true);
+                Report(BoardWidgetWebHostStatus.Loading);
+            }
+            return;
+        }
         var key = request.DocumentKey;
         if (key == _documentKey)
         {
+            if ((ownerChanged || !previousCurrent) && _state?.Status != BoardWidgetWebHostStatus.Ready)
+            {
+                Restart();
+                return;
+            }
             if (request.Attempt != previousAttempt)
             {
                 Retry();
@@ -132,7 +151,7 @@ internal sealed class BoardWidgetWebHost : Control
     private void Restart()
     {
         Teardown(closeWebView: false);
-        if (!_isLoaded || _contentRoot is null || _request is null)
+        if (!_isLoaded || _contentRoot is null || _request is not { DocumentCurrent: true, OwnerCurrent: true })
             return;
         _ = StartAsync(++_generation);
     }
@@ -179,7 +198,7 @@ internal sealed class BoardWidgetWebHost : Control
             }
             return;
         }
-        if (generation != _generation || _webView?.CoreWebView2 is not { } core)
+        if (generation != _generation || !request.OwnerCurrent || _webView?.CoreWebView2 is not { } core)
             return;
         _nonce = BoardWidgetHostPage.NewNonce();
         // Only this page instance may talk to native code; a previous page's queued messages are ignored.
@@ -288,7 +307,8 @@ internal sealed class BoardWidgetWebHost : Control
     {
         // Only the current relay page may talk to native code; frames cannot reach this channel,
         // and a replaced page's queued messages must not complete the new page's handshake.
-        if (_relayUrl is null || !string.Equals(args.Source, _relayUrl, StringComparison.Ordinal))
+        if (_request is not { DocumentCurrent: true, OwnerCurrent: true } ||
+            _relayUrl is null || !string.Equals(args.Source, _relayUrl, StringComparison.Ordinal))
             return;
         var message = BoardWidgetHostPage.Parse(args.WebMessageAsJson);
         switch (message)
@@ -338,7 +358,7 @@ internal sealed class BoardWidgetWebHost : Control
                 var html = await s_loader.LoadAsync(frameUrl, cancellation.Token).ConfigureAwait(false);
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (generation != _generation || cancellation.IsCancellationRequested)
+                    if (generation != _generation || cancellation.IsCancellationRequested || _request?.OwnerCurrent != true)
                         return;
                     _pendingHtml = html;
                     DeliverDocument();
@@ -351,7 +371,7 @@ internal sealed class BoardWidgetWebHost : Control
             {
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (generation != _generation || cancellation.IsCancellationRequested)
+                    if (generation != _generation || cancellation.IsCancellationRequested || _request?.OwnerCurrent != true)
                         return;
                     switch (ex.Failure)
                     {
@@ -375,7 +395,7 @@ internal sealed class BoardWidgetWebHost : Control
 
     private void DeliverDocument()
     {
-        if (!_proxyReady || _pendingHtml is null)
+        if (_request is not { DocumentCurrent: true, OwnerCurrent: true } || !_proxyReady || _pendingHtml is null)
             return;
         var renderId = Guid.NewGuid().ToString("N");
         var html = _pendingHtml;

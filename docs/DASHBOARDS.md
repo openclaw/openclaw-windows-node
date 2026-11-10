@@ -179,6 +179,22 @@ disable redirects and cookies. The sandbox proxy document is served by the
 Gateway's sandbox listener at
 `/mcp-app-sandbox` on `sandboxPort` (or the configured `sandboxOrigin`).
 
+The supported upstream contract authorizes the HTTP read: it checks ticket
+expiry, session/widget identity, current grant, revision, view generation and
+Gateway authority immediately before returning the document bytes. It does not
+provide a separate render-time revalidation RPC or promise to recall a fetched
+snapshot. Windows keeps this distinct from local connection ownership. On a
+connection-owner change, unfinished reads and queued HTML are cancelled and
+discarded; loading resumes only with a snapshot from the current owner. An
+already acknowledged document can remain mounted until its document identity
+changes. Active and visited tabs survive replacement when still present; a
+disconnect or navigation away removes the hosts.
+
+Native regressions use the real loader, WebView relay and synthetic HTTP
+producer for rejected other-session/revoked fetches, connection replacement
+between fetch and delivery, completed-document retention, and hostile transferred
+bridge ports. This is not a real Gateway authorization/revocation trace.
+
 ## Reader limits
 
 - Gallery fetching is capped at 25 pages of 200 rows (5,000 boards). Counts

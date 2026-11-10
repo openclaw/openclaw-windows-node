@@ -448,6 +448,30 @@ public sealed class BoardDocumentModelTests
     }
 
     [Fact]
+    public async Task ReplacingConnection_RetainsOnlyValidTabChoicesNotPreviousContentOrTickets()
+    {
+        var oldClient = new FakeBoardClient();
+        oldClient.Boards.Enqueue(Board(1, ("overview", 0), ("metrics", 1), ("removed", 2)));
+        using var old = new BoardDocumentModel(oldClient, Target, action => action(), new FakeScheduler().Schedule);
+        await old.LoadAsync();
+        old.SelectTab("removed");
+        old.SelectTab("metrics");
+
+        var nextClient = new FakeBoardClient();
+        nextClient.Boards.Enqueue(Board(2, ("overview", 0), ("metrics", 1)));
+        using var next = new BoardDocumentModel(nextClient, Target, action => action(), new FakeScheduler().Schedule, old.Snapshot);
+        Assert.Null(next.Snapshot.Board);
+        Assert.Null(next.Snapshot.GatewayOrigin);
+        Assert.Empty(next.Snapshot.TicketFailures);
+        Assert.Equal(DashboardLoadStatus.Loading, next.Snapshot.Status);
+
+        await next.LoadAsync();
+        Assert.Equal("metrics", next.Snapshot.ActiveTabId);
+        Assert.Equal(["metrics", "overview"], next.Snapshot.VisitedTabs.Order());
+        Assert.Equal(2, next.Snapshot.Board!.Revision);
+    }
+
+    [Fact]
     public async Task Load_SchedulesTicketRenewalBeforeExpiry()
     {
         var client = new FakeBoardClient();
@@ -770,6 +794,7 @@ public sealed class BoardWidgetWebHostRequestTests
         Assert.Equal(key, new BoardWidgetWebHostRequest(widget with { FrameUrl = "/__openclaw__/board/k/chart/index.html?bt=two", ViewTicket = "two" }, Origin).DocumentKey);
         Assert.NotEqual(key, new BoardWidgetWebHostRequest(widget with { Revision = 4 }, Origin).DocumentKey);
         Assert.NotEqual(key, new BoardWidgetWebHostRequest(widget with { SandboxOrigin = "https://sandbox.example.com" }, Origin).DocumentKey);
+        Assert.NotEqual(key, new BoardWidgetWebHostRequest(widget, new Uri("http://127.0.0.1:18790/")).DocumentKey);
     }
 }
 

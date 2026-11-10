@@ -31,6 +31,7 @@ public sealed class FixtureBoards
     private static readonly long s_now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 60_000 * 60_000;
     private readonly ConcurrentDictionary<string, (string SessionKey, string Name)> _tickets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoardDefinition> _boards;
+    private int _documentRequests;
 
     public FixtureBoards()
     {
@@ -54,6 +55,24 @@ public sealed class FixtureBoards
 
     /// <summary>Loopback port of the sandbox proxy listener; set by the fixture server.</summary>
     public int SandboxPort { get; internal set; }
+
+    /// <summary>Optional test gate before the synthetic proxy is served, without delaying the HTML fetch.</summary>
+    public Func<CancellationToken, Task>? BeforeSandboxResponse { get; set; }
+
+    public int DocumentRequests => Volatile.Read(ref _documentRequests);
+
+    /// <summary>Revokes one synthetic ticket before its next HTTP use.</summary>
+    public bool RevokeViewTicket(string ticket) => _tickets.TryRemove(ticket, out _);
+
+    /// <summary>Sets synthetic widget input before starting a fixture server.</summary>
+    public void SetWidgetDocument(string sessionKey, string name, string document)
+    {
+        var widgets = _boards[sessionKey].Widgets;
+        var index = Array.FindIndex(widgets, widget => widget.Name == name && widget.Document is not null);
+        if (index < 0)
+            throw new ArgumentException("Expected an existing HTML widget.", nameof(name));
+        widgets[index] = widgets[index] with { Document = document };
+    }
 
     public IReadOnlyCollection<string> SessionKeys => _boards.Keys;
 
@@ -90,7 +109,8 @@ public sealed class FixtureBoards
         };
     }
 
-    internal object GetBoard(JsonElement p)
+    /// <summary>Produces the same ticketed snapshot used by the fixture's board.get response.</summary>
+    public object GetBoard(JsonElement p)
     {
         GatewayScenario.ValidateProperties(p, "sessionKey", "agentId");
         var sessionKey = GatewayScenario.RequiredString(p, "sessionKey");
@@ -124,6 +144,7 @@ public sealed class FixtureBoards
     /// <summary>Serves a ticketed widget document; returns the HTTP status and body.</summary>
     internal (int Status, string Body) ServeWidget(string pathAndQuery)
     {
+        Interlocked.Increment(ref _documentRequests);
         var queryIndex = pathAndQuery.IndexOf('?');
         var path = queryIndex < 0 ? pathAndQuery : pathAndQuery[..queryIndex];
         var query = queryIndex < 0 ? "" : pathAndQuery[(queryIndex + 1)..];

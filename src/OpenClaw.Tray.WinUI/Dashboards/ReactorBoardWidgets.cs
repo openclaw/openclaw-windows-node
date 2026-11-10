@@ -35,7 +35,11 @@ internal sealed record BoardWidgetCellProps(
     Action<string, double> OnContentHeight,
     bool ReducedMotion = false,
     Action? OpenWebDashboards = null,
-    double? AllocatedHeight = null);
+    double? AllocatedHeight = null,
+    IBoardGatewayClient? ConnectionOwner = null,
+    int ConnectionRevision = 0,
+    bool DocumentCurrent = true,
+    Func<bool>? IsOwnerCurrent = null);
 
 internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
 {
@@ -170,7 +174,8 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
                         props.OnReady(widget.Name);
                 };
                 control.ContentHeightChanged = height => props.OnContentHeight(widget.Name, height);
-                control.Update(new BoardWidgetWebHostRequest(widget, origin, Attempt: retryToken));
+                control.Update(new BoardWidgetWebHostRequest(widget, origin, retryToken,
+                    props.ConnectionOwner, props.ConnectionRevision, props.DocumentCurrent, props.IsOwnerCurrent));
             })
             .AutomationName(widget.Label)
             .AutomationId("BoardWidgetContent_" + widget.Name);

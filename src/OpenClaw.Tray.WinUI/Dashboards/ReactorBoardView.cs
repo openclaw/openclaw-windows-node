@@ -33,7 +33,9 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
     public override Element Render()
     {
         var props = Props;
-        var (snapshot, setSnapshot) = UseState(BoardDocumentSnapshot.Initial, threadSafe: true);
+        var (delivery, setDelivery) = UseState(
+            (Snapshot: BoardDocumentSnapshot.Initial, Client: (IBoardGatewayClient?)null, Revision: 0), threadSafe: true);
+        var snapshot = delivery.Snapshot;
         var (contentHeights, setContentHeights) = UseState(ImmutableDictionary<string, double>.Empty, threadSafe: true);
         var latestHeights = UseRef(ImmutableDictionary<string, double>.Empty);
         latestHeights.Current = contentHeights;
@@ -91,9 +93,9 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
 
         UseEffect((Func<Action>)(() =>
         {
-            var document = new BoardDocumentModel(props.Client, props.Target, props.State.Post, props.State.Schedule);
+            var document = new BoardDocumentModel(props.Client, props.Target, props.State.Post, props.State.Schedule, snapshot);
             model.Current = document;
-            document.Changed += next => setSnapshot(next);
+            document.Changed += next => setDelivery((next, props.Client, props.ConnectionRevision));
             _ = document.LoadAsync();
             return () =>
             {
@@ -130,7 +132,8 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                 Button(LocalizationHelper.GetString("Dashboards_Retry"), refresh).AutomationName(LocalizationHelper.GetString("Dashboards_Retry")).AutomationId("DashboardRetry"),
                 alert: true),
             DashboardLoadStatus.Ready when snapshot.Board is not null =>
-                Board(props, snapshot, model, latestHeights, setContentHeights, width, reducedMotion, tabStrip, overflowFocus, tabPanels),
+                Board(props, snapshot, model, latestHeights, setContentHeights, width, reducedMotion, tabStrip, overflowFocus, tabPanels,
+                    ReferenceEquals(delivery.Client, props.Client) && delivery.Revision == props.ConnectionRevision),
             _ => ProgressRing().IsActive(true).Size(32, 32).Center()
                 .AutomationName(LocalizationHelper.GetString("Dashboards_Loading"))
                 .AutomationId("DashboardLoading"),
@@ -247,7 +250,8 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         bool reducedMotion,
         Ref<SelectorBar?> tabStrip,
         Ref<(string TabId, bool FlyoutClosed)?> overflowFocus,
-        Ref<Dictionary<string, FrameworkElement>> tabPanels)
+        Ref<Dictionary<string, FrameworkElement>> tabPanels,
+        bool documentCurrent)
     {
         var board = snapshot.Board!;
         var tabs = board.OrderedTabs;
@@ -256,7 +260,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var stacked = TierFor(width) == PageWidthTier.Narrow;
         var grids = snapshot.VisitedTabs
             .OrderBy(tab => tab, StringComparer.Ordinal)
-            .Select(tabId => TabGrid(props, snapshot, tabId, model, contentHeights, setContentHeights, stacked, reducedMotion, tabPanels)
+            .Select(tabId => TabGrid(props, snapshot, tabId, model, contentHeights, setContentHeights, stacked, reducedMotion, tabPanels, documentCurrent)
                 .IsVisible(tabId == snapshot.ActiveTabId)
                 .Grid(row: 0)
                 .WithKey("tab:" + tabId))
@@ -369,7 +373,8 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         Action<ImmutableDictionary<string, double>> setContentHeights,
         bool stacked,
         bool reducedMotion,
-        Ref<Dictionary<string, FrameworkElement>> tabPanels)
+        Ref<Dictionary<string, FrameworkElement>> tabPanels,
+        bool documentCurrent)
     {
         var widgets = snapshot.Board!.WidgetsForTab(tabId);
         var tabTitle = snapshot.Board.OrderedTabs.First(tab => tab.TabId == tabId).Title;
@@ -414,7 +419,12 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                     }),
                     reducedMotion,
                     props.State.OpenWebDashboards,
-                    allocatedHeight))
+                    allocatedHeight,
+                    props.Client,
+                    props.ConnectionRevision,
+                    documentCurrent,
+                    () => props.State.Connected && ReferenceEquals(props.State.Client, props.Client) &&
+                        props.State.ConnectionRevision == props.ConnectionRevision))
                 .MinHeight(allocatedHeight)
                 .VAlign(VerticalAlignment.Stretch)
                 .PositionInSet(index + 1, rects.Length)

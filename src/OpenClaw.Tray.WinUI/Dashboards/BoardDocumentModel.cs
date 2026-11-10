@@ -57,12 +57,19 @@ internal sealed class BoardDocumentModel : IDisposable
         IBoardGatewayClient client,
         BoardSessionTarget target,
         Action<Action> post,
-        Func<TimeSpan, Action, IDisposable> schedule)
+        Func<TimeSpan, Action, IDisposable> schedule,
+        BoardDocumentSnapshot? previousView = null)
     {
         _client = client;
         _target = target;
         _post = post;
         _schedule = schedule;
+        if (previousView is not null)
+            Snapshot = BoardDocumentSnapshot.Initial with
+            {
+                ActiveTabId = previousView.ActiveTabId,
+                VisitedTabs = previousView.VisitedTabs,
+            };
         _client.BoardChanged += OnBoardChanged;
         _client.BoardCommandReceived += OnBoardCommand;
     }

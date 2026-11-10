@@ -25,7 +25,7 @@ using static OpenClaw.Tray.UITests.TestSupport;
 namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
-public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
+public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
 {
     [Theory]
     [InlineData("Quarterly operating review", "QO")]
@@ -2155,10 +2155,12 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         public IReadOnlyList<string> ReadScopes { get; init; } = ["operator.read"];
         public ImmutableArray<PluginWidgetKind> Kinds { get; init; } = [];
         public int BoardLoads { get; private set; }
+        public Uri? Origin { get; init; }
+        public Task<BoardSnapshot>? BoardResponse { get; init; }
         public bool IsConnectedToGateway => true;
         public IReadOnlyList<string> GrantedOperatorScopes => ReadScopes;
         public ImmutableArray<PluginWidgetKind> PluginWidgetKinds => Kinds;
-        public Uri? GatewayHttpOrigin => new("http://127.0.0.1:18789/");
+        public Uri? GatewayHttpOrigin => Origin ?? new("http://127.0.0.1:18789/");
         public IReadOnlyList<string> AdvertisedServerMethods => ["board.get"];
         public event EventHandler<BoardChangedEvent>? BoardChanged { add { } remove { } }
         public event EventHandler<BoardCommandEvent>? BoardCommandReceived { add { } remove { } }
@@ -2170,7 +2172,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
         public Task<BoardSnapshot> GetBoardAsync(BoardSessionTarget target, int timeoutMs = 15000)
         {
             BoardLoads++;
-            return Task.FromResult(board);
+            return BoardResponse ?? Task.FromResult(board);
         }
     }
 }

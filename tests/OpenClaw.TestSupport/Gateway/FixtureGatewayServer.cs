@@ -742,8 +742,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 var stream = tcp.GetStream();
                 var path = RequestPath(await ReadRequestHeadAsync(stream, _lifetime.Token));
                 if (path?.Split('?', 2)[0] == FixtureBoards.SandboxPath)
+                {
+                    if (_scenario.Boards!.BeforeSandboxResponse is { } beforeResponse)
+                        await beforeResponse(_lifetime.Token);
                     await WriteHttpAsync(stream, 200, "text/html; charset=utf-8", FixtureBoards.SandboxDocument(),
                         FixtureBoards.SandboxContentSecurityPolicy(), _lifetime.Token);
+                }
                 else
                     await WriteHttpAsync(stream, 404, "text/plain", "Not Found", null, _lifetime.Token);
             }

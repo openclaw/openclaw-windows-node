@@ -27,14 +27,24 @@ internal static class BoardWidgetRetryPolicy
 }
 
 /// <summary>One widget document to host.</summary>
-internal sealed record BoardWidgetWebHostRequest(BoardWidget Widget, Uri GatewayOrigin, int Attempt = 0)
+internal sealed record BoardWidgetWebHostRequest(
+    BoardWidget Widget,
+    Uri GatewayOrigin,
+    int Attempt = 0,
+    IBoardGatewayClient? ConnectionOwner = null,
+    int ConnectionRevision = 0,
+    bool DocumentCurrent = true,
+    Func<bool>? IsOwnerCurrent = null)
 {
+    public bool OwnerCurrent => IsOwnerCurrent?.Invoke() ?? true;
+
     /// <summary>
     /// Identity of the loaded document. Ticket renewals keep it (the ticket is
     /// not part of the key); a new revision, view generation, or sandbox policy replaces it.
     /// </summary>
     public string DocumentKey =>
         string.Join('\0',
+            GatewayOrigin.AbsoluteUri,
             Widget.FrameUrl?.Split('?', 2)[0] ?? "",
             Widget.Revision,
             Widget.ViewGeneration ?? "",
