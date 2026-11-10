@@ -377,9 +377,18 @@ complete and its layout to settle before retrying; missing events remain bounded
 It schedules retries after the rendering callback returns and fences them against
 cancellation or replacement. If rows or the native scroll view disappear during
 initial positioning, it rearms when they return. Normal follow cannot interrupt
-initial positioning.
+initial positioning. An admitted follow request uses the same bounded landing
+confirmation, so recycling a finalized streaming row cannot cancel its own
+navigation through a transient offset reset. Reader input still cancels it.
+If the logical tail changes during a move, its completion rearms the layout
+gate for the current row instead of accepting the older row's landing.
+If a completed bring needs an offset correction, the current tail row remains
+the native anchor at an interior ratio until completion or cancellation.
+The anchor callback rechecks the navigation generation, row index and source
+identity without realizing another row. This avoids both disabled-anchor layout
+cycles and edge anchoring undoing the correction as the virtualized extent changes.
 Native bottom anchoring and the existing follow threshold are unchanged, except
-while a reader toggles a disclosure header by pointer, Enter or Space: the
+for that bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
 transcript then anchors to the top, so the header stays put and its details
 grow downward, as on the web. Any other reader input or programmatic tail scroll
 restores bottom anchoring.

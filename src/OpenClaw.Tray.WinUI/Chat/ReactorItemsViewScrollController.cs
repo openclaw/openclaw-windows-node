@@ -120,6 +120,7 @@ file sealed class InitialTailPositioner : IDisposable
 {
     private const double FollowThreshold = 60;
     private const double TailVisibilityTolerance = 1;
+    private const double OffsetCorrectionAnchorRatio = 0.5;
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -139,7 +140,7 @@ file sealed class InitialTailPositioner : IDisposable
     private readonly PointerEventHandler _readerPointerPressed;
     private readonly TypedEventHandler<UIElement, GettingFocusEventArgs> _readerGettingFocus;
     private bool _disclosureAnchored;
-    private bool _offsetCorrectionAnchoringSuspended;
+    private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
     private Microsoft.UI.Xaml.Controls.Primitives.IScrollController? _inputScrollController;
@@ -379,14 +380,14 @@ file sealed class InitialTailPositioner : IDisposable
             return;
         }
 
-        ObserveInitialLanding(version, generation);
+        ObserveInitialLanding(version, generation, request);
     }
 
     private bool IsInitialConfirmationCurrent(int version, int generation) =>
         !_disposed && _valid && itemsView.IsLoaded && _initialPending
         && version == _version && _confirmation.IsCurrent(generation);
 
-    private void ObserveInitialLanding(int version, int generation)
+    private void ObserveInitialLanding(int version, int generation, TailNavigationRequest request)
     {
         if (!IsInitialConfirmationCurrent(version, generation))
             return;
@@ -412,7 +413,7 @@ file sealed class InitialTailPositioner : IDisposable
                 scrollView.State == ScrollingInteractionState.Idle, IsAtBottom(scrollView)))
             {
                 case InitialTailLanding.Landed:
-                    CompleteInitialLanding();
+                    CompleteInitialLanding(request);
                     break;
                 case InitialTailLanding.Retry:
                     DetachConfirmation();
@@ -426,7 +427,7 @@ file sealed class InitialTailPositioner : IDisposable
                     var diagnostics = _confirmation.Diagnostics;
                     var attemptDiagnostics = _confirmation.AttemptDiagnostics;
                     var bringOptions = _confirmation.BringOptionsObservation;
-                    CompleteInitialLanding();
+                    CompleteInitialLanding(request);
                     LogInitialTailFailure(diagnostics, attemptDiagnostics, scrollView, bringOptions);
                     break;
             }
@@ -491,11 +492,25 @@ file sealed class InitialTailPositioner : IDisposable
 
                 // An indexed bring can complete without moving restored, virtualized history.
                 // Correct to the live extent within the existing retry budget, not the stale bring target.
-                // Native anchoring can undo this offset as recycled rows change the extent.
-                // Suspend it only until this bounded correction completes or is cancelled.
+                // Keep the tail as the native anchor while recycled rows change the extent.
+                // Disabling anchoring can cycle layout; an edge anchor can undo the correction.
                 _following = true;
-                _offsetCorrectionAnchoringSuspended = true;
-                scrollView.VerticalAnchorRatio = double.NaN;
+                if (_offsetCorrectionAnchorRequested is not null)
+                    scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
+                _offsetCorrectionAnchorRequested = (sender, args) =>
+                {
+                    if (IsInitialConfirmationCurrent(version, generation)
+                        && ReferenceEquals(sender, _scrollView)
+                        && TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+                        && sender.Content is ItemsRepeater repeater
+                        && repeater.TryGetElement(request.Index) is FrameworkElement { IsLoaded: true, Visibility: Visibility.Visible } target
+                        && ReferenceEquals(target.DataContext, targetItem))
+                    {
+                        args.AnchorElement = target;
+                    }
+                };
+                scrollView.AnchorRequested += _offsetCorrectionAnchorRequested;
+                scrollView.VerticalAnchorRatio = OffsetCorrectionAnchorRatio;
                 var correlationId = scrollView.ScrollTo(
                     scrollView.HorizontalOffset, scrollView.ScrollableHeight,
                     new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
@@ -508,7 +523,7 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            ObserveInitialLanding(version, generation);
+            ObserveInitialLanding(version, generation, request);
         }))
         {
             if (IsInitialConfirmationCurrent(version, generation))
@@ -517,7 +532,7 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
-    private void CompleteInitialLanding()
+    private void CompleteInitialLanding(TailNavigationRequest? completedRequest = null)
     {
         RestoreTailAnchor();
         CancelRealization();
@@ -525,6 +540,15 @@ file sealed class InitialTailPositioner : IDisposable
         _confirmation.Invalidate();
         _initialPending = false;
         _explicitJumpPending = false;
+        // A newer tail can arrive while a native move is in flight. Finish that move
+        // before positioning the current row; a numeric bottom is not its landing.
+        if (completedRequest is { } completed && _valid
+            && !TailNavigationPolicy.CanExecute(completed, _tailIndex, _displayedTailKey, _itemCount))
+        {
+            _following = true;
+            _initialPending = true;
+            AwaitLayout();
+        }
     }
 
     private void AttachScrollView()
@@ -671,13 +695,17 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void RestoreTailAnchor()
     {
-        if (!_disclosureAnchored && !_offsetCorrectionAnchoringSuspended)
+        if (!_disclosureAnchored && _offsetCorrectionAnchorRequested is null)
             return;
 
         _disclosureAnchored = false;
-        _offsetCorrectionAnchoringSuspended = false;
         if (_scrollView is not null)
+        {
+            if (_offsetCorrectionAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
             _scrollView.VerticalAnchorRatio = 1.0;
+        }
+        _offsetCorrectionAnchorRequested = null;
     }
 
     private void OnReaderFocus(UIElement sender, GettingFocusEventArgs args)
@@ -746,7 +774,10 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
             }
 
-            StartTailRequest(queuedRequest);
+            // Finalizing a streamed row can recycle it and transiently reset the offset.
+            // Confirm this move too; real reader input still cancels its generation.
+            _initialPending = true;
+            ConfirmInitialLanding(_version, queuedRequest);
         }))
         {
             _tailNavigationQueue.SchedulingFailed();
@@ -877,7 +908,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachLayout()
     {
-        if (_offsetCorrectionAnchoringSuspended)
+        if (_offsetCorrectionAnchorRequested is not null)
             RestoreTailAnchor();
         CancelRealization();
         DetachRendering();
@@ -919,6 +950,8 @@ file sealed class InitialTailPositioner : IDisposable
         _inputScrollController = null;
         if (_scrollView is not null)
         {
+            if (_offsetCorrectionAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
             _scrollView.VerticalAnchorRatio = double.NaN;
             _scrollView.ViewChanged -= OnViewChanged;
             _scrollView.StateChanged -= OnScrollStateChanged;
@@ -929,7 +962,7 @@ file sealed class InitialTailPositioner : IDisposable
 
         _scrollView = null;
         _disclosureAnchored = false;
-        _offsetCorrectionAnchoringSuspended = false;
+        _offsetCorrectionAnchorRequested = null;
         _reportedAtTail = null;
     }
 

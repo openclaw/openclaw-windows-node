@@ -140,9 +140,14 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("correctOffset &= _confirmation.CanCorrectOffset(targetItem)", retry);
         Assert.Contains("scrollView.HorizontalOffset, scrollView.ScrollableHeight", retry);
         Assert.Contains("_confirmation.OffsetCorrectionStarted(correlationId)", retry);
-        Assert.True(retry.IndexOf("scrollView.VerticalAnchorRatio = double.NaN", StringComparison.Ordinal) <
+        Assert.Contains("scrollView.AnchorRequested += _offsetCorrectionAnchorRequested", retry);
+        Assert.True(retry.IndexOf("scrollView.AnchorRequested += _offsetCorrectionAnchorRequested", StringComparison.Ordinal) <
             retry.IndexOf("scrollView.ScrollTo(", StringComparison.Ordinal));
-        Assert.Contains("_offsetCorrectionAnchoringSuspended = true", retry);
+        Assert.DoesNotContain("VerticalAnchorRatio = double.NaN", retry);
+        Assert.Contains("args.AnchorElement = target", retry);
+        Assert.Contains("repeater.TryGetElement(request.Index)", retry);
+        Assert.Contains("ReferenceEquals(target.DataContext, targetItem)", retry);
+        Assert.Contains("TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)", retry);
         Assert.Contains("IsInitialConfirmationCurrent(version, generation)", retry);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", retry);
         Assert.DoesNotContain("DispatcherTimer", binding);
@@ -157,6 +162,14 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
         Assert.DoesNotContain("ScrollTo(", viewChanged);
+
+        var follow = binding[tailRequestStart..binding.IndexOf("private bool StartTailRequest", tailRequestStart, StringComparison.Ordinal)];
+        Assert.Contains("TailNavigationPolicy.CanFollowTail(_following, _initialPending)", follow);
+        Assert.Contains("_initialPending = true", follow);
+        Assert.Contains("ConfirmInitialLanding(_version, queuedRequest)", follow);
+        Assert.True(follow.IndexOf("_initialPending = true", StringComparison.Ordinal) <
+            follow.IndexOf("ConfirmInitialLanding(_version, queuedRequest)", StringComparison.Ordinal));
+        Assert.DoesNotContain("StartTailRequest(", follow);
 
         var bringStart = binding.IndexOf("private bool StartTailRequest", StringComparison.Ordinal);
         var bringEnd = binding.IndexOf("private object? GetRequestItem", bringStart, StringComparison.Ordinal);
@@ -175,7 +188,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_BoundedOffsetCorrectionRestoresAnchoringOnCompletionOrCancellation()
+    public void ReactorTimeline_BoundedOffsetCorrectionReleasesItsAnchorOnCompletionOrCancellation()
     {
         var binding = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -183,12 +196,21 @@ public sealed class ChatTimelinePresentationTests
         static string Method(string source, string start, string end) =>
             source[source.IndexOf(start, StringComparison.Ordinal)..source.IndexOf(end, StringComparison.Ordinal)];
         Assert.Contains("RestoreTailAnchor();",
-            Method(binding, "private void CompleteInitialLanding()", "private void AttachScrollView()"));
-        Assert.Contains("if (_offsetCorrectionAnchoringSuspended)\n            RestoreTailAnchor();",
+            Method(binding, "private void CompleteInitialLanding(", "private void AttachScrollView()"));
+        var complete = Method(binding, "private void CompleteInitialLanding(", "private void AttachScrollView()");
+        Assert.Contains("!TailNavigationPolicy.CanExecute(completed, _tailIndex, _displayedTailKey, _itemCount)", complete);
+        Assert.Contains("_initialPending = true", complete);
+        Assert.Contains("AwaitLayout();", complete);
+        Assert.DoesNotContain("GetOrCreateElement", complete);
+        Assert.Contains("if (_offsetCorrectionAnchorRequested is not null)\n            RestoreTailAnchor();",
             Method(binding.Replace("\r\n", "\n"), "private void DetachLayout()", "private void DetachRendering()"));
         var restore = Method(binding, "private void RestoreTailAnchor()", "private void OnReaderFocus(");
-        Assert.Contains("_offsetCorrectionAnchoringSuspended = false", restore);
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null", restore);
         Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", restore);
+        var detach = Method(binding, "private void DetachScrollView()", "public void Dispose()");
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", detach);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null", detach);
         Assert.Contains("RestoreTailAnchor();",
             Method(binding, "private void CancelPendingNavigation()", "private void OnViewChanged("));
     }
@@ -1100,7 +1122,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", retry[..bring]);
         Assert.Contains("IsInitialConfirmationCurrent(version, generation)", retry[..bring]);
         Assert.Contains("TailNavigationPolicy.TryCapture(", retry[..bring]);
-        Assert.Contains("ObserveInitialLanding(version, generation);", retry[bring..]);
+        Assert.Contains("ObserveInitialLanding(version, generation, request);", retry[bring..]);
     }
 
     [Fact]
