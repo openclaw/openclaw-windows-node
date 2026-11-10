@@ -245,9 +245,8 @@ public sealed partial class GatewayFixtureUiTests
                     var window = (WindowPattern)hub.GetCurrentPattern(WindowPattern.Pattern);
                     var hwnd = new IntPtr(hub.Current.NativeWindowHandle);
                     var scale = DashboardWindowDpi(hwnd) / 96d;
-                    window.SetWindowVisualState(WindowVisualState.Maximized);
-                    await WaitUiAsync(run, () => window.Current.WindowVisualState == WindowVisualState.Maximized, "backdrop work area");
-                    var workArea = DashboardRect(hwnd);
+                    Assert.Equal(run.AppProcessId, hub.Current.ProcessId);
+                    var workArea = DashboardWorkArea(hwnd);
                     window.SetWindowVisualState(WindowVisualState.Normal);
                     await WaitUiAsync(run, () => window.Current.WindowVisualState == WindowVisualState.Normal, "backdrop normal shell");
                     double HostWidth() => (FindById(run, "DashboardsContentHost")
@@ -415,11 +414,8 @@ public sealed partial class GatewayFixtureUiTests
                 var scale = DashboardWindowDpi(new IntPtr(hub.Current.NativeWindowHandle)) / 96d;
                 var hwnd = new IntPtr(hub.Current.NativeWindowHandle);
                 var baseline = DashboardRect(hwnd);
-                window.SetWindowVisualState(WindowVisualState.Maximized);
-                await WaitUiAsync(run, () => window.Current.WindowVisualState == WindowVisualState.Maximized, "maximized work area");
-                var workArea = DashboardRect(hwnd);
-                window.SetWindowVisualState(WindowVisualState.Normal);
-                await WaitUiAsync(run, () => window.Current.WindowVisualState == WindowVisualState.Normal, "restored shell state");
+                Assert.Equal(run.AppProcessId, hub.Current.ProcessId);
+                var workArea = DashboardWorkArea(hwnd);
                 double HostWidth()
                 {
                     var host = FindById(run, "DashboardsContentHost")
@@ -438,6 +434,7 @@ public sealed partial class GatewayFixtureUiTests
                         automationId = preflightHost?.Current.AutomationId,
                         hostRectPx = preflightHost?.Current.BoundingRectangle,
                         hostDip = preflightHost is null ? (double?)null : preflightHost.Current.BoundingRectangle.Width / scale,
+                        monitorWorkAreaPx = new { workArea.Left, workArea.Top, workArea.Width, workArea.Height },
                         scale,
                     }));
                 if (preflightHost is null || preflightHost.Current.BoundingRectangle.Width <= 0)
@@ -929,6 +926,26 @@ public sealed partial class GatewayFixtureUiTests
             throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
         return rect;
     }
+
+    private static System.Drawing.Rectangle DashboardWorkArea(IntPtr window)
+    {
+        // WindowPattern state can change before resize/layout completes. A restored-window
+        // rectangle is not a monitor cap; query the owned window's monitor directly in pixels.
+        _ = DashboardRect(window); // Reject invalid handles before Screen's nearest-monitor fallback.
+        var previousDpi = DashboardSetThreadDpiAwarenessContext(new IntPtr(-4));
+        Assert.NotEqual(IntPtr.Zero, previousDpi);
+        try
+        {
+            var area = System.Windows.Forms.Screen.FromHandle(window).WorkingArea;
+            Assert.True(area.Width > 0 && area.Height > 0, "The owned monitor has no positive work area.");
+            return area;
+        }
+        finally { DashboardSetThreadDpiAwarenessContext(previousDpi); }
+    }
+
+    [Fact]
+    public void DashboardWorkArea_RejectsMissingWindowInsteadOfUsingPrimaryMonitor() =>
+        Assert.Throws<System.ComponentModel.Win32Exception>(() => DashboardWorkArea(IntPtr.Zero));
 
     private static void DashboardResize(IntPtr window, int width, int height)
     {
