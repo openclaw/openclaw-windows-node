@@ -482,6 +482,11 @@ creation does not trigger another tag-push workflow. Do not replace it with a
 PAT or dispatch CI on the old candidate tag: that would execute the historical
 workflow instead of the selected pipeline.
 
+Tray UI crash diagnostics are pipeline-owned. Promotions fetch the metadata
+helper from the pinned dispatch SHA into a separate sparse checkout after the
+UI tests. The alpha checkout still owns the app and tests, even when it predates
+that helper. Ordinary CI uses the helper from its normal source checkout.
+
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Promotion rechecks candidate eligibility and
 approval protection, then the allocator verifies the existing same-base alpha
@@ -507,23 +512,24 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
-Ordinary same-repository publication uses `GITHUB_TOKEN` with **Contents: write**.
-An extra publication credential is needed only when the candidate adds or
-modifies files under `.github/workflows/` relative to current main. Older product
-code or workflow deletions alone do not require it. The publication owner checks
-complete Git trees before creating any public tag and fails closed if that
-permission check cannot complete. GitHub's
-[release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
-requires **Workflows: write** for that historical-workflow exception, which
-`GITHUB_TOKEN` cannot receive. For those candidates only, configure
-`STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`, using a
-GitHub App installation token or fine-grained token restricted to this repository
-with **Contents: write** and **Workflows: write**. The protected token is used
-only for draft creation and final release publication, never for Git refs,
-candidate builds, or eligibility checks. Tag creation and asset uploads continue
-to use `GITHUB_TOKEN`, so historical tag workflows are not triggered. Missing or
-malformed exception credentials, or substituted workflow tokens, block before
-tag creation. Protected publication approval is required in both cases.
+Promotion publication uses only `GITHUB_TOKEN` with **Contents: write**. No PAT,
+GitHub App key, or separate release-token secret is required by the workflow.
+The approved alpha SHA and pipeline SHA are pinned in `promotion.json`; moving
+main forward does not impose a workflow-file equality requirement. The existing
+ancestry check still requires the pinned pipeline to remain on main's history.
+
+Publication creates and verifies the annotated stable tag at the exact alpha
+SHA before creating the release. The release request specifies that existing
+tag and omits `target_commitish`, which GitHub documents as unused for existing
+tags. Release notes still explicitly compare the previous stable with the alpha
+SHA. Tag creation, asset uploads, and publication all use `GITHUB_TOKEN`, so
+creating the stable tag does not trigger historical tag workflows.
+
+The local checks prove the request shape and race handling, not GitHub's live
+permission decision. If GitHub rejects tag creation or release publication,
+stop and inspect that API failure; do not move the alpha or stable tag, switch
+the source to main, or mint broader credentials automatically. The token-only
+path with differing historical workflow files needs live Actions verification.
 
 Approval publishes the exact prepared artifact ID, not a rebuild. Under the
 shared release-publication lock, CI rechecks source tags, Latest ordering,
@@ -626,6 +632,25 @@ modify, resubmit, or claim acceptance of the package already in Microsoft Store.
    ```
 
 ## Release channel policy
+
+### Fixed file-worker signing
+
+The `sign-cleanup-host` job also publishes the x64 and ARM64 fixed file workers
+and signs only their first-party EXE/DLL files on the x64 signing runner. It
+verifies their release signer before generating each payload manifest.
+The portable/Inno and MSIX build jobs download those complete signed payloads
+and set `OpenClawSignedFileWorkerPath` to the matching RID directory.
+`RequireSignedFileWorker=true` rejects missing or unsigned input before
+Companion embeds its manifest. Ordinary non-release builds still publish a
+local unsigned worker.
+
+Do not sign or republish the worker after manifest generation: either changes
+the bytes checked by Companion's embedded digests. Final release signing covers
+the app binaries separately and verifies the already-signed worker in its
+manifest-addressed slot. Signed-package and native runtime proof remain separate
+release obligations.
+
+### Tag channels
 
 Stable, stable-correction, and alpha tags use the same signed CI release pipeline:
 

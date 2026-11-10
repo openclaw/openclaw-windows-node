@@ -26,15 +26,16 @@ Single source of truth for all gateway-cached data. Implements `INotifyPropertyC
 src/OpenClaw.Tray.WinUI/Services/AppState.cs
 ```
 
-**Properties** (24+): `Status`, `CurrentActivity`, `Sessions`, `Channels`, `Nodes`, `Usage`, `UsageCost`, `UsageStatus`, `GatewaySelf`, `NodePairList`, `DevicePairList`, `ModelsList`, `Presence`, `AgentsList`, `Config`, `ConfigSchema`, `SkillsData`, `CronList`, `CronStatus`, `CronRuns`, `AgentFilesList`, `AgentFileContent`, `AuthFailureMessage`, `UpdateInfo`, `LastCheckTime`
+**Properties** (24+): `Status`, `CurrentActivity`, `Sessions`, `Channels`, `Nodes`, `Usage`, `UsageCost`, `UsageStatus`, `GatewaySelf`, `NodePairList`, `DevicePairList`, `ModelsList`, `Presence`, `AgentsList`, `Config`, `ConfigSchema`, `CronList`, `CronStatus`, `CronRuns`, `AgentFilesList`, `AgentFileContent`, `AuthFailureMessage`, `UpdateInfo`, `LastCheckTime`
 
 **Threading model**: All property writes must happen on the UI thread (enforced by `Debug.Assert` in `SetField`). This guarantees `PropertyChanged` fires on the UI thread, so pages can update UI directly without `DispatcherQueue.TryEnqueue`.
 
 **Lifetime**: Created once in `App.OnLaunched`, lives for the app's lifetime. Accessible globally via `((App)Application.Current).AppState`. Connections come and go; pages always have a single stable view of the data.
 
+The standalone Event Stream page has been removed. Chat still consumes the Gateway `AgentEventReceived` stream directly through `IChatGatewayBridge` and `OpenClawChatDataProvider` for live rendering. `AppState` no longer retains a separate event buffer. The Connection Timeline remains a separate diagnostics action.
+
 **Key methods**:
 - `ClearCachedData()` - resets all gateway data fields on disconnect (does NOT reset `Status` - that's managed by `OnManagerStateChanged`)
-- `AddAgentEvent(evt)` - ring buffer, newest-first, capped at 400
 - `GetAgentIds()` - computed from `AgentsList` JSON
 - `SetSessionPreview/GetSessionPreview/PruneSessionPreviews` - thread-safe via lock
 
@@ -124,19 +125,26 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 |------|----------|
 | ConnectionPage | Status, NodePairList, DevicePairList, Channels, UsageCost, Sessions, GatewaySelf |
 | SessionsPage | Sessions, ModelsList |
-| ChannelsPage | Channels |
-| UsagePage | Usage, UsageCost, UsageStatus |
-| InstancesPage | Nodes, Presence |
+| UsagePage | Nothing in AppModel. `UsagePageController` reads `sessions.usage` and `usage.status` through `IOperatorGatewayClient` |
+| SystemsPage | Status, Nodes, Presence, Sessions, NodePairList, DevicePairList (plus `SystemsInventoryChanged` and `NodeHostStatsReceived` client events) |
 | ConfigPage | Config, ConfigSchema |
-| BindingsPage | Config |
 | CronPage | CronList, CronStatus, CronRuns |
-| SkillsPage | SkillsData |
 | WorkspacePage | AgentFilesList, AgentFileContent |
-| AgentEventsPage | AgentEventAdded (separate event) |
 | AboutPage | GatewaySelf |
 
 Pages that don't observe AppState: ChatPage, SettingsPage, SandboxPage,
 VoiceSettingsPage.
+
+Systems inventory comes from `environments.list`, with `node.list` and
+`system.info` supplying exact-identity joins and reported resources.
+`node.hostStats` events update those resources; no local sampler feeds the
+page directly. Windows host sampling is published to the Gateway first.
+`sessions.list` provides related loaded sessions, while `node.pair.list` and
+`device.pair.list` provide pairing awareness. Missing desktop flags remain
+unknown; invalid resource ranges are unavailable, never zero-usage
+substitutes. Legacy inventory derives only from the live Gateway handshake,
+reported nodes and presence. Local device identity marks "this device"; local
+time supports receipt/freshness, not invented Gateway records or measurements.
 
 Workspace is the only application chat host. Its retained `ChatPage` observes
 the app-owned `OpenClawChatDataProvider`, not a Settings frame or a tray popup.

@@ -1,11 +1,21 @@
+// <summary>
+// Operator-facing read facade for an authenticated Gateway connection. UI consumers use it to
+// request Gateway data and observe asynchronous updates without receiving lifecycle controls.
+// Implementations must preserve the authenticated connection and epoch constraints for mutations.
+// Usage:
+//   IOperatorGatewayClient gateway = connectionManager.Client;
+//   await gateway.RequestSessionsAsync();
+//   gateway.SessionsUpdated += (_, sessions) => ShowSessions(sessions);
+// </summary>
+
 using System.Text.Json;
+using OpenClaw.Shared.Usage;
 
 namespace OpenClaw.Shared;
 
 /// <summary>
-/// Read-only facade for the operator gateway client.
-/// Exposes data events and request methods needed by UI consumers
-/// without exposing connection lifecycle methods (connect/disconnect/dispose).
+/// Defines the Gateway data, request, and event contract exposed to operator-facing consumers.
+/// Connection owners retain lifecycle control outside this facade.
 /// </summary>
 public interface IOperatorGatewayClient
 {
@@ -24,7 +34,6 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? CronListUpdated;
     event EventHandler<JsonElement>? CronStatusUpdated;
     event EventHandler<JsonElement>? CronRunsUpdated;
-    event EventHandler<JsonElement>? SkillsStatusUpdated;
     event EventHandler<JsonElement>? ConfigUpdated;
     event EventHandler<JsonElement>? ConfigSchemaUpdated;
     event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -34,10 +43,25 @@ public interface IOperatorGatewayClient
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
     /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
     event EventHandler? SelfProfileChanged { add { } remove { } }
+    /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
+    event EventHandler<string>? SystemsInventoryChanged { add { } remove { } }
+    /// <summary>A node published new host statistics.</summary>
+    event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
+    event EventHandler<bool>? AgentsListUnsupportedChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
+    /// <summary>A Gateway approval (exec, plugin or system agent) now waits for a decision.</summary>
+    event EventHandler<GatewayPendingApproval>? PendingApprovalRequested { add { } remove { } }
+    /// <summary>A pending Gateway approval was decided; the argument is its id.</summary>
+    event EventHandler<string>? PendingApprovalResolved { add { } remove { } }
+
+    /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
+    IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
+    /// <summary>Requests synthesized speech on the captured authenticated connection.</summary>
+    Task<GatewaySpeechAudio> SynthesizeSpeechAsync(string text, long connectionEpoch, CancellationToken cancellationToken = default)
+        => Task.FromException<GatewaySpeechAudio>(new GatewaySpeechException(GatewaySpeechFailure.Unsupported));
 
     // ─── Query ───
     string? OperatorDeviceId { get; }
@@ -48,6 +72,13 @@ public interface IOperatorGatewayClient
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
     bool HasHandshakeSnapshot { get; }
+    long ServerHandshakeGeneration => 0;
+    Task<GatewaySearchResult> SearchSessionsAsync(string query, bool messages, CancellationToken cancellationToken) =>
+        Task.FromException<GatewaySearchResult>(new NotSupportedException("Session search is unavailable."));
+    Task<JsonElement> ReadSearchCatalogAsync(string method, object? parameters, CancellationToken cancellationToken) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Search catalogs are unavailable."));
+    /// <summary>True only after the current Gateway explicitly rejects agents.list as unsupported.</summary>
+    bool IsAgentsListUnsupported => false;
     /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
     long? SessionMutationConnectionEpoch => null;
 
@@ -58,11 +89,15 @@ public interface IOperatorGatewayClient
     event EventHandler? HandshakeSucceeded;
 
     // ─── Configuration ───
+    /// <summary>Updates the notification rules used to classify later Gateway notifications.</summary>
     void SetUserRules(IReadOnlyList<UserNotificationRule>? rules);
+    /// <summary>Chooses whether structured notification metadata takes precedence over keyword classification.</summary>
     void SetPreferStructuredCategories(bool value);
 
     // ─── Request Methods ───
+    /// <summary>Sends a chat message to the selected or current session.</summary>
     Task SendChatMessageAsync(string message, string? sessionKey = null);
+    /// <summary>Sends a chat message and returns the Gateway run accepted for it.</summary>
     Task<ChatSendResult> SendChatMessageForRunAsync(string message, string? sessionKey = null);
     /// <summary>
     /// Fetches the normalized conversation transcript for a session
@@ -73,6 +108,7 @@ public interface IOperatorGatewayClient
     /// </summary>
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000)
         => Task.FromException<ChatHistoryInfo>(new NotSupportedException("chat.history is not supported by this gateway client."));
+    /// <summary>Checks the active connection and reconnects when necessary.</summary>
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();
@@ -116,15 +152,20 @@ public interface IOperatorGatewayClient
     Task<bool> AddCronJobAsync(object jobDefinition);
     Task<bool> UpdateCronJobAsync(string id, object patch);
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
-    Task RequestSkillsStatusAsync(string? agentId = null);
-    Task<bool> InstallSkillAsync(string skillId);
-    Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled);
+    /// <summary>Requests the effective Gateway configuration and raises <see cref="ConfigUpdated"/>.</summary>
     Task RequestConfigAsync();
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);
+    /// <summary>Applies a full configuration document against an optional Gateway base hash.</summary>
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);
     /// <summary>Response-aware variant of <see cref="PatchConfigAsync"/>: awaits the gateway's reply and returns the real error on failure.</summary>
     Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000);
+    /// <summary>
+    /// <see cref="PatchConfigDetailedAsync"/> on the captured authenticated connection. A changed epoch
+    /// throws <see cref="InvalidOperationException"/> before transmission instead of returning a failed result.
+    /// </summary>
+    Task<ConfigPatchResult> PatchConfigOnConnectionAsync(JsonElement fullConfig, string? baseHash, long connectionEpoch, int timeoutMs = 15000)
+        => Task.FromException<ConfigPatchResult>(new NotSupportedException("Connection-bound config.patch is not supported by this gateway client."));
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);
@@ -137,25 +178,16 @@ public interface IOperatorGatewayClient
     Task RequestDevicePairListAsync();
     Task<bool> DevicePairApproveAsync(string requestId);
     Task<bool> DevicePairRejectAsync(string requestId);
-    Task<bool> StartChannelAsync(string channelName);
-    /// <summary>Start a channel and return the full gateway response so the page can detect "unknown channel" (plugin not loaded).</summary>
-    Task<ChannelStartResult?> StartChannelDetailedAsync(string channelName, int timeoutMs = 12000);
-    Task<bool> StopChannelAsync(string channelName);
-    /// <summary>Fetch the rich channels.status snapshot from the gateway. Mac/web canonical wire method.</summary>
-    Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000);
     /// <summary>
     /// Fetches the Gateway's effective update track (<c>update.status</c>).
     /// Older Gateway client implementations return no status.
     /// </summary>
     Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000) =>
         Task.FromResult<GatewayUpdateStatus?>(null);
-    /// <summary>Log out / unlink a channel (whatsapp, telegram). Sends channels.logout { channel }.</summary>
-    Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000);
-    /// <summary>Begin a QR linking flow (whatsapp, signal). Sends web.login.start { force, timeoutMs }.</summary>
-    Task<WebLoginStartResult?> WebLoginStartAsync(bool force = false, int timeoutMs = 30000);
-    /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
-    Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
+    /// <summary>Sends only on the captured authenticated connection; refuses before transmission when the epoch changed.</summary>
+    Task<JsonElement> SendWizardRequestOnConnectionAsync(string method, object? parameters, long connectionEpoch, int timeoutMs = 30000)
+        => Task.FromException<JsonElement>(new NotSupportedException("Connection-bound requests are not supported by this gateway client."));
 
     // ─── Gateway protocol APIs ───
     // These ship with default implementations so adding them does not source-break
@@ -203,6 +235,20 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+
+    // ─── Usage analytics (Usage page) ───
+    // Response-aware reads; defaults report Unsupported so test doubles keep compiling.
+    /// <summary>Per-session usage report (<c>sessions.usage</c>).</summary>
+    Task<UsageReadResult<SessionsUsageReport>> GetSessionsUsageAsync(
+        SessionsUsageQuery query, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
+    /// <summary>Provider plans, quotas and billing (<c>usage.status</c>) as a typed response.</summary>
+    Task<UsageReadResult<ProviderUsageSummary>> GetProviderUsageAsync(
+        int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Unsupported());
+    /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
+    Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
+        => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));
 }
 
 public sealed record CronRunRequestResult(

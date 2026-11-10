@@ -116,9 +116,9 @@ All notification settings are in `%APPDATA%\OpenClawTray\settings.json`:
 | `PreferStructuredCategories` | bool | `true` | Use gateway metadata over keywords |
 | `UserRules` | array | `[]` | Custom categorization rules (see above) |
 
-## Channel and Agent Mapping
+## Channel Mapping
 
-When structured metadata is available, channels and agents map to categories:
+When structured metadata is available, channels map to categories:
 
 **Channel → Category:**
 | Channel | Category |
@@ -130,7 +130,7 @@ When structured metadata is available, channels and agents map to categories:
 | `health` | health |
 | `alerts` | urgent |
 
-**Agent mapping** is also supported - per-agent category defaults can be added to the channel map in `NotificationCategorizer.cs`.
+Agent metadata is not currently used for categorization; `NotificationCategorizer.cs` reads intent, channel, user rules and keywords.
 
 ## Architecture
 

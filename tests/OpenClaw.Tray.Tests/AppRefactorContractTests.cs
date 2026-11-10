@@ -6,6 +6,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void NodeService_ShutsDownProducersBeforeReleasingExecutorCleanupLeases()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+        var teardown = ExtractMethod(source, "DisposeCoreAsync");
+        var release = teardown.IndexOf("_sandboxExecutor?.Dispose()", StringComparison.Ordinal);
+        Assert.True(release >= 0);
+        foreach (var producer in new[] { "await StopMcpServerAsync()", "await _uploadRetention.DisposeAsync()", "DetachClientHandlers(client)" })
+        {
+            var stop = teardown.IndexOf(producer, StringComparison.Ordinal);
+            Assert.True(stop >= 0 && stop < release, $"{producer} must precede executor cleanup release.");
+        }
+    }
+
+    [Fact]
     public void E2ESetupFixture_UsesSeparateRoamingRootThroughoutItsLifecycle()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -558,10 +573,17 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var entry = ExtractMethod(source, "OpenDashboard");
+        Assert.Contains("TryOpenDashboardAsync(path)", entry);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", entry);
+        var method = ExtractMethod(source, "TryOpenDashboardAsync");
 
-        Assert.Contains("new GatewayDashboardLauncher(", method);
-        Assert.Contains("EnsureSshTunnelConfigured,", method);
+        Assert.Contains("CreateDashboardLauncher(", method);
+        var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
+        launcher = launcher[..launcher.IndexOf("// ── IAppCommands", StringComparison.Ordinal)];
+        Assert.Contains("EnsureSshTunnelConfigured,", launcher);
+        Assert.Contains("new DashboardBrowser(", launcher);
+        Assert.DoesNotContain("Process.Start", launcher);
         Assert.Contains("ShowDashboardLaunchFailureAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
@@ -1823,7 +1845,9 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", code);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(activeGateway)", code);
+        Assert.Contains("SetupExistingGatewayClassifier.HasWslInstallationForSettings(", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);

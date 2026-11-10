@@ -76,10 +76,10 @@ public sealed class SessionTitleBehaviorProofTests
     {
         InvokeOpenChat(visibleTitle);
         var selectedRouteTitle = WaitForSelectedSession(expectedSessionKey);
-        Assert.Equal(visibleTitle, selectedRouteTitle);
+        Assert.Equal(expectedSessionKey == "agent:main:main" ? "Home" : visibleTitle, selectedRouteTitle);
         proof.Add(
             $"UIA open-chat title=\"{visibleTitle}\" " +
-            $"selectedThread=\"{selectedRouteTitle}\" selectedKey={expectedSessionKey}");
+            $"selectedNavigation=\"{selectedRouteTitle}\" renderedSnapshotKey={expectedSessionKey}");
     }
 
     private string WaitForTitleCount(string title, int expectedCount)
@@ -129,7 +129,8 @@ public sealed class SessionTitleBehaviorProofTests
             AutomationElement.AutomationIdProperty,
             "ChatComposerInput");
         var sessionCondition = new PropertyCondition(
-            AutomationElement.AutomationIdProperty, $"WorkspaceSession:{expectedSessionKey}");
+            AutomationElement.AutomationIdProperty,
+            expectedSessionKey == "agent:main:main" ? "WorkspaceNavHome" : $"WorkspaceSession:{expectedSessionKey}");
 
         string? selectedRouteTitle = null;
         var processId = AutomationElement.FromHandle(_app.HubWindowHandle).Current.ProcessId;
@@ -145,6 +146,11 @@ public sealed class SessionTitleBehaviorProofTests
             var session = hub.FindFirst(TreeScope.Descendants, sessionCondition);
             if (session is null || !session.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern)
                 || !((SelectionItemPattern)pattern).Current.IsSelected)
+                return false;
+            if (!hub.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>().Any(text =>
+                    text.Current.Name.Contains($"Session: {expectedSessionKey}.", StringComparison.Ordinal)))
                 return false;
             selectedRouteTitle = session.Current.Name;
             return true;

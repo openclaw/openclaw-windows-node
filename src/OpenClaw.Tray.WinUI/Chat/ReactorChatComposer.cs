@@ -764,11 +764,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
 
         var writingSurface = Border(
-            VStack(8, composerChildren.ToArray())
-            .Padding(16, 12, 16, 8))
+            VStack(ChatVisuals.CompactGap, composerChildren.ToArray())
+            .Padding(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset))
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
-            .MinHeight(112)
+            .MinHeight(ChatVisuals.ComposerMinHeight)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .HAlign(HorizontalAlignment.Stretch)
@@ -778,7 +778,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var catalog = placement?.State.Catalog;
         surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(
-                ChatWelcomePresentation.AgentIdentity(catalog, agentId),
+                ChatWelcomePresentation.AgentIdentity(
+                    catalog, agentId, inputs.AgentIdentity, inputs.AgentRosterPresentation),
                 viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
@@ -813,7 +814,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
-                .Margin(ChatVisuals.Gutter(viewportWidth), 12)
+                .Margin(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap)
                 .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);

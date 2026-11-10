@@ -24,6 +24,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
     private readonly int? _sshTunnelLocalPort;
     private readonly bool _allowGatewayPortFallback;
     private readonly HttpClient _httpClient;
+    private readonly Func<string, long, CancellationToken, Task<byte[]?>>? _readFile;
     private readonly Func<Uri, System.Threading.CancellationToken, Task<bool>>?
         _authorizeEndpointAsync;
 
@@ -38,7 +39,8 @@ public class BrowserProxyCapability : NodeCapabilityBase
         int? sshTunnelLocalPort = null,
         bool? allowGatewayPortFallback = null,
         Func<Uri, System.Threading.CancellationToken, Task<bool>>?
-            authorizeEndpointAsync = null) : base(logger)
+            authorizeEndpointAsync = null,
+        Func<string, long, CancellationToken, Task<byte[]?>>? readFile = null) : base(logger)
     {
         _gatewayUrl = gatewayUrl;
         _bearerToken = bearerToken ?? "";
@@ -49,6 +51,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
         _allowGatewayPortFallback = allowGatewayPortFallback ??
             BrowserControlEndpoint.AllowsGatewayPortFallback(gatewayUrl);
         _authorizeEndpointAsync = authorizeEndpointAsync;
+        _readFile = readFile;
         _httpClient = handler == null
             ? new HttpClient(CreateDirectHandler(), disposeHandler: true)
             : new HttpClient(handler);
@@ -96,10 +99,10 @@ public class BrowserProxyCapability : NodeCapabilityBase
                 using var passwordRequest = CreateHttpRequest(method, uri, request.Args, usePasswordAuth: true);
                 using var passwordResponse = await _httpClient.SendAsync(passwordRequest, timeoutCts.Token);
                 var passwordResponseText = await passwordResponse.Content.ReadAsStringAsync(timeoutCts.Token);
-                return BuildProxyResponse(passwordResponse, passwordResponseText);
+                return await BuildProxyResponseAsync(passwordResponse, passwordResponseText, timeoutCts.Token);
             }
 
-            return BuildProxyResponse(response, responseText);
+            return await BuildProxyResponseAsync(response, responseText, timeoutCts.Token);
         }
         catch (TaskCanceledException)
         {
@@ -124,6 +127,16 @@ public class BrowserProxyCapability : NodeCapabilityBase
         {
             Logger.Warn($"browser proxy: file read denied: {ex.Message}");
             return Error("Browser proxy file read denied");
+        }
+        catch (FileTransfer.FileCommandException ex)
+        {
+            Logger.Warn($"browser proxy: file operation denied ({ex.Code})");
+            return Error($"Browser proxy file read failed: {ex.Code}.");
+        }
+        catch (Mxc.NodeSandboxExecutionException ex)
+        {
+            Logger.Warn($"browser proxy: Sandbox file reader unavailable ({ex.Category})");
+            return Error(ex.Message);
         }
     }
 
@@ -160,7 +173,8 @@ public class BrowserProxyCapability : NodeCapabilityBase
         return httpRequest;
     }
 
-    private NodeInvokeResponse BuildProxyResponse(HttpResponseMessage response, string responseText)
+    private async Task<NodeInvokeResponse> BuildProxyResponseAsync(HttpResponseMessage response, string responseText,
+        CancellationToken cancellationToken)
     {
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             return Error(BuildAuthenticationFailureGuidance());
@@ -171,7 +185,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
             ? JsonDocument.Parse("{}")
             : JsonDocument.Parse(responseText);
         var result = doc.RootElement.Clone();
-        var files = TryCollectFiles(result);
+        var files = await CollectFilesAsync(result, cancellationToken);
 
         return files.Count == 0
             ? Success(new { result })
@@ -267,7 +281,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
         return builder.Uri;
     }
 
-    private static List<object> TryCollectFiles(JsonElement result)
+    private async Task<List<object>> CollectFilesAsync(JsonElement result, CancellationToken cancellationToken)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectPath(result, "path", paths);
@@ -282,13 +296,10 @@ public class BrowserProxyCapability : NodeCapabilityBase
         var files = new List<object>();
         foreach (var path in paths)
         {
-            var info = new FileInfo(path);
-            if (!info.Exists || (info.Attributes & FileAttributes.Directory) == FileAttributes.Directory)
-                continue;
-            if (info.Length > MaxFileBytes)
-                throw new IOException($"browser proxy file exceeds {MaxFileBytes / (1024 * 1024)}MB: {path}");
-
-            var bytes = File.ReadAllBytes(path);
+            if (_readFile is null) throw new IOException("The shared Sandbox file reader is unavailable.");
+            var bytes = await _readFile(path, MaxFileBytes, cancellationToken).ConfigureAwait(false);
+            if (bytes is null) continue;
+            if (bytes.LongLength > MaxFileBytes) throw new IOException("The browser file exceeds its byte limit.");
             files.Add(new
             {
                 path,

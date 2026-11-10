@@ -112,6 +112,15 @@ public partial class App
         }
 
         var connectionManager = _connectionManager;
+        var usageProviderReads = _usageProviderReads;
+        if (usageProviderReads is not null)
+            steps.Add(new AppShutdownStep("Usage provider reads", () =>
+            {
+                usageProviderReads.Dispose();
+                if (ReferenceEquals(_usageProviderReads, usageProviderReads))
+                    _usageProviderReads = null;
+                return ValueTask.CompletedTask;
+            }));
         if (connectionManager is not null)
         {
             steps.Add(new AppShutdownStep("gateway client", async () =>
@@ -170,6 +179,12 @@ public partial class App
             }));
         }
 
+        steps.Add(new AppShutdownStep("voice playback mute", () =>
+        {
+            _voicePlaybackMute.Dispose();
+            return ValueTask.CompletedTask;
+        }));
+
         steps.Add(new AppShutdownStep("ssh tunnel service", () =>
         {
             _sshTunnelService?.Dispose();
@@ -190,6 +205,8 @@ public partial class App
         {
             _settingsPersistenceNotification?.Dispose();
             _settingsPersistenceNotification = null;
+            _inboxGatewaySource?.Dispose();
+            _inboxGatewaySource = null;
             if (_appState != null)
                 _appState.PropertyChanged -= OnAppStateChanged;
             PermissionsRuntimeChanged = null;

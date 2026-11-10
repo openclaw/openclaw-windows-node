@@ -127,9 +127,6 @@
   <data name="StatusSessionsHeader.Text" xml:space="preserve">
     <value>ACTIVE SESSIONS</value>
   </data>
-  <data name="StatusChannelsHeader.Text" xml:space="preserve">
-    <value>CHANNELS</value>
-  </data>
   <data name="StatusGatewayTopologyHeader.Text" xml:space="preserve">
     <value>GATEWAY TOPOLOGY</value>
   </data>
@@ -179,18 +176,6 @@
   </data>
   <data name="StatusExtensibilityDescription.Text" xml:space="preserve">
     <value>Channel setup, skills, and scheduled automations are gateway-owned surfaces. Use these links when the connected gateway exposes the matching dashboard pages.</value>
-  </data>
-  <data name="StatusChannelSetupTitle.Text" xml:space="preserve">
-    <value>Channel setup / schemas</value>
-  </data>
-  <data name="StatusChannelSetupDescription.Text" xml:space="preserve">
-    <value>Open channel setup for schema-driven auth, QR, login, and dashboard flows where available.</value>
-  </data>
-  <data name="StatusSkillsTitle.Text" xml:space="preserve">
-    <value>Skills</value>
-  </data>
-  <data name="StatusSkillsDescription.Text" xml:space="preserve">
-    <value>Open gateway skills configuration when the connected gateway supports it.</value>
   </data>
   <data name="StatusCronTitle.Text" xml:space="preserve">
     <value>Cron / schedules</value>
@@ -491,9 +476,6 @@
   </data>
   <data name="Menu_NodeInventory" xml:space="preserve">
     <value>Node Inventory</value>
-  </data>
-  <data name="Menu_ChannelSummary" xml:space="preserve">
-    <value>Channel Summary</value>
   </data>
   <data name="Menu_ActivitySummary" xml:space="preserve">
     <value>Activity Summary</value>
@@ -1119,17 +1101,11 @@ Use one of these options:
   <data name="Onboarding_Ready_Feature_TrayMenu" xml:space="preserve">
     <value>Open menu bar panel</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels" xml:space="preserve">
-    <value>Connect messaging channels</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice" xml:space="preserve">
     <value>Try Voice Wake</value>
   </data>
   <data name="Onboarding_Ready_Feature_Canvas" xml:space="preserve">
     <value>Use Canvas</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills" xml:space="preserve">
-    <value>Enable Skills</value>
   </data>
   <data name="Onboarding_Ready_LaunchAtLogin" xml:space="preserve">
     <value>Launch OpenClaw at startup</value>
@@ -1299,17 +1275,11 @@ Use one of these options:
   <data name="Onboarding_Ready_Feature_TrayMenu_Subtitle" xml:space="preserve">
     <value>Access from system tray</value>
   </data>
-  <data name="Onboarding_Ready_Feature_Channels_Subtitle" xml:space="preserve">
-    <value>Settings → Channels</value>
-  </data>
   <data name="Onboarding_Ready_Feature_Voice_Subtitle" xml:space="preserve">
     <value>Wake with your voice</value>
   </data>
   <data name="Onboarding_Ready_Feature_Canvas_Subtitle" xml:space="preserve">
     <value>Visual workspace</value>
-  </data>
-  <data name="Onboarding_Ready_Feature_Skills_Subtitle" xml:space="preserve">
-    <value>Settings → Skills</value>
   </data>
   <data name="Onboarding_Connection_StatusOriginBlocked" xml:space="preserve">
     <value>Origin not allowed: gateway rejects this connection</value>
@@ -1481,50 +1451,11 @@ Use one of these options:
   <data name="Onboarding_Welcome_Trust_Screen" xml:space="preserve">
     <value>Capture screenshots</value>
   </data>
-<data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>Event Stream</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Agent</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>All Agents</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Real-time stream of agent activity: tool calls, responses, errors, and lifecycle events.</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>Tool</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>Assistant</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>Error</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>Lifecycle</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>Plan</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>Approval</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>Thinking</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>Patch</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>No events in this session</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>Events stream here in real-time as agents run. History clears when the app restarts.</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Clear</value>
@@ -1532,21 +1463,19 @@ Use one of these options:
   <data name="ClearButton.Text" xml:space="preserve">
     <value>Clear</value>
   </data>
-  <data name="BindingsPage_TextBlock_16.Text" xml:space="preserve">
-    <value>Bindings</value>
-  </data>
-  <data name="BindingsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Message routing rules</value>
-  </data>
-  <data name="BindingsPage_TextBlock_25.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
   <data name="CapabilitiesPage_TextBlock_10.Text" xml:space="preserve">
     <value>🖥️ This Computer</value>
   </data>
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>Device capabilities provided to agents via the gateway. Toggle what this computer can do.</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>App access</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>Allow sensitive capture without prompting every time. OpenClaw still notifies you before each access and shows a countdown before recordings.</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>Local MCP Server</value>
   </data>
@@ -1568,14 +1497,8 @@ Use one of these options:
   <data name="NodeStatusText.Text" xml:space="preserve">
     <value>Node mode disabled</value>
   </data>
-  <data name="ChannelsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>📡 Channels</value>
-  </data>
   <data name="ConnectionWarning.Title" xml:space="preserve">
     <value>Not Connected</value>
-  </data>
-  <data name="ChannelsPage_TextBlock_22.Text" xml:space="preserve">
-    <value>No channels configured</value>
   </data>
   <data name="ChatPage_TextBlock_53.Text" xml:space="preserve">
     <value>Connect to gateway to start chatting</value>
@@ -1901,32 +1824,11 @@ Use one of these options:
   <data name="NodesPage_Action_Forget" xml:space="preserve">
     <value>Forget</value>
   </data>
-  <data name="NodesPage_Action_MoreOptions" xml:space="preserve">
-    <value>More options</value>
-  </data>
   <data name="NodesPage_Label_Version" xml:space="preserve">
     <value>Version</value>
   </data>
-  <data name="NodesPage_Label_Hardware" xml:space="preserve">
-    <value>Hardware</value>
-  </data>
   <data name="NodesPage_Label_Network" xml:space="preserve">
     <value>Network</value>
-  </data>
-  <data name="NodesPage_Label_Approved" xml:space="preserve">
-    <value>Approved</value>
-  </data>
-  <data name="NodesPage_Label_Connected" xml:space="preserve">
-    <value>Connected</value>
-  </data>
-  <data name="NodesPage_Label_LastSeen" xml:space="preserve">
-    <value>Seen</value>
-  </data>
-  <data name="NodesPage_Label_Capabilities" xml:space="preserve">
-    <value>Capabilities</value>
-  </data>
-  <data name="NodesPage_Label_Permissions" xml:space="preserve">
-    <value>Permissions</value>
   </data>
   <data name="NodesPage_Label_PathEnv" xml:space="preserve">
     <value>PATH</value>
@@ -2132,48 +2034,6 @@ Use one of these options:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Cancel</value>
   </data>
-  <data name="SkillsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>🧩 Skills</value>
-  </data>
-  <data name="SkillsPage_ComboBoxItem_15.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="SkillsPage_TextBlock_81.Text" xml:space="preserve">
-    <value>No skills installed</value>
-  </data>
-  <data name="MarketplaceLink.Content" xml:space="preserve">
-    <value>Browse Skills Marketplace →</value>
-  </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>Total Cost</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>Requests</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>Tokens</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>Providers</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 Days</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 Days</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>Loading providers…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>No providers configured</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>Provider Breakdown</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>Daily Cost</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>Workspace</value>
   </data>
@@ -2303,26 +2163,14 @@ Use one of these options:
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>Conversations</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>Event Stream</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_97.Content" xml:space="preserve">
-    <value>Skills</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Agents</value>
   </data>
   <data name="DefaultAgentNavItem.Content" xml:space="preserve">
     <value>main</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_109.Content" xml:space="preserve">
-    <value>Channels</value>
-  </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>Instances</value>
-  </data>
-  <data name="HubWindow_NavigationViewItem_115.Content" xml:space="preserve">
-    <value>Bindings</value>
+    <value>Systems</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Config</value>
@@ -2331,7 +2179,7 @@ Use one of these options:
     <value>Usage</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Cron</value>
+    <value>Automations</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>This Computer</value>
@@ -2339,8 +2187,14 @@ Use one of these options:
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>Capabilities</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>About</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>Settings</value>
+    <value>General</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Permissions</value>
@@ -2438,18 +2292,6 @@ Use one of these options:
   <data name="Onboarding_Wizard_ConnectionWaitDetail" xml:space="preserve">
     <value>Please wait while the connection is established...</value>
   </data>
-  <data name="PriorityInfoBar.Title" xml:space="preserve">
-    <value>Routing priority</value>
-  </data>
-  <data name="PriorityInfoBar.Message" xml:space="preserve">
-    <value>Bindings control which agent handles messages from each channel. Priority: peer &gt; account &gt; channel &gt; default.</value>
-  </data>
-  <data name="SingleAgentInfoBar.Title" xml:space="preserve">
-    <value>Single-agent mode</value>
-  </data>
-  <data name="SingleAgentInfoBar.Message" xml:space="preserve">
-    <value>All messages route to the default agent. Add bindings for multi-agent routing.</value>
-  </data>
   <data name="ConfigSubtitle.Text" xml:space="preserve">
     <value>Edit gateway configuration (openclaw.json) with a schema-guided form.</value>
   </data>
@@ -2503,9 +2345,6 @@ Use one of these options:
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>Usage &amp; Cost</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Open in Browser</value>
@@ -3111,27 +2950,26 @@ Use one of these options:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Tool · {0}</value>
   </data>
-  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>Ran {0} command</value></data>
-  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>Ran {0} commands</value></data>
-  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>read {0} file</value></data>
-  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>read {0} files</value></data>
-  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>edited {0} file</value></data>
-  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>edited {0} files</value></data>
-  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>wrote {0} file</value></data>
-  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>wrote {0} files</value></data>
-  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>ran {0} search</value></data>
-  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>ran {0} searches</value></data>
-  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>fetched {0} page</value></data>
-  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>fetched {0} pages</value></data>
-  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>used {0} tool</value></data>
-  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>used {0} tools</value></data>
-  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>used {1}</value></data>
-  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>used {1} {0} times</value></data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} command</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} commands</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} read</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} reads</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} edit</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} edits</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} write</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} writes</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} search</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} searches</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} fetch</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} fetches</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} other operation</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} other operations</value></data>
   <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>Running {0}</value></data>
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Complete</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Expanded</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Collapsed</value></data>
   <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activity: {0}. {1} tools. {2}.</value></data>
+  <data name="Chat_Activity_AutomationFormatOne" xml:space="preserve"><value>Activity: {0}. {1} tool. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Thinking</value>
   </data>
@@ -3386,24 +3224,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
     <value>{0}: {1}</value>
   </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Notifications</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Review and clear active OpenClaw notifications.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Clear</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>New app notifications will appear here until you dismiss or clear them.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>Dismiss {0}</value>
-  </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Exec approval</value>
   </data>
@@ -3644,24 +3464,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>
   </data>
-  <data name="InstancesPage_Title.Text" xml:space="preserve">
-    <value>Instances</value>
-  </data>
-  <data name="InstancesPage_Subtitle.Text" xml:space="preserve">
-    <value>Latest presence beacons from OpenClaw nodes.</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Message" xml:space="preserve">
-    <value>Connect to a gateway to see live instance data.</value>
-  </data>
-  <data name="InstancesPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No instances reported yet.</value>
-  </data>
-  <data name="InstancesPage_ContextMenu_CopyDebug" xml:space="preserve">
-    <value>Copy debug summary</value>
-  </data>
   <data name="InstancesPage_Status_Active" xml:space="preserve">
     <value>Active</value>
   </data>
@@ -3704,44 +3506,17 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionPage_NodePairing_Subtitle.Text" xml:space="preserve">
     <value>Operators and Windows nodes waiting for approval to connect to this gateway.</value>
   </data>
-  <data name="InstancesPage_RefreshLabel.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="InstancesPage_CapabilitiesCount_Format" xml:space="preserve">
-    <value>{0} capabilities</value>
-  </data>
-  <data name="InstancesPage_CommandsCount_Format" xml:space="preserve">
-    <value>{0} commands</value>
-  </data>
-  <data name="InstancesPage_Presence_AccessibilityFormat" xml:space="preserve">
-    <value>{0} presence</value>
-  </data>
   <data name="InstancesPage_UpdateReason_Tooltip_Format" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker). Raw: {0}</value>
   </data>
   <data name="InstancesPage_UpdateReason_Tooltip_NoReason" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected: no active presence</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active: last seen {0}</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
-  </data>
-  <data name="InstanceManage_CopyNodeId_AccessibilityName" xml:space="preserve">
-    <value>Copy node ID</value>
   </data>
   <data name="InstancesPage_TimeAgo_Seconds_Format" xml:space="preserve">
     <value>{0}s ago</value>
@@ -3920,18 +3695,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="FilterAllButton.Text" xml:space="preserve">
     <value>All</value>
   </data>
-  <data name="ChannelsPage_Title.Text" xml:space="preserve">
-    <value>Channels</value>
-  </data>
-  <data name="ChannelsPage_Refresh.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="ChannelsPage_ConfiguredHeader.Text" xml:space="preserve">
-    <value>CONFIGURED</value>
-  </data>
-  <data name="ChannelsPage_AvailableHeader.Text" xml:space="preserve">
-    <value>AVAILABLE</value>
-  </data>
   <data name="ChatPageHomeToolTip.Content" xml:space="preserve">
     <value>Home</value>
   </data>
@@ -3970,27 +3733,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="HubWindow_NavigationViewItem_Sandbox.Content" xml:space="preserve">
     <value>Sandbox</value>
-  </data>
-<data name="ChannelsPage_GuideBar.Title" xml:space="preserve">
-    <value>Your gateway didn't list any channels</value>
-  </data>
-  <data name="ChannelsPage_GuideBar.Message" xml:space="preserve">
-    <value>Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.</value>
-  </data>
-  <data name="ChannelsPage_DocsLink.Content" xml:space="preserve">
-    <value>Read the channels guide</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_NotConnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to manage channels.</value>
-  </data>
-  <data name="ChannelsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No channels available</value>
-  </data>
-  <data name="ChannelsPage_EmptySubtitle.Text" xml:space="preserve">
-    <value>The gateway didn't report any channels. Install channel plugins on the gateway and refresh.</value>
   </data>
   <data name="DiagnosticsPage_Title.Text" xml:space="preserve">
     <value>Diagnostics</value>
@@ -4222,18 +3964,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
     <value>Connection Status</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway disconnected</value>
-  </data>
-  <data name="BindingsPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Connect to a gateway to load bindings.</value>
-  </data>
-  <data name="BindingsPage_OpenConnection.Content" xml:space="preserve">
-    <value>Open Connection</value>
-  </data>
-  <data name="BindingsPage_LoadingBindings.Text" xml:space="preserve">
-    <value>Loading bindings...</value>
   </data>
   <data name="ConnectionPage_ApprovalsWaitingOnYou.Text" xml:space="preserve">
     <value>Approvals waiting on you</value>
@@ -4646,15 +4376,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="DebugPage_OpenFile.Text" xml:space="preserve">
     <value>Open file</value>
   </data>
-  <data name="InstancesPage_PairingApprovalRequired.Text" xml:space="preserve">
-    <value>Pairing approval required</value>
-  </data>
-  <data name="InstancesPage_ANodeHasConnected.Text" xml:space="preserve">
-    <value>A node has connected but its capabilities won't activate until you approve the pairing request.</value>
-  </data>
-  <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
-    <value>Review on Connection page</value>
-  </data>
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>Permissions</value>
   </data>
@@ -4719,7 +4440,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) are contained by the settings below.</value>
+    <value>) and file actions use the Sandbox settings below.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Commands the agent runs directly on the gateway aren't. If the gateway is on WSL on this PC they can reach your Windows files, clipboard, and network: use the gateway's exec approvals.</value>
@@ -4986,8 +4707,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>Restore</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>Advanced</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>Settings</value>
+    <value>General</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>General</value>
@@ -5018,6 +4742,12 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
     <value>Show tool-call and token-usage details inline in the conversation.</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Header.Text" xml:space="preserve">
+    <value>Show thinking</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
+    <value>Show the assistant's supplied reasoning in the conversation.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacy</value>
@@ -5067,27 +4797,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Saved</value>
   </data>
-  <data name="SkillsPage_Skills.Text" xml:space="preserve">
-    <value>🧩 Skills</value>
-  </data>
-  <data name="SkillsPage_AllAgents.Content" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="SkillsPage_Enabled.Text" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_Disabled.Text" xml:space="preserve">
-    <value>Disabled</value>
-  </data>
-  <data name="SkillsPage_LoadingSkills.Text" xml:space="preserve">
-    <value>Loading skills...</value>
-  </data>
-  <data name="SkillsPage_NoSkillsInstalled.Text" xml:space="preserve">
-    <value>No skills installed</value>
-  </data>
-  <data name="SkillsPage_SkillsExtendYourAgent.Text" xml:space="preserve">
-    <value>Skills extend your agent's capabilities. Install skills via the CLI or ClawHub.</value>
-  </data>
   <data name="UsagePage_GatewayDisconnected.Title" xml:space="preserve">
     <value>Gateway disconnected</value>
   </data>
@@ -5096,12 +4805,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>Open Connection</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>Loading daily costs...</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>No daily usage for this period</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Test Voice Input</value>
@@ -5241,20 +4944,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Disconnected</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>Advanced</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>Log tails are sanitized and truncated. Sensitive tokens, payloads, recordings, and raw settings files are excluded. Review before sharing.</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Review before sharing</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>Live</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>Clear</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>Conversations this gateway is currently handling, grouped by channel.</value>
@@ -5265,12 +4959,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
     <value>Open chat</value>
   </data>
-  <data name="SkillsPage_EnabledHeader.Text" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_DisabledHeader.Text" xml:space="preserve">
-    <value>Disabled</value>
-  </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Preview</value>
   </data>
@@ -5279,11 +4967,6 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Commands the agent runs directly on the gateway aren't. If the gateway is on this PC they may still be able to reach your Windows files, clipboard, and network: check your gateway's configuration.</value>
-  </data>  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>All Agents</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} of {1} events</value>
   </data>
   <data name="CronPage_CreateJobLabel" xml:space="preserve">
     <value>Create Job</value>
@@ -5853,293 +5536,8 @@ Make sure the gateway is running.</value>
   <data name="ConnectionPage_ConnectionTimeout" xml:space="preserve">
     <value>Timed out waiting for the gateway connection to complete.</value>
   </data>
-  <data name="ChannelsPage_UnavailableOnWindows" xml:space="preserve">
-    <value>This channel requires a macOS host. It can’t be configured from a Windows machine.</value>
-  </data>
-  <data name="ChannelsPage_ReplaceCredentials" xml:space="preserve">
-    <value>Replace credentials</value>
-  </data>
-  <data name="ChannelsPage_Configuration" xml:space="preserve">
-    <value>Configuration</value>
-  </data>
-  <data name="ChannelsPage_CaptionQrLogout" xml:space="preserve">
-    <value>Unlink this device from the channel. Scan a fresh QR to reconnect: your account stays paired on your phone.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopLogout" xml:space="preserve">
-    <value>Pause the channel temporarily: credentials are kept so you can start it again. Or disconnect entirely to clear them.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartLogout" xml:space="preserve">
-    <value>Start the channel: it’ll begin handling messages with the stored credentials. Or disconnect entirely to clear them.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStopOnly" xml:space="preserve">
-    <value>Pause the channel: credentials are kept so you can start it again.</value>
-  </data>
-  <data name="ChannelsPage_CaptionStartOnly" xml:space="preserve">
-    <value>Start the channel: it’ll begin handling messages with the stored credentials.</value>
-  </data>
-  <data name="ChannelsPage_Start" xml:space="preserve">
-    <value>Start</value>
-  </data>
-  <data name="ChannelsPage_Stop" xml:space="preserve">
-    <value>Stop</value>
-  </data>
-  <data name="ChannelsPage_Logout" xml:space="preserve">
-    <value>Logout</value>
-  </data>
-  <data name="ChannelsPage_DisconnectForget" xml:space="preserve">
-    <value>Disconnect and forget credentials</value>
-  </data>
-  <data name="ChannelsPage_Controls" xml:space="preserve">
-    <value>Controls</value>
-  </data>
-  <data name="ChannelsPage_HelpWhatsApp" xml:space="preserve">
-    <value>WhatsApp Linked devices help →</value>
-  </data>
-  <data name="ChannelsPage_HelpSignal" xml:space="preserve">
-    <value>Signal Linked devices help →</value>
-  </data>
-  <data name="ChannelsPage_HelpTelegram" xml:space="preserve">
-    <value>How to create a Telegram bot →</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscord" xml:space="preserve">
-    <value>How to create a Discord bot →</value>
-  </data>
-  <data name="ChannelsPage_HelpGoogleChat" xml:space="preserve">
-    <value>How to add a Google Chat webhook →</value>
-  </data>
-  <data name="ChannelsPage_HelpSlack" xml:space="preserve">
-    <value>Slack app dashboard →</value>
-  </data>
-  <data name="ChannelsPage_HelpNostr" xml:space="preserve">
-    <value>About Nostr →</value>
-  </data>
-  <data name="ChannelsPage_HelpIMessage" xml:space="preserve">
-    <value>About macOS Messages →</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppHeadline" xml:space="preserve">
-    <value>Link your WhatsApp phone</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep1" xml:space="preserve">
-    <value>Click &quot;Show QR&quot; in the Linking section below.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep2" xml:space="preserve">
-    <value>On your phone: WhatsApp → Settings → Linked devices → Link a device.</value>
-  </data>
-  <data name="ChannelsPage_GuideWhatsAppStep3" xml:space="preserve">
-    <value>Scan the QR code that appears here.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalHeadline" xml:space="preserve">
-    <value>Link your Signal phone</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep1" xml:space="preserve">
-    <value>Click &quot;Show QR&quot; in the Linking section below.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep2" xml:space="preserve">
-    <value>On your phone: Signal → Settings → Linked devices → Link new device.</value>
-  </data>
-  <data name="ChannelsPage_GuideSignalStep3" xml:space="preserve">
-    <value>Scan the QR code that appears here.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramHeadline" xml:space="preserve">
-    <value>Connect Telegram via a bot</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep1" xml:space="preserve">
-    <value>Open Telegram and send a message to @BotFather.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep2" xml:space="preserve">
-    <value>Send /newbot and follow the prompts. Copy the bot token at the end.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep3" xml:space="preserve">
-    <value>Paste the token into the Configuration form below.</value>
-  </data>
-  <data name="ChannelsPage_GuideTelegramStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;. The channel will start automatically.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordHeadline" xml:space="preserve">
-    <value>Connect Discord via a bot</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep1" xml:space="preserve">
-    <value>Open the Discord Developer Portal, then create or select an application.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep2" xml:space="preserve">
-    <value>Open Bot, add a bot if needed, then reset and copy its token.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep3" xml:space="preserve">
-    <value>Paste the bot token into the Configuration form below.</value>
-  </data>
-  <data name="ChannelsPage_GuideDiscordStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;, then add the bot to your server with its OAuth2 installation link.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatHeadline" xml:space="preserve">
-    <value>Connect Google Chat via a webhook</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep1" xml:space="preserve">
-    <value>In Google Chat, open the space → Manage webhooks → Add webhook.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep2" xml:space="preserve">
-    <value>Copy the webhook URL.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep3" xml:space="preserve">
-    <value>Paste the URL into the Configuration form below.</value>
-  </data>
-  <data name="ChannelsPage_GuideGoogleChatStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackHeadline" xml:space="preserve">
-    <value>Connect Slack via an app</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep1" xml:space="preserve">
-    <value>Create a Slack app at api.slack.com/apps and install it to your workspace.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep2" xml:space="preserve">
-    <value>Copy the bot token (xoxb-…) and the signing secret.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep3" xml:space="preserve">
-    <value>Paste both into the Configuration form below.</value>
-  </data>
-  <data name="ChannelsPage_GuideSlackStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrHeadline" xml:space="preserve">
-    <value>Connect Nostr via relays</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep1" xml:space="preserve">
-    <value>Generate or paste a private key (nsec).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep2" xml:space="preserve">
-    <value>Pick one or more relay URLs (e.g. wss://relay.damus.io).</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep3" xml:space="preserve">
-    <value>Paste both into the Configuration form below.</value>
-  </data>
-  <data name="ChannelsPage_GuideNostrStep4" xml:space="preserve">
-    <value>Click &quot;Save and start&quot;.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageHeadline" xml:space="preserve">
-    <value>iMessage is macOS-only</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep1" xml:space="preserve">
-    <value>iMessage reads the local Messages.app database, which only exists on macOS.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep2" xml:space="preserve">
-    <value>To use iMessage with OpenClaw, run the gateway on a Mac instead of this Windows host.</value>
-  </data>
-  <data name="ChannelsPage_GuideIMessageStep3" xml:space="preserve">
-    <value>All other channels in this list work fine from a Windows-hosted gateway.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericHeadline" xml:space="preserve">
-    <value>Connect this channel</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep1" xml:space="preserve">
-    <value>&quot;{0}&quot; is a plugin channel. Refer to its documentation for the fields it needs.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep2" xml:space="preserve">
-    <value>Use &quot;Open Config page&quot; in the Configuration section below to add settings under channels.{0}.</value>
-  </data>
-  <data name="ChannelsPage_GuideGenericStep3" xml:space="preserve">
-    <value>Save the config; OpenClaw will start the channel automatically.</value>
-  </data>
-  <data name="ChannelsPage_FieldBotToken" xml:space="preserve">
-    <value>Bot token</value>
-  </data>
-  <data name="ChannelsPage_FieldDiscordBotToken" xml:space="preserve">
-    <value>Discord Bot Token</value>
-  </data>
-  <data name="ChannelsPage_PlaceholderDiscordBotToken" xml:space="preserve">
-    <value>Paste Discord bot token</value>
-  </data>
-  <data name="ChannelsPage_FieldWebhookUrl" xml:space="preserve">
-    <value>Webhook URL</value>
-  </data>
-  <data name="ChannelsPage_FieldSigningSecret" xml:space="preserve">
-    <value>Signing secret</value>
-  </data>
-  <data name="ChannelsPage_FieldPrivateKey" xml:space="preserve">
-    <value>Private key (nsec)</value>
-  </data>
-  <data name="ChannelsPage_FieldRelayUrls" xml:space="preserve">
-    <value>Relay URLs</value>
-  </data>
-  <data name="ChannelsPage_HelpBotToken" xml:space="preserve">
-    <value>Get from @BotFather (/newbot).</value>
-  </data>
-  <data name="ChannelsPage_HelpDiscordBotToken" xml:space="preserve">
-    <value>Copy from Discord Developer Portal → Bot → Reset Token.</value>
-  </data>
-  <data name="ChannelsPage_HelpWebhookGoogleChat" xml:space="preserve">
-    <value>Open a space → Manage webhooks → Add webhook.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackBotToken" xml:space="preserve">
-    <value>OAuth tokens from your Slack app.</value>
-  </data>
-  <data name="ChannelsPage_HelpSlackSigningSecret" xml:space="preserve">
-    <value>Basic Information → App Credentials.</value>
-  </data>
-  <data name="ChannelsPage_HelpRelayUrls" xml:space="preserve">
-    <value>One per line.</value>
-  </data>
-  <data name="ChannelsPage_SaveChanges" xml:space="preserve">
-    <value>Save changes</value>
-  </data>
-  <data name="ChannelsPage_SaveAndStart" xml:space="preserve">
-    <value>Save and start</value>
-  </data>
-  <data name="ChannelsPage_OpenConfigPage" xml:space="preserve">
-    <value>Open Config page</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderConfigured" xml:space="preserve">
-    <value>Edit this channel's settings in the gateway Config page.</value>
-  </data>
-  <data name="ChannelsPage_ConfigPlaceholderUnconfigured" xml:space="preserve">
-    <value>After following the steps above, save the config to start the channel.</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedTitle" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="ChannelsPage_BannerNotConnectedMessage" xml:space="preserve">
-    <value>Connect to a gateway before saving channel config.</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldTitle" xml:space="preserve">
-    <value>Missing field</value>
-  </data>
-  <data name="ChannelsPage_BannerMissingFieldMessage" xml:space="preserve">
-    <value>{0} is required.</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingTitle" xml:space="preserve">
-    <value>Saving {0}…</value>
-  </data>
-  <data name="ChannelsPage_BannerSavingMessage" xml:space="preserve">
-    <value>Writing {0} field(s) and enabling the channel.</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigTitle" xml:space="preserve">
-    <value>Couldn’t load gateway config</value>
-  </data>
-  <data name="ChannelsPage_BannerCantLoadConfigMessage" xml:space="preserve">
-    <value>The gateway didn’t return its current config: can’t safely save without it. Try Refresh and save again.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigClearedMessage" xml:space="preserve">
-    <value>The gateway’s config was cleared mid-save. Try Refresh and save again.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveBlockedTitle" xml:space="preserve">
-    <value>Save blocked for {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerGatewayNoResponse" xml:space="preserve">
+  <data name="ConfigPage_BannerGatewayNoResponse" xml:space="preserve">
     <value>The gateway didn’t respond.</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedTitle" xml:space="preserve">
-    <value>Save failed for {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>Your gateway config changed elsewhere (e.g., from the Config page). We refreshed the cache. Try Save again. Details: {0}</value>
-  </data>
-  <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
-    <value>{0} If this looks like a wire-format mismatch, open the Config page for direct JSON editing.</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedTitle" xml:space="preserve">
-    <value>{0} config saved</value>
-  </data>
-  <data name="ChannelsPage_BannerConfigSavedMessage" xml:space="preserve">
-    <value>Waiting for the gateway to confirm the channel is running…</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsTitle.Text" xml:space="preserve">
     <value>WSL gateway</value>
@@ -6201,30 +5599,6 @@ Make sure the gateway is running.</value>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Restart WSL gateway</value>
   </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>Live</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>Offline</value>
-  </data>
-  <data name="BindingsPage_CouldNotLoadBindings" xml:space="preserve">
-    <value>Could not load bindings</value>
-  </data>
-  <data name="BindingsPage_ConfigRequestFailed.Message" xml:space="preserve">
-    <value>The gateway did not return bindings. Refresh to try again.</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
-  </data>
-  <data name="Command_GoToBindings_Subtitle" xml:space="preserve">
-    <value>Gateway bindings</value>
-  </data>
-  <data name="Command_GoToBindings_Title" xml:space="preserve">
-    <value>Go to Bindings</value>
-  </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
   </data>
@@ -6262,16 +5636,10 @@ Make sure the gateway is running.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Review active app notifications</value>
+    <value>Review requests and alerts that need you</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Go to Notifications</value>
-  </data>
-<data name="Command_GoToInstances_Subtitle" xml:space="preserve">
-    <value>Gateway instances</value>
-  </data>
-  <data name="Command_GoToInstances_Title" xml:space="preserve">
-    <value>Go to Instances</value>
+    <value>Go to Inbox</value>
   </data>
   <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
     <value>Capabilities, exec policy &amp; allowlists</value>
@@ -6286,16 +5654,22 @@ Make sure the gateway is running.</value>
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>General settings</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>Go to notification preferences</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>Configure notification preferences</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>Go to About</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>App and Gateway information</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
-  </data>
-  <data name="Command_GoToSkills_Subtitle" xml:space="preserve">
-    <value>Registered skills</value>
-  </data>
-  <data name="Command_GoToSkills_Title" xml:space="preserve">
-    <value>Go to Skills</value>
+    <value>Go to General</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6756,21 +6130,6 @@ Make sure the gateway is running.</value>
   <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>Open this session in Chat</value>
   </data>
-  <data name="SkillsPage_BadgeDisabled" xml:space="preserve">
-    <value>Disabled</value>
-  </data>
-  <data name="SkillsPage_BadgeEnabled" xml:space="preserve">
-    <value>Enabled</value>
-  </data>
-  <data name="SkillsPage_CountFormat" xml:space="preserve">
-    <value>({0}/{1} enabled)</value>
-  </data>
-  <data name="SkillsPage_DisabledHeaderFormat" xml:space="preserve">
-    <value>Disabled ({0})</value>
-  </data>
-  <data name="SkillsPage_EnabledHeaderFormat" xml:space="preserve">
-    <value>Enabled ({0})</value>
-  </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
   </data>
@@ -6945,9 +6304,6 @@ Make sure the gateway is running.</value>
   <data name="HubWindow_StatusFlyout_Approve.Content" xml:space="preserve">
     <value>Approve…</value>
   </data>
-  <data name="HubWindow_StatusPill_Tooltip" xml:space="preserve">
-    <value>Connection status</value>
-  </data>
   <data name="HubWindow_Bell_Tooltip" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -6974,18 +6330,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
-  </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
   </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
@@ -7177,8 +6521,6 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Open logs</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Retry setup or download</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation.</value></data>
-  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Change model</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gateway connection</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Repair connection</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Open chat</value></data>
@@ -7202,6 +6544,89 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Loads on first request</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Go to Local AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>View llama-server, model, and gateway status</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Agents and Tools</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Models</value></data>
+  <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>Go to Default model</value></data>
+  <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Choose the model the Gateway uses</value></data>
+  <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
+  <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Custom Hugging Face model (optional)</value></data>
+  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo, owner/repo:Q4_K_M, or a huggingface.co link</value></data>
+  <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above.</value></data>
+  <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>This model may not fit</value></data>
+  <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>It needs about {0:F1} GB of GPU memory and {1} has {2:F1} GB. It may fail to start or run slowly.</value></data>
+  <data name="LocalAiPage_ForceApplyButton.Content" xml:space="preserve"><value>Switch anyway</value></data>
+  <data name="LocalAiPage_ApplyModelButton.Content" xml:space="preserve"><value>Switch model</value></data>
+  <data name="LocalAiPage_CancelModelSwitchButton.Content" xml:space="preserve"><value>Cancel</value></data>
+  <data name="LocalAiPage_ModelOptionFormat" xml:space="preserve"><value>{0} ({1}, {2} context, {3} KV)</value></data>
+  <data name="LocalAiPage_ModelOptionCurrent" xml:space="preserve"><value>{0} (current)</value></data>
+  <data name="LocalAiPage_ModelOptionRecommended" xml:space="preserve"><value>{0} (recommended)</value></data>
+  <data name="LocalAiPage_SwitchPhase_Resolving" xml:space="preserve"><value>Checking the model...</value></data>
+  <data name="LocalAiPage_SwitchPhase_Downloading" xml:space="preserve"><value>Downloading the model</value></data>
+  <data name="LocalAiPage_SwitchPhase_Verifying" xml:space="preserve"><value>Verifying the download</value></data>
+  <data name="LocalAiPage_SwitchPhase_InstallingRuntime" xml:space="preserve"><value>Installing llama-server</value></data>
+  <data name="LocalAiPage_SwitchPhase_StoppingRuntime" xml:space="preserve"><value>Stopping the current model</value></data>
+  <data name="LocalAiPage_SwitchPhase_StartingRuntime" xml:space="preserve"><value>Starting the new model</value></data>
+  <data name="LocalAiPage_SwitchPhase_LoadingModel" xml:space="preserve"><value>Loading and testing the new model</value></data>
+  <data name="LocalAiPage_SwitchPhase_RollingBack" xml:space="preserve"><value>Restoring the previous model</value></data>
+  <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB of {1:F1} GB</value></data>
+  <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Model change canceled.</value></data>
+  <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>A model change is still finishing. You can change the model again when it completes.</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Models</value></data>
+  <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>The Gateway uses this model for new conversations. Each chat can still pick its own model.</value></data>
+  <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Connect to a Gateway to choose its model</value></data>
+  <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>Open Connection</value></data>
+  <data name="DefaultModelPage_ReadOnly.Title" xml:space="preserve"><value>This Gateway connection cannot change configuration</value></data>
+  <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Default model</value></data>
+  <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Use this model</value></data>
+  <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Manage Local AI</value></data>
+  <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Local AI: {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (sign in to the provider first)</value></data>
+  <data name="DefaultModelPage_Applied" xml:space="preserve"><value>The default model was updated.</value></data>
+  <data name="DefaultModelPage_AddProviderTitle.Text" xml:space="preserve"><value>Add a model provider</value></data>
+  <data name="DefaultModelPage_AddProviderIntro.Text" xml:space="preserve"><value>Connect one of the Gateway's providers, or add your own OpenAI- or Anthropic-compatible endpoint. New models appear in the list above.</value></data>
+  <data name="DefaultModelPage_ProviderKindGateway.Content" xml:space="preserve"><value>Gateway provider</value></data>
+  <data name="DefaultModelPage_ProviderKindCustom.Content" xml:space="preserve"><value>Custom endpoint</value></data>
+  <data name="DefaultModelPage_ProviderSelector.Header" xml:space="preserve"><value>Provider</value></data>
+  <data name="DefaultModelPage_ProviderApiKey.Header" xml:space="preserve"><value>API key</value></data>
+  <data name="DefaultModelPage_SaveApiKeyButton.Content" xml:space="preserve"><value>Save API key</value></data>
+  <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Sign-in method</value></data>
+  <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Sign in</value></data>
+  <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider ID</value></data>
+  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Base URL</value></data>
+  <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API type</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatible (Chat Completions)</value></data>
+  <data name="DefaultModelPage_CustomApiOpenAiResponses.Content" xml:space="preserve"><value>OpenAI Responses</value></data>
+  <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
+  <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API key (optional for OpenAI-compatible)</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model IDs</value></data>
+  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Add provider</value></data>
+  <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (connected)</value></data>
+  <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Loading providers...</value></data>
+  <data name="DefaultModelPage_ProviderCatalogEmpty" xml:space="preserve"><value>This Gateway has no providers to connect.</value></data>
+  <data name="DefaultModelPage_ProviderCatalogFailedFormat" xml:space="preserve"><value>Could not load providers: {0}</value></data>
+  <data name="DefaultModelPage_ProviderCatalogUnsupported" xml:space="preserve"><value>This Gateway version cannot connect providers from here. Use a custom endpoint, or update the Gateway.</value></data>
+  <data name="DefaultModelPage_ProviderApiKeySaved" xml:space="preserve"><value>API key saved for {0}. Its models appear in the list above.</value></data>
+  <data name="DefaultModelPage_CustomProviderAdded" xml:space="preserve"><value>Added {0}. Its models appear in the list above.</value></data>
+  <data name="DefaultModelPage_ProviderSignedIn" xml:space="preserve"><value>Signed in to {0}.</value></data>
+  <data name="DefaultModelPage_ProviderSignedInRestart" xml:space="preserve"><value>Signed in to {0}. Restart the Gateway to use its models.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelled" xml:space="preserve"><value>Sign-in was cancelled.</value></data>
+  <data name="DefaultModelPage_ProviderSignInFailed" xml:space="preserve"><value>Sign-in did not finish.</value></data>
+  <data name="DefaultModelPage_ProviderSignInInterrupted" xml:space="preserve"><value>Sign-in stopped because the Gateway connection changed. Start it again to continue.</value></data>
+  <data name="DefaultModelPage_ProviderRequestFailedFormat" xml:space="preserve"><value>The Gateway could not complete this: {0}</value></data>
+  <data name="DefaultModelPage_ProviderSignInWaiting" xml:space="preserve"><value>Waiting for the provider...</value></data>
+  <data name="DefaultModelPage_ProviderSignInTimedOut" xml:space="preserve"><value>Sign-in is taking too long. Check again or cancel.</value></data>
+  <data name="DefaultModelPage_ProviderSignInUnsupported" xml:space="preserve"><value>The Gateway sent a sign-in step this app cannot show. Cancel and try again from the Gateway dashboard.</value></data>
+  <data name="DefaultModelPage_ProviderSignInCancelUnconfirmed" xml:space="preserve"><value>The Gateway has not confirmed the cancellation yet. Try again.</value></data>
+  <data name="DefaultModelPage_CustomInvalidProviderId" xml:space="preserve"><value>Use lowercase letters, numbers, and hyphens for the provider ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdReserved" xml:space="preserve"><value>That ID belongs to a built-in provider. Choose another ID.</value></data>
+  <data name="DefaultModelPage_CustomProviderIdInUse" xml:space="preserve"><value>A provider with that ID already exists.</value></data>
+  <data name="DefaultModelPage_CustomInvalidBaseUrl" xml:space="preserve"><value>Enter an http or https base URL.</value></data>
+  <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>This API type needs an API key.</value></data>
+  <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Enter at least one model ID.</value></data>
+  <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>Model IDs cannot contain spaces.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Checking Local AI requirements</value></data>
   <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw is checking the NVIDIA GPU, driver, CUDA, memory, and WSL requirements.</value></data>
@@ -7239,6 +6664,7 @@ Make sure the gateway is running.</value>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
+  <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Add model provider...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
@@ -7556,14 +6982,9 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Cancelled</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} of {1}</value></data>
   <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Your AI is ready</value></data>
-  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>What would you like to do first?</value></data>
   <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Talk to my agent</value></data>
   <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat with your agent.</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Talk to my agent, recommended</value></data>
-  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explore skills</value></data>
-  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Browse skills for your agent. Nothing is installed automatically.</value></data>
-  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connect channels</value></data>
-  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram, and more. You choose when to sign in.</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Talk to my agent</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Check readiness again</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Preparing your AI choices</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Preparing Gateway</value></data>
@@ -7605,15 +7026,13 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Starting the native Gateway or confirming its listener timed out. Check Gateway status, then retry.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>AI verification is not available right now. Check the Gateway connection and model readiness, then choose again or return to AI setup.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows setup could not finish. Your choice was not launched. Choose again to retry or return to AI setup.</value></data>
-  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>The app could not open your selected destination. Choose again to retry. No channel sign-in was started.</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>The app could not open your selected destination. Choose again to retry.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Could not open your setup destination</value></data>
   <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>This setup handoff is interrupted, incompatible, expired, or already used. It cannot be replayed. Check the saved Gateway in Connection, then explicitly reopen AI setup to verify it. Previous setup actions will not be repeated automatically.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>The verified Gateway or agent changed. Return to the original Gateway and reopen AI setup. No other account was opened.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>The verified Gateway or app page is not ready. Check Connection, then retry explicitly.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Close</value></data>
-  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>This Gateway did not offer the selected channel. Review its available channels or refresh after updating the Gateway.</value></data>
-  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Channel availability could not be confirmed. Refresh to retry. No channel sign-in or configuration was started.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Learn more about risks and safety</value></data>
   <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Set up OpenClaw</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later.</value></data>
@@ -7911,15 +7330,18 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
   <data name="Onboarding_Native_CollectDiagnostics.Content" xml:space="preserve"><value>Collect Gateway diagnostics</value></data>
-  <data name="Onboarding_Native_ViewLog.Content" xml:space="preserve"><value>View setup log</value></data>
   <data name="Onboarding_Native_RecoveryGuidance" xml:space="preserve"><value>Collect Gateway diagnostics for a redacted ZIP you can review or share, or open a terminal inside the isolated Gateway. Then choose Retry setup.</value></data>
   <data name="Onboarding_Native_StartTimeoutGuidance" xml:space="preserve"><value>The Gateway did not become ready within {0} seconds. The first start can be slow. Collect Gateway diagnostics to see why, then choose Retry setup. To allow a longer start, set the {1} environment variable to a number of seconds and restart Companion.</value></data>
+  <data name="Onboarding_Native_RegistrationGuidance" xml:space="preserve"><value>Windows could not register the Gateway package for your Windows user. Install OpenClaw Gateway from Microsoft Store, or run {0} in PowerShell. Then choose Retry setup.</value></data>
   <data name="Onboarding_Native_CollectingDiagnostics" xml:space="preserve"><value>Collecting redacted Gateway diagnostics...</value></data>
   <data name="Onboarding_Native_DiagnosticsSaved" xml:space="preserve"><value>Gateway diagnostics saved to {0}.</value></data>
   <data name="Onboarding_Native_DiagnosticsNoPath" xml:space="preserve"><value>The Gateway package collected diagnostics but did not report where it saved them.</value></data>
   <data name="Onboarding_Native_DiagnosticsFailed" xml:space="preserve"><value>Gateway diagnostics could not be collected: {0}</value></data>
   <data name="Onboarding_Native_TerminalFailed" xml:space="preserve"><value>The Gateway terminal could not be opened: {0}</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Detailed activity</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Open log file</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} did not complete</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>
@@ -7960,9 +7382,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
-  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
-  <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
   <data name="WorkspaceShell_Tasks" xml:space="preserve"><value>Tasks</value></data>
   <data name="WorkspaceShell_Meetings" xml:space="preserve"><value>Meetings</value></data>
@@ -7971,11 +7391,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
   <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
-  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
-  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -8062,7 +7479,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
   <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
   <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
-  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
   <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
   <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
   <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
@@ -8077,28 +7493,46 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
   <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
   <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
-  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair device</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair a device</value></data>
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
-  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help &amp; about</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
   <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get support</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>No gateway</value></data>
+  <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Current gateway</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Current gateway. {0}</value></data>
+  <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Add gateway…</value></data>
+  <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Reconnect</value></data>
+  <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Connection settings</value></data>
+  <data name="WorkspaceShell_AccountGatewayDashboard" xml:space="preserve"><value>Gateway settings in Dashboard</value></data>
+  <data name="WorkspaceShell_AccountRetry" xml:space="preserve"><value>Retry now</value></data>
+  <data name="WorkspaceShell_AccountUpdateBadge" xml:space="preserve"><value>Update</value></data>
+  <data name="WorkspaceShell_AccountUpdateAvailable" xml:space="preserve"><value>Update available</value></data>
+  <data name="WorkspaceShell_AccountSettingsUpdateFormat" xml:space="preserve"><value>{0}. Update available</value></data>
   <data name="WorkspaceShell_CommandCenter" xml:space="preserve"><value>Command center</value></data>
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>Shared owner</value></data>
+  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · Shared owner</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_PagesCustomize.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Customize pages</value></data>
   <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
   <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Inbox</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Inbox</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open Dashboard</value></data>
+  <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Open Dashboard (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Forward</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Forward</value></data>
   <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
@@ -8237,6 +7671,10 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>Compacting context</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Retrying after context compaction</value></data>
   <data name="Chat_Run_Retry" xml:space="preserve"><value>Retrying the model request</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Retrying in {0}s</value></data>
+  <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>Couldn't load this conversation</value></data>
+  <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>Try again to load its messages.</value></data>
+  <data name="Chat_History_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Chat_Run_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="Chat_Run_Responding" xml:space="preserve"><value>Responding</value></data>
   <data name="Chat_Run_Working" xml:space="preserve"><value>Working</value></data>
@@ -8258,6 +7696,306 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Summarize my recent sessions</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me configure a channel</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Check system health</value></data>
+  <data name="Systems_Title" xml:space="preserve">
+    <value>Systems</value>
+  </data>
+  <data name="Systems_Inventory" xml:space="preserve">
+    <value>Machines</value>
+  </data>
+  <data name="Systems_Refresh_Name" xml:space="preserve">
+    <value>Refresh machines</value>
+  </data>
+  <data name="Systems_Loading" xml:space="preserve">
+    <value>Loading machines…</value>
+  </data>
+  <data name="Systems_Empty" xml:space="preserve">
+    <value>No machines are available to this account.</value>
+  </data>
+  <data name="Systems_Missing_Title" xml:space="preserve">
+    <value>This machine is no longer listed</value>
+  </data>
+  <data name="Systems_Missing_Hint" xml:space="preserve">
+    <value>Refresh the inventory or choose another machine. Your selection has not been changed.</value>
+  </data>
+  <data name="Systems_Group_Workers" xml:space="preserve">
+    <value>Workers</value>
+  </data>
+  <data name="Systems_Kind_Host" xml:space="preserve">
+    <value>Gateway host</value>
+  </data>
+  <data name="Systems_Kind_Node" xml:space="preserve">
+    <value>Paired node</value>
+  </data>
+  <data name="Systems_Kind_Worker" xml:space="preserve">
+    <value>Worker</value>
+  </data>
+  <data name="Systems_Kind_Client" xml:space="preserve">
+    <value>Connected app</value>
+  </data>
+  <data name="Systems_Status_Online" xml:space="preserve">
+    <value>Online</value>
+  </data>
+  <data name="Systems_Status_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="Systems_Status_Starting" xml:space="preserve">
+    <value>Starting</value>
+  </data>
+  <data name="Systems_Status_Stopping" xml:space="preserve">
+    <value>Stopping</value>
+  </data>
+  <data name="Systems_Status_Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Systems_Status_Unknown" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="Systems_Status_Name" xml:space="preserve">
+    <value>Status: {0}</value>
+  </data>
+  <data name="Systems_ThisDevice" xml:space="preserve">
+    <value>This PC</value>
+  </data>
+  <data name="Systems_AwaitingApproval" xml:space="preserve">
+    <value>Awaiting approval</value>
+  </data>
+  <data name="Systems_Desktop" xml:space="preserve">
+    <value>Desktop</value>
+  </data>
+  <data name="Systems_CopyDebug" xml:space="preserve">
+    <value>Copy debug info</value>
+  </data>
+  <data name="Systems_CopyIdentifier" xml:space="preserve">
+    <value>Copy identifier</value>
+  </data>
+  <data name="Systems_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Systems_OpenConnection" xml:space="preserve">
+    <value>Open Connection</value>
+  </data>
+  <data name="Systems_Disconnected_Title" xml:space="preserve">
+    <value>Gateway disconnected</value>
+  </data>
+  <data name="Systems_Disconnected_Message" xml:space="preserve">
+    <value>Reconnect to refresh machines. The last reported information is shown.</value>
+  </data>
+  <data name="Systems_ReadAccess_Title" xml:space="preserve">
+    <value>Read access required</value>
+  </data>
+  <data name="Systems_ReadAccess_Message" xml:space="preserve">
+    <value>Operator read access is required to view machines.</value>
+  </data>
+  <data name="Systems_PartialErrors_Title" xml:space="preserve">
+    <value>Some machine information could not be refreshed.</value>
+  </data>
+  <data name="Systems_Offline_Title" xml:space="preserve">
+    <value>This machine is offline</value>
+  </data>
+  <data name="Systems_Pairing_TitleOne" xml:space="preserve">
+    <value>1 device wants to join</value>
+  </data>
+  <data name="Systems_Pairing_Message" xml:space="preserve">
+    <value>Approve only if you started this on that device.</value>
+  </data>
+  <data name="Systems_Pairing_OwnNodeMessage" xml:space="preserve">
+    <value>This PC is waiting for pairing approval. Its capabilities and commands stay inactive until approval.</value>
+  </data>
+  <data name="Systems_Pairing_Review" xml:space="preserve">
+    <value>Review</value>
+  </data>
+  <data name="Systems_Stats_Title" xml:space="preserve">
+    <value>Resources</value>
+  </data>
+  <data name="Systems_Stats_None" xml:space="preserve">
+    <value>This machine has not reported resource statistics.</value>
+  </data>
+  <data name="Systems_Stats_Load" xml:space="preserve">
+    <value>Load (1 min)</value>
+  </data>
+  <data name="Systems_Stats_Cores" xml:space="preserve">
+    <value>{0} cores</value>
+  </data>
+  <data name="Systems_Stats_Cpu" xml:space="preserve">
+    <value>CPU count</value>
+  </data>
+  <data name="Systems_Stats_CpuCores" xml:space="preserve">
+    <value>logical cores</value>
+  </data>
+  <data name="Systems_Stats_Memory" xml:space="preserve">
+    <value>Memory used</value>
+  </data>
+  <data name="Systems_Stats_Disk" xml:space="preserve">
+    <value>Disk available</value>
+  </data>
+  <data name="Systems_Stats_DiskPath" xml:space="preserve">
+    <value>Disk available ({0})</value>
+  </data>
+  <data name="Systems_Stats_OfTotal" xml:space="preserve">
+    <value>of {0}</value>
+  </data>
+  <data name="Systems_Stats_Sampled" xml:space="preserve">
+    <value>Reported {0} ago</value>
+  </data>
+  <data name="Systems_Details_Title" xml:space="preserve">
+    <value>Machine details</value>
+  </data>
+  <data name="Systems_Field_Identifier" xml:space="preserve">
+    <value>Identifier</value>
+  </data>
+  <data name="Systems_Field_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Systems_Field_Platform" xml:space="preserve">
+    <value>Platform</value>
+  </data>
+  <data name="Systems_Field_Activity" xml:space="preserve">
+    <value>Activity</value>
+  </data>
+  <data name="Systems_Field_LastInput" xml:space="preserve">
+    <value>Last input</value>
+  </data>
+  <data name="Systems_Field_Roles" xml:space="preserve">
+    <value>Roles</value>
+  </data>
+  <data name="Systems_Field_Hostname" xml:space="preserve">
+    <value>Host name</value>
+  </data>
+  <data name="Systems_Field_OperatingSystem" xml:space="preserve">
+    <value>Operating system</value>
+  </data>
+  <data name="Systems_Field_Processor" xml:space="preserve">
+    <value>CPU model</value>
+  </data>
+  <data name="Systems_Field_Address" xml:space="preserve">
+    <value>LAN address</value>
+  </data>
+  <data name="Systems_Field_Runtime" xml:space="preserve">
+    <value>Node version</value>
+  </data>
+  <data name="Systems_Field_Uptime" xml:space="preserve">
+    <value>Uptime</value>
+  </data>
+  <data name="Systems_Field_Hardware" xml:space="preserve">
+    <value>Hardware</value>
+  </data>
+  <data name="Systems_Field_LastConnected" xml:space="preserve">
+    <value>Last connected</value>
+  </data>
+  <data name="Systems_Field_LastDisconnected" xml:space="preserve">
+    <value>Last disconnected</value>
+  </data>
+  <data name="Systems_Field_LastSeen" xml:space="preserve">
+    <value>Last seen</value>
+  </data>
+  <data name="Systems_Field_Approved" xml:space="preserve">
+    <value>Approved</value>
+  </data>
+  <data name="Systems_Field_WorkerState" xml:space="preserve">
+    <value>Worker state</value>
+  </data>
+  <data name="Systems_Field_WorkerError" xml:space="preserve">
+    <value>Worker error</value>
+  </data>
+  <data name="Systems_Field_Issue" xml:space="preserve">
+    <value>Issue</value>
+  </data>
+  <data name="Systems_Issue_UpdateRequired" xml:space="preserve">
+    <value>Update required. Run openclaw update on this machine, then reconnect it.</value>
+  </data>
+  <data name="Systems_Duration_DaysHours" xml:space="preserve">
+    <value>{0} d {1} hr</value>
+  </data>
+  <data name="Systems_Duration_HoursMinutes" xml:space="preserve">
+    <value>{0} hr {1} min</value>
+  </data>
+  <data name="Systems_Duration_Minutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="Systems_Desktop_Title_Offline" xml:space="preserve">
+    <value>This machine is offline</value>
+  </data>
+  <data name="Systems_Desktop_Title_NotReady" xml:space="preserve">
+    <value>This machine is not ready</value>
+  </data>
+  <data name="Systems_Desktop_Title_NoDesktop" xml:space="preserve">
+    <value>No desktop available</value>
+  </data>
+  <data name="Systems_Desktop_Locked" xml:space="preserve">
+    <value>Locked</value>
+  </data>
+  <data name="Systems_Desktop_Unlocked" xml:space="preserve">
+    <value>Unlocked</value>
+  </data>
+  <data name="Systems_Sessions_Title" xml:space="preserve">
+    <value>Related sessions</value>
+  </data>
+  <data name="Systems_Sessions_None" xml:space="preserve">
+    <value>No related sessions in the loaded list.</value>
+  </data>
+  <data name="Systems_Relation_Placement" xml:space="preserve">
+    <value>Placed here</value>
+  </data>
+  <data name="Systems_Relation_RetainedPlacement" xml:space="preserve">
+    <value>Retained placement</value>
+  </data>
+  <data name="Systems_Relation_Runner" xml:space="preserve">
+    <value>Runner</value>
+  </data>
+  <data name="Systems_Relation_ExecBinding" xml:space="preserve">
+    <value>Configured exec target</value>
+  </data>
+  <data name="Systems_Relation_Gateway" xml:space="preserve">
+    <value>Local session context</value>
+  </data>
+  <data name="Systems_Capabilities_Title" xml:space="preserve">
+    <value>Capabilities</value>
+  </data>
+  <data name="Systems_Capability_Disabled" xml:space="preserve">
+    <value>{0} turned off</value>
+  </data>
+  <data name="Systems_Capability_PendingDeclared" xml:space="preserve">
+    <value>Waiting for approval: {0}</value>
+  </data>
+  <data name="Command_GoToSystems_Title" xml:space="preserve">
+    <value>Go to Systems</value>
+  </data>
+  <data name="Command_GoToSystems_Subtitle" xml:space="preserve">
+    <value>Gateway host, nodes and workers</value>
+  </data>
+  <data name="Systems_Stats_LoadMeter" xml:space="preserve">
+    <value>{0}% of cores</value>
+  </data>
+  <data name="Systems_Stats_UsedMeter" xml:space="preserve">
+    <value>{0}% used</value>
+  </data>
+  <data name="Systems_Stats_LiveBadge" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="Systems_Stats_LastKnownBadge" xml:space="preserve">
+    <value>Last known</value>
+  </data>
+  <data name="Systems_OpenWeb" xml:space="preserve">
+    <value>Open in web</value>
+  </data>
+  <data name="Systems_OpenWeb_Name" xml:space="preserve">
+    <value>Open Systems in the web interface</value>
+  </data>
+  <data name="Systems_OpenWeb_Help" xml:space="preserve">
+    <value>Opens the Gateway's Systems page in your browser. Select this machine there to continue.</value>
+  </data>
+  <data name="Systems_OpenWeb_RootName" xml:space="preserve">
+    <value>Open the Gateway web interface</value>
+  </data>
+  <data name="Systems_OpenWeb_RootHelp" xml:space="preserve">
+    <value>Opens the Gateway web interface in your browser. This Gateway does not report a Systems page.</value>
+  </data>
+  <data name="Systems_Manage_PairingRequired" xml:space="preserve">
+    <value>Pairing access is required to rename or remove this node.</value>
+  </data>
+  <data name="Systems_Sessions_ViewAll" xml:space="preserve">
+    <value>View all sessions</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node Sandbox</value>
   </data>
@@ -8303,4 +8041,703 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
+  <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Search OpenClaw</value></data>
+  <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Search OpenClaw</value></data>
+  <data name="Search_Results" xml:space="preserve"><value>Search results</value></data>
+  <data name="Search_Empty" xml:space="preserve"><value>No matching results.</value></data>
+  <data name="Search_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Search_Dashboard_Channels" xml:space="preserve"><value>Channels</value></data>
+  <data name="Search_NoCounterpart" xml:space="preserve"><value>This result has no Dashboard counterpart.</value></data>
+  <data name="SearchMore.Content" xml:space="preserve"><value>Show more</value></data>
+  <data name="SearchRetry.Content" xml:space="preserve"><value>Retry</value></data>
+  <data name="Search_Group_Chats" xml:space="preserve"><value>Chats</value></data>
+  <data name="Search_Group_Messages" xml:space="preserve"><value>In messages</value></data>
+  <data name="Search_Group_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Search_Group_Automations" xml:space="preserve"><value>Automations</value></data>
+  <data name="Search_Group_Skills" xml:space="preserve"><value>Skills</value></data>
+  <data name="Search_Group_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="Search_Group_Models" xml:space="preserve"><value>Models</value></data>
+  <data name="Search_Group_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Search_Status_Loading" xml:space="preserve"><value>{0}: searching…</value></data>
+  <data name="Search_Status_Offline" xml:space="preserve"><value>{0}: connect to the Gateway to search.</value></data>
+  <data name="Search_Status_Denied" xml:space="preserve"><value>{0}: read permission is required.</value></data>
+  <data name="Search_Status_TooLong" xml:space="preserve"><value>{0}: use at most 4096 characters.</value></data>
+  <data name="Search_Status_Unavailable" xml:space="preserve"><value>{0}: unavailable on this Gateway.</value></data>
+  <data name="Search_Status_Partial" xml:space="preserve"><value>{0}: results may be incomplete. Refine your search.</value></data>
+  <data name="Search_Status_Failed" xml:space="preserve"><value>{0}: search failed. Other results are still available.</value></data>
+  <data name="Search_Dashboard_Approvals" xml:space="preserve"><value>Approvals</value></data>
+  <data name="Search_Dashboard_Secrets" xml:space="preserve"><value>Secrets</value></data>
+  <data name="Search_Dashboard_Models" xml:space="preserve"><value>Model providers</value></data>
+  <data name="Search_Dashboard_Automation" xml:space="preserve"><value>Wake and heartbeat</value></data>
+  <data name="Search_Dashboard_Mcp" xml:space="preserve"><value>Gateway MCP servers</value></data>
+  <data name="Search_Dashboard_Memory" xml:space="preserve"><value>Memory</value></data>
+  <data name="Search_Dashboard_Security" xml:space="preserve"><value>Gateway security</value></data>
+  <data name="Search_Dashboard_Logs" xml:space="preserve"><value>Gateway logs</value></data>
+  <data name="Search_Dashboard_Systems" xml:space="preserve"><value>Systems</value></data>
+  <data name="Search_Dashboard_Dashboards" xml:space="preserve"><value>Dashboards</value></data>
+  <data name="Search_Dashboard_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="Search_Dashboard_Apps" xml:space="preserve"><value>Apps</value></data>
+  <data name="Search_Dashboard_Meetings" xml:space="preserve"><value>Meetings</value></data>
+  <data name="Search_Dashboard_Activity" xml:space="preserve"><value>Gateway activity</value></data>
+  <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portals</value></data>
+  <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Worktrees</value></data>
+  <data name="Search_TargetUnavailable" xml:space="preserve"><value>The requested item is no longer available here.</value></data>
+  <data name="Search_Compatibility" xml:space="preserve"><value>Some Dashboard destinations are unavailable for this Gateway version.</value></data>
+  <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: choose an assistant first.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Upload cleanup is blocked</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Review folder access and private-state permissions. Old uploads may remain until cleanup is restored. Do not retry completed uploads automatically.</value></data>
+  <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
+    <value>Remove item</value>
+  </data>
+  <data name="VoiceSettingsPage_GatewayVoice.Header" xml:space="preserve"><value>Use connected Gateway voice</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceDescription.Text" xml:space="preserve"><value>Chat Read Aloud and automatic replies use the Gateway's configured voice. Text is sent to the Gateway and its speech provider. Keys stay on the Gateway. Local node and MCP speech are unchanged.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceNoFallback.Text" xml:space="preserve"><value>No automatic local fallback. If unavailable, turn this option off to use your local provider.</value></data>
+  <data name="VoiceSettingsPage_GatewayVoiceStop.Content" xml:space="preserve"><value>Stop</value></data>
+  <data name="GatewayVoice_Synthesizing" xml:space="preserve"><value>Generating Gateway speech…</value></data>
+  <data name="GatewayVoice_ActualProvider" xml:space="preserve"><value>Gateway voice: {0}.</value></data>
+  <data name="GatewayVoice_Disconnected" xml:space="preserve"><value>Connect to a Gateway in Connection settings to use its voice.</value></data>
+  <data name="GatewayVoice_Unsupported" xml:space="preserve"><value>This Gateway does not advertise the required speech RPCs. Update the Gateway or turn off Gateway voice.</value></data>
+  <data name="GatewayVoice_PermissionRequired" xml:space="preserve"><value>Gateway voice needs operator.write authority. Review this device’s Gateway approval. Companion will not change permissions.</value></data>
+  <data name="GatewayVoice_TextTooLong" xml:space="preserve"><value>Speech text is empty or exceeds Companion’s 4096-character limit. Select a shorter message.</value></data>
+  <data name="GatewayVoice_InvalidAudio" xml:space="preserve"><value>The Gateway returned empty, invalid, or oversized audio. Check its TTS configuration. Nothing was played.</value></data>
+  <data name="GatewayVoice_UnsupportedAudio" xml:space="preserve"><value>This Gateway audio format is not supported. Configure MP3 or WAV output on the Gateway.</value></data>
+  <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway speech timed out. Synthesis may have completed. Check the Gateway before trying again; no automatic retry was made.</value></data>
+  <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway speech failed. Check its voice configuration and provider quota. No local fallback or automatic retry was made.</value></data>
+  <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows could not play the speech audio. Check your output device. No automatic retry was made.</value></data>
+  <data name="Chat_Activity_Worked" xml:space="preserve">
+    <value>Worked</value>
+  </data>
+  <data name="Chat_Activity_WorkedFor" xml:space="preserve">
+    <value>Worked for {0}</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsOne" xml:space="preserve">
+    <value>{0} tool call</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsMany" xml:space="preserve">
+    <value>{0} tool calls</value>
+  </data>
+  <data name="Chat_Tool_InputTooLarge" xml:space="preserve">
+    <value>Tool input exceeds the safe display limit.</value>
+  </data>
+  <data name="Chat_ToolRecovery_Preview" xml:space="preserve"><value>This is a truncated preview.</value></data>
+  <data name="Chat_ToolRecovery_Loading" xml:space="preserve"><value>Loading full output...</value></data>
+  <data name="Chat_ToolRecovery_Loaded" xml:space="preserve"><value>Full output loaded.</value></data>
+  <data name="Chat_ToolRecovery_Limited" xml:space="preserve"><value>Output remains truncated at the safe display limit.</value></data>
+  <data name="Chat_ToolRecovery_Unsupported" xml:space="preserve"><value>This Gateway does not support full output retrieval.</value></data>
+  <data name="Chat_ToolRecovery_NotFound" xml:space="preserve"><value>This saved tool result is no longer available.</value></data>
+  <data name="Chat_ToolRecovery_NotVisible" xml:space="preserve"><value>This tool result is not visible to this connection.</value></data>
+  <data name="Chat_ToolRecovery_Oversized" xml:space="preserve"><value>This result exceeds the Gateway response limit.</value></data>
+  <data name="Chat_ToolRecovery_Stale" xml:space="preserve"><value>The conversation changed. Reopen the tool details.</value></data>
+  <data name="Chat_ToolRecovery_Mismatched" xml:space="preserve"><value>The returned result does not match this tool call.</value></data>
+  <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Full output could not be loaded.</value></data>
+  <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Full output requires the saved result identity and a verified current account.</value></data>
+  <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Show full output</value></data>
+  <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Chat_NewMessages" xml:space="preserve"><value>New messages. Jump to latest</value></data>
+  <data name="Chat_JumpLatest" xml:space="preserve"><value>Jump to latest</value></data>
+  <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagents, {1} working, {2} need attention</value></data>
+  <data name="Chat_Children_Idle" xml:space="preserve"><value>Idle</value></data>
+  <data name="Chat_Run_Subagents" xml:space="preserve"><value>Waiting for subagents</value></data>
+  <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparing input</value></data>
+  <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>failed</value></data>
+  <data name="Chat_Tool_Completed" xml:space="preserve"><value>Completed</value></data>
+  <data name="Chat_Review_Required" xml:space="preserve"><value>Provider review required</value></data>
+  <data name="Chat_Review_Warning" xml:space="preserve"><value>Provider review warning</value></data>
+  <data name="Chat_Review_Working" xml:space="preserve"><value>Provider review in progress</value></data>
+  <data name="Chat_Review_Approved" xml:space="preserve"><value>Provider review approved</value></data>
+  <data name="Chat_Review_Denied" xml:space="preserve"><value>Provider review did not approve the request</value></data>
+  <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Older history did not advance. Try again after reloading the conversation.</value></data>
+  <data name="Chat_Review_Web" xml:space="preserve"><value>Review this request in web chat before continuing.</value></data>
+  <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Provider review timed out</value></data>
+  <data name="Chat_Review_Aborted" xml:space="preserve"><value>Provider review canceled</value></data>
+  <data name="Systems_AddSystem" xml:space="preserve"><value>Add a system</value></data>
+  <data name="Systems_CopyUpdate" xml:space="preserve"><value>Copy update command</value></data>
+  <data name="Systems_CollapseSystem" xml:space="preserve"><value>Collapse system details</value></data>
+  <data name="Systems_ExpandSystem" xml:space="preserve"><value>Expand system details</value></data>
+  <data name="Systems_NotSeen" xml:space="preserve"><value>Last seen {0}</value></data>
+  <data name="Systems_Diagnostics" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="Systems_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Systems_OpenChat_Name" xml:space="preserve"><value>Open chat: {0}</value></data>
+  <data name="Systems_Capability_NotReported" xml:space="preserve"><value>Not reported</value></data>
+  <data name="Systems_Capability_Allowed" xml:space="preserve"><value>Allowed</value></data>
+  <data name="Systems_Capability_TurnedOff" xml:space="preserve"><value>Turned off</value></data>
+  <data name="Systems_Capability_System" xml:space="preserve"><value>System tools</value></data>
+  <data name="Systems_Capability_Shell" xml:space="preserve"><value>Shell commands</value></data>
+  <data name="Systems_Capability_Screen" xml:space="preserve"><value>Screen capture</value></data>
+  <data name="Systems_Capability_Camera" xml:space="preserve"><value>Camera</value></data>
+  <data name="Systems_Capability_Browser" xml:space="preserve"><value>Browser</value></data>
+  <data name="Systems_Capability_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="Systems_Capability_Clipboard" xml:space="preserve"><value>Clipboard</value></data>
+  <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio input</value></data>
+  <data name="Systems_ManagePermissions" xml:space="preserve"><value>Manage permissions</value></data>
+  <data name="Systems_Connection" xml:space="preserve"><value>Connection</value></data>
+  <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connect to the Gateway to use this action.</value></data>
+  <data name="Systems_ConnectedApps" xml:space="preserve"><value>Connected apps</value></data>
+  <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Devices and Gateway</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway {0}</value></data>
+  <data name="Systems_Issues" xml:space="preserve"><value>Issues</value></data>
+  <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Last known offline</value></data>
+  <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Last known online</value></data>
+  <data name="Systems_LoadFailed" xml:space="preserve"><value>Load failed.</value></data>
+  <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>This pairing request is no longer available.</value></data>
+  <data name="Systems_RequestTimeout" xml:space="preserve"><value>Request timed out after {0} s.</value></data>
+  <data name="Systems_ForgetTitle" xml:space="preserve"><value>Forget {0}?</value></data>
+  <data name="Systems_Forgotten" xml:space="preserve"><value>Forgot {0}.</value></data>
+  <data name="Systems_RenameSucceeded" xml:space="preserve"><value>The node was renamed.</value></data>
+  <data name="Systems_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Systems_AddSystemSteps" xml:space="preserve"><value>1. Install a supported OpenClaw node app on the other device.
+2. Connect it to this Gateway.
+3. Open Connection to review its pairing request.</value></data>
+  <data name="Systems_Number_0" xml:space="preserve"><value>zero</value></data>
+  <data name="Systems_Number_1" xml:space="preserve"><value>one</value></data>
+  <data name="Systems_Number_2" xml:space="preserve"><value>two</value></data>
+  <data name="Systems_Number_3" xml:space="preserve"><value>three</value></data>
+  <data name="Systems_Number_4" xml:space="preserve"><value>four</value></data>
+  <data name="Systems_Number_5" xml:space="preserve"><value>five</value></data>
+  <data name="Systems_Number_6" xml:space="preserve"><value>six</value></data>
+  <data name="Systems_Number_7" xml:space="preserve"><value>seven</value></data>
+  <data name="Systems_Number_8" xml:space="preserve"><value>eight</value></data>
+  <data name="Systems_Number_9" xml:space="preserve"><value>nine</value></data>
+  <data name="Systems_Age_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} h</value></data>
+  <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Systems_HowToReconnect" xml:space="preserve"><value>How to reconnect</value></data>
+  <data name="Systems_ForgetConsequence" xml:space="preserve"><value>It's unpaired from {0}. To come back, it has to ask for approval again.</value></data>
+  <data name="Systems_Field_Paired" xml:space="preserve"><value>Paired</value></data>
+  <data name="Systems_AddSystemIntro" xml:space="preserve"><value>Pair a PC, Mac or phone so agents can use it.</value></data>
+  <data name="Systems_ForgetAction" xml:space="preserve"><value>Forget</value></data>
+  <data name="Systems_SecondsAgo" xml:space="preserve"><value>{0} seconds ago</value></data>
+  <data name="Systems_Desktop_Available" xml:space="preserve"><value>Available</value></data>
+  <data name="Systems_Capability_Files" xml:space="preserve"><value>Files</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Expand navigation</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>This PC is connected to {0} as a node.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>This PC is waiting for approval on {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>This PC is not reported as a connected node on {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>Can't reach {0}. Other systems show what was last reported at {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>Can't reach {0}. No system report is available.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} of {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Last reported online</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Issues: {0}. Show the first system that needs attention.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Systems summary</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Needs approval</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Needs re-approval</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Update required</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Needs Windows permission</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Reported error</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Wants to join</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Inbox</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Dismiss shown</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notification settings</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Notification settings</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Inbox categories</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>All</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Approvals</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Mentions</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automations</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>System</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Nothing waiting</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Nothing waiting</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>New requests and alerts land here.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Open Inbox</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} waiting</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>Dismiss {0}</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>now</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0}m</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0}h</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0}d</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Ask OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Open Automations</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>Overdue</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>This automation failed: {0}. Explain why it failed and how to fix it.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>This automation is overdue: {0}, scheduled for {1}. Explain why it has not run and how to fix it.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>These model-provider credentials need attention: {0}. Explain what expired and how to re-authenticate them.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Command approval needed</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Plugin approval needed</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Approval needed</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Expires in {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Expired</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gateway</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Device</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Always allow runs this exact command for "{0}" without asking, until revoked (revocable)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Always allow runs this exact command for "{0}" without asking, for {1} days (revocable)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Sends to {0} recipient(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Pays {0} {1} to {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Posts externally to {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Account needs attention: {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Sign-in required</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API key needs attention</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Account needs attention</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Sign in</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>Update API key</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Review account</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Back to app</value>
+    <comment>Settings sidebar button that leaves Settings for the app destination it was opened from.</comment>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+    <comment>Keyboard key-cap label for Escape shown beside Back to app; use the key's printed name.</comment>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Settings</value>
+    <comment>Large title at the top of the Settings sidebar.</comment>
+  </data>
+  <data name="Dashboards_Title" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="Dashboards_Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>Boards from</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>Latest: {0}, {1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>Boards are read-only here; ask {0} to change one.</value>
+  </data>
+  <data name="Dashboards_SortLabel" xml:space="preserve">
+    <value>Sort</value>
+  </data>
+  <data name="Dashboards_SortUpdated" xml:space="preserve">
+    <value>Recently updated</value>
+  </data>
+  <data name="Dashboards_SortTitle" xml:space="preserve">
+    <value>Title A to Z</value>
+  </data>
+  <data name="Dashboards_SearchLabel" xml:space="preserve">
+    <value>Search dashboards</value>
+  </data>
+  <data name="Dashboards_SearchPlaceholder" xml:space="preserve">
+    <value>Search dashboards</value>
+  </data>
+  <data name="Dashboards_ResultCountFormat" xml:space="preserve">
+    <value>Dashboards: {0}</value>
+  </data>
+  <data name="Dashboards_GalleryLabel" xml:space="preserve">
+    <value>Dashboard gallery</value>
+  </data>
+  <data name="Dashboards_NoResults_Title" xml:space="preserve">
+    <value>No matching dashboards</value>
+  </data>
+  <data name="Dashboards_NoResults_Detail" xml:space="preserve">
+    <value>Try another search or author.</value>
+  </data>
+  <data name="Dashboards_Empty_Title" xml:space="preserve">
+    <value>No dashboards yet</value>
+  </data>
+  <data name="Dashboards_Empty_Detail" xml:space="preserve">
+    <value>Dashboards created in your sessions will appear here.</value>
+  </data>
+  <data name="Dashboards_LoadError_Title" xml:space="preserve">
+    <value>Couldn't load dashboards</value>
+  </data>
+  <data name="Dashboards_LoadErrorFormat" xml:space="preserve">
+    <value>Details: {0}</value>
+  </data>
+  <data name="Dashboards_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Dashboards_Loading" xml:space="preserve">
+    <value>Loading dashboards</value>
+  </data>
+  <data name="Dashboards_Live" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="Dashboards_ByAuthorFormat" xml:space="preserve">
+    <value>By {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedFormat" xml:space="preserve">
+    <value>Updated {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
+    <value>Update time unknown</value>
+  </data>
+  <data name="Dashboards_Disconnected_Title" xml:space="preserve">
+    <value>Not connected to a Gateway</value>
+  </data>
+  <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
+    <value>Reconnect to your Gateway to read your boards. No offline gallery is saved on this computer.</value>
+  </data>
+  <data name="Dashboards_Disconnected_Action" xml:space="preserve">
+    <value>Open Connection settings</value>
+  </data>
+  <data name="Dashboards_Unavailable_Title" xml:space="preserve">
+    <value>Dashboards are unavailable</value>
+  </data>
+  <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
+    <value>This Gateway connection can't read session dashboards. Ask the Gateway owner for read access or update the Gateway.</value>
+  </data>
+  <data name="Dashboards_OpenChat" xml:space="preserve">
+    <value>Open chat</value>
+  </data>
+  <data name="Dashboards_BoardLabel" xml:space="preserve">
+    <value>Session dashboard</value>
+  </data>
+  <data name="Dashboards_BoardLoadError_Title" xml:space="preserve">
+    <value>Couldn't load this dashboard</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Title" xml:space="preserve">
+    <value>A clear board, ready for work</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
+    <value>No content was supplied for this section. Ask your agent in chat.</value>
+  </data>
+  <data name="Dashboards_GridLabel" xml:space="preserve">
+    <value>Dashboard widgets</value>
+  </data>
+  <data name="Dashboards_TabsLabel" xml:space="preserve">
+    <value>Dashboard tabs</value>
+  </data>
+  <data name="Dashboards_MoreTabs" xml:space="preserve">
+    <value>More tabs</value>
+  </data>
+  <data name="Dashboards_Widget_CellFormat" xml:space="preserve">
+    <value>Dashboard widget: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_KindHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Dashboards_Widget_KindMcp" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="Dashboards_Widget_KindPlugin" xml:space="preserve">
+    <value>Plugin</value>
+  </data>
+  <data name="Dashboards_Widget_Granted" xml:space="preserve">
+    <value>Granted</value>
+  </data>
+  <data name="Dashboards_Widget_ActiveCapabilities" xml:space="preserve">
+    <value>Active widget capabilities</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkCapability" xml:space="preserve">
+    <value>Network: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_ToolCapability" xml:space="preserve">
+    <value>Tool: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_Loading" xml:space="preserve">
+    <value>Loading widget</value>
+  </data>
+  <data name="Dashboards_Widget_Slow" xml:space="preserve">
+    <value>This widget is taking longer than usual to load.</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorTitle" xml:space="preserve">
+    <value>This widget couldn't load</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorDetail" xml:space="preserve">
+    <value>The problem is contained to this card.</value>
+  </data>
+  <data name="Dashboards_Widget_ShowDetails" xml:space="preserve">
+    <value>Show details</value>
+  </data>
+  <data name="Dashboards_Widget_ContentUnavailable" xml:space="preserve">
+    <value>Widget content is unavailable.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnavailable" xml:space="preserve">
+    <value>The widget sandbox host is unavailable.</value>
+  </data>
+  <data name="Dashboards_Widget_WebViewUnavailable" xml:space="preserve">
+    <value>Widget content needs the Microsoft Edge WebView2 Runtime.</value>
+  </data>
+  <data name="Dashboards_Widget_RenderTimeout" xml:space="preserve">
+    <value>Widget content didn't finish loading. Select Retry to try again.</value>
+  </data>
+  <data name="Dashboards_Widget_StoppedResponding" xml:space="preserve">
+    <value>Widget content stopped responding repeatedly. Select Retry to try again.</value>
+  </data>
+  <data name="Dashboards_Widget_AuthorizationFailed" xml:space="preserve">
+    <value>Widget authorization failed after repeated refresh attempts.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxOriginRequired" xml:space="preserve">
+    <value>Widget authorization failed after repeated refresh attempts. If the Gateway runs behind a reverse proxy or tunnel that doesn't route the widget sandbox port, set mcp.apps.sandboxOrigin to a dedicated public origin routed to the sandbox listener.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnreachableHint" xml:space="preserve">
+    <value>The widget sandbox didn't respond. If the Gateway runs behind a reverse proxy or tunnel that doesn't route the widget sandbox port, set mcp.apps.sandboxOrigin to a dedicated public origin routed to the sandbox listener.</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApproval" xml:space="preserve">
+    <value>Needs approval</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApprovalDetail" xml:space="preserve">
+    <value>This widget requested additional access.</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkAccess" xml:space="preserve">
+    <value>Network origins</value>
+  </data>
+  <data name="Dashboards_Widget_HostTools" xml:space="preserve">
+    <value>Host tools and data</value>
+  </data>
+  <data name="Dashboards_Widget_Rejected" xml:space="preserve">
+    <value>Access rejected</value>
+  </data>
+  <data name="Dashboards_Widget_RejectedDetail" xml:space="preserve">
+    <value>This widget stays inactive until it's removed or replaced.</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppTitle" xml:space="preserve">
+    <value>MCP app</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppDetail" xml:space="preserve">
+    <value>MCP app widgets aren't available on Windows yet.</value>
+  </data>
+  <data name="Dashboards_Widget_DisabledPluginFormat" xml:space="preserve">
+    <value>Widget from disabled plugin {0}</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedTitle" xml:space="preserve">
+    <value>Widget not available on Windows yet</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
+    <value>{0} widgets aren't available on Windows yet.</value>
+  </data>
+  <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
+    <value>This report has invalid data.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
+    <value>This website widget needs a valid HTTPS address.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
+    <value>Open website</value>
+  </data>
+  <data name="Command_GoToDashboards_Title" xml:space="preserve">
+    <value>Go to Dashboards</value>
+  </data>
+  <data name="Command_GoToDashboards_Subtitle" xml:space="preserve">
+    <value>Live boards from your sessions</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_TitleFormat" xml:space="preserve">
+    <value>Open dashboard: {0}</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_Subtitle" xml:space="preserve">
+    <value>Session dashboard</value>
+  </data>
+  <data name="HubWindow_NavDashboards.Content" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
+    <value>Open dashboard</value>
+  </data>
+  <data name="Dashboards_OpenAction" xml:space="preserve">
+    <value>Open board</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>Open board: {0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>No summary available</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>Open in web</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>Opens Dashboards in your browser for editing boards and approving widget access.</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>Opens the Dashboards gallery in your browser, not this dashboard. Find it there by name or session key.</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>More options</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>Copy session key</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>This website opens in your browser.</value>
+  </data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>Open chat: {0}</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>Fresh today</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>{0}’s boards</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>Copied session key</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>Couldn't copy the session key.</value>
+  </data>
+  <data name="Usage_Title" xml:space="preserve"><value>Usage</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} to {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1}</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>Refreshing usage</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>Export CSV</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>Exporting</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessions (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Daily totals (CSV)</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>Saved {0}.</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Connect to a Gateway to export usage.</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>The usage report could not be read or saved. Try again.</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>Usage data is incomplete. Refresh usage and try again, or narrow the date range.</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>This range has more sessions than one export can include. Narrow the date range or filters and try again.</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>This Gateway does not provide it.</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>The Gateway is not connected.</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>The request failed.</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>Range</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Start date</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>End date</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>to</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>Time zone</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>Scope</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>Show</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>Today</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 days</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 days</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>Current instance</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>Historical lineage</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Tokens</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>Partial results</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>Some usage is still being calculated, so totals may increase.</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>Selected</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Search sessions</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>Filter sessions</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Some filters were ignored</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>Model</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>Loading usage</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>Nothing to count yet</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>There's no usage in this date range. Start a conversation, or try a wider range to explore more history.</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>Usage needs read access</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>This connection does not have the operator.read scope. Pair again with read access to see usage.</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>Usage could not be loaded</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>The Gateway did not return usage. Try again.</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>The Gateway reported: {0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>Try again</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>Partial results</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>The Gateway stopped reading usage early. Totals include what was read so far.</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>Updating</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>Usage data may be incomplete. Checking for updated totals automatically.</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>Usage data may be incomplete. Automatic checks paused; select Refresh to check again.</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, {2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: not loaded yet</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Not loaded yet</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>Date</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>Messages</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Tool calls</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Cache hit rate</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessions</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>Errors</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>No agent data</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Unpriced</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} errors</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>Provider allowances</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>Loading provider usage</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>No providers report plan usage.</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>Provider usage is unavailable.</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Provider usage is refreshing.</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>No quota information reported.</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} of {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessions</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Sort sessions</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>Highest cost</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>Most errors</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>Most messages</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>Most recent</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Most tokens</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>No sessions in range</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} to {1} of {2}</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Previous page</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Next page</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Calculating</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Select to view details.</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Details for {0}</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>session summary</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Some details could not be loaded</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Could not load {0}: {1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} in · {1} out</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} entries without a price</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>Duration</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} error</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} entry without a price</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Newest first</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessions in range</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} session in range</value></data>
+  <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Estimated cost</value></data>
+  <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} usage entries have no known price, so the estimated cost can be lower than actual.</value></data>
+  <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} usage entry has no known price, so the estimated cost can be lower than actual.</value></data>
+  <data name="Usage_OpenWeb" xml:space="preserve"><value>Open in web</value></data>
+  <data name="Usage_OpenWebHint" xml:space="preserve"><value>Opens the Gateway&apos;s Usage page in your browser for timelines, transcripts and other detailed analysis. Your date range, filters and selected session are not carried over.</value></data>
+  <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} of {1} loaded; totals include all of them.</value></data>
+  <data name="Usage_Contributors_Title" xml:space="preserve"><value>Usage breakdown</value></data>
+  <data name="Usage_Contributors_Label" xml:space="preserve"><value>Contributor type</value></data>
+  <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agents</value></data>
+  <data name="Usage_Contributors_Model" xml:space="preserve"><value>Models</value></data>
+  <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Providers</value></data>
+  <data name="Usage_Unsupported_Title" xml:space="preserve"><value>Usage isn&apos;t available on this Gateway</value></data>
+  <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Update the Gateway to see cost, tokens and sessions here.</value></data>
+  <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>The first {0} are loaded; there may be more.</value></data>
+  <data name="Usage_AllowanceWarningFormat" xml:space="preserve"><value>{0} allowance is {1} used</value></data>
+  <data name="Usage_Automation" xml:space="preserve"><value>automation</value></data>
+  <data name="Usage_BusiestDayFormat" xml:space="preserve"><value>Busiest day: {0}, {1}</value></data>
+  <data name="Usage_CacheWrittenFormat" xml:space="preserve"><value>cache read · {0} written</value></data>
+  <data name="Usage_Chart" xml:space="preserve"><value>Chart</value></data>
+  <data name="Usage_ChartView" xml:space="preserve"><value>Chart or table</value></data>
+  <data name="Usage_ComputingFormat" xml:space="preserve"><value>Still computing {0} sessions</value></data>
+  <data name="Usage_CostliestLoaded" xml:space="preserve"><value>Costliest loaded session</value></data>
+  <data name="Usage_DailyAverageFormat" xml:space="preserve"><value>Daily average {0}</value></data>
+  <data name="Usage_Detail_CacheSplit" xml:space="preserve"><value>Cache read · write</value></data>
+  <data name="Usage_Detail_InputOutput" xml:space="preserve"><value>Input · output</value></data>
+  <data name="Usage_Detail_ShareFormat" xml:space="preserve"><value>{0} of the cost {1}</value></data>
+  <data name="Usage_Detail_ToolsFormat" xml:space="preserve"><value>{0} ({1} unique)</value></data>
+  <data name="Usage_FromAutomation" xml:space="preserve"><value>from an automation</value></data>
+  <data name="Usage_Highlights" xml:space="preserve"><value>Highlights</value></data>
+  <data name="Usage_LastKnownFormat" xml:space="preserve"><value>Last known · {0}</value></data>
+  <data name="Usage_LoadedSessions" xml:space="preserve"><value>Loaded sessions</value></data>
+  <data name="Usage_Mast_30d" xml:space="preserve"><value>in the last 30 days</value></data>
+  <data name="Usage_Mast_7d" xml:space="preserve"><value>in the last 7 days</value></data>
+  <data name="Usage_Mast_Today" xml:space="preserve"><value>today so far</value></data>
+  <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>None in the loaded sessions.</value></data>
+  <data name="Usage_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>Open chat: {0}</value></data>
+  <data name="Usage_Options" xml:space="preserve"><value>Options</value></data>
+  <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Local time ({0})</value></data>
+  <data name="Usage_OtherFormat" xml:space="preserve"><value>Other ({0})</value></data>
+  <data name="Usage_PerDay" xml:space="preserve"><value>Daily usage</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>No reported dates</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Mostly {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Top model: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Near limit</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} days reported</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} shown · {1} loaded</value></data>
+  <data name="Usage_Preset_Custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Usage_ResetAtFormat" xml:space="preserve"><value>resets {0}</value></data>
+  <data name="Usage_SeeUsing" xml:space="preserve"><value>See what&apos;s using it</value></data>
+  <data name="Usage_SeeUsingProviderFormat" xml:space="preserve"><value>See what&apos;s using {0}</value></data>
+  <data name="Usage_ShowLess" xml:space="preserve"><value>Show fewer</value></data>
+  <data name="Usage_ShowMoreFormat" xml:space="preserve"><value>Show {0} more</value></data>
+  <data name="Usage_ShowMoreLoaded" xml:space="preserve"><value>Show more loaded sessions</value></data>
+  <data name="Usage_ShowOnlyFormat" xml:space="preserve"><value>Show only {0}</value></data>
+  <data name="Usage_Table" xml:space="preserve"><value>Table</value></data>
+  <data name="Usage_NoProviderUsageFormat" xml:space="preserve"><value>No aggregate usage reported for {0}.</value></data>
+  <data name="Usage_Sessions_PartialLoadedFormat" xml:space="preserve"><value>{0} of {1} loaded; totals are still incomplete.</value></data>
+  <data name="Usage_Activity_MessageSplitFormat" xml:space="preserve"><value>{0} you, {1} agents</value></data>
+  <data name="Usage_Export_BlockedTitle" xml:space="preserve"><value>Sessions can&apos;t be exported yet</value></data>
+  <data name="Usage_Export_BlockedMessage" xml:space="preserve"><value>Some sessions in this range aren&apos;t loaded or are still being counted, so the file would be incomplete.</value></data>
+  <data name="Usage_Export_CoverageFormat" xml:space="preserve"><value>{0} loaded of {1}</value></data>
+  <data name="Usage_Export_CoverageUnknownFormat" xml:space="preserve"><value>{0} loaded; total not reported</value></data>
+  <data name="Usage_Export_DailyAlternative" xml:space="preserve"><value>Export daily totals</value></data>
+  <data name="Usage_Export_OpenFolder" xml:space="preserve"><value>Open folder</value></data>
+  <data name="Usage_Export_Error_OpenFolder" xml:space="preserve"><value>Windows couldn&apos;t open the export folder.</value></data>
+  <data name="Usage_Export_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Usage_Export_Range7d" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="Usage_Export_Range30d" xml:space="preserve"><value>Last 30 days</value></data>
 </root>

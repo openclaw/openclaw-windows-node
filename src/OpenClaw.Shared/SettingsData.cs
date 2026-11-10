@@ -98,6 +98,8 @@ public record class SettingsData
     public bool VoiceTtsEnabled { get; set; } = false;
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get; set; } = true;
+    /// <summary>Show supplied assistant reasoning in the chat timeline (web <c>chatShowThinking</c>).</summary>
+    public bool ShowChatThinking { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;
@@ -111,6 +113,9 @@ public record class SettingsData
     /// provider (which is unaffected by this setting).
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get; set; } = false;
+    /// <summary>Opt-in Companion chat/preview route. Does not change node/MCP TTS.</summary>
+    public bool UseGatewayVoice { get; set; } = false;
+
     public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.KokoroProvider;
     /// <summary>Persisted: whether the Hub's NavigationView pane is expanded
     /// (true) or collapsed/compact (false). Default true.</summary>
@@ -156,6 +161,12 @@ public record class SettingsData
     /// (e.g., "cdn.example.com") via the Settings window.
     /// </summary>
     public List<string>? A2UIImageHosts { get; set; }
+    /// <summary>
+    /// Local sidebar page pins keyed by saved Gateway id (or "(unconfigured)").
+    /// Absent scopes use native defaults; an explicit empty list means no pins.
+    /// Holds only canonical page tags; never credentials or user data.
+    /// </summary>
+    public Dictionary<string, List<string>>? PinnedPagesByGateway { get; set; }
     /// <summary>
     /// Legacy flag (replaced by EnableMcpServer + the EnableNodeMode pair).
     /// Kept for one-time migration on Load; not written on Save.
@@ -221,6 +232,10 @@ public record class SettingsData
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
+
+    /// <summary>Legacy staging configuration, preserved for compatibility. New uploads use executor-owned profile storage.</summary>
+    public string? SandboxUploadStagingPath { get; set; }
+    public long SandboxMaxTransferBytes { get; set; } = FileTransfer.FileLimits.DefaultCreateBytes;
     public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
 
     /// <summary>

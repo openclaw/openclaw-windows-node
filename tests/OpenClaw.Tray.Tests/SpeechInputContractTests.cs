@@ -16,6 +16,20 @@ public sealed class SpeechInputContractTests
     }
 
     [Fact]
+    public void AppVoiceServices_SharePlaybackMuteWithoutSharingCaptureOwnership()
+    {
+        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var node = Read("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
+        var shutdown = Read("src", "OpenClaw.Tray.WinUI", "App.AppShutdownCoordinator.cs");
+
+        Assert.Contains("new VoiceService(new AppLogger(), _settings, _voicePlaybackMute)", app);
+        Assert.Contains("voiceServiceFactory: (logger, voiceSettings) => new VoiceService(logger, voiceSettings, _voicePlaybackMute)", app);
+        Assert.Contains("_voiceServiceFactory?.Invoke(_logger, settings)", node);
+        Assert.Contains("_voicePlaybackMute.Acquire);", app);
+        Assert.Contains("_voicePlaybackMute.Dispose()", shutdown);
+    }
+
+    [Fact]
     public void AudioPipeline_UsesManagedEnergyVad_NotNativeVad()
     {
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Services", "AudioPipeline.cs");
