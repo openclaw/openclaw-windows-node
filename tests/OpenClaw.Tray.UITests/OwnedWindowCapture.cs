@@ -11,6 +11,58 @@ namespace OpenClaw.Tray.UITests;
 /// <summary>Captures only an owned external app HWND, including its complete native bounds.</summary>
 internal static class OwnedWindowCapture
 {
+    private const int MaximumConfigTreeDiagnosticElements = 64;
+
+    /// <summary>Reads only the synthetic app's Config tree, never the desktop or another app.</summary>
+    internal static string ReadConfigTreeAutomation(GatewayFixtureRun run, AutomationElement window)
+    {
+        ValidateOwnedWindow(run, window);
+        var tree = window.FindFirst(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ProcessIdProperty, run.AppProcessId),
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ConfigTree")));
+        if (tree is null)
+            return JsonSerializer.Serialize(new { diagnostic = "ConfigTreeUIA", status = "tree-unavailable" });
+
+        var rows = new List<object>();
+        var pending = new Stack<AutomationElement>();
+        var walker = TreeWalker.RawViewWalker;
+        var truncated = false;
+        pending.Push(tree);
+        while (pending.Count > 0)
+        {
+            var element = pending.Pop();
+            var current = element.Current;
+            Assert.Equal(run.AppProcessId, current.ProcessId);
+            rows.Add(new { ControlType = current.ControlType.ProgrammaticName,
+                current.Name, current.AutomationId, current.IsOffscreen });
+            var child = walker.GetFirstChild(element);
+            while (child is not null)
+            {
+                if (rows.Count + pending.Count >= MaximumConfigTreeDiagnosticElements)
+                {
+                    truncated = true;
+                    break;
+                }
+                Assert.Equal(run.AppProcessId, child.Current.ProcessId);
+                pending.Push(child);
+                child = walker.GetNextSibling(child);
+            }
+        }
+        return JsonSerializer.Serialize(new { diagnostic = "ConfigTreeUIA", status = "captured",
+            truncated, rows });
+    }
+
+    private static IntPtr ValidateOwnedWindow(GatewayFixtureRun run, AutomationElement window)
+    {
+        run.EnsureRunning();
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        Assert.Equal(run.AppProcessId, window.Current.ProcessId);
+        GetWindowThreadProcessId(handle, out var processId);
+        Assert.Equal((uint)run.AppProcessId, processId);
+        Assert.True(IsWindowVisible(handle) && !IsIconic(handle), "Owned window must be visible and not minimized.");
+        return handle;
+    }
+
     internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
         params AutomationElement[] assertedElements) => Save(run, window, name, CancellationToken.None, assertedElements);
 
@@ -18,12 +70,7 @@ internal static class OwnedWindowCapture
         CancellationToken cancellationToken, params AutomationElement[] assertedElements)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        run.EnsureRunning();
-        var handle = new IntPtr(window.Current.NativeWindowHandle);
-        Assert.Equal(run.AppProcessId, window.Current.ProcessId);
-        GetWindowThreadProcessId(handle, out var processId);
-        Assert.Equal((uint)run.AppProcessId, processId);
-        Assert.True(IsWindowVisible(handle) && !IsIconic(handle), "Owned window must be visible and not minimized.");
+        var handle = ValidateOwnedWindow(run, window);
         var previousDpi = SetThreadDpiAwarenessContext(new IntPtr(-4));
         try
         {
