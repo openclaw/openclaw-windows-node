@@ -340,8 +340,13 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                 Assert.NotNull(markerPeer);
                 Assert.Equal(catalog["Automations_Title"], markerPeer.GetName());
                 Assert.True(markerPeer.IsControlElement());
-                Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IScrollProvider>(
-                    markerPeer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Scroll));
+                // ScrollView is the named container; its loaded ScrollPresenter owns scrolling.
+                // External fixture proof exercises that part through the native UIA ScrollPattern.
+                var presenter = retainedScroll.ScrollPresenter;
+                Assert.NotNull(presenter);
+                Assert.True(presenter.IsLoaded && presenter.ActualWidth > 0 && presenter.ActualHeight > 0);
+                Assert.Same(retainedScroll.XamlRoot, presenter.XamlRoot);
+                Assert.Same(retainedScroll.Content, presenter.Content);
                 retainedMast = Find(surface!, "AutomationsMast");
                 originalMastTop = Bounds(retainedMast, surface!).Top;
                 originalSurfaceWidth = surface!.ActualWidth;

@@ -7,8 +7,6 @@ using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation.Peers;
-using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Xunit.Abstractions;
 using static Microsoft.UI.Reactor.Factories;
@@ -18,7 +16,7 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>
 /// Records native event/model/render ordering without changing Reactor or the editor.
-/// In-process UIA peer writes are not real-keystroke or cross-process application proof.
+/// Owned-window UIA client writes are not real-keystroke or cross-process application proof.
 /// </summary>
 [Collection(UICollection.Name)]
 public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestOutputHelper output)
@@ -32,21 +30,21 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
     public enum ControlKind { TextBox, AutoSuggestBox }
     public enum Trigger
     {
-        UnrelatedRenderSameTurn,
-        NonTextPropSameTurn,
+        UnrelatedRenderAfterNativeInput,
+        NonTextPropAfterNativeInput,
         UnrelatedRenderQueuedBeforeEdit,
         UnrelatedRenderAfterCommit,
         LegitimateReplacementAfterCommit,
     }
 
     [Theory]
-    [InlineData(ControlKind.TextBox, Trigger.UnrelatedRenderSameTurn)]
-    [InlineData(ControlKind.TextBox, Trigger.NonTextPropSameTurn)]
+    [InlineData(ControlKind.TextBox, Trigger.UnrelatedRenderAfterNativeInput)]
+    [InlineData(ControlKind.TextBox, Trigger.NonTextPropAfterNativeInput)]
     [InlineData(ControlKind.TextBox, Trigger.UnrelatedRenderQueuedBeforeEdit)]
     [InlineData(ControlKind.TextBox, Trigger.UnrelatedRenderAfterCommit)]
     [InlineData(ControlKind.TextBox, Trigger.LegitimateReplacementAfterCommit)]
-    [InlineData(ControlKind.AutoSuggestBox, Trigger.UnrelatedRenderSameTurn)]
-    [InlineData(ControlKind.AutoSuggestBox, Trigger.NonTextPropSameTurn)]
+    [InlineData(ControlKind.AutoSuggestBox, Trigger.UnrelatedRenderAfterNativeInput)]
+    [InlineData(ControlKind.AutoSuggestBox, Trigger.NonTextPropAfterNativeInput)]
     [InlineData(ControlKind.AutoSuggestBox, Trigger.UnrelatedRenderQueuedBeforeEdit)]
     [InlineData(ControlKind.AutoSuggestBox, Trigger.UnrelatedRenderAfterCommit)]
     [InlineData(ControlKind.AutoSuggestBox, Trigger.LegitimateReplacementAfterCommit)]
@@ -78,7 +76,7 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
             // A normal controlled replacement can leave H2's token behind. Observe it;
             // never inject, clear or otherwise manipulate Reactor's suppression state.
             await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 probe.Mark("ready-after-prime");
                 Assert.True(probe.NativeText == Primed && probe.Rendered == Primed,
@@ -94,17 +92,16 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
                 probe.Mark("uia-input-begin");
                 // AutoSuggestBox's template TextBox takes the same native edit path;
                 // assigning AutoSuggestBox.Text directly would be ProgrammaticChange.
-                var peer = new TextBoxAutomationPeer(probe.Input!);
-                Assert.IsAssignableFrom<IValueProvider>(peer.GetPattern(PatternInterface.Value)).SetValue(Edit);
+                await NativeTextValueInput.SetAsync(window!, probe.Input!, Edit);
                 probe.Mark("uia-input-returned");
-                if (trigger == Trigger.UnrelatedRenderSameTurn)
+                if (trigger == Trigger.UnrelatedRenderAfterNativeInput)
                 {
-                    probe.Mark("same-turn-render-request");
+                    probe.Mark("post-native-input-render-request");
                     probe.Bump();
                 }
-                else if (trigger == Trigger.NonTextPropSameTurn)
+                else if (trigger == Trigger.NonTextPropAfterNativeInput)
                 {
-                    probe.Mark(kind == ControlKind.TextBox ? "same-turn-readonly" : "same-turn-disabled");
+                    probe.Mark(kind == ControlKind.TextBox ? "post-native-input-readonly" : "post-native-input-disabled");
                     probe.SetNonTextProp!(true);
                 }
             });
@@ -171,7 +168,7 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task FreshBlankName_RetainsNativeEditAcrossImmediateReconcile(bool reconcileBeforeTextChanged)
+    public async Task FreshBlankName_RetainsNativeEditAcrossImmediateReconcile(bool reconcileAfterNativeInput)
     {
         await ui.ResetContainerAsync();
         ReactorHostControl? host = null;
@@ -209,7 +206,7 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => input is { IsLoaded: true, XamlRoot: not null, ActualWidth: > 0 }, "fresh blank native Name mounted"));
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 Assert.Equal("", input!.Text);
                 Assert.Equal("", model);
@@ -218,13 +215,12 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
                 input.TextChanging += changing;
                 input.TextChanged += changed;
                 Mark("unprimed-input-begin");
-                Assert.IsAssignableFrom<IValueProvider>(new TextBoxAutomationPeer(input)
-                    .GetPattern(PatternInterface.Value)).SetValue(Edit);
+                await NativeTextValueInput.SetAsync(ui.TestWindow, input, Edit);
                 Mark("uia-input-returned");
-                if (reconcileBeforeTextChanged)
+                if (reconcileAfterNativeInput)
                 {
-                    // Exercise the actual controlled-property owner before yielding, without
-                    // manufacturing a model update or touching Reactor's suppression tokens.
+                    // Reconcile immediately after the native client input returns. The event trace,
+                    // not this flag, establishes whether TextChanged already ran.
                     Mark("unrelated-reconcile-begin");
                     Reconcile();
                     Mark("unrelated-reconcile-end");
@@ -284,8 +280,8 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
                 if (!string.IsNullOrWhiteSpace(root))
                 {
                     Directory.CreateDirectory(root);
-                    File.WriteAllText(Path.Combine(root, $"deferred-text-fresh-name-immediate-{reconcileBeforeTextChanged}.json"),
-                        JsonSerializer.Serialize(new { ReconcileBeforeTextChanged = reconcileBeforeTextChanged, Events = events }));
+                    File.WriteAllText(Path.Combine(root, $"deferred-text-fresh-name-immediate-{reconcileAfterNativeInput}.json"),
+                        JsonSerializer.Serialize(new { ReconcileAfterNativeInput = reconcileAfterNativeInput, Events = events }));
                 }
             }
         }

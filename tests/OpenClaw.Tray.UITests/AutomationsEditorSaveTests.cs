@@ -164,7 +164,7 @@ public sealed class AutomationsEditorSaveTests(UIThreadFixture ui)
                 input.TextChanged += changed;
                 try
                 {
-                    input.Text = "Latest owner name";
+                    await NativeTextValueInput.SetAsync(ui.TestWindow, input, "Latest owner name");
                     await WaitForRenderedConditionAsync(() => invoked.Task.IsCompleted, "accepted editor TextChanged callback");
                     await invoked.Task;
                 }

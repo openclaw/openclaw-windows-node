@@ -962,7 +962,7 @@ public sealed partial class GatewayFixtureUiTests
                             windowRectDip = DipRect(actualWindow, scale),
                             pageHostRectDip = DipRect(actualHost, scale),
                             dpiScale = scale,
-                            hostMeasurementSource = "Owned ScrollPattern on or above exposed CronPageMarker",
+                            hostMeasurementSource = "Owned PART_ScrollPresenter beneath exposed CronPageMarker",
                             hostPeerClass = hostPeer.Current.ClassName,
                             hostPeerAutomationId = hostPeer.Current.AutomationId,
                             markerMissReads = markerMisses - missesAtStart,
@@ -1426,40 +1426,51 @@ public sealed partial class GatewayFixtureUiTests
     }
 
     private static AutomationElement PageScrollPeer(GatewayFixtureRun run, bool dumpAncestors = false) =>
-        TryPageScrollPeer(run, dumpAncestors) ?? throw new InvalidOperationException("Missing exposed Automations page marker.");
+        TryPageScrollPeer(run, dumpAncestors) ?? throw new InvalidOperationException("Missing owned Automations ScrollPresenter.");
 
-    /// <summary>Returns null only when the marker is absent; a marker without an owned scroll surface still fails.</summary>
+    /// <summary>Finds the marker's own template presenter, never an arbitrary nested scroller.</summary>
     private static AutomationElement? TryPageScrollPeer(GatewayFixtureRun run, bool dumpAncestors = false)
     {
-        var element = FindById(run, "CronPageMarker");
-        if (element is null) return null;
-        var ancestors = new List<object>();
-        while (element is not null && element.Current.ProcessId == run.AppProcessId)
+        var marker = FindById(run, "CronPageMarker");
+        if (marker is null) return null;
+        Assert.Equal(run.AppProcessId, marker.Current.ProcessId);
+        var markerIdentity = marker.GetRuntimeId();
+        bool IsMarker(AutomationElement? element) => element is not null
+            && element.Current.ProcessId == run.AppProcessId
+            && element.GetRuntimeId().SequenceEqual(markerIdentity);
+        bool IsOwnedTemplatePart(AutomationElement candidate)
         {
-            if (dumpAncestors)
-            {
-                var bounds = element.Current.BoundingRectangle;
-                ancestors.Add(new
+            if (candidate.Current.ProcessId != run.AppProcessId) return false;
+            var parent = TreeWalker.RawViewWalker.GetParent(candidate);
+            if (IsMarker(parent)) return true;
+            // WinUI's ScrollView template is PART_Root -> PART_ScrollPresenter.
+            // The presentation Grid may be absent from UIA; no other ancestry is accepted.
+            if (parent is null || parent.Current.ProcessId != run.AppProcessId
+                || parent.Current.AutomationId != "PART_Root") return false;
+            return IsMarker(TreeWalker.RawViewWalker.GetParent(parent));
+        }
+        var candidates = marker.FindAll(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "PART_ScrollPresenter"),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Pane)))
+            .Cast<AutomationElement>().ToArray();
+        var owned = candidates.Where(IsOwnedTemplatePart).ToArray();
+        if (dumpAncestors || owned.Length != 1)
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "automations-page-marker-ancestors.json"),
+                System.Text.Json.JsonSerializer.Serialize(candidates.Select(element => new
                 {
                     element.Current.ClassName,
                     element.Current.AutomationId,
-                    element.Current.Name,
-                    type = element.Current.ControlType.ProgrammaticName,
+                    element.Current.ProcessId,
+                    runtimeId = element.GetRuntimeId(),
+                    owned = IsOwnedTemplatePart(element),
                     patterns = element.GetSupportedPatterns().Select(pattern => pattern.ProgrammaticName).ToArray(),
-                    rect = new { bounds.Left, bounds.Top, bounds.Width, bounds.Height },
-                });
-            }
-            if (element.TryGetCurrentPattern(ScrollPattern.Pattern, out _))
-            {
-                if (dumpAncestors) File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "automations-page-marker-ancestors.json"),
-                    System.Text.Json.JsonSerializer.Serialize(ancestors, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-                return element;
-            }
-            element = TreeWalker.RawViewWalker.GetParent(element);
-        }
-        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "automations-page-marker-ancestors.json"),
-            System.Text.Json.JsonSerializer.Serialize(ancestors, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        throw new InvalidOperationException("The exposed Automations marker has no owned ScrollPattern ancestor.");
+                }), new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        if (owned.Length == 0) return null; // Keep the existing bounded template-readiness wait.
+        var presenter = Assert.Single(owned);
+        Assert.True(presenter.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern),
+            "The owned ScrollView template presenter must expose the native ScrollPattern.");
+        Assert.IsType<ScrollPattern>(pattern);
+        return presenter;
     }
 
     private static async Task ChooseAutomationAgentAsync(GatewayFixtureRun run, string agent)
