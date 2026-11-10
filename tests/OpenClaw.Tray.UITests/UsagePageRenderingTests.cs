@@ -517,7 +517,38 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Contains(FindDescendants<TextBlock>(options), text => text.Text == "\uE713");
                 Assert.Contains(FindDescendants<TextBlock>(Get<DropDownButton>(host, "UsageExport")),
                     text => text.Text == "\uE896");
-                Assert.InRange(Math.Abs(Get<AutoSuggestBox>(host, "UsageQuery").ActualHeight - options.ActualHeight), 0, 1);
+                // Stock inputs and content-sized buttons need not have equal intrinsic heights
+                // (DESIGN.md: native Button styling). The filter row owns alignment and containment.
+                var query = Get<AutoSuggestBox>(host, "UsageQuery");
+                var filterRow = Get<Grid>(host, "UsageFilterRow");
+                Windows.Foundation.Rect FilterBounds(FrameworkElement control) =>
+                    control.TransformToVisual(filterRow).TransformBounds(new(0, 0, control.ActualWidth, control.ActualHeight));
+                AssertSeparatedChildren(filterRow);
+                foreach (var control in new FrameworkElement[] { query, options })
+                {
+                    var bounds = FilterBounds(control);
+                    Assert.True(double.IsNaN(control.Height), "Filter controls retain native content-sized height.");
+                    Assert.True(bounds.Width > 0 && bounds.Height > 0 &&
+                        bounds.Left >= -1 && bounds.Top >= -1 &&
+                        bounds.Right <= filterRow.ActualWidth + 1 && bounds.Bottom <= filterRow.ActualHeight + 1,
+                        $"Filter control {AutomationProperties.GetAutomationId(control)} is clipped: {bounds}.");
+                    Assert.True(control.ActualHeight >= control.DesiredSize.Height - 1,
+                        "The filter row must allocate the control's native desired height.");
+                }
+                var queryBounds = FilterBounds(query);
+                var optionsBounds = FilterBounds(options);
+                if (width >= 1000)
+                {
+                    Assert.InRange(Math.Abs(queryBounds.Top + queryBounds.Height / 2 -
+                        (optionsBounds.Top + optionsBounds.Height / 2)), 0, 1);
+                    Assert.True(queryBounds.Left >= optionsBounds.Right, "Inline query and options must not overlap.");
+                }
+                else
+                {
+                    var controlsBounds = FilterBounds(Get<StackPanel>(host, "UsageFilterOptions"));
+                    Assert.True(queryBounds.Top >= controlsBounds.Bottom,
+                        "Wrapped query belongs below the filter actions, not over them.");
+                }
                 var expander = Get<Expander>(host, "UsageSessionExpander_agent:main:webchat:main");
                 Assert.False(expander.IsExpanded);
                 var detailBeforeChat = gateway.Controller.State.Detail;
