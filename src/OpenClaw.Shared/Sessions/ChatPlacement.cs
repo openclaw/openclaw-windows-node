@@ -97,19 +97,19 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
         var environments = await RequestAsync("environments.list", EnvironmentParameters(runtime), epoch, cancellationToken)
             .ConfigureAwait(false);
         var methods = _serverMethods?.Invoke();
-        // Missing advertisements are unknown on older Gateways; preserve their existing
-        // folder/repository actions. An explicit advertisement can rule them out.
-        bool Supports(string method) => methods is null || methods.Count == 0 || methods.Contains(method, StringComparer.Ordinal);
         return ParseCatalog(epoch, agentId, environments, await projects, await agents) with
         {
-            CanBrowseFolders = Supports("fs.listDir"),
-            CanAddRepository = Supports("projects.add")
+            CanBrowseFolders = Supports(methods, "fs.listDir"),
+            CanAddRepository = Supports(methods, "projects.add")
         };
     }
 
     public async Task<ChatPlacementSelection?> ResolveAsync(string sessionKey, ChatPlacementCatalog catalog,
         CancellationToken cancellationToken)
     {
+        var methods = _serverMethods?.Invoke();
+        if (!Supports(methods, "sessions.describe"))
+            return null;
         var described = await RequestAsync("sessions.describe", new { key = sessionKey, agentId = catalog.AgentId },
             catalog.ConnectionEpoch, cancellationToken).ConfigureAwait(false);
         if (!TryReadLocalSession(described, sessionKey, out var session))
@@ -124,6 +124,8 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
         var path = SessionWorkspacePath(session);
         if (path is null)
         {
+            if (!Supports(methods, "sessions.files.list"))
+                return null;
             var sessionId = OptionalString(session, "sessionId");
             if (sessionId is null) return null;
             var files = await RequestAsync("sessions.files.list", new { sessionKey, agentId = catalog.AgentId },
@@ -145,6 +147,10 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
                 ?? new ChatWorkspace("folder:" + path, FolderName(path), path);
         return new(local[0], workspace);
     }
+
+    // Missing advertisements are unknown on older Gateways; a nonempty list can rule a method out.
+    private static bool Supports(IReadOnlyList<string>? methods, string method) =>
+        methods is null || methods.Count == 0 || methods.Contains(method, StringComparer.Ordinal);
 
     private static bool TryReadLocalSession(JsonElement response, string key, out JsonElement session) =>
         response.TryGetProperty("session", out session) && OptionalString(session, "key") == key &&
