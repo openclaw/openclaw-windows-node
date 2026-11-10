@@ -2459,6 +2459,69 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task MessageRows_AnnounceLiteralMarkdownAndTheVisibleTime()
+    {
+        await WithChatAsync(480, async (surface, host, _, _) =>
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                var localOffset = TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 11, 10));
+                var user = new ChatTimelineItem("a11y-user", ChatTimelineItemKind.User, "早上好");
+                var assistant = new ChatTimelineItem(
+                    "a11y-assistant",
+                    ChatTimelineItemKind.Assistant,
+                    "排期如下：\n```text\n09:00  Focus time\n```\n以及 snake_case 和 a<b。");
+                var metadata = new Dictionary<string, ChatEntryMetadata>
+                {
+                    [user.Id] = new(new DateTimeOffset(2026, 11, 10, 10, 47, 0, localOffset), null),
+                    [assistant.Id] = new(new DateTimeOffset(2026, 11, 10, 10, 57, 0, localOffset), null),
+                };
+                host.Mount(_ => Component<ReactorChatTimeline, ReactorChatTimelineProps>(
+                    new(ReactorChatTimelineMode.Timeline,
+                        new ChatTimelinePresentationContext(
+                            "a11y-time-proof",
+                            [user, assistant],
+                            false,
+                            null,
+                            EntryMetadata: metadata))));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var repeater = Assert.Single(FindDescendants<ItemsRepeater>(host));
+                var containers = Enumerable.Range(0, repeater.ItemsSourceView.Count)
+                    .Select(index => repeater.TryGetElement(index))
+                    .OfType<ItemContainer>()
+                    .ToList();
+                Assert.True(containers.Count >= 2);
+
+                var userContainer = Assert.Single(containers, container =>
+                    AutomationProperties.GetName(container)
+                        .StartsWith("早上好, ", StringComparison.Ordinal));
+                Assert.True(userContainer.IsTabStop);
+                var userName = AutomationProperties.GetName(userContainer);
+                Assert.Contains("10:47", userName, StringComparison.Ordinal);
+                // The container is the only carrier of the name, so a focused row announces once.
+                Assert.DoesNotContain(
+                    FindDescendants<FrameworkElement>(userContainer),
+                    element => AutomationProperties.GetName(element) == userName);
+
+                var assistantContainer = Assert.Single(containers, container =>
+                    AutomationProperties.GetName(container)
+                        .StartsWith("Field: ", StringComparison.Ordinal));
+                Assert.True(assistantContainer.IsTabStop);
+                var assistantName = AutomationProperties.GetName(assistantContainer);
+                Assert.Contains("09:00  Focus time", assistantName, StringComparison.Ordinal);
+                Assert.Contains("snake_case", assistantName, StringComparison.Ordinal);
+                Assert.Contains("a<b", assistantName, StringComparison.Ordinal);
+                Assert.DoesNotContain("code block", assistantName, StringComparison.Ordinal);
+                Assert.DoesNotContain("```", assistantName, StringComparison.Ordinal);
+                Assert.Contains("10:57", assistantName, StringComparison.Ordinal);
+            });
+        });
+    }
+
+    [Fact]
     public async Task ReasoningPicker_HostDisposalCancelsQueuedValueChange()
     {
         await ui.ResetContainerAsync();

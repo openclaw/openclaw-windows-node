@@ -32,14 +32,17 @@ internal static class ToolCallCardRenderer
         ChatTimelinePresentationContext props,
         ChatTimelineItem entry,
         bool isNested = false,
-        IReadOnlyList<ChatToolCallNode>? children = null) =>
-        Component<ToolResultCard, ToolResultCardProps>(new(props, entry, isNested, children));
+        IReadOnlyList<ChatToolCallNode>? children = null,
+        int position = 0,
+        int total = 0) =>
+        Component<ToolResultCard, ToolResultCardProps>(new(props, entry, isNested, children, position, total));
 
     internal static Element BuildStandaloneCore(
         ChatTimelinePresentationContext props, ChatTimelineItem entry, bool isNested,
         ChatToolOutputResult? recovered, Element recovery, Action onCollapse,
         bool showChevron = false, Action<bool>? onHeaderHover = null, Action<bool>? onHeaderFocus = null,
-        Action? onExpansionChanged = null, IReadOnlyList<ChatToolCallNode>? children = null)
+        Action? onExpansionChanged = null, IReadOnlyList<ChatToolCallNode>? children = null,
+        int position = 0, int total = 0)
     {
         var details = new List<Element>();
         var fullInput = entry.ToolName == "sessions_yield" ? null : entry.ToolInputDetails;
@@ -119,6 +122,17 @@ internal static class ToolCallCardRenderer
             statusLabel += $" (+{diff.Added} / -{diff.Removed})";
         var preview = ToolPreview(entry);
         var title = string.IsNullOrWhiteSpace(preview) ? toolName : preview;
+        // Repeated calls with one name and one status are indistinguishable without their position
+        // and input, so nested rows in a list of several carry both in the accessible name.
+        var accessibleName =
+            $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {toolName}. {statusLabel}.";
+        if (isNested && total > 1 && position > 0)
+        {
+            accessibleName += " " + string.Format(
+                LocalizedOrDefault("Chat_Tool_CallPositionFormat", "{0} of {1}"), position, total) + ".";
+            if (!string.IsNullOrWhiteSpace(preview))
+                accessibleName += " " + preview;
+        }
         // Web step rows: muted title, a red inline "failed", no trailing "Done".
         var inlineStatus = entry.ToolResult switch
         {
@@ -177,8 +191,7 @@ internal static class ToolCallCardRenderer
             .OnGotFocus((sender, args) => { if (IsOwnHeader(sender, args)) onHeaderFocus?.Invoke(true); })
             .OnLostFocus((sender, args) => { if (IsOwnHeader(sender, args)) onHeaderFocus?.Invoke(false); })
             .AutomationId($"ChatToolCall_{SanitizeAutomationId(entry.Id)}")
-            .AutomationName(
-                $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {toolName}. {statusLabel}.")
+            .AutomationName(accessibleName)
             .HelpText(preview)
             .WithKey($"tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}");
 
@@ -225,7 +238,8 @@ internal static class ToolCallCardRenderer
         Action? onExpansionChanged)
     {
         var rows = children
-            .Select(child => BuildStandalone(props, child.Tool, isNested: true, child.Children)
+            .Select((child, index) => BuildStandalone(
+                    props, child.Tool, isNested: true, child.Children, position: index + 1, total: children.Count)
                 .WithKey($"child:{child.Tool.Id}"))
             .ToList();
         if (ownDetails is not null)
@@ -361,6 +375,7 @@ internal static class ToolCallCardRenderer
                 : LocalizedOrDefault("Chat_Activity_Collapsed", "Collapsed"));
         var collapsedAutomationName = AutomationName(expanded: false);
         var expandedAutomationName = AutomationName(expanded: true);
+        var roots = ChatToolActivityPresentation.GroupNested(activity.Tools).ToList();
         Element details = !isExpanded
             ? Empty()
             : activity.Work is { } work
@@ -379,8 +394,10 @@ internal static class ToolCallCardRenderer
                     ])
                 : VStack(
                     0,
-                    ChatToolActivityPresentation.GroupNested(activity.Tools)
-                        .Select(root => BuildStandalone(props, root.Tool, isNested: true, root.Children)
+                    roots
+                        .Select((root, index) => BuildStandalone(
+                                props, root.Tool, isNested: true, root.Children,
+                                position: index + 1, total: roots.Count)
                             .WithKey($"activity-entry:{root.Tool.Id}"))
                         .ToArray());
 
@@ -639,7 +656,9 @@ internal sealed record ToolResultCardProps(
     ChatTimelinePresentationContext Timeline,
     ChatTimelineItem Entry,
     bool IsNested,
-    IReadOnlyList<ChatToolCallNode>? Children = null);
+    IReadOnlyList<ChatToolCallNode>? Children = null,
+    int Position = 0,
+    int Total = 0);
 
 internal sealed class ToolResultCard : Component<ToolResultCardProps>
 {
@@ -700,7 +719,8 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
         return ToolCallCardRenderer.BuildStandaloneCore(
             timeline, entry, Props.IsNested, result, recovery, operation.Close,
             hovered || focused, value => setHovered(value), value => setFocused(value),
-            () => setExpansionVersion(++expansionVersion.Current), Props.Children);
+            () => setExpansionVersion(++expansionVersion.Current), Props.Children,
+            Props.Position, Props.Total);
     }
 }
 

@@ -1,4 +1,5 @@
 using Microsoft.UI;
+using Microsoft.UI.Input;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hooks;
@@ -13,8 +14,11 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.Chat;
 using OpenClawTray.Helpers;
+using System.Globalization;
 using System.Text.Json.Nodes;
+using Windows.System;
 using Windows.UI;
+using Windows.UI.Core;
 using static Microsoft.UI.Reactor.Factories;
 using WinUIAnnotatedScrollBar = Microsoft.UI.Xaml.Controls.AnnotatedScrollBar;
 
@@ -210,7 +214,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var itemsView = ItemsView(
             rows,
             static row => row.Key,
-            (row, _) => ItemContainer(
+            (row, _) =>
+            {
+                // The container is the row's focus stop so a keyboard or screen-reader user can
+                // step through the transcript one message at a time.
+                var name = ContainerAutomationName(row);
+                return ItemContainer(
                     Border(BuildRow(
                             row,
                             speakingEntryId,
@@ -244,14 +253,28 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Set("ItemContainerSelectedPointerOverBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
                     .Set("ItemContainerSelectedPressedBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
                     .Set("ItemContainerSelectedInnerBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
-                .IsTabStop(false)
+                .IsTabStop(!string.IsNullOrWhiteSpace(name))
+                .OnKeyDown(MoveBetweenMessageRows)
+                .Set(itemContainer =>
+                {
+                    if (name.Length > 0)
+                        AutomationProperties.SetName(itemContainer, name);
+                })
+                // Focus driven by Tab or the arrow-key handler must reveal this row's footer. A
+                // descendant's GotFocus also bubbles here; the row's own content handler owns that case.
+                .OnGotFocus((sender, e) =>
+                {
+                    if (ReferenceEquals(e.OriginalSource, sender))
+                        setFocusedEntryKey(row.Key);
+                })
                 .Set(itemContainer =>
                 {
                     itemContainer.IsSelected = false;
                     itemContainer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                 })
                 .HAlign(HorizontalAlignment.Stretch)
-                .WithKey(row.Key)) with
+                .WithKey(row.Key);
+            }) with
         {
             LayoutKind = ItemsViewLayoutKind.StackLayout,
             SelectionMode = ItemsViewSelectionMode.None,
@@ -698,8 +721,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Margin(16, ChatVisuals.CompactGap, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
             .Margin(32, ChatVisuals.CompactGap, 0, ChatVisuals.CompactGap)
-            .HAlign(HorizontalAlignment.Stretch)
-            .AutomationName(accessibleText);
+            .HAlign(HorizontalAlignment.Stretch);
     }
 
     private static Element BuildAssistant(
@@ -767,8 +789,150 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                     .Grid(column: 2))
             .Margin(0, row.IsAssistantRunStart ? turnInset : 4, 0, row.IsAssistantRunEnd ? turnInset : 4)
-            .HAlign(HorizontalAlignment.Stretch)
-            .AutomationName($"{row.Props.AssistantIdentity?.DisplayName ?? row.Props.Timeline.AssistantSenderLabel}: {BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent)}");
+            .HAlign(HorizontalAlignment.Stretch);
+    }
+
+    private static string AssistantRowAutomationName(
+        ReactorTimelineRow row,
+        ChatTimelineItem entry,
+        ChatEntryMetadata? metadata)
+    {
+        var speaker = row.Props.AssistantIdentity?.DisplayName ?? row.Props.Timeline.AssistantSenderLabel;
+        // Keep the readable text literal: a name must not drop code bodies, underscores or comparisons.
+        var text = SanitizeMarkdownForAutomationName(
+            BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent)).Trim();
+        var name = string.IsNullOrWhiteSpace(text) ? speaker : $"{speaker}: {text}";
+        // Mirror the visible footer: its timestamp only exists on the last row of a run.
+        return row.IsAssistantRunEnd && row.Props.Timeline.ShowToolCalls
+            ? WithMessageTimestamp(name, MessageTimestamp(row, entry))
+            : name;
+    }
+
+    private static DateTimeOffset? MessageTimestamp(ReactorTimelineRow row, ChatTimelineItem entry) =>
+        row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var metadata) == true
+            ? metadata.Timestamp
+            : null;
+
+    // The footer and the accessible name share one clock format.
+    private static string WithMessageTimestamp(string name, DateTimeOffset? timestamp)
+    {
+        var time = MessageTimestampText(timestamp);
+        return time.Length == 0 ? name : $"{name}, {time}";
+    }
+
+    private static string MessageTimestampText(DateTimeOffset? timestamp)
+    {
+        if (timestamp is not { } value)
+            return string.Empty;
+
+        var local = value.ToLocalTime();
+        // Chinese says 上午/下午 before the clock, and the resource language may differ from the OS culture.
+        var language = LocalizationHelper.CurrentLanguage;
+        if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            var culture = language.StartsWith("zh-tw", StringComparison.OrdinalIgnoreCase)
+                ? CultureInfo.GetCultureInfo("zh-TW")
+                : CultureInfo.GetCultureInfo("zh-CN");
+            return local.ToString("tth:mm", culture);
+        }
+
+        return local.ToString("h:mm tt", CultureInfo.CurrentCulture);
+    }
+
+    /// <summary>
+    /// Names the transcript rows that read as one message, so the focused container announces the
+    /// same literal text and time as its content.
+    /// </summary>
+    private static string ContainerAutomationName(ReactorTimelineRow row) =>
+        row.Kind == ReactorTimelineRowKind.Entry && row.Entry is { } entry
+            ? entry.Kind switch
+            {
+                ChatTimelineItemKind.User => UserRowAutomationName(row, entry),
+                ChatTimelineItemKind.Assistant =>
+                    AssistantRowAutomationName(row, entry, EntryMetadata(row, entry)),
+                _ => string.Empty,
+            }
+            : string.Empty;
+
+    private static string UserRowAutomationName(ReactorTimelineRow row, ChatTimelineItem entry)
+    {
+        var (messageText, legacyAttachments) = ParseAttachments(entry.Text);
+        var attachments = EntryMetadata(row, entry)?.Attachments is { Count: > 0 } structured
+            ? structured
+            : legacyAttachments;
+        return WithMessageTimestamp(
+            BuildAccessibleUserText(messageText, attachments), MessageTimestamp(row, entry));
+    }
+
+    private static ChatEntryMetadata? EntryMetadata(ReactorTimelineRow row, ChatTimelineItem entry) =>
+        row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var metadata) == true ? metadata : null;
+
+    private static void MoveBetweenMessageRows(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key is not (VirtualKey.Up or VirtualKey.Down) || IsKeyboardModifierDown())
+            return;
+
+        if (sender is not Control control || !ReferenceEquals(e.OriginalSource, control))
+            return;
+
+        var repeater = FindAncestor<ItemsRepeater>(control);
+        if (repeater?.ItemsSourceView is not { } items)
+            return;
+
+        var current = repeater.GetElementIndex(control);
+        if (current < 0)
+            return;
+
+        var step = e.Key == VirtualKey.Up ? -1 : 1;
+        for (var index = current + step; index >= 0 && index < items.Count; index += step)
+        {
+            if (repeater.GetOrCreateElement(index) is Control next
+                && next.IsTabStop
+                && next.Focus(FocusState.Keyboard))
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+    }
+
+    // Modified arrow keys belong to text selection or other shortcuts, not row navigation.
+    private static bool IsKeyboardModifierDown() =>
+        IsVirtualKeyDown(VirtualKey.Control)
+        || IsVirtualKeyDown(VirtualKey.Menu)
+        || IsVirtualKeyDown(VirtualKey.Shift);
+
+    private static bool IsVirtualKeyDown(VirtualKey key) =>
+        (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
+
+    private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
+    {
+        for (var parent = VisualTreeHelper.GetParent(current);
+             parent is not null;
+             parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is T match)
+                return match;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Removes markdown syntax from an accessible name while keeping every literal the user can
+    /// read, including fenced code bodies, underscores and comparison characters.
+    /// </summary>
+    private static string SanitizeMarkdownForAutomationName(string text)
+    {
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            text, @"```[A-Za-z0-9_+.\-]*[ \t]*\r?\n?", string.Empty);
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"`([^`]+)`", "$1");
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"!\[([^\]]*)\]\([^)]*\)", "$1");
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\[([^\]]+)\]\([^)]*\)", "$1");
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result, @"^[ \t]{0,3}#{1,6}[ \t]+", string.Empty,
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+        return System.Text.RegularExpressions.Regex.Replace(result, @"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", "$2");
     }
 
     private static string BuildAccessibleAssistantText(
@@ -1262,7 +1426,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
             metadata = resolvedMetadata;
 
-        var time = metadata?.Timestamp?.ToLocalTime().ToString("h:mm tt");
+        var time = MessageTimestampText(metadata?.Timestamp);
         var model = metadata?.Model ?? row.Props.Timeline.DefaultModel;
         var usageSummary = row.IsLatestAssistant
             && row.Props.Timeline.ShowToolCalls
@@ -1282,7 +1446,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
             metadata = resolvedMetadata;
 
-        var timestamp = metadata?.Timestamp?.ToLocalTime().ToString("h:mm tt");
+        var timestamp = MessageTimestampText(metadata?.Timestamp);
         var model = metadata?.Model ?? row.Props.Timeline.DefaultModel;
 
         return HoverMetadata(

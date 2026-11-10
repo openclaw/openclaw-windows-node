@@ -12,7 +12,6 @@ public sealed class ChatUserBubbleTextContractTests
         Assert.Contains("messageText,", timeline);
         Assert.Contains(".IsTextSelectionEnabled(true)", timeline);
         Assert.Contains("var accessibleText = BuildAccessibleUserText(messageText, attachments)", timeline);
-        Assert.Contains(".AutomationName(accessibleText)", timeline);
     }
 
     private static string Read(params string[] parts)

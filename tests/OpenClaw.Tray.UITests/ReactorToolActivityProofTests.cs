@@ -736,6 +736,54 @@ public sealed class ReactorToolActivityProofTests
         }
     }
 
+    [Fact]
+    public async Task RepeatedToolRows_AnnounceTheirPositionAndInput()
+    {
+        await _ui.ResetContainerAsync();
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var first = Tool("a11y-first", "powershell", "first output", ChatToolCallStatus.Success,
+                new System.Text.Json.Nodes.JsonObject { ["command"] = "dir" });
+            var second = Tool("a11y-second", "powershell", "second output", ChatToolCallStatus.Success,
+                new System.Text.Json.Nodes.JsonObject { ["command"] = "pwd" });
+            var timeline = BuildTimeline([first, second], 1);
+            var activity = Assert.Single(ChatToolActivityPresentation.Project([first, second], timeline.SessionId, 1));
+            var element = ToolCallCardRenderer.BuildActivityCore(timeline, activity, true, _ => { });
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                await DrainReactorQueueAsync();
+                var cards = FindLogical<Expander>(root!)
+                    .Where(card => AutomationProperties.GetAutomationId(card).StartsWith(
+                        "ChatToolCall_",
+                        StringComparison.Ordinal))
+                    .OrderBy(card => AutomationProperties.GetAutomationId(card), StringComparer.Ordinal)
+                    .ToList();
+                Assert.Equal(2, cards.Count);
+                var firstName = AutomationProperties.GetName(cards[0]);
+                var secondName = AutomationProperties.GetName(cards[1]);
+                Assert.Contains(
+                    LocalizationHelper.Format("Chat_Tool_CallPositionFormat", 1, 2),
+                    firstName,
+                    StringComparison.Ordinal);
+                Assert.Contains("dir", firstName, StringComparison.Ordinal);
+                Assert.Contains(
+                    LocalizationHelper.Format("Chat_Tool_CallPositionFormat", 2, 2),
+                    secondName,
+                    StringComparison.Ordinal);
+                Assert.Contains("pwd", secondName, StringComparison.Ordinal);
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
     private static ChatTimelinePresentationContext BuildTimeline(
         IReadOnlyList<ChatTimelineItem> entries,
         long generation) =>
@@ -751,14 +799,16 @@ public sealed class ReactorToolActivityProofTests
         string id,
         string name,
         string output,
-        ChatToolCallStatus result) =>
+        ChatToolCallStatus result,
+        System.Text.Json.Nodes.JsonObject? args = null) =>
         new(
             id,
             ChatTimelineItemKind.ToolCall,
             name,
             ToolName: name,
             ToolResult: result,
-            ToolOutput: output);
+            ToolOutput: output,
+            ToolArgs: args);
 
     private static string CollectText(RichTextBlock richTextBlock)
     {
