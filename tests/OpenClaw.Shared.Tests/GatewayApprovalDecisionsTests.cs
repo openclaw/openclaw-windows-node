@@ -89,6 +89,41 @@ public class GatewayApprovalDecisionsTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Effective_GatewayLimitedPluginDetailOffersOnlyDeny(bool suppressed)
+    {
+        const string suffix = "\u2026[truncated]";
+        var detail = suppressed
+            ? "[exec approval warning exceeds display size limit; full text suppressed]"
+            : new string('x', 16 * 1024 - suffix.Length) + suffix;
+        var payload = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            id = "gateway-limited",
+            request = new { title = "Review operation", description = "Review all changes", detail },
+            createdAtMs = 1,
+            expiresAtMs = 2,
+        });
+        Assert.True(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Plugin, payload, out var approval));
+
+        Assert.False(GatewayApprovalDecisions.CanReviewInFull(approval));
+        Assert.Equal(["deny"], GatewayApprovalDecisions.Effective(approval));
+    }
+
+    [Fact]
+    public void Effective_CompletePluginDetailAtTheDisplayLimitStillPermits()
+    {
+        var approval = new GatewayPendingApproval("p", GatewayApprovalKind.Plugin, "", 1, 2)
+        {
+            Title = "Review operation",
+            Detail = new string('x', 16 * 1024),
+        };
+
+        Assert.True(GatewayApprovalDecisions.CanReviewInFull(approval));
+        Assert.Equal(["allow-once", "allow-always", "deny"], GatewayApprovalDecisions.Effective(approval));
+    }
+
+    [Theory]
     [InlineData("""["allow-session"]""")]
     [InlineData("\"deny\"")]
     [InlineData("{}")]

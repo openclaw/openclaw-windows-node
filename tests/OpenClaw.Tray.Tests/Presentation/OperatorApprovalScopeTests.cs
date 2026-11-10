@@ -8,6 +8,32 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed partial class OperatorApprovalDecisionsTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GatewayLimitedPluginDetail_RefusesPermitsBeforeRpcButAllowsDeny(bool suppressed)
+    {
+        const string suffix = "\u2026[truncated]";
+        var detail = suppressed
+            ? "[exec approval warning exceeds display size limit; full text suppressed]"
+            : new string('x', 16 * 1024 - suffix.Length) + suffix;
+        var (source, gateway, decisions) = Create();
+        gateway.Raise("PendingApprovalRequested", Approval("p1", GatewayApprovalKind.Plugin) with
+        {
+            Title = "Review operation",
+            Detail = detail,
+        });
+
+        Assert.Equal(ApprovalDecisionOutcome.NotAllowed,
+            await decisions.DecideAsync("p1", "allow-once", Observation(source, "p1")));
+        Assert.Equal(ApprovalDecisionOutcome.NotAllowed,
+            await decisions.DecideAsync("p1", "allow-always", Observation(source, "p1")));
+        Assert.Empty(gateway.Resolves);
+        Assert.Equal(ApprovalDecisionOutcome.Sent,
+            await decisions.DecideAsync("p1", "deny", Observation(source, "p1")));
+        Assert.Equal([(GatewayApprovalKind.Plugin, "p1", "deny", 7L)], gateway.Resolves);
+    }
+
+    [Theory]
     [InlineData("secret")]
     [InlineData("oversized")]
     [InlineData("truncated")]

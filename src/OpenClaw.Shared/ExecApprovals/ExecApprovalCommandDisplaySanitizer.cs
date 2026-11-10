@@ -263,10 +263,12 @@ public static class ExecApprovalCommandDisplaySanitizer
     {
         if (text.Length <= MaxOutput)
         {
+            // Gateway plugin details may arrive already bounded. Rendering them again
+            // must not turn a truncation or suppression marker into complete consent.
             return new SanitizedDisplayText(
                 text,
-                Truncated: false,
-                Oversized: false,
+                Truncated: text.EndsWith(TruncationMarker, StringComparison.Ordinal),
+                Oversized: text is OversizedMarker or WarningOversizedMarker,
                 Redacted: redacted,
                 UnsafeConcealment: unsafeConcealment);
         }

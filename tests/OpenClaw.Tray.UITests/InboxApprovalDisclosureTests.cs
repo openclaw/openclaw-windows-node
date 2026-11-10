@@ -84,4 +84,36 @@ public sealed class InboxApprovalDisclosureTests(UIThreadFixture ui)
             Assert.Equal(Visibility.Visible, row.AllowOnceVisibility);
             Assert.True(row.DecisionsEnabled);
         });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task GatewayLimitedPluginDetailRow_OffersOnlyDeny(bool suppressed) =>
+        ui.RunOnUIAsync(() =>
+        {
+            const string suffix = "\u2026[truncated]";
+            var detail = suppressed
+                ? "[exec approval warning exceeds display size limit; full text suppressed]"
+                : new string('x', 16 * 1024 - suffix.Length) + suffix;
+            var now = DateTimeOffset.UtcNow;
+            var payload = JsonSerializer.SerializeToElement(new
+            {
+                id = "gateway-limited",
+                request = new { title = "Review operation", detail },
+                createdAtMs = now.ToUnixTimeMilliseconds(),
+                expiresAtMs = now.AddMinutes(5).ToUnixTimeMilliseconds(),
+            });
+            Assert.True(GatewayPendingApprovalParser.TryParse(GatewayApprovalKind.Plugin, payload, out var approval));
+            var item = InboxGatewayItems.FromApproval(approval, now.AddMinutes(5));
+            var entry = Assert.Single(InboxProjection.Build([], [item]).Entries);
+
+            var row = InboxItemViewModel.From(entry, now);
+
+            Assert.Contains(detail, row.Details);
+            Assert.Equal(Visibility.Collapsed, row.AllowOnceVisibility);
+            Assert.Equal(Visibility.Collapsed, row.AllowAlwaysVisibility);
+            Assert.Equal(Visibility.Visible, row.DenyVisibility);
+            Assert.Equal(Visibility.Visible, row.DecisionNoteVisibility);
+            Assert.True(row.DecisionsEnabled);
+        });
 }
