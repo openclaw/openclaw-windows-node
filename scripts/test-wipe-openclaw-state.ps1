@@ -20,11 +20,56 @@ $script = Join-Path $RepoRoot 'scripts\wipe_openclaw_state.py'
 if (-not (Test-Path -LiteralPath $script)) { throw "wipe script missing: $script" }
 
 $driver = @'
-import importlib.util, json, os, subprocess, sys, uuid
+import contextlib, importlib.util, io, json, os, subprocess, sys, uuid
 from pathlib import Path
+from unittest.mock import patch
 
 script = Path(sys.argv[1])
 root = Path(sys.argv[2])
+
+failures = []
+checks = 0
+STARTUP_TIMEOUT_SECONDS = float(os.environ.get("OPENCLAW_WIPE_STARTUP_TEST_TIMEOUT_SECONDS", "30"))
+
+def check(label, actual, expected):
+    global checks
+    checks += 1
+    if actual != expected:
+        failures.append(f"{label}: got {actual!r}, want {expected!r}")
+
+# Simulate unsupported Python in a fresh process. Block native imports independently
+# so a missing/late prerequisite guard cannot inventory or mutate the real machine,
+# even for --yes. This checks guard ordering, not execution by a real Python 3.11.
+unsupported_driver = """
+import builtins, runpy, sys
+script, mode, *args = sys.argv[1:]
+original_import = builtins.__import__
+def guarded_import(name, *args, **kwargs):
+    if name in ("ctypes", "winreg"):
+        raise AssertionError("unsupported Python reached native imports")
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = guarded_import
+sys.version_info = (3, 11, 9, "final", 0)
+sys.argv = [script, *args]
+runpy.run_path(script, run_name=mode)
+"""
+for label, mode, args in (
+    ("dry run", "__main__", []),
+    ("wipe", "__main__", ["--yes"]),
+    ("help", "__main__", ["--help"]),
+    ("import", "wipe", []),
+):
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", unsupported_driver, str(script), mode, *args],
+            capture_output=True, text=True, check=False, timeout=STARTUP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        failures.append(f"unsupported Python {label} timed out after {STARTUP_TIMEOUT_SECONDS}s")
+        continue
+    check(f"unsupported Python {label} exits 1", result.returncode, 1)
+    check(f"unsupported Python {label} explains prerequisite", result.stderr.strip(),
+          "ERROR: wipe_openclaw_state.py requires Python 3.12 or newer for safe Windows junction handling.")
+    check(f"unsupported Python {label} does not inventory", result.stdout, "")
 
 # Isolate every profile path the module computes at import time (and tempfile's TEMP).
 env = root / "env"
@@ -43,15 +88,6 @@ os.environ["HF_HUB_CACHE"] = str(env / "LocalAppData" / "OpenClawTray" / "hf" / 
 spec = importlib.util.spec_from_file_location("wipe", str(script))
 wipe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(wipe)
-
-failures = []
-checks = 0
-
-def check(label, actual, expected):
-    global checks
-    checks += 1
-    if actual != expected:
-        failures.append(f"{label}: got {actual!r}, want {expected!r}")
 
 class P:
     pass
@@ -78,6 +114,28 @@ check("patch extract valid", wipe.gateway_dev_patch("OpenClawFoundation.OpenClaw
 check("patch extract mixed case", wipe.gateway_dev_patch("OpenClawFoundation.OpenClawGateway-Beta1"), "beta1")
 check("patch extract invalid", wipe.gateway_dev_patch("OpenClawFoundation.OpenClawGateway-Bad!Name"), None)
 check("patch extract non-store", wipe.gateway_dev_patch("OpenClaw.Gateway"), None)
+for token, expected in (
+    ("a", "a"), ("ab", "ab"), ("a" * 15, "a" * 15),
+    ("a-", None), ("bad!name", None), ("a" * 16, None), ("", None),
+    ("beta1\n", None),
+):
+    check(f"patch token {token!r}",
+          wipe.gateway_dev_patch("OpenClawFoundation.OpenClawGateway-" + token), expected)
+
+# Fail closed if help reaches inventory, which includes machine-wide state even
+# with redirected profile roots. Exercise the real parser, not a fake help result.
+help_stdout, help_stderr = io.StringIO(), io.StringIO()
+with patch.object(sys, "argv", [str(script), "--help"]), \
+     patch.object(wipe, "take_inventory", side_effect=AssertionError("help must not inventory state")), \
+     contextlib.redirect_stdout(help_stdout), contextlib.redirect_stderr(help_stderr):
+    try:
+        wipe.main()
+    except SystemExit as exc:
+        check("supported Python help exits 0", exc.code, 0)
+    else:
+        failures.append("supported Python help did not exit through argparse")
+check("supported Python help lists wipe option", "--yes" in help_stdout.getvalue(), True)
+check("supported Python help has no errors", help_stderr.getvalue(), "")
 
 alias_dir = Path(wipe.localappdata) / "Microsoft" / "WindowsApps"
 patched_pkg = P()
