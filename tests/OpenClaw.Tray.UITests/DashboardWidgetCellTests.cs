@@ -352,18 +352,46 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 AutomationProperties.GetAutomationId(element) == "DashboardMoreTabs"),
             width: 1400, afterMounted: async host =>
             {
-                await ui.RunOnUIAsync(() =>
+                await ui.RunOnUIAsync(async () =>
                 {
                     var button = ById<DropDownButton>(host, "DashboardMoreTabs");
                     var menu = Assert.IsType<MenuFlyout>(button.Flyout);
-                    menu.ShowAt(button);
-                    Invoke(menu.Items.OfType<MenuFlyoutItem>().Single(item =>
-                        AutomationProperties.GetAutomationId(item) == "DashboardOverflowTab_section-7"));
-                    menu.Hide();
+                    var item = menu.Items.OfType<MenuFlyoutItem>().Single(candidate =>
+                        AutomationProperties.GetAutomationId(candidate) == "DashboardOverflowTab_section-7");
+                    var opened = false;
+                    var closed = false;
+                    void Opened(object? sender, object args) => opened = true;
+                    void Closed(object? sender, object args) => closed = true;
+                    menu.Opened += Opened;
+                    menu.Closed += Closed;
+                    try
+                    {
+                        menu.ShowAt(button);
+                        // ShowAt schedules native popup realization; a user cannot select its item before Opened.
+                        await WaitForRenderedConditionAsync(() => opened && menu.IsOpen && item.IsLoaded && item.ActualWidth > 0,
+                            "realized overflow tab menu", () => $"opened={opened}, isOpen={menu.IsOpen}, itemLoaded={item.IsLoaded}, width={item.ActualWidth}");
+                        Invoke(item);
+                        menu.Hide();
+                        await WaitForRenderedConditionAsync(() => closed && !menu.IsOpen,
+                            "closed overflow tab menu", () => $"closed={closed}, isOpen={menu.IsOpen}");
+                        await WaitForRenderedConditionAsync(() =>
+                            Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(host.XamlRoot) is DependencyObject focused &&
+                            AutomationProperties.GetAutomationId(focused) == "DashboardTab_section-7",
+                            "selected overflow tab focus", () =>
+                            {
+                                var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(host.XamlRoot) as DependencyObject;
+                                var selected = ById<SelectorBar>(host, "DashboardTabs").SelectedItem;
+                                return $"focus={(focused is null ? "none" : AutomationProperties.GetAutomationId(focused))}, " +
+                                    $"selected={selected?.Text}, loaded={selected?.IsLoaded}, size={selected?.ActualWidth}x{selected?.ActualHeight}, menuOpen={menu.IsOpen}";
+                            });
+                    }
+                    finally
+                    {
+                        menu.Opened -= Opened;
+                        menu.Closed -= Closed;
+                        if (menu.IsOpen) menu.Hide();
+                    }
                 });
-                await WaitForMountedStateAsync(host, root =>
-                    Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root.XamlRoot) is DependencyObject focused &&
-                    AutomationProperties.GetAutomationId(focused) == "DashboardTab_section-7");
                 await ui.RunOnUIAsync(() =>
                 {
                     var tab = ById<SelectorBar>(host, "DashboardTabs").SelectedItem;
@@ -392,8 +420,26 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                 .Set(control => control.IsExpanded = true)
                 .HAlign(HorizontalAlignment.Stretch)
                 .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                .AutomationId("NativeReportPeerRoot"), host =>
+                .AutomationId("NativeReportPeerRoot"), _ => { }, theme: theme, width: width,
+            afterMounted: host => ui.RunOnUIAsync(async () =>
         {
+            var geometry = "The expanded widget has not been observed.";
+            await WaitForRenderedConditionAsync(() =>
+            {
+                var ancestor = FindDescendants<Expander>(host).SingleOrDefault(element =>
+                    AutomationProperties.GetAutomationId(element) == "NativeReportPeerRoot");
+                var observedCard = FindDescendants<FrameworkElement>(host).SingleOrDefault(element =>
+                    AutomationProperties.GetAutomationId(element) == "BoardWidget_weekly-report");
+                var ancestorPeer = ancestor is null ? null : FrameworkElementAutomationPeer.CreatePeerForElement(ancestor);
+                var groupPeer = ancestorPeer is null ? null : WalkPeers(ancestorPeer).SingleOrDefault(peer =>
+                    peer.GetAutomationId() == "BoardWidget_weekly-report");
+                var rectangle = groupPeer?.GetBoundingRectangle() ?? default;
+                geometry = $"expanded={ancestor?.IsExpanded}, ancestorLoaded={ancestor?.IsLoaded}, cardLoaded={observedCard?.IsLoaded}, " +
+                    $"cardSize={observedCard?.ActualWidth}x{observedCard?.ActualHeight}, groupPresent={groupPeer is not null}, peerBounds={rectangle}";
+                return ancestor is { IsExpanded: true, IsLoaded: true } &&
+                    observedCard is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
+                    rectangle.Width > 0 && rectangle.Height > 0;
+            }, "expanded native widget group geometry", () => geometry);
             // Start at a real ancestor peer: the plain Reactor host has no native peer of its own.
             var root = FrameworkElementAutomationPeer.CreatePeerForElement(ById<Expander>(host, "NativeReportPeerRoot"));
             Assert.NotNull(root);
@@ -417,7 +463,7 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
             var link = Assert.Single(children, peer => peer.GetName() == "Runbook"
                 && peer.GetAutomationControlType() == AutomationControlType.Hyperlink);
             Assert.IsAssignableFrom<IInvokeProvider>(link.GetPattern(PatternInterface.Invoke));
-        }, theme: theme, width: width);
+        }));
 
     [Fact]
     public Task ReportTable_UntypedPayloadCellsStayLeftAlignedWithoutGuessingDatesOrCurrency() =>

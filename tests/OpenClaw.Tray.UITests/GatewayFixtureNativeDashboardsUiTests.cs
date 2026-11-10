@@ -1170,9 +1170,58 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task<AutomationElement> RevealDashboardWidgetAsync(
         GatewayFixtureRun run, AutomationElement hub, string widgetId, string imageName)
     {
-        await WaitUiAsync(run, () => FindById(run, widgetId) is { Current.BoundingRectangle.Width: > 0, Current.BoundingRectangle.Height: > 0 },
-            $"measured widget {widgetId}");
-        var widget = FindById(run, widgetId)!;
+        AutomationElement? measuredWidget = null;
+        object? firstObservation = null;
+        object? lastObservation = null;
+        var startedAt = DateTimeOffset.UtcNow;
+        var probes = 0;
+        var missing = 0;
+        var unmeasured = 0;
+        var ready = false;
+        string? lastProbeError = null;
+        static double? Finite(double value) => double.IsFinite(value) ? value : null;
+        try
+        {
+            await WaitUiAsync(run, () =>
+            {
+                probes++;
+                var hasBounds = false;
+                measuredWidget = FindById(run, widgetId);
+                if (measuredWidget is null)
+                {
+                    missing++;
+                    lastObservation = new { found = false };
+                }
+                else
+                {
+                    var current = measuredWidget.Current;
+                    var bounds = current.BoundingRectangle;
+                    hasBounds = bounds.Width > 0 && bounds.Height > 0;
+                    if (!hasBounds) unmeasured++;
+                    lastObservation = new
+                    {
+                        found = true, current.ProcessId, current.AutomationId, current.ClassName, current.IsOffscreen,
+                        controlType = current.ControlType.ProgrammaticName, runtimeId = measuredWidget.GetRuntimeId(),
+                        bounds = new { left = Finite(bounds.Left), top = Finite(bounds.Top), width = Finite(bounds.Width), height = Finite(bounds.Height) }
+                    };
+                }
+                firstObservation ??= lastObservation;
+                return hasBounds;
+            }, $"measured widget {widgetId}", onProbeError: error => lastProbeError = error.GetType().Name);
+            ready = true;
+        }
+        finally
+        {
+            // Retain the failed admission too: absent peers and zero-size peers need different repairs.
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory,
+                Path.GetFileNameWithoutExtension(imageName) + ".widget-readiness.json"), JsonSerializer.Serialize(new
+                {
+                    widgetId, run.AppProcessId, startedAt, completedAt = DateTimeOffset.UtcNow,
+                    probes, missing, unmeasured, ready, firstObservation, lastObservation, lastProbeError
+                }));
+        }
+        // Keep the successful observation rather than racing a second lookup after measurement.
+        var widget = measuredWidget!;
         var viewport = FindById(run, "DashboardPageScroll")
             ?? throw new InvalidOperationException("The board page viewport is unavailable.");
         Assert.Equal(run.AppProcessId, hub.Current.ProcessId);
