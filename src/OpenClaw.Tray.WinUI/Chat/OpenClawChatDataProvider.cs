@@ -1649,130 +1649,45 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
         var assistantText = ChatContentFormatting.RepairContentBlockSeams(
             ChatContentFormatting.TruncateForChatEntry(message.Text));
-        var preparation = _state.PrepareAssistant(
+        var transition = _state.ApplyAssistant(
             message,
             assistantText,
             ProjectionContext(),
+            gate.RuntimeGeneration,
             assistantContent);
-        if (preparation.PromotionSnapshot is not null)
-            Publish(preparation.PromotionSnapshot);
-        if (preparation.IsBackgroundFinal)
-        {
+        if (transition.SuppressNotification)
             message.SuppressNotification();
-            if (preparation.BackgroundFinalSnapshot is not null)
-                Publish(preparation.BackgroundFinalSnapshot);
+        if (!transition.Rendered)
+        {
+            if (transition.Snapshot is not null)
+                Publish(transition.Snapshot);
             return;
         }
-        // Duplicate-frame dedupe is not run admission: keep pre-veto notification behavior.
-        if (preparation.Disposition != AssistantQueueFrameDisposition.Render)
-            return;
-        if (!message.IsFinal && _state.IsLateNonFinalAssistantFrame(threadId))
-        {
-            message.SuppressNotification();
-            Logger.Warn($"[ChatProvider] Dropping late non-final assistant frame after completed turn for threadId='{threadId}' len={traceText.Length}");
-            return;
-        }
-        if (message.IsFinal)
+        if (transition.TurnComplete)
             _throughput.CompleteAssistant(threadId, message.OutputTokens);
-        else
+        else if (transition.Snapshot!.Timelines[threadId].TurnActive && !message.IsTranscriptSnapshot)
             _throughput.ObserveText(threadId, 0); // cumulative snapshot text: opens the window only
 
-        var activeReasoning = message.IsFinal &&
-            !message.ContentParts.Any(part => part.Kind == ChatMessageContentPartKind.Reasoning)
-                ? _state.GetActiveReasoningForFinal(threadId, message.RunId) : null;
         _telemetry.ObserveInboundOutput(
             threadId,
-            preparation.ActiveRunId,
+            transition.ActiveRunId,
             ChatResponseOutputKind.Assistant);
-        if (message.ContentParts.Any(part => part.Phase is not null || part.TextSignatureId is not null ||
-                part.Kind is ChatMessageContentPartKind.Tool or ChatMessageContentPartKind.Reasoning))
-        {
-            foreach (var part in ChatHistoryReplayProjection.Project([message]).OrderBy(part => part.IsReasoning))
-            {
-                var partMetadata = preparation.Metadata with
-                {
-                    Presentation = part.Presentation,
-                    AssistantContent = ChatAssistantContentProjector.Project(part.AssistantContentParts),
-                };
-                if (part.IsReasoning)
-                {
-                    if (message.IsFinal)
-                    {
-                        ApplyEventAndPublish(threadId,
-                            new ChatReasoningEvent(ChatContentFormatting.TruncateForChatEntry(part.Text), part.Presentation,
-                                AttachToAssistant: true),
-                            partMetadata);
-                        ApplyEventAndPublish(threadId, new ChatReasoningEndEvent());
-                    }
-                    continue;
-                }
-                if (!ChatMessageInfo.IsSilentAssistantDirective(role, part.Text) &&
-                    (part.Text.Length > 0 || partMetadata.AssistantContent is not null))
-                    ApplyEventAndPublish(threadId,
-                        new ChatMessageEvent(
-                            ChatContentFormatting.RepairContentBlockSeams(
-                                ChatContentFormatting.TruncateForChatEntry(part.Text)),
-                            ReconcilePrevious: true, IsStreaming: !message.IsFinal,
-                            Presentation: part.Presentation, IsContentPart: true,
-                            ReplacesStreamText: message.ReplacesStreamText && part.IsFirstPart),
-                        partMetadata);
-                foreach (var tool in part.ToolContent)
-                {
-                    foreach (var toolEvent in ChatEventMapper.MapContentTool(tool, message.Presentation.RunId ?? message.RunId,
-                        _state.GetSessionId(threadId)))
-                        ApplyEventAndPublish(threadId, toolEvent, partMetadata);
-                }
-            }
-        }
-        else
-        {
-            ApplyEventAndPublish(
-                threadId,
-                new ChatMessageEvent(
-                    assistantText,
-                    ReconcilePrevious: true,
-                    IsStreaming: !message.IsFinal,
-                    Presentation: message.Presentation,
-                    ReplacesStreamText: message.ReplacesStreamText),
-                preparation.Metadata);
-        }
-        if (activeReasoning is not null)
-        {
-            ApplyEventAndPublish(threadId,
-                new ChatReasoningEvent(activeReasoning, message.Presentation with { Phase = null }, AttachToAssistant: true),
-                preparation.Metadata);
-            ApplyEventAndPublish(threadId, new ChatReasoningEndEvent());
-        }
-
-        if (_state.SnapshotAssistantUsageFrame(
-                threadId,
-                preparation.Metadata,
-                ProjectionContext()) is { } usageSnapshot)
-        {
-            Publish(usageSnapshot);
-        }
-
-        if (!message.IsFinal)
-            return;
-        var completedRunId = _state.CompleteAssistantFinal(threadId);
-        var completion = completedRunId is null
+        var completion = transition.CompletedRunId is null
             ? null
             : _telemetry.PrepareFinishByRunId(
-                completedRunId,
+                transition.CompletedRunId,
                 ChatTelemetryOutcome.Success,
                 ChatTurnTelemetryReason.AssistantFinal);
         _telemetry.CompletePreparedTurn(completion);
-        if (_state.SnapshotLatestAssistantUsage(threadId, ProjectionContext()) is { } latestUsage)
-            Publish(latestUsage);
-        ApplyEventAndPublish(
-            threadId,
-            new ChatTurnEndEvent(),
-            notification: new ChatProviderNotification(
+        Publish(
+            transition.Snapshot!,
+            notification: transition.TurnComplete ? new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete,
                 threadId,
                 LocalizationHelper.GetString(
-                    "Chat_Notification_AssistantReplied")));
-        ScheduleQueuedSendDrain(threadId);
+                    "Chat_Notification_AssistantReplied")) : null);
+        if (transition.TurnComplete)
+            ScheduleQueuedSendDrain(threadId);
     }
 
     private void OnAgentEventReceived(object? sender, AgentEventInfo evt)

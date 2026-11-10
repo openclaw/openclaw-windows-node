@@ -270,6 +270,40 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void CompletedAssistant_ReconciliationPreservesInactiveTurnAndTiming()
+    {
+        var started = DateTimeOffset.UtcNow;
+        var ended = started.AddSeconds(1);
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageDeltaEvent("partial"), started);
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), ended);
+
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("complete", ReconcilePrevious: true, ActivatesTurn: false),
+            ended.AddSeconds(1));
+
+        Assert.False(updated.TurnActive);
+        Assert.Equal(started, updated.TurnStartedAt);
+        Assert.Equal(ended, updated.TurnEndedAt);
+        Assert.Equal("complete", Assert.Single(updated.Entries).Text);
+        Assert.False(updated.Entries[0].IsStreaming);
+    }
+
+    [Fact]
+    public void InterruptedLiveLegacyToolCannotRecoverWithoutRunIdentity()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatToolStartEvent("read", "read", ToolCallId: "read-1"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("late output", ToolCallId: "read-1"));
+
+        Assert.False(updated.TurnActive);
+        Assert.Equal(ChatToolCallStatus.Interrupted, Assert.Single(updated.Entries).ToolResult);
+        Assert.Equal("late output", updated.Entries[0].ToolOutput);
+    }
+
+    [Fact]
     public void StaleStreamingPreview_DoesNotMergeAcrossUserBoundary()
     {
         // Regression for the cross-turn stale-preview class identified by

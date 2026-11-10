@@ -113,6 +113,17 @@
       "requestFields": ["keys", "limit", "maxChars"]
     },
     {
+      "method": "sessions.usage",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [
+        "startDate", "endDate", "agentId", "agentScope", "mode", "timeZone", "utcOffset", "groupBy",
+        "key", "limit", "projection", "query", "offset", "sort", "sortDirection"
+      ],
+      "requestFieldsSource": "public Dictionary<string, object?> ToParameters(",
+      "_note": "Unadvertised upstream (core-descriptors advertise:false). SessionsUsageQuery sends the subset of the web client's requestSessionUsage the native page uses; creator, day/hour/session selection, recent keys and context weight are left to the web page. The deprecated range/includeHistorical inputs are intentionally not sent."
+    },
+    {
       "method": "sessions.patch",
       "kind": "request",
       "windowsUsage": "used",

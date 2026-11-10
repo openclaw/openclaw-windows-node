@@ -187,6 +187,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
+        _sessionsUsageUnsupported = false;
+        _sessionsUsageOverviewUnsupported = false;
         if (agentsListWasUnsupported)
             AgentsListUnsupportedChanged?.Invoke(this, false);
     }
@@ -4482,6 +4484,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         
         if (!root.TryGetProperty("payload", out var payload)) return;
         EmitRawChatEvent(payload);
+        var isTranscriptSnapshot = root.TryGetProperty("event", out var eventType) &&
+            eventType.ValueKind == JsonValueKind.String &&
+            eventType.GetString() == "session.message";
 
         // Extract sessionKey for the timeline-driving event. As with agent
         // events, do NOT substitute a fallback like "main" — empty must
@@ -4556,7 +4561,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 replacesStreamText: payload.TryGetProperty("replace", out var replace) &&
                     replace.ValueKind == JsonValueKind.True,
                 outputTruncated: ReadChatTruncation(message).Truncated ?? false,
-                truncationReason: ReadChatTruncation(message).Reason);
+                truncationReason: ReadChatTruncation(message).Reason,
+                isTranscriptSnapshot: isTranscriptSnapshot);
 
             if (notify && role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
@@ -4599,7 +4605,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     openClawMetadata.TokensAfter,
                     projection.ContentParts,
                     runId,
-                    ReadChatPresentation(payload));
+                    ReadChatPresentation(payload),
+                    isTranscriptSnapshot: isTranscriptSnapshot);
 
                 if (notify && role == "assistant" &&
                     (string.IsNullOrWhiteSpace(state) ||
@@ -4684,7 +4691,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         ChatMessagePresentation? presentation = null,
         bool replacesStreamText = false,
         bool outputTruncated = false,
-        string? truncationReason = null)
+        string? truncationReason = null,
+        bool isTranscriptSnapshot = false)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return false;
@@ -4699,6 +4707,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ReplacesStreamText = replacesStreamText,
                 Presentation = presentation ?? new(),
                 StopReason = presentation?.StopReason,
+                IsTranscriptSnapshot = isTranscriptSnapshot,
                 Role = role,
                 Text = text,
                 ContentParts = contentParts ?? Array.Empty<ChatMessageContentPartInfo>(),

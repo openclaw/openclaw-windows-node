@@ -3120,6 +3120,7 @@ public class OpenClawGatewayClientTests
 
         Assert.NotNull(received);
         Assert.Equal("wire-run", received.RunId);
+        Assert.Equal(eventName == "session.message", received.IsTranscriptSnapshot);
         Assert.Equal("message-id", received.OpenClawId);
         Assert.True(received.IsFinal);
     }
@@ -3145,6 +3146,34 @@ public class OpenClawGatewayClientTests
         Assert.NotNull(received);
         Assert.Null(received.RunId);
         Assert.Equal("message-id", received.OpenClawId);
+    }
+
+    [Theory]
+    [InlineData("chat", false)]
+    [InlineData("chat", true)]
+    [InlineData("session.message", false)]
+    [InlineData("session.message", true)]
+    public void ProcessRawMessage_TranscriptOriginDoesNotDependOnStateOrRunId(string eventName, bool legacy)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        ChatMessageInfo? received = null;
+        client.ChatMessageReceived += (_, message) => received = message;
+        var content = legacy
+            ? """
+              "role":"assistant","text":"answer"
+              """
+            : """
+              "message":{"role":"assistant","content":"answer"}
+              """;
+        helper.ProcessRawMessage($$$"""
+        {"type":"event","event":"{{{eventName}}}","payload":{"sessionKey":"main",{{{content}}}}}
+        """);
+
+        Assert.NotNull(received);
+        Assert.Null(received.RunId);
+        Assert.False(received.IsFinal);
+        Assert.Equal(eventName == "session.message", received.IsTranscriptSnapshot);
     }
 
     [Theory]

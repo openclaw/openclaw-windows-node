@@ -194,9 +194,10 @@ internal sealed class ChatLifecycleState
     internal void ClearThreadSuppression(string threadId) =>
         _abortedThreads.Remove(threadId);
 
-    internal string? CompleteAssistantFinal(string threadId)
+    internal string? CompleteAssistantFinal(string threadId, string? runId = null)
     {
         _activeRunIds.Remove(threadId, out var completedRunId);
+        completedRunId ??= runId;
         if (!string.IsNullOrEmpty(completedRunId))
         {
             RememberTerminalRun(threadId, completedRunId);

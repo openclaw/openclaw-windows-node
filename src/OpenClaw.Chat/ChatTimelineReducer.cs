@@ -10,8 +10,17 @@ public static class ChatTimelineReducer
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
 
-    public static bool CanApplyRetainedToolOutcome(ChatTimelineState state, ChatEvent? evt)
+    public static bool CanApplyRetainedToolEvent(ChatTimelineState state, ChatEvent? evt)
     {
+        if (!state.TurnActive && evt is ChatToolStartEvent { RunId.Length: > 0, ToolCallId.Length: > 0 } start)
+        {
+            var parentKey = ResolvePendingParentKey(state, start.RunId, start.ToolCallId);
+            return state.TerminalToolCorrelations?.ContainsKey(parentKey) == true &&
+                (state.PendingToolPresentations?.ContainsKey(parentKey) == true ||
+                 state.PendingToolOutcomes?.ContainsKey(parentKey) == true ||
+                 start.Feedback is { PreparingInput: false, Review: not null } &&
+                 FindToolEntryIndex(state, parentKey, allowTerminalLegacy: false) >= 0);
+        }
         var (runId, toolCallId) = evt switch
         {
             ChatToolOutputEvent output => (output.RunId, output.ToolCallId),
@@ -20,9 +29,12 @@ public static class ChatTimelineReducer
         };
         if (string.IsNullOrWhiteSpace(runId) || string.IsNullOrWhiteSpace(toolCallId))
             return false;
-        var key = CurrentCorrelationKey(state, runId, toolCallId);
+        var key = ResolveBufferedCorrelationKey(state, runId, toolCallId);
         return state.TerminalToolCorrelations?.ContainsKey(key) == true &&
-            FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0;
+            (FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0 ||
+             !state.TurnActive &&
+             (state.PendingToolPresentations?.ContainsKey(key) == true ||
+              state.PendingToolOutcomes?.ContainsKey(key) == true));
     }
 
     public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
@@ -72,13 +84,13 @@ public static class ChatTimelineReducer
             },
             ChatProgressEvent e => state with { ProgressText = e.Text, ProgressRetryAtMs = e.RetryAtMs },
             ChatRunUsageEvent e => ApplyRunUsage(state, e),
-            ChatReasoningEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: true, e.Presentation, e.IsStreaming, e.AttachToAssistant),
+            ChatReasoningEvent e => UpsertReasoning(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, e.Presentation, e.IsStreaming, e.AttachToAssistant),
             ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false, e.Presentation, streaming: true),
             ChatReasoningStreamEvent e => ApplyReasoningStream(state, e),
             ChatReasoningReceiptEvent e => ApplyReasoningReceipt(state, e),
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true, presentation: e.Presentation),
-            ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
+            ChatMessageEvent e => UpsertAssistant(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
             ChatBackgroundFinalEvent e => ApplyBackgroundFinal(state, e.Text),
             ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
@@ -374,12 +386,12 @@ public static class ChatTimelineReducer
         }
 
         ChatToolCorrelationKey? correlationKey = null;
-        var isTerminalReplay = false;
+        var isTerminalReplay = !e.ActivatesTurn && !state.TurnActive;
         if (e.ToolCallId is { } toolCallId)
         {
             var key = ResolvePendingParentKey(state, e.RunId, toolCallId);
             correlationKey = key;
-            isTerminalReplay = state.TerminalToolCorrelations?.ContainsKey(key) == true;
+            isTerminalReplay |= state.TerminalToolCorrelations?.ContainsKey(key) == true;
             var existingIndex = FindToolEntryIndex(
                 state,
                 key,
@@ -753,7 +765,16 @@ public static class ChatTimelineReducer
         {
             var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
-                entries = entries.SetItem(idx, ApplyToolOutcome(entries[idx], incoming, recoveryRunId));
+            {
+                var entry = entries[idx];
+                // Ending a live turn advances the legacy epoch. Only a replay
+                // created in this still-idle epoch may recover without a run ID.
+                var recoverLegacyReplay = !state.TurnActive && entry.ToolRunId is null &&
+                    entry.ToolLegacyTurn == state.ToolLegacyTurn &&
+                    (key is null || state.TerminalToolCorrelations?.ContainsKey(key.Value) == true);
+                entries = entries.SetItem(idx,
+                    ApplyToolOutcome(entry, incoming, recoveryRunId, recoverLegacyReplay));
+            }
         }
 
         var pendingOutcomes = state.PendingToolOutcomes
@@ -792,7 +813,8 @@ public static class ChatTimelineReducer
     static ChatTimelineItem ApplyToolOutcome(
         ChatTimelineItem entry,
         ChatPendingToolOutcome incoming,
-        string? incomingRunId = null)
+        string? incomingRunId = null,
+        bool recoverLegacyReplay = false)
     {
         var currentStatus = entry.ToolResult ?? ChatToolCallStatus.InProgress;
         var currentPrecedence = ToolOutcomePrecedence(currentStatus);
@@ -811,8 +833,9 @@ public static class ChatTimelineReducer
         {
             if (currentStatus == ChatToolCallStatus.Interrupted
                 && incoming.Status == ChatToolCallStatus.Success
-                && !string.IsNullOrWhiteSpace(incomingRunId)
-                && string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal)
+                && (recoverLegacyReplay ||
+                    !string.IsNullOrWhiteSpace(incomingRunId) &&
+                    string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal))
                 && incoming.Sequence >= entry.ToolOutcomeSequence)
             {
                 return entry with

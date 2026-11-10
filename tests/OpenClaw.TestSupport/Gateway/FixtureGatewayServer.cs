@@ -394,6 +394,22 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    public Task PublishChatSnapshotAsync(string sessionKey, string runId, string text,
+        bool includeRunId, CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "session.message",
+            payload = new
+            {
+                sessionKey, runId = includeRunId ? runId : null,
+                message = new { role = "assistant", content = text }
+            }
+        }, cancellationToken);
+    }
+
     private void ValidateChatRun(string sessionKey, string runId)
     {
         if (!_scenario.ContainsChatRun(sessionKey, runId))
