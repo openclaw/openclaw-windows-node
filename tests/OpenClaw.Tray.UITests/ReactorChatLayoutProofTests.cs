@@ -2442,7 +2442,6 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await WithChatAsync(480, async (surface, _, _, provider) =>
         {
-            Console.WriteLine($"reasoning-case: scenario={scenario}; current={current ?? "<default>"}");
             await OpenReasoningAsync(surface);
             await ui.RunOnUIAsync(() =>
             {
@@ -3251,13 +3250,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await ui.RunOnUIAsync(() =>
         {
-            Console.WriteLine("reasoning-open: before trigger lookup");
             var button = FindControl<Button>(surface, "ChatComposerReasoningPicker");
-            Console.WriteLine($"reasoning-open: trigger loaded={button.IsLoaded}; enabled={button.IsEnabled}; root={button.XamlRoot is not null}");
-            var flyout = Assert.IsType<Flyout>(button.Flyout);
-            Console.WriteLine("reasoning-open: before ShowAt");
-            flyout.ShowAt(button);
-            Console.WriteLine("reasoning-open: ShowAt returned");
+            Assert.IsType<Flyout>(button.Flyout).ShowAt(button);
         });
         await SettleAsync();
     }

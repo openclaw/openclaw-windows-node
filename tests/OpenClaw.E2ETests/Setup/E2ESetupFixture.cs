@@ -874,7 +874,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
             if (File.Exists(logPath))
             {
-                var lines = await ReadTrayLogLinesAsync(logPath);
+                var lines = await File.ReadAllLinesAsync(logPath);
                 lastLogTail = string.Join(Environment.NewLine, lines.TakeLast(20));
                 var match = lines.LastOrDefault(line =>
                     line.Contains(expectedStarted, StringComparison.Ordinal) ||
@@ -895,18 +895,6 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             $"Tray did not log WSL keepalive startup within {timeout?.TotalSeconds ?? 30}s. " +
             $"Expected: {expectedStarted} or {expectedExisting}. " +
             $"Log tail: {lastLogTail}. Logs: {ArtifactDir}");
-    }
-
-    /// <summary>Reads the live tray log without excluding Logger's append handle or rotation.</summary>
-    internal static async Task<string[]> ReadTrayLogLinesAsync(string logPath)
-    {
-        // Match the live-log sharing used by the protocol and MXC fixture readers.
-        await using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream);
-        var lines = new List<string>();
-        while (await reader.ReadLineAsync() is { } line)
-            lines.Add(line);
-        return lines.ToArray();
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)

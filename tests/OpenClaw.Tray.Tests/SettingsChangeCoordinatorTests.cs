@@ -209,30 +209,17 @@ public sealed class SettingsChangeCoordinatorTests
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
-        Task disable = Task.CompletedTask;
-        try
+        Assert.True(enabledStarted.Wait(TimeSpan.FromSeconds(2)));
+        var disable = Task.Run(() =>
         {
-            Assert.True(enabledStarted.Wait(TimeSpan.FromSeconds(2)));
-            // Both participants exercise coordinator contention, not ThreadPool admission.
-            disable = Task.Factory.StartNew(
-                () =>
-                {
-                    disabledCallerStarted.Set();
-                    coordinator.Apply(new SettingsData { NodeOllamaInferenceEnabled = false });
-                },
-                CancellationToken.None,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default);
-            Assert.True(disabledCallerStarted.Wait(TimeSpan.FromSeconds(2)));
-            Assert.False(disable.IsCompleted);
-        }
-        finally
-        {
-            // Release and observe both participants before their synchronization events dispose,
-            // including when a start/block assertion fails.
-            releaseEnabled.Set();
-            await Task.WhenAll(enable, disable);
-        }
+            disabledCallerStarted.Set();
+            coordinator.Apply(new SettingsData { NodeOllamaInferenceEnabled = false });
+        });
+        Assert.True(disabledCallerStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.False(disable.IsCompleted);
+
+        releaseEnabled.Set();
+        await Task.WhenAll(enable, disable);
 
         Assert.Equal([true, false], permissionStates);
     }

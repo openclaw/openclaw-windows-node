@@ -958,8 +958,6 @@ jobs:
 
     - name: Restore UI test projects
       run: |
-        $ErrorActionPreference = 'Stop'
-        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
 
     - name: Build UI test projects
@@ -1141,7 +1139,7 @@ jobs:
       run: >
         ./scripts/Invoke-CiE2e.ps1
         -Name setup-connect
-        -Filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayLogReadTests"
+        -Filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests"
 
     - name: Upload E2E Test Results & Logs
       if: always()

@@ -642,7 +642,6 @@ public class LocalizationValidationTests
         ["Automations_Relative_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
         ["Automations_Review_SummaryEnd"] = ["fr-fr", "nl-nl", "pt-br"],
         ["Automations_Review_SummaryJoin"] = ["fr-fr", "nl-nl", "pt-br"],
-        ["Automations_Runs_StatusCount"] = ["nl-nl", "pt-br"],
         ["Automations_Schedule_WithTimezone"] = ["fr-fr", "nl-nl", "pt-br", "zh-tw"],
         ["Automations_Session_Named"] = ["fr-fr"],
         ["Automations_State_Active"] = ["fr-fr"],

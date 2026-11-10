@@ -18,35 +18,6 @@ public sealed class AutomationsTextTests
     private static AutomationsText Text() =>
         new(key => EnUs.Value.TryGetValue(key, out var value) ? value : throw new KeyNotFoundException(key), () => Now);
 
-    [Theory]
-    [InlineData(1400, PageWidthTier.Wide, 1200, true)]
-    [InlineData(1000, PageWidthTier.Wide, 936, true)]
-    [InlineData(999.99994, PageWidthTier.Wide, 936, true)]
-    [InlineData(999.99, PageWidthTier.Medium, 935.99, false)]
-    [InlineData(760, PageWidthTier.Medium, 696, false)]
-    [InlineData(720, PageWidthTier.Medium, 656, false)]
-    [InlineData(719.99994, PageWidthTier.Medium, 656, false)]
-    [InlineData(719.99, PageWidthTier.Narrow, 679.99, false)]
-    [InlineData(719, PageWidthTier.Narrow, 679, false)]
-    [InlineData(520, PageWidthTier.Narrow, 480, false)]
-    [InlineData(480, PageWidthTier.Narrow, 440, false)]
-    public void ResponsiveLayout_UsesMeasuredHostWidth(double hostWidth, PageWidthTier tier, double contentWidth, bool columns)
-    {
-        Assert.Equal(tier, PageResponsiveLayout.TierFor(hostWidth));
-        Assert.Equal(contentWidth, PageResponsiveLayout.ContentWidth(hostWidth));
-        Assert.Equal(columns, PageResponsiveLayout.UseTwoColumns(contentWidth));
-    }
-
-    [Theory]
-    [InlineData(1200, 320, 3, 392)]
-    [InlineData(936, 320, 2, 462)]
-    [InlineData(480, 320, 1, 480)]
-    public void ResponsiveTiles_KeepMinimumWidthAndGap(double contentWidth, double minimum, int columns, double tileWidth)
-    {
-        Assert.Equal(columns, PageResponsiveLayout.TileColumns(contentWidth, minimum));
-        Assert.Equal(tileWidth, PageResponsiveLayout.TileWidth(contentWidth, columns));
-    }
-
     private static T WithCulture<T>(Func<T> action)
     {
         var previous = CultureInfo.CurrentCulture;

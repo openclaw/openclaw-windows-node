@@ -21,9 +21,7 @@ public sealed class ReactorChatMarkdownContractTests
             timeline,
             StringComparison.Ordinal);
         Assert.Contains("Image = (alt, _) => Text(", timeline, StringComparison.Ordinal);
-        // Links render their label only; the validated target is never turned into a navigation control.
         Assert.Contains("LinkBuilder = link => HStack(link.Label)", timeline, StringComparison.Ordinal);
-        Assert.DoesNotContain("link.Uri", timeline, StringComparison.Ordinal);
         Assert.Contains("HtmlBlock = raw => Text(", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("ListItem =", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("BuildWrappingMarkdownListItem", timeline, StringComparison.Ordinal);

@@ -1,7 +1,6 @@
 // Mounted regression and event diagnostics for AutomationEditor's native text binding.
 // Run with FullyQualifiedName~AutomationsDeferredTextProbeTests. Event artifacts contain
-// synthetic markers and lengths only. Internal token reflection is observational, not a fix.
-using System.Reflection;
+// synthetic markers and lengths only.
 using System.Text.Json;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -387,20 +386,6 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
 
     private static string Value(string value) => $"{Marker(value)}:{value.Length}";
 
-    // Diagnostic only: absence is explicit, and token values are never assertions or writes.
-    private static string Tokens(FrameworkElement element)
-    {
-        var method = typeof(Reconciler).GetMethod("TryGetReactorState", BindingFlags.NonPublic | BindingFlags.Static);
-        if (method is null) return "tokens=unavailable-method";
-        var args = new object?[] { element, null };
-        if (method.Invoke(null, args) is not true || args[1] is not { } state)
-            return "tokens=unavailable-state";
-        string Field(string name) =>
-            state.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(state)
-                is int value ? value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unavailable-field";
-        return $"tokens={Field("EchoSuppressCount")} scope={Field("EchoSuppressScopeDepth")}";
-    }
-
     private sealed class Probe(ControlKind kind)
     {
         public ControlKind Kind { get; } = kind;
@@ -424,7 +409,7 @@ public sealed class AutomationsDeferredTextProbeTests(UIThreadFixture ui, ITestO
 
         public void Mark(string label) => Events.Add(
             $"{++_sequence:D3} {label} native={Value(NativeText)} input={(Input is null ? "absent" : Value(Input.Text))}" +
-            $" model={Value(Model)} rendered={Value(Rendered)} {(Control is null ? "unmounted" : Tokens(Control))}");
+            $" model={Value(Model)} rendered={Value(Rendered)}");
 
         public void Bump() => SetTick!(++_tick);
 

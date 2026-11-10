@@ -84,7 +84,6 @@ colors:
   automationKindEventFill: "#26f06a43"
   automationHero: rgba(0,103,192,0.14)
   automationHeroStroke: rgba(0,103,192,0.18)
-  automationRail: "#0000000f"
   nativeText: "#000000e4"
   personPictureFill: "#00000018"
   personPictureStroke: "#0000000f"
@@ -398,7 +397,7 @@ x-colophon:
       - "State must be legible: connected, pairing, and error states read clearly via positive/warning/critical, never color alone."
       - No hard-coded hex in UI. Use tokens/theme resources so dark and high-contrast modes stay correct.
       - "Motion is a cue, not a garnish: 120-200ms ease-out, no bounce."
-      - "Personality lives in small places: Automations colors each schedule kind (tiles, chips, the run chart) and keeps the accent for action. Ambient loops (breathing scheduler dot, twinkles) stay opacity-only and stop under reduced motion."
+      - "Automations uses schedule-kind colors for glyphs and chips, while the Windows accent identifies actions. Shared PageHero motion honors reduced motion."
     brand:
       tagline: A calm native Windows companion for your AI assistant.
       surface: product
@@ -794,10 +793,6 @@ x-colophon:
         resource: AutomationsHeroStrokeBrush
         themes: { dark: "SystemAccentColorLight2 at 28%", highContrast: "#ffffff" }
         usage: 1px frame of the header wash and the agent scope chip.
-      automationRail:
-        resource: AutomationsRailBrush
-        themes: { dark: "ControlStrokeColorDefault", highContrast: "#ffffff" }
-        usage: Run-history timeline rail between status nodes.
       nativeText:
         resource: TextFillColorPrimaryBrush
         themes: { dark: "#ffffff", highContrast: "#ffffff" }
@@ -1340,15 +1335,8 @@ migrate existing pages to the new components.
 
 The Reactor Automations surface reads top-down: shared hero, summary tiles,
 Coming up, then All automations. Failing jobs retain inline attention badges.
-Use the shared PageHero foundation and existing Fluent
-status brushes, type scale, spacing steps and rounded surfaces. The page width
-token `automationPageMaxWidth` is 1200 DIPs to accommodate the agenda and inline
-definition/results columns. `PageResponsiveLayout` owns the cross-page contract,
-measured from the page host's ActualWidth: Wide starts at 1000 DIPs, Medium at
-720, and Narrow supports hosts down to 480. Horizontal padding is 32 DIPs on
-Wide/Medium and 20 on Narrow; usable content is capped at 1200 DIPs.
-Two-column bodies appear only on Wide, retain at least 320 DIPs per column,
-and otherwise stack in reading order with a 16-DIP gap.
+Use the shared PageHero and PageResponsiveLayout contracts above, with existing
+Fluent status brushes, type scale, spacing steps and rounded surfaces.
 Inventory expansion never becomes a split pane or adds a Back
 button. Each All automations row uses one stock WinUI `Expander`, stacked
 with spacing step `2` (8 DIPs, `PageResponsiveLayout.GapInner`); its
@@ -1358,8 +1346,8 @@ keyboard behavior. The row's chat action remains a sibling of the Expander
 so it is available while collapsed. Every row reserves the same 48-DIP action
 column (40-DIP button plus 8-DIP gap), even without a chat target; the button
 stays centered on the measured header content as details expand. Do not wrap the Expander in another card
-surface or put interactive controls inside its header. Stacked Needs you
-cards and loading placeholders use the same gap; Coming up and inline recent
+surface or put interactive controls inside its header. Loading placeholders use
+the same gap; Coming up and inline recent
 runs stay divider lists inside one surface. Actions use a native CommandBar
 with borderless, right-labelled AppBarButtons and native overflow.
 An empty Gateway inventory stays empty: retain explicit guidance and New automation,
@@ -1373,10 +1361,7 @@ waits for transient native command bars/flyouts to close.
 
 The mast wash belongs to the shared hero card and scrolls with the header.
 It takes no input and stays out of the UI Automation tree. Section counts
-use centered pills, critical for Needs you and neutral elsewhere. Attention cards
-use a two-column grid on Wide, with an orphan retaining its column width.
-On Medium/Narrow, single-column cards stretch across the full usable content
-width and align with the heading. Do not cap or center those cards.
+use centered pills; failing and auto-disabled jobs retain inline attention badges.
 The agenda and Earlier today summary are adjacent columns on Wide.
 Filters use explicit rows: one on Wide with search aligned right (240-360 DIPs),
 two on Medium with full-width search below, and three on Narrow for status,
@@ -1390,7 +1375,7 @@ Advanced tags yield space before subtitles truncate. Basic
 schedules omit raw expressions, and run timestamps use local Today/month labels.
 
 The editor uses a native ContentDialog width of the smaller of 560 DIPs or the
-window's XamlRoot width minus 48 DIPs. Its `automationEditorHeight` is 640 DIPs
+window's XamlRoot width minus 48 DIPs. Its height is 640 DIPs
 with a scrolling form and an always-visible action footer. Narrow footers stack
 full-width actions with primary first; fields and fact rows stack when their own
 available width is below 400 DIPs. Chat actions are subtle icon-only buttons with
@@ -1406,13 +1391,10 @@ retains the accent. Optional fact panels use a 120-DIP
 label column and subtle Fluent fill. Removal names the connected Gateway from
 the current connection snapshot, never a mock or fixed machine name. Keep
 preserved-setting and revision-conflict notices at the top of the editor body.
-Results use bottom-center in-app toasts, 20 DIPs above the content edge, with
-`FlyoutPresenterBackground`, `FlyoutBorderThemeBrush`, a 1-DIP stroke and native
-ThemeShadow at elevation 16. Use 16/12-DIP horizontal/vertical padding and an
-18-DIP decorative icon. Only the icon carries severity color. Toasts
+Results use bottom-center native InfoBars, 20 DIPs above the content edge. Toasts
 stack upward (up to three), are at most 480 DIPs wide, and contain at most one
 action. Normal duration is four seconds, or seven with an action. Not-started
-information uses the neutral E946 glyph, not a success check. Errors remain until
+information uses Informational severity, not a success check. Errors remain until
 their explicit icon-only Close action and use UseAnnounce assertive announcements.
 Page-owned results are not duplicated into global notifications or stale inline
 error bars. The overlay inherits the page's ActualTheme through RequestedTheme.

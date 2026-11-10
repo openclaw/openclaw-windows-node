@@ -58,7 +58,6 @@ internal static class AutomationsVisuals
     internal const double DialogBadgeSize = 36;
     internal const double DialogFactLabelWidth = 120;
     internal const double ToastMaxWidth = 480;
-    internal const double ListPaneWidth = 360;
     internal const double ReadingWidth = 640;
     internal const double CardRadius = 8;
     internal const string MonoFont = "Cascadia Mono, Consolas";
@@ -79,15 +78,12 @@ internal static class AutomationsVisuals
     internal const string GlyphOk = "\uE73E";
     internal const string GlyphSkip = "\uE893";
     internal const string GlyphBranch = "\uE8AB";
-    internal const string GlyphPlug = "\uE839";
     internal const string GlyphSearch = "\uE721";
     internal const string GlyphLock = "\uE72E";
     internal const string GlyphEvent = "\uE945";
     internal const string GlyphSparkle = "\uE9D5";
-    internal const string GlyphDisconnected = "\uF384";
     internal const string GlyphOpenInBrowser = "\uE8A7";
     internal const string GlyphCopy = "\uE8C8";
-    internal const string GlyphInformation = "\uE946";
 
     internal static TextBlockElement Glyph(string glyph, double size = 16, ThemeRef? brush = null) =>
         TextBlock(glyph)

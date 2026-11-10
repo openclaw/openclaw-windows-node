@@ -23,7 +23,6 @@
                 <GradientStop Offset="1" Color="{ThemeResource SystemAccentColorDark3}" />
             </LinearGradientBrush>
             <SolidColorBrush x:Key="AutomationsHeroStrokeBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.28" />
-            <SolidColorBrush x:Key="AutomationsRailBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="Transparent" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
@@ -42,7 +41,6 @@
                 <GradientStop Offset="1" Color="{ThemeResource SystemAccentColorLight3}" />
             </LinearGradientBrush>
             <SolidColorBrush x:Key="AutomationsHeroStrokeBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.18" />
-            <SolidColorBrush x:Key="AutomationsRailBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="Transparent" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
@@ -58,7 +56,6 @@
             <SolidColorBrush x:Key="AutomationsKindOtherFillBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AutomationsHeroBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="AutomationsHeroStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
-            <SolidColorBrush x:Key="AutomationsRailBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="AutomationsTileStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>

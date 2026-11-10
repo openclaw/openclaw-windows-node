@@ -360,17 +360,9 @@ public sealed class PinnedPagesTests
         Assert.Contains("_sidebarInvoked = true;", pins);
         Assert.Contains("args.Reason == InfoBarCloseReason.CloseButton", window);
         Assert.Contains("EmbeddedOperationInfo.IsOpen = embedded && OperationInfo.IsOpen", window);
-        var operation = window[window.IndexOf("private void ShowOperation(", StringComparison.Ordinal)..
-            window.IndexOf("private void OnEmbeddedOperationClosed(", StringComparison.Ordinal)];
+        var operation = window[window.IndexOf("private void ShowOperation(", StringComparison.Ordinal)..];
+        operation = operation[..operation.IndexOf("private void OnEmbeddedOperationClosed(", StringComparison.Ordinal)];
         Assert.Contains("EmbeddedOperationInfo.IsOpen = OperationInfo.IsOpen && IsSettingsVisible && Destination.Embedded", operation);
-        var presentation = window[window.IndexOf("private void ApplySettingsPresentation(", StringComparison.Ordinal)..
-            window.IndexOf("private void UpdateEmbeddedPageTopAllocation(", StringComparison.Ordinal)];
-        Assert.Contains("var embedded = Destination.Embedded;", presentation);
-        Assert.DoesNotContain("WorkspaceSettingsLayout.Project(", presentation);
-        Assert.Contains("view.ContentOnly = embedded", presentation);
-        Assert.Contains("EmbeddedOperationInfo.Severity = OperationInfo.Severity", presentation);
-        Assert.Contains("EmbeddedOperationInfo.Message = OperationInfo.Message", presentation);
-        Assert.DoesNotContain("OperationInfo.IsOpen = false", presentation);
         Assert.Contains("EmbeddedOperationInfo.Severity = severity", operation);
         Assert.Contains("EmbeddedOperationInfo.Message = message", operation);
         Assert.DoesNotContain("_settings is { ContentOnly: true }", operation);

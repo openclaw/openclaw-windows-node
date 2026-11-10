@@ -922,7 +922,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         || string.Equals(decision, "allow-always", StringComparison.Ordinal)
         || string.Equals(decision, "deny", StringComparison.Ordinal);
 
-    internal static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
+    private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
     {
         var info = new ChatHistoryInfo { SessionKey = sessionKey };
         if (payload.ValueKind != JsonValueKind.Object) return info;

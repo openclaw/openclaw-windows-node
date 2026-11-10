@@ -39,18 +39,8 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.17`, published as
-[GitHub release assets](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17).
-Normal builds and CI bootstrap the digest-pinned official GitHub release assets
-into an ignored repository-local feed. Before a direct restore on a fresh
-checkout, run `.\scripts\Initialize-ReactorPackages.ps1`. The script rejects
-corrupt cached/downloaded packages; it does not fall back to a source build or
-modify machine-wide NuGet settings. Keep both references aligned. The core
-package requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
-reference meets that floor.
-
-Reactor preview.16 and later include the recycled-anchor
-workaround from
+Both Reactor packages use `0.1.0-preview.17`, including the recycled-anchor
+workaround introduced in preview.16 from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
 [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865),
@@ -124,7 +114,7 @@ Geometry-only or non-null-brush assertions do not prove the painted theme;
 current visible proof remains required. Earlier package or SDK results are
 historical, not acceptance for the newly integrated dependency graph.
 
-Before every Reactor upgrade or release, also exercise repeated session switching
+Before release, also exercise repeated session switching
 while a bring-into-view request is pending, using 240 mixed-height messages.
 `GatewayFixtureUiTests.RepeatedSessionSwitchingKeepsNativeTimelineResponsive`
 provides a separate, bounded 12-cycle A/B scrolling and session-switch smoke.
