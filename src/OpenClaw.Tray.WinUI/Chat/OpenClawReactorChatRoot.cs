@@ -30,7 +30,9 @@ public sealed record OpenClawReactorChatRootProps(
     Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
     bool InitialThreadIsExplicitSelection = true,
-    IChatAgentRosterSource? AgentRosterSource = null);
+    IChatAgentRosterSource? AgentRosterSource = null,
+    string UserDisplayName = "",
+    ImageSource? UserProfilePicture = null);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -39,6 +41,7 @@ public sealed record OpenClawReactorChatRootProps(
 public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootProps>
 {
     private static bool s_showToolCalls = true;
+    private static bool s_showChatThinking = true;
     private static int s_toolCallsCollapseVersion;
     private static event EventHandler? ToolCallsVisibilityChanged;
 
@@ -54,6 +57,19 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             s_toolCallsCollapseVersion++;
 
         s_showToolCalls = visible;
+        ToolCallsVisibilityChanged?.Invoke(null, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Applies the Settings "Show thinking" preference (web <c>chatShowThinking</c>) to every
+    /// live chat host. It gates supplied reasoning only; run progress stays visible.
+    /// </summary>
+    public static void SetThinkingVisible(bool visible)
+    {
+        if (s_showChatThinking == visible)
+            return;
+
+        s_showChatThinking = visible;
         ToolCallsVisibilityChanged?.Invoke(null, EventArgs.Empty);
     }
 
@@ -90,6 +106,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         selectedIdRef.Current = selectedId;
         var (scrollToBottomToken, setScrollToBottomToken) = UseState(0, threadSafe: true);
         var (showToolCalls, setShowToolCalls) = UseState(s_showToolCalls, threadSafe: true);
+        var (showChatThinking, setShowChatThinking) = UseState(s_showChatThinking, threadSafe: true);
         var (toolCallsCollapseVersion, setToolCallsCollapseVersion) =
             UseState(s_toolCallsCollapseVersion, threadSafe: true);
         var (firstSendInFlight, setFirstSendInFlight) = UseState(false, threadSafe: true);
@@ -99,6 +116,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             EventHandler visibilityChanged = (_, _) =>
             {
                 setShowToolCalls(s_showToolCalls);
+                setShowChatThinking(s_showChatThinking);
                 setToolCallsCollapseVersion(s_toolCallsCollapseVersion);
             };
             ToolCallsVisibilityChanged += visibilityChanged;
@@ -248,7 +266,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 settledWelcomeKey,
                 welcomeEligibilityKey,
                 StringComparison.Ordinal);
-        var mode = effectiveThread is null
+        var historyFailed = isGatewayConnected
+            && !isComposeOnly
+            && effectiveThread is not null
+            && snapshot.FailedHistoryThreads?.Contains(effectiveThread.Id) == true;
+        var mode = historyFailed && isEmptyConversation
+            ? ReactorChatTimelineMode.HistoryUnavailable
+            : effectiveThread is null
                    || (isEmptyConversation && !emptyConversationIsAuthoritative)
             ? ReactorChatTimelineMode.Loading
             : isEmptyConversation
@@ -263,8 +287,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
             entries,
-            false,
-            null,
+            effectiveThread is not null && snapshot.OlderHistoryThreads?.Contains(effectiveThread.Id) == true,
+            dataProvider is not null && effectiveThread is { } historyThread
+                ? () => dataProvider.LoadOlderHistoryAsync(historyThread.Id) : null,
             entryMetadata,
             timelineGeneration,
             "OpenClaw Windows Tray",
@@ -288,8 +313,29 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ChatRunProgressProjection.Project(timeline,
                 effectiveThread is not null && questionSnapshot?.Prompts.Any(prompt =>
                     prompt.Request.Status == "pending" && ChatQuestionCoordinator.Matches(
-                        prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true),
-            fileDownloader);
+                        prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true,
+                awaitingSubagents: isGatewayConnected && effectiveThread?.WaitingForSubagents == true),
+            fileDownloader,
+            Session: effectiveThread,
+            ShowReasoning: showChatThinking &&
+                (effectiveThread?.ReasoningLevel ?? effectiveThread?.ReasoningDefault) == "on",
+            ShowReasoningPreview: showChatThinking &&
+                (effectiveThread?.ReasoningLevel ?? effectiveThread?.ReasoningDefault) is "on" or "stream",
+            ReasoningStream: showChatThinking && timeline.TurnActive &&
+                (timeline.RunUsage?.RunId is null || timeline.RunUsage.RunId == timeline.ReasoningStream?.RunId)
+                    ? timeline.ReasoningStream : null,
+            HistoryRevision: historyRevision,
+            ToolOutputConnectionEpoch: dataProvider?.ToolOutputConnectionEpoch,
+            LoadToolOutputAsync: dataProvider is null ? null : dataProvider.LoadToolOutputAsync,
+            ToolDetailsProfileState: dataProvider?.ToolDetailsProfileState ?? default,
+            ReadToolDetailsProfileState: dataProvider is null ? null : dataProvider.ReadToolDetailsProfileState,
+            ChildThreads: isGatewayConnected && effectiveThread is not null
+                ? snapshot.Threads.Where(child => !child.IsArchived
+                    && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
+                : [],
+            ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null,
+            UserDisplayName: props.UserDisplayName,
+            UserProfilePicture: props.UserProfilePicture);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -402,6 +448,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision,
             TryCopyText: props.TryCopyText,
+            HistoryFailed: historyFailed,
+            OnRetryHistory: historyFailed && nativeProvider is not null && effectiveThread is { } retryThread
+                ? () => RunFireAndForget(ct => nativeProvider.RetryHistoryAsync(retryThread.Id, ct))
+                : null,
             AssistantIdentity: assistantIdentity,
             AssistantAgentId: assistantAgentId,
             AssistantCatalog: props.ComposerSession.Placement?.State.Catalog,
@@ -489,11 +539,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 timeline.TurnActive));
         return Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
+            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
-            composerArea.Grid(row: 2),
-            statsElement.Grid(row: 3))
+            ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
+                .WithKey("chat-pending-messages").Grid(row: 2),
+            composerArea.Grid(row: 3),
+            statsElement.Grid(row: 4))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .Set(grid =>
             {

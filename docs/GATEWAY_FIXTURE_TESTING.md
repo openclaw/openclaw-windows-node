@@ -115,7 +115,8 @@ are behavioral handoff checks, not source-text ordering assertions.
 Channels management lives in the Gateway Dashboard, and the native Channels
 page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
 entry points honest through the real app: a legacy receipt whose destination is
-Channels, `app.navigate channels` and the owner menu's **Pair device** item.
+Channels, `app.navigate channels` and the owner menu's **Pair a device** item,
+which opens the Dashboard Devices page through `/nodes`.
 The shared-search case also checks the Dashboard badge and opens Channels from
 both Workspace and Settings, using Enter and Alt+Enter respectively. It checks
 that local MCP discovery and `app.search` return the same Dashboard destination.
@@ -133,6 +134,11 @@ not by a full-app case.
 
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
+
+CI builds the UI and integration test projects before running the fixture and
+passes `-NoBuild` to reuse their matching configuration and RID outputs. Local
+runs build the test projects by default. Neither path adds a separate MSBuild
+`Platform` output tree, and the fixture execution deadline is unchanged.
 
 ```powershell
 .\build.ps1
@@ -802,7 +808,9 @@ the message or idempotency key.
 | `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
 | `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
 | `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
-| `agent-activity` | Job activity, command item/output and patch item/summary events. All operations are inert |
+| `tool-powershell` | A synthetic PowerShell command with variables, keywords and strings for input syntax-color proof, followed by literal output. Nothing executes |
+| `agent-activity` | Job activity, then `exec` and `apply_patch` activity items, each paired with correlated tool start/result events and transcript entries. All operations are inert |
+| `nested-tools` | A wrapper `exec` call with nested `read` and failed `exec` calls that carry `parentToolCallId` in tool events and transcript entries, and a reply with a Markdown link, a bare URL and inline code. All operations are inert |
 | `question-choice`, `question-text`, `question-multi` | A pending question blocks that run until a valid answer, cancellation, expiry or Stop |
 | `approval`, `approval-deny-only` | Top-level exec approval events, validated one-shot decisions, then continuation without command execution |
 | `slow` | Repeated startup status frames before the answer |

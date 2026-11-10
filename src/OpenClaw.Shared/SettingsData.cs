@@ -98,6 +98,8 @@ public record class SettingsData
     public bool VoiceTtsEnabled { get; set; } = false;
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get; set; } = true;
+    /// <summary>Show supplied assistant reasoning in the chat timeline (web <c>chatShowThinking</c>).</summary>
+    public bool ShowChatThinking { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;

@@ -32,32 +32,40 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         }), progress.Active, progress.StartedAt);
         var elapsed = ChatRunProgressProjection.Elapsed(progress.StartedAt,
             progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
-        var label = LocalizedLabel(progress.Label);
+        var label = progress.Label == ChatRunProgressProjection.RetryLabel
+            ? ChatRunProgressProjection.RetryLabelText(progress, now, ReactorQuestionPanel.L)
+            : LocalizedLabel(progress.Label);
         var text = elapsed.Length > 0 ? $"{label} ({elapsed})" : label;
         var visibleText = elapsed;
         if (progress.OutputTokens is { } tokens)
         {
             text += ", " + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
-            visibleText += (visibleText.Length > 0 ? " \u00b7 " : "")
-                + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
+            visibleText = string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens)
+                + (elapsed.Length > 0 ? " \u00b7 " + elapsed : "");
         }
         if (visibleText.Length == 0)
             visibleText = label;
+        if (progress.Waiting || progress.Label is "Compacting context" or
+            "Retrying after context compaction" or "Retrying the model request")
+            visibleText = text;
         return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
             Grid([GridSize.Star()], [GridSize.Star()],
                 NativeWorkingClawElement.NativeWorkingClaw()
                     .Set(claw => claw.Update(progress.Active, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
-                    .Size(18, 18))
+                    .Size(18, 18).Opacity(1))
                 .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
                 .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatRunProgressClaw"),
-            TextBlock(visibleText).FontSize(12).Set(ChatVisuals.StyleSecondaryText)
+            TextBlock(visibleText).FontSize(12)
+                .Set(ChatVisuals.StyleSecondaryText)
+                .TextWrapping(TextWrapping.Wrap)
                 .Grid(column: 1).Margin(8, 0, 0, 0)
                 .VAlign(VerticalAlignment.Center).AutomationName(text)
-                .TextWrapping(TextWrapping.Wrap).AutomationId("ChatRunProgressText"))
-            .MinHeight(28).Margin(0, 4, 0, 2).AutomationId("ChatRunProgress").AutomationName(text)
+                .AutomationId("ChatRunProgressText"))
+            .MinHeight(28).Margin(0, 4, 0, 2).Opacity(1).AutomationId("ChatRunProgress").AutomationName(text)
             .OnMount(row =>
             {
-                if (progress.Active && new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                if (entrance.Current is null && progress.Active &&
+                    new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
                     entrance.Current = AnimateEntrance(row);
             })
             .OnUnmount(_ => entrance.Current?.Stop())
@@ -88,7 +96,6 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             Storyboard.SetTargetProperty(animation, property);
             storyboard.Children.Add(animation);
         }
-        Add(row, "Opacity", 0, 1, 1);
         Add(transform, "TranslateY", 4, -1, 0);
         Add(transform, "ScaleX", .96, 1.01, 1);
         Add(transform, "ScaleY", .96, 1.01, 1);
@@ -103,6 +110,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             "Finished" => "Finished",
             "Waiting for approval" => "Approval",
             "Waiting for your answer" => "Answer",
+            "Waiting for subagents" => "Subagents",
             "Compacting context" => "Compacting",
             "Retrying after context compaction" => "CompactionRetry",
             "Retrying the model request" => "Retry",

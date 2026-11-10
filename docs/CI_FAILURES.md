@@ -1,12 +1,20 @@
 # CI failure backlog
 
-Open `Build and Test` failures seen on `main` push runs that no change has fixed yet. Check an item off, and link the fixing PR, once its fix lands and CI passes on a rerun. Delete an item if a later investigation shows it doesn't reproduce.
+Open `Build and Test` failures and related local reproductions that no change has fixed yet. Entries distinguish CI runs, baseline comparisons, and host-only failures. Check an item off, and link the fixing PR, once its fix lands and CI passes on a rerun. Delete an item if a later investigation shows it doesn't reproduce.
 
 #1597 (fix(ci): Build and Test flakes when Workspace keyboard input or console tail polling runs late) fixes two other failures, so they are not listed here: the `WizardConsoleTailTests` cursor race and the `Missing native control 'WorkspaceNavHome'` mode of the Workspace sidebar test.
 
 Run links point to `https://github.com/openclaw/openclaw-windows-node/actions/runs/<id>`.
 
 ## UI, functional, and accessibility tests
+
+- [ ] **Native WinUI variable-height animated scroll-to-top: layout iteration exhaustion (`0x802B0014`).**
+  - The combined `ConversationScrolling_JumpIconReachesExactBottomAndPreservesReaderPosition` reproducer crashed locally and in [42684502858](https://github.com/openclaw/openclaw-windows-node/actions/runs/42684502858) during animated reader positioning. A matched test-only probe also reproduces on main `932bc0e3c7b71a94cdd27dcdd78ad4e2343a5064`; a standard-control probe reproduces without Reactor or the chat controller.
+  - Native tracing shows a frozen viewport during animation while estimated layout origin/extent and unshiftable compensation alternate until the layout budget is exhausted. This matches [microsoft/microsoft-ui-xaml#12490](https://github.com/microsoft/microsoft-ui-xaml/issues/12490). The narrow-window item-bring hang and other fixture/accessibility failures are not automatically attributed to this mechanism.
+  - Independent local control on 2026-11-09: the unchanged [upstream reproducer at `bf29dc7`](https://github.com/DFX-Coding/LayoutCycleRepro/tree/bf29dc7b5d2e8bc557ea8286b51f25ed4b19ca83), with only command-line ARM64 build overrides, also crashes on loaded Windows App Runtime 2.6.5 ARM64. Its original animated Scroll to Top command produces 50 alternating extent changes with a frozen offset, then terminal `0xC000027B`; the first stowed result is `0x88000FA8` (`AG_E_LAYOUT_CYCLE`) from `CLayoutManager::UpdateLayout`. Neither OpenClaw nor Reactor is present in that control. A smaller-window non-repro is retained separately and is not a workaround.
+  - The unchanged product reproducer and its helpers remain at [candidate `b17231b3`](https://github.com/openclaw/openclaw-windows-node/blob/b17231b39b66bcff4fc572dabcccdaa9dd2141ae/tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Conversation.cs#L690-L805) and in the independent native-platform investigation. Its removal from the chat presentation change is a scope separation, not a crash fix.
+  - Chat feature coverage retains exact-tail identity, jump-button geometry/accessibility, reader position on append, streaming/resize follow, and composer retention in the two-width `ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch` test. Native transcript keyboard focus establishes reader intent before its non-animated positioning step, without exercising the separate animated-scroll platform scenario.
+  - Next: compile and compare the unmodified and proposed native WinUI source on an authorized prepared build host, then run the original animated product reproducer. The isolated native proposal is uncompiled and unverified; no runtime replacement, animation disablement, or virtualization disablement is a shipped remedy.
 
 - [ ] **`WorkspaceWindowProofTests.SidebarSessions_SelectOriginalKeys_AndKeepCompanionDraft`: pressing Space on `WorkspaceTogglePane` does not hide the pane.**
   - Symptom: `Native navigation did not reach the expected state.` from the `WorkspaceReopenPane` wait right after `SendKeys.SendWait(" ")`. Fails in either theme.
