@@ -70,7 +70,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal string? SelectedAgentId => _agentSelection.AgentId;
     internal WorkspaceDestination Destination => _navigation.Current;
     internal ChatPage ChatPage => _chat;
-    internal bool CanGoBack => _navigation.CanGoBack;
+    internal bool CanGoBack => (IsSettingsVisible && _settings?.HasOpenDashboard == true) || _navigation.CanGoBack;
 
     internal WorkspaceWindow(
         AppState state, AppNotificationService notifications, Action openTimeline)
@@ -423,7 +423,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateHistoryButtons()
     {
-        var back = _navigation.CanGoBack;
+        var back = CanGoBack;
         var forward = _navigation.CanGoForward;
         BackButton.IsEnabled = back;
         ForwardButton.IsEnabled = forward;
@@ -439,6 +439,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _preparedSettings = null;
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
+        view.PageNavigationChanged = UpdateHistoryButtons;
         view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.ExitRequested = ExitSettings;
@@ -677,8 +678,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
 
     private bool IsPinDestination(PinnedPageTag pin) =>
-        WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId),
-            _settings?.CurrentAgentId ?? SelectedAgentId ?? "main") == Destination.CompanionTag;
+        pin.Tag == DashboardsRoute.Tag
+            ? DashboardsRoute.IsDashboardsTag(Destination.CompanionTag)
+            : WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId),
+                _settings?.CurrentAgentId ?? SelectedAgentId ?? "main") == Destination.CompanionTag;
 
     private void SignalContentReady(FrameworkElement content)
     {
@@ -1390,6 +1393,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (DeferWhileModalOpen(NavigateBack)) return;
         _sidebarInvoked = false;
+        if (IsSettingsVisible && _settings?.TryReturnToDashboardGallery() == true)
+            return;
         PruneUnavailableGatewayHistory();
         if (_navigation.GoBack()) RenderDestination();
         else UpdateHistoryButtons();

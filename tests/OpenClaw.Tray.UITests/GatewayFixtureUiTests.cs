@@ -92,7 +92,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
             // Removing an automation peer is not an acknowledgment of the remaining rows' arrange pass.
             // Keep two matching native samples, without another action or an extra timeout.
-            (string Identity, System.Windows.Rect Home, System.Windows.Rect Pin,
+            (string Identity, System.Windows.Rect Home, System.Windows.Rect DefaultPin, System.Windows.Rect Pin,
                 System.Windows.Rect Header, System.Windows.Rect Other, System.Windows.Rect Anchor)? previous = null;
             AutomationElement? readyHome = null;
             var samples = 0;
@@ -114,21 +114,23 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                         || InWorkspace("WorkspacePinnedPage:sessions") is not null)
                         return false;
                     var homeCandidate = InWorkspace("WorkspaceNavHome");
+                    var defaultPin = InWorkspace("WorkspacePinnedPage:dashboards");
                     var pin = InWorkspace("WorkspacePinnedPage:connection");
                     var anchor = InWorkspace("WorkspaceSessionsAdd");
                     var conversation = InWorkspace($"WorkspaceSession:{GatewayScenario.LongSessionKey}");
                     var connection = InWorkspace("ConnectionPageMarker");
-                    if (homeCandidate is null || pin is null || anchor is null || conversation is null || connection is null)
+                    if (homeCandidate is null || defaultPin is null || pin is null || anchor is null || conversation is null || connection is null)
                         return false;
-                    AutomationElement[] owners = [window, homeCandidate, pin, anchor, conversation, connection];
+                    AutomationElement[] owners = [window, homeCandidate, defaultPin, pin, anchor, conversation, connection];
                     if (owners.Any(element => element.Current.ProcessId != run.AppProcessId || element.Current.IsOffscreen)
                         || !pin.GetRuntimeId().SequenceEqual(connectionRow))
                         return false;
                     var homeRect = homeCandidate.Current.BoundingRectangle;
+                    var defaultPinRect = defaultPin.Current.BoundingRectangle;
                     var pinRect = pin.Current.BoundingRectangle;
                     var anchorRect = anchor.Current.BoundingRectangle;
                     var otherRect = conversation.Current.BoundingRectangle;
-                    if (!Usable(homeRect) || !Usable(pinRect) || !Usable(anchorRect) || !Usable(otherRect))
+                    if (!Usable(homeRect) || !Usable(defaultPinRect) || !Usable(pinRect) || !Usable(anchorRect) || !Usable(otherRect))
                         return false;
 
                     // The authored header has Sessions text beside its existing add button. Use that
@@ -151,18 +153,19 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                         headerRect = bounds;
                     }
                     if (header is null) return false;
-                    var homeGap = (pinRect.Top - homeRect.Bottom) / scale;
+                    var homeGap = (defaultPinRect.Top - homeRect.Bottom) / scale;
+                    var pinGap = (pinRect.Top - defaultPinRect.Bottom) / scale;
                     var headerGap = (headerRect.Top - pinRect.Bottom) / scale;
-                    if (!double.IsFinite(homeGap) || !double.IsFinite(headerGap)) return false;
+                    if (!double.IsFinite(homeGap) || !double.IsFinite(pinGap) || !double.IsFinite(headerGap)) return false;
                     firstGap ??= headerGap;
                     lastGap = headerGap;
-                    if (homeGap is < -1 or > 8 || headerGap is < 4 or > 48 || otherRect.Top < headerRect.Bottom)
+                    if (homeGap is < -1 or > 8 || pinGap is < -1 or > 8 || headerGap is < 4 or > 48 || otherRect.Top < headerRect.Bottom)
                         return false;
                     // Runtime IDs are numeric, role-delimited and private to this observer; no UI text is retained.
                     var identities = owners.Append(header).Select(element => element.GetRuntimeId()).ToArray();
                     if (identities.Any(id => id is null || id.Length == 0)) return false;
                     var identity = string.Join("|", identities.Select(id => string.Join(",", id)));
-                    var sample = (identity, homeRect, pinRect, headerRect, otherRect, anchorRect);
+                    var sample = (identity, homeRect, defaultPinRect, pinRect, headerRect, otherRect, anchorRect);
                     previous = sample;
                     if (prior is null || prior.Value != sample) return false;
                     readyHome = homeCandidate;
@@ -181,10 +184,12 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             var settled = previous!.Value;
             var home = readyHome!;
             var homeBounds = settled.Home;
+            var defaultPinBounds = settled.DefaultPin;
             var pinBounds = settled.Pin;
             var sessionsHeader = settled.Header;
             var other = settled.Other;
-            Assert.InRange((pinBounds.Top - homeBounds.Bottom) / scale, -1, 8);
+            Assert.InRange((defaultPinBounds.Top - homeBounds.Bottom) / scale, -1, 8);
+            Assert.InRange((pinBounds.Top - defaultPinBounds.Bottom) / scale, -1, 8);
             Assert.InRange((sessionsHeader.Top - pinBounds.Bottom) / scale, 4, 48);
             Assert.True(other.Top >= sessionsHeader.Bottom);
             Assert.Null(FindText(run, "Pages"));
@@ -853,11 +858,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await run.InvokeAsync("app.navigate", new { page = "sessions" });
             await WaitUiAsync(run, () => FindById(run, "SessionsPageArchived") is not null, "Settings archive section");
             var section = FindById(run, "SessionsPageArchived")!;
-            ScrollAncestorToBottom(section);
+            ScrollAncestorToBottom(run, section);
             ((ExpandCollapsePattern)section.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             var restoreId = $"SessionsPageUnarchive:{GatewayScenario.OtherSessionKey}";
             await WaitUiAsync(run, () => FindById(run, restoreId) is not null, "archived conversation in Settings");
-            ScrollAncestorToBottom(FindById(run, restoreId)!);
+            ScrollAncestorToBottom(run, FindById(run, restoreId)!);
             await WaitUiAsync(run, () => FindById(run, restoreId)?.Current.IsOffscreen == false, "visible unarchive action");
             await CaptureIfRequestedAsync(run, "settings-archived-conversation.png");
             Invoke(FindById(run, restoreId)!);
@@ -871,18 +876,158 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }, allowSessionMutations: true);
     }
 
-    private static void ScrollAncestorToBottom(AutomationElement element)
+    private static void ScrollAncestorToBottom(GatewayFixtureRun run, AutomationElement element)
     {
+        object Describe(AutomationElement node) => new
+        {
+            runtimeId = node.GetRuntimeId(),
+            automationId = node.Current.AutomationId,
+            className = node.Current.ClassName,
+            controlType = node.Current.ControlType.ProgrammaticName,
+            bounds = DescribeScrollBounds(node.Current.BoundingRectangle),
+            isOffscreen = node.Current.IsOffscreen
+        };
+        if (element.Current.ProcessId != run.AppProcessId)
+            throw new InvalidOperationException("Scroll target is not owned by the fixture app.");
+        var targetBefore = Describe(element);
+        var ancestors = new List<object>();
+        var receiptPath = Path.Combine(run.ArtifactsDirectory, $"scroll-to-bottom-{Guid.NewGuid():N}.json");
         for (AutomationElement? parent = element; parent is not null; parent = TreeWalker.ControlViewWalker.GetParent(parent))
         {
-            if (parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern)
-                && ((ScrollPattern)pattern).Current.VerticallyScrollable)
+            var hasPattern = parent.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern);
+            var scroll = hasPattern ? (ScrollPattern)pattern : null;
+            ancestors.Add(new
             {
-                ((ScrollPattern)pattern).SetScrollPercent(ScrollPattern.NoScroll, 100);
+                element = Describe(parent),
+                pattern = hasPattern ? ScrollPattern.Pattern.ProgrammaticName : null,
+                verticallyScrollable = scroll?.Current.VerticallyScrollable,
+                verticalScrollPercent = scroll?.Current.VerticalScrollPercent
+            });
+            if (parent.Current.ProcessId != run.AppProcessId)
+                break;
+            if (scroll is not null && !scroll.Current.VerticallyScrollable &&
+                VisibleTargetFitsViewport(element.Current.BoundingRectangle, parent.Current.BoundingRectangle,
+                    element.Current.IsOffscreen || parent.Current.IsOffscreen))
+            {
+                // A page that already fits has a real viewport but cannot scroll.
+                // Accept only measured containment, never absence of ScrollPattern.
+                File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+                {
+                    run.ArtifactsDirectory, run.AppProcessId, targetBefore,
+                    targetAfter = Describe(element), viewport = Describe(parent),
+                    outcome = "Already visible in non-scrollable viewport",
+                    targetVisibleContainment = true, ancestors
+                }));
+                return;
+            }
+            if (scroll is not null && scroll.Current.VerticallyScrollable)
+            {
+                var selectedBefore = Describe(parent);
+                var before = scroll.Current.VerticalScrollPercent;
+                Exception? scrollFailure = null;
+                try
+                {
+                    scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+                }
+                catch (Exception error)
+                {
+                    scrollFailure = error;
+                    throw;
+                }
+                finally
+                {
+                    try
+                    {
+                        var viewport = parent.Current.BoundingRectangle;
+                        var target = element.Current.BoundingRectangle;
+                        File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+                        {
+                            run.ArtifactsDirectory,
+                            run.AppProcessId,
+                            targetBefore,
+                            targetAfter = Describe(element),
+                            selectedBefore,
+                            selectedAfter = Describe(parent),
+                            pattern = ScrollPattern.Pattern.ProgrammaticName,
+                            before,
+                            after = scroll.Current.VerticalScrollPercent,
+                            targetVisibleContainment = !element.Current.IsOffscreen && !target.IsEmpty &&
+                                !viewport.IsEmpty && viewport.Contains(target),
+                            ancestors
+                        }));
+                    }
+                    catch (Exception observationError) when (scrollFailure is not null)
+                    {
+                        throw new AggregateException(scrollFailure, observationError);
+                    }
+                }
                 return;
             }
         }
+        File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+        {
+            run.ArtifactsDirectory,
+            run.AppProcessId,
+            targetBefore,
+            outcome = "No vertically scrollable ControlView ancestor",
+            ancestors
+        }));
+        throw new InvalidOperationException($"No vertically scrollable ancestor for {element.Current.AutomationId}. Diagnostics: {receiptPath}");
     }
+
+    private static object DescribeScrollBounds(System.Windows.Rect bounds)
+    {
+        static double? Finite(double value) => double.IsFinite(value) ? value : null;
+        return new
+        {
+            invalidBounds = bounds.IsEmpty || !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
+                !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height),
+            x = Finite(bounds.X), y = Finite(bounds.Y),
+            width = Finite(bounds.Width), height = Finite(bounds.Height)
+        };
+    }
+
+    [Fact]
+    public void ScrollObservation_EmptyBoundsRemainExplicitlyInvalidAndSerializable()
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(DescribeScrollBounds(System.Windows.Rect.Empty)));
+        Assert.True(json.RootElement.GetProperty("invalidBounds").GetBoolean());
+        foreach (var coordinate in new[] { "x", "y", "width", "height" })
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty(coordinate).ValueKind);
+    }
+
+    [Fact]
+    public void ScrollObservation_FiniteBoundsRetainNegativeCoordinatesAndExactDimensions()
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(
+            DescribeScrollBounds(new System.Windows.Rect(-10, 20, 30, 40))));
+        Assert.False(json.RootElement.GetProperty("invalidBounds").GetBoolean());
+        Assert.Equal(-10, json.RootElement.GetProperty("x").GetDouble());
+        Assert.Equal(20, json.RootElement.GetProperty("y").GetDouble());
+        Assert.Equal(30, json.RootElement.GetProperty("width").GetDouble());
+        Assert.Equal(40, json.RootElement.GetProperty("height").GetDouble());
+    }
+
+    private static bool VisibleTargetFitsViewport(System.Windows.Rect target, System.Windows.Rect viewport, bool offscreen) =>
+        !offscreen && !target.IsEmpty && !viewport.IsEmpty &&
+        target.Width > 0 && target.Height > 0 && viewport.Width > 0 && viewport.Height > 0 &&
+        double.IsFinite(target.Left) && double.IsFinite(target.Top) &&
+        double.IsFinite(target.Right) && double.IsFinite(target.Bottom) &&
+        double.IsFinite(viewport.Left) && double.IsFinite(viewport.Top) &&
+        double.IsFinite(viewport.Right) && double.IsFinite(viewport.Bottom) && viewport.Contains(target);
+
+    [Theory]
+    [InlineData(10, 10, 20, 20, false, true)]
+    [InlineData(0, 0, 100, 100, false, true)]
+    [InlineData(10, 10, 20, 20, true, false)]
+    [InlineData(90, 10, 20, 20, false, false)]
+    [InlineData(10, 90, 20, 20, false, false)]
+    [InlineData(10, 10, 0, 20, false, false)]
+    [InlineData(double.NaN, 10, 20, 20, false, false)]
+    public void NonScrollableViewportAdmission_RequiresVisiblePositiveContainedBounds(
+        double x, double y, double width, double height, bool offscreen, bool expected) =>
+        Assert.Equal(expected, VisibleTargetFitsViewport(new System.Windows.Rect(x, y, width, height),
+            new System.Windows.Rect(0, 0, 100, 100), offscreen));
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
