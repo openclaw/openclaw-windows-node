@@ -958,12 +958,16 @@ jobs:
 
     - name: Restore UI test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
+        dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64
 
     - name: Build UI test projects
       id: ui-build
       run: |
         dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
     # framework MSIX. The hosted runner image does not preinstall it, so install
@@ -1006,6 +1010,7 @@ jobs:
         -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -Screenshots
+        -NoBuild
 
     - name: Run latest stable profile compatibility
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
@@ -1045,7 +1050,7 @@ jobs:
         ./scripts/test-gateway-fixture.ps1 `
           -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
           -StableAppPath $apps[0].FullName `
-          -ArtifactsDirectory $artifacts
+          -ArtifactsDirectory $artifacts -NoBuild
 
     - name: Upload Test Results
       if: always()

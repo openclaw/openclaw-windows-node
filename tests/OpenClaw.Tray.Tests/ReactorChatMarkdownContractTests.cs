@@ -13,15 +13,23 @@ public sealed class ReactorChatMarkdownContractTests
             "ReactorChatTimeline.cs"));
 
         Assert.Contains(
-            "MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml",
-            timeline,
+            "MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml |\n                MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks",
+            timeline.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(
-            "Microsoft.UI.Reactor.Advanced.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options)",
+            "ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true), options)",
             timeline,
             StringComparison.Ordinal);
         Assert.Contains("Image = (alt, _) => Text(", timeline, StringComparison.Ordinal);
-        Assert.Contains("LinkBuilder = link => HStack(link.Label)", timeline, StringComparison.Ordinal);
+        // Web-parity links: Reactor's native hyperlink (http/https/mailto only), no inert override.
+        Assert.DoesNotContain("LinkBuilder =", timeline, StringComparison.Ordinal);
+        // Underline-free accent links and inline-code chips are applied after reconcile.
+        Assert.Contains("ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(", timeline, StringComparison.Ordinal);
+        var presentation = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ChatMarkdownPresentation.cs"));
+        Assert.Contains("link.UnderlineStyle = Microsoft.UI.Xaml.Documents.UnderlineStyle.None;", presentation, StringComparison.Ordinal);
+        Assert.Contains("TextElement.FontFamilyProperty", presentation, StringComparison.Ordinal);
+        Assert.Contains("AccessibilitySettings().HighContrast", presentation, StringComparison.Ordinal);
         Assert.Contains("HtmlBlock = raw => Text(", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("ListItem =", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("BuildWrappingMarkdownListItem", timeline, StringComparison.Ordinal);

@@ -518,6 +518,22 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         lock (_sync) _readResponses[method] = response;
     }
 
+    /// <summary>Supplies raw history or a bounded saved-message response without changing production projection.</summary>
+    public void OverrideChatRead(string method, Func<JsonElement, object> response)
+    {
+        if (method is not ("chat.history" or "chat.message.get"))
+            throw new ArgumentException("Only transcript reads may be overridden.", nameof(method));
+        lock (_sync) _readResponses[method] = response;
+    }
+
+    public void OverrideProfileRead(Func<JsonElement, object> response)
+    {
+        lock (_sync) _readResponses["users.self"] = response;
+    }
+
+    public Task PublishSelfProfileChangedAsync() =>
+        BroadcastAsync("sessions.changed", new { reason = "profile-identity" });
+
     public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
         throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
 

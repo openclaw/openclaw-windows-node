@@ -5,6 +5,48 @@ namespace OpenClaw.Shared.Tests;
 
 public sealed class GatewayChatStreamProjectionTests
 {
+    [Fact]
+    public void FullSnapshotWinsOverReplacementFlagAndKeepsItsOwnSignature()
+    {
+        var projected = new GatewayChatStreamProjection().Project(Frame("""
+            {"sessionKey":"s","runId":"r","state":"delta","replace":true,"deltaText":"ignored",
+             "message":{"role":"assistant","content":[{"type":"text","text":"actual",
+               "textSignature":"{\"v\":1,\"phase\":\"final_answer\"}"}]}}
+            """), 1, out _);
+        Assert.Equal("actual", Text(projected));
+        Assert.False(projected!.Value.GetProperty("payload").TryGetProperty("replace", out _));
+        Assert.Equal("""{"v":1,"phase":"final_answer"}""",
+            projected.Value.GetProperty("payload").GetProperty("message").GetProperty("content")[0]
+                .GetProperty("textSignature").GetString());
+    }
+
+    [Fact]
+    public void ReplacementIsUnsignedAndAppendPreservesMixedPhases()
+    {
+        var owner = new GatewayChatStreamProjection();
+        owner.Project(Frame("""
+            {"sessionKey":"s","runId":"r","state":"delta","message":{"role":"assistant","content":[
+            {"type":"text","text":"old","textSignature":"{\"v\":1,\"id\":\"a\",\"phase\":\"final_answer\"}"}]}}
+            """), 1, out _);
+        var replaced = owner.Project(Frame("""
+            {"sessionKey":"s","runId":"r","state":"delta","replace":true,"deltaText":"new"}
+            """), 1, out _);
+        Assert.False(replaced!.Value.GetProperty("payload").GetProperty("message").GetProperty("content")[0]
+            .TryGetProperty("textSignature", out _));
+        owner.Project(Frame("""
+            {"sessionKey":"s","runId":"r","state":"delta","message":{"role":"assistant","content":[
+            {"type":"text","text":"work","textSignature":"{\"v\":1,\"phase\":\"commentary\"}"},
+            {"type":"output_text","text":"answer","textSignature":"{\"v\":1,\"phase\":\"final_answer\"}"}]}}
+            """), 1, out _);
+        var appended = owner.Project(Frame("""
+            {"sessionKey":"s","runId":"r","state":"delta","deltaText":" finished"}
+            """), 1, out _);
+        var blocks = appended!.Value.GetProperty("payload").GetProperty("message").GetProperty("content");
+        Assert.Equal("work", blocks[0].GetProperty("text").GetString());
+        Assert.Equal("answer finished", blocks[1].GetProperty("text").GetString());
+        Assert.Equal("""{"v":1,"phase":"final_answer"}""", blocks[1].GetProperty("textSignature").GetString());
+    }
+
     private static JsonElement Frame(string payload) => JsonDocument.Parse(
         """{"event":"chat","payload":""" + payload + "}").RootElement.Clone();
     private static string Text(JsonElement? frame) => frame!.Value.GetProperty("payload")

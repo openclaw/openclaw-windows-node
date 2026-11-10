@@ -2909,27 +2909,26 @@
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>工具 · {0}</value>
   </data>
-  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>執行了 {0} 個命令</value></data>
-  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>執行了 {0} 個命令</value></data>
-  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>讀取了 {0} 個檔案</value></data>
-  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>讀取了 {0} 個檔案</value></data>
-  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>編輯了 {0} 個檔案</value></data>
-  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>編輯了 {0} 個檔案</value></data>
-  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>寫入了 {0} 個檔案</value></data>
-  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>寫入了 {0} 個檔案</value></data>
-  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>執行了 {0} 次搜尋</value></data>
-  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>執行了 {0} 次搜尋</value></data>
-  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>擷取了 {0} 個頁面</value></data>
-  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>擷取了 {0} 個頁面</value></data>
-  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>使用了 {0} 個工具</value></data>
-  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>使用了 {0} 個工具</value></data>
-  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>使用了 {1}</value></data>
-  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>使用了 {1} {0} 次</value></data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} 個命令</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} 個命令</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} 次讀取</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} 次讀取</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} 次編輯</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} 次編輯</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} 次寫入</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} 次寫入</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} 次搜尋</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} 次搜尋</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} 次擷取</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} 次擷取</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} 個其他操作</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} 個其他操作</value></data>
   <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>正在執行 {0}</value></data>
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>已展開</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>已摺疊</value></data>
   <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>活動：{0}。{1} 個工具。{2}。</value></data>
+  <data name="Chat_Activity_AutomationFormatOne" xml:space="preserve"><value>活動：{0}。{1} 個工具。{2}。</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 思考中</value>
   </data>
@@ -4516,6 +4515,12 @@
   </data>
   <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
     <value>在對話中內嵌顯示工具呼叫和權杖用量詳細資訊。</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Header.Text" xml:space="preserve">
+    <value>顯示思考過程</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
+    <value>在對話中顯示助理提供的推理內容。</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隱私</value>
@@ -7337,6 +7342,10 @@
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>正在壓縮內容</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>壓縮內容後正在重試</value></data>
   <data name="Chat_Run_Retry" xml:space="preserve"><value>正在重試模型要求</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>{0} 秒後重試</value></data>
+  <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>無法載入此對話</value></data>
+  <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>請重試以載入其訊息。</value></data>
+  <data name="Chat_History_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Chat_Run_Thinking" xml:space="preserve"><value>正在思考</value></data>
   <data name="Chat_Run_Responding" xml:space="preserve"><value>正在回答</value></data>
   <data name="Chat_Run_Working" xml:space="preserve"><value>正在處理</value></data>
@@ -7766,6 +7775,53 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 語音已逾時。合成可能已完成。再次嘗試前請檢查 Gateway；未進行自動重試。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
+  <data name="Chat_Activity_Worked" xml:space="preserve">
+    <value>已完成工作</value>
+  </data>
+  <data name="Chat_Activity_WorkedFor" xml:space="preserve">
+    <value>已工作 {0}</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsOne" xml:space="preserve">
+    <value>{0} 次工具呼叫</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsMany" xml:space="preserve">
+    <value>{0} 次工具呼叫</value>
+  </data>
+  <data name="Chat_Tool_InputTooLarge" xml:space="preserve">
+    <value>工具輸入超出了安全顯示限制。</value>
+  </data>
+  <data name="Chat_ToolRecovery_Preview" xml:space="preserve"><value>這是截斷的預覽。</value></data>
+  <data name="Chat_ToolRecovery_Loading" xml:space="preserve"><value>正在載入完整輸出...</value></data>
+  <data name="Chat_ToolRecovery_Loaded" xml:space="preserve"><value>完整輸出已載入。</value></data>
+  <data name="Chat_ToolRecovery_Limited" xml:space="preserve"><value>輸出仍受安全顯示上限限制而被截斷。</value></data>
+  <data name="Chat_ToolRecovery_Unsupported" xml:space="preserve"><value>此 Gateway 不支援取得完整輸出。</value></data>
+  <data name="Chat_ToolRecovery_NotFound" xml:space="preserve"><value>已儲存的工具結果已無法使用。</value></data>
+  <data name="Chat_ToolRecovery_NotVisible" xml:space="preserve"><value>此連線無法檢視該工具結果。</value></data>
+  <data name="Chat_ToolRecovery_Oversized" xml:space="preserve"><value>此結果超出了 Gateway 回應上限。</value></data>
+  <data name="Chat_ToolRecovery_Stale" xml:space="preserve"><value>對話已變更。請重新開啟工具詳細資料。</value></data>
+  <data name="Chat_ToolRecovery_Mismatched" xml:space="preserve"><value>傳回的結果與此工具呼叫不符。</value></data>
+  <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>無法載入完整輸出。</value></data>
+  <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>載入完整輸出需要已儲存的結果識別碼及已驗證的目前帳戶。</value></data>
+  <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>顯示完整輸出</value></data>
+  <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>重試</value></data>
+  <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Chat_NewMessages" xml:space="preserve"><value>有新訊息。跳至最新訊息</value></data>
+  <data name="Chat_JumpLatest" xml:space="preserve"><value>跳至最新訊息</value></data>
+  <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 個子代理程式，{1} 個正在工作，{2} 個需要關注</value></data>
+  <data name="Chat_Children_Idle" xml:space="preserve"><value>閒置</value></data>
+  <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等候子代理程式</value></data>
+  <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在準備輸入</value></data>
+  <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失敗</value></data>
+  <data name="Chat_Tool_Completed" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Review_Required" xml:space="preserve"><value>需要提供者審核</value></data>
+  <data name="Chat_Review_Warning" xml:space="preserve"><value>提供者審核警告</value></data>
+  <data name="Chat_Review_Working" xml:space="preserve"><value>提供者正在審核</value></data>
+  <data name="Chat_Review_Approved" xml:space="preserve"><value>提供者審核已核准</value></data>
+  <data name="Chat_Review_Denied" xml:space="preserve"><value>提供者未核准此要求</value></data>
+  <data name="Chat_History_CursorStalled" xml:space="preserve"><value>未能載入更早的歷程。請重新載入對話後再試。</value></data>
+  <data name="Chat_Review_Web" xml:space="preserve"><value>請先在網頁聊天中審核此要求，再繼續。</value></data>
+  <data name="Chat_Review_TimedOut" xml:space="preserve"><value>提供者審核逾時</value></data>
+  <data name="Chat_Review_Aborted" xml:space="preserve"><value>提供者審核已取消</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>新增系統</value></data>
   <data name="Systems_CopyUpdate" xml:space="preserve"><value>複製更新命令</value></data>
   <data name="Systems_CollapseSystem" xml:space="preserve"><value>摺疊系統詳細資料</value></data>

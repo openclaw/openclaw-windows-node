@@ -6,6 +6,70 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task InteractiveWork_DoesNotFadeCompletedMessagePixels()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.MainSentinel), "visible initial answer");
+            var window = FindHub(run);
+            var baselineInk = new Dictionary<string, int>(StringComparer.Ordinal);
+            async Task AssertStableInkAsync(string stage, string message)
+            {
+                await WaitUiAsync(run, () => IsVisibleInTimeline(run, message), $"{stage} message visible");
+                for (var frame = 0; frame < 12; frame++)
+                {
+                    var target = FindText(run, message)!;
+                    var file = $"{stage}-ink-{frame:00}.png";
+                    OwnedWindowCapture.Save(run, window, file, target);
+                    var path = Path.Combine(run.ArtifactsDirectory, file);
+                    using var metadata = System.Text.Json.JsonDocument.Parse(
+                        File.ReadAllText(Path.ChangeExtension(path, ".json")));
+                    var bounds = metadata.RootElement.GetProperty("assertions")[0];
+                    using var image = new System.Drawing.Bitmap(path);
+                    var left = (int)Math.Ceiling(bounds.GetProperty("left").GetDouble());
+                    var top = (int)Math.Ceiling(bounds.GetProperty("top").GetDouble());
+                    var right = Math.Min(image.Width, left + (int)bounds.GetProperty("Width").GetDouble());
+                    var bottom = Math.Min(image.Height, top + (int)bounds.GetProperty("Height").GetDouble());
+                    var darkPixels = 0;
+                    for (var y = top; y < bottom; y++)
+                        for (var x = left; x < right; x++)
+                        {
+                            var pixel = image.GetPixel(x, y);
+                            if (Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) <= 80)
+                                darkPixels++;
+                        }
+                    Assert.True(darkPixels >= 40,
+                        $"{stage} frame {frame}: completed text lost its dark ink ({darkPixels} pixels). Capture: {path}");
+                    if (baselineInk.TryGetValue(message, out var baseline))
+                        Assert.True(darkPixels >= baseline * 0.9,
+                            $"{stage} frame {frame}: completed ink faded from {baseline} to {darkPixels} pixels. Capture: {path}");
+                    else
+                        baselineInk.Add(message, darkPixels);
+                    // Cover the complete two-second skeleton and 2.4-second shine cycles.
+                    await Task.Delay(250);
+                }
+            }
+
+            await AssertStableInkAsync("initial", GatewayScenario.MainSentinel);
+            var playback = run.Gateway.Interactive!.Playback;
+            playback.Select("tools");
+            playback.Pause();
+            await run.InvokeAsync("app.chat.send", new { message = "Inspect the synthetic file while earlier text stays readable." });
+            for (var step = 0; step < 3; step++)
+                playback.Step();
+            await WaitUiAsync(run, () => FindById(run, "ChatRunProgress") is not null &&
+                FindText(run, "fixture.txt") is not null, "running tool and clock");
+            await AssertStableInkAsync("running", GatewayScenario.MainSentinel);
+            playback.Resume();
+            await WaitUiAsync(run, () => FindById(run, "ChatRunProgress") is null &&
+                IsVisibleInTimeline(run, "FIXTURE INTERACTIVE COMPLETE"), "settled answer");
+            await AssertStableInkAsync("settled", "FIXTURE INTERACTIVE COMPLETE");
+        }, scenario: GatewayScenario.CreateInteractive());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task InteractiveQuestionKeepsComposerAndAcknowledgesNativeAnswer()
     {
         await WithAppAsync(async run =>

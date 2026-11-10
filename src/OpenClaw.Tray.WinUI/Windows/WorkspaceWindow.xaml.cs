@@ -1093,6 +1093,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             footer.ApplyIdentity(label, name ?? "");
             footer.ApplyAvatar(_ownerImage);
         }
+        _chat.ApplyUserIdentity(name ?? "", _ownerImage);
         if (!avatarChanged || avatar is null) return;
         AsyncEventHandlerGuard.Run(() => ShowOwnerAvatarAsync(avatar), new AppLogger(), nameof(UpdateOwnerIdentity));
     }
@@ -1118,6 +1119,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             _ownerImage = image;
             foreach (var footer in Footers)
                 footer.ApplyAvatar(image);
+            _chat.ApplyUserIdentity(_identity.DisplayName ?? "", image);
         }
     }
 

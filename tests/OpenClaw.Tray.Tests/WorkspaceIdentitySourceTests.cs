@@ -590,6 +590,8 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Contains("LocalizationHelper.Format(\"WorkspaceShell_SharedOwnerNamedFormat\", ownerName)", source);
         Assert.Contains("footer.ApplyIdentity(label, name ?? \"\")", source);
         Assert.Contains("footer.ApplyAvatar(_ownerImage)", source);
+        Assert.Contains("_chat.ApplyUserIdentity(name ?? \"\", _ownerImage)", source);
+        Assert.Contains("_chat.ApplyUserIdentity(_identity.DisplayName ?? \"\", image)", source);
         Assert.DoesNotContain("settings/profile", source);
         Assert.DoesNotContain("SetUpProfile", source);
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })

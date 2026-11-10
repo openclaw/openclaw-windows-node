@@ -96,7 +96,10 @@ internal sealed record ChatHistoryRebuildPlan(
     string? SessionId,
     ChatTimelineState Timeline,
     IReadOnlyDictionary<string, ChatEntryMetadata> Metadata,
-    int MaxHistorySequence);
+    int MaxHistorySequence,
+    string? OlderCursor = null,
+    ChatHistoryPageRequest? OlderPage = null,
+    string? OlderMessageId = null);
 
 internal sealed record ChatQueuedAdmission(
     string MessageId,
