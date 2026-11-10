@@ -474,7 +474,9 @@ public sealed class DashboardWidgetCellTests(UIThreadFixture ui)
                         ui.Container.ActualHeight >= host.ActualHeight + ui.Container.Padding.Top + ui.Container.Padding.Bottom &&
                         ancestor is { IsExpanded: true, IsLoaded: true } &&
                         observedCard is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
-                        rectangle.Width > 0 && rectangle.Height > 0;
+                        rectangle.Width > 0 && rectangle.Height > 0 &&
+                        Math.Abs(rectangle.Width - observedCard.ActualWidth * viewportScale) <= 1 &&
+                        Math.Abs(rectangle.Height - observedCard.ActualHeight * viewportScale) <= 1;
                 }, "expanded native widget group geometry", () => geometry);
                 OnboardingNativeProof.AssertProductDpi(window);
                 OnboardingNativeProof.AssertFullyVisible(host, ui.Container);

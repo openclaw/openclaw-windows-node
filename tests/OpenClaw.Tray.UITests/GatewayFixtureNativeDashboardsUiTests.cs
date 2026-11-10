@@ -207,8 +207,8 @@ public sealed partial class GatewayFixtureUiTests
                                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
                             await WaitUiAsync(run, () => FindById(run, "BoardWebsiteOpen_mixed-website") is not null,
                                 "mixed report and website ready");
-                            var reportBounds = FindById(run, "BoardWidget_mixed-report")!.Current.BoundingRectangle;
-                            var websiteBounds = FindById(run, "BoardWidget_mixed-website")!.Current.BoundingRectangle;
+                            var reportBounds = FindDashboardWidget(run, "mixed", "BoardWidget_mixed-report")!.Current.BoundingRectangle;
+                            var websiteBounds = FindDashboardWidget(run, "mixed", "BoardWidget_mixed-website")!.Current.BoundingRectangle;
                             Assert.True(reportBounds.Right <= websiteBounds.Left);
                             Assert.InRange(Math.Abs(reportBounds.Top - websiteBounds.Top) / scale, 0, 1);
                             Assert.InRange(Math.Abs(reportBounds.Bottom - websiteBounds.Bottom) / scale, 0, 1);
@@ -1056,7 +1056,7 @@ public sealed partial class GatewayFixtureUiTests
                         widgetId: "BoardWidget_deploy-chart");
                     AxeHelper.AssertNoAccessibilityErrors(new IntPtr(hub.Current.NativeWindowHandle),
                         context: $"Dashboards widgets ({theme})", targetProcessId: run.AppProcessId);
-                    ScrollAncestorToBottom(run, FindById(run, "BoardWidget_broken-widget")!);
+                    ScrollAncestorToBottom(run, FindDashboardWidget(run, "overview", "BoardWidget_broken-widget")!);
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-approval-error.png",
                         ["Needs approval", "contained to this card"]);
 
@@ -1184,6 +1184,30 @@ public sealed partial class GatewayFixtureUiTests
         }
     }
 
+    private static AutomationElement? FindDashboardWidget(GatewayFixtureRun run, string tabId, string widgetId)
+    {
+        var tab = FindById(run, "DashboardTab_" + tabId);
+        if (tab is null || !tab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection) ||
+            !((SelectionItemPattern)selection).Current.IsSelected)
+            return null;
+        var grid = FindById(run, "DashboardTabGrid_" + tabId);
+        if (grid is null || grid.Current.IsOffscreen)
+            return null;
+        Assert.Equal(run.AppProcessId, tab.Current.ProcessId);
+        Assert.Equal(run.AppProcessId, grid.Current.ProcessId);
+        // Descendant traversal can stop inside a WebView provider before reaching its native siblings.
+        var widget = grid.FindFirst(TreeScope.Children,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, widgetId));
+        if (widget is not null)
+        {
+            Assert.Equal(run.AppProcessId, widget.Current.ProcessId);
+            Assert.Equal(ControlType.Group, widget.Current.ControlType);
+            Assert.True(widget.Current.IsControlElement);
+            Assert.True(widget.Current.IsContentElement);
+        }
+        return widget;
+    }
+
     private static async Task<AutomationElement> RevealDashboardWidgetAsync(
         GatewayFixtureRun run, AutomationElement hub, string widgetId, string imageName)
     {
@@ -1203,7 +1227,7 @@ public sealed partial class GatewayFixtureUiTests
             {
                 probes++;
                 var hasBounds = false;
-                measuredWidget = FindById(run, widgetId);
+                measuredWidget = FindDashboardWidget(run, "overview", widgetId);
                 if (measuredWidget is null)
                 {
                     missing++;

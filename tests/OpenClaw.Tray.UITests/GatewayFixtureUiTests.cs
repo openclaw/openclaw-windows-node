@@ -884,7 +884,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             automationId = node.Current.AutomationId,
             className = node.Current.ClassName,
             controlType = node.Current.ControlType.ProgrammaticName,
-            bounds = node.Current.BoundingRectangle,
+            bounds = DescribeScrollBounds(node.Current.BoundingRectangle),
             isOffscreen = node.Current.IsOffscreen
         };
         if (element.Current.ProcessId != run.AppProcessId)
@@ -924,29 +924,42 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             {
                 var selectedBefore = Describe(parent);
                 var before = scroll.Current.VerticalScrollPercent;
+                Exception? scrollFailure = null;
                 try
                 {
                     scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
                 }
+                catch (Exception error)
+                {
+                    scrollFailure = error;
+                    throw;
+                }
                 finally
                 {
-                    var viewport = parent.Current.BoundingRectangle;
-                    var target = element.Current.BoundingRectangle;
-                    File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+                    try
                     {
-                        run.ArtifactsDirectory,
-                        run.AppProcessId,
-                        targetBefore,
-                        targetAfter = Describe(element),
-                        selectedBefore,
-                        selectedAfter = Describe(parent),
-                        pattern = ScrollPattern.Pattern.ProgrammaticName,
-                        before,
-                        after = scroll.Current.VerticalScrollPercent,
-                        targetVisibleContainment = !element.Current.IsOffscreen && !target.IsEmpty &&
-                            !viewport.IsEmpty && viewport.Contains(target),
-                        ancestors
-                    }));
+                        var viewport = parent.Current.BoundingRectangle;
+                        var target = element.Current.BoundingRectangle;
+                        File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+                        {
+                            run.ArtifactsDirectory,
+                            run.AppProcessId,
+                            targetBefore,
+                            targetAfter = Describe(element),
+                            selectedBefore,
+                            selectedAfter = Describe(parent),
+                            pattern = ScrollPattern.Pattern.ProgrammaticName,
+                            before,
+                            after = scroll.Current.VerticalScrollPercent,
+                            targetVisibleContainment = !element.Current.IsOffscreen && !target.IsEmpty &&
+                                !viewport.IsEmpty && viewport.Contains(target),
+                            ancestors
+                        }));
+                    }
+                    catch (Exception observationError) when (scrollFailure is not null)
+                    {
+                        throw new AggregateException(scrollFailure, observationError);
+                    }
                 }
                 return;
             }
@@ -960,6 +973,39 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             ancestors
         }));
         throw new InvalidOperationException($"No vertically scrollable ancestor for {element.Current.AutomationId}. Diagnostics: {receiptPath}");
+    }
+
+    private static object DescribeScrollBounds(System.Windows.Rect bounds)
+    {
+        static double? Finite(double value) => double.IsFinite(value) ? value : null;
+        return new
+        {
+            invalidBounds = bounds.IsEmpty || !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
+                !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height),
+            x = Finite(bounds.X), y = Finite(bounds.Y),
+            width = Finite(bounds.Width), height = Finite(bounds.Height)
+        };
+    }
+
+    [Fact]
+    public void ScrollObservation_EmptyBoundsRemainExplicitlyInvalidAndSerializable()
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(DescribeScrollBounds(System.Windows.Rect.Empty)));
+        Assert.True(json.RootElement.GetProperty("invalidBounds").GetBoolean());
+        foreach (var coordinate in new[] { "x", "y", "width", "height" })
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty(coordinate).ValueKind);
+    }
+
+    [Fact]
+    public void ScrollObservation_FiniteBoundsRetainNegativeCoordinatesAndExactDimensions()
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(
+            DescribeScrollBounds(new System.Windows.Rect(-10, 20, 30, 40))));
+        Assert.False(json.RootElement.GetProperty("invalidBounds").GetBoolean());
+        Assert.Equal(-10, json.RootElement.GetProperty("x").GetDouble());
+        Assert.Equal(20, json.RootElement.GetProperty("y").GetDouble());
+        Assert.Equal(30, json.RootElement.GetProperty("width").GetDouble());
+        Assert.Equal(40, json.RootElement.GetProperty("height").GetDouble());
     }
 
     private static bool VisibleTargetFitsViewport(System.Windows.Rect target, System.Windows.Rect viewport, bool offscreen) =>
