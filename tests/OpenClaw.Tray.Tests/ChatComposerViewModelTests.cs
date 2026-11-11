@@ -2,6 +2,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
@@ -19,6 +20,56 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerViewModelTests
 {
+    [Fact]
+    public void SandboxSettings_IgnoreOlderSnapshotsAndUnrelatedChanges()
+    {
+        using var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), false);
+        var snapshot = new SettingsSnapshot { Version = 2, NodeSystemRunEnabled = true };
+        vm.ApplySandboxSettings(snapshot);
+        vm.ApplySandboxStatus(new(1, SandboxStatus.Available));
+        var revision = vm.RenderRevision;
+
+        vm.ApplySandboxSettings(new SettingsSnapshot { Version = 1 });
+        vm.ApplySandboxSettings(snapshot with { Version = 3, AutoStart = true });
+
+        Assert.Equal(SandboxStatus.Available, vm.SandboxStatus);
+        Assert.Equal(revision, vm.RenderRevision);
+        vm.ApplySandboxSettings(snapshot with { Version = 4, NodeSystemRunEnabled = false });
+        Assert.Equal(SandboxStatus.Disabled, vm.SandboxStatus);
+        Assert.Equal(revision + 1, vm.RenderRevision);
+    }
+
+    [Fact]
+    public void SandboxSettings_QueuedUpdateCannotNotifyAfterDisposal()
+    {
+        var dispatcher = new RecordingUiDispatcher
+        {
+            HasThreadAccess = false,
+            RunEnqueuedImmediately = false,
+        };
+        using var vm = new ChatComposerViewModel(dispatcher, false);
+        vm.ApplySandboxStatus(new(1, SandboxStatus.Available));
+        vm.Dispose();
+        dispatcher.FlushPending();
+
+        Assert.Equal(SandboxStatus.Checking, vm.SandboxStatus);
+        Assert.Equal(0, vm.RenderRevision);
+    }
+
+    [Fact]
+    public void SandboxStatus_RejectsStaleResultsAndPreservesSystemToolsGate()
+    {
+        using var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), false);
+        vm.ApplySandboxStatus(new(3, SandboxStatus.Unavailable));
+        vm.ApplySandboxStatus(new(2, SandboxStatus.Available));
+        Assert.Equal(SandboxStatus.Unavailable, vm.SandboxStatus);
+        vm.ApplySandboxSettings(new() { Version = 1, NodeSystemRunEnabled = false });
+        vm.ApplySandboxStatus(new(4, SandboxStatus.Compatibility));
+        Assert.Equal(SandboxStatus.Disabled, vm.SandboxStatus);
+        vm.ApplySandboxSettings(new() { Version = 2, NodeSystemRunEnabled = true });
+        Assert.Equal(SandboxStatus.Compatibility, vm.SandboxStatus);
+    }
+
     private static ChatThread MakeThread(string id = "session-1", string? model = null, string? thinking = null) =>
         new()
         {
@@ -34,7 +85,8 @@ public sealed class ChatComposerViewModelTests
         long revision = 1,
         string connectionState = "connected",
         bool turnActive = false,
-        ChatThread? thread = null) =>
+        ChatThread? thread = null,
+        bool sessionModelCatalogEligible = false) =>
         new(
             connectionState,
             turnActive,
@@ -44,7 +96,8 @@ public sealed class ChatComposerViewModelTests
             false,
             System.Array.Empty<ChatQueuedMessage>(),
             null,
-            false)
+            false,
+            sessionModelCatalogEligible)
         {
             Revision = revision,
         };
@@ -58,6 +111,34 @@ public sealed class ChatComposerViewModelTests
 
         Assert.Equal("hello", vm.Draft);
         Assert.Equal(1, vm.DraftRevision);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ThinkingProfile_UsesTheSessionScopedCatalogEvenWhenManualSelectionIsDenied(bool manualSelectionAllowed)
+    {
+        var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        var inputs = MakeInputs(
+            thread: MakeThread(model: "worker") with { ModelProvider = "fixture" },
+            sessionModelCatalogEligible: true);
+        vm.ApplyInputs(inputs);
+        vm.SetSessionModelCatalog(new ChatSessionModelCatalog(
+            "session-1",
+            ChatModelCatalogStatus.Ready,
+            [new ChatModelChoice(
+                "worker",
+                "Worker",
+                Provider: "fixture",
+                ManualSelectionAllowed: manualSelectionAllowed,
+                ThinkingContext: new(
+                    new("fixture", "worker"),
+                    new([new("high", "High")])))]));
+
+        var levels = vm.ThinkingProfile!.Levels;
+        Assert.True(levels.HasValue);
+        Assert.Equal("high", Assert.Single(levels.Value).Id);
+        Assert.Equal(manualSelectionAllowed, Assert.Single(vm.SessionModelCatalog!.Choices).IsSelectable);
     }
 
     [Fact]
@@ -211,6 +292,8 @@ public sealed class ChatComposerViewModelTests
                 Revision = 2,
             },
             baseline with { CommandsSupported = true, Revision = 2 },
+            baseline with { SessionModelCatalogEligible = true, Revision = 2 },
+            baseline with { ModelCatalogRevision = 1, Revision = 2 },
         };
 
         Assert.True(baseline.HasSameProjection(baseline with { Revision = 2 }));

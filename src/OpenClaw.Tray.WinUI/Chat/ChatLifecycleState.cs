@@ -50,6 +50,9 @@ internal sealed class ChatLifecycleState
     internal bool TryGetActiveRun(string threadId, out string? runId) =>
         _activeRunIds.TryGetValue(threadId, out runId);
 
+    internal string? ThreadForActiveRun(string runId) =>
+        _activeRunIds.FirstOrDefault(pair => string.Equals(pair.Value, runId, StringComparison.Ordinal)).Key;
+
     internal bool HasRunStartedAfter(
         string threadId,
         string runId,
@@ -191,9 +194,10 @@ internal sealed class ChatLifecycleState
     internal void ClearThreadSuppression(string threadId) =>
         _abortedThreads.Remove(threadId);
 
-    internal string? CompleteAssistantFinal(string threadId)
+    internal string? CompleteAssistantFinal(string threadId, string? runId = null)
     {
         _activeRunIds.Remove(threadId, out var completedRunId);
+        completedRunId ??= runId;
         if (!string.IsNullOrEmpty(completedRunId))
         {
             RememberTerminalRun(threadId, completedRunId);

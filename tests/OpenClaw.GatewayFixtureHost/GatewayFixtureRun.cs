@@ -14,8 +14,9 @@ namespace OpenClaw.GatewayFixtureHost;
 /// <summary>One real app, one fixture server and one disposable profile. Artifacts outlive the run.</summary>
 public sealed class GatewayFixtureRun : IAsyncDisposable
 {
+    private static readonly TimeSpan McpReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly string _gatewayToken;
-    private readonly string _appPath;
+    private string _appPath;
     private Process? _process;
     private McpClient? _client;
     private LoopbackControlHost? _control;
@@ -25,6 +26,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
     private JsonElement? _lastStatus;
     private readonly GatewayScenario _scenario;
     private readonly string? _postSetupLaunch;
+    private readonly bool _postSetupRestart;
 
     public FixtureGatewayServer Gateway { get; }
     public GatewayFixtureProfile Profile { get; }
@@ -40,7 +42,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
     public int? AppExitCode => _process is { HasExited: true } ? _process.ExitCode : null;
 
     private GatewayFixtureRun(FixtureGatewayServer gateway, GatewayFixtureProfile profile, string token, string appPath,
-        string? artifactRoot, GatewayScenario scenario, string? postSetupLaunch)
+        string? artifactRoot, GatewayScenario scenario, string? postSetupLaunch, bool postSetupRestart)
     {
         Gateway = gateway;
         Profile = profile;
@@ -48,6 +50,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         _appPath = appPath;
         _scenario = scenario;
         _postSetupLaunch = postSetupLaunch;
+        _postSetupRestart = postSetupRestart;
         ArtifactsDirectory = Path.Combine(
             Path.GetFullPath(artifactRoot ?? Path.Combine(Path.GetTempPath(), "openclaw-gateway-fixture-artifacts")),
             profile.RunId);
@@ -64,7 +67,12 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         bool foreignBrowserControl = false,
         bool allowSessionMutations = false,
         GatewayScenario? scenario = null,
-        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null)
+        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null,
+        bool postSetupRestart = false,
+        Action? releasePendingResponses = null,
+        string appTheme = "Light",
+        Action<GatewayFixtureProfile>? configureProfile = null,
+        bool connectGateway = true)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("The fixture app requires a Windows desktop.");
@@ -76,7 +84,8 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayFixtureProfile profile;
         try
         {
-            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy);
+            profile = new GatewayFixtureProfile(gateway.Endpoint, token, enableNodeBrowserProxy,
+                appTheme: appTheme, connectGateway: connectGateway);
         }
         catch
         {
@@ -86,8 +95,9 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         GatewayFixtureRun run;
         try
         {
+            configureProfile?.Invoke(profile);
             var handoff = prepareSetupHandoff?.Invoke(profile);
-            run = new GatewayFixtureRun(gateway, profile, token, executable, artifactRoot, scenario, handoff)
+            run = new GatewayFixtureRun(gateway, profile, token, executable, artifactRoot, scenario, handoff, postSetupRestart)
             {
                 _control = control,
                 _foreignControl = foreign,
@@ -112,10 +122,26 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            try { await run.WriteReportAsync("startup-failed", ex); }
-            finally { await run.DisposeAsync(); }
+            releasePendingResponses?.Invoke();
+            await HandleStartupFailureAsync(ex,
+                () => run.WriteReportAsync("startup-failed", ex),
+                () => run.DisposeAsync().AsTask());
             throw;
         }
+    }
+
+    internal static async Task HandleStartupFailureAsync(
+        Exception startupFailure,
+        Func<Task> writeReport,
+        Func<Task> cleanup)
+    {
+        var failures = new List<Exception> { startupFailure };
+        try { await writeReport(); }
+        catch (Exception ex) { failures.Add(ex); }
+        try { await cleanup(); }
+        catch (Exception ex) { failures.Add(ex); }
+        if (failures.Count > 1)
+            throw new AggregateException("Fixture startup failed, and failure reporting or cleanup also failed.", failures);
     }
 
     private async Task StartAppAsync(CancellationToken cancellationToken)
@@ -123,12 +149,17 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         for (var attempt = 0; attempt < 3; attempt++)
         {
             McpPort = FindFreePort();
-            _process = Process.Start(Profile.CreateStartInfo(_appPath, McpPort, _postSetupLaunch))
+            _process = Process.Start(Profile.CreateStartInfo(_appPath, McpPort, _postSetupLaunch, _postSetupRestart))
                 ?? throw new InvalidOperationException("Failed to start the fixture app.");
             await WriteReportAsync("starting");
             try
             {
                 await WaitForMcpAsync(cancellationToken);
+                if (!Profile.ConnectGateway)
+                {
+                    _lastStatus = await InvokeAsync("app.status");
+                    return;
+                }
                 await WaitForAsync(async () =>
                 {
                     var status = await InvokeAsync("app.status");
@@ -159,6 +190,22 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Opens the same disposable profile with another explicit fixture-compatible build.
+    /// For example, a released app can write the baseline before the candidate reads it.
+    /// This uses the fixture's owned-process stop, not an installer or update workflow.
+    /// </summary>
+    public async Task RestartAppAsync(string appPath, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var executable = GatewayFixtureProfile.ValidateApp(appPath);
+        await StopAppAsync();
+        _appPath = executable;
+        _lastStatus = null;
+        await StartAppAsync(cancellationToken);
+        await WriteReportAsync("ready");
+    }
+
     private async Task WaitForMcpAsync(CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -174,7 +221,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                 EnsureRunning();
                 if (File.Exists(tokenPath))
                 {
-                    _mcpToken = (await File.ReadAllTextAsync(tokenPath, deadline.Token)).Trim();
+                    _mcpToken = await ReadPublishedMcpTokenAsync(tokenPath, deadline.Token);
                     if (_mcpToken.Length != 0)
                     {
                         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _mcpToken);
@@ -211,12 +258,27 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
                         }
                     }
                 }
-                await Task.Delay(100, deadline.Token);
+                await Task.Delay(McpReadinessPollInterval, deadline.Token);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException($"Fixture MCP did not become ready. Last error: {lastError?.Message}. Artifacts: {ArtifactsDirectory}");
+        }
+    }
+
+    internal static async Task<string> ReadPublishedMcpTokenAsync(string path, CancellationToken cancellationToken)
+    {
+        // A published token file can still be transiently locked. Retry only sharing/lock
+        // violations within the caller's deadline; do not hide other I/O failures.
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try { return (await File.ReadAllTextAsync(path, cancellationToken)).Trim(); }
+            catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33)
+            {
+                await Task.Delay(McpReadinessPollInterval, cancellationToken);
+            }
         }
     }
 
@@ -495,36 +557,175 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
+    /// <summary>Preserves the failed assertion and contains native workers before releasing this run.</summary>
+    public Task FinishUiFailureAsync(Exception original, Task body,
+        Func<CancellationToken, Task> capture, Action? releasePendingResponses = null)
+    {
+        var runId = Profile.RunId;
+        var failure = Redact(original.ToString());
+        return GatewayFixtureUiFailure.FinishAsync(original, body,
+            async token =>
+            {
+                await WriteReportAsync("failed", original).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                if (IsRunning) await capture(token).ConfigureAwait(false);
+            }, releasePendingResponses ?? (() => { }), StopAppAsync, () => DisposeAsync().AsTask(),
+            stages => File.WriteAllTextAsync(Path.Combine(ArtifactsDirectory, "failure-lifecycle.json"),
+                JsonSerializer.Serialize(new { runId, outcome = "failed", failure, stages,
+                    recordedAt = DateTimeOffset.UtcNow }, new JsonSerializerOptions { WriteIndented = true })),
+            // Exit only this test worker if its native calls cannot unwind. FailFast could create a dump.
+            () => Environment.Exit(1), GatewayFixtureUiFailure.PhaseTimeout);
+    }
+
     private async Task StopAppAsync()
     {
         _client?.Dispose();
         _client = null;
         if (_process is null) return;
-        if (!_process.HasExited)
+        // Retain every browser descendant before tree termination can orphan it.
+        var browsers = FindOwnedBrowsers(_process);
+        var owned = new List<Process> { _process };
+        owned.AddRange(browsers.AsEnumerable().Reverse());
+        try
         {
-            _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await StopOwnedProcessesAsync(owned, async process =>
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            });
         }
-        _process.Dispose();
-        _process = null;
+        finally { _process = null; }
     }
+
+    internal static async Task StopOwnedProcessesAsync(
+        IReadOnlyCollection<Process> owned,
+        Func<Process, Task> stopProcess)
+    {
+        var failures = new List<Exception>();
+        try
+        {
+            foreach (var process in owned)
+            {
+                try
+                {
+                    await stopProcess(process);
+                }
+                catch (Exception ex) when (ex is TimeoutException or System.ComponentModel.Win32Exception
+                    or InvalidOperationException or AggregateException)
+                {
+                    // Still attempt every retained child. Preserve failures rather than
+                    // masking them or leaving later browser handles unprocessed.
+                    failures.Add(new InvalidOperationException($"Could not stop fixture process {process.Id}.", ex));
+                }
+            }
+        }
+        finally
+        {
+            foreach (var process in owned)
+                process.Dispose();
+        }
+        if (failures.Count > 0)
+            throw new AggregateException("Fixture process cleanup failed.", failures);
+    }
+
+    private static List<Process> FindOwnedBrowsers(Process app)
+    {
+        var candidates = new Dictionary<int, Process>();
+        var identities = new List<BrowserProcessIdentity>();
+        var appStarted = app.StartTime.ToUniversalTime();
+        var latestChildStart = app.HasExited ? app.ExitTime.ToUniversalTime() : DateTime.UtcNow;
+        foreach (var candidate in Process.GetProcessesByName("msedgewebview2"))
+        {
+            var keep = false;
+            try
+            {
+                if (!candidate.HasExited
+                    && NtQueryInformationProcess(candidate.Handle, 0, out var info,
+                        Marshal.SizeOf<ProcessBasicInformation>(), out _) == 0)
+                {
+                    identities.Add(new(candidate.Id, checked((int)info.ParentProcessId), candidate.StartTime.ToUniversalTime()));
+                    candidates.Add(candidate.Id, candidate);
+                    keep = true;
+                }
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // An inaccessible process cannot be established as ours; leave it alone.
+            }
+            catch (InvalidOperationException)
+            {
+                // The candidate exited during discovery.
+            }
+            finally
+            {
+                if (!keep)
+                    candidate.Dispose();
+            }
+        }
+        var ids = SelectOwnedBrowserDescendants(new(app.Id, 0, appStarted), identities, latestChildStart);
+        var selected = ids.ToHashSet();
+        foreach (var candidate in candidates)
+            if (!selected.Contains(candidate.Key))
+                candidate.Value.Dispose();
+        return ids.Select(id => candidates[id]).ToList();
+    }
+
+    internal sealed record BrowserProcessIdentity(int Id, int ParentId, DateTime StartedUtc);
+
+    internal static int[] SelectOwnedBrowserDescendants(BrowserProcessIdentity app,
+        IReadOnlyCollection<BrowserProcessIdentity> candidates, DateTime latestChildStart)
+    {
+        var owned = new Dictionary<int, BrowserProcessIdentity> { [app.Id] = app };
+        var selected = new List<int>();
+        bool added;
+        do
+        {
+            added = false;
+            foreach (var candidate in candidates)
+            {
+                if (owned.ContainsKey(candidate.Id) || !owned.TryGetValue(candidate.ParentId, out var parent) ||
+                    candidate.StartedUtc < parent.StartedUtc || candidate.StartedUtc > latestChildStart)
+                    continue;
+                owned.Add(candidate.Id, candidate);
+                selected.Add(candidate.Id);
+                added = true;
+            }
+        } while (added);
+        return selected.ToArray();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessBasicInformation
+    {
+        public nint Reserved1, PebBaseAddress, Reserved2, Reserved3;
+        public nuint ProcessId, ParentProcessId;
+    }
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(nint process, int informationClass,
+        out ProcessBasicInformation information, int informationLength, out int returnLength);
 
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
-        try
-        {
-            await StopAppAsync();
-        }
-        finally
-        {
-            try
-            {
-                await DisposeGatewayResourcesAsync(Gateway, _control, _foreignControl, ForeignControlCountFile);
-            }
-            finally { Profile.Dispose(); }
-        }
+        await DisposeOwnedResourcesAsync(StopAppAsync,
+            () => DisposeGatewayResourcesAsync(Gateway, _control, _foreignControl, ForeignControlCountFile),
+            Profile.Dispose);
+    }
+
+    internal static async Task DisposeOwnedResourcesAsync(Func<Task> stopApp, Func<Task> disposeGateway, Action disposeProfile)
+    {
+        var errors = new List<Exception>();
+        try { await stopApp(); }
+        catch (Exception error) { errors.Add(error); }
+        try { await disposeGateway(); }
+        catch (Exception error) { errors.Add(error); }
+        try { disposeProfile(); }
+        catch (Exception error) { errors.Add(error); }
+        if (errors.Count > 0)
+            throw new AggregateException("Fixture teardown failed.", errors);
     }
 
     private sealed class McpPortCollisionException : Exception

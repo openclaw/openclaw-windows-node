@@ -7,28 +7,34 @@ public sealed class SetupWindowConfigErrorContractTests
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
-        AssertInOrder(source, "Closed += async", "ApplyMinimumWindowSize();", "SetupWindowCommandLine.TryParse(");
-        Assert.Contains("AppWindow.Presenter is not OverlappedPresenter presenter", source);
-        Assert.Contains("GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))", source);
-        Assert.Contains("SetupWindowSizing.MinimumPixels(dpi)", source);
-        Assert.Contains("presenter.PreferredMinimumWidth = minimum.Width", source);
-        Assert.Contains("presenter.PreferredMinimumHeight = minimum.Height", source);
-        Assert.Contains("SetupWindowSizing.InitialPixels(dpi)", source);
-        Assert.Contains("RootFrame.Loaded += AttachMinimumSizeRoot", source);
-        Assert.Contains("root.Changed += MinimumSizeRootChanged", source);
-        Assert.Contains("previous.Changed -= MinimumSizeRootChanged", source);
-        Assert.Contains("args.DidPositionChange || args.DidPresenterChange", source);
-        var close = source[source.IndexOf("Closed += async", StringComparison.Ordinal)..
-            source.IndexOf("// Extend into title bar", StringComparison.Ordinal)];
-        Assert.Contains("RootFrame.Loaded -= AttachMinimumSizeRoot", close);
-        Assert.Contains("AppWindow.Changed -= MinimumSizeWindowChanged", close);
-        Assert.Contains("sizingRoot.Changed -= MinimumSizeRootChanged", close);
-        Assert.Contains("_minimumSizeRoot = null", close);
-        var apply = source[source.IndexOf("private void ApplyMinimumWindowSize()", StringComparison.Ordinal)..
-            source.IndexOf("public void NavigateToWelcome", StringComparison.Ordinal)];
+        var ready = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupReadyWindow.cs"));
+        var sizing = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindowSizingController.cs"));
+        AssertInOrder(source, "InitializeComponent();", "_windowSizing = new(this, RootFrame);", "SetupWindowCommandLine.TryParse(");
+        Assert.Contains("_windowSizing = new(this, _frame);", ready);
+        Assert.DoesNotContain("AppWindow.Resize", source);
+        Assert.DoesNotContain("AppWindow.Resize", ready);
+        Assert.Contains("_window.AppWindow.Presenter is not OverlappedPresenter presenter", sizing);
+        Assert.Contains("GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(_window))", sizing);
+        Assert.Contains("SetupWindowSizing.MinimumPixels(dpi)", sizing);
+        Assert.Contains("presenter.PreferredMinimumWidth = minimum.Width", sizing);
+        Assert.Contains("presenter.PreferredMinimumHeight = minimum.Height", sizing);
+        Assert.Contains("SetupWindowSizing.InitialPixels(", sizing);
+        Assert.Contains("_content.Loaded += ContentLoaded", sizing);
+        Assert.Contains("root.Changed += RootChanged", sizing);
+        Assert.Contains("previous.Changed -= RootChanged", sizing);
+        Assert.Contains("args.DidPositionChange || args.DidPresenterChange", sizing);
+        Assert.Contains("_window.Closed += WindowClosed", sizing);
+        Assert.Contains("WindowClosed(object sender, WindowEventArgs args) => Dispose()", sizing);
+        var close = sizing[sizing.IndexOf("public void Dispose()", StringComparison.Ordinal)..];
+        Assert.Contains("_content.Loaded -= ContentLoaded", close);
+        Assert.Contains("_window.AppWindow.Changed -= WindowChanged", close);
+        Assert.Contains("root.Changed -= RootChanged", close);
+        Assert.Contains("_root = null", close);
+        var apply = sizing[sizing.IndexOf("internal void ApplyMinimumSize()", StringComparison.Ordinal)..
+            sizing.IndexOf("private void WindowClosed", StringComparison.Ordinal)];
         Assert.DoesNotContain("AppWindow.Resize", apply);
-        Assert.DoesNotContain("IsResizable = false", source);
-        Assert.DoesNotContain("IsMaximizable = false", source);
+        Assert.DoesNotContain("IsResizable = false", sizing);
+        Assert.DoesNotContain("IsMaximizable = false", sizing);
     }
 
     [Fact]

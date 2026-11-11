@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Security.AccessControl;
 using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Mxc;
+using OpenClaw.TestSupport;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests.Mxc;
@@ -200,7 +201,7 @@ public sealed class MxcCommandRunnerIntegrationTests : IDisposable
             child = Process.GetProcessById(childIdentity.GetProperty("Pid").GetInt32());
             _ = child.SafeHandle;
             Assert.Equal(childIdentity.GetProperty("StartTimeUtc").GetString(), child.StartTime.ToUniversalTime().ToString("O"));
-            Assert.Equal(Path.Combine(Environment.SystemDirectory, "cmd.exe"), child.MainModule!.FileName, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(Path.Combine(Environment.SystemDirectory, "cmd.exe"), ProcessImagePath.Read(child.SafeHandle), StringComparer.OrdinalIgnoreCase);
             childIdentityVerified = true;
             Assert.False(child.HasExited);
             Write("descendant-before-root-exit.json", new { child.Id, Exited = child.HasExited });

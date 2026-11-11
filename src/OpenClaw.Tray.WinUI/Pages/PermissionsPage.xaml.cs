@@ -155,6 +155,16 @@ public sealed partial class PermissionsPage : Page
         };
     }
 
+    internal void RevealSearchSetting(string key)
+    {
+        Control? control = key == "NodeMode" ? NodeModeToggle :
+            Enum.TryParse<PermissionsCapabilityKey>(key, out var capability) &&
+            _featureToggles.TryGetValue(capability, out var toggle) ? toggle : null;
+        if (control is null) return;
+        control.StartBringIntoView();
+        control.Focus(FocusState.Programmatic);
+    }
+
     private Border BuildCapabilityRow(PermissionsCapabilityKey key, string icon, string labelKey, string descriptionKey)
     {
         var label = LocalizationHelper.GetString(labelKey);

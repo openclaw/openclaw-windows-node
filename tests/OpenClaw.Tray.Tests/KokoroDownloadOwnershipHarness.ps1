@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$RepositoryRoot,
     [Parameter(Mandatory)]
-    [ValidateSet('success', 'canceled', 'failure', 'duplicate-click', 'preview-failure', 'storage-failure', 'storage-refresh-after-success')]
+    [ValidateSet('success', 'canceled', 'failure', 'duplicate-click', 'preview-failure', 'storage-failure', 'storage-refresh-after-success', 'prefetch-join-provider-change', 'prefetch-join-tts-enable')]
     [string]$Scenario
 )
 $ErrorActionPreference = 'Stop'
@@ -10,18 +10,22 @@ $ErrorActionPreference = 'Stop'
 # This characterizes UI-thread ordering, not rendered WinUI or native synthesis.
 # Retire this harness when VoiceSettingsPage has an injectable, WinUI-free owner.
 $page = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'src\OpenClaw.Tray.WinUI\Pages\VoiceSettingsPage.xaml.cs') -Raw
-$methods = foreach ($name in @('UpdateKokoroVoiceState', 'OnKokoroDownloadClickAsync', 'OnKokoroPreviewClickAsync')) {
-    $match = [regex]::Match($page, '(?ms)^    private (?:async )?(?:void|Task) ' + $name + '\(\)\r?\n    \{.*?^    \}')
+$methods = foreach ($name in @('UpdateKokoroVoiceState', 'OnKokoroDownloadClickAsync', 'OnKokoroPreviewClickAsync', 'JoinActiveKokoroDownload', 'OnKokoroDownloadClick', 'OnTtsProviderChanged', 'OnTtsResponseToggled')) {
+    $match = [regex]::Match($page, '(?ms)^    private (?:async )?(?:void|Task) ' + $name + '\([^)]*\)\s*(?:=>\s*[^\r\n;]+;|\r?\n(?:.|\n)*?^    \})')
     if (-not $match.Success) { throw "Production method not found: $name" }
     $match.Value
 }
-$fields = foreach ($name in @('_kokoroDownloadCts', '_kokoroPreviewInProgress')) {
-    $match = [regex]::Match($page, '(?m)^    private [^\r\n;]+ ' + $name + ';')
+$fields = foreach ($name in @('_kokoroDownloadCts', '_kokoroPreviewInProgress', '_suppressEvents')) {
+    $match = [regex]::Match($page, '(?m)^    private [^\r\n;]+ ' + $name + '(?: = [^;]+)?;')
     if (-not $match.Success) { throw "Production field not found: $name" }
     $match.Value
 }
 $singleFlight = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'src\OpenClaw.Shared\Audio\SingleFlightDownload.cs') -Raw
 $singleFlight = $singleFlight.Replace('namespace OpenClaw.Shared.Audio;', '')
+$guard = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'src\OpenClaw.Shared\AsyncEventHandlerGuard.cs') -Raw
+$guard = $guard.Replace('namespace OpenClaw.Shared;', '')
+$logger = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'src\OpenClaw.Shared\IOpenClawLogger.cs') -Raw
+$logger = $logger.Replace('namespace OpenClaw.Shared;', '')
 $fixture = @'
 #nullable enable
 using System;
@@ -48,7 +52,21 @@ public static class Logger
     public static void Debug(string text) { }
     public static void Error(string text) { }
 }
-public sealed class SettingsManager { public static string SettingsDirectoryPath = "unused-in-memory"; }
+public sealed class SettingsManager
+{
+    public static string SettingsDirectoryPath = "unused-in-memory";
+    public bool TtsKokoroAutoDownload = true;
+    public string TtsProvider = "";
+    // The production prefetcher subscribes to Saved and registers its single-flight
+    // entry synchronously; this stub models that side effect of Save().
+    public void Save()
+    {
+        if (TtsProvider != TtsCapability.KokoroProvider) return;
+        // Production derives the pack from the selected Kokoro voice id.
+        KokoroModelManager.StartPrefetch(ActiveVoiceTag ?? "Maple");
+    }
+    public static string? ActiveVoiceTag;
+}
 public sealed class AppState { public SettingsManager Settings = new(); }
 public sealed record KokoroModelPackInfo(string PackId, long TotalSizeBytes);
 public sealed record Voice(string LanguageTag);
@@ -76,13 +94,21 @@ public sealed class KokoroModelManager
         WaitToken = ct;
         return SingleFlightDownload.RunAsync(Flights, packId, _ => Download.Task, ct);
     }
+    // Models KokoroVoicePackPrefetcher.Evaluate: registers the single-flight entry
+    // synchronously so a save that triggered it sees IsDownloadInProgress=true.
+    public static void StartPrefetch(string packId)
+    {
+        Requests++;
+        _ = SingleFlightDownload.RunAsync(Flights, packId, _ => Download.Task, CancellationToken.None);
+    }
+    public static bool IsDownloadInProgress(string packId) => Flights.ContainsKey(packId);
 }
 public sealed class TtsSpeakArgs
 {
     public string? Text, Provider, VoiceId;
     public bool Interrupt;
 }
-public static class TtsCapability { public const string KokoroProvider = "kokoro"; }
+public static class TtsCapability { public const string KokoroProvider = "kokoro"; public const string PiperProvider = "piper"; }
 public sealed class TextToSpeechService : IDisposable
 {
     public static TaskCompletionSource<bool> Preview = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -91,6 +117,29 @@ public sealed class TextToSpeechService : IDisposable
     public void Dispose() { }
 }
 public static class VoicePackDownloadFailure { public static int Classify(Exception error) => 0; }
+// Production handlers construct 'new OpenClawTray.AppLogger()'; this namespace shim
+// keeps the extracted method body source-identical.
+namespace OpenClawTray
+{
+    internal sealed class AppLogger : IOpenClawLogger
+    {
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) { }
+        public void Error(string message) { }
+        public void Error(string message, Exception? ex = null) { }
+    }
+}
+public sealed class RoutedEventArgs { }
+public sealed class SelectionChangedEventArgs { }
+// Production OnTtsResponseToggled persists through App.SetChatSpeakerMuted, which
+// saves settings; this stub models the save side effect (prefetcher Evaluate).
+public sealed class App
+{
+    public static App? Current;
+    public KokoroDownloadHarness? Owner;
+    public void SetChatSpeakerMuted(bool muted) => Owner?.CurrentAppSettings?.Save();
+}
 public sealed class Pump : SynchronizationContext
 {
     private readonly ConcurrentQueue<(SendOrPostCallback, object?)> _queue = new();
@@ -118,11 +167,47 @@ public sealed class KokoroDownloadHarness
         KokoroDownloadButtonText = new(), KokoroDownloadIcon = new(), KokoroDeleteButton = new(),
         KokoroPreviewButton = new(), KokoroStatusText = new(), KokoroDownloadProgress = new(),
         KokoroPreviewLabel = new(), KokoroPreviewIcon = new();
+    // The provider-change and TTS-enable scenarios exercise production handlers that
+    // read these controls; the fixtures mirror the xaml control names exactly.
+    private readonly List<ComboBoxItem> TtsProviderComboItems = new();
+    private ComboBoxItem? TtsProviderComboSelected;
+    private bool TtsResponseToggleIsOn = true;
+    private sealed class TtsProviderComboView(KokoroDownloadHarness page)
+    {
+        public ICollection<ComboBoxItem> Items => page.TtsProviderComboItems;
+        public object? SelectedItem
+        {
+            get => page.TtsProviderComboSelected;
+            set => page.TtsProviderComboSelected = value as ComboBoxItem;
+        }
+        public int SelectedIndex
+        {
+            get => page.TtsProviderComboSelected is null ? -1 : page.TtsProviderComboItems.IndexOf(page.TtsProviderComboSelected);
+            set => page.TtsProviderComboSelected = value >= 0 && value < page.TtsProviderComboItems.Count ? page.TtsProviderComboItems[value] : null;
+        }
+    }
+    private readonly TtsProviderComboView TtsProviderCombo;
+    private sealed class TtsResponseToggleView(KokoroDownloadHarness page)
+    {
+        public bool IsOn
+        {
+            get => page.TtsResponseToggleIsOn;
+            set => page.TtsResponseToggleIsOn = value;
+        }
+    }
+    private readonly TtsResponseToggleView TtsResponseToggle;
+    public KokoroDownloadHarness()
+    {
+        TtsProviderCombo = new TtsProviderComboView(this);
+        TtsResponseToggle = new TtsResponseToggleView(this);
+    }
+    public SettingsManager CurrentAppSettings => CurrentApp.Settings;
     private static string L(string key) => key;
     private static string Lf(string key, params object?[] args) => key + ":" + string.Join(",", args);
     private static string PreviewTextFor(string? language) => "preview";
     private static string KokoroDownloadFailureText(int kind, KokoroModelPackInfo pack) => "sanitized-failure";
     private void UpdateCapabilityState() { }
+    private void UpdateTtsProviderVisibility() { }
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
@@ -143,6 +228,11 @@ public sealed class KokoroDownloadHarness
         SynchronizationContext.SetSynchronizationContext(pump);
         try
         {
+            if (scenario == "prefetch-join-provider-change" || scenario == "prefetch-join-tts-enable")
+            {
+                RunPrefetchJoinScenario(scenario == "prefetch-join-tts-enable");
+                return;
+            }
             var page = new KokoroDownloadHarness();
             page.KokoroVoiceCombo.SelectedItem = new ComboBoxItem { Tag = "Maple" };
             page.UpdateKokoroVoiceState();
@@ -232,10 +322,75 @@ public sealed class KokoroDownloadHarness
         }
         finally { SynchronizationContext.SetSynchronizationContext(previous); }
     }
+    // PR #1777 P2: a provider or TTS-enable save starts a background prefetch; the
+    // already-open page must attach to it (progress, then ready controls) instead of
+    // staying on a stale "not downloaded" panel until reopened.
+    private static void RunPrefetchJoinScenario(bool viaTtsEnable)
+    {
+        KokoroModelManager.Downloaded = false;
+        var page = new KokoroDownloadHarness();
+        page._suppressEvents = false; // production Initialize clears the guard before handlers fire
+        App.Current = new App { Owner = page };
+        page.KokoroVoiceCombo.SelectedItem = new ComboBoxItem { Tag = "Dora" };
+        SettingsManager.ActiveVoiceTag = "Dora";
+        page.TtsProviderComboItems.Add(new ComboBoxItem { Tag = TtsCapability.KokoroProvider });
+        page.TtsProviderComboItems.Add(new ComboBoxItem { Tag = TtsCapability.PiperProvider });
+        page.TtsProviderComboSelected = page.TtsProviderComboItems[1]; // provider-change variant opens on Piper
+        page.CurrentAppSettings.TtsProvider = TtsCapability.PiperProvider;
+        if (viaTtsEnable)
+        {
+            // TTS-enable variant: Kokoro already selected, spoken responses off.
+            page.TtsProviderComboSelected = page.TtsProviderComboItems[0];
+            page.CurrentAppSettings.TtsProvider = TtsCapability.KokoroProvider;
+        }
+        page.UpdateKokoroVoiceState();
+        Require(page.KokoroStatusText.Text == Lf("VoiceSettingsPage_KokoroPackNotDownloaded", "381"),
+            "Precondition: panel must show the not-downloaded state.");
+        Require(page.KokoroDownloadProgress.Visibility == Visibility.Collapsed,
+            "Precondition: no progress may be visible before the prefetch starts.");
+
+        if (viaTtsEnable)
+        {
+            page.TtsResponseToggleIsOn = true;
+            page.OnTtsResponseToggled(page, new RoutedEventArgs());
+        }
+        else
+        {
+            page.TtsProviderComboSelected = page.TtsProviderComboItems[0];
+            page.OnTtsProviderChanged(page, new SelectionChangedEventArgs());
+        }
+
+        Require(KokoroModelManager.IsDownloadInProgress("Dora"),
+            "The production save must have started the background prefetch.");
+        Require(page._kokoroDownloadCts != null,
+            "The changed handler did not attach the open page to the running prefetch.");
+        Require(page.KokoroDownloadProgress.Visibility == Visibility.Visible,
+            "Attached page must show download progress.");
+        Require(page.KokoroStatusText.Text == L("VoiceSettingsPage_KokoroConnecting"),
+            "Attached page must show the connecting status, not a stale panel.");
+        Require(KokoroModelManager.Requests == 2,
+            "Attach must reuse the prefetch's single flight, not start a second transfer.");
+
+        KokoroModelManager.Progress!.Report((200_000_000, 400_000_000));
+        ((Pump)SynchronizationContext.Current!).Drain();
+        Require(page.KokoroDownloadProgress.Value == 50, "Joined page must receive shared progress.");
+
+        KokoroModelManager.Downloaded = true;
+        KokoroModelManager.Download.SetResult(true);
+        var pump = (Pump)SynchronizationContext.Current!;
+        pump.Until(() => page._kokoroDownloadCts == null);
+        Require(page._kokoroDownloadCts == null, "Joined wait must release ownership when the transfer ends.");
+        Require(page.KokoroPreviewButton.Visibility == Visibility.Visible,
+            "Completed prefetch must expose Preview without reopening the page.");
+        Require(page.KokoroDeleteButton.Visibility == Visibility.Visible,
+            "Completed prefetch must expose Delete without reopening the page.");
+        Require(!page.KokoroDownloadButton.IsEnabled, "Ready pack must not offer download.");
+    }
 '@
 
-# SingleFlightDownload's using directives must precede the fixture declarations.
-$code = $singleFlight + "`n" + $fixture.Substring($fixture.IndexOf('public enum Visibility')) +
+# SingleFlightDownload's and AsyncEventHandlerGuard's using directives must precede the fixture declarations.
+$code = $singleFlight + "`n" + $guard + "`n" + $logger + "`n" +
+    $fixture.Substring($fixture.IndexOf('public enum Visibility')) +
     "`n" + ($fields -join "`n") + "`n" + ($methods -join "`n") + "`n}"
 $code = "#nullable enable`nusing System.Diagnostics;`nusing System.Globalization;`n" + $code
 Add-Type -TypeDefinition $code -Language CSharp

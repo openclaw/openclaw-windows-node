@@ -10,7 +10,7 @@
             <StackPanel Padding="24" Spacing="12"
                     HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <TextBlock x:Uid="SessionsPage_Sessions"
+            <TextBlock x:Uid="SessionsPage_Sessions" x:Name="SessionsHeading"
                            Text="Sessions"
                            AutomationProperties.AutomationId="SessionsPageMarker"
                            Style="{StaticResource TitleTextBlockStyle}"
@@ -108,6 +108,7 @@
                     </StackPanel>
 
                     <ListView x:Name="SessionListView"
+                              AutomationProperties.LabeledBy="{Binding ElementName=SessionsHeading}"
                               SelectionMode="None"
                               ShowsScrollingPlaceholders="False">
                         <ListView.ItemContainerStyle>
@@ -204,6 +205,18 @@
                                                           IsTextScaleFactorEnabled="False"/>
                                                 <Button.Flyout>
                                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                                        <MenuFlyoutItem x:Uid="SessionsPage_OpenDashboard"
+                                                                        Text="Open dashboard"
+                                                                        Tag="{Binding Key}"
+                                                                        Click="OnOpenDashboard"
+                                                                        AutomationProperties.AutomationId="SessionOpenDashboard">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <FontIcon Glyph="&#xECA5;"
+                                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                                          IsTextScaleFactorEnabled="False"/>
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                        <MenuFlyoutSeparator/>
                                                         <MenuFlyoutItem x:Uid="SessionsPage_Reset"
                                                                         Text="Reset"
                                                                         Tag="{Binding Key}"

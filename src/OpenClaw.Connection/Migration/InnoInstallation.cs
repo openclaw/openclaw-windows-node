@@ -30,7 +30,10 @@ public sealed record InnoInstallation(
     string ExecutablePath,
     string UninstallerPath,
     string Architecture,
-    Version Version);
+    Version Version,
+    // Exact validated Installed apps label, including the registered release spelling.
+    // Optional presentation metadata, never authorization to remove an app.
+    string? DisplayName = null);
 
 /// <param name="Status">What the inspection concluded.</param>
 /// <param name="Installation">Verified installation evidence, present only for <see cref="InnoInstallationStatus.Detected"/>.</param>
@@ -49,13 +52,18 @@ public sealed record InnoInstallation(
 /// payload gone. Startup policy uses this to tell a real installed source, which must keep the
 /// Store app inactive, from an orphan registration, where blocking would leave no working app.
 /// </param>
+/// <param name="RequiresInstallerRepair">
+/// A required payload is unavailable or is not an ordinary file. This is recovery guidance only;
+/// the installation remains unsupported and must pass all checks after repair.
+/// </param>
 public sealed record InnoInstallationDetection(
     InnoInstallationStatus Status,
     InnoInstallation? Installation = null,
     string? Reason = null,
     Version? RegisteredVersion = null,
     bool SourcePayloadPresent = false,
-    bool RegisteredVersionUnsupported = false);
+    bool RegisteredVersionUnsupported = false,
+    bool RequiresInstallerRepair = false);
 
 public interface IInnoInstallationDetector
 {

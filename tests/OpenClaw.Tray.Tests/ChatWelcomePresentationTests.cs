@@ -1,6 +1,7 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
+using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -39,21 +40,85 @@ public sealed class ChatWelcomePresentationTests
     }
 
     [Fact]
-    public void WelcomeResources_ContainCompatibilityMessagesButNoCopiedCatalog()
+    public void AgentIdentity_CurrentRosterPresentationWinsOverRetainedCatalog()
     {
-        string[] locales = ["en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw"];
-        foreach (var locale in locales)
+        var catalog = new ChatPlacementCatalog(1, "main", [], new("default", ""), [],
+            "Research assistant", "\U0001F52C", "https://example.com/stale.png");
+        var current = new ChatAgentPresentation(
+            "main", "Assistant", "https://example.com/current.png", "\U0001F916", Revision: 2);
+
+        var agent = ChatWelcomePresentation.AgentIdentity(catalog, "main", currentRoster: current);
+        var other = ChatWelcomePresentation.AgentIdentity(catalog, "other", currentRoster: current);
+
+        Assert.Equal("Assistant", agent.Name);
+        Assert.Equal("\U0001F916", agent.Emoji);
+        Assert.Equal("https://example.com/current.png", agent.AvatarUrl);
+        Assert.Equal("other", other.Name);
+        Assert.Null(other.Emoji);
+        Assert.Null(other.AvatarUrl);
+    }
+
+    [Fact]
+    public void AgentIdentity_UsesGatewayDefaultNameAndLeavesDefaultAvatarToGeneratedFace()
+    {
+        // Unconfigured main: agents.list has no name; agent.identity.get returns the built-in default.
+        var catalog = new ChatPlacementCatalog(1, "main", [], new("default", ""), []);
+        using var json = JsonDocument.Parse("""{"agentId":"main","name":"Assistant","avatar":"A"}""");
+        var hydrated = ChatWelcomePresentation.ParseAgentIdentity("main", json.RootElement);
+
+        var agent = ChatWelcomePresentation.AgentIdentity(catalog, "main", hydrated);
+
+        Assert.Equal("Assistant", agent.Name);
+        Assert.Null(agent.Emoji);
+        Assert.Null(agent.AvatarUrl);
+        Assert.Equal("Roster", ChatWelcomePresentation.AgentIdentity(
+            catalog with { AgentName = "Roster" }, "main", hydrated).Name);
+        Assert.Equal("other", ChatWelcomePresentation.AgentIdentity(catalog, "other", hydrated).Name);
+    }
+
+    [Fact]
+    public void AgentIdentity_ResolvedIdentityOwnsImageAbsence()
+    {
+        var catalog = new ChatPlacementCatalog(1, "main", [], new("default", ""), [],
+            "Research assistant", null, "https://example.com/stale.png", "avatars/main.png");
+
+        Assert.Equal("https://example.com/stale.png", ChatWelcomePresentation.AgentIdentity(catalog, "main").AvatarUrl);
+        Assert.Null(ChatWelcomePresentation.AgentIdentity(catalog, "main", new("main", null, null, null)).AvatarUrl);
+    }
+
+    [Theory]
+    [InlineData("data:image/png;base64,AQID", "✨", "data:image/png;base64,AQID", "✨")]
+    [InlineData("https://images.example/avatar.png", null, "https://images.example/avatar.png", null)]
+    [InlineData("✨", null, null, "✨")]
+    [InlineData("http://images.example/avatar.png", "A", null, null)]
+    [InlineData("A", null, null, null)]
+    [InlineData("avatars/main.png", null, null, null)]
+    public void ParseAgentIdentity_SeparatesRenderableImageFromTextFallback(
+        string avatar, string? emoji, string? expectedImage, string? expectedFallback)
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
-            var path = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src",
-                "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw");
-            var values = System.Xml.Linq.XDocument.Load(path).Root!.Elements("data")
-                .ToDictionary(element => (string)element.Attribute("name")!, element => (string)element.Element("value")!);
-            Assert.Equal(["Chat_Welcome_Failed", "Chat_Welcome_Loading", "Chat_Welcome_Unsupported"],
-                values.Keys.Where(key => key.StartsWith("Chat_Welcome_", StringComparison.Ordinal)).Order());
-            foreach (var key in new[] { "Chat_Welcome_Loading", "Chat_Welcome_Unsupported", "Chat_Welcome_Failed" })
-                Assert.False(string.IsNullOrWhiteSpace(values[key]));
-            Assert.False(string.IsNullOrWhiteSpace(values["Chat_ZeroState_RecentChats"]));
-        }
+            agentId = "main",
+            name = "Research assistant",
+            avatar,
+            emoji
+        }));
+
+        var identity = ChatWelcomePresentation.ParseAgentIdentity("main", json.RootElement);
+
+        Assert.Equal("main", identity.AgentId);
+        Assert.Equal("Research assistant", identity.DisplayName);
+        Assert.Equal(expectedImage, identity.AvatarUrl);
+        Assert.Equal(expectedFallback, identity.Emoji);
+    }
+
+    [Fact]
+    public void ParseAgentIdentity_RejectsResponseForDifferentAgent()
+    {
+        using var json = JsonDocument.Parse("""{"agentId":"other","name":"Other"}""");
+
+        Assert.Throws<InvalidDataException>(() =>
+            ChatWelcomePresentation.ParseAgentIdentity("main", json.RootElement));
     }
 
     [Fact]

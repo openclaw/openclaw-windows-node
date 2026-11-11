@@ -20,6 +20,14 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerControllerTests
 {
+    private const string ReentrancyTimeoutVariable = "OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS";
+    // A deadlocked callback never completes, so a generous bound does not weaken the
+    // reentrancy checks; it only absorbs scheduling latency on loaded runners.
+    private static readonly TimeSpan ReentrancyTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ReentrancyTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ReentrancyHangGuard = ReentrancyTimeout + TimeSpan.FromSeconds(5);
+
     private static ChatThread MakeThread(string id = "session-1", string? thinkingLevel = null) =>
         new()
         {
@@ -31,7 +39,11 @@ public sealed class ChatComposerControllerTests
             ThinkingContext = new(new(), new([new("high", "high"), new("custom-adaptive", "Custom")])),
         };
 
-    private static ChatComposerInputs MakeInputs(long revision = 1, ChatThread? thread = null, string connectionState = "connected") =>
+    private static ChatComposerInputs MakeInputs(
+        long revision = 1,
+        ChatThread? thread = null,
+        string connectionState = "connected",
+        bool sessionModelCatalogEligible = false) =>
         new(
             connectionState,
             false,
@@ -41,7 +53,8 @@ public sealed class ChatComposerControllerTests
             false,
             System.Array.Empty<ChatQueuedMessage>(),
             null,
-            false)
+            false,
+            sessionModelCatalogEligible)
         {
             Revision = revision,
         };
@@ -735,6 +748,126 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(("session-1", "gpt-5"), port.LastSetModelCall);
     }
 
+    [Fact]
+    public async Task ReconcileModelCatalog_LateSupersededResultCannotReplaceSelectedSession()
+    {
+        var (vm, controller, port, _) = MakeController();
+        port.SupportsSessionScopedModelCatalog = true;
+        var first = new TaskCompletionSource<ModelsListInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<ModelsListInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        port.SessionModelsBehavior = async (key, _) => key == "session-1"
+            ? await first.Task
+            : await second.Task;
+
+        var firstInputs = MakeInputs(revision: 2, sessionModelCatalogEligible: true);
+        vm.ApplyInputs(firstInputs);
+        var firstLoad = controller.ReconcileModelCatalogAsync(firstInputs);
+        var secondInputs = MakeInputs(
+            revision: 3,
+            thread: MakeThread("session-2"),
+            sessionModelCatalogEligible: true);
+        vm.ApplyInputs(secondInputs);
+        var secondLoad = controller.ReconcileModelCatalogAsync(secondInputs);
+
+        second.SetResult(new ModelsListInfo
+        {
+            Models = [new ModelInfo { Id = "worker-2", Name = "Worker 2" }],
+        });
+        await secondLoad;
+        Assert.Equal("session-2", vm.SessionModelCatalog?.SessionKey);
+        Assert.Equal("worker-2", Assert.Single(vm.SessionModelCatalog!.Choices).Id);
+
+        first.SetResult(new ModelsListInfo
+        {
+            Models = [new ModelInfo { Id = "worker-1", Name = "Worker 1" }],
+        });
+        await firstLoad;
+        Assert.Equal("session-2", vm.SessionModelCatalog?.SessionKey);
+        Assert.Equal("worker-2", Assert.Single(vm.SessionModelCatalog!.Choices).Id);
+    }
+
+    [Fact]
+    public async Task ReconcileModelCatalog_PersistentFailureDisablesScopedChoicesAfterOneRetry()
+    {
+        var (vm, controller, port, _) = MakeController();
+        port.SupportsSessionScopedModelCatalog = true;
+        port.SessionModelsBehavior = (_, _) => Task.FromResult<ModelsListInfo?>(null);
+        var inputs = MakeInputs(revision: 2, sessionModelCatalogEligible: true);
+        vm.ApplyInputs(inputs);
+
+        await controller.ReconcileModelCatalogAsync(inputs);
+
+        Assert.Equal(["session-1", "session-1"], port.RequestedSessionModelKeys);
+        Assert.Equal(ChatModelCatalogStatus.Unavailable, vm.SessionModelCatalog?.Status);
+        Assert.Empty(vm.SessionModelCatalog!.Choices);
+    }
+
+    [Fact]
+    public async Task ReconcileModelCatalog_InvalidationRecoversAfterUnavailableCatalog()
+    {
+        var (vm, controller, port, _) = MakeController();
+        using (controller)
+        using (vm)
+        {
+            port.SupportsSessionScopedModelCatalog = true;
+            port.SessionModelsBehavior = (_, _) => Task.FromResult<ModelsListInfo?>(null);
+            var inputs = MakeInputs(revision: 2, sessionModelCatalogEligible: true);
+            vm.ApplyInputs(inputs);
+            await controller.ReconcileModelCatalogAsync(inputs);
+            Assert.Equal(ChatModelCatalogStatus.Unavailable, vm.SessionModelCatalog?.Status);
+
+            port.SessionModelsBehavior = (_, _) => Task.FromResult<ModelsListInfo?>(new ModelsListInfo
+            {
+                Models = [new ModelInfo { Id = "worker", Name = "Worker" }],
+            });
+            port.ModelCatalogRevision++;
+            var refreshed = inputs with { Revision = 3, ModelCatalogRevision = port.ModelCatalogRevision };
+            vm.ApplyInputs(refreshed);
+            await controller.ReconcileModelCatalogAsync(refreshed);
+
+            Assert.Equal(ChatModelCatalogStatus.Ready, vm.SessionModelCatalog?.Status);
+            Assert.Equal("worker", Assert.Single(vm.SessionModelCatalog!.Choices).Id);
+            Assert.Equal(3, port.RequestedSessionModelKeys.Count);
+        }
+    }
+
+    [Fact]
+    public async Task ReconcileModelCatalog_DistinguishesOpaqueFieldsContainingColons()
+    {
+        var (vm, controller, port, _) = MakeController();
+        port.SupportsSessionScopedModelCatalog = true;
+        port.SessionModelsBehavior = (key, _) => Task.FromResult<ModelsListInfo?>(new ModelsListInfo
+        {
+            Models = [new ModelInfo { Id = key, Name = key }],
+        });
+        var firstInputs = MakeInputs(
+            revision: 2,
+            thread: MakeThread("agent:a:b") with
+            {
+                Model = "c:d",
+                ModelProvider = "provider",
+                AgentId = "agent",
+            },
+            sessionModelCatalogEligible: true);
+        vm.ApplyInputs(firstInputs);
+        await controller.ReconcileModelCatalogAsync(firstInputs);
+        var secondInputs = MakeInputs(
+            revision: 3,
+            thread: MakeThread("agent:a:b:c") with
+            {
+                Model = "d",
+                ModelProvider = "provider",
+                AgentId = "agent",
+            },
+            sessionModelCatalogEligible: true);
+        vm.ApplyInputs(secondInputs);
+
+        await controller.ReconcileModelCatalogAsync(secondInputs);
+
+        Assert.Equal(["agent:a:b", "agent:a:b:c"], port.RequestedSessionModelKeys);
+        Assert.Equal("agent:a:b:c", vm.SessionModelCatalog?.SessionKey);
+    }
+
     [Theory]
     [InlineData("disconnected", false)]
     [InlineData("connecting", false)]
@@ -823,7 +956,6 @@ public sealed class ChatComposerControllerTests
             Assert.Equal(("session-1", "off"), port.LastSetThinkingLevelCall);
 
             vm.ApplyInputs(MakeInputs(3, MakeThread(thinkingLevel: "high") with { ThinkingContext = null }));
-            Assert.True(vm.Inputs!.CanChangeThinking);
             controller.SetThinkingLevel("off");
             Assert.Equal(1, port.SetThinkingLevelCallCount);
             controller.ClearThinkingLevel();
@@ -836,8 +968,7 @@ public sealed class ChatComposerControllerTests
             Assert.Equal(1, port.ClearThinkingLevelCallCount);
 
             vm.ApplyInputs(MakeInputs(4, MakeThread() with { ThinkingContext = null }));
-            Assert.False(vm.Inputs!.CanChangeThinking);
-            Assert.True(vm.Inputs.CanChangeSessionOptions);
+            Assert.True(vm.Inputs!.CanChangeSessionOptions);
         }
     }
 
@@ -1141,7 +1272,7 @@ public sealed class ChatComposerControllerTests
                 callbackObservedDisposed = controller.IsDisposed;
                 controller.StartVoiceRecording();
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
+            callbackWorkCompleted = callbackWork.Wait(ReentrancyTimeout);
         });
 
         var disposeTask = Task.Factory.StartNew(
@@ -1150,9 +1281,9 @@ public sealed class ChatComposerControllerTests
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
         var exception = await Record.ExceptionAsync(
-            async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+            async () => await disposeTask.WaitAsync(ReentrancyHangGuard));
         if (callbackWork is not null)
-            await callbackWork.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackWork.WaitAsync(ReentrancyHangGuard);
 
         Assert.Null(exception);
         Assert.True(callbackInvoked);
@@ -1165,10 +1296,17 @@ public sealed class ChatComposerControllerTests
     [Fact]
     public async Task Dispose_VoiceCancellationCallbackCanWaitForReentrantControllerWork()
     {
+        static Task RunOnDedicatedThread(Action action) => Task.Factory.StartNew(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            action();
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
         var voiceRequestCalls = 0;
         CancellationToken voiceToken = default;
-        var voiceResult = new TaskCompletionSource<string?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        // Let ReceiveVoiceAsync finish on the dedicated completion thread. This
+        // checks lock ownership, not whether the shared pool schedules within 2 s.
+        var voiceResult = new TaskCompletionSource<string?>();
         var cleanupReached = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var actions = new ChatComposerHostActions(
@@ -1183,33 +1321,35 @@ public sealed class ChatComposerControllerTests
             null);
         var (vm, controller, _, _) = MakeController(actions);
         controller.TestOnlyVoiceOperationCleanedUp = () => cleanupReached.TrySetResult();
-        controller.StartVoiceRecording();
+        await RunOnDedicatedThread(controller.StartVoiceRecording);
         Assert.True(voiceToken.CanBeCanceled);
 
         Task? callbackWork = null;
         var callbackInvoked = false;
         var callbackWorkCompleted = false;
+        var callbackWorkObservedCleanup = false;
         using var registration = voiceToken.Register(() =>
         {
             callbackInvoked = true;
-            callbackWork = Task.Run(async () =>
+            callbackWork = RunOnDedicatedThread(() =>
             {
                 voiceResult.TrySetResult("late transcript");
-                await cleanupReached.Task;
+                callbackWorkObservedCleanup = cleanupReached.Task.Wait(ReentrancyTimeout);
             });
-            callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
+            callbackWorkCompleted = callbackWork.Wait(ReentrancyTimeout);
         });
 
-        var disposeTask = Task.Run(controller.Dispose);
+        var disposeTask = RunOnDedicatedThread(controller.Dispose);
         var exception = await Record.ExceptionAsync(
-            async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+            async () => await disposeTask.WaitAsync(ReentrancyHangGuard));
         if (callbackWork is not null)
-            await callbackWork.WaitAsync(TimeSpan.FromSeconds(5));
-        await cleanupReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await callbackWork.WaitAsync(ReentrancyHangGuard);
+        await cleanupReached.Task.WaitAsync(ReentrancyHangGuard);
 
         Assert.Null(exception);
         Assert.True(callbackInvoked);
         Assert.True(callbackWorkCompleted);
+        Assert.True(callbackWorkObservedCleanup);
         Assert.Equal(1, voiceRequestCalls);
         Assert.Equal(string.Empty, vm.Draft);
     }

@@ -121,6 +121,7 @@ public class ChatModelChoiceTests
                 new ModelInfo { Id = "unconfigured", HasConfiguredFlag = true, IsConfigured = false },
                 new ModelInfo { Id = "needs-key", HasConfiguredFlag = true, IsConfigured = false, RequiresAuth = true },
                 new ModelInfo { Id = "ready", HasConfiguredFlag = true, IsConfigured = true },
+                new ModelInfo { Id = "automatic", ManualSelectionAllowed = false },
                 new ModelInfo { Id = "unknown" },
             }
         };
@@ -128,7 +129,7 @@ public class ChatModelChoiceTests
         var choices = ChatModelChoice.FromModelsList(info);
 
         Assert.Equal(
-            new[] { "unconfigured", "needs-key", "ready", "unknown" },
+            new[] { "unconfigured", "needs-key", "ready", "automatic", "unknown" },
             choices.Select(c => c.Id).ToArray());
 
         var unconfigured = choices[0];
@@ -137,6 +138,8 @@ public class ChatModelChoiceTests
 
         Assert.True(choices[1].RequiresAuth);
         Assert.True(choices[1].IsSelectable);
+        Assert.False(choices[3].IsSelectable);
+        Assert.Null(choices[4].ManualSelectionAllowed);
     }
 
     // Selectability

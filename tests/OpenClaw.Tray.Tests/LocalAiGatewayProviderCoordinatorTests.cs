@@ -331,6 +331,32 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task Quiesce_IndeterminateRestartKeepsActiveRouteUnresolved()
+    {
+        LocalAiResolvedInstall install = Install(28_770);
+        string provider = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
+        var commands = new FakeWslCommandRunner(provider,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            IndeterminateRestartCalls = [1],
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(provider, commands.ActiveProviderJson);
+        Assert.Contains("restart", result.Detail, StringComparison.OrdinalIgnoreCase);
+        coordinator = CreateCoordinator(commands);
+        Assert.True((await coordinator.QuiesceAsync(install)).Success);
+        Assert.Null(commands.ActiveProviderJson);
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+        Assert.True((await coordinator.QuiesceAsync(install)).Success);
+        Assert.Equal(3, commands.Calls.Count(call => call.Contains("restart")));
+    }
+
+    [Fact]
     public async Task Quiesce_TeardownRestoresRealPriorModel()
     {
         LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");
@@ -435,6 +461,39 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Null(commands.ProviderJson);
         Assert.Null(commands.PrimaryModel);
         Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.Single(commands.Calls, call => call.Contains("restart"));
+    }
+
+    [Theory]
+    [InlineData(LocalAiQuiesceReason.Teardown)]
+    [InlineData(LocalAiQuiesceReason.EndpointCycle)]
+    public async Task Quiesce_EmptySavedRoutePreservesUnmanagedPrimaryAndConfirmsRunningGateway(LocalAiQuiesceReason reason)
+    {
+        var install = Install(28_765, "openai/gpt-5");
+        var commands = new FakeWslCommandRunner(providerJson: null, primaryModel: "openai/gpt-5");
+        var coordinator = CreateCoordinator(commands);
+
+        Assert.True((await coordinator.QuiesceAsync(install, reason)).Success);
+        Assert.True((await coordinator.QuiesceAsync(install, reason)).Success);
+        Assert.Equal("openai/gpt-5", commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+    }
+
+    [Fact]
+    public async Task Quiesce_PreviouslyObservedActiveProviderStillRestartsAfterDiskWithdrawal()
+    {
+        var install = Install(28_765);
+        var provider = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
+        var commands = new FakeWslCommandRunner(provider, LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var coordinator = CreateCoordinator(commands);
+        Assert.True((await coordinator.PublishAsync(install)).Success);
+        await commands.RunInDistroAsync("fixture", ["config", "unset", LocalAiGatewayProviderDefinition.ProviderPath]);
+        Assert.Equal(provider, commands.ActiveProviderJson);
+
+        Assert.True((await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle)).Success);
+        Assert.Null(commands.ActiveProviderJson);
+        Assert.Single(commands.Calls, call => call.Contains("restart"));
     }
 
     [Fact]
@@ -559,6 +618,9 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
             "openclaw config set --batch-file \"$batch_file\"\n",
             script, StringComparison.Ordinal);
+        int publishIndex = commands.Calls.FindIndex(call => call.Contains("/bin/sh"));
+        int restartIndex = commands.Calls.FindIndex(call => call.Contains("gateway") && call.Contains("restart"));
+        Assert.True(restartIndex > publishIndex, "The Gateway must activate the newly published Local AI route.");
         Assert.DoesNotContain("/dev/stdin", script, StringComparison.Ordinal);
         Assert.DoesNotContain('\r', script);
         Assert.All(commands.Distros, distro => Assert.Equal("CustomGateway", distro));
@@ -981,16 +1043,19 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     private sealed class FakeWslCommandRunner(string? providerJson, string? primaryModel = null) : IWslCommandRunner
     {
         public string? ProviderJson { get; private set; } = providerJson;
+        public string? ActiveProviderJson { get; private set; } = providerJson;
         public string? PrimaryModel { get; private set; } = primaryModel;
         public string? ProviderAfterApply { get; init; }
         public string? PrimaryAfterApply { get; init; }
         public bool FailReads { get; init; }
         public HashSet<int> FailedReadCalls { get; init; } = [];
+        public HashSet<int> IndeterminateRestartCalls { get; init; } = [];
         public Action<int>? CommandObserved { get; init; }
         public List<IReadOnlyList<string>> Calls { get; } = [];
         public List<string?> StandardInputs { get; } = [];
         public List<string> Distros { get; } = [];
         private int _readCalls;
+        private int _restartCalls;
 
         public Task<WslCommandResult> RunInDistroAsync(
             string name,
@@ -1014,6 +1079,14 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
                     ProviderJson = ProviderAfterApply;
                 PrimaryModel = PrimaryAfterApply;
                 return Result(PrimaryModel is null ? 1 : 0, string.Empty);
+            }
+            if (command.Contains("gateway") && command.Contains("restart"))
+            {
+                if (IndeterminateRestartCalls.Contains(++_restartCalls))
+                    return Task.FromResult(new WslCommandResult(-1, string.Empty, string.Empty,
+                        TimedOut: true, OutcomeIndeterminate: true));
+                ActiveProviderJson = ProviderJson;
+                return Result(0, string.Empty);
             }
             if (command.Contains("unset"))
             {

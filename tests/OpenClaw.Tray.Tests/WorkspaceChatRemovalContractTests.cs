@@ -16,7 +16,7 @@ public sealed class WorkspaceChatRemovalContractTests
         @"src\OpenClaw.Tray.WinUI\Presentation\LocalAiPageViewModel.cs",
         @"src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs",
         @"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs",
-        @"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs",
+        @"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs",
         @"src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs",
         @"src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs",
         @"src\OpenClaw.Tray.WinUI\Chat\ReactorChatHostExtensions.cs",
@@ -71,41 +71,17 @@ public sealed class WorkspaceChatRemovalContractTests
         Assert.DoesNotMatch(@"\bvoid\s+ShowChat\s*\(", Read(@"src\OpenClaw.Tray.WinUI\Services\IWindowManager.cs"));
         Assert.DoesNotMatch(@"\bIAppCommands\.ShowChat\b", Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs"));
         Assert.DoesNotMatch(@"\b(?:HubChat|TrayChat)\b", Read(@"src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs"));
-        Assert.DoesNotMatch(@"\bpublic\s+(?:string\?|bool)\s+(?:PendingChatSessionKey|PendingAutoStartVoice)\s*\{",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs"));
-        Assert.DoesNotMatch(@"\bVoiceServiceInstance\b", Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs"));
+        var settingsView = Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs");
+        Assert.DoesNotMatch(@"\bpublic\s+(?:string\?|bool)\s+(?:PendingChatSessionKey|PendingAutoStartVoice)\s*\{", settingsView);
+        Assert.DoesNotMatch(@"\bVoiceServiceInstance\b", settingsView);
+        Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", settingsView);
+        Assert.False(File.Exists(Path.Combine(Root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs")));
         Assert.DoesNotMatch(@"\bGetVoiceService\b", Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs"));
         Assert.DoesNotMatch(@"\b_hub\b", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
         Assert.DoesNotMatch(@"\b(?:public|internal)\s+void\s+Initialize\s*\(\s*\)", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
         Assert.DoesNotMatch(@"\b(?:public|internal)\s+void\s+SelectSession\s*\(", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
         Assert.DoesNotMatch(@"\bHubPageKind\.Chat\b", Read(@"src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs"));
         Assert.DoesNotContain("override void OnNavigatedTo(", Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
-    }
-
-    [Fact]
-    public void ChatLaunchersAndBackgroundAnchor_RemainIndependentOfPopupOwnership()
-    {
-        var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
-        Assert.Contains("ShowChat: () => ShowHub(\"chat\")", app);
-        Assert.Contains("case \"webchat\": OpenChatSession(); break;", app);
-        Assert.Contains("_windowManager?.ShowWorkspaceChatAndStartVoice();", app);
-        Assert.Contains("_windowManager?.InitializeRuntimeAnchor()", app);
-        Assert.Contains("RunCommand(CanOpenChat, () => _appCommands.Navigate(\"chat\"))",
-            Read(@"src\OpenClaw.Tray.WinUI\Presentation\LocalAiPageViewModel.cs"));
-
-        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
-        var anchor = Method(manager, "public void InitializeRuntimeAnchor()");
-        Assert.Contains("_keepAliveWindow = new Window", anchor);
-        Assert.Contains("Content = new Grid()", anchor);
-        Assert.Contains("IsShownInSwitchers = false", anchor);
-        Assert.DoesNotContain("WorkspaceWindow", anchor);
-        Assert.DoesNotContain("ShowWorkspace", anchor);
-        Assert.Contains("RuntimeAnchorXamlRoot", manager);
-        var voice = Method(manager, "public void ShowWorkspaceChatAndStartVoice()");
-        Assert.Contains("ShowHub(\"chat\");", voice);
-        Assert.Contains("_workspaceWindow?.ChatPage.TriggerAutoStartVoice();", voice);
-        Assert.Contains("void ShowWorkspaceChatAndStartVoice();",
-            Read(@"src\OpenClaw.Tray.WinUI\Services\IWindowManager.cs"));
     }
 
     [Theory]

@@ -6,7 +6,7 @@ namespace OpenClaw.TestSupport;
 public static class NemotronBoltPrereleaseFixture
 {
     public static PinnedArtifact Weights { get; } = new(
-        "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr",
+        "nemotron-3.5-bolt-74b-a9b-24gb",
         ArtifactRole.ModelWeights,
         new HuggingFaceRevisionSource(
             "NVIDIA-Nemotron/Nemotron-3.5-Bolt-74B-A9B-IQ2-GGUF",

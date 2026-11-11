@@ -24,7 +24,9 @@ public sealed class TextToSpeechService : IDisposable
     private readonly PiperVoiceManager _piperVoices;
     private readonly KokoroModelManager _kokoroModels;
     private readonly object _piperLock = new();
+    private readonly SemaphoreSlim _piperReplace = new(1, 1);
     private PiperTextToSpeechClient? _piperClient;  // lazily loaded; reused across calls for the same voice
+    private int _piperShuttingDown;
     private readonly SemaphoreSlim _playbackGate = new(1, 1);
     private readonly object _activeLock = new();
     private MediaPlayer? _activePlayer;
@@ -355,7 +357,7 @@ public sealed class TextToSpeechService : IDisposable
             throw new InvalidOperationException("Piper voice not downloaded. Open Voice Settings to download it.");
         }
 
-        var client = AcquirePiperClient(voiceId);
+        var client = await AcquirePiperClientAsync(voiceId, cancellationToken).ConfigureAwait(false);
         var wavBytes = await client.GenerateWavAsync(args.Text, speed: 1.0f, cancellationToken).ConfigureAwait(false);
         using var stream = await CreateStreamAsync(wavBytes, cancellationToken).ConfigureAwait(false);
         await PlayStreamAsync(stream, "audio/wav", args.Interrupt, cancellationToken).ConfigureAwait(false);
@@ -392,35 +394,88 @@ public sealed class TextToSpeechService : IDisposable
 
     /// <summary>
     /// Reuse the Piper client across calls for the same voice id (model
-    /// load is the expensive part, ~200-500 ms). Switch atomically when
-    /// the requested voice changes.
+    /// load is the expensive part, ~200-500 ms). A voice change waits until
+    /// the previous generation has released the native synthesizer, then
+    /// loads the next model. That wait is asynchronous so the UI thread
+    /// can keep pumping while the old voice finishes.
     /// </summary>
-    private PiperTextToSpeechClient AcquirePiperClient(string voiceId)
+    private async Task<PiperTextToSpeechClient> AcquirePiperClientAsync(
+        string voiceId,
+        CancellationToken cancellationToken)
     {
-        lock (_piperLock)
+        await _piperReplace.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            if (_piperClient != null && string.Equals(_piperClient.VoiceId, voiceId, StringComparison.OrdinalIgnoreCase))
-                return _piperClient;
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _piperShuttingDown) != 0, this);
 
-            // Voice changed (or first call) — dispose the old client before
-            // loading the new model so we don't double the memory footprint.
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { _piperClient?.Dispose(); } catch { /* swallow */ }
-            _piperClient = new PiperTextToSpeechClient(_logger, _piperVoices, voiceId);
-            return _piperClient;
+            PiperTextToSpeechClient? current;
+            lock (_piperLock)
+                current = _piperClient;
+
+            if (current != null && string.Equals(current.VoiceId, voiceId, StringComparison.OrdinalIgnoreCase))
+                return current;
+
+            if (current != null)
+            {
+                lock (_piperLock)
+                {
+                    if (ReferenceEquals(_piperClient, current))
+                        _piperClient = null;
+                }
+
+                await current.DisposeAsync().ConfigureAwait(false);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _piperShuttingDown) != 0, this);
+
+            var created = new PiperTextToSpeechClient(_logger, _piperVoices, voiceId);
+            lock (_piperLock)
+            {
+                if (Volatile.Read(ref _piperShuttingDown) != 0)
+                {
+                    created.Dispose();
+                    throw new ObjectDisposedException(nameof(TextToSpeechService));
+                }
+
+                _piperClient = created;
+            }
+
+            return created;
         }
+        finally
+        {
+            _piperReplace.Release();
+        }
+    }
+
+    /// <summary>Plays validated Gateway bytes through the existing serialized native player.</summary>
+    public async Task PlayGatewayAudioAsync(GatewaySpeechAudio audio, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var stream = await CreateStreamAsync(audio.Bytes, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await PlayStreamAsync(stream, audio.MimeType, interrupt: true, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<InMemoryRandomAccessStream> CreateStreamAsync(byte[] bytes, CancellationToken cancellationToken)
     {
         var stream = new InMemoryRandomAccessStream();
         using var writer = new DataWriter(stream);
-        writer.WriteBytes(bytes);
-        await writer.StoreAsync().AsTask(cancellationToken).ConfigureAwait(false);
-        await writer.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
-        writer.DetachStream();
-        stream.Seek(0);
-        return stream;
+        try
+        {
+            writer.WriteBytes(bytes);
+            await writer.StoreAsync().AsTask(cancellationToken).ConfigureAwait(false);
+            await writer.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+            writer.DetachStream();
+            stream.Seek(0);
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     private async Task PlayStreamAsync(
@@ -430,7 +485,7 @@ public sealed class TextToSpeechService : IDisposable
         CancellationToken cancellationToken)
     {
         if (interrupt)
-            InterruptActivePlayback();
+            InterruptActivePlayback(cancellationToken);
 
         await _playbackGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -450,11 +505,19 @@ public sealed class TextToSpeechService : IDisposable
                 _activeCompletion = completion;
             }
 
-            player.Play();
-
-            using var cancellationRegistration = cancellationToken.Register(
-                static state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
-                completion);
+            using var cancellationRegistration = cancellationToken.Register(() =>
+            {
+                lock (_activeLock)
+                {
+                    player.Pause();
+                    completion.TrySetCanceled(cancellationToken);
+                }
+            });
+            lock (_activeLock)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                player.Play();
+            }
             await completion.Task.ConfigureAwait(false);
         }
         finally
@@ -479,11 +542,13 @@ public sealed class TextToSpeechService : IDisposable
         }
     }
 
-    private void InterruptActivePlayback()
+    private void InterruptActivePlayback(CancellationToken cancellationToken = default)
     {
         TaskCompletionSource<bool>? completion;
         lock (_activeLock)
         {
+            // Retired synthesis must not select a newer player to interrupt.
+            cancellationToken.ThrowIfCancellationRequested();
             completion = _activeCompletion;
         }
 
@@ -500,14 +565,39 @@ public sealed class TextToSpeechService : IDisposable
     public void Dispose()
     {
         InterruptActivePlayback();
+        Volatile.Write(ref _piperShuttingDown, 1);
         // Playback may still release the gate after an interrupt during shutdown.
         _elevenLabsClient.Dispose();
         _miniMaxClient.Dispose();
+        // A voice swap may already be waiting out synthesis. Do not block shutdown
+        // on that wait. The swap sees _piperShuttingDown and does not publish
+        // another client.
+        if (!_piperReplace.Wait(0))
+        {
+            RetirePiperClient();
+            return;
+        }
+
+        try
+        {
+            RetirePiperClient();
+        }
+        finally
+        {
+            _piperReplace.Release();
+        }
+    }
+
+    private void RetirePiperClient()
+    {
+        PiperTextToSpeechClient? retiring;
         lock (_piperLock)
         {
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { _piperClient?.Dispose(); } catch { /* swallow */ }
+            retiring = _piperClient;
             _piperClient = null;
         }
+
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        try { retiring?.Dispose(); } catch { /* swallow */ }
     }
 }

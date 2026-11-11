@@ -6,13 +6,6 @@ using System.Text.Json.Nodes;
 
 namespace OpenClawTray.Services;
 
-internal readonly record struct BindingRoute(
-    string Channel,
-    string AccountId,
-    string AgentId,
-    string? Peer,
-    int? Priority);
-
 internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
 {
     public static ConfigEditorSnapshot Empty { get; } = new(default, null);
@@ -22,6 +15,37 @@ internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
 
 internal static class ConfigEditorModel
 {
+    internal static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
+    {
+        var current = schema;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty("properties", out var properties) ||
+                properties.ValueKind != JsonValueKind.Object ||
+                !properties.TryGetProperty(segment, out current))
+                return null;
+        }
+        return current;
+    }
+
+    internal static string? ResolveSearchSection(JsonElement schema, string path)
+    {
+        if (ResolveSchemaAtPath(schema, path) is null) return null;
+        var section = path;
+        while (true)
+        {
+            var node = ResolveSchemaAtPath(schema, section);
+            if (node is { ValueKind: JsonValueKind.Object } value &&
+                value.TryGetProperty("properties", out var properties) &&
+                properties.ValueKind == JsonValueKind.Object)
+                return section;
+            if (section.Length == 0) return null;
+            var separator = section.LastIndexOf('.');
+            section = separator < 0 ? "" : section[..separator];
+        }
+    }
+
     public static ConfigEditorSnapshot CaptureSnapshot(JsonElement configResponse)
     {
         var root = ExtractConfigRoot(configResponse);
@@ -36,75 +60,6 @@ internal static class ConfigEditorModel
         if (configResponse.TryGetProperty("config", out var config))
             return config;
         return configResponse;
-    }
-
-    public static IReadOnlyList<BindingRoute> ReadBindingRoutes(JsonElement configResponse)
-    {
-        var root = ExtractConfigRoot(configResponse);
-        if (root.ValueKind != JsonValueKind.Object
-            || !root.TryGetProperty("bindings", out var bindingsEl)
-            || bindingsEl.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var routes = new List<BindingRoute>();
-        foreach (var item in bindingsEl.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object)
-                continue;
-
-            var match = item.TryGetProperty("match", out var matchElement)
-                && matchElement.ValueKind == JsonValueKind.Object
-                ? matchElement
-                : default;
-            var channel = ReadString(item, "channel") ?? ReadString(match, "channel") ?? "";
-            var accountId = ReadString(item, "accountId") ?? ReadString(match, "accountId") ?? "*";
-            var agentId = ReadString(item, "agentId") ?? "main";
-            var peer = ReadString(item, "peer") ?? ReadPeer(match);
-            int? priority = null;
-            if (item.TryGetProperty("priority", out var priorityElement)
-                && priorityElement.TryGetInt32(out var priorityValue))
-            {
-                priority = priorityValue;
-            }
-
-            routes.Add(new BindingRoute(channel, accountId, agentId, peer, priority));
-        }
-
-        return routes;
-    }
-
-    private static string? ReadString(JsonElement item, string name)
-    {
-        if (item.ValueKind != JsonValueKind.Object
-            || !item.TryGetProperty(name, out var value)
-            || value.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        return value.GetString();
-    }
-
-    private static string? ReadPeer(JsonElement match)
-    {
-        if (match.ValueKind != JsonValueKind.Object
-            || !match.TryGetProperty("peer", out var peer))
-        {
-            return null;
-        }
-
-        if (peer.ValueKind == JsonValueKind.String)
-            return peer.GetString();
-        if (peer.ValueKind != JsonValueKind.Object)
-            return null;
-
-        var kind = ReadString(peer, "kind");
-        var id = ReadString(peer, "id");
-        if (string.IsNullOrEmpty(id))
-            return kind;
-        return string.IsNullOrEmpty(kind) ? id : kind + ":" + id;
     }
 
     public static string? ExtractBaseHash(JsonElement configResponse)

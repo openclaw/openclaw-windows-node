@@ -36,6 +36,10 @@ public class NodeInvokeRequest
 
     [JsonIgnore]
     internal System.Diagnostics.ActivityContext TelemetryParentContext { get; set; }
+
+    /// <summary>Transport-owned framed IO. Command JSON cannot supply or impersonate this channel.</summary>
+    [JsonIgnore]
+    internal FileTransfer.IFileInvocationChannel? FileChannel { get; set; }
 }
 
 public class NodeInvokeCompletedEventArgs : EventArgs
@@ -58,8 +62,19 @@ public class NodeInvokeResponse
     public object? Payload { get; set; }
     public string? Error { get; set; }
 
+    /// <summary>Optional protocol error code supplied by the capability that knows the failure outcome.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ErrorCode { get; set; }
+
     [JsonIgnore]
     public NodeToolDiagnostic? Diagnostic { get; set; }
+
+    /// <summary>Typed semantic result, independent of the Gateway plugin's outer success envelope.</summary>
+    [JsonIgnore]
+    public FileTransfer.FileSemanticOutcome? FileOutcome { get; set; }
+
+    [JsonIgnore]
+    public FileTransfer.FileExecutionInfo? FileExecution { get; set; }
 }
 
 /// <summary>

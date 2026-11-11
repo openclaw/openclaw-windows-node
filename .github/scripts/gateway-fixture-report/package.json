@@ -1,0 +1,9 @@
+{
+  "name": "gateway-fixture-screenshot-report",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@actions/artifact": "6.3.1",
+    "fast-xml-parser": "5.11.2"
+  }
+}

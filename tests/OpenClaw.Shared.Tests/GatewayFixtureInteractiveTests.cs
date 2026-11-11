@@ -73,7 +73,9 @@ public sealed partial class GatewayFixtureProtocolTests
     [Theory]
     [InlineData("tools", "final")]
     [InlineData("tool-error", "final")]
+    [InlineData("tool-powershell", "final")]
     [InlineData("agent-activity", "final")]
+    [InlineData("nested-tools", "final")]
     [InlineData("chat-deltas", "final")]
     [InlineData("stream-error", "error")]
     [InlineData("slow", "final")]
@@ -92,11 +94,36 @@ public sealed partial class GatewayFixtureProtocolTests
             var tools = frames.Where(e => e.GetProperty("event").GetString() == "agent" && e.GetProperty("payload").GetProperty("stream").GetString() == "tool").ToArray();
             Assert.Equal(2, tools.Length);
             Assert.Equal(scenario == "tool-error", tools[1].GetProperty("payload").GetProperty("data").GetProperty("isError").GetBoolean());
+            if (scenario == "tool-powershell")
+            {
+                var input = tools[0].GetProperty("payload").GetProperty("data");
+                Assert.Equal("powershell", input.GetProperty("name").GetString());
+                Assert.Contains("Get-ChildItem -Path $env:TEMP", input.GetProperty("args").GetProperty("command").GetString());
+            }
+        }
+        if (scenario == "agent-activity")
+        {
+            var tools = frames.Where(e => e.GetProperty("event").GetString() == "agent" && e.GetProperty("payload").GetProperty("stream").GetString() == "tool").ToArray();
+            Assert.Equal(["exec", "exec", "apply_patch", "apply_patch"], tools.Select(e => e.GetProperty("payload").GetProperty("data").GetProperty("name").GetString()));
+        }
+        if (scenario == "nested-tools")
+        {
+            var starts = frames.Where(e => e.GetProperty("event").GetString() == "agent" &&
+                e.GetProperty("payload").GetProperty("stream").GetString() == "tool" &&
+                e.GetProperty("payload").GetProperty("data").GetProperty("phase").GetString() == "start").ToArray();
+            Assert.Equal([null, $"{run}-wrapper", $"{run}-wrapper"], starts.Select(e =>
+                e.GetProperty("payload").GetProperty("data").TryGetProperty("parentToolCallId", out var parent) ? parent.GetString() : null));
         }
         if (scenario == "slow") Assert.Contains(frames, e => IsChat(e, "status"));
         if (scenario == "chat-deltas") Assert.Contains(frames, e => IsChat(e, "delta") && e.GetProperty("payload").GetProperty("deltaText").GetString()!.Length > 0);
         var history = await peer.RequestAsync("chat.history", new { sessionKey = GatewayScenario.EmptySessionKey });
-        Assert.Equal(scenario.StartsWith("tool", StringComparison.Ordinal) ? 4 : 2, history.GetProperty("messages").GetArrayLength());
+        var expectedHistory = scenario switch
+        {
+            "nested-tools" => 8,
+            "agent-activity" => 6,
+            _ => scenario.StartsWith("tool", StringComparison.Ordinal) ? 4 : 2,
+        };
+        Assert.Equal(expectedHistory, history.GetProperty("messages").GetArrayLength());
     }
 
     [Fact]
@@ -249,6 +276,31 @@ public sealed partial class GatewayFixtureProtocolTests
         await peer.RequestAsync("sessions.delete", new { key, deleteTranscript = true });
         await Assert.ThrowsAsync<InvalidOperationException>(() => peer.RequestAsync("chat.history", new { sessionKey = key }));
         Assert.Equal(2, (await peer.RequestAsync("chat.history", new { sessionKey = GatewayScenario.EmptySessionKey })).GetProperty("messages").GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData(GatewayScenario.EmptySessionKey, "main")]
+    [InlineData(GatewayScenario.OtherSessionKey, "research")]
+    public async Task Interactive_ScopedModelsUseLiveSessionOwnerAfterCreateAndDelete(string seedKey, string agentId)
+    {
+        var token = CreateToken();
+        await using var server = await StartInteractiveAsync(token);
+        await using var peer = await FixturePeer.ConnectAsync(server, token);
+        var create = await peer.RequestAsync("sessions.create", new { agentId });
+        var createdKey = create.GetProperty("key").GetString()!;
+
+        foreach (var sessionKey in new[] { createdKey, seedKey })
+        {
+            var models = await peer.RequestAsync("models.list", new { sessionKey, view = "configured" });
+            Assert.NotEmpty(models.GetProperty("models").EnumerateArray());
+
+            await peer.RequestAsync("sessions.delete", new { key = sessionKey, deleteTranscript = true });
+
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                peer.RequestAsync("models.list", new { sessionKey, view = "configured" }));
+            Assert.Contains("Unknown fixture session key", error.Message);
+        }
+        Assert.Empty(server.UnexpectedRequests);
     }
 
     [Theory]
@@ -439,6 +491,65 @@ public sealed partial class GatewayFixtureProtocolTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Interactive_ReceiveDisposalHonorsOwnedCancellation(bool cancelOwnedLifetime)
+    {
+        var token = CreateToken();
+        await using var server = await StartInteractiveAsync(token);
+        var entered = Signal<bool>();
+        var failReceive = Signal<bool>();
+        var receives = 0;
+        async ValueTask<ValueWebSocketReceiveResult> ReceiveAsync(
+            ClientWebSocket socket, Memory<byte> buffer, CancellationToken cancellation)
+        {
+            // Challenge and authentication use the real socket. Hold the next receive
+            // at the external boundary before exercising the real disposed-socket API.
+            if (++receives <= 2)
+                return await socket.ReceiveAsync(buffer, cancellation);
+            using var registration = cancellation.Register(() => failReceive.TrySetResult(true));
+            entered.TrySetResult(true);
+            await failReceive.Task;
+            socket.Dispose();
+            try
+            {
+                return await socket.ReceiveAsync(buffer, cancellation);
+            }
+            catch (ObjectDisposedException error)
+            {
+                Console.WriteLine(
+                    $"Fixture socket receive: {error.GetType().FullName}; " +
+                    $"ownedCancellationRequested={cancellation.IsCancellationRequested}; " +
+                    $"object={error.ObjectName}.");
+                throw;
+            }
+        }
+
+        var peer = await FixturePeer.ConnectAsync(server, token, ReceiveAsync);
+        await entered.Task.WaitAsync(Deadline);
+        if (cancelOwnedLifetime)
+        {
+            await peer.DisposeAsync().AsTask().WaitAsync(Deadline);
+            Assert.True(peer.Closed.IsCompletedSuccessfully);
+            Console.WriteLine("Fixture receive proof: owned cancellation handled the real disposed-socket error; reader and disposal completed successfully.");
+        }
+        else
+        {
+            failReceive.TrySetResult(true);
+            var failure = await Assert.ThrowsAsync<ObjectDisposedException>(() => peer.Closed.WaitAsync(Deadline));
+            Assert.Same(failure, await Assert.ThrowsAsync<ObjectDisposedException>(() => peer.DisposeAsync().AsTask()));
+            Console.WriteLine("Fixture receive proof: before owned cancellation the real disposed-socket error propagated unchanged through reader and disposal.");
+        }
+
+        await using var replacement = await FixturePeer.ConnectAsync(server, token);
+        await replacement.RequestAsync("chat.send", SendParams("receive-disposal-proof"));
+        var frames = await replacement.ThroughAsync(e => IsChat(e, "final"));
+        Assert.Contains("FIXTURE INTERACTIVE COMPLETE", frames[^1].GetProperty("payload").GetProperty("message").GetProperty("content").GetString());
+        await replacement.ThroughAsync(e => e.GetProperty("event").GetString() == "sessions.changed");
+        Console.WriteLine("Fixture receive proof: replacement authenticated and completed real loopback chat.");
+    }
+
     // Uses actual Gateway WebSocket frames for question events not yet dispatched by
     // the Windows client. Production client tests above remain the chat proof.
     private sealed class FixturePeer : IAsyncDisposable
@@ -450,12 +561,14 @@ public sealed partial class GatewayFixtureProtocolTests
         private readonly SemaphoreSlim _send = new(1);
         private Task _reader = Task.CompletedTask;
         private volatile bool _expectServerShutdown;
+        private Func<ClientWebSocket, Memory<byte>, CancellationToken, ValueTask<ValueWebSocketReceiveResult>>? _receive;
         public Task Closed => _reader;
         public void ExpectServerShutdown() => _expectServerShutdown = true;
 
-        public static async Task<FixturePeer> ConnectAsync(FixtureGatewayServer server, string token)
+        public static async Task<FixturePeer> ConnectAsync(FixtureGatewayServer server, string token,
+            Func<ClientWebSocket, Memory<byte>, CancellationToken, ValueTask<ValueWebSocketReceiveResult>>? receive = null)
         {
-            var peer = new FixturePeer();
+            var peer = new FixturePeer { _receive = receive };
             await peer._socket.ConnectAsync(server.Endpoint, peer._lifetime.Token);
             peer._reader = peer.ReadAsync();
             var challenge = (await peer.ThroughAsync(e => e.GetProperty("event").GetString() == "connect.challenge"))[^1];
@@ -508,7 +621,9 @@ public sealed partial class GatewayFixtureProtocolTests
                     ValueWebSocketReceiveResult result;
                     do
                     {
-                        result = await _socket.ReceiveAsync(buffer.AsMemory(), _lifetime.Token);
+                        result = _receive is null
+                            ? await _socket.ReceiveAsync(buffer.AsMemory(), _lifetime.Token)
+                            : await _receive(_socket, buffer.AsMemory(), _lifetime.Token);
                         if (result.MessageType == WebSocketMessageType.Close) return;
                         message.Write(buffer, 0, result.Count);
                     } while (!result.EndOfMessage);
@@ -520,6 +635,7 @@ public sealed partial class GatewayFixtureProtocolTests
             }
             catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
             catch (WebSocketException) when (_lifetime.IsCancellationRequested || _expectServerShutdown) { }
+            catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested) { }
             finally
             {
                 _events.Writer.TryComplete();

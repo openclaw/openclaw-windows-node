@@ -13,14 +13,6 @@ public static class MenuDisplayHelper
         _ => "⚪"
     };
 
-    public static string GetChannelStatusIcon(string? status)
-    {
-        if (ChannelHealth.IsHealthyStatus(status)) return "🟢";
-        if (ChannelHealth.IsIntermediateStatus(status)) return "🟡";
-        if (string.IsNullOrEmpty(status)) return "⚪";
-        return "🔴";
-    }
-
     public static string TruncateText(string? text, int maxLength = 96)
     {
         if (string.IsNullOrWhiteSpace(text)) return text ?? "";
