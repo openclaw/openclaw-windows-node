@@ -1123,15 +1123,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task OwnerFooterRendersNamedSharedOwnerForGatewayOwnerProfile()
+    public async Task OwnerFooterRendersOnlyNameForGatewayOwnerProfile()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture · Shared owner",
-                "named shared Gateway owner label in footer");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture",
+                "Gateway owner first name without a shared-owner marker in footer");
             var owner = FindById(run, "WorkspaceOwner")!;
-            Assert.Equal("Fixture · Shared owner", owner.Current.Name);
+            Assert.Equal("Fixture", owner.Current.Name);
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             await WaitForAuthenticatedOwnerPhotoAsync(run);
         }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("gateway-owner", "Fixture Shared Person"));

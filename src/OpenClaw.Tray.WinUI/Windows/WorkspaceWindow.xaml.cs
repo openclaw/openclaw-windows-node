@@ -1075,10 +1075,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private UserAvatarImage? _shownAvatar;
     private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _ownerImage;
 
-    // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
     private string OwnerLabel() =>
-        _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
-            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        _identity.FooterLabel(Text("Owner.Text"));
 
     private void UpdateOwnerIdentity()
     {
