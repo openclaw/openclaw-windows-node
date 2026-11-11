@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Windows.Automation;
+using System.Globalization;
 using OpenClaw.TestSupport.Gateway;
 using OpenClaw.GatewayFixtureHost;
 
@@ -6,6 +8,244 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SandboxPageKeepsPermissionControlsWithoutTransferConfigurationCards()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "sandbox" });
+            await WaitUiAsync(run, () => FindById(run, "SandboxPageMarker") is { Current.IsOffscreen: false },
+                "visible Sandbox page");
+            var marker = FindById(run, "SandboxPageMarker")!;
+            var window = AppWindows(run).Single(candidate => candidate.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxPageMarker")) is not null);
+            AutomationElement? Named(string name) => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, name));
+            await WaitUiAsync(run, () => Named("Security level") is { Current.IsOffscreen: false },
+                "visible Sandbox permission presets");
+            Assert.Null(FindById(run, "TransferBudgetBox"));
+            Assert.Null(Named("Upload storage location"));
+            Assert.Null(Named("File transfer budget (MiB)"));
+            Assert.Null(Named("Choose parent folder…"));
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            {
+                await WaitForStablePageGeometryAsync(run, window, marker.Current.BoundingRectangle.Left);
+                OwnedWindowCapture.Save(run, window, "sandbox-managed-staging.png", marker, Named("Security level")!);
+            }
+            Assert.False(FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false });
+            var scope = FindById(run, "ScopeExpander")!;
+            ((ExpandCollapsePattern)scope.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false },
+                "contained operations in the expanded scope section");
+            var operations = FindById(run, "SandboxContainedOperations")!;
+            Assert.Null(FindById(run, "SandboxContainmentDetails"));
+            Assert.Contains("system.run", operations.Current.Name);
+            Assert.Contains("file actions", operations.Current.Name);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            {
+                await WaitForStablePageGeometryAsync(run, window, marker.Current.BoundingRectangle.Left);
+                OwnedWindowCapture.Save(run, window, "sandbox-containment-scope.png", operations);
+            }
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task SettingsPages_GroupPreferencesInGeneral_AndKeepConnectionAboutAndConsentSeparate()
+    {
+        Action? releaseHandshake = null;
+        void ReleaseHandshake()
+        {
+            var release = releaseHandshake;
+            releaseHandshake = null;
+            release?.Invoke();
+        }
+        await WithAppAsync(async run =>
+        {
+            using var discovery = await run.Client.ListToolsAsync();
+            var tools = discovery.RootElement.GetProperty("result").GetProperty("tools")
+                .EnumerateArray().Select(tool => tool.GetProperty("name").GetString()).ToArray();
+            Assert.Contains("app.search", tools);
+            Assert.Contains("app.navigate", tools);
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "mcp-tools.json"),
+                discovery.RootElement.GetRawText());
+            var commands = await run.InvokeAsync("app.search", new { query = "Connection" });
+            Assert.Equal(JsonValueKind.Array, commands.ValueKind);
+            Assert.Equal("\uE839", Assert.Single(commands.EnumerateArray(),
+                command => command.GetProperty("Title").GetString() == "Connection").GetProperty("Icon").GetString());
+
+            foreach (var (route, marker, control) in new[]
+            {
+                ("settings", "SettingsPageMarker", "SettingsPageAdvancedExpander"),
+                ("connection", "ConnectionPageMarker", "SettingsNavConnection"),
+                ("about", "AboutPageMarker", "SettingsPageCheckUpdates"),
+                ("permissions", "PermissionsPageMarker", "SettingsPageScreenRecording"),
+                ("notifications", "NotificationsPageMarker", "NotificationsPageMarker")
+            })
+            {
+                var navigationId = route switch
+                {
+                    "connection" => "SettingsNavConnection",
+                    "about" => "SettingsNavAbout",
+                    _ => null
+                };
+                if (navigationId is not null)
+                {
+                    var navigationItem = FindById(run, navigationId)!;
+                    ((ScrollItemPattern)navigationItem.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+                    Invoke(navigationItem);
+                }
+                else
+                {
+                    await run.InvokeAsync("app.navigate", new { page = route });
+                }
+                await WaitUiAsync(run, () => FindById(run, marker) is { Current.IsOffscreen: false },
+                    $"{route} page mounted");
+                Assert.NotNull(FindById(run, control));
+                if (route != "settings")
+                    Assert.Null(FindById(run, "SettingsPageNotifyHealth"));
+                else
+                    Assert.NotNull(FindById(run, "SettingsPageNotifyHealth"));
+                if (route != "permissions")
+                    Assert.Null(FindById(run, "SettingsPageScreenRecording"));
+                if (route != "about")
+                    Assert.Null(FindById(run, "SettingsPageCheckUpdates"));
+
+                if (route == "permissions")
+                    foreach (var id in new[] { "SettingsPageScreenRecording", "SettingsPageCameraRecording", "SettingsPageLocationConsent" })
+                        Assert.True(FindById(run, id)!.TryGetCurrentPattern(TogglePattern.Pattern, out _));
+
+                var markerCondition = new PropertyCondition(AutomationElement.AutomationIdProperty, marker);
+                var window = AppWindows(run).Single(candidate =>
+                    candidate.FindFirst(TreeScope.Descendants, markerCondition) is not null);
+                var pageLeft = FindById(run, marker)!.Current.BoundingRectangle.Left;
+                await WaitForStablePageGeometryAsync(run, window, pageLeft);
+                OwnedWindowCapture.Save(run, window, $"settings-split-{route}.png", FindById(run, marker)!);
+                if (route == "permissions")
+                {
+                    var cards = new[] { "AppAccessScreenCaptureCard", "AppAccessCameraCaptureCard", "AppAccessLocationCard" }
+                        .Select(id => FindById(run, id)!).ToArray();
+                    ((ScrollItemPattern)cards[^1].GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+                    await WaitUiAsync(run, () => cards.All(card => !card.Current.IsOffscreen),
+                        "all three app-access consent rows visible");
+                    await WaitForStablePageGeometryAsync(run, window, pageLeft);
+                    OwnedWindowCapture.Save(run, window, "permissions-app-access.png", cards);
+                    var consents = new[]
+                    {
+                        ("SettingsPageScreenRecording", "ScreenRecordingConsentGiven"),
+                        ("SettingsPageCameraRecording", "CameraRecordingConsentGiven"),
+                        ("SettingsPageLocationConsent", "LocationConsentGiven")
+                    };
+                    foreach (var (id, setting) in consents)
+                    {
+                        var toggle = (TogglePattern)FindById(run, id)!.GetCurrentPattern(TogglePattern.Pattern);
+                        Assert.Equal(ToggleState.Off, toggle.Current.ToggleState);
+                        toggle.Toggle();
+                        await run.WaitForAsync(async () =>
+                        {
+                            using var persisted = JsonDocument.Parse(await File.ReadAllTextAsync(
+                                Path.Combine(run.Profile.DataDirectory, "settings.json")));
+                            return persisted.RootElement.GetProperty(setting).GetBoolean();
+                        }, $"{setting} persisted");
+                    }
+                    await run.InvokeAsync("app.navigate", new { page = "settings" });
+                    await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave Permissions");
+                    await run.InvokeAsync("app.navigate", new { page = "permissions" });
+                    await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker") is not null, "reload Permissions");
+                    using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(
+                        Path.Combine(run.Profile.DataDirectory, "settings.json")));
+                    var receipt = new Dictionary<string, bool>();
+                    foreach (var (id, setting) in consents)
+                    {
+                        Assert.Equal(ToggleState.On,
+                            ((TogglePattern)FindById(run, id)!.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+                        Assert.True(saved.RootElement.GetProperty(setting).GetBoolean());
+                        receipt[setting] = true;
+                    }
+                    foreach (var setting in new[] { "EnableNodeMode", "NodeScreenEnabled", "NodeCameraEnabled", "NodeLocationEnabled" })
+                    {
+                        Assert.False(saved.RootElement.GetProperty(setting).GetBoolean());
+                        receipt[setting] = false;
+                    }
+                    await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "consent-persistence.json"),
+                        JsonSerializer.Serialize(receipt));
+                }
+            }
+
+            var about = await run.InvokeAsync("app.search", new { query = "About" });
+            Assert.Equal("\uE946", Assert.Single(about.EnumerateArray(),
+                command => command.GetProperty("Title").GetString() == "About").GetProperty("Icon").GetString());
+            var preferences = await run.InvokeAsync("app.search", new { query = "Notification preferences" });
+            Assert.Equal("General", Assert.Single(preferences.EnumerateArray()).GetProperty("Title").GetString());
+            Assert.Equal(0, (await run.InvokeAsync("app.search", new { query = "Event Stream" })).GetArrayLength());
+            var rejected = new Dictionary<string, JsonElement>();
+            foreach (var route in new[] { "agentevents", "agent:main:agentevents" })
+            {
+                using var response = await run.Client.CallToolAsync("app.navigate", new { page = route });
+                Assert.True(response.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
+                Assert.NotNull(FindById(run, "NotificationsPageMarker"));
+                rejected[route] = response.RootElement.Clone();
+            }
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "settings-navigation-mcp.json"),
+                JsonSerializer.Serialize(new { connection = commands, about, preferences, rejected }));
+
+            var connection = FindById(run, "SettingsNavConnection")!;
+            ((ScrollItemPattern)connection.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            var systemsName = new PropertyCondition(AutomationElement.NameProperty, "Systems");
+            Assert.NotNull(FindInApp(run, systemsName));
+            run.Gateway.HoldConnectionHandshakes();
+            releaseHandshake = run.Gateway.ReleaseConnectionHandshakes;
+            await run.Gateway.CloseConnectionsAsync();
+            await run.WaitForAsync(async () =>
+                (await run.InvokeAsync("app.status")).GetProperty("operatorState").GetString() != "Connected",
+                "fixture operator disconnected");
+            await WaitUiAsync(run, () => FindInApp(run, systemsName) is null,
+                "Gateway-dependent entries hidden while disconnected");
+            Assert.True(connection.Current.IsEnabled);
+            ((ScrollItemPattern)connection.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            var gatewayHeader = FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Gateway"));
+            Assert.NotNull(gatewayHeader);
+            Assert.False(gatewayHeader.Current.IsOffscreen);
+            Invoke(connection);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionPageMarker") is { Current.IsOffscreen: false },
+                "Connection remains reachable under Gateway while offline");
+            var connectionWindow = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
+            var connectionHeading = FindById(run, "ConnectionPageMarker")!;
+            await WaitForStablePageGeometryAsync(run, connectionWindow, connectionHeading.Current.BoundingRectangle.Left);
+            OwnedWindowCapture.Save(run, connectionWindow, "connection-offline.png", connection, connectionHeading);
+            ReleaseHandshake();
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline(),
+            releasePendingResponses: ReleaseHandshake);
+    }
+
+    private const int StableGeometryPolls = 5;
+
+    // A SettingsExpander slides its items in for a few hundred milliseconds after mount or expansion.
+    // Wait until the page text stops moving so an evidence frame is never captured mid-animation.
+    private static Task WaitForStablePageGeometryAsync(GatewayFixtureRun run, AutomationElement window, double pageLeft)
+    {
+        var request = new CacheRequest();
+        request.Add(AutomationElement.BoundingRectangleProperty);
+        var text = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text);
+        string? previous = null;
+        var unchangedPolls = 0;
+        return WaitUiAsync(run, () =>
+        {
+            AutomationElementCollection elements;
+            using (request.Activate())
+                elements = window.FindAll(TreeScope.Descendants, text);
+            var current = string.Join('|', elements.Cast<AutomationElement>()
+                .Select(element => element.Cached.BoundingRectangle)
+                .Where(bounds => bounds.Left >= pageLeft - 1));
+            unchangedPolls = current == previous ? unchangedPolls + 1 : 0;
+            previous = current;
+            return unchangedPolls >= StableGeometryPolls;
+        }, "page geometry to stop moving");
+    }
+
     private AutomationElement ConfigRowRemoveButton(AutomationElement window, AutomationElement edit)
     {
         var bounds = edit.Current.BoundingRectangle;
@@ -116,6 +356,8 @@ public sealed partial class GatewayFixtureUiTests
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null, "notification settings");
+            Assert.NotNull(FindById(run, "SettingsPageMarker"));
+            Assert.Null(FindById(run, "SettingsNavNotificationPreferences"));
             Assert.NotNull(FindText(run, "Show notifications for:"));
             foreach (var (id, name) in new[] {
                 ("Health", "Health alerts"), ("Urgent", "Urgent messages"), ("Reminder", "Reminders"),
@@ -128,6 +370,85 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal(name, box.Current.Name);
                 Assert.True(box.TryGetCurrentPattern(TogglePattern.Pattern, out _));
             }
+
+            var pageLeft = FindById(run, "SettingsPageMarker")!.Current.BoundingRectangle.Left;
+            var master = FindById(run, "GeneralNotificationsCard")!;
+            var categories = FindById(run, "GeneralNotificationCategoriesCard")!;
+            ((ScrollItemPattern)categories.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            await WaitUiAsync(run, () => !master.Current.IsOffscreen && !categories.Current.IsOffscreen,
+                "General notification controls visible");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageMarker");
+            var window = AppWindows(run).Single(candidate =>
+                candidate.FindFirst(TreeScope.Descendants, marker) is not null);
+            await WaitForStablePageGeometryAsync(run, window, pageLeft);
+            OwnedWindowCapture.Save(run, window, "general-notifications.png", master, categories);
+
+            var health = (TogglePattern)FindById(run, "SettingsPageNotifyHealth")!.GetCurrentPattern(TogglePattern.Pattern);
+            var original = health.Current.ToggleState;
+            health.Toggle();
+            var expected = original == ToggleState.On ? ToggleState.Off : ToggleState.On;
+            await run.InvokeAsync("app.navigate", new { page = "about" });
+            await WaitUiAsync(run, () => FindById(run, "AboutPageMarker") is not null, "leave General");
+            await run.InvokeAsync("app.navigate", new { page = "notification-preferences" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null
+                && FindById(run, "SettingsPageNotifyHealth") is not null, "preferences alias opens General");
+            Assert.Equal(expected,
+                ((TogglePattern)FindById(run, "SettingsPageNotifyHealth")!.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task General_AdvancedExpanderKeepsDiagnosticsToggleReachable()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageAdvancedExpander") is not null,
+                "General advanced settings");
+            var pageLeft = FindById(run, "SettingsPageMarker")!.Current.BoundingRectangle.Left;
+            var expander = FindById(run, "SettingsPageAdvancedExpander")!;
+            Assert.True(FindById(run, "SettingsPageShowDiagnostics") is null or { Current.IsOffscreen: true },
+                "Diagnostics must be hidden inside the initially collapsed disclosure.");
+            var header = Assert.Single(expander.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                .Cast<AutomationElement>());
+            var pattern = (ExpandCollapsePattern)header.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            Assert.Equal(ExpandCollapseState.Collapsed, pattern.Current.ExpandCollapseState);
+            pattern.Expand();
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageShowDiagnostics") is not null,
+                "diagnostics visibility switch");
+
+            var toggle = FindById(run, "SettingsPageShowDiagnostics")!;
+            Assert.Equal("Enable Diagnostics", toggle.Current.Name);
+            Assert.True(toggle.TryGetCurrentPattern(TogglePattern.Pattern, out _));
+            var diagnostics = (TogglePattern)toggle.GetCurrentPattern(TogglePattern.Pattern);
+            if (diagnostics.Current.ToggleState == ToggleState.On)
+                diagnostics.Toggle();
+            await WaitUiAsync(run, () => FindById(run, "SettingsNavDiagnostics") is null,
+                "Diagnostics navigation hidden by preference");
+            Assert.NotNull(FindById(run, "SettingsNavGeneral"));
+            diagnostics.Toggle();
+            await WaitUiAsync(run, () => FindById(run, "SettingsNavDiagnostics") is not null,
+                "Diagnostics navigation restored by preference");
+            Assert.NotNull(FindById(run, "SettingsPageMarker"));
+            var card = Assert.Single(expander.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ClassNameProperty, "SettingsCard")).Cast<AutomationElement>(),
+                candidate => candidate.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageShowDiagnostics")) is not null);
+            ((ScrollItemPattern)card.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
+            await WaitUiAsync(run, () => !card.Current.IsOffscreen && !toggle.Current.IsOffscreen,
+                "visible diagnostics row and switch");
+            var marker = new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsPageMarker");
+            var window = AppWindows(run).Single(candidate =>
+                candidate.FindFirst(TreeScope.Descendants, marker) is not null);
+            await WaitForStablePageGeometryAsync(run, window, pageLeft);
+            OwnedWindowCapture.Save(run, window, "settings-advanced-expanded.png", expander, card, toggle);
+
+            pattern.Collapse();
+            await WaitUiAsync(run, () => FindById(run, "SettingsPageShowDiagnostics") is null or { Current.IsOffscreen: true },
+                "diagnostics switch hidden again");
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
@@ -249,67 +570,70 @@ public sealed partial class GatewayFixtureUiTests
     public async Task UsageRows_StayReadableAcrossChangedSnapshotAndPeriodSwitch()
     {
         var scenario = GatewayScenario.CreateAccessibilityBaseline();
+        var firstDate = DateTime.Today.AddDays(-1);
+        var secondDate = DateTime.Today.AddDays(-2);
+        var firstId = "UsageDailyRow_" + firstDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var secondId = "UsageDailyRow_" + secondDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "usage" });
-            await WaitUiAsync(run, () => FindText(run, "Fixture Provider") is not null
-                && FindText(run, "Fixture Empty") is not null && FindText(run, "2026-10-31") is not null
-                && FindText(run, "2026-10-30") is not null, "two providers and two daily rows");
-            AutomationElement RowFor(string text)
+            await WaitUiAsync(run, () => FindById(run, "UsageProvider_fixture") is not null
+                && FindById(run, "UsageProvider_fixture-empty") is not null, "two named provider cards");
+            void Select(string id, string label)
             {
-                var current = FindText(run, text) ?? throw new InvalidOperationException($"Missing synthetic row text {text}.");
-                while (current.Current.ControlType != ControlType.ListItem)
-                    current = TreeWalker.ControlViewWalker.GetParent(current)
-                        ?? throw new InvalidOperationException($"No ListItem peer for {text}.");
-                return current;
+                var selector = FindById(run, id);
+                Assert.NotNull(selector);
+                var matches = selector.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, label)).Cast<AutomationElement>();
+                var item = Assert.Single(matches, candidate => candidate.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
+                ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             }
-            string ReadRow(string text)
+            string ReadRow(string id) => FindById(run, id)?.Current.Name
+                ?? throw new InvalidOperationException($"Missing named Usage row {id}.");
+            async Task<string> SelectPeriodAndReadRow(string periodLabel, string expectedCost)
             {
-                var row = RowFor(text);
-                if (row.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
-                return row.Current.Name;
-            }
-            async Task<string> SelectPeriodAndReadRow(string periodId, string expectedCost)
-            {
-                var period = FindById(run, periodId);
-                Assert.NotNull(period);
-                Invoke(period);
-                await WaitUiAsync(run, () => FindText(run, "2026-10-31") is not null
-                    && RowFor("2026-10-31").FindFirst(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.NameProperty, expectedCost)) is not null
-                    && ReadRow("2026-10-31").Contains(expectedCost, StringComparison.Ordinal),
+                await WaitUiAsync(run, () => FindById(run, "UsageChartView") is not null, "loaded daily controls");
+                Select("UsagePresets", periodLabel);
+                if (FindById(run, "UsageDailyTable") is null) Select("UsageChartView", "Table");
+                await WaitUiAsync(run, () => FindById(run, firstId) is { } row
+                    && row.Current.Name.Contains(expectedCost, StringComparison.Ordinal),
                     $"period row and accessible name updated to {expectedCost}");
-                return ReadRow("2026-10-31");
+                return ReadRow(firstId);
             }
-            var provider = ReadRow("Fixture Provider");
-            var empty = ReadRow("Fixture Empty");
-            var first = await SelectPeriodAndReadRow("Period7DaysItem", "$0.75");
-            var second = ReadRow("2026-10-30");
+            var provider = ReadRow("UsageProvider_fixture");
+            var empty = ReadRow("UsageProvider_fixture-empty");
+            var first = await SelectPeriodAndReadRow("7 days", "$0.75");
+            var second = ReadRow(secondId);
             output.WriteLine($"Initial rows: provider=[{provider}], empty=[{empty}], day1=[{first}], day2=[{second}].");
             scenario.AdvanceAccessibilityUsage();
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave Usage");
             await run.InvokeAsync("app.navigate", new { page = "usage" });
             await WaitUiAsync(run, () => FindText(run, "Fixture changed warning") is not null, "changed usage snapshot");
-            var changedProvider = ReadRow("Fixture Provider");
-            var changedDay = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
-            var thirtyDayRow = await SelectPeriodAndReadRow("Period30DaysItem", "$2.50");
-            var sevenDayRow = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
+            var changedProvider = ReadRow("UsageProvider_fixture");
+            var changedDay = await SelectPeriodAndReadRow("7 days", "$1.50");
+            var thirtyDayRow = await SelectPeriodAndReadRow("30 days", "$2.50");
+            var sevenDayRow = await SelectPeriodAndReadRow("7 days", "$1.50");
             output.WriteLine($"Changed rows: provider=[{changedProvider}], day1=[{changedDay}], 30 days=[{thirtyDayRow}], 7 days=[{sevenDayRow}].");
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "37% used", "Fixture quota warning" })
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "37%", "Fixture quota warning" })
                 Assert.Contains(expected, provider, StringComparison.Ordinal);
             Assert.Equal("Fixture Empty", empty);
-            Assert.Contains("2026-10-31", first, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), first, StringComparison.Ordinal);
             Assert.Contains("$0.75", first, StringComparison.Ordinal);
-            Assert.Contains("2026-10-30", second, StringComparison.Ordinal);
+            Assert.Contains(secondDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), second, StringComparison.Ordinal);
             Assert.Contains("$0.50", second, StringComparison.Ordinal);
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "53% used", "Fixture changed warning" })
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "53%", "Fixture changed warning" })
                 Assert.Contains(expected, changedProvider, StringComparison.Ordinal);
-            Assert.Contains("2026-10-31", changedDay, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), changedDay, StringComparison.Ordinal);
             Assert.Contains("$1.50", changedDay, StringComparison.Ordinal);
-            Assert.Contains("2026-10-31", thirtyDayRow, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), thirtyDayRow, StringComparison.Ordinal);
             Assert.Contains("$2.50", thirtyDayRow, StringComparison.Ordinal);
             Assert.Equal(changedDay, sevenDayRow);
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "usage-accessible-rows.json"),
+                JsonSerializer.Serialize(new { provider, empty, first, second, changedProvider, changedDay, thirtyDayRow, sevenDayRow }));
+            var window = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "UsagePageRoot")) is not null);
+            OwnedWindowCapture.Save(run, window, "Usage-accessible-rows-updated.png");
         }, scenario: scenario);
     }
 
@@ -394,29 +718,156 @@ public sealed partial class GatewayFixtureUiTests
             await NativeKeyboardProof.ActivateAsync(hwnd);
             radios[0].SetFocus();
             await WaitUiAsync(run, () => Automation.Compare(radios[0], AutomationElement.FocusedElement), "first Clipboard option focused");
+            // Individual WinUI RadioButtons move focus with arrows; Space commits the choice.
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
-            await WaitUiAsync(run, () => ((SelectionItemPattern)radios[1].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
-                "Down selects the next Clipboard option");
-            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "selected Clipboard option focused");
+            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "next Clipboard option focused");
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Space);
+            await WaitUiAsync(run, () => ((SelectionItemPattern)radios[1].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected &&
+                !((SelectionItemPattern)radios[0].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
+                "Space selects Read and unselects None");
+            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "selected Clipboard option remains focused");
+            // GroupName makes selection exclusive, but each standalone radio remains a tab stop.
+            foreach (var index in new[] { 2, 3 })
+            {
+                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
+                await WaitUiAsync(run, () => Automation.Compare(radios[index], AutomationElement.FocusedElement),
+                    $"Tab focuses Clipboard option {index}");
+                AssertReadSelection(radios, "forward Tab");
+            }
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
             await WaitUiAsync(run, () => !radios.Any(radio => Automation.Compare(radio, AutomationElement.FocusedElement)), "focus leaves Clipboard options");
             var after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
             Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
-            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "focus returns to selected Clipboard option");
-            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "Shift+Tab returns to the selected option.");
+            AssertReadSelection(radios, "outside group");
+            foreach (var index in new[] { 3, 2, 1 })
+            {
+                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+                await WaitUiAsync(run, () => Automation.Compare(radios[index], AutomationElement.FocusedElement),
+                    $"Shift+Tab focuses Clipboard option {index}");
+                AssertReadSelection(radios, "reverse Shift+Tab");
+            }
+            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "Reverse traversal returns to Read without changing selection.");
+            LogClipboardState("before Collapse");
             pattern.Collapse();
+            LogClipboardState("after Collapse");
+            try
+            {
+                // UIA command completion does not imply the native collapse transition has settled.
+                await WaitUiAsync(run, ClipboardIsCollapsedAndHidden, "Clipboard collapsed and options hidden");
+            }
+            catch
+            {
+                LogClipboardState("collapse wait failed");
+                throw;
+            }
+            expander = FindById(run, "SandboxClipboardExpander")!;
+            pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
             expander.SetFocus();
             await WaitUiAsync(run, () => Automation.Compare(expander, AutomationElement.FocusedElement), "collapsed Clipboard expander focused");
+            LogClipboardState("after expander focus");
+            Assert.True(ClipboardIsCollapsedAndHidden(), "Focusing the collapsed Clipboard expander must not reopen its options.");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
             await WaitUiAsync(run, () => !Automation.Compare(expander, AutomationElement.FocusedElement), "focus leaves collapsed expander");
+            LogClipboardState("after Tab");
+            Assert.True(ClipboardIsCollapsedAndHidden(), "Tab must leave Clipboard options collapsed and hidden.");
             after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
             Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
             pattern.Expand();
-            Assert.Equal(4, expander.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Count);
+            await WaitUiAsync(run, () =>
+            {
+                var live = FindById(run, "SandboxClipboardExpander");
+                return live is not null &&
+                    ((ExpandCollapsePattern)live.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
+                    ClipboardRadios(live) is { Length: 4 } options && options.All(radio => !radio.Current.IsOffscreen);
+            }, "Clipboard expanded and options visible again");
+            radios = ClipboardRadios(FindById(run, "SandboxClipboardExpander")!);
+            AssertReadSelection(radios, "reexpanded group after Tab exclusion");
+
+            await run.InvokeAsync("app.navigate", new { page = "permissions" });
+            await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker") is { Current.IsOffscreen: false }, "Permissions page active");
+            await run.InvokeAsync("app.navigate", new { page = "sandbox" });
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "Clipboard page reactivated");
+            var restored = FindById(run, "SandboxClipboardExpander")!;
+            var restoredPattern = (ExpandCollapsePattern)restored.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            if (restoredPattern.Current.ExpandCollapseState != ExpandCollapseState.Expanded) restoredPattern.Expand();
+            var restoredRadios = restored.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
+            Assert.Equal(4, restoredRadios.Length);
+            await WaitUiAsync(run, () => restoredRadios.Select((radio, index) =>
+                    ((SelectionItemPattern)radio.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected == (index == 1)).All(matches => matches),
+                "keyboard-selected Clipboard permission persists after page reactivation");
+
+            AutomationElement[] ClipboardRadios(AutomationElement owner) => owner.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
+
+            bool ClipboardIsCollapsedAndHidden()
+            {
+                var live = FindById(run, "SandboxClipboardExpander");
+                return live is not null &&
+                    ((ExpandCollapsePattern)live.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState == ExpandCollapseState.Collapsed &&
+                    ClipboardRadios(live).All(radio => radio.Current.IsOffscreen);
+            }
+
+            void LogClipboardState(string phase)
+            {
+                try
+                {
+                    var live = FindById(run, "SandboxClipboardExpander");
+                    if (live is null)
+                    {
+                        output.WriteLine($"Clipboard {phase}: peer unavailable.");
+                        return;
+                    }
+                    var state = ((ExpandCollapsePattern)live.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState;
+                    var options = ClipboardRadios(live);
+                    var focused = AutomationElement.FocusedElement;
+                    var inTargetWindow = false;
+                    if (focused is not null && focused.Current.ProcessId == run.AppProcessId)
+                    {
+                        for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
+                        {
+                            if (!Automation.Compare(current, window)) continue;
+                            inTargetWindow = true;
+                            break;
+                        }
+                    }
+                    // Only known synthetic controls and ownership booleans, never arbitrary desktop content.
+                    output.WriteLine($"Clipboard {phase}: state={state}; options={options.Length}; targetWindow={inTargetWindow}.");
+                    for (var index = 0; index < options.Length; index++)
+                    {
+                        var radio = options[index];
+                        output.WriteLine($"Clipboard option {index}: offscreen={radio.Current.IsOffscreen}; focused={radio.Current.HasKeyboardFocus}; " +
+                            $"selected={((SelectionItemPattern)radio.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected}.");
+                    }
+                }
+                catch (ElementNotAvailableException)
+                {
+                    output.WriteLine($"Clipboard {phase}: peer unavailable during transition.");
+                }
+            }
+
+            void AssertReadSelection(AutomationElement[] options, string phase)
+            {
+                var focused = AutomationElement.FocusedElement;
+                Assert.NotNull(focused);
+                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                var inTargetWindow = false;
+                for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
+                {
+                    if (!Automation.Compare(current, window)) continue;
+                    inTargetWindow = true;
+                    break;
+                }
+                Assert.True(inTargetWindow, "Clipboard traversal must remain in its owned window.");
+                var selected = options.Select(radio =>
+                    ((SelectionItemPattern)radio.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected).ToArray();
+                Assert.Equal(new[] { false, true, false, false }, selected);
+                // Report only fixture ordinals and booleans, never arbitrary focused-control properties.
+                output.WriteLine($"Clipboard {phase}: focused option={Array.FindIndex(options, radio => Automation.Compare(radio, focused))}; " +
+                    $"selected={string.Join(",", selected)}; targetWindow={inTargetWindow}.");
+            }
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 

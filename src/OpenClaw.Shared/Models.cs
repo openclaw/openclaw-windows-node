@@ -223,6 +223,10 @@ public sealed class SessionWorktreeInfo
     public string? RepoRoot { get; set; }
 }
 
+/// <summary>Public detail-row provider review. Continuation remains a separate Gateway action.</summary>
+public sealed record SessionProviderReviewInfo(string Id, string RunId, string? Explanation,
+    string? ContinuationMessage, bool CanContinue);
+
 public class SessionInfo
 {
     /// <summary>Defensive copy so a snapshot handed to a SessionsUpdated subscriber does not
@@ -260,10 +264,14 @@ public class SessionInfo
     public string? OriginLabel { get; set; }
     public SessionWorktreeInfo? Worktree { get; set; }
     public string? ExecNode { get; set; }
+    /// <summary>Gateway execution placement (worker/device). Null for local sessions or older Gateways.</summary>
+    public OpenClaw.Shared.Systems.SessionPlacementInfo? Placement { get; set; }
     public string? ParentSessionKey { get; set; }
     public int? SpawnDepth { get; set; }
     public string? SessionId { get; set; }
     public string? ThinkingLevel { get; set; }
+    public string? ReasoningLevel { get; set; }
+    public string? ReasoningDefault { get; set; }
     public ThinkingContext? ThinkingContext { get; set; }
     public ThinkingContext? ThinkingDefaults { get; set; }
     public string? VerboseLevel { get; set; }
@@ -274,6 +282,9 @@ public class SessionInfo
     /// older Gateway did not provide the field, so callers may use legacy status.
     /// </summary>
     public bool? HasActiveRun { get; set; }
+    /// <summary>Supplied child-run liveness. Omitted on older Gateways.</summary>
+    public bool? HasActiveSubagentRun { get; set; }
+    public SessionProviderReviewInfo? ProviderReview { get; set; }
     public bool Pinned { get; set; }
     public long? PinnedAt { get; set; }
     public bool Unread { get; set; }
@@ -290,6 +301,9 @@ public class SessionInfo
     public string? CurrentActivity { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
+    public string? LastRunId { get; set; }
+    public double? RuntimeMs { get; set; }
+    public long? EndedAt { get; set; }
 
     public string DisplayText
     {
@@ -536,6 +550,9 @@ public class GatewayNodeInfo
     public string? ModelIdentifier { get; set; }
     public string? RemoteIp { get; set; }
     public string? PathEnv { get; set; }
+
+    /// <summary>Latest host statistics the node reported (<c>node.list</c> <c>hostStats</c>).</summary>
+    public OpenClaw.Shared.Systems.NodeHostStats? HostStats { get; set; }
 
     // Timestamps and state
     public DateTime? ConnectedAt { get; set; }
@@ -1095,6 +1112,13 @@ public class GatewayRuntimeInfo
 
 public class UpdateCommandCenterInfo
 {
+    public const string AvailableStatus = "Available";
+    public const string SkippedByUserDetail = "skipped by user";
+
+    /// <summary>A newer release is known and the user has not chosen to skip it.</summary>
+    public bool IsUpdateAvailable =>
+        Status == AvailableStatus && !string.Equals(Detail, SkippedByUserDetail, StringComparison.Ordinal);
+
     public string Status { get; set; } = "Not checked";
     public string CurrentVersion { get; set; } = "unknown";
     public string? LatestVersion { get; set; }
@@ -1757,13 +1781,14 @@ public static class ModelFormatting
 // ── Agent Events ──
 
 /// <summary>
-/// Chat message broadcast by the gateway via a "chat" event. Emitted for
-/// both user echoes and final assistant messages. Streaming deltas are not
-/// currently produced by the gateway; consumers should treat each message as
-/// the complete final text for the given role.
+/// Chat content broadcast by the gateway via "chat" or "session.message".
+/// Content may reconcile a transcript independently of live turn admission;
+/// only an explicit final state is a terminal message.
 /// </summary>
 public class ChatMessageInfo
 {
+    /// <summary>Source-supplied transcript facts. Never use presentation fallback for run admission.</summary>
+    public ChatMessagePresentation Presentation { get; set; } = new();
     public const string SilentAssistantDirective = "NO_REPLY";
 
     public static bool IsSilentAssistantDirective(string? role, string? text) =>
@@ -1775,6 +1800,13 @@ public class ChatMessageInfo
 
     /// <summary>Optional run identity from the live chat event payload, not the message ID.</summary>
     public string? RunId { get; set; }
+
+    /// <summary>Explicit append-stream replacement, scoped by the live event's run identity.</summary>
+    public bool ReplacesStreamText { get; set; }
+
+    /// <summary>A persisted session.message update, not admission of a live response.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsTranscriptSnapshot { get; set; }
 
     /// <summary>Set by synchronous chat consumers when this frame must not produce a notification.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
@@ -1845,6 +1877,12 @@ public class ChatMessageInfo
     /// <summary>Gateway-assigned unique message ID from the <c>__openclaw.id</c> field.</summary>
     public string? OpenClawId { get; set; }
 
+    /// <summary>Whether the Gateway clipped this message's display projection.</summary>
+    public bool OutputTruncated { get; set; }
+
+    /// <summary>Gateway-supplied display truncation reason, such as <c>display-cap</c>.</summary>
+    public string? TruncationReason { get; set; }
+
     /// <summary>Monotonic sequence number within the session from <c>__openclaw.seq</c>.</summary>
     public int? OpenClawSeq { get; set; }
 
@@ -1870,14 +1908,34 @@ public enum ChatToolContentKind
     Result,
 }
 
+public enum ChatMessageReadStatus
+{
+    Available,
+    Unsupported,
+    NotFound,
+    NotVisible,
+    Oversized,
+}
+
+/// <summary>Availability of a single authenticated, display-projected transcript message.</summary>
+public sealed record ChatMessageReadResult(ChatMessageReadStatus Status, ChatMessageInfo? Message = null);
+
 public class ChatToolContentInfo
 {
     public ChatToolContentKind Kind { get; set; }
     public string? CallId { get; set; }
+    /// <summary>Recorded call ID of the wrapping tool call (Gateway <c>parentToolCallId</c>); never inferred.</summary>
+    public string? ParentCallId { get; set; }
+    /// <summary>Durable outer result-message ID, never the tool-call or input-message ID.</summary>
+    public string? ResultMessageId { get; set; }
+    public bool OutputTruncated { get; set; }
+    public string? TruncationReason { get; set; }
     public string ToolName { get; set; } = "tool";
     public JsonElement? Args { get; set; }
     public string? Text { get; set; }
     public bool IsError { get; set; }
+    public ChatToolHandoffInput? HandoffInput { get; set; }
+    public ChatToolHandoffReceipt? HandoffReceipt { get; set; }
 }
 
 public enum ChatMessageContentPartKind
@@ -1885,6 +1943,7 @@ public enum ChatMessageContentPartKind
     Text,
     Tool,
     Media,
+    Reasoning,
 }
 
 public class ChatMessageContentPartInfo
@@ -1893,6 +1952,51 @@ public class ChatMessageContentPartInfo
     public string? Text { get; set; }
     public ChatToolContentInfo? Tool { get; set; }
     public ChatMediaContentInfo? Media { get; set; }
+    public string? Phase { get; set; }
+    public string? TextSignatureId { get; set; }
+}
+
+/// <summary>
+/// Optional source facts used by native transcript reconciliation and presentation.
+/// For example, a commentary block can retain its phase without becoming a final reply.
+/// This record does not grant run ownership or authorization.
+/// </summary>
+public sealed record ChatMessagePresentation(
+    string? Phase = null,
+    string? RunId = null,
+    string? MessageId = null,
+    string? BlockId = null,
+    bool TurnBoundary = false,
+    string? SteerTargetRunId = null,
+    string? ProvenanceKind = null,
+    string? SourceTool = null,
+    string? SourceSessionKey = null,
+    string? JobId = null,
+    string? ProvenanceRunId = null,
+    string? AutomationKind = null,
+    string? AutomationJobId = null,
+    string? AutomationRunId = null,
+    string? MirrorOrigin = null,
+    bool RunTerminal = false,
+    string? StopReason = null,
+    bool Interrupted = false,
+    bool VoiceTranscript = false,
+    string? StreamItemId = null,
+    string? SenderSession = null,
+    string? SenderAgentId = null,
+    string? SenderLabel = null,
+    string? SourceRole = null,
+    bool IsImported = false)
+{
+    public bool IsIndependent =>
+        ProvenanceKind == "inter_session" && SourceTool == "sessions_send" ||
+        ProvenanceKind == "internal_system" && SourceTool == "cron" &&
+            !string.IsNullOrEmpty(JobId) && !string.IsNullOrEmpty(ProvenanceRunId) &&
+            !string.IsNullOrEmpty(SourceSessionKey) ||
+        AutomationKind == "cron" && !string.IsNullOrWhiteSpace(AutomationJobId) &&
+            !string.IsNullOrWhiteSpace(AutomationRunId);
+
+    public bool EndsInFailure => Interrupted || StopReason == "error";
 }
 
 public enum ChatMediaContentKind
@@ -1971,6 +2075,10 @@ public sealed class ChatMediaContentInfo
 /// </summary>
 public class ChatHistoryInfo
 {
+    public string? OlderCursor { get; set; }
+    public bool HasMore { get; set; }
+    /// <summary>The Gateway invalidated the paging snapshot; reload history rather than treating it as exhausted.</summary>
+    public bool WindowReset { get; set; }
     /// <summary>Immutable session UUID assigned by the gateway.</summary>
     public string? SessionId { get; set; }
 
@@ -1979,6 +2087,30 @@ public class ChatHistoryInfo
 
     /// <summary>Ordered transcript messages (oldest first).</summary>
     public IReadOnlyList<ChatMessageInfo> Messages { get; set; } = Array.Empty<ChatMessageInfo>();
+
+    /// <summary>
+    /// Run still streaming when history was read. Present only while
+    /// <c>sessionInfo</c> reports that run active, so a session opened mid-run
+    /// can show its working state, partial answer, and recent progress.
+    /// </summary>
+    public ChatInFlightRunInfo? InFlightRun { get; set; }
+}
+
+/// <summary>Gateway cursor or canonical message boundary, fenced to the loaded session instance.</summary>
+public sealed record ChatHistoryPageRequest(string? Cursor, string SessionId, string? MessageId = null);
+
+/// <summary>Bounded <c>chat.history</c> snapshot of a run still in progress.</summary>
+public sealed class ChatInFlightRunInfo
+{
+    public string RunId { get; init; } = "";
+
+    /// <summary>Assistant text buffered for the run so far.</summary>
+    public string Text { get; init; } = "";
+
+    public long? StartedAtMs { get; init; }
+
+    /// <summary>Retained progress events (tools, status, commentary) for <see cref="RunId"/>.</summary>
+    public IReadOnlyList<AgentEventInfo> Events { get; init; } = Array.Empty<AgentEventInfo>();
 }
 
 /// <summary>Raw agent event from gateway broadcast.</summary>

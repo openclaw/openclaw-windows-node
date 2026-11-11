@@ -12,8 +12,30 @@ public sealed class CiNugetCacheWorkflowTests
         Assert.Contains(@"OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming", job);
         Assert.Contains(@"OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local", job);
         Assert.Contains("OPENCLAW_REPO_ROOT: ${{ github.workspace }}", job);
-        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture\"", job);
+        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", job);
+        Assert.Contains("-Filter \"Category=AnimationPreferenceEnabled\"", job);
+        Assert.Contains("-Filter \"FullyQualifiedName~PageHeroAnimationsDisabledTests\"", job);
         Assert.DoesNotContain("FullyQualifiedName!~Onboarding", job);
+    }
+
+    [Fact]
+    public void UiLane_RunsSteadyResourceAutomationsProofUnderTheProductionProfile()
+    {
+        var job = ExtractJob(ReadWorkflow(), "ui-tests", "build-msix");
+        var standard = ExtractStep(job, "Run Tray UI Tests", "Run steady-resource Automations UI tests");
+        Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard", standard);
+        Assert.Contains("-CaptureHostExit", standard);
+
+        var steady = ExtractStep(job, "Run steady-resource Automations UI tests", "Run Accessibility Tests (Axe.Windows)");
+        Assert.Contains("OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production", steady);
+        Assert.Contains("OPENCLAW_UI_TEST_APP_THEME: Light", steady);
+        Assert.Contains("OPENCLAW_RUN_KEYBOARD_PROOF: '1'", steady);
+        Assert.Contains("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'", steady);
+        Assert.Contains(@"OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures", steady);
+        Assert.Contains("-RequireAllTestsPassed", steady);
+        Assert.Contains("-CaptureHostExit", steady);
+        Assert.Contains("-Filter \"Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", steady);
+        Assert.Contains("AutomationsSteadyResources.trx", steady);
     }
 
     private static readonly string[] CoreEntryProjects =
@@ -21,6 +43,7 @@ public sealed class CiNugetCacheWorkflowTests
         "tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj",
         "tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj",
         "tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj",
+        "tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj",
     ];
 
     [Fact]
@@ -44,13 +67,15 @@ public sealed class CiNugetCacheWorkflowTests
 
         Assert.DoesNotContain("NUGET_PACKAGES:", otherJobs, StringComparison.Ordinal);
         Assert.DoesNotContain("nuget-core-", otherJobs, StringComparison.Ordinal);
-        Assert.Equal(8, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
+        // The independent Gateway fixture job also restores the shared cache.
+        const int sharedCacheLaneCount = 9;
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
         Assert.Equal(
-            8,
+            sharedCacheLaneCount,
             CountOccurrences(
                 otherJobs,
                 "key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}"));
-        Assert.Equal(8, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
     }
 
     [Fact]
@@ -75,7 +100,7 @@ public sealed class CiNugetCacheWorkflowTests
         var cacheStep = ExtractStep(coreJob, "Cache NuGet packages", "Restore core test projects");
 
         var projectGraph = GetProjectGraph(root);
-        Assert.Equal(9, projectGraph.Count);
+        Assert.Equal(11, projectGraph.Count);
 
         foreach (var buildInput in GetBuildInputs(root, projectGraph))
             Assert.Contains($"'{buildInput}'", cacheStep, StringComparison.Ordinal);

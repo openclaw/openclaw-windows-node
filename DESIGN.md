@@ -68,12 +68,29 @@ colors:
   chatReadAloudText: rgba(0,0,0,0.43372549)
   chatUser: rgba(0,103,192,0.08)
   chatUserText: "#000000e4"
+  usageChartCacheRead: "#99ebff"
+  usagePalette1: "#005fb8"
+  usagePalette2: "#038387"
+  usagePalette3: "#8764b8"
+  usagePalette4: "#ca5010"
+  usagePalette5: "#c239b3"
+  usagePalette6: "#107c10"
   chatActionDisabled: "#00000037"
   chatActionDisabledText: "#ffffff"
   chatActionHover: "#0067c0e6"
   chatActionPressed: "#0067c0cc"
   chatActionPressedText: "#ffffffb3"
   chatReadAloudPressed: "#f9f9f94d"
+  automationKindEvery: "#00747a"
+  automationKindEveryFill: "#2400a3ab"
+  automationKindAt: "#8a5a00"
+  automationKindAtFill: "#33f2b33d"
+  automationKindCron: "#6741d9"
+  automationKindCronFill: "#247c5cfa"
+  automationKindEvent: "#b93a18"
+  automationKindEventFill: "#26f06a43"
+  automationHero: rgba(0,103,192,0.14)
+  automationHeroStroke: rgba(0,103,192,0.18)
   nativeText: "#000000e4"
   personPictureFill: "#00000018"
   personPictureStroke: "#0000000f"
@@ -355,7 +372,7 @@ x-colophon:
       tooling:
         name: winapp (WinAppCli)
         source: https://github.com/microsoft/WinAppCli
-        role: The Windows App Development CLI is the single build/packaging tool for both port targets below. Both the WinUI 3 (XAML) shell and the Reactor chat surface now build, package, and generate app identity, manifests, and certificates through winapp, so treat it as the port authority's build toolchain.
+        role: Use the Windows App Development CLI proactively for Windows API/sample discovery, native UI automation, crash diagnostics, WinUI DevTools, performance recording, and authorized Sandbox experiments. Repository build.ps1, project files, and packaging scripts remain the build/release authority for both port targets; see docs/WINAPP_CLI.md for supported workflows and limits.
       port:
         authoritySource: Native WinUI 3 / C# (Windows Fluent)
         syncSource: https://github.com/microsoft/win-dev-skills
@@ -387,6 +404,7 @@ x-colophon:
       - "State must be legible: connected, pairing, and error states read clearly via positive/warning/critical, never color alone."
       - No hard-coded hex in UI. Use tokens/theme resources so dark and high-contrast modes stay correct.
       - "Motion is a cue, not a garnish: 120-200ms ease-out, no bounce."
+      - "Automations uses schedule-kind colors for glyphs and chips, while the Windows accent identifies actions. Shared PageHero motion honors reduced motion."
     brand:
       tagline: A calm native Windows companion for your AI assistant.
       surface: product
@@ -724,6 +742,40 @@ x-colophon:
       chatUserText:
         resource: ChatUserTextBrush
         themes: { dark: "#ffffff", highContrast: "#000000" }
+      usageChartCacheRead:
+        resource: UsageChartCacheReadBrush
+        themes: { dark: "#005fb8", highContrast: "#3ff23f" }
+        usage: Cache-read segment of the Usage token breakdown. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so adjacent segments stay distinct; SystemColorGrayTextColor in high contrast. Other segments bind accent, success and caution fills. The daily chart also has an expandable text table.
+      usagePalette1:
+        resource: UsagePalette1Brush
+        themes: { dark: "#99ebff", highContrast: "#1aebff" }
+        usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
+      usageChartBar:
+        resource: UsageChartBarBrush
+        usage: Daily chart bars use solid SystemAccentColor in light and dark themes, and SystemColorHighlightColor in high contrast. Reported current-day bars use the same solid fill; their date and reported value carry the meaning. Day selection uses native keyboard focus and an accessible selected status.
+      usageCountPill:
+        resource: UsageCountPillBrush
+        usage: Neutral section count pill. TextFillColorPrimary at 16% brush opacity with primary text. High contrast uses SystemColorButtonFaceColor. Attention counts use the existing critical tint and critical foreground instead.
+      usagePalette2:
+        resource: UsagePalette2Brush
+        themes: { dark: "#4fc3c7", highContrast: "#8080ff" }
+        usage: Usage categorical teal. Agents, models and providers keep one slot page-wide (stable name hash). High contrast uses SystemColorHotlightColor.
+      usagePalette3:
+        resource: UsagePalette3Brush
+        themes: { dark: "#b4a0ff", highContrast: "#ffffff" }
+        usage: Usage categorical purple. High contrast uses SystemColorWindowTextColor.
+      usagePalette4:
+        resource: UsagePalette4Brush
+        themes: { dark: "#f7894a", highContrast: "#1aebff" }
+        usage: Usage categorical orange. High contrast uses SystemColorHighlightColor.
+      usagePalette5:
+        resource: UsagePalette5Brush
+        themes: { dark: "#ee7ae3", highContrast: "#8080ff" }
+        usage: Usage categorical magenta. High contrast uses SystemColorHotlightColor.
+      usagePalette6:
+        resource: UsagePalette6Brush
+        themes: { dark: "#6ccb5f", highContrast: "#ffffff" }
+        usage: Usage categorical green, also the cost color. Color never carries meaning alone; labels and values sit beside every swatch. High contrast uses SystemColorWindowTextColor.
       chatActionDisabled:
         resource: AccentButtonBackgroundDisabled
         themes: { dark: "#ffffff28", highContrast: "#000000" }
@@ -742,6 +794,46 @@ x-colophon:
       chatReadAloudPressed:
         resource: ControlFillColorTertiaryBrush
         themes: { dark: "#ffffff08", highContrast: "#000000" }
+      automationKindEvery:
+        resource: AutomationsKindEveryBrush
+        themes: { dark: "#4fd1d6", highContrast: "#ffffff" }
+        usage: Automations interval-schedule hue (glyphs, schedule chips). Pairs with automationKindEveryFill. Defined in Themes/AutomationsResources.xaml.
+      automationKindEveryFill:
+        resource: AutomationsKindEveryFillBrush
+        themes: { dark: "#334fd1d6", highContrast: "#000000" }
+        usage: Tinted tile behind the interval glyph; never a large surface.
+      automationKindAt:
+        resource: AutomationsKindAtBrush
+        themes: { dark: "#f5c65b", highContrast: "#ffffff" }
+        usage: Automations one-time-schedule hue and empty-state sparkles.
+      automationKindAtFill:
+        resource: AutomationsKindAtFillBrush
+        themes: { dark: "#33f5c65b", highContrast: "#000000" }
+        usage: Tinted tile behind the one-time glyph.
+      automationKindCron:
+        resource: AutomationsKindCronBrush
+        themes: { dark: "#b9a4ff", highContrast: "#ffffff" }
+        usage: Automations cron-schedule hue; also the next-wake status icon.
+      automationKindCronFill:
+        resource: AutomationsKindCronFillBrush
+        themes: { dark: "#33b9a4ff", highContrast: "#000000" }
+        usage: Tinted tile behind the cron glyph.
+      automationKindEvent:
+        resource: AutomationsKindEventBrush
+        themes: { dark: "#ff9d80", highContrast: "#ffffff" }
+        usage: Automations event-triggered (MCP) hue.
+      automationKindEventFill:
+        resource: AutomationsKindEventFillBrush
+        themes: { dark: "#33ff9d80", highContrast: "#000000" }
+        usage: Tinted tile behind the event glyph.
+      automationHero:
+        resource: AutomationsHeroBrush
+        themes: { dark: "SystemAccentColorLight1 to SystemAccentColorDark3 at 22%", highContrast: "#000000" }
+        usage: Accent-following diagonal wash for the Automations header band and hero discs. Follows the user's Windows accent; never hard-coded.
+      automationHeroStroke:
+        resource: AutomationsHeroStrokeBrush
+        themes: { dark: "SystemAccentColorLight2 at 28%", highContrast: "#ffffff" }
+        usage: 1px frame of the header wash and the agent scope chip.
       nativeText:
         resource: TextFillColorPrimaryBrush
         themes: { dark: "#ffffff", highContrast: "#ffffff" }
@@ -948,6 +1040,7 @@ Personality: native, trustworthy, calm, precise.
 - **accentInk** {colors.accentInk}: Text/glyphs on accent fills.
 - **accentText** {colors.accentText}: `AccentTextFillColorPrimaryBrush` for outlined accent badge text and border. It uses Dark2 in light and Light3 in dark, not the primary button fill palette.
 - **Setup and settings cards:** {colors.setupCardFill} and {colors.setupCardStroke} preserve `CardBackgroundFillColorDefaultBrush` and `CardStrokeColorDefaultBrush`, including their alpha. The frame owns the single backplate and 1px border. Setup choice rows and actionable expander headers have separate hover/pressed layers; ordinary settings rows and expanded children stay static around their action controls. Existing token names are retained because both surfaces bind the same native resources.
+- **Automations agenda:** measure the agenda's own width. Its columns stack below 820 DIPs; below 1000 DIPs the collapsed upcoming budget is four rows (at most three per group) and the earlier-runs budget is three. Wider agendas use six upcoming rows (at most four per group) and five earlier runs. A lone row stays visible regardless of budget. Expansion state survives resizing, and each automation uses an independent native Expander with Windows-owned animation and reduced-motion behavior. Only an explicit reveal scrolls and focuses a row.
 - **positive** {colors.positive}: Success / connected states. Fluent SystemFillColorSuccess.
 - **warning** {colors.warning}: Warnings / attention. Fluent SystemFillColorCaution.
 - **critical** {colors.critical}: Errors, disconnected, destructive. Fluent SystemFillColorCritical.
@@ -986,7 +1079,7 @@ Resource mappings are also recorded on `x-colophon.tokens.typography.scale` for 
 
 Use Segoe UI Variable for text and Cascadia Mono (`x-colophon.tokens.typography.mono`) for commands, endpoints, tokens, and logs. Fluent icon glyphs use Segoe Fluent Icons (`x-colophon.tokens.typography.icon`); for example, the selection checkmark is glyph U+E73E, and the chat toolbar uses ChatSubmit (U+E74A), ChatAttach (U+E723, paperclip), VoiceAct (U+E720), ChevronDown (U+E70D), and Stop (U+E71A).
 
-Chat-local typography follows production rather than substituting the named Gallery styles: `chatProse` is 14/21, `chatInput` is 16px with a 22px browser line box, `chatPicker` is 13/18, and `chatFooter` is 12/18. Native text uses maximum-height line stacking and layout rounding. `chatIcon`, `chatActionIcon` and `chatChevron` are actual Segoe Fluent glyphs at 16, 14 and 12px respectively, not generic SVG approximations.
+Chat-local typography follows production rather than substituting the named Gallery styles: `chatProse` is 14/21, `chatInput` is 16px with a 22px browser line box, `chatPicker` is 13/18, and `chatFooter` is 12/18. Tool and activity row text is 13px like `chatPicker`, thinking text is 12/18 in the secondary tone like `chatFooter`, and list markers and items share `chatProse`. Native text uses maximum-height line stacking and layout rounding. `chatIcon`, `chatActionIcon` and `chatChevron` are actual Segoe Fluent glyphs at 16, 14 and 12px respectively, not generic SVG approximations.
 
 ## Layout
 
@@ -1017,15 +1110,97 @@ The chat transcript and composer ship via Reactor and follow the native chat vis
 
 - **Semantic brushes.** Chat binds the chat-local resources in `Themes/ChatResources.xaml` (Default/Light/HighContrast), not raw palette hex: `ChatCanvasBrush` (transparent; system window in HC), `ChatComposerBrush` and `ChatCardBrush` (`CardBackgroundFillColorDefault`), `ChatStrokeBrush` (`ControlStrokeColorDefault`), `ChatTextBrush` (`TextFillColorPrimary`), `ChatSecondaryTextBrush` (`TextFillColorSecondary`, used for code text), `ChatUserBrush` (accent at low opacity for the user bubble), `ChatUserTextBrush` (`TextFillColorPrimary`), `ChatPickerAccentBrush` (accent variants for picker triggers), and `ChatCopySuccessBrush` (`SystemFillColorSuccess`).
 - **Surface layering.** The Hub title bar and expanded navigation pane reveal Mica; `NavigationViewContentBackground` supplies one content layer (`LayerFillColorDefaultBrush`; system window in HC). The chat canvas is transparent so it neither hides nor doubles that layer, and the composer and code cards use the card fill above it. The standalone chat window uses the same Mica plus one content layer.
-- **Geometry.** The reading column is capped at 768px with a 16px prose inset; outer gutters are 12px below 640px and 40px above. The avatar is omitted below 960px; wider native layouts reserve a 44px gutter on each side of the prose. The writing surface has a 20px radius, 1px border, 112px minimum height and 16,12,16,8 inner padding. Its 16px TextBox has no padding, a 44px minimum height and 200px maximum height. Native focus and hover keep the editor fill and border transparent, with no accent underline. Assistant prose is bubbleless at 14/21, with 4px vertical padding and 16px block gaps. User messages have 16,12 padding, 12px corners and a 720px maximum width. The 2px user-footer offset is an intentional native half-grid value.
+- **Geometry.** The reading column is capped at 768px with a 16px prose inset; outer gutters are 12px below 640px and 40px above. The avatar is omitted below 960px; wider native layouts reserve a 44px gutter on each side of the prose. The writing surface has a 20px radius, 1px border, 96px minimum height, 16,8 inner padding and a 4px editor-to-toolbar gap. Its 16px TextBox has no padding, a 44px minimum height and 200px maximum height. Native focus and hover keep the editor fill and border transparent, with no accent underline. Assistant prose is bubbleless at 14/21, with no extra vertical body padding, 8px block gaps and 4px turn spacing. User messages have 12,8 padding, 12px corners and a 720px maximum width; their action footer is separated by one 4px gap. Thinking and tool details use 12,8 insets and 4px internal spacing. The transcript lead-in is 8px. Expanded provider/child activity shares a 160px maximum-height scrolling region so it cannot consume most of the transcript. These chat-local density tokens reduce whitespace, not reading type or action targets.
 - **Footer controls.** Workspace shows a leading paperclip and right-aligned model, effort, Voice and circular Send/Stop. Only standalone ChatWindow includes the session selector. Controls are 32px tall; icon targets are 32px square with 16px glyphs. Model/effort labels use 13px text, a 12px native chevron and 8,4 padding. Voice/Send have a 4px gap. The model flyout contains an AutoSuggestBox and grouped native list; effort uses a native discrete slider and changes to a 44px gauge trigger at widths <=560px. No fake session selector or separate speaker/settings actions belong in Workspace's composer.
-- **Message actions.** Copy is a shared 32px control with a 14px Fluent glyph and 4px padding, not a 20px generic SVG button. The assistant footer includes sender, time, model and usage at 12/18. Read aloud is 70% opaque at rest and fully opaque when the row is hovered. Native copy confirmation announces Copied; the browser reference does not implement clipboard or speech.
+- **Message actions.** Copy is a shared 32px control with a 14px Fluent glyph and 4px padding, not a 20px generic SVG button. Its glyph shares a vertical center with the adjacent metadata. Sent-message metadata and actions reveal only on their own row's hover or keyboard focus, without changing footer geometry. Failed queued messages keep recovery visible, and active read-aloud keeps Stop visible. The assistant footer includes sender, time, model and usage at 12/18. Metadata and action glyphs remain static; only active work labels receive a 2.4-second light flare. Its primary-to-secondary alpha gap is increased by 20 percent so the moving band stands out. Light uses primary ink for the base and the softer ink for the flare; Dark reverses those roles. Native theme resolution keeps the entire sentence readable while making the moving band noticeable. The working claw and clock row stay fully opaque through entrance and timer updates. Native copy confirmation announces Copied; the browser reference does not implement clipboard or speech.
+- **Jump to latest.** A centered 32px circular native button overlays the transcript near its bottom edge while the reader is away from the tail. It has a 16px Fluent Down glyph (U+E74B), no visible text, a 1px `ChatStrokeBrush` outline, `LayerFillColorDefaultBrush` fill and `ChatSecondaryTextBrush` foreground. Native hover, press and keyboard-focus states remain intact. Localized tooltip and accessible name distinguish Jump to latest from new-message feedback; showing the button does not resize the transcript.
+- **Pending queue.** Queued submissions share one `ChatCardBrush` panel directly above the composer, capped at the 768px reading width with the same outer gutters and 20px composer radius. Queue-local tokens use 13,6,4,6 row insets (left, top, right, bottom), 8px column gaps, 14px native outline list/return and trash icons with a 1.75px stroke in their 24px viewbox, a 20px circular operator-avatar fallback and selectable 13/18 primary text. At widths <=560px the avatar is 18px and column gaps are 6px. The always-visible trash target stays 32px square; the reduced right inset preserves the web reference's 20px action-center inset despite the larger native target. The panel has a 4px bottom margin; the composer owns the remaining gap. A 1px `ChatStrokeBrush` divider separates rows. The panel scrolls above 160px or one third of the viewport height, whichever is smaller. Sending disables removal; failures retain their error and removal action. The queue never adds synthetic transcript entries.
+
+Tool disclosures use the shared 32px minimum header target. Their icons and inline status are vertically centered, with no stock-template header or content inset. Expanded **Worked** commentary stays on the prose column even above the avatar breakpoint; it does not reserve avatar space inside an already aligned disclosure.
+
+Expanded tool cards show input and output without visible section headings.
+A one-pixel `ChatStrokeBrush` line separates them only when both are present.
+The sections retain 12,8 padding, selectable monospace text and accessible
+input/output/error names. The existing outcome footer keeps its own divider.
+
+Tool input uses native primary ink with syntax accents; output uses
+`ChatSecondaryTextBrush`, not reduced element opacity. PowerShell commands and
+JSON arguments use the following chat-local syntax resources. Unrecognized
+languages remain literal primary text. All syntax resources map to system
+window text in high contrast.
+
+| Resource | Light | Dark | Role |
+|---|---|---|---|
+| `ChatSyntaxIdentifierBrush` | `#0550AE` | `#79C0FF` | Commands, variables, types, JSON keys and numbers |
+| `ChatSyntaxKeywordBrush` | `#CF222E` | `#FF7B72` | Keywords, operators and JSON constants |
+| `ChatSyntaxStringBrush` | `#0A3069` | `#A5D6FF` | Quoted string literals |
+| `ChatSyntaxCommentBrush` | native secondary text | native secondary text | Comments |
+
+These are syntax colors, not status indicators. Native runs bind the named
+resources so theme changes do not require reparsing or alter selection.
 
 The chat reference was reconciled against production commit `9e4999c6d43f166437afa204a556bd8ee9dbfcb2`, including `ChatVisuals.cs`, `ReactorChatComposer.cs`, `ReactorChatTimeline.cs`, `ChatMarkdownPresentation.cs`, `ChatCopyButton.cs`, `FluentIconCatalog.cs` and `Themes/ChatResources.xaml`. A separately built ARM64 Release app ran against the isolated synthetic Gateway at 120 DPI; native screenshots and UI Automation bounds cover light/dark, empty/drafted input and the wide avatar breakpoint. This is fixture proof, not live Gateway/provider proof.
 
-The [120-DPI comparison](.agents/design/reference/chat-comparison.png) preserves the unmodified native and browser composer pixels at the same scale. Both writing surfaces are 960x140 physical pixels (768x112 effective pixels), with 40x40 action targets and a 55px input height. User-footer spacing includes 8px of stack space plus its 2px top margin. At capture time, schema/expansion checks covered all 38 definitions then present; focused chat geometry and action-state checks covered all three preview themes. This historical proof does not cover subsequently added examples.
+The [120-DPI comparison](.agents/design/reference/chat-comparison.png) preserves the unmodified native and browser composer pixels at the same scale. Both writing surfaces are 960x140 physical pixels (768x112 effective pixels), with 40x40 action targets and a 55px input height. User-footer spacing includes 8px of stack space plus its 2px top margin. At capture time, schema/expansion checks covered all 38 definitions then present; focused chat geometry and action-state checks covered all three preview themes. This historical proof and its preview examples predate the compact chat spacing above and do not verify that change.
 
 The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fluent glyphs. It is **not a verified pixel-identical native renderer**: Mica is wallpaper/activation-dependent; this host's native UI Automation reports Segoe UI Variable while Chromium resolves the requested family to Segoe UI; and text rasterization/layout rounding differ. The installed schema also lacks responsive breakpoints, row-hover opacity, gradient elevation borders and native input/flyout behavior. Fixed-size references must not become production layout code. High-contrast preview swatches are resource simulations, not evidence of Windows HC mode.
+
+## Dashboards expressive extension
+
+The standalone Dashboards page (`src/OpenClaw.Tray.WinUI/Dashboards/`) is the one place this system spends color on identity, at the product owner's direction: dashboards are visual workspaces, and a gallery of identical gray cards reads as a file list. The extension adds color without weakening the core rules.
+
+- **Placement.** Dashboards lives beside Chat as a pinnable page, not in the Settings section list. Scopes without saved pin choices show it after Home by default; custom lists and stored explicit empty lists remain unchanged. Older versions erased empty choices, so those missing entries receive the default on upgrade; see [Native Dashboards](docs/DASHBOARDS.md#scope). The page retains the Workspace sidebar and single Back/Forward history, including session deep links.
+- **Palette.** Six categorical hues (blue, teal, purple, pumpkin, berry, green) are theme resources in `Themes/DashboardResources.xaml`: `DashboardHue{n}Brush` (strong, at least 4.5:1 on cards in light and dark), `DashboardHue{n}SubtleBrush` (tinted tiles) and `DashboardHue{n}WashBrush` (card heading and metric backdrops), plus `DashboardOnHueBrush` for text on a strong fill. Light uses Fluent-style shades, dark uses tints. High contrast maps every hue to `SystemColorHighlightColor` and every wash to `SystemColorWindowColor`, so identity never carries meaning on its own.
+- **What hues mean.** A gallery card's hue is stable for its owning agent id (identity band); an author's hue is stable for the author id (board-header avatar). Widget kinds have fixed hues: HTML blue, report purple, website teal, MCP app pumpkin, other plugins green. Hues never encode state: live, approval, error and disconnected keep `positive`, `warning` and `critical`, and actions keep the system `accent`.
+- **Hero.** Gallery and board use the shared `Presentation/Adapters/PageHero.cs` card, with a system-accent wash contained within its border, not a full-page backdrop. The gallery title is Dashboards. Its answer line combines the agent picker and latest reported board update; its caption names the agent to ask for changes. Board view names the board and shows author/update metadata plus the reported Live tag. No summary tiles, decorative agent chip or Needs you section belongs here. The hero, tabs and content scroll together. Narrow actions reflow below the copy. Shared geometry and motion remain owned by `PageHero`, not a Dashboard-specific clone.
+- **Gallery.** Static cards show a 48-DIP, radius-8 identity tile with initials from up to two title words on an agent-tinted band (80 DIP, or 64 in dense inventories). Titles and summaries lead the Fresh today feature, without a cover. Summaries wrap within 440 DIP and use "No summary available" when absent. Author/update metadata and the optional Live tag share a footer with a right-aligned "Open board" label. Chat is a bordered, labeled sibling action on its own trailing row, never nested inside the card button. A Fresh today shelf requires at least five boards and at least two updates in the current local day; filters appear above five. Returning from a board restores its exact opening card, preserving search/sort and loaded card count, or focuses the named gallery heading if the board disappeared. The board header uses chat, refresh, and More options icons. Back belongs to the title bar.
+- **Results.** Dashboards and Usage share the neutral flyout toast surface: `FlyoutPresenterBackground`, `FlyoutBorderThemeBrush`, a 1px stroke, `ThemeShadow`, radius 8, padding 16x12, maximum width 480, bottom-center with margin 20. Only the icon carries severity color. Passive/error results dismiss after four seconds; errors use assertive announcements.
+- **Responsive geometry.** `Presentation/PageResponsiveLayout.cs` is the canonical host-width contract: Wide 1000+, Medium 720+, Narrow below 720 (minimum supported host 480), inner content maximum 1200, padding 32/20, gaps 8/12/16. Dashboards uses explicit rows/columns, 240-DIP-minimum board tiles, and layout cells outside motion decorators. Mast actions move below text in Narrow and secondary browser actions collapse to More options; filters and Fresh today stack deterministically. Do not infer the tier from window width or lower the shell minimum to manufacture a Narrow capture.
+- **Motion.** Cards rise 4px on hover (160ms decelerate), cards and widgets fade and rise on entry with a 45ms stagger, and the Live dot breathes over 1.8s. Loading tiles are static. Every loop and entrance is skipped when Windows animations are off (`UseReducedMotion`).
+- **Charts and tables.** Native report charts use the system accent with the peak at full strength and other bars at 55%, rounded tops and soft gridlines. Supplied numeric values appear above bars, without six-digit rounding; full values remain available in tooltips and automation names. Metrics get a hue rail on a matching wash, cycling from purple. The current strict report contract has no column types, date-axis metadata or illustrative-trend flag: table strings stay left-aligned, and Windows neither guesses numeric/currency columns nor invents chart metadata. HTML widget colors remain owned by widget content. Widget kind is in the accessible name, not a visible chip; granted access remains a visible badge.
+
+Do not reuse this palette outside Dashboards without updating this section, and keep it out of chat, setup and settings surfaces.
+## Systems page
+
+Machine, worker and connected-app card lists use spacing token `2`
+(`PageResponsiveLayout.GapInner`, 8 effective pixels) between individually
+rounded, bordered rows. An expanded machine keeps its contents inside that row's
+boundary. Dense capability, session and diagnostic rows are not card lists;
+statistic grids retain their separate 12-pixel grid spacing.
+
+The Systems page (`Systems/SystemsPageView.cs`, Reactor) has more personality than the calm settings surfaces, because it is a fleet dashboard. Its palette lives in `Themes/SystemsResources.xaml`, with Default, Light and HighContrast dictionaries:
+
+| Role | Resource | Dark | Light |
+| --- | --- | --- | --- |
+| Load, Gateway host | `SystemsLoadBrush` | `SystemAccentColorLight2` | `SystemAccentColorDark1` |
+| Memory, paired nodes, sessions | `SystemsMemoryBrush` | #B9A4FF violet | #6B4FBB violet |
+| Disk, workers, storage | `SystemsDiskBrush` | #5FD4D9 teal | #00747A teal |
+| Neutral, connected apps | `SystemsNeutralBrush` | `TextFillColorSecondary` | `TextFillColorSecondary` |
+
+- **Usage.** Each hue has a `*TintBrush` (same color at 10-16% opacity) for glyph chips, pills and meter tracks. Success, caution and critical states use the native `SystemFillColor*` brushes with matching `Systems*TintBrush` tints. The shared native adapter `Presentation/Adapters/PageHero.cs` owns the hero's Windows-accent gradient inside the card; there is no full-page wash.
+- **Rules.**
+  - Load follows the user's accent. Violet and teal are fixed so the three metrics stay distinguishable.
+  - Every hue appears with a glyph and a text label, so status never relies on color alone.
+  - In high contrast, every hue maps to `SystemColorHighlightColor` or window colors. The hero wash is removed.
+- **Scope.** Statistics show the latest reported reading, a usage meter and its age; there are no trend charts. Windows nodes report processor count, memory and system-drive space, so no processor usage is shown for them. The page reports desktop availability only. Desktop viewing and setup, storage and backup administration, and other deeper machine work stay in the web interface behind the single page-level "Open in web" button. It opens the web Systems page when supported, or the web root on an older Gateway; it does not promise a selected-machine destination, so the machine identifier remains copyable.
+- **Responsive container.** `Presentation/PageResponsiveLayout.cs` owns page-host (not window) tiers: Wide at 1000 or more effective pixels, Medium at 720-999, Narrow below 720, supported down to 480. Content is centered, capped at 1200, with 32-pixel horizontal margins (20 on Narrow). Horizontal scrolling and measurement are disabled. The hero and inventory share one scroll. The production window minimum remains 800; narrower proof mounts the actual page in the existing test viewport.
+- **Page anatomy.** The shared hero card contains the Systems title, a real Gateway attachment sentence and wrapping Open in web/Add a system actions. The title is 28 semibold, 24 on Narrow; actions center vertically on wider layouts and move below the copy on Narrow. Card radius is 8, padding 24,20 (16 on Narrow), with a noninteractive system-accent gradient inside the card. Online and Issues are the only summary tiles. Measured content width governs their shared layout: two equal columns down to 380, one below it. Online reports machine rows, not connected apps or workers; disconnected copy qualifies retained counts as last reported. Unknown data is not a zero or a successful current report. Refresh is beside the inventory heading. Add a system explains the three pairing steps before opening Connection. "Devices and Gateway" always shows the complete reported inventory in online-first order, without search, status filters or sort controls. Workers and Connected apps retain their own groups. Independent native Expanders preserve siblings and scroll position. Inventory groups keep stable identities when a preceding pairing group is added or removed; a default selection arriving after the initial load expands only after its current native row has loaded. Intentional collapse survives later inventory refreshes.
+- **Row attention.** There is no Needs you section or separate Issues view. Pending pairing requests appear first as distinct rows with Wants to join and Review. Machines and workers carry all existing approval, reapproval, offline, update, disabled-permission or reported-error badges in one stable wrapping host below the name and subtitle at every width. This intentionally replaces wide inline placement, preserving the identity's full width and the badge host's native parent across tier changes. Identity stack spacing is 2; the badge host has a 4-pixel top margin, 6-pixel item gaps and 4-pixel line gaps. Badge order, copy and motion remain unchanged. Only names ellipsize; badges retain their words and full-reason tooltips. Issues counts badged inventory entries and pending-request rows, not individual reasons; its action reveals, focuses and highlights the first current badged row without hiding inventory. Row details retain the explanation and appropriate resolution action. Pairing review and offline recovery open Connection; local Windows permission review opens Permissions; remote administration uses Open in web. Systems does not approve pairings or repair remote operating systems. Backup reads, the Last backup tile and backup badges remain closed.
+- **Inline details.** Multiple rows may remain expanded independently. Names and subtitles stay single-line with ellipsis and tooltips. Status is a glyph and text, not a filled pill, capped in width so it cannot starve the name. On Narrow, metadata moves below the subtitle, decorative badges disappear, and the chevron stays centered at the right. One native CommandBar owns all node actions and reverse-priority dynamic overflow, with mutations disabled when pairing access is absent. Flat, small-heading sections place Capabilities in a fixed 340-pixel column, then a 32-pixel gap, then Resources, Desktop availability and Related sessions, only on Wide; Medium and Narrow stack with a fixed 16-pixel gap. Resource tiles use equal columns, at least 160 pixels each with 12-pixel gaps, computed from the available inline pane after padding and the container cap. A single tile in the last row stretches across the available columns; other incomplete rows retain equal tile widths. Tiles show value, label and meter without icon badges; freshness sits beside Resources and report age at the right. Every page poll re-renders ages and Live versus Last known, including when nothing, a worker or a connected app is selected, without an extra Gateway read. Presence-only apps expose diagnostic presence data, never machine actions, resources or sessions.
+- **Header spacing and metadata.** Machine header content has 8-DIP vertical padding so badges do not touch the native row border. Medium and Wide rows reserve the same 180-DIP metadata column, with status and secondary text aligned at its start; Narrow rows keep metadata below the identity. Update summaries use the short localized "Update required" label, with full instructions retained in the tooltip and expanded details. The Expander still owns its template, chrome and interaction states.
+- **Dialogs.** Add and Forget use native ContentDialog title templates with an inline glyph badge. Width is capped at the smaller of 560 and viewport minus 48 on the visible dialog card, so the native overlay spans the window and the card stays centered. Forget explains unpairing from the reviewed Gateway and reapproval, without speculating about active sessions. A 120-pixel label column presents platform, last seen and paired date; below 400 pixels of dialog width labels move above values. The scoped native footer keeps Forget left with AccentButtonStyle and Cancel right normally, and stacks full-width primary then close buttons on Narrow. Forget has no default button and initially focuses Cancel. Add initially focuses Open Connection. Responsive updates never reset focus. Confirmation retains its Gateway epoch guard.
+- **Disclosure and copy.** Diagnostics starts collapsed, with commands and PATH in nested expanders. Copied diagnostic summaries are allowlisted and exclude both raw commands and PATH. Related sessions use a subtle icon-only chat button whose accessible name includes the title. No selection animation or resource history is shown.
+- **Motion and mast alignment.** The shared hero supplies reduced-motion-aware entrance, reflow and attention-jump transitions; the page applies them to inventory and pairing rows too and observes changes to Windows animation settings. Open in web and Add a system retain native control states and centered glyphs, without icon-specific offsets. Refresh remains a separate inventory action.
+- **Hero focus continuity.** The native hero adapter keeps glyph, copy and action containers as fixed siblings under one three-column, two-row Grid. Narrow placement changes only Grid attachments, spans, margins and alignment, never the action parent. Crossing 720 in either direction must retain the original native Add button, action host and focused object without programmatic refocusing.
+- **Reported labels and dates.** Records and examples are never invented. Known capabilities use native translations. Unrecognized capability labels only replace separators and capitalize the first character; the exact Gateway ID remains in the tooltip and permission lookup.
+
+Disconnected inventory keeps one error recovery banner under the hero and an
+honest last-report sentence. Retained resource tiles each carry a Last known
+label, so freshness remains visible when their heading scrolls out of view.
+Named joining devices appear in the row title, not repeated in the guidance.
+The alternative hero implementation is awaiting its final shared-helper snapshot
+and current-source Light/Dark visual acceptance; this contract is not a claim of
+completed native proof.
 
 ## Workspace shell
 
@@ -1051,7 +1226,18 @@ text-bearing notifications; there is no visible status or keyboard-help/footer
 region covering result text. These are implementation dimensions, not a claim
 of current-head visible or accessibility proof.
 
-The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. Settings remains an independent native companion window.
+Page aliases share one search result with their canonical destination. Searching
+for notification preferences finds General, separately from notification history;
+About is a distinct result. Removed Event Stream routes do not appear.
+
+The Models page retains the `model` route and its default-model selector. Its
+sidebar artwork uses Fluent's filled cube silhouette with the existing purple
+gradient. Native search and High Contrast retain their existing theme-aware
+glyphs rather than substituting a package/archive symbol for a cube.
+
+The landing window is the native Home and Sessions workspace (`Windows/WorkspaceWindow.xaml`, shipped in #1541). The reference is reconciled against production commit `dc9f6345821075362580bd598cc32e4f2aa6a18a` and the supplied 125%-scale screenshot. It shows that screenshot's expanded, no-agent/no-session state, Owner / Error footer and one notification, not invented connected conversations. It is a Mica window with a 32px title bar, a 256px left `NavigationView` pane, and a content host that mounts the Reactor chat when connected. That historical screenshot predates the current embedded Settings surface: `Controls/SettingsShellView` is retained inside `WorkspaceWindow`, sharing its navigation history rather than opening another window.
+
+Current Settings keeps Gateway administration together: Connection first, followed by Systems, Automations, Usage, and Config as direct entries; there is no Gateway Advanced group. Channels is managed in the Gateway Dashboard, including legacy Channels/activity routes. Connection and its group header/separator stay visible while disconnected. Agents and Tools contains the existing Agents subtree, Sessions, Models, and Local AI. Agents and Sessions retain their Gateway availability rules, while Models and Local AI remain reachable offline. This Computer retains its existing tools. System contains General, conditional Diagnostics, and About, with Fluent glyph fallbacks for its colorful sidebar icons in High Contrast. About uses the colorful book-and-lightbulb icon. General contains notification preferences alongside managed-Gateway setup/onboarding/removal and its always-reachable Advanced diagnostics switch. About owns updates and app/Gateway information; notification history remains in the bell flyout and its existing history route, separate from preferences. Permissions contains a distinct app-access consent section, not a replacement for node capability permissions.
 
 - **Pane and toolbar.** The `NavigationViewExpandedPaneBackground` reveals Mica; there is no extra pane border or general 8px inset. PaneHeader margin is 4,8,4,8. The 40x40 pane button sits at x=4, y=8 below the title bar. Back/Forward align to the right of the same 40px toolbar with an 8px gap and the default SubtleButton padding, yielding 40px widths. Their disabled state represents empty navigation history. The selector sits 8px below the toolbar, with 4,8,28,8 padding and a trailing 12px U+E70D glyph. It shows No agents loaded until production has a roster; selected agents use `AgentIdentityBadge`.
 - **Menu.** Home is a 36px row with 4px horizontal and 2px vertical outer margins, a 3x16 accent indicator and the original `Chat.svg` at 22px centered in a 24px column. The iconless native presenter reserves 8px before that column, followed by a 16px gap to Home. The Sessions header is 40px tall with 16px leading and 4px trailing insets, 14px semibold text, and a 40x36 add button. No conversations to show replaces session rows in the supplied state; add is disabled while disconnected.
@@ -1091,7 +1277,7 @@ The named `flyout` shadow uses an 8px downward offset, 16px CSS blur and 14% bla
 ## Components
 
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
-Optional click-through flows live in `.agents/design/prototypes.jsonc`.
+Optional click-through flows would live in `.agents/design/prototypes.jsonc`; none are defined yet.
 
 The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 39 definitions has exactly one standalone page assignment: Components 15, Setup 6, Chat 7, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
 
@@ -1107,6 +1293,17 @@ ComposerPickerOptions rows use full-row `subtleHover` and `subtlePressed` fills 
 TextBox ships as the stock `Microsoft.UI.Xaml.Controls.TextBox`, as used by `DirectUrlBox` in `Pages/ConnectionPage.xaml`, not a custom control template. The Colophon preview uses 14px body text, 32px single-line height, `sm` corners, exact text-control padding, pointer-over and disabled resource tokens, and the accent focus underline. WinUI has no separate pressed background for the input itself; pressing enters its focused state. The browser preview approximates the native elevation border with `controlLine` and does not reproduce the native focused-fill transition or clear-button template.
 
 Card binds its title to `subtitle` (`SubtitleTextBlockStyle`, 20/28 SemiBold) and its description to `body` (`BodyTextBlockStyle`, 14/20 Regular). Its Open report action references the shared HyperlinkButton, not a separately styled link. The card remains static while the action inherits the shared control's typography, hover, pressed, disabled, and focus states.
+
+### Usage daily facts
+
+The daily analysis card keeps tokens (with input/output), cache read/written,
+and sessions in three, two or one columns according to the available width.
+Three columns require 504 DIP of inner width: three 160-DIP minimums
+and two 12-DIP gaps. With narrow page padding of 20 DIP per side and card padding
+of 16 DIP per side, this fits at a 576-DIP content-host width. At least 332 DIP
+of inner width fits two columns, with the third fact on the next row. Smaller
+allocations stack all three facts. Existing width snapping, localized labels, native theme
+resources and wider three-column layouts remain unchanged.
 
 ### Native normal and accent buttons
 
@@ -1191,6 +1388,109 @@ Track and knob states bind the `toggle*`, `accent`, and `accentInk` resource tok
 
 The close control is `InfoBarCloseButtonStyle` (based on `DefaultButtonStyle` with AppBarButton resource overrides), not SubtleButtonStyle: 38x38 with a 5px margin and a 16px Cancel glyph. Its preview has hover, pressed, disabled, and keyboard-focus visuals, but **does not dismiss the banner**. The installed renderer only supports opening an overlay on click. Native `IsOpen`, `IsClosable`, actions, `InfoBarPanel` responsive reflow, high-contrast 2px border thickness, and native glyph/text rasterization are not reproduced. The preview retains a 1px border in every theme and uses representative high-contrast system colors. These limits prevent a 1:1 native rendering claim; ship the stock controls and their resources, never these SVG/browser stand-ins.
 
+### Shared page foundation
+
+`PageResponsiveLayout` measures the page content host's `ActualWidth`, not the
+window. Wide starts at 1000 DIPs, Medium at 720, and Narrow supports 480-DIP
+hosts. Horizontal padding is 32 DIPs on Wide/Medium and 20 on Narrow; usable
+content is capped at 1200 DIPs. Two-column bodies appear only on Wide, retain
+at least 320 DIPs per column, and otherwise stack with a 16-DIP gap. Inner,
+group and stack gaps are 8, 12 and 16 DIPs. Snap host widths to 0.01 DIP before
+breakpoint comparisons, but never round up the count of tiles that fit.
+
+`PageHero` provides opt-in native Reactor headers, summaries and attention
+badges. It does not own page data, navigation or localized copy. Headers keep
+actions under the same native parent across narrow/wide changes. Use the
+existing title scale (28 DIPs, 24 on narrow), 8-DIP card radius, Fluent card
+fill/stroke and a decorative system-accent wash (15%, 5%, then transparent).
+High contrast removes the wash and replaces sidebar artwork with a Fluent
+glyph. Summary tiles use 36-DIP icon wells with a separate 12-DIP text gap;
+actionable tiles stretch like static tiles. Summaries use all columns from
+760 DIPs, two from 380, and one below; an odd last tile spans both columns.
+Tile padding is 16/14 DIPs. Attention badges are 20 DIPs high with 8-DIP
+horizontal padding, semantic Fluent brushes and caller-owned accessible text.
+Reduced motion clears native entrance/reflow/exit transitions and disables
+reveal highlighting. Reveal skips controls that cannot take native focus.
+Repeated reveals restart one target-owned animation without replacing the
+background's style, theme resource or binding. Completion or cancellation
+reveals the current underlying background, including changes made by the page
+while the highlight was active.
+
+Pages may implement `ISettingsPageContentInset` to retain full-frame backdrops
+while reserving the 56-DIP history band inside their content. Apply updates,
+including zero, without remounting. Ordinary pages keep their existing host
+allocation. This foundation does not change Settings navigation, pane
+preferences, Back to app, Escape handling or Dashboard dispatch, and does not
+migrate existing pages to the new components.
+
+### Automations page anatomy
+
+The Reactor Automations surface reads top-down: shared hero, summary tiles,
+Coming up, then All automations. Failing jobs retain inline attention badges.
+Use the shared PageHero and PageResponsiveLayout contracts above, with existing
+Fluent status brushes, type scale, spacing steps and rounded surfaces.
+Inventory expansion never becomes a split pane or adds a Back
+button. Each All automations row uses one stock WinUI `Expander`, stacked
+with spacing step `2` (8 DIPs, `PageResponsiveLayout.GapInner`); its
+non-interactive header keeps the agent avatar, title, schedule, status and
+last-run hierarchy, while its sole native disclosure owns hover, focus and
+keyboard behavior. The row's chat action remains a sibling of the Expander
+so it is available while collapsed. Every row reserves the same 48-DIP action
+column (40-DIP button plus 8-DIP gap), even without a chat target; the button
+stays centered on the measured header content as details expand. Do not wrap the Expander in another card
+surface or put interactive controls inside its header. Loading placeholders use
+the same gap; Coming up and inline recent
+runs stay divider lists inside one surface. Actions use a native CommandBar
+with borderless, right-labelled AppBarButtons and native overflow.
+An empty Gateway inventory stays empty: retain explicit guidance and New automation,
+Open chat and web handoffs, without client-authored starter cards or example payloads.
+New automation names and prompts are blank until the user supplies them.
+Style-bearing buttons and changing command groups keep stable semantic keys.
+`ApplyStyle` is mount-only: an unkeyed inserted New action can otherwise adopt a
+previously neutral Refresh control without mounting its accent style. Header
+menus use tracked flyout attachment and an accessible menu name; modal opening
+waits for transient native command bars/flyouts to close.
+
+The mast wash belongs to the shared hero card and scrolls with the header.
+It takes no input and stays out of the UI Automation tree. Section counts
+use centered pills; failing and auto-disabled jobs retain inline attention badges.
+The agenda and Earlier today summary are adjacent columns on Wide.
+Filters use explicit rows: one on Wide with search aligned right (240-360 DIPs),
+two on Medium with full-width search below, and three on Narrow for status,
+agent, then search. The Narrow mast puts one unwrapped action row below its text
+and Medium also moves Open in web into native overflow. Titles and subtitles use single-line
+ellipsis with full tooltips; Narrow rows move metadata below the subtitle.
+Reading-width secondary text explicitly aligns left; a MaxWidth on Stretch would
+center shorter blocks and create false indentation at wider hosts. Agenda
+ListView/item horizontal padding is zero so group headers align with their column.
+Advanced tags yield space before subtitles truncate. Basic
+schedules omit raw expressions, and run timestamps use local Today/month labels.
+
+The editor uses a native ContentDialog width of the smaller of 560 DIPs or the
+window's XamlRoot width minus 48 DIPs. Its height is 640 DIPs
+with a scrolling form and an always-visible action footer. Narrow footers stack
+full-width actions with primary first; fields and fact rows stack when their own
+available width is below 400 DIPs. Chat actions are subtle icon-only buttons with
+localized tooltips and item-specific accessible names.
+
+Automations popups share a 36-DIP circular icon badge, title and short body.
+Typographic object quotes follow each locale consistently across confirmation,
+copy-as-new, not-started and error text.
+Destructive confirmations use critical system brushes, name the affected object,
+and focus Cancel from the native Opened handler. Use `DefaultButton=None` and
+explicit `PrimaryButtonStyle=AccentButtonStyle` so the named action, not Cancel,
+retains the accent. Optional fact panels use a 120-DIP
+label column and subtle Fluent fill. Removal names the connected Gateway from
+the current connection snapshot, never a mock or fixed machine name. Keep
+preserved-setting and revision-conflict notices at the top of the editor body.
+Results use bottom-center native InfoBars, 20 DIPs above the content edge. Toasts
+stack upward (up to three), are at most 480 DIPs wide, and contain at most one
+action. Normal duration is four seconds, or seven with an action. Not-started
+information uses Informational severity, not a success check. Errors remain until
+their explicit icon-only Close action and use UseAnnounce assertive announcements.
+Page-owned results are not duplicated into global notifications or stale inline
+error bars. The overlay inherits the page's ActualTheme through RequestedTheme.
+
 ## Do's and Don'ts
 
 Do:
@@ -1217,6 +1517,6 @@ The design files are the source of truth for design, and are framework-agnostic.
 
 - **Default:** surfaces ship as **native WinUI 3 / C#** (Windows Fluent). Port the design into XAML/C# via [win-dev-skills](https://github.com/microsoft/win-dev-skills).
 - **Chat surface** (`ChatBubble`, `ChatComposer`, `ChatThread`): ships via **[Reactor](https://github.com/microsoft/microsoft-ui-reactor)**, the React-style framework for this app's chat. Reactor has no dedicated porting agent yet.
-- Both port targets build and package through **[winapp (WinAppCli)](https://github.com/microsoft/WinAppCli)**, the Windows App Development CLI, which also generates app identity, manifests, and certificates.
+- Both port targets use the repository's `build.ps1`, project files and packaging scripts. Developers and agents should use **[WinApp CLI](docs/WINAPP_CLI.md)** actively for API/sample discovery, native inspection, debugging and performance evidence. Its development identity/packaging tools complement those owners; they do not replace the release pipeline.
 
 Colors are preview swatches: bind their mapped `resource` keys rather than hard-coding hex values. Preserve the light, dark, and high-contrast mappings. The shipping implementation is canonical; component patterns are not shipping code. When you need a value the design doesn't cover, add it here first, then port it into the native/Reactor implementation via the matching reference above.

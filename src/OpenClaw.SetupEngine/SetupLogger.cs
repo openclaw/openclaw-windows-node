@@ -20,9 +20,11 @@ public sealed partial class SetupLogger : IDisposable
     private readonly ConcurrentQueue<LogEntry> _recentEntries = new();
     private readonly object _writeLock = new();
     private const int MaxRecentEntries = 256;
-    // The native setup page hands its log to a runtime and host that can outlive it.
+    // An in-flight native setup operation can outlive the window's disposal request.
     private bool _disposed;
+    private bool _disposeRequested;
     private bool _fileSinkFailed;
+    private int _activeOperationLeases;
 
     public event EventHandler<LogEntry>? LogEmitted;
     public string RunId => _runId;
@@ -330,15 +332,52 @@ public sealed partial class SetupLogger : IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    internal IDisposable RetainForOperation()
+    {
+        lock (_writeLock)
+        {
+            if (_disposeRequested)
+                throw new ObjectDisposedException(nameof(SetupLogger));
+
+            _activeOperationLeases++;
+            return new OperationLease(this);
+        }
+    }
+
     public void Dispose()
     {
         lock (_writeLock)
         {
-            if (_disposed)
+            if (_disposeRequested)
                 return;
-            _disposed = true;
-            StopFileSink();
+            _disposeRequested = true;
+            if (_activeOperationLeases == 0)
+                CloseFileSink();
         }
+    }
+
+    private void ReleaseOperationLease()
+    {
+        lock (_writeLock)
+        {
+            _activeOperationLeases--;
+            if (_disposeRequested && _activeOperationLeases == 0)
+                CloseFileSink();
+        }
+    }
+
+    // Caller holds _writeLock.
+    private void CloseFileSink()
+    {
+        _disposed = true;
+        StopFileSink();
+    }
+
+    private sealed class OperationLease(SetupLogger logger) : IDisposable
+    {
+        private SetupLogger? _logger = logger;
+
+        public void Dispose() => Interlocked.Exchange(ref _logger, null)?.ReleaseOperationLease();
     }
 }
 

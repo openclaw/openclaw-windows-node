@@ -256,6 +256,28 @@ public sealed class GatewayHandshakeObservationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task TransportFailure_TypedCauseTakesPrecedenceOverEndpointDigits(bool tls)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        Exception cause = tls
+            ? new System.Security.Authentication.AuthenticationException("certificate validation failed")
+            : new SocketException((int)SocketError.ConnectionRefused);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed,
+            new HttpRequestException("Unable to connect to 127.0.0.1:50321", cause));
+
+        Assert.Equal(tls ? GatewayErrorKind.Tls : GatewayErrorKind.Network,
+            Assert.Single(observations,
+                observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task SupersededAuthorization_CannotEmitSuccessOrFailure(bool throws)
     {
         using var temp = new TempDirectory();

@@ -161,6 +161,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-desktop-resolution.ps1
 
+    - name: Test native animation prerequisite
+      shell: pwsh
+      run: ./scripts/test-native-animation-preference.ps1
+
     - name: Validate documentation
       shell: pwsh
       run: ./scripts/validate-docs.ps1
@@ -176,6 +180,10 @@ jobs:
     - name: Test proof results and local evidence
       shell: pwsh
       run: ./scripts/test-proof-evidence.ps1
+
+    - name: Test safe native failure metadata
+      shell: pwsh
+      run: ./scripts/test-ci-native-failure-metadata.ps1
 
     - name: Test read-only agent readiness
       shell: pwsh
@@ -203,7 +211,13 @@ jobs:
 
     - name: Validate CI workflow contracts
       shell: pwsh
-      run: ./scripts/test-ci-workflow-contract.ps1
+      run: |
+        ./scripts/test-ci-workflow-contract.ps1
+        ./scripts/test-ci-crash-metadata-source.ps1
+
+    - name: Validate official Reactor package bootstrap
+      shell: pwsh
+      run: ./scripts/test-reactor-packages.ps1
 
     - name: Validate MSIX CI artifacts
       shell: pwsh
@@ -455,8 +469,8 @@ jobs:
 
   core-tests:
     name: Core and CLI tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -502,11 +516,13 @@ jobs:
             'src/OpenClaw.Connection/OpenClaw.Connection.csproj',
             'src/OpenClaw.Cli/OpenClaw.Cli.csproj',
             'src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj',
+            'src/OpenClaw.FileWorker/OpenClaw.FileWorker.csproj',
             'tests/OpenClaw.TestSupport/OpenClaw.TestSupport.csproj',
             'tests/OpenClaw.Shared.TestHost/OpenClaw.Shared.TestHost.csproj',
             'tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj',
             'tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj',
-            'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'
+            'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj',
+            'tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj'
           ) }}
 
     - name: Restore core test projects
@@ -514,6 +530,7 @@ jobs:
         dotnet restore tests/OpenClaw.Shared.Tests
         dotnet restore tests/OpenClaw.Connection.Tests
         dotnet restore tests/OpenClaw.WinNode.Cli.Tests
+        dotnet restore tests/OpenClaw.FileWorker.Tests
 
     - name: Install dotnet-coverage
       if: ${{ github.event_name != 'pull_request' }}
@@ -524,6 +541,7 @@ jobs:
         dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.Connection.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.FileWorker.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
       timeout-minutes: 15
@@ -550,6 +568,13 @@ jobs:
         -ResultsDirectory TestResults\WinNodeCli
         -TrxFileName OpenClaw.WinNode.Cli.Tests.trx
 
+    - name: Run File Worker Tests
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.FileWorker.Tests
+        -ResultsDirectory TestResults\FileWorker
+        -TrxFileName OpenClaw.FileWorker.Tests.trx
+
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v7
@@ -558,10 +583,13 @@ jobs:
         path: TestResults/
         if-no-files-found: warn
 
+  # The tray lane is the sole writer of the shared NuGet key within a run.
+  # Other lanes restore it and fetch missing packages normally, without racing
+  # to archive the same multi-GB directory during post-job cleanup.
   tray-tests:
     name: Tray, setup, and integration tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -591,6 +619,8 @@ jobs:
 
     - name: Restore tray test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.Tray.Tests -r win-x64
         dotnet restore tests/OpenClaw.SetupEngine.Tests -r win-x64
@@ -657,8 +687,8 @@ jobs:
 
   ui-tests:
     name: UI, functional, and accessibility tests
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
@@ -682,14 +712,20 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
+    - name: Verify native testhost exit diagnostics
+      shell: pwsh
+      run: ./scripts/test-ci-test-host-exit.ps1
+
     - name: Restore UI test projects
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
         dotnet restore tests/OpenClawTray.FunctionalUI.Tests -r win-x64
 
@@ -742,67 +778,89 @@ jobs:
         -TrxFileName OpenClawTray.FunctionalUI.Tests.trx
         -Runtime win-x64
 
+    - name: Mark Tray UI crash metadata window
+      id: tray-ui-crash-window
+      shell: pwsh
+      run: |
+        "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
+
     - name: Run Tray UI Tests
       timeout-minutes: 15
+      env:
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
         -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
 
-    - name: Run mock Gateway application scenarios
-      id: gateway-fixture
-      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
-      timeout-minutes: 30
-      shell: pwsh
-      run: >
-        ./scripts/test-gateway-fixture.ps1
-        -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
-        -ArtifactsDirectory .\TestResults\GatewayFixture
-        -Screenshots
-
-    - name: Run latest stable profile compatibility
+    - name: Run steady-resource Automations UI tests
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 15
+      env:
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production
+        OPENCLAW_UI_TEST_APP_THEME: Light
+        OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+        OPENCLAW_RUN_KEYBOARD_PROOF: '1'
+        OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
+        OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AutomationsSteadyResources
+        -TrxFileName AutomationsSteadyResources.trx
+        -Runtime win-x64
+        -Filter "Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Capture non-memory Tray UI crash metadata
+      if: always() && steps.tray-ui-crash-window.outcome == 'success'
       shell: pwsh
       env:
-        GH_TOKEN: ${{ github.token }}
+        TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
       run: |
-        $ErrorActionPreference = 'Stop'
-        $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the latest stable release.' }
-        $assets = @($release.assets | Where-Object { $_.name -match '^OpenClawTray-[^/\\]+-win-x64\.zip$' })
-        if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
-          throw 'Latest stable must have one x64 portable archive with a published SHA256 digest.'
-        }
-        $asset = $assets[0]
-        $archive = Join-Path $env:RUNNER_TEMP ("gateway-fixture-stable-" + [guid]::NewGuid().ToString('N') + '.zip')
-        $expanded = [IO.Path]::ChangeExtension($archive, $null)
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
-        $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-        if ($digest -ne $asset.digest.Substring(7)) { throw 'Stable archive SHA256 does not match its release metadata.' }
-        Expand-Archive -LiteralPath $archive -DestinationPath $expanded
-        $apps = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter OpenClaw.Tray.WinUI.exe)
-        if ($apps.Count -ne 1) { throw 'Stable archive must contain exactly one Companion executable.' }
-        $artifacts = Join-Path $env:GITHUB_WORKSPACE 'TestResults\GatewayFixture'
-        New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
-        @{
-          releaseTag = $release.tag_name
-          releaseUrl = $release.html_url
-          publishedAt = $release.published_at
-          archiveUrl = $asset.browser_download_url
-          archiveSha256 = $digest
-          appPath = $apps[0].FullName
-          appSha256 = (Get-FileHash -LiteralPath $apps[0].FullName -Algorithm SHA256).Hash
-          candidateCheckout = (git rev-parse HEAD)
-        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifacts 'stable-release.json')
-        ./scripts/test-gateway-fixture.ps1 `
-          -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
-          -StableAppPath $apps[0].FullName `
-          -ArtifactsDirectory $artifacts
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline crash metadata helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+
+    - name: Run animation-enabled reveal proof
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AnimationsEnabled
+        -TrxFileName AnimationsEnabled.trx
+        -Runtime win-x64
+        -Filter "Category=AnimationPreferenceEnabled"
+        -AnimationPreference Enabled
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
+
+    - name: Run animations-disabled behavior proof
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AnimationsDisabled
+        -TrxFileName AnimationsDisabled.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~PageHeroAnimationsDisabledTests"
+        -AnimationPreference Disabled
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
@@ -866,6 +924,196 @@ jobs:
         path: TestResults/
         if-no-files-found: warn
 
+  gateway-fixture:
+    name: Mock Gateway application and compatibility tests
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    runs-on: windows-latest
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests-Local
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore UI test projects
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
+        dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64
+
+    - name: Build UI test projects
+      id: ui-build
+      run: |
+        dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
+
+    # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
+    # framework MSIX. The hosted runner image does not preinstall it, so install
+    # the runtime matching the repo-level WindowsAppSDK version.
+    - name: Install WindowsAppRuntime
+      id: ui-runtime
+      shell: pwsh
+      run: |
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Configure UI desktop
+      id: ui-desktop
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
+    - name: Run mock Gateway application scenarios
+      id: gateway-fixture
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 30
+      shell: pwsh
+      run: >
+        ./scripts/test-gateway-fixture.ps1
+        -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        -ArtifactsDirectory .\TestResults\GatewayFixture
+        -TestTimeoutSeconds 1500
+        -Screenshots
+        -NativeInputProof
+        -NoBuild
+
+    - name: Build Release correlation fixture
+      id: release-fixture-build
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      run: |
+        dotnet build tests/OpenClaw.Tray.UITests -c Release -r win-x64 --no-restore -p:DevBuild=false -p:RequireSignedCleanupHost=false
+        if ($LASTEXITCODE -ne 0) { throw 'Release fixture build failed.' }
+        New-Item -ItemType Directory -Force .\TestResults\GatewayFixtureRelease\compiled | Out-Null
+        Copy-Item .\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.dll .\TestResults\GatewayFixtureRelease\compiled\
+
+    - name: Run Release correlation fixture
+      if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      env:
+        OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'
+        OPENCLAW_RUN_KEYBOARD_PROOF: '0'
+        OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\GatewayFixtureRelease\captures
+        OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -Configuration Release
+        -ResultsDirectory TestResults\GatewayFixtureRelease
+        -TrxFileName GatewayFixtureRelease.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~GatewayFixtureUiTests.CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining"
+        -ExpectedTestCount 2
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Run Release reader layout proof
+      if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      env:
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
+        OPENCLAW_VISUAL_TEST_DIR: ${{ github.workspace }}\TestResults\ReaderRelease\observations
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -Configuration Release
+        -ResultsDirectory TestResults\ReaderRelease
+        -TrxFileName ReaderRelease.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~ReactorChatLayoutProofTests.ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch"
+        -ExpectedTestCount 2
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Run latest stable profile compatibility
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the latest stable release.' }
+        $assets = @($release.assets | Where-Object { $_.name -match '^OpenClawTray-[^/\\]+-win-x64\.zip$' })
+        if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
+          throw 'Latest stable must have one x64 portable archive with a published SHA256 digest.'
+        }
+        $asset = $assets[0]
+        $archive = Join-Path $env:RUNNER_TEMP ("gateway-fixture-stable-" + [guid]::NewGuid().ToString('N') + '.zip')
+        $expanded = [IO.Path]::ChangeExtension($archive, $null)
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
+        $digest = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+        if ($digest -ne $asset.digest.Substring(7)) { throw 'Stable archive SHA256 does not match its release metadata.' }
+        Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+        $apps = @(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter OpenClaw.Tray.WinUI.exe)
+        if ($apps.Count -ne 1) { throw 'Stable archive must contain exactly one Companion executable.' }
+        $artifacts = Join-Path $env:GITHUB_WORKSPACE 'TestResults\GatewayFixture'
+        New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
+        @{
+          releaseTag = $release.tag_name
+          releaseUrl = $release.html_url
+          publishedAt = $release.published_at
+          archiveUrl = $asset.browser_download_url
+          archiveSha256 = $digest
+          appPath = $apps[0].FullName
+          appSha256 = (Get-FileHash -LiteralPath $apps[0].FullName -Algorithm SHA256).Hash
+          candidateCheckout = (git rev-parse HEAD)
+        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifacts 'stable-release.json')
+        ./scripts/test-gateway-fixture.ps1 `
+          -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe `
+          -StableAppPath $apps[0].FullName `
+          -ArtifactsDirectory $artifacts -NoBuild
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-gateway-fixture
+        path: TestResults/
+        if-no-files-found: warn
+
     - name: Prepare mock Gateway screenshot publisher
       id: screenshot-publisher
       if: always() && steps.gateway-fixture.outcome == 'failure'
@@ -885,8 +1133,8 @@ jobs:
 
   setup-e2e:
     name: Setup and connect E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -924,7 +1172,7 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -932,6 +1180,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -961,8 +1211,8 @@ jobs:
 
   revocation-e2e:
     name: Revocation recovery E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -1000,7 +1250,7 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -1008,6 +1258,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1037,8 +1289,8 @@ jobs:
 
   network-e2e:
     name: Network recovery E2E (WSL Latest)
-    needs: [change-classification, fast-validation]
-    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     env:
@@ -1076,7 +1328,7 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -1084,6 +1336,8 @@ jobs:
 
     - name: Restore E2E project graph
       run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
         dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
         dotnet restore tests/OpenClaw.E2ETests -r win-x64
 
@@ -1112,7 +1366,7 @@ jobs:
         if-no-files-found: warn
 
   sign-cleanup-host:
-    name: Sign embedded cleanup host before compilation
+    name: Sign cleanup host and fixed workers before compilation
     needs: [change-classification, metadata]
     if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.metadata.result == 'success'
     runs-on: windows-latest
@@ -1120,6 +1374,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -1135,6 +1391,18 @@ jobs:
 
     - name: Build AnyCPU cleanup host
       run: dotnet build src/OpenClaw.GatewayCleanupHost -c Release -o signing-cleanup-host
+
+    - name: Publish fixed workers before signing
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path signing-file-workers | Out-Null
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+          dotnet publish src/OpenClaw.FileWorker -c Release -r $rid --self-contained -o "signed-file-workers\$rid" -p:Version=$env:OPENCLAW_BUILD_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "Fixed-worker publish failed for $rid." }
+          foreach ($binary in @('OpenClaw.FileWorker.exe', 'OpenClaw.FileWorker.dll')) {
+            New-Item -ItemType HardLink -Path "signing-file-workers\$rid-$binary" -Target "signed-file-workers\$rid\$binary" | Out-Null
+          }
+        }
 
     - name: Disable NuGet source mapping for cleanup signing
       shell: pwsh
@@ -1168,6 +1436,32 @@ jobs:
         -HostPath signing-cleanup-host\OpenClaw.GatewayCleanupHost.exe -RequireSigned
         -SignerSubject "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
 
+    - name: Sign fixed workers before manifest generation
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-file-workers
+        files-folder-filter: exe,dll
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Verify signed workers and generate manifests
+      shell: pwsh
+      run: |
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+          .\scripts\Write-FileWorkerManifest.ps1 -PayloadDirectory "signed-file-workers\$rid" -RuntimeIdentifier $rid -ProductVersion $env:OPENCLAW_BUILD_VERSION -RequireSignedWorker
+        }
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-signed-file-workers
+        path: signed-file-workers/
+        if-no-files-found: error
+
     - uses: actions/upload-artifact@v7
       with:
         name: openclaw-signed-cleanup-host
@@ -1182,6 +1476,7 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      RequireSignedFileWorker: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1199,14 +1494,17 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
 
     - name: Download signed cleanup host
       if: needs.sign-cleanup-host.result == 'success'
@@ -1220,6 +1518,19 @@ jobs:
       shell: pwsh
       run: |
         "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
+
+    - name: Download signed fixed workers
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-file-workers
+        path: ${{ runner.temp }}\signed-file-workers
+
+    - name: Bind signed fixed worker path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedFileWorkerPath=$env:RUNNER_TEMP\signed-file-workers\win-x64" >> $env:GITHUB_ENV
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1256,6 +1567,7 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      RequireSignedFileWorker: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
 
     steps:
     - uses: actions/checkout@v7
@@ -1273,14 +1585,17 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Restore WinUI Tray App
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore src/OpenClaw.Tray.WinUI -r win-arm64
 
     - name: Download signed cleanup host
       if: needs.sign-cleanup-host.result == 'success'
@@ -1294,6 +1609,19 @@ jobs:
       shell: pwsh
       run: |
         "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
+
+    - name: Download signed fixed workers
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-file-workers
+        path: ${{ runner.temp }}\signed-file-workers
+
+    - name: Bind signed fixed worker path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedFileWorkerPath=$env:RUNNER_TEMP\signed-file-workers\win-arm64" >> $env:GITHUB_ENV
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
@@ -1333,6 +1661,7 @@ jobs:
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
       RequireSignedCleanupHost: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
+      RequireSignedFileWorker: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '' }}
       DEV_MSIX_REVISION: ${{ github.run_number }}
       MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
       MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
@@ -1357,7 +1686,7 @@ jobs:
 
     - name: Cache NuGet packages
       continue-on-error: true
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -1388,6 +1717,19 @@ jobs:
       shell: pwsh
       run: |
         "OpenClawSignedCleanupHostPath=$env:RUNNER_TEMP\signed-cleanup-host\OpenClaw.GatewayCleanupHost.exe" >> $env:GITHUB_ENV
+
+    - name: Download signed fixed workers
+      if: needs.sign-cleanup-host.result == 'success'
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-signed-file-workers
+        path: ${{ runner.temp }}\signed-file-workers
+
+    - name: Bind signed fixed worker path
+      if: needs.sign-cleanup-host.result == 'success'
+      shell: pwsh
+      run: |
+        "OpenClawSignedFileWorkerPath=$env:RUNNER_TEMP\signed-file-workers\win-${{ matrix.architecture }}" >> $env:GITHUB_ENV
 
     - name: Build and validate unsigned Store MSIX
       shell: pwsh
@@ -1546,7 +1888,7 @@ jobs:
   ci-gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
+    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -1565,6 +1907,7 @@ jobs:
         TRAY_RESULT: ${{ needs.tray-tests.result }}
         UI_REQUIRED: ${{ needs.change-classification.outputs.ui_tests }}
         UI_RESULT: ${{ needs.ui-tests.result }}
+        GATEWAY_FIXTURE_RESULT: ${{ needs.gateway-fixture.result }}
         SETUP_E2E_REQUIRED: ${{ needs.change-classification.outputs.setup_e2e }}
         SETUP_E2E_RESULT: ${{ needs.setup-e2e.result }}
         REVOCATION_E2E_REQUIRED: ${{ needs.change-classification.outputs.revocation_e2e }}
@@ -1591,6 +1934,7 @@ jobs:
           -TrayResult $env:TRAY_RESULT `
           -UiRequired $env:UI_REQUIRED `
           -UiResult $env:UI_RESULT `
+          -GatewayFixtureResult $env:GATEWAY_FIXTURE_RESULT `
           -SetupE2eRequired $env:SETUP_E2E_REQUIRED `
           -SetupE2eResult $env:SETUP_E2E_RESULT `
           -RevocationE2eRequired $env:REVOCATION_E2E_REQUIRED `
@@ -1609,8 +1953,8 @@ jobs:
   # Sign and package after the early release-critical suites pass so this work can
   # overlap the long UI and E2E tail. Publication remains gated by ci-gate below.
   prepare-release-assets:
-    needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
-    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
+    needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.change-classification.outputs.full == 'true' && needs.fast-validation.result == 'success' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
@@ -2215,7 +2559,6 @@ jobs:
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
-        STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN }}
         PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
         PREPARED_ATTEMPT: ${{ needs.release.outputs.prepared_attempt }}
       run: |

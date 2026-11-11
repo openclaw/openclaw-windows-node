@@ -9,6 +9,7 @@
 // </summary>
 
 using System.Text.Json;
+using OpenClaw.Shared.Usage;
 
 namespace OpenClaw.Shared;
 
@@ -42,11 +43,21 @@ public interface IOperatorGatewayClient
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
     /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
     event EventHandler? SelfProfileChanged { add { } remove { } }
+    /// <summary>Raw <c>cron</c> Gateway event payload (job ran, changed, or was removed).</summary>
+    event EventHandler<JsonElement>? CronEventReceived { add { } remove { } }
+    /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
+    event EventHandler<string>? SystemsInventoryChanged { add { } remove { } }
+    /// <summary>A node published new host statistics.</summary>
+    event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<bool>? AgentsListUnsupportedChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
     event EventHandler<AgentEventInfo>? ChatEventReceived;
+    /// <summary>A Gateway approval (exec, plugin or system agent) now waits for a decision.</summary>
+    event EventHandler<GatewayPendingApproval>? PendingApprovalRequested { add { } remove { } }
+    /// <summary>A pending Gateway approval was decided; the argument is its id.</summary>
+    event EventHandler<string>? PendingApprovalResolved { add { } remove { } }
 
     /// <summary>Advertised authenticated RPCs, not local node/MCP capabilities.</summary>
     IReadOnlyList<string> AdvertisedServerMethods => Array.Empty<string>();
@@ -226,6 +237,42 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+
+    // ─── Automations (cron) ───
+    // Response-aware cron APIs shared by every implementer through SendWizardRequestAsync.
+    // Gateway rejections throw InvalidOperationException carrying GatewayRequestErrors codes.
+    /// <summary>Job page (<c>cron.list</c>); an omitted agent lists every agent.</summary>
+    Task<Cron.CronListPage> ListCronJobsAsync(Cron.CronListQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.ListAsync(this, query, timeoutMs);
+    /// <summary>Scheduler status (<c>cron.status</c>).</summary>
+    Task<Cron.CronSchedulerStatus> GetCronStatusAsync(int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.StatusAsync(this, timeoutMs);
+    /// <summary>Exact job definition (<c>cron.get</c>).</summary>
+    Task<Cron.CronJob> GetCronJobAsync(string id, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.GetAsync(this, id, timeoutMs);
+    /// <summary>Create a job (<c>cron.add</c>) and return the stored definition.</summary>
+    Task<Cron.CronJob> AddCronJobDetailedAsync(System.Text.Json.Nodes.JsonObject definition, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.AddAsync(this, definition, timeoutMs);
+    /// <summary>Patch a job (<c>cron.update</c>) guarded by its <c>configRevision</c>.</summary>
+    Task<Cron.CronJob> UpdateCronJobDetailedAsync(string id, string? expectedConfigRevision, System.Text.Json.Nodes.JsonObject patch, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.UpdateAsync(this, id, expectedConfigRevision, patch, timeoutMs);
+    /// <summary>Remove a job (<c>cron.remove</c>); a loaded revision is confirmed with <c>cron.get</c> first.</summary>
+    Task RemoveCronJobDetailedAsync(string id, string? expectedConfigRevision = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.RemoveAsync(this, id, expectedConfigRevision, timeoutMs);
+    /// <summary>Run history page (<c>cron.runs</c>).</summary>
+    Task<Cron.CronRunsPage> ListCronRunsAsync(Cron.CronRunsQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs)
+        => Cron.CronGatewayRequests.RunsAsync(this, query, timeoutMs);
+
+    // ─── Usage analytics (Usage page) ───
+    // Response-aware reads; defaults report Unsupported so test doubles keep compiling.
+    /// <summary>Per-session usage report (<c>sessions.usage</c>).</summary>
+    Task<UsageReadResult<SessionsUsageReport>> GetSessionsUsageAsync(
+        SessionsUsageQuery query, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
+    /// <summary>Provider plans, quotas and billing (<c>usage.status</c>) as a typed response.</summary>
+    Task<UsageReadResult<ProviderUsageSummary>> GetProviderUsageAsync(
+        int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Unsupported());
     /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
     Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
         => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));

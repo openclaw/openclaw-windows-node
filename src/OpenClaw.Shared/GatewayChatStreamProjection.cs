@@ -71,7 +71,8 @@ internal sealed class GatewayChatStreamProjection
                     {
                         var remaining = blocks.Where(block => !IsText(block))
                             .Select(block => block?.DeepClone()).ToArray();
-                        blocks = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = delta });
+                        var replacement = new JsonObject { ["type"] = "text", ["text"] = delta };
+                        blocks = new JsonArray(replacement);
                         foreach (var block in remaining)
                             blocks.Add(block);
                         message["content"] = blocks;
@@ -102,6 +103,8 @@ internal sealed class GatewayChatStreamProjection
         _messages[key] = new(message, size, ++_sequence);
         var projected = JsonNode.Parse(root.GetRawText())!.AsObject();
         projected["payload"]!["message"] = message.DeepClone();
+        if (payload.TryGetProperty("message", out _))
+            projected["payload"]!.AsObject().Remove("replace");
         return JsonSerializer.SerializeToElement(projected);
     }
 
@@ -117,5 +120,5 @@ internal sealed class GatewayChatStreamProjection
 
     private static bool IsText(JsonNode? block) =>
         block is JsonObject obj && obj["type"] is JsonValue type
-        && type.TryGetValue<string>(out var name) && name == "text";
+        && type.TryGetValue<string>(out var name) && name is "text" or "input_text" or "output_text";
 }

@@ -49,6 +49,11 @@
                               HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3,-3"
                               Visibility="Collapsed" IsHitTestVisible="False"
                               AutomationProperties.AccessibilityView="Raw"/>
+                    <!-- A Companion update is available; the account menu's Settings row carries the badge. -->
+                    <Ellipse x:Name="OwnerUpdateDot" Width="8" Height="8" Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-2,0"
+                             Visibility="Collapsed" IsHitTestVisible="False"
+                             AutomationProperties.AccessibilityView="Raw"/>
                 </Grid>
                 <StackPanel x:Name="OwnerText" Grid.Column="1">
                     <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
@@ -70,20 +75,35 @@
             <FontIcon x:Name="DashboardGlyph" Glyph="&#xF246;" FontSize="16"
                       AutomationProperties.AccessibilityView="Raw"/>
         </Button>
-        <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="2"
+        <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="2" Click="OnNotificationsClick"
                 Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}" Padding="0"
                 CornerRadius="{ThemeResource ControlCornerRadius}"
                 Style="{StaticResource SubtleButtonStyle}" VerticalAlignment="Center">
             <Grid>
                 <FontIcon x:Name="NotificationsGlyph" Glyph="&#xEA8F;" FontSize="16"
                           AutomationProperties.AccessibilityView="Raw"/>
-                <InfoBadge x:Name="NotificationsBadge" Value="0" Visibility="Collapsed"
-                           HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-8,-10,0"/>
+                <!-- Two tones keep ThemeResource brushes live: accent for waiting items, caution while an approval waits. -->
+                <Border x:Name="NotificationsBadge" Visibility="Collapsed"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        MinWidth="16" Height="16" CornerRadius="8" Padding="4,0"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-8,-10,0"
+                        AutomationProperties.AccessibilityView="Raw">
+                    <TextBlock x:Name="NotificationsBadgeText" FontSize="11" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                </Border>
+                <Border x:Name="NotificationsAttentionBadge" Visibility="Collapsed"
+                        Background="{ThemeResource SystemFillColorCautionBrush}"
+                        MinWidth="16" Height="16" CornerRadius="8" Padding="4,0"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-8,-10,0"
+                        AutomationProperties.AccessibilityView="Raw">
+                    <TextBlock x:Name="NotificationsAttentionBadgeText" FontSize="11" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                </Border>
             </Grid>
             <Button.Flyout>
                 <Flyout x:Name="NotificationsFlyout" Placement="TopEdgeAlignedLeft"
                         Opening="OnNotificationsOpening" Closed="OnNotificationsClosed">
-                    <controls:NotificationFlyoutContent x:Name="NotificationContent"/>
+                    <controls:InboxView x:Name="NotificationContent"/>
                 </Flyout>
             </Button.Flyout>
         </Button>

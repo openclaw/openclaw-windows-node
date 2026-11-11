@@ -6,6 +6,39 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void AutomationsOverview_HasOneLazyHostOwnerBoundToTheLiveClientAndDisposedBeforeGateway()
+    {
+        var source = ReadAppSources();
+        Assert.Single(Regex.Matches(source, @"new OpenClaw\.Shared\.Cron\.AutomationsOverviewSource\("));
+        Assert.Contains("internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview", source);
+        Assert.DoesNotContain("_automationsOverview?.RefreshAsync", source);
+        Assert.DoesNotContain("_automationsOverview.RefreshAsync", source);
+        foreach (var hook in new[] { "OnOperatorClientChanged", "OnManagerStateChanged" })
+            Assert.Contains("_automationsOverview?.SetConnection(GatewayClient);", ExtractMethod(source, hook));
+        AssertInOrder(source, "automationsOverview.Dispose();", "await connectionManager.DisposeAsync();");
+
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
+        Assert.Contains("overviewSource: CurrentApp.AutomationsOverview", page);
+        Assert.DoesNotContain("new AutomationsOverviewSource", page);
+    }
+
+    [Fact]
+    public void NodeService_ShutsDownProducersBeforeReleasingExecutorCleanupLeases()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+        var teardown = ExtractMethod(source, "DisposeCoreAsync");
+        var release = teardown.IndexOf("_sandboxExecutor?.Dispose()", StringComparison.Ordinal);
+        Assert.True(release >= 0);
+        foreach (var producer in new[] { "await StopMcpServerAsync()", "await _uploadRetention.DisposeAsync()", "DetachClientHandlers(client)" })
+        {
+            var stop = teardown.IndexOf(producer, StringComparison.Ordinal);
+            Assert.True(stop >= 0 && stop < release, $"{producer} must precede executor cleanup release.");
+        }
+    }
+
+    [Fact]
     public void E2ESetupFixture_UsesSeparateRoamingRootThroughoutItsLifecycle()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -558,7 +591,10 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var entry = ExtractMethod(source, "OpenDashboard");
+        Assert.Contains("TryOpenDashboardAsync(path)", entry);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", entry);
+        var method = ExtractMethod(source, "TryOpenDashboardAsync");
 
         Assert.Contains("CreateDashboardLauncher(", method);
         var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
@@ -1827,7 +1863,9 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", code);
         Assert.Contains("GatewayHostAccessClassifier.Classify(activeGateway)", code);
+        Assert.Contains("SetupExistingGatewayClassifier.HasWslInstallationForSettings(", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);

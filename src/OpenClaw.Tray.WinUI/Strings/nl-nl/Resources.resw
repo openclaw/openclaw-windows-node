@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -1405,50 +1405,11 @@ Gebruik een van deze opties:
   <data name="Onboarding_LocalSetup_Phase_MintToken" xml:space="preserve">
     <value>Installatiecode genereren</value>
   </data>
-  <data name="AgentEventsPage_TextBlock_18.Text" xml:space="preserve">
-    <value>Agentgebeurtenissen</value>
-  </data>
   <data name="AgentFilterCombo.Header" xml:space="preserve">
     <value>Softwareagent</value>
   </data>
   <data name="AgentFilterCombo.PlaceholderText" xml:space="preserve">
     <value>Alle agents</value>
-  </data>
-  <data name="AgentEventsPage_IntroText.Text" xml:space="preserve">
-    <value>Realtime stroom van agentactiviteit: toolaanroepen, antwoorden, fouten en levenscyclusgebeurtenissen.</value>
-  </data>
-  <data name="AgentEventsPage_ComboBoxItem_26.Content" xml:space="preserve">
-    <value>Alle agents</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_36.Text" xml:space="preserve">
-    <value>Hulpmiddel</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_37.Text" xml:space="preserve">
-    <value>Assistent</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_38.Text" xml:space="preserve">
-    <value>Fout</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_39.Text" xml:space="preserve">
-    <value>Levenscyclus</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_40.Text" xml:space="preserve">
-    <value>Planning</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_41.Text" xml:space="preserve">
-    <value>Goedkeuring</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_42.Text" xml:space="preserve">
-    <value>Denken</value>
-  </data>
-  <data name="AgentEventsPage_ToggleButton_43.Text" xml:space="preserve">
-    <value>Correctie</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_96.Text" xml:space="preserve">
-    <value>Nog geen agentgebeurtenissen</value>
-  </data>
-  <data name="AgentEventsPage_TextBlock_99.Text" xml:space="preserve">
-    <value>Realtime agentgebeurtenissen (toolaanroepen, antwoorden, fouten) verschijnen hier terwijl agents worden uitgevoerd.</value>
   </data>
   <data name="ClearButton.Content" xml:space="preserve">
     <value>Wissen</value>
@@ -1462,6 +1423,13 @@ Gebruik een van deze opties:
   <data name="PermissionsPage_IntroText.Text" xml:space="preserve">
     <value>Apparaatmogelijkheden die via de gateway aan agents worden aangeboden. Schakel in wat deze computer mag doen.</value>
   </data>
+  <data name="PermissionsPage_AppAccess.Text" xml:space="preserve">
+    <value>App-toegang</value>
+  </data>
+  <data name="PermissionsPage_AppAccessDescription.Text" xml:space="preserve">
+    <value>Sta gevoelige vastlegging toe zonder elke keer om bevestiging te vragen. OpenClaw meldt dit nog steeds vóór elke toegang en toont een aftelling vóór opnamen.</value>
+  </data>
+
   <data name="PermissionsPage_McpHeader.Text" xml:space="preserve">
     <value>Lokale MCP-server</value>
   </data>
@@ -1705,33 +1673,6 @@ Gebruik een van deze opties:
   <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
     <value>Vernieuwen</value>
   </data>
-  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
-    <value>⏱️ Cron-taken</value>
-  </data>
-  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
-    <value>Plannerstatus</value>
-  </data>
-  <data name="SchedulerStatusText.Text" xml:space="preserve">
-    <value>Ingeschakeld</value>
-  </data>
-  <data name="StorePathText.Text" xml:space="preserve">
-    <value>Store: ~/.openclaw/cron.db</value>
-  </data>
-  <data name="NextWakeText.Text" xml:space="preserve">
-    <value>Volgende wake: …</value>
-  </data>
-  <data name="CronPage_Button_80.Content" xml:space="preserve">
-    <value>Nu uitvoeren</value>
-  </data>
-  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
-    <value>Laatste uitvoering:</value>
-  </data>
-  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
-    <value>Volgende uitvoering:</value>
-  </data>
-  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
-    <value>Geen cron-taken geconfigureerd</value>
-  </data>
   <data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
     <value>🐛 Foutopsporing</value>
   </data>
@@ -1810,32 +1751,11 @@ Gebruik een van deze opties:
   <data name="NodesPage_Action_Forget" xml:space="preserve">
     <value>Vergeten</value>
   </data>
-  <data name="NodesPage_Action_MoreOptions" xml:space="preserve">
-    <value>Meer opties</value>
-  </data>
   <data name="NodesPage_Label_Version" xml:space="preserve">
     <value>Version</value>
   </data>
-  <data name="NodesPage_Label_Hardware" xml:space="preserve">
-    <value>Hardware</value>
-  </data>
   <data name="NodesPage_Label_Network" xml:space="preserve">
     <value>Netwerk</value>
-  </data>
-  <data name="NodesPage_Label_Approved" xml:space="preserve">
-    <value>Goedgekeurd</value>
-  </data>
-  <data name="NodesPage_Label_Connected" xml:space="preserve">
-    <value>Verbonden</value>
-  </data>
-  <data name="NodesPage_Label_LastSeen" xml:space="preserve">
-    <value>Gezien</value>
-  </data>
-  <data name="NodesPage_Label_Capabilities" xml:space="preserve">
-    <value>Mogelijkheden</value>
-  </data>
-  <data name="NodesPage_Label_Permissions" xml:space="preserve">
-    <value>Machtigingen</value>
   </data>
   <data name="NodesPage_Label_PathEnv" xml:space="preserve">
     <value>PATH</value>
@@ -2041,36 +1961,6 @@ Gebruik een van deze opties:
   <data name="CancelButton.Content" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="UsagePage_TextBlock_21.Text" xml:space="preserve">
-    <value>Totale kosten</value>
-  </data>
-  <data name="UsagePage_TextBlock_35.Text" xml:space="preserve">
-    <value>Aanvragen</value>
-  </data>
-  <data name="UsagePage_TextBlock_45.Text" xml:space="preserve">
-    <value>Toegangstokens</value>
-  </data>
-  <data name="UsagePage_TextBlock_55.Text" xml:space="preserve">
-    <value>Aanbieders</value>
-  </data>
-  <data name="Period7DaysItem.Text" xml:space="preserve">
-    <value>7 dagen</value>
-  </data>
-  <data name="Period30DaysItem.Text" xml:space="preserve">
-    <value>30 dagen</value>
-  </data>
-  <data name="UsagePage_ProviderLoading.Text" xml:space="preserve">
-    <value>Aanbieders laden…</value>
-  </data>
-  <data name="UsagePage_NoProviders.Text" xml:space="preserve">
-    <value>Geen aanbieders geconfigureerd</value>
-  </data>
-  <data name="UsagePage_TextBlock_70.Text" xml:space="preserve">
-    <value>Uitsplitsing per provider</value>
-  </data>
-  <data name="UsagePage_TextBlock_100.Text" xml:space="preserve">
-    <value>Dagelijkse kosten</value>
-  </data>
   <data name="WorkspacePage_TextBlock_22.Text" xml:space="preserve">
     <value>Werkruimte</value>
   </data>
@@ -2200,9 +2090,6 @@ Gebruik een van deze opties:
   <data name="ConversationsNavItem.Content" xml:space="preserve">
     <value>Gesprekken</value>
   </data>
-  <data name="HubWindow_NavigationViewItem_94.Content" xml:space="preserve">
-    <value>Agentgebeurtenissen</value>
-  </data>
   <data name="AgentsNavItem.Content" xml:space="preserve">
     <value>Softwareagents</value>
   </data>
@@ -2210,7 +2097,7 @@ Gebruik een van deze opties:
     <value>main</value>
   </data>
   <data name="HubWindow_NavigationViewItem_112.Content" xml:space="preserve">
-    <value>Instanties</value>
+    <value>Systemen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_118.Content" xml:space="preserve">
     <value>Configuratie</value>
@@ -2219,7 +2106,7 @@ Gebruik een van deze opties:
     <value>Gebruik</value>
   </data>
   <data name="HubWindow_NavigationViewItem_124.Content" xml:space="preserve">
-    <value>Planning</value>
+    <value>Automatiseringen</value>
   </data>
   <data name="HubWindow_NavigationViewItemHeader_129.Content" xml:space="preserve">
     <value>Deze computer</value>
@@ -2227,8 +2114,14 @@ Gebruik een van deze opties:
   <data name="HubWindow_NavigationViewItem_130.Content" xml:space="preserve">
     <value>Mogelijkheden</value>
   </data>
+  <data name="HubWindow_SystemHeader.Content" xml:space="preserve">
+    <value>Systeem</value>
+  </data>
+  <data name="HubWindow_AboutItem.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
   <data name="HubWindow_NavigationViewItem_133.Content" xml:space="preserve">
-    <value>App-instellingen</value>
+    <value>Algemeen</value>
   </data>
   <data name="HubWindow_NavigationViewItem_136.Content" xml:space="preserve">
     <value>Machtigingen</value>
@@ -2379,9 +2272,6 @@ Gebruik een van deze opties:
   </data>
   <data name="TrayMenuWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>OpenClaw Menu</value>
-  </data>
-  <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
-    <value>Gebruik en kosten</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Openen in browser</value>
@@ -2987,27 +2877,26 @@ Gebruik een van deze opties:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Hulpmiddel · {0}</value>
   </data>
-  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} opdracht uitgevoerd</value></data>
-  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} opdrachten uitgevoerd</value></data>
-  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} bestand gelezen</value></data>
-  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} bestanden gelezen</value></data>
-  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} bestand bewerkt</value></data>
-  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} bestanden bewerkt</value></data>
-  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} bestand geschreven</value></data>
-  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} bestanden geschreven</value></data>
-  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} zoekopdracht uitgevoerd</value></data>
-  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} zoekopdrachten uitgevoerd</value></data>
-  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} pagina opgehaald</value></data>
-  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} pagina's opgehaald</value></data>
-  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} hulpmiddel gebruikt</value></data>
-  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} hulpmiddelen gebruikt</value></data>
-  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>{1} gebruikt</value></data>
-  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>{1} {0} keer gebruikt</value></data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} opdracht</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} opdrachten</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} leesactie</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} leesacties</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} wijziging</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} wijzigingen</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} schrijfactie</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} schrijfacties</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} zoekopdracht</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} zoekopdrachten</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} ophaalactie</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} ophaalacties</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} andere bewerking</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} andere bewerkingen</value></data>
   <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>{0} wordt uitgevoerd</value></data>
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Voltooid</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Samengevouwen</value></data>
   <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddelen. {2}.</value></data>
+  <data name="Chat_Activity_AutomationFormatOne" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddel. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Denken</value>
   </data>
@@ -3225,36 +3114,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC-sandboxprimitieven zijn niet beschikbaar op deze machine.</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_Title" xml:space="preserve">
-    <value>Cron-taak is niet gestart</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_DefaultDetail" xml:space="preserve">
-    <value>De aanvraag is mislukt.</value>
-  </data>
-  <data name="AppNotification_CronRunRejectedDetail" xml:space="preserve">
-    <value>De gateway heeft de cron.run-aanvraag geweigerd.</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
-    <value>Kan {0} niet starten: {1}</value>
-  </data>
-  <data name="NotificationsPage_Title.Text" xml:space="preserve">
-    <value>Meldingen</value>
-  </data>
-  <data name="NotificationsPage_Subtitle.Text" xml:space="preserve">
-    <value>Bekijk en wis actieve OpenClaw-meldingen.</value>
-  </data>
-  <data name="NotificationsPage_ClearButton.Content" xml:space="preserve">
-    <value>Wissen</value>
-  </data>
-  <data name="NotificationsPage_EmptyTitle.Text" xml:space="preserve">
-    <value>Geen meldingen</value>
-  </data>
-  <data name="NotificationsPage_EmptyDescription.Text" xml:space="preserve">
-    <value>Nieuwe app-meldingen verschijnen hier totdat u ze sluit of wist.</value>
-  </data>
-  <data name="NotificationsPage_DismissAutomationNameFormat" xml:space="preserve">
-    <value>{0} sluiten</value>
   </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>Uitvoeringsgoedkeuring</value>
@@ -3520,24 +3379,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="PermissionsPage_McpStatus_TokenReadFailedFormat" xml:space="preserve">
     <value>Failed to read token: {0}</value>
   </data>
-  <data name="InstancesPage_Title.Text" xml:space="preserve">
-    <value>Instances</value>
-  </data>
-  <data name="InstancesPage_Subtitle.Text" xml:space="preserve">
-    <value>Latest presence beacons from OpenClaw nodes.</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Title" xml:space="preserve">
-    <value>Not connected</value>
-  </data>
-  <data name="InstancesPage_ConnectionWarning.Message" xml:space="preserve">
-    <value>Connect to a gateway to see live instance data.</value>
-  </data>
-  <data name="InstancesPage_EmptyTitle.Text" xml:space="preserve">
-    <value>No instances reported yet.</value>
-  </data>
-  <data name="InstancesPage_ContextMenu_CopyDebug" xml:space="preserve">
-    <value>Copy debug summary</value>
-  </data>
   <data name="InstancesPage_Status_Active" xml:space="preserve">
     <value>Active</value>
   </data>
@@ -3580,44 +3421,17 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_NodePairing_Subtitle.Text" xml:space="preserve">
     <value>Operators and Windows nodes waiting for approval to connect to this gateway.</value>
   </data>
-  <data name="InstancesPage_RefreshLabel.Text" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="InstancesPage_CapabilitiesCount_Format" xml:space="preserve">
-    <value>{0} capabilities</value>
-  </data>
-  <data name="InstancesPage_CommandsCount_Format" xml:space="preserve">
-    <value>{0} commands</value>
-  </data>
-  <data name="InstancesPage_Presence_AccessibilityFormat" xml:space="preserve">
-    <value>{0} presence</value>
-  </data>
   <data name="InstancesPage_UpdateReason_Tooltip_Format" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker). Raw: {0}</value>
   </data>
   <data name="InstancesPage_UpdateReason_Tooltip_NoReason" xml:space="preserve">
     <value>Why this presence entry was last updated (debug marker).</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Disconnected" xml:space="preserve">
-    <value>Disconnected: no active presence</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Active_Format" xml:space="preserve">
-    <value>Active: last seen {0}</value>
-  </data>
-  <data name="InstancesPage_StatusTooltip_Idle_Format" xml:space="preserve">
-    <value>Idle: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Status_Inactive" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="InstancesPage_StatusTooltip_Inactive_Format" xml:space="preserve">
-    <value>Inactive: last seen {0}</value>
-  </data>
   <data name="InstancesPage_Role_AccessibilityFormat" xml:space="preserve">
     <value>Role: {0}</value>
-  </data>
-  <data name="InstanceManage_CopyNodeId_AccessibilityName" xml:space="preserve">
-    <value>Copy node ID</value>
   </data>
   <data name="InstancesPage_TimeAgo_Seconds_Format" xml:space="preserve">
     <value>{0}s geleden</value>
@@ -4279,180 +4093,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
     <value>Annuleren</value>
   </data>
-  <data name="CronPage_CronJobs.Text" xml:space="preserve">
-    <value>⏱️ Cron-taken</value>
-  </data>
-  <data name="CronPage_Refresh.Text" xml:space="preserve">
-    <value>Vernieuwen</value>
-  </data>
-  <data name="CronPage_NewJob.Text" xml:space="preserve">
-    <value>Nieuwe taak</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>Gateway losgekoppeld</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>Maak verbinding met een gateway om cron-taken te laden.</value>
-  </data>
-  <data name="CronPage_OpenConnection.Content" xml:space="preserve">
-    <value>Verbinding openen</value>
-  </data>
-  <data name="CronPage_NewCronJob.Text" xml:space="preserve">
-    <value>Nieuwe Cron-taak</value>
-  </data>
-  <data name="CronPage_NAME.Text" xml:space="preserve">
-    <value>NAAM</value>
-  </data>
-  <data name="CronPage_MorningBrief.PlaceholderText" xml:space="preserve">
-    <value>Ochtendbriefing</value>
-  </data>
-  <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
-    <value>PLANNING</value>
-  </data>
-  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
-    <value>Elke</value>
-  </data>
-  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
-    <value>Om</value>
-  </data>
-  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
-    <value>Cron</value>
-  </data>
-  <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
-    <value>SNELLE VOORINSTELLINGEN</value>
-  </data>
-  <data name="CronPage_Hourly.Content" xml:space="preserve">
-    <value>⏰ Elk uur</value>
-  </data>
-  <data name="CronPage_Daily9am.Content" xml:space="preserve">
-    <value>🌅 Dagelijks om 9.00 uur</value>
-  </data>
-  <data name="CronPage_Daily6pm.Content" xml:space="preserve">
-    <value>🌆 Dagelijks om 18.00 uur</value>
-  </data>
-  <data name="CronPage_Weekdays.Content" xml:space="preserve">
-    <value>💼 Weekdagen</value>
-  </data>
-  <data name="CronPage_Weekly.Content" xml:space="preserve">
-    <value>📅 Wekelijks</value>
-  </data>
-  <data name="CronPage_EXPRESSION.Text" xml:space="preserve">
-    <value>EXPRESSIE</value>
-  </data>
-  <data name="CronPage_TIMEZONE.Text" xml:space="preserve">
-    <value>TIJDZONE</value>
-  </data>
-  <data name="CronPage_Optional.PlaceholderText" xml:space="preserve">
-    <value>Optioneel</value>
-  </data>
-  <data name="CronPage_AmericaNewYork.Content" xml:space="preserve">
-    <value>America/New_York</value>
-  </data>
-  <data name="CronPage_AmericaChicago.Content" xml:space="preserve">
-    <value>America/Chicago</value>
-  </data>
-  <data name="CronPage_AmericaDenver.Content" xml:space="preserve">
-    <value>America/Denver</value>
-  </data>
-  <data name="CronPage_AmericaLosAngeles.Content" xml:space="preserve">
-    <value>America/Los_Angeles</value>
-  </data>
-  <data name="CronPage_EuropeLondon.Content" xml:space="preserve">
-    <value>Europe/London</value>
-  </data>
-  <data name="CronPage_EuropeBerlin.Content" xml:space="preserve">
-    <value>Europe/Berlin</value>
-  </data>
-  <data name="CronPage_AsiaTokyo.Content" xml:space="preserve">
-    <value>Asia/Tokyo</value>
-  </data>
-  <data name="CronPage_UTC.Content" xml:space="preserve">
-    <value>UTC</value>
-  </data>
-  <data name="CronPage_EVERY.Text" xml:space="preserve">
-    <value>ELKE</value>
-  </data>
-  <data name="CronPage_UNIT.Text" xml:space="preserve">
-    <value>EENHEID</value>
-  </data>
-  <data name="CronPage_Minutes.Content" xml:space="preserve">
-    <value>Minuten</value>
-  </data>
-  <data name="CronPage_Hours.Content" xml:space="preserve">
-    <value>Uren</value>
-  </data>
-  <data name="CronPage_Days.Content" xml:space="preserve">
-    <value>Dagen</value>
-  </data>
-  <data name="CronPage_RUNAT.Text" xml:space="preserve">
-    <value>UITVOEREN OM</value>
-  </data>
-  <data name="CronPage_Date.PlaceholderText" xml:space="preserve">
-    <value>Datum</value>
-  </data>
-  <data name="CronPage_330PM.PlaceholderText" xml:space="preserve">
-    <value>15:30</value>
-  </data>
-  <data name="CronPage_DeleteJobAfterIt.Content" xml:space="preserve">
-    <value>Taak verwijderen nadat deze is uitgevoerd</value>
-  </data>
-  <data name="CronPage_PROMPTPAYLOAD.Text" xml:space="preserve">
-    <value>INVOER / PAYLOAD</value>
-  </data>
-  <data name="CronPage_WhatShouldTheAgent.PlaceholderText" xml:space="preserve">
-    <value>Wat moet de agent doen?</value>
-  </data>
-  <data name="CronPage_DELIVERY.Text" xml:space="preserve">
-    <value>LEVERING</value>
-  </data>
-  <data name="CronPage_SilentNone.Content" xml:space="preserve">
-    <value>Stil (geen)</value>
-  </data>
-  <data name="CronPage_NotifyMeAnnounce.Content" xml:space="preserve">
-    <value>Stuur mij een melding (aankondigen)</value>
-  </data>
-  <data name="CronPage_CHANNEL.Text" xml:space="preserve">
-    <value>KANAAL</value>
-  </data>
-  <data name="CronPage_EGWebchat.PlaceholderText" xml:space="preserve">
-    <value>bijv. webchat</value>
-  </data>
-  <data name="CronPage_AdvancedOptions.Text" xml:space="preserve">
-    <value>Geavanceerde opties</value>
-  </data>
-  <data name="CronPage_SESSIONBEHAVIOR.Text" xml:space="preserve">
-    <value>SESSIEGEDRAG</value>
-  </data>
-  <data name="CronPage_NewSessionEachRun.Content" xml:space="preserve">
-    <value>Nieuwe sessie bij elke uitvoering</value>
-  </data>
-  <data name="CronPage_ResumeMainSession.Content" xml:space="preserve">
-    <value>Hoofdsessie hervatten</value>
-  </data>
-  <data name="CronPage_WAKEMODE.Text" xml:space="preserve">
-    <value>WAKMODUS</value>
-  </data>
-  <data name="CronPage_NowImmediate.Content" xml:space="preserve">
-    <value>Nu (onmiddellijk)</value>
-  </data>
-  <data name="CronPage_QueueWaitForIdle.Content" xml:space="preserve">
-    <value>Wachtrij (wachten op inactiviteit)</value>
-  </data>
-  <data name="CronPage_Cancel.Content" xml:space="preserve">
-    <value>Annuleren</value>
-  </data>
-  <data name="CronPage_CreateJob.Content" xml:space="preserve">
-    <value>Taak maken</value>
-  </data>
-  <data name="CronPage_LoadingCronJobs.Text" xml:space="preserve">
-    <value>Cron-taken worden geladen…</value>
-  </data>
-  <data name="CronPage_NoCronJobsConfigured.Text" xml:space="preserve">
-    <value>Geen cron-taken geconfigureerd</value>
-  </data>
-  <data name="CronPage_CronJobsWillAppear.Text" xml:space="preserve">
-    <value>Cron-taken verschijnen hier zodra ze via de gateway zijn geconfigureerd.</value>
-  </data>
   <data name="DebugPage_Status.Title" xml:space="preserve">
     <value>Toestand</value>
   </data>
@@ -4476,15 +4116,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="DebugPage_OpenFile.Text" xml:space="preserve">
     <value>Bestand openen</value>
-  </data>
-  <data name="InstancesPage_PairingApprovalRequired.Text" xml:space="preserve">
-    <value>Goedkeuring voor koppelen vereist</value>
-  </data>
-  <data name="InstancesPage_ANodeHasConnected.Text" xml:space="preserve">
-    <value>Een node heeft verbinding gemaakt, maar zijn mogelijkheden worden pas geactiveerd nadat u het koppelverzoek hebt goedgekeurd.</value>
-  </data>
-  <data name="InstancesPage_ReviewOnConnectionPage.Content" xml:space="preserve">
-    <value>Bekijken op pagina Verbinding</value>
   </data>
   <data name="PermissionsPage_Permissions.Text" xml:space="preserve">
     <value>Machtigingen</value>
@@ -4550,7 +4181,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>system.run</value>
   </data>
   <data name="SandboxPage_AreContainedByThe.Text" xml:space="preserve">
-    <value>) worden ingesloten door onderstaande instellingen.</value>
+    <value>) en bestandsacties gebruiken de onderstaande Sandbox-instellingen.</value>
   </data>
   <data name="SandboxPage_CommandsTheAgentRuns2.Text" xml:space="preserve">
     <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert niet. Als de gateway op WSL op deze pc draait, kunnen ze uw Windows-bestanden, klembord en netwerk bereiken: gebruik de exec-goedkeuringen van de gateway.</value>
@@ -4817,8 +4448,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SessionActionPrompt_Restore_ConfirmLabel" xml:space="preserve">
     <value>Herstellen</value>
   </data>
+  <data name="SettingsPage_AdvancedExpander.Header" xml:space="preserve">
+    <value>Geavanceerd</value>
+  </data>
   <data name="SettingsPage_Settings.Text" xml:space="preserve">
-    <value>Instellingen</value>
+    <value>Algemeen</value>
   </data>
   <data name="SettingsPage_General.Text" xml:space="preserve">
     <value>Algemeen</value>
@@ -4849,6 +4483,12 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SettingsRow_ShowToolCalls_Description.Text" xml:space="preserve">
     <value>Details van toolaanroepen en tokengebruik inline in het gesprek weergeven.</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Header.Text" xml:space="preserve">
+    <value>Denkproces weergeven</value>
+  </data>
+  <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
+    <value>De door de assistent geleverde redenering in het gesprek weergeven.</value>
   </data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacybeheer</value>
@@ -4948,12 +4588,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="UsagePage_OpenConnection.Content" xml:space="preserve">
     <value>Verbinding openen</value>
-  </data>
-  <data name="UsagePage_LoadingDailyCosts.Text" xml:space="preserve">
-    <value>Dagelijkse kosten worden geladen…</value>
-  </data>
-  <data name="UsagePage_NoDailyUsageFor.Text" xml:space="preserve">
-    <value>Geen dagelijks gebruik voor deze periode</value>
   </data>
   <data name="VoiceSettingsPage_TestVoiceInput.Text" xml:space="preserve">
     <value>Spraakinvoer testen</value>
@@ -5093,20 +4727,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="HubWindow_Disconnected.Text" xml:space="preserve">
     <value>Niet verbonden</value>
   </data>
-  <data name="HubWindow_Advanced.Content" xml:space="preserve">
-    <value>Geavanceerd</value>
-  </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text" xml:space="preserve">
     <value>Logfragmenten worden opgeschoond en ingekort. Gevoelige tokens, payloads, opnames en onbewerkte instellingenbestanden worden uitgesloten. Controleer dit voordat u deelt.</value>
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Controleer voor het delen</value>
-  </data>
-  <data name="AgentEventsPage_LiveText.Text" xml:space="preserve">
-    <value>Actueel</value>
-  </data>
-  <data name="AgentEventsPage_ClearButton.Text" xml:space="preserve">
-    <value>Wissen</value>
   </data>
   <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
     <value>Gesprekken die deze gateway momenteel afhandelt, gegroepeerd per kanaal.</value>
@@ -5125,81 +4750,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>Opdrachten die de agent rechtstreeks op de gateway uitvoert, vallen hier niet onder. Als de gateway op deze pc staat, hebben ze mogelijk nog steeds toegang tot uw Windows-bestanden, klembord en netwerk: controleer de configuratie van uw gateway.</value>
-  </data>
-  <data name="AgentEventsPage_AllAgents" xml:space="preserve">
-    <value>Alle agenten</value>
-  </data>
-  <data name="AgentEventsPage_EventsStatus" xml:space="preserve">
-    <value>{0} van {1} gebeurtenissen</value>
-  </data>
-  <data name="CronPage_CreateJobLabel" xml:space="preserve">
-    <value>Taak aanmaken</value>
-  </data>
-  <data name="CronPage_EditJob" xml:space="preserve">
-    <value>Taak bewerken</value>
-  </data>
-  <data name="CronPage_NewJobTitle" xml:space="preserve">
-    <value>Nieuwe taak</value>
-  </data>
-  <data name="CronPage_Running" xml:space="preserve">
-    <value>Uitvoeren...</value>
-  </data>
-  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
-    <value>Eenmalige taak voltooid</value>
-  </data>
-  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
-    <value>Taak inschakelen</value>
-  </data>
-  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
-    <value>Taak uitschakelen</value>
-  </data>
-  <data name="CronPage_FullResponse" xml:space="preserve">
-    <value>Volledig antwoord</value>
-  </data>
-  <data name="CronPage_OpenChat" xml:space="preserve">
-    <value>Chat openen</value>
-  </data>
-  <data name="CronPage_RunNow" xml:space="preserve">
-    <value>Nu uitvoeren</value>
-  </data>
-  <data name="CronPage_EditAction" xml:space="preserve">
-    <value>Bewerken</value>
-  </data>
-  <data name="CronPage_HistoryAction" xml:space="preserve">
-    <value>Geschiedenis</value>
-  </data>
-  <data name="CronPage_RemoveAction" xml:space="preserve">
-    <value>Verwijderen</value>
-  </data>
-  <data name="CronPage_RunningBadge" xml:space="preserve">
-    <value>Wordt uitgevoerd</value>
-  </data>
-  <data name="CronPage_RunHistory" xml:space="preserve">
-    <value>Uitvoeringsgeschiedenis</value>
-  </data>
-  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
-    <value>Uitvoeringsgeschiedenis - {0} van {1} weergegeven</value>
-  </data>
-  <data name="CronPage_RunHistoryCount" xml:space="preserve">
-    <value>Uitvoeringsgeschiedenis - {0} uitvoeringen</value>
-  </data>
-  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
-    <value>Uitvoeringsgeschiedenis laden...</value>
-  </data>
-  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
-    <value>Geen uitvoeringsgeschiedenis beschikbaar.</value>
-  </data>
-  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
-    <value>Oudere uitvoeringen laden (nog {0})...</value>
-  </data>
-  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
-    <value>Meer uitvoeringen laden...</value>
-  </data>
-  <data name="CronPage_Loading" xml:space="preserve">
-    <value>Laden...</value>
-  </data>
-  <data name="CronPage_SaveChanges" xml:space="preserve">
-    <value>Wijzigingen opslaan</value>
   </data>
   <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
     <value>Item toevoegen</value>
@@ -5763,18 +5313,6 @@ Controleer of de gateway actief is.</value>
   <data name="ConnectionPage_GatewayHostRestartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>WSL-gateway opnieuw starten</value>
   </data>
-  <data name="AgentEventsPage_Status_Live" xml:space="preserve">
-    <value>Actueel</value>
-  </data>
-  <data name="AgentEventsPage_Status_Offline" xml:space="preserve">
-    <value>Niet verbonden</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Subtitle" xml:space="preserve">
-    <value>Agent event log</value>
-  </data>
-  <data name="Command_GoToAgentEvents_Title" xml:space="preserve">
-    <value>Go to Agent Events</value>
-  </data>
   <data name="Command_GoToChannels_Subtitle" xml:space="preserve">
     <value>Gateway channels</value>
   </data>
@@ -5812,16 +5350,10 @@ Controleer of de gateway actief is.</value>
     <value>Go to Diagnostics</value>
   </data>
   <data name="Command_GoToNotifications_Subtitle" xml:space="preserve">
-    <value>Actieve app-meldingen bekijken</value>
+    <value>Verzoeken en waarschuwingen bekijken die op u wachten</value>
   </data>
   <data name="Command_GoToNotifications_Title" xml:space="preserve">
-    <value>Ga naar Meldingen</value>
-  </data>
-  <data name="Command_GoToInstances_Subtitle" xml:space="preserve">
-    <value>Gateway instances</value>
-  </data>
-  <data name="Command_GoToInstances_Title" xml:space="preserve">
-    <value>Go to Instances</value>
+    <value>Ga naar Postvak IN</value>
   </data>
   <data name="Command_GoToPermissions_Subtitle" xml:space="preserve">
     <value>Capabilities, exec policy &amp; allowlists</value>
@@ -5836,10 +5368,22 @@ Controleer of de gateway actief is.</value>
     <value>Go to Sessions</value>
   </data>
   <data name="Command_GoToSettings_Subtitle" xml:space="preserve">
-    <value>Application settings</value>
+    <value>Algemene instellingen</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Title" xml:space="preserve">
+    <value>Open meldingsvoorkeuren</value>
+  </data>
+  <data name="Command_GoToNotificationPreferences_Subtitle" xml:space="preserve">
+    <value>Meldingsvoorkeuren configureren</value>
+  </data>
+  <data name="Command_GoToAbout_Title" xml:space="preserve">
+    <value>Open info</value>
+  </data>
+  <data name="Command_GoToAbout_Subtitle" xml:space="preserve">
+    <value>App- en gatewaygegevens</value>
   </data>
   <data name="Command_GoToSettings_Title" xml:space="preserve">
-    <value>Go to Settings</value>
+    <value>Open Algemeen</value>
   </data>
   <data name="Command_GoToUsage_Subtitle" xml:space="preserve">
     <value>Usage statistics</value>
@@ -6251,9 +5795,6 @@ Controleer of de gateway actief is.</value>
   <data name="SettingsPage_RemovingLocalGatewayMessage" xml:space="preserve">
     <value>De lokale gateway wordt verwijderd. Dit kan 10–30 seconden duren…</value>
   </data>
-  <data name="CronPage_NextWakeFormat" xml:space="preserve">
-    <value>· Volgende wake: {0}</value>
-  </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Kan WebView2 niet initialiseren: {0}</value>
   </data>
@@ -6262,21 +5803,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>
-  </data>
-  <data name="CronPage_JobCompleted" xml:space="preserve">
-    <value>Job completed</value>
-  </data>
-  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
-    <value>"{0}" ran successfully and was removed.</value>
-  </data>
-  <data name="CronPage_RunNotStarted" xml:space="preserve">
-    <value>Uitvoering niet gestart</value>
-  </data>
-  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
-    <value>{0} is niet gestart.</value>
-  </data>
-  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
-    <value>{0} is niet gestart: {1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>
@@ -6503,23 +6029,11 @@ Controleer of de gateway actief is.</value>
   <data name="HubWindow_Role_Disabled" xml:space="preserve">
     <value>Disabled</value>
   </data>
-  <data name="NotificationsFlyout_ClearAll.Content" xml:space="preserve">
-    <value>Clear all</value>
-  </data>
-  <data name="NotificationsFlyout_EmptyTitle.Text" xml:space="preserve">
-    <value>No notifications</value>
-  </data>
-  <data name="NotificationsFlyout_OpenPage.Content" xml:space="preserve">
-    <value>Open notifications</value>
-  </data>
-  <data name="NotificationsFlyout_ActiveCountFormat" xml:space="preserve">
-    <value>{0} active</value>
-  </data>
   <data name="HubWindow_Role_PermissionsIncomplete" xml:space="preserve">
     <value>Permissions incomplete</value>
   </data>
   <data name="SettingsPage_About.Text" xml:space="preserve">
-    <value>About</value>
+    <value>Info</value>
   </data>
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
     <value>Gateway info</value>
@@ -6662,8 +6176,8 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Laden bij eerste aanvraag</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Naar Lokale AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>Status van llama-server, model en gateway bekijken</value></data>
-  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Model</value></data>
-  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Standaardmodel</value></data>
+  <data name="HubWindow_NavigationViewItemHeader_Model.Content" xml:space="preserve"><value>Agents en hulpmiddelen</value></data>
+  <data name="HubWindow_NavigationViewItem_DefaultModel.Content" xml:space="preserve"><value>Modellen</value></data>
   <data name="Command_GoToDefaultModel_Title" xml:space="preserve"><value>Naar Standaardmodel</value></data>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Kies het model dat de gateway gebruikt</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
@@ -6689,7 +6203,7 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_SwitchBytesFormat" xml:space="preserve"><value>{0:F1} GB van {1:F1} GB</value></data>
   <data name="LocalAiPage_SwitchCanceled" xml:space="preserve"><value>Modelwijziging geannuleerd.</value></data>
   <data name="LocalAiPage_SwitchInProgressElsewhere" xml:space="preserve"><value>Een modelwijziging wordt nog afgerond. U kunt het model opnieuw wijzigen zodra deze klaar is.</value></data>
-  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Standaardmodel</value></data>
+  <data name="DefaultModelPage_Title.Text" xml:space="preserve"><value>Modellen</value></data>
   <data name="DefaultModelPage_Intro.Text" xml:space="preserve"><value>De gateway gebruikt dit model voor nieuwe gesprekken. Elke chat kan nog steeds een eigen model kiezen.</value></data>
   <data name="DefaultModelPage_Disconnected.Title" xml:space="preserve"><value>Maak verbinding met een gateway om het model te kiezen</value></data>
   <data name="DefaultModelPage_OpenConnectionButton.Content" xml:space="preserve"><value>Verbinding openen</value></data>
@@ -6778,6 +6292,7 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert of dit apparaat lokale AI kan uitvoeren. Dit duurt slechts een moment.</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Code kopiëren</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Codeblok</value></data>
+  <data name="Chat_Code_LanguageFallback" xml:space="preserve"><value>code</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Huidig model</value></data>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Andere modellen</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Geen overeenkomende modellen</value></data>
@@ -7501,7 +7016,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
   <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
   <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
-  <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
   <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
   <data name="WorkspaceShell_Tasks" xml:space="preserve"><value>Tasks</value></data>
   <data name="WorkspaceShell_Meetings" xml:space="preserve"><value>Meetings</value></data>
@@ -7512,7 +7026,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
   <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
   <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
-  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
   <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
   <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
   <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
@@ -7613,14 +7126,26 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
   <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
   <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
-  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair device</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair a device</value></data>
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
-  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help &amp; about</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
   <data name="WorkspaceShell_Support" xml:space="preserve"><value>Ondersteuning krijgen</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
   <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>Geen gateway</value></data>
+  <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
+  <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Huidige gateway</value></data>
+  <data name="WorkspaceShell_AccountCurrentGatewayStatusFormat" xml:space="preserve"><value>Huidige gateway. {0}</value></data>
+  <data name="WorkspaceShell_AccountAddGateway" xml:space="preserve"><value>Gateway toevoegen…</value></data>
+  <data name="WorkspaceShell_AccountReconnect" xml:space="preserve"><value>Opnieuw verbinden</value></data>
+  <data name="WorkspaceShell_AccountConnectionSettings" xml:space="preserve"><value>Verbindingsinstellingen</value></data>
+  <data name="WorkspaceShell_AccountGatewayDashboard" xml:space="preserve"><value>Gateway-instellingen in Dashboard</value></data>
+  <data name="WorkspaceShell_AccountRetry" xml:space="preserve"><value>Nu opnieuw proberen</value></data>
+  <data name="WorkspaceShell_AccountUpdateBadge" xml:space="preserve"><value>Bijwerken</value></data>
+  <data name="WorkspaceShell_AccountUpdateAvailable" xml:space="preserve"><value>Update beschikbaar</value></data>
+  <data name="WorkspaceShell_AccountSettingsUpdateFormat" xml:space="preserve"><value>{0}. Update beschikbaar</value></data>
   <data name="WorkspaceShell_CommandCenter" xml:space="preserve"><value>Command center</value></data>
   <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
@@ -7637,8 +7162,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
   <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
   <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
-  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingen</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Postvak IN</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Postvak IN</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Dashboard openen</value></data>
   <data name="WorkspaceShell_DashboardButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Dashboard openen (Ctrl+Shift+D)</value></data>
   <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vooruit</value></data>
@@ -7780,6 +7305,10 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>Context comprimeren</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Opnieuw proberen na contextcompressie</value></data>
   <data name="Chat_Run_Retry" xml:space="preserve"><value>Modelaanvraag opnieuw proberen</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Opnieuw proberen over {0} s</value></data>
+  <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>Kan dit gesprek niet laden</value></data>
+  <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>Probeer opnieuw om de berichten te laden.</value></data>
+  <data name="Chat_History_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Chat_Run_Thinking" xml:space="preserve"><value>Nadenken</value></data>
   <data name="Chat_Run_Responding" xml:space="preserve"><value>Antwoorden</value></data>
   <data name="Chat_Run_Working" xml:space="preserve"><value>Bezig</value></data>
@@ -7801,6 +7330,306 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Welcome_SummarizeRecentSessions" xml:space="preserve"><value>Vat mijn recente sessies samen</value></data>
   <data name="Chat_Welcome_ConfigureChannel" xml:space="preserve"><value>Help me een kanaal te configureren</value></data>
   <data name="Chat_Welcome_CheckSystemHealth" xml:space="preserve"><value>Controleer de systeemstatus</value></data>
+  <data name="Systems_Title" xml:space="preserve">
+    <value>Systemen</value>
+  </data>
+  <data name="Systems_Inventory" xml:space="preserve">
+    <value>Machinelijst</value>
+  </data>
+  <data name="Systems_Refresh_Name" xml:space="preserve">
+    <value>Machines vernieuwen</value>
+  </data>
+  <data name="Systems_Loading" xml:space="preserve">
+    <value>Machines laden…</value>
+  </data>
+  <data name="Systems_Empty" xml:space="preserve">
+    <value>Er zijn geen machines beschikbaar voor dit account.</value>
+  </data>
+  <data name="Systems_Missing_Title" xml:space="preserve">
+    <value>Deze machine staat niet meer in de lijst</value>
+  </data>
+  <data name="Systems_Missing_Hint" xml:space="preserve">
+    <value>Vernieuw de inventaris of kies een andere machine. Je selectie is niet gewijzigd.</value>
+  </data>
+  <data name="Systems_Group_Workers" xml:space="preserve">
+    <value>Werkers</value>
+  </data>
+  <data name="Systems_Kind_Host" xml:space="preserve">
+    <value>Gatewayhost</value>
+  </data>
+  <data name="Systems_Kind_Node" xml:space="preserve">
+    <value>Gekoppelde node</value>
+  </data>
+  <data name="Systems_Kind_Worker" xml:space="preserve">
+    <value>Werker</value>
+  </data>
+  <data name="Systems_Kind_Client" xml:space="preserve">
+    <value>Verbonden app</value>
+  </data>
+  <data name="Systems_Status_Online" xml:space="preserve">
+    <value>Verbonden</value>
+  </data>
+  <data name="Systems_Status_Offline" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="Systems_Status_Starting" xml:space="preserve">
+    <value>Wordt gestart</value>
+  </data>
+  <data name="Systems_Status_Stopping" xml:space="preserve">
+    <value>Wordt gestopt</value>
+  </data>
+  <data name="Systems_Status_Error" xml:space="preserve">
+    <value>Fout</value>
+  </data>
+  <data name="Systems_Status_Unknown" xml:space="preserve">
+    <value>Onbekend</value>
+  </data>
+  <data name="Systems_Status_Name" xml:space="preserve">
+    <value>Staat: {0}</value>
+  </data>
+  <data name="Systems_ThisDevice" xml:space="preserve">
+    <value>Deze pc</value>
+  </data>
+  <data name="Systems_AwaitingApproval" xml:space="preserve">
+    <value>Wacht op goedkeuring</value>
+  </data>
+  <data name="Systems_Desktop" xml:space="preserve">
+    <value>Bureaublad</value>
+  </data>
+  <data name="Systems_CopyDebug" xml:space="preserve">
+    <value>Foutopsporingsgegevens kopiëren</value>
+  </data>
+  <data name="Systems_CopyIdentifier" xml:space="preserve">
+    <value>Id kopiëren</value>
+  </data>
+  <data name="Systems_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Systems_OpenConnection" xml:space="preserve">
+    <value>Verbinding openen</value>
+  </data>
+  <data name="Systems_Disconnected_Title" xml:space="preserve">
+    <value>Gateway niet verbonden</value>
+  </data>
+  <data name="Systems_Disconnected_Message" xml:space="preserve">
+    <value>Maak opnieuw verbinding om machines te vernieuwen. De laatst gemelde gegevens worden getoond.</value>
+  </data>
+  <data name="Systems_ReadAccess_Title" xml:space="preserve">
+    <value>Leestoegang vereist</value>
+  </data>
+  <data name="Systems_ReadAccess_Message" xml:space="preserve">
+    <value>Leestoegang als operator is vereist om machines te bekijken.</value>
+  </data>
+  <data name="Systems_PartialErrors_Title" xml:space="preserve">
+    <value>Sommige machinegegevens konden niet worden vernieuwd.</value>
+  </data>
+  <data name="Systems_Offline_Title" xml:space="preserve">
+    <value>Deze machine is niet verbonden</value>
+  </data>
+  <data name="Systems_Pairing_TitleOne" xml:space="preserve">
+    <value>1 apparaat wil deelnemen</value>
+  </data>
+  <data name="Systems_Pairing_Message" xml:space="preserve">
+    <value>Keur alleen goed als je dit op dat apparaat hebt gestart.</value>
+  </data>
+  <data name="Systems_Pairing_OwnNodeMessage" xml:space="preserve">
+    <value>Deze pc wacht op goedkeuring van de koppeling. De mogelijkheden en opdrachten blijven inactief tot de goedkeuring.</value>
+  </data>
+  <data name="Systems_Pairing_Review" xml:space="preserve">
+    <value>Bekijken</value>
+  </data>
+  <data name="Systems_Stats_Title" xml:space="preserve">
+    <value>Resources</value>
+  </data>
+  <data name="Systems_Stats_None" xml:space="preserve">
+    <value>Deze machine heeft geen resourcestatistieken gemeld.</value>
+  </data>
+  <data name="Systems_Stats_Load" xml:space="preserve">
+    <value>Belasting (1 min)</value>
+  </data>
+  <data name="Systems_Stats_Cores" xml:space="preserve">
+    <value>{0} kernen</value>
+  </data>
+  <data name="Systems_Stats_Cpu" xml:space="preserve">
+    <value>Aantal CPU's</value>
+  </data>
+  <data name="Systems_Stats_CpuCores" xml:space="preserve">
+    <value>logische kernen</value>
+  </data>
+  <data name="Systems_Stats_Memory" xml:space="preserve">
+    <value>Gebruikt geheugen</value>
+  </data>
+  <data name="Systems_Stats_Disk" xml:space="preserve">
+    <value>Beschikbare schijfruimte</value>
+  </data>
+  <data name="Systems_Stats_DiskPath" xml:space="preserve">
+    <value>Beschikbare schijfruimte ({0})</value>
+  </data>
+  <data name="Systems_Stats_OfTotal" xml:space="preserve">
+    <value>van {0}</value>
+  </data>
+  <data name="Systems_Stats_Sampled" xml:space="preserve">
+    <value>{0} geleden gemeld</value>
+  </data>
+  <data name="Systems_Details_Title" xml:space="preserve">
+    <value>Machinegegevens</value>
+  </data>
+  <data name="Systems_Field_Identifier" xml:space="preserve">
+    <value>Identificatie</value>
+  </data>
+  <data name="Systems_Field_Status" xml:space="preserve">
+    <value>Staat</value>
+  </data>
+  <data name="Systems_Field_Platform" xml:space="preserve">
+    <value>Systeemplatform</value>
+  </data>
+  <data name="Systems_Field_Activity" xml:space="preserve">
+    <value>Activiteit</value>
+  </data>
+  <data name="Systems_Field_LastInput" xml:space="preserve">
+    <value>Laatste invoer</value>
+  </data>
+  <data name="Systems_Field_Roles" xml:space="preserve">
+    <value>Rollen</value>
+  </data>
+  <data name="Systems_Field_Hostname" xml:space="preserve">
+    <value>Hostnaam</value>
+  </data>
+  <data name="Systems_Field_OperatingSystem" xml:space="preserve">
+    <value>Besturingssysteem</value>
+  </data>
+  <data name="Systems_Field_Processor" xml:space="preserve">
+    <value>CPU-model</value>
+  </data>
+  <data name="Systems_Field_Address" xml:space="preserve">
+    <value>LAN-adres</value>
+  </data>
+  <data name="Systems_Field_Runtime" xml:space="preserve">
+    <value>Node-versie</value>
+  </data>
+  <data name="Systems_Field_Uptime" xml:space="preserve">
+    <value>Bedrijfstijd</value>
+  </data>
+  <data name="Systems_Field_Hardware" xml:space="preserve">
+    <value>Apparatuur</value>
+  </data>
+  <data name="Systems_Field_LastConnected" xml:space="preserve">
+    <value>Laatst verbonden</value>
+  </data>
+  <data name="Systems_Field_LastDisconnected" xml:space="preserve">
+    <value>Laatst verbroken</value>
+  </data>
+  <data name="Systems_Field_LastSeen" xml:space="preserve">
+    <value>Laatst gezien</value>
+  </data>
+  <data name="Systems_Field_Approved" xml:space="preserve">
+    <value>Goedgekeurd</value>
+  </data>
+  <data name="Systems_Field_WorkerState" xml:space="preserve">
+    <value>Werkerstaat</value>
+  </data>
+  <data name="Systems_Field_WorkerError" xml:space="preserve">
+    <value>Werkerfout</value>
+  </data>
+  <data name="Systems_Field_Issue" xml:space="preserve">
+    <value>Probleem</value>
+  </data>
+  <data name="Systems_Issue_UpdateRequired" xml:space="preserve">
+    <value>Update vereist. Voer openclaw update uit op deze machine en maak daarna opnieuw verbinding.</value>
+  </data>
+  <data name="Systems_Duration_DaysHours" xml:space="preserve">
+    <value>{0} d {1} u</value>
+  </data>
+  <data name="Systems_Duration_HoursMinutes" xml:space="preserve">
+    <value>{0} u {1} min</value>
+  </data>
+  <data name="Systems_Duration_Minutes" xml:space="preserve">
+    <value>{0} minuten</value>
+  </data>
+  <data name="Systems_Desktop_Title_Offline" xml:space="preserve">
+    <value>Deze machine is niet verbonden</value>
+  </data>
+  <data name="Systems_Desktop_Title_NotReady" xml:space="preserve">
+    <value>Deze machine is niet gereed</value>
+  </data>
+  <data name="Systems_Desktop_Title_NoDesktop" xml:space="preserve">
+    <value>Geen bureaublad beschikbaar</value>
+  </data>
+  <data name="Systems_Desktop_Locked" xml:space="preserve">
+    <value>Vergrendeld</value>
+  </data>
+  <data name="Systems_Desktop_Unlocked" xml:space="preserve">
+    <value>Ontgrendeld</value>
+  </data>
+  <data name="Systems_Sessions_Title" xml:space="preserve">
+    <value>Gerelateerde sessies</value>
+  </data>
+  <data name="Systems_Sessions_None" xml:space="preserve">
+    <value>Geen gerelateerde sessies in de geladen lijst.</value>
+  </data>
+  <data name="Systems_Relation_Placement" xml:space="preserve">
+    <value>Hier geplaatst</value>
+  </data>
+  <data name="Systems_Relation_RetainedPlacement" xml:space="preserve">
+    <value>Behouden plaatsing</value>
+  </data>
+  <data name="Systems_Relation_Runner" xml:space="preserve">
+    <value>Uitvoerder</value>
+  </data>
+  <data name="Systems_Relation_ExecBinding" xml:space="preserve">
+    <value>Geconfigureerd uitvoerdoel</value>
+  </data>
+  <data name="Systems_Relation_Gateway" xml:space="preserve">
+    <value>Lokale sessiecontext</value>
+  </data>
+  <data name="Systems_Capabilities_Title" xml:space="preserve">
+    <value>Mogelijkheden</value>
+  </data>
+  <data name="Systems_Capability_Disabled" xml:space="preserve">
+    <value>{0} uitgeschakeld</value>
+  </data>
+  <data name="Systems_Capability_PendingDeclared" xml:space="preserve">
+    <value>Wacht op goedkeuring: {0}</value>
+  </data>
+  <data name="Command_GoToSystems_Title" xml:space="preserve">
+    <value>Naar Systemen</value>
+  </data>
+  <data name="Command_GoToSystems_Subtitle" xml:space="preserve">
+    <value>Gatewayhost, nodes en werkers</value>
+  </data>
+  <data name="Systems_Stats_LoadMeter" xml:space="preserve">
+    <value>{0}% van de kernen</value>
+  </data>
+  <data name="Systems_Stats_UsedMeter" xml:space="preserve">
+    <value>{0}% gebruikt</value>
+  </data>
+  <data name="Systems_Stats_LiveBadge" xml:space="preserve">
+    <value>Actueel</value>
+  </data>
+  <data name="Systems_Stats_LastKnownBadge" xml:space="preserve">
+    <value>Laatst bekend</value>
+  </data>
+  <data name="Systems_OpenWeb" xml:space="preserve">
+    <value>Openen op het web</value>
+  </data>
+  <data name="Systems_OpenWeb_Name" xml:space="preserve">
+    <value>Systemen openen in de webinterface</value>
+  </data>
+  <data name="Systems_OpenWeb_Help" xml:space="preserve">
+    <value>Opent de pagina Systemen van de gateway in de browser. Selecteer daar deze machine om verder te gaan.</value>
+  </data>
+  <data name="Systems_OpenWeb_RootName" xml:space="preserve">
+    <value>De webinterface van de gateway openen</value>
+  </data>
+  <data name="Systems_OpenWeb_RootHelp" xml:space="preserve">
+    <value>Opent de webinterface van de gateway in de browser. Deze gateway meldt geen pagina Systemen.</value>
+  </data>
+  <data name="Systems_Manage_PairingRequired" xml:space="preserve">
+    <value>Koppelingstoegang is vereist om deze node te hernoemen of te verwijderen.</value>
+  </data>
+  <data name="Systems_Sessions_ViewAll" xml:space="preserve">
+    <value>Alle sessies bekijken</value>
+  </data>
   <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
     <value>Node-sandbox</value>
   </data>
@@ -7889,6 +7718,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
   <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Uploads opruimen is geblokkeerd</value></data>
+  <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Controleer de maptoegang en machtigingen voor privégegevens. Oude uploads kunnen blijven staan totdat opruimen weer mogelijk is. Probeer voltooide uploads niet automatisch opnieuw.</value></data>
   <data name="SchemaConfigEditor_RemoveItem" xml:space="preserve">
     <value>Item verwijderen</value>
   </data>
@@ -7907,4 +7738,1449 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Time-out voor Gateway-spraak. Synthese kan voltooid zijn. Controleer de Gateway voordat u opnieuw probeert. Er is niet automatisch opnieuw geprobeerd.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway-spraak mislukt. Controleer de steminstellingen en het providerquotum. Geen lokale terugval of automatische herhaling.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows kon de spraak niet afspelen. Controleer uw uitvoerapparaat. Er is niet automatisch opnieuw geprobeerd.</value></data>
+  <data name="Chat_Activity_Worked" xml:space="preserve">
+    <value>Werk uitgevoerd</value>
+  </data>
+  <data name="Chat_Activity_WorkedFor" xml:space="preserve">
+    <value>{0} gewerkt</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsOne" xml:space="preserve">
+    <value>{0} toolaanroep</value>
+  </data>
+  <data name="Chat_Activity_ToolCallsMany" xml:space="preserve">
+    <value>{0} toolaanroepen</value>
+  </data>
+  <data name="Chat_Tool_InputTooLarge" xml:space="preserve">
+    <value>De invoer van het hulpmiddel overschrijdt de veilige weergavelimiet.</value>
+  </data>
+  <data name="Chat_ToolRecovery_Preview" xml:space="preserve"><value>Dit is een afgekapt voorbeeld.</value></data>
+  <data name="Chat_ToolRecovery_Loading" xml:space="preserve"><value>Volledige uitvoer laden...</value></data>
+  <data name="Chat_ToolRecovery_Loaded" xml:space="preserve"><value>Volledige uitvoer geladen.</value></data>
+  <data name="Chat_ToolRecovery_Limited" xml:space="preserve"><value>De uitvoer blijft afgekapt op de veilige weergavelimiet.</value></data>
+  <data name="Chat_ToolRecovery_Unsupported" xml:space="preserve"><value>Deze Gateway ondersteunt het ophalen van volledige uitvoer niet.</value></data>
+  <data name="Chat_ToolRecovery_NotFound" xml:space="preserve"><value>Dit opgeslagen toolresultaat is niet meer beschikbaar.</value></data>
+  <data name="Chat_ToolRecovery_NotVisible" xml:space="preserve"><value>Dit toolresultaat is niet zichtbaar voor deze verbinding.</value></data>
+  <data name="Chat_ToolRecovery_Oversized" xml:space="preserve"><value>Dit resultaat overschrijdt de antwoordlimiet van de Gateway.</value></data>
+  <data name="Chat_ToolRecovery_Stale" xml:space="preserve"><value>Het gesprek is gewijzigd. Open de tooldetails opnieuw.</value></data>
+  <data name="Chat_ToolRecovery_Mismatched" xml:space="preserve"><value>Het ontvangen resultaat hoort niet bij deze toolaanroep.</value></data>
+  <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>De volledige uitvoer kon niet worden geladen.</value></data>
+  <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Volledige uitvoer vereist de opgeslagen resultaatidentiteit en een geverifieerd huidig account.</value></data>
+  <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Volledige uitvoer tonen</value></data>
+  <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
+  <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
+  <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>
+  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inactief</value></data>
+  <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
+  <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
+  <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>mislukt</value></data>
+  <data name="Chat_Tool_Completed" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Chat_Review_Required" xml:space="preserve"><value>Beoordeling door provider vereist</value></data>
+  <data name="Chat_Review_Warning" xml:space="preserve"><value>Waarschuwing van providerbeoordeling</value></data>
+  <data name="Chat_Review_Working" xml:space="preserve"><value>Providerbeoordeling wordt uitgevoerd</value></data>
+  <data name="Chat_Review_Approved" xml:space="preserve"><value>Providerbeoordeling goedgekeurd</value></data>
+  <data name="Chat_Review_Denied" xml:space="preserve"><value>De provider heeft het verzoek niet goedgekeurd</value></data>
+  <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Oudere geschiedenis is niet geladen. Probeer het opnieuw nadat het gesprek is herladen.</value></data>
+  <data name="Chat_Review_Web" xml:space="preserve"><value>Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
+  <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Time-out bij controle door provider</value></data>
+  <data name="Chat_Review_Aborted" xml:space="preserve"><value>Controle door provider geannuleerd</value></data>
+  <data name="Systems_AddSystem" xml:space="preserve"><value>Systeem toevoegen</value></data>
+  <data name="Systems_CopyUpdate" xml:space="preserve"><value>Updateopdracht kopiëren</value></data>
+  <data name="Systems_CollapseSystem" xml:space="preserve"><value>Systeemdetails samenvouwen</value></data>
+  <data name="Systems_ExpandSystem" xml:space="preserve"><value>Systeemdetails uitvouwen</value></data>
+  <data name="Systems_NotSeen" xml:space="preserve"><value>Laatst gezien {0}</value></data>
+  <data name="Systems_Diagnostics" xml:space="preserve"><value>Diagnostiek</value></data>
+  <data name="Systems_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Systems_OpenChat_Name" xml:space="preserve"><value>Chat openen: {0}</value></data>
+  <data name="Systems_Capability_NotReported" xml:space="preserve"><value>Niet gemeld</value></data>
+  <data name="Systems_Capability_Allowed" xml:space="preserve"><value>Toegestaan</value></data>
+  <data name="Systems_Capability_TurnedOff" xml:space="preserve"><value>Uitgeschakeld</value></data>
+  <data name="Systems_Capability_System" xml:space="preserve"><value>Systeemhulpmiddelen</value></data>
+  <data name="Systems_Capability_Shell" xml:space="preserve"><value>Shellopdrachten</value></data>
+  <data name="Systems_Capability_Screen" xml:space="preserve"><value>Schermopname</value></data>
+  <data name="Systems_Capability_Camera" xml:space="preserve"><value>Camera</value></data>
+  <data name="Systems_Capability_Browser" xml:space="preserve"><value>Browser</value></data>
+  <data name="Systems_Capability_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="Systems_Capability_Clipboard" xml:space="preserve"><value>Klembord</value></data>
+  <data name="Systems_Capability_Notifications" xml:space="preserve"><value>Meldingen</value></data>
+  <data name="Systems_Capability_Audio" xml:space="preserve"><value>Audio-invoer</value></data>
+  <data name="Systems_ManagePermissions" xml:space="preserve"><value>Machtigingen beheren</value></data>
+  <data name="Systems_Connection" xml:space="preserve"><value>Verbinding</value></data>
+  <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Maak verbinding met de Gateway om deze actie te gebruiken.</value></data>
+  <data name="Systems_ConnectedApps" xml:space="preserve"><value>Verbonden apps</value></data>
+  <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Apparaten en Gateway</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Apparaten en Gateway {0}</value></data>
+  <data name="Systems_Issues" xml:space="preserve"><value>Problemen</value></data>
+  <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Laatst bekend offline</value></data>
+  <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Laatst bekend online</value></data>
+  <data name="Systems_LoadFailed" xml:space="preserve"><value>Laden mislukt.</value></data>
+  <data name="Systems_Pairing_Unavailable" xml:space="preserve"><value>Dit koppelingsverzoek is niet meer beschikbaar.</value></data>
+  <data name="Systems_RequestTimeout" xml:space="preserve"><value>Verzoek verlopen na {0} s.</value></data>
+  <data name="Systems_ForgetTitle" xml:space="preserve"><value>{0} vergeten?</value></data>
+  <data name="Systems_Forgotten" xml:space="preserve"><value>{0} vergeten.</value></data>
+  <data name="Systems_RenameSucceeded" xml:space="preserve"><value>De node is hernoemd.</value></data>
+  <data name="Systems_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Systems_AddSystemSteps" xml:space="preserve"><value>1. Installeer een ondersteunde OpenClaw-node-app op het andere apparaat.
+2. Verbind het met deze gateway.
+3. Open Verbinding om het koppelingsverzoek te bekijken.</value></data>
+  <data name="Systems_Number_0" xml:space="preserve"><value>nul</value></data>
+  <data name="Systems_Number_1" xml:space="preserve"><value>één</value></data>
+  <data name="Systems_Number_2" xml:space="preserve"><value>twee</value></data>
+  <data name="Systems_Number_3" xml:space="preserve"><value>drie</value></data>
+  <data name="Systems_Number_4" xml:space="preserve"><value>vier</value></data>
+  <data name="Systems_Number_5" xml:space="preserve"><value>vijf</value></data>
+  <data name="Systems_Number_6" xml:space="preserve"><value>zes</value></data>
+  <data name="Systems_Number_7" xml:space="preserve"><value>zeven</value></data>
+  <data name="Systems_Number_8" xml:space="preserve"><value>acht</value></data>
+  <data name="Systems_Number_9" xml:space="preserve"><value>negen</value></data>
+  <data name="Systems_Age_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Systems_Age_Minutes" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Systems_Age_Hours" xml:space="preserve"><value>{0} u</value></data>
+  <data name="Systems_Age_Days" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Systems_HowToReconnect" xml:space="preserve"><value>Opnieuw verbinden</value></data>
+  <data name="Systems_ForgetConsequence" xml:space="preserve"><value>Het is ontkoppeld van {0}. Om terug te komen, moet het opnieuw om goedkeuring vragen.</value></data>
+  <data name="Systems_Field_Paired" xml:space="preserve"><value>Gekoppeld</value></data>
+  <data name="Systems_AddSystemIntro" xml:space="preserve"><value>Koppel een pc, Mac of telefoon zodat agents het kunnen gebruiken.</value></data>
+  <data name="Systems_ForgetAction" xml:space="preserve"><value>Vergeten</value></data>
+  <data name="Systems_SecondsAgo" xml:space="preserve"><value>{0} seconden geleden</value></data>
+  <data name="Systems_Desktop_Available" xml:space="preserve"><value>Beschikbaar</value></data>
+  <data name="Systems_Capability_Files" xml:space="preserve"><value>Bestanden</value></data>
+  <data name="Navigation_Expand" xml:space="preserve"><value>Navigatie uitklappen</value></data>
+  <data name="Navigation_Collapse" xml:space="preserve"><value>Navigatie inklappen</value></data>
+  <data name="Systems_Hero_NodeConnected" xml:space="preserve"><value>Deze pc is als node verbonden met {0}.</value></data>
+  <data name="Systems_Hero_NodePending" xml:space="preserve"><value>Deze pc wacht op goedkeuring bij {0}.</value></data>
+  <data name="Systems_Hero_NodeNotReported" xml:space="preserve"><value>Deze pc is niet gemeld als verbonden node bij {0}.</value></data>
+  <data name="Systems_Hero_Disconnected" xml:space="preserve"><value>{0} is niet bereikbaar. Andere systemen tonen de laatst gemelde gegevens van {1}.</value></data>
+  <data name="Systems_Hero_DisconnectedNoReport" xml:space="preserve"><value>{0} is niet bereikbaar. Er is geen systeemrapport beschikbaar.</value></data>
+  <data name="Systems_Hero_OnlineCount" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Systems_Hero_LastReportedOnline" xml:space="preserve"><value>Laatst gemeld als online</value></data>
+  <data name="Systems_Hero_ShowIssues" xml:space="preserve"><value>Problemen: {0}. Toon het eerste systeem dat aandacht nodig heeft.</value></data>
+  <data name="Systems_Hero_Summary" xml:space="preserve"><value>Systeemoverzicht</value></data>
+  <data name="Systems_Badge_Approval" xml:space="preserve"><value>Goedkeuring nodig</value></data>
+  <data name="Systems_Badge_Reapproval" xml:space="preserve"><value>Opnieuw goedkeuren</value></data>
+  <data name="Systems_Badge_OfflineAge" xml:space="preserve"><value>Offline sinds {0}</value></data>
+  <data name="Systems_Badge_Update" xml:space="preserve"><value>Update vereist</value></data>
+  <data name="Systems_Badge_Permission" xml:space="preserve"><value>Windows-toestemming nodig</value></data>
+  <data name="Systems_Badge_WorkerError" xml:space="preserve"><value>Fout gemeld</value></data>
+  <data name="Systems_Badge_Join" xml:space="preserve"><value>Wil deelnemen</value></data>
+  <data name="Inbox_Title.Text" xml:space="preserve"><value>Postvak IN</value></data>
+  <data name="Inbox_DismissShown.Content" xml:space="preserve"><value>Getoonde sluiten</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Meldingsinstellingen</value></data>
+  <data name="Inbox_SettingsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Meldingsinstellingen</value></data>
+  <data name="Inbox_Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Categorieën in Postvak IN</value></data>
+  <data name="Inbox_TabAll" xml:space="preserve"><value>Alles</value></data>
+  <data name="Inbox_TabApprovals" xml:space="preserve"><value>Goedkeuringen</value></data>
+  <data name="Inbox_TabMentions" xml:space="preserve"><value>Vermeldingen</value></data>
+  <data name="Inbox_TabAutomations" xml:space="preserve"><value>Automatiseringen</value></data>
+  <data name="Inbox_TabSystem" xml:space="preserve"><value>Systeem</value></data>
+  <data name="Inbox_TabCountFormat" xml:space="preserve"><value>{0} {1}</value></data>
+  <data name="Inbox_EmptyTitle.Text" xml:space="preserve"><value>Niets in afwachting</value></data>
+  <data name="Inbox_NothingWaiting" xml:space="preserve"><value>Niets in afwachting</value></data>
+  <data name="Inbox_EmptyBody.Text" xml:space="preserve"><value>Nieuwe verzoeken en waarschuwingen komen hier binnen.</value></data>
+  <data name="Inbox_OpenPage.Content" xml:space="preserve"><value>Postvak IN openen</value></data>
+  <data name="Inbox_CountFormat" xml:space="preserve"><value>{0} in afwachting</value></data>
+  <data name="Inbox_DismissItemFormat" xml:space="preserve"><value>{0} sluiten</value></data>
+  <data name="Inbox_RowAutomationNameFormat" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Inbox_AgeNow" xml:space="preserve"><value>nu</value></data>
+  <data name="Inbox_AgeMinutesFormat" xml:space="preserve"><value>{0} min</value></data>
+  <data name="Inbox_AgeHoursFormat" xml:space="preserve"><value>{0} u</value></data>
+  <data name="Inbox_AgeDaysFormat" xml:space="preserve"><value>{0} d</value></data>
+  <data name="Inbox_AskOpenClaw.Content" xml:space="preserve"><value>Vraag het OpenClaw</value></data>
+  <data name="Inbox_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Inbox_OpenAutomations" xml:space="preserve"><value>Automatiseringen openen</value></data>
+  <data name="Inbox_AutomationFailed" xml:space="preserve"><value>Mislukt</value></data>
+  <data name="Inbox_AutomationOverdue" xml:space="preserve"><value>Achterstallig</value></data>
+  <data name="Inbox_AskAutomationFailedFormat" xml:space="preserve"><value>Deze automatisering is mislukt: {0}. Leg uit waarom en hoe ik dit oplos.</value></data>
+  <data name="Inbox_AskAutomationOverdueFormat" xml:space="preserve"><value>Deze automatisering is achterstallig: {0}, gepland voor {1}. Leg uit waarom deze niet is uitgevoerd en hoe ik dit oplos.</value></data>
+  <data name="Inbox_AskModelAuthFormat" xml:space="preserve"><value>Deze inloggegevens van de modelprovider vragen aandacht: {0}. Leg uit wat er is verlopen en hoe ik opnieuw kan verifiëren.</value></data>
+  <data name="Inbox_ApprovalExecTitle" xml:space="preserve"><value>Goedkeuring voor opdracht nodig</value></data>
+  <data name="Inbox_ApprovalPluginTitle" xml:space="preserve"><value>Goedkeuring voor plug-in nodig</value></data>
+  <data name="Inbox_ApprovalTitle" xml:space="preserve"><value>Goedkeuring nodig</value></data>
+  <data name="Inbox_ApprovalExpiresInFormat" xml:space="preserve"><value>Verloopt over {0}</value></data>
+  <data name="Inbox_ApprovalExpired" xml:space="preserve"><value>Verlopen</value></data>
+  <data name="Inbox_ApprovalHostGateway" xml:space="preserve"><value>Gatewaydienst</value></data>
+  <data name="Inbox_ApprovalHostDevice" xml:space="preserve"><value>Apparaat</value></data>
+  <data name="Inbox_ApprovalHostSandbox" xml:space="preserve"><value>Sandbox-omgeving</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, totdat dit wordt ingetrokken (herroepbaar)</value></data>
+  <data name="Inbox_ApprovalScopeStandingGrantDaysFormat" xml:space="preserve"><value>Altijd toestaan voert deze exacte opdracht uit voor "{0}" zonder te vragen, gedurende {1} dagen (herroepbaar)</value></data>
+  <data name="Inbox_ApprovalScopeMessageSendFormat" xml:space="preserve"><value>Verzendt naar {0} ontvanger(s) via {1}</value></data>
+  <data name="Inbox_ApprovalScopePaymentFormat" xml:space="preserve"><value>Betaalt {0} {1} aan {2}</value></data>
+  <data name="Inbox_ApprovalScopeExternalPostFormat" xml:space="preserve"><value>Plaatst extern op {0}</value></data>
+  <data name="Inbox_ModelAuthTitleFormat" xml:space="preserve"><value>Account vraagt aandacht: {0}</value></data>
+  <data name="Inbox_ModelAuthSignInRequired" xml:space="preserve"><value>Aanmelden vereist</value></data>
+  <data name="Inbox_ModelAuthApiKeyRequired" xml:space="preserve"><value>API-sleutel vraagt aandacht</value></data>
+  <data name="Inbox_ModelAuthNeedsAttention" xml:space="preserve"><value>Account vraagt aandacht</value></data>
+  <data name="Inbox_ModelAuthSignIn" xml:space="preserve"><value>Aanmelden</value></data>
+  <data name="Inbox_ModelAuthUpdateApiKey" xml:space="preserve"><value>API-sleutel bijwerken</value></data>
+  <data name="Inbox_ModelAuthReview" xml:space="preserve"><value>Account controleren</value></data>
+  <data name="SettingsShell_BackToApp" xml:space="preserve">
+    <value>Terug naar app</value>
+  </data>
+  <data name="SettingsShell_BackToAppKeyHint" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="SettingsShell_Title" xml:space="preserve">
+    <value>Instellingen</value>
+  </data>
+  <data name="Automations_AgentScope" xml:space="preserve">
+    <value>Agent: {0}</value>
+  </data>
+  <data name="Automations_Cancel" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
+  <data name="Automations_CloneName" xml:space="preserve">
+    <value>{0} (kopie)</value>
+  </data>
+  <data name="Automations_ConfirmPause_Body" xml:space="preserve">
+    <value>De automatisering wordt niet meer volgens planning uitgevoerd totdat je deze hervat. De definitie en uitvoeringsgeschiedenis blijven behouden.</value>
+  </data>
+  <data name="Automations_ConfirmPause_Title" xml:space="preserve">
+    <value>“{0}” onderbreken?</value>
+  </data>
+  <data name="Automations_Default" xml:space="preserve">
+    <value>Standaard</value>
+  </data>
+  <data name="Automations_Delivery_Delivered" xml:space="preserve">
+    <value>Geleverd</value>
+  </data>
+  <data name="Automations_Delivery_NotDelivered" xml:space="preserve">
+    <value>Niet geleverd</value>
+  </data>
+  <data name="Automations_Delivery_NotRequested" xml:space="preserve">
+    <value>Niet aangevraagd</value>
+  </data>
+  <data name="Automations_Delivery_Unknown" xml:space="preserve">
+    <value>Levering onbekend</value>
+  </data>
+  <data name="Automations_DeliveryMode_Announce" xml:space="preserve">
+    <value>Samenvatting aankondigen</value>
+  </data>
+  <data name="Automations_DeliveryMode_Choose" xml:space="preserve">
+    <value>Kies een leveringsmodus</value>
+  </data>
+  <data name="Automations_DeliveryMode_Legacy" xml:space="preserve">
+    <value>Verouderde instelling</value>
+  </data>
+  <data name="Automations_DeliveryMode_None" xml:space="preserve">
+    <value>Geen (intern)</value>
+  </data>
+  <data name="Automations_DeliveryMode_Webhook" xml:space="preserve">
+    <value>Webhook-POST</value>
+  </data>
+  <data name="Automations_Destination_Owner" xml:space="preserve">
+    <value>Direct bericht aan eigenaar</value>
+  </data>
+  <data name="Automations_Disconnected_BannerBody" xml:space="preserve">
+    <value>Automatiseringen zijn niet beschikbaar totdat de verbinding met de Gateway is hersteld.</value>
+  </data>
+  <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
+    <value>Gateway losgekoppeld</value>
+  </data>
+  <data name="Automations_Duration_Hours" xml:space="preserve">
+    <value>{0} u {1} min</value>
+  </data>
+  <data name="Automations_Duration_Milliseconds" xml:space="preserve">
+    <value>{0} ms</value>
+  </data>
+  <data name="Automations_Duration_Minutes" xml:space="preserve">
+    <value>{0} min {1} s</value>
+  </data>
+  <data name="Automations_Duration_Seconds" xml:space="preserve">
+    <value>{0} s</value>
+  </data>
+  <data name="Automations_Edit" xml:space="preserve">
+    <value>Bewerken</value>
+  </data>
+  <data name="Automations_Editor_CantSave" xml:space="preserve">
+    <value>Kan nog niet opslaan</value>
+  </data>
+  <data name="Automations_Editor_Create" xml:space="preserve">
+    <value>Automatisering maken</value>
+  </data>
+  <data name="Automations_Editor_CreateAndRun" xml:space="preserve">
+    <value>Maken en nu uitvoeren</value>
+  </data>
+  <data name="Automations_Editor_EditTitle" xml:space="preserve">
+    <value>{0} bewerken</value>
+  </data>
+  <data name="Automations_Editor_Save" xml:space="preserve">
+    <value>Wijzigingen opslaan</value>
+  </data>
+  <data name="Automations_Editor_SaveFailed" xml:space="preserve">
+    <value>Kan niet opslaan</value>
+  </data>
+  <data name="Automations_Editor_Saving" xml:space="preserve">
+    <value>Opslaan...</value>
+  </data>
+  <data name="Automations_Editor_Subtitle" xml:space="preserve">
+    <value>Beschrijf wat OpenClaw moet doen en kies daarna wanneer het wordt uitgevoerd.</value>
+  </data>
+  <data name="Automations_Empty_Body" xml:space="preserve">
+    <value>Automatiseringen voeren een agent volgens een schema uit. Maak er hier een of beschrijf deze in de chat.</value>
+  </data>
+  <data name="Automations_Empty_ReadOnlyBody" xml:space="preserve">
+    <value>Deze agent heeft geen automatiseringen. Vraag een operator met beheerderstoegang om er een te maken.</value>
+  </data>
+  <data name="Automations_Empty_Title" xml:space="preserve">
+    <value>Nog geen automatiseringen</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimeInvalid" xml:space="preserve">
+    <value>Voer HH:MM in. 24:00 is alleen toegestaan voor het einde.</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
+    <value>Voer een geldige IANA-tijdzone, local of user in.</value>
+  </data>
+  <data name="Automations_Error_DeliveryWebManaged" xml:space="preserve">
+    <value>Bezorging aan de eigenaar wordt voor Gateway-compatibiliteit in de webapp beheerd. Gebruik Openen in web om deze te maken, te kopiëren of te wijzigen. Eenvoudige wijzigingen behouden de opgeslagen routering.</value>
+  </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>Gebruik Openen op het web om actieve uren of wachten tot inactiviteit te kopiëren of wijzigen. Eenvoudige wijzigingen behouden de opgeslagen instellingen.</value>
+  </data>
+  <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
+    <value>Beschrijf de taak die deze agent moet uitvoeren.</value>
+  </data>
+  <data name="Automations_Error_CronExprRequired" xml:space="preserve">
+    <value>Cron-expressie is vereist.</value>
+  </data>
+  <data name="Automations_Error_DeliveryModeRequired" xml:space="preserve">
+    <value>Kies een leveringsmodus.</value>
+  </data>
+  <data name="Automations_Error_EventAgentTurnRequired" xml:space="preserve">
+    <value>Gebeurtenisautomatiseringen vereisen een assistenttaak.</value>
+  </data>
+  <data name="Automations_Error_EveryAmountInvalid" xml:space="preserve">
+    <value>Interval moet een getal groter dan 0 zijn.</value>
+  </data>
+  <data name="Automations_Error_FailureAlertAfterInvalid" xml:space="preserve">
+    <value>Moet minimaal 1 zijn.</value>
+  </data>
+  <data name="Automations_Error_FailureAlertCooldownInvalid" xml:space="preserve">
+    <value>Moet 0 of groter zijn.</value>
+  </data>
+  <data name="Automations_Error_NameRequired" xml:space="preserve">
+    <value>Voer een naam in.</value>
+  </data>
+  <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
+    <value>Kies een geldige datum en tijd.</value>
+  </data>
+  <data name="Automations_Error_StaggerAmountInvalid" xml:space="preserve">
+    <value>Spreiding moet een getal groter dan 0 zijn.</value>
+  </data>
+  <data name="Automations_Error_SystemTextRequired" xml:space="preserve">
+    <value>Tijdlijnbericht is vereist.</value>
+  </data>
+  <data name="Automations_Error_TimeoutInvalid" xml:space="preserve">
+    <value>Time-out moet 0 of groter zijn.</value>
+  </data>
+  <data name="Automations_Error_TimezoneInvalid" xml:space="preserve">
+    <value>Voer een geldige IANA-tijdzone in, zoals Europe/Paris.</value>
+  </data>
+  <data name="Automations_Error_TriggerIntervalTooShort" xml:space="preserve">
+    <value>Automatiseringen met een voorwaardetrigger moeten met een interval van minimaal 30 seconden worden uitgevoerd.</value>
+  </data>
+  <data name="Automations_Error_TriggerScheduleUnsupported" xml:space="preserve">
+    <value>Voorwaardetriggers vereisen een interval-, cron- of streamplanning.</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptPayloadUnsupported" xml:space="preserve">
+    <value>Scriptacties kunnen geen voorwaardetriggers gebruiken.</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
+    <value>Triggerscript is vereist wanneer de voorwaardetrigger is ingeschakeld.</value>
+  </data>
+  <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
+    <value>Voer een HTTPS-webhook-URL in.</value>
+  </data>
+  <data name="Automations_Field_ActiveHours" xml:space="preserve">
+    <value>Actieve uren</value>
+  </data>
+  <data name="Automations_Field_Agent" xml:space="preserve">
+    <value>Agent</value>
+  </data>
+  <data name="Automations_Field_Channel" xml:space="preserve">
+    <value>Kanaal</value>
+  </data>
+  <data name="Automations_Field_Command" xml:space="preserve">
+    <value>Opdracht</value>
+  </data>
+  <data name="Automations_Field_Condition" xml:space="preserve">
+    <value>Voorwaardetrigger</value>
+  </data>
+  <data name="Automations_Field_DeleteAfterRun" xml:space="preserve">
+    <value>Verwijderen na uitvoering</value>
+  </data>
+  <data name="Automations_Field_DeliveryMode" xml:space="preserve">
+    <value>Modus</value>
+  </data>
+  <data name="Automations_Field_Destination" xml:space="preserve">
+    <value>Bestemming</value>
+  </data>
+  <data name="Automations_Field_Every" xml:space="preserve">
+    <value>Elke</value>
+  </data>
+  <data name="Automations_Field_Expression" xml:space="preserve">
+    <value>Expressie</value>
+  </data>
+  <data name="Automations_Field_FailureAlerts" xml:space="preserve">
+    <value>Foutmeldingen</value>
+  </data>
+  <data name="Automations_Field_LastDelivery" xml:space="preserve">
+    <value>Laatste levering</value>
+  </data>
+  <data name="Automations_Field_Model" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="Automations_Field_Name" xml:space="preserve">
+    <value>Naam</value>
+  </data>
+  <data name="Automations_Field_Options" xml:space="preserve">
+    <value>Opties</value>
+  </data>
+  <data name="Automations_Field_Prompt" xml:space="preserve">
+    <value>Prompt</value>
+  </data>
+  <data name="Automations_Field_Payload" xml:space="preserve">
+    <value>Payload</value>
+  </data>
+  <data name="Automations_Field_RunDate" xml:space="preserve">
+    <value>Datum</value>
+  </data>
+  <data name="Automations_Field_RunTime" xml:space="preserve">
+    <value>Tijd</value>
+  </data>
+  <data name="Automations_Field_Session" xml:space="preserve">
+    <value>Doelsessie</value>
+  </data>
+  <data name="Automations_Field_SessionKey" xml:space="preserve">
+    <value>Sessiesleutel</value>
+  </data>
+  <data name="Automations_Field_Stagger" xml:space="preserve">
+    <value>Spreidingsvenster</value>
+  </data>
+  <data name="Automations_Field_Enabled" xml:space="preserve">
+    <value>Ingeschakeld</value>
+  </data>
+  <data name="Automations_Field_Thinking" xml:space="preserve">
+    <value>Denken</value>
+  </data>
+  <data name="Automations_Field_TimelineMessage" xml:space="preserve">
+    <value>Bericht voor hoofdtijdlijn</value>
+  </data>
+  <data name="Automations_Field_Timeout" xml:space="preserve">
+    <value>Time-out</value>
+  </data>
+  <data name="Automations_Field_Timezone" xml:space="preserve">
+    <value>Tijdzone</value>
+  </data>
+  <data name="Automations_Field_To" xml:space="preserve">
+    <value>Aan</value>
+  </data>
+  <data name="Automations_Field_Tools" xml:space="preserve">
+    <value>Toegestane hulpmiddelen</value>
+  </data>
+  <data name="Automations_Field_Unit" xml:space="preserve">
+    <value>Eenheid</value>
+  </data>
+  <data name="Automations_Field_WebhookUrl" xml:space="preserve">
+    <value>Webhook-URL</value>
+  </data>
+  <data name="Automations_GatewayTimezone" xml:space="preserve">
+    <value>Tijdzone van Gateway-host</value>
+  </data>
+  <data name="Automations_Help_Agent" xml:space="preserve">
+    <value>Laat leeg om de agent van deze pagina te gebruiken.</value>
+  </data>
+  <data name="Automations_Help_AgentEdit" xml:space="preserve">
+    <value>Laat leeg om de huidige eigenaar te behouden, of voer een andere agent in om deze automatisering te verplaatsen.</value>
+  </data>
+  <data name="Automations_Help_Channel" xml:space="preserve">
+    <value>Laat leeg om het laatste kanaal te gebruiken waarop de agent heeft gecommuniceerd.</value>
+  </data>
+  <data name="Automations_Help_DeleteAfterRun" xml:space="preserve">
+    <value>Ideaal voor eenmalige herinneringen die zichzelf moeten opruimen.</value>
+  </data>
+  <data name="Automations_Help_Delivery" xml:space="preserve">
+    <value>Aankondigen plaatst een samenvatting in de chat. Geen houdt resultaten intern.</value>
+  </data>
+  <data name="Automations_Help_DeliveryNoAnnounce" xml:space="preserve">
+    <value>Aankondigen vereist een assistenttaak. Tijdlijnberichten worden al op de hoofdtijdlijn geplaatst.</value>
+  </data>
+  <data name="Automations_Help_Session" xml:space="preserve">
+    <value>Hoofd plaatst op de tijdlijn van de agent. Geïsoleerd voert een aparte assistentbeurt uit.</value>
+  </data>
+  <data name="Automations_Help_Timezone" xml:space="preserve">
+    <value>Optionele IANA-tijdzone. Laat leeg om de tijdzone van de Gateway-host te gebruiken.</value>
+  </data>
+  <data name="Automations_Help_Webhook" xml:space="preserve">
+    <value>Samenvattingen worden via POST naar deze URL verzonden. Nieuwe bestemmingen moeten HTTPS gebruiken.</value>
+  </data>
+  <data name="Automations_Kind_At" xml:space="preserve">
+    <value>Eenmalig</value>
+  </data>
+  <data name="Automations_Kind_Cron" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="Automations_Kind_Every" xml:space="preserve">
+    <value>Herhalend</value>
+  </data>
+  <data name="Automations_List_Count" xml:space="preserve">
+    <value>{0} van {1}</value>
+  </data>
+  <data name="Automations_List_NoMatch" xml:space="preserve">
+    <value>Geen automatiseringen komen overeen met de huidige filters.</value>
+  </data>
+  <data name="Automations_ListError_Title" xml:space="preserve">
+    <value>Kan automatiseringen niet laden</value>
+  </data>
+  <data name="Automations_Loading" xml:space="preserve">
+    <value>Laden...</value>
+  </data>
+  <data name="Automations_LoadMore" xml:space="preserve">
+    <value>Meer laden</value>
+  </data>
+  <data name="Automations_MoreActionsFor" xml:space="preserve">
+    <value>Meer acties voor {0}</value>
+  </data>
+  <data name="Automations_NeverRun" xml:space="preserve">
+    <value>Nooit</value>
+  </data>
+  <data name="Automations_NewAutomation" xml:space="preserve">
+    <value>Nieuwe automatisering</value>
+  </data>
+  <data name="Automations_NextRun" xml:space="preserve">
+    <value>Volgende uitvoering</value>
+  </data>
+  <data name="Automations_Notice_Conflict" xml:space="preserve">
+    <value>De nieuwste definitie is geladen. Controleer deze voordat je het opnieuw probeert.</value>
+  </data>
+  <data name="Automations_Notice_ConflictTitle" xml:space="preserve">
+    <value>Automatisering is gewijzigd op de Gateway</value>
+  </data>
+  <data name="Automations_Notice_ConflictUnloadable" xml:space="preserve">
+    <value>De nieuwste definitie kan niet worden geladen. Vernieuw voordat je het opnieuw probeert.</value>
+  </data>
+  <data name="Automations_Notice_Created" xml:space="preserve">
+    <value>{0} is gemaakt.</value>
+  </data>
+  <data name="Automations_Notice_CreatedTitle" xml:space="preserve">
+    <value>Gemaakt</value>
+  </data>
+  <data name="Automations_Notice_FailedTitle" xml:space="preserve">
+    <value>Er is iets misgegaan</value>
+  </data>
+  <data name="Automations_Notice_JobCompleted" xml:space="preserve">
+    <value>{0} is uitgevoerd en heeft zichzelf verwijderd.</value>
+  </data>
+  <data name="Automations_Notice_JobCompletedTitle" xml:space="preserve">
+    <value>Automatisering voltooid</value>
+  </data>
+  <data name="Automations_Notice_JobMessage" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="Automations_Notice_MissingRevision" xml:space="preserve">
+    <value>De configuratierevisie van deze automatisering ontbreekt. Vernieuw en probeer het opnieuw.</value>
+  </data>
+  <data name="Automations_Notice_Paused" xml:space="preserve">
+    <value>{0} is onderbroken.</value>
+  </data>
+  <data name="Automations_Notice_PausedTitle" xml:space="preserve">
+    <value>Onderbroken</value>
+  </data>
+  <data name="Automations_Notice_RemovedTitle" xml:space="preserve">
+    <value>Verwijderd</value>
+  </data>
+  <data name="Automations_Notice_Resumed" xml:space="preserve">
+    <value>{0} is weer actief.</value>
+  </data>
+  <data name="Automations_Notice_ResumedTitle" xml:space="preserve">
+    <value>Hervat</value>
+  </data>
+  <data name="Automations_Notice_RunFailedTitle" xml:space="preserve">
+    <value>Uitvoering kan niet worden gestart</value>
+  </data>
+  <data name="Automations_Notice_RunNotStartedTitle" xml:space="preserve">
+    <value>Uitvoering niet gestart</value>
+  </data>
+  <data name="Automations_Notice_Saved" xml:space="preserve">
+    <value>{0} is bijgewerkt.</value>
+  </data>
+  <data name="Automations_Notice_SavedTitle" xml:space="preserve">
+    <value>Opgeslagen</value>
+  </data>
+  <data name="Automations_NotScheduled" xml:space="preserve">
+    <value>Niet gepland</value>
+  </data>
+  <data name="Automations_Off" xml:space="preserve">
+    <value>Uit</value>
+  </data>
+  <data name="Automations_On" xml:space="preserve">
+    <value>Aan</value>
+  </data>
+  <data name="Automations_OpenConnection" xml:space="preserve">
+    <value>Verbinding openen</value>
+  </data>
+  <data name="Automations_Pause" xml:space="preserve">
+    <value>Onderbreken</value>
+  </data>
+  <data name="Automations_Payload_AgentTurn" xml:space="preserve">
+    <value>Een assistenttaak uitvoeren</value>
+  </data>
+  <data name="Automations_Payload_Script" xml:space="preserve">
+    <value>Script</value>
+  </data>
+  <data name="Automations_Payload_SystemEvent" xml:space="preserve">
+    <value>Op de hoofdtijdlijn plaatsen</value>
+  </data>
+  <data name="Automations_Payload_Unknown" xml:space="preserve">
+    <value>Aangepaste actie</value>
+  </data>
+  <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
+    <value>Kanaal-ID</value>
+  </data>
+  <data name="Automations_Placeholder_Timezone" xml:space="preserve">
+    <value>IANA-tijdzone</value>
+  </data>
+  <data name="Automations_Placeholder_To" xml:space="preserve">
+    <value>Chat-ID, telefoon of gebruiker</value>
+  </data>
+  <data name="Automations_Preset_Daily" xml:space="preserve">
+    <value>Dagelijks</value>
+  </data>
+  <data name="Automations_Preset_Weekdays" xml:space="preserve">
+    <value>Weekdagen</value>
+  </data>
+  <data name="Automations_Preset_Weekly" xml:space="preserve">
+    <value>Wekelijks</value>
+  </data>
+  <data name="Automations_ReadDenied_Title" xml:space="preserve">
+    <value>Automatiseringen zijn niet zichtbaar voor deze operator</value>
+  </data>
+  <data name="Automations_ReadOnly" xml:space="preserve">
+    <value>Alleen bekijken. Voor het wijzigen van automatiseringen is operator.admin-toegang vereist.</value>
+  </data>
+  <data name="Automations_RecentRuns" xml:space="preserve">
+    <value>Recente uitvoeringen</value>
+  </data>
+  <data name="Automations_Refresh" xml:space="preserve">
+    <value>Vernieuwen</value>
+  </data>
+  <data name="Automations_Relative_Days" xml:space="preserve">
+    <value>{0} d</value>
+  </data>
+  <data name="Automations_Relative_Future" xml:space="preserve">
+    <value>over {0}</value>
+  </data>
+  <data name="Automations_Relative_Hours" xml:space="preserve">
+    <value>{0} u</value>
+  </data>
+  <data name="Automations_Relative_Minutes" xml:space="preserve">
+    <value>{0} min</value>
+  </data>
+  <data name="Automations_Relative_Now" xml:space="preserve">
+    <value>nu</value>
+  </data>
+  <data name="Automations_Relative_Past" xml:space="preserve">
+    <value>{0} geleden</value>
+  </data>
+  <data name="Automations_Remove" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="Automations_Resume" xml:space="preserve">
+    <value>Hervatten</value>
+  </data>
+  <data name="Automations_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
+    <value>Deze automatisering wordt al uitgevoerd.</value>
+  </data>
+  <data name="Automations_RunNotStarted_InvalidSpec" xml:space="preserve">
+    <value>Deze automatisering heeft een ongeldige planning of actie.</value>
+  </data>
+  <data name="Automations_RunNotStarted_NotDue" xml:space="preserve">
+    <value>Deze automatisering is nog niet aan de beurt.</value>
+  </data>
+  <data name="Automations_RunNotStarted_RecoveryPending" xml:space="preserve">
+    <value>Het herstel van de planner is nog bezig.</value>
+  </data>
+  <data name="Automations_RunNotStarted_Stopped" xml:space="preserve">
+    <value>De planner is gestopt.</value>
+  </data>
+  <data name="Automations_RunNotStarted_Unknown" xml:space="preserve">
+    <value>Deze automatisering kan niet worden gestart.</value>
+  </data>
+  <data name="Automations_RunNow" xml:space="preserve">
+    <value>Nu uitvoeren</value>
+  </data>
+  <data name="Automations_Runs_ConditionChecked" xml:space="preserve">
+    <value>De voorwaarde is {0} keer gecontroleerd zonder overeenkomst. De uitvoeringsgeschiedenis begint wanneer de actie wordt uitgevoerd.</value>
+  </data>
+  <data name="Automations_Runs_DeliveryError" xml:space="preserve">
+    <value>Leveringsfout: {0}</value>
+  </data>
+  <data name="Automations_Runs_EmptyHint" xml:space="preserve">
+    <value>Uitvoeringen verschijnen hier zodra een automatisering wordt geactiveerd.</value>
+  </data>
+  <data name="Automations_Runs_Loading" xml:space="preserve">
+    <value>Uitvoeringen laden...</value>
+  </data>
+  <data name="Automations_Runs_NoSummary" xml:space="preserve">
+    <value>Geen samenvatting.</value>
+  </data>
+  <data name="Automations_Runs_OpenChat" xml:space="preserve">
+    <value>Openen in chat</value>
+  </data>
+  <data name="Automations_Runs_ShowLess" xml:space="preserve">
+    <value>Minder weergeven</value>
+  </data>
+  <data name="Automations_Runs_Suppressed" xml:space="preserve">
+    <value>Levering onderdrukt: {0}</value>
+  </data>
+  <data name="Automations_Runs_Tokens" xml:space="preserve">
+    <value>{0} in / {1} uit</value>
+  </data>
+  <data name="Automations_Runs_TriggerFired" xml:space="preserve">
+    <value>Voorwaarde komt overeen</value>
+  </data>
+  <data name="Automations_RunStatus_Error" xml:space="preserve">
+    <value>Mislukt</value>
+  </data>
+  <data name="Automations_RunStatus_Ok" xml:space="preserve">
+    <value>Geslaagd</value>
+  </data>
+  <data name="Automations_RunStatus_Skipped" xml:space="preserve">
+    <value>Overgeslagen</value>
+  </data>
+  <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
+    <value>Cron-planning {0}</value>
+  </data>
+  <data name="Automations_Schedule_DailyAt" xml:space="preserve">
+    <value>Elke dag om {0}</value>
+  </data>
+  <data name="Automations_Schedule_DaysAt" xml:space="preserve">
+    <value>{0} om {1}</value>
+  </data>
+  <data name="Automations_Schedule_Event" xml:space="preserve">
+    <value>Wanneer {0} binnenkomt van {1}</value>
+  </data>
+  <data name="Automations_Schedule_EventSource" xml:space="preserve">
+    <value>Gebeurtenisbron: {0}</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyDays" xml:space="preserve">
+    <value>Elke {0} dagen</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyHours" xml:space="preserve">
+    <value>Elke {0} uur</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyMinutes" xml:space="preserve">
+    <value>Elke {0} minuten</value>
+  </data>
+  <data name="Automations_Schedule_EveryManySeconds" xml:space="preserve">
+    <value>Elke {0} seconden</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneDay" xml:space="preserve">
+    <value>Elke dag</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneHour" xml:space="preserve">
+    <value>Elk uur</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneMinute" xml:space="preserve">
+    <value>Elke minuut</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneSecond" xml:space="preserve">
+    <value>Elke seconde</value>
+  </data>
+  <data name="Automations_Schedule_HourlyAt" xml:space="preserve">
+    <value>Elk uur op minuut {0}</value>
+  </data>
+  <data name="Automations_Schedule_Incomplete" xml:space="preserve">
+    <value>Voltooi de planning om te zien wanneer dit wordt uitgevoerd.</value>
+  </data>
+  <data name="Automations_Schedule_MonthlyAt" xml:space="preserve">
+    <value>Maandelijks op dag {0} om {1}</value>
+  </data>
+  <data name="Automations_Schedule_Once" xml:space="preserve">
+    <value>Eenmalig op {0}</value>
+  </data>
+  <data name="Automations_Schedule_OnExit" xml:space="preserve">
+    <value>Wanneer {0} wordt afgesloten</value>
+  </data>
+  <data name="Automations_Schedule_Stream" xml:space="preserve">
+    <value>Bij uitvoer van {0}</value>
+  </data>
+  <data name="Automations_Schedule_Unknown" xml:space="preserve">
+    <value>Aangepaste planning</value>
+  </data>
+  <data name="Automations_Schedule_WeekdaysAt" xml:space="preserve">
+    <value>Op weekdagen om {0}</value>
+  </data>
+  <data name="Automations_Schedule_WeekendsAt" xml:space="preserve">
+    <value>In het weekend om {0}</value>
+  </data>
+  <data name="Automations_Schedule_WithTimezone" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="Automations_Scheduler_Off" xml:space="preserve">
+    <value>Gestopt</value>
+  </data>
+  <data name="Automations_SchedulerOff_Body" xml:space="preserve">
+    <value>Geplande automatiseringen worden pas uitgevoerd als de Gateway-planner aan staat.</value>
+  </data>
+  <data name="Automations_SchedulerOff_Title" xml:space="preserve">
+    <value>Planner is gestopt</value>
+  </data>
+  <data name="Automations_Search_Placeholder" xml:space="preserve">
+    <value>Automatiseringen zoeken</value>
+  </data>
+  <data name="Automations_Section_Basics" xml:space="preserve">
+    <value>Basis</value>
+  </data>
+  <data name="Automations_Section_Delivery" xml:space="preserve">
+    <value>Levering</value>
+  </data>
+  <data name="Automations_Section_Schedule" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="Automations_Session_Current" xml:space="preserve">
+    <value>Huidige sessie</value>
+  </data>
+  <data name="Automations_Session_Isolated" xml:space="preserve">
+    <value>Geïsoleerde sessie</value>
+  </data>
+  <data name="Automations_Session_Main" xml:space="preserve">
+    <value>Hoofdsessie</value>
+  </data>
+  <data name="Automations_Session_Named" xml:space="preserve">
+    <value>Sessie {0}</value>
+  </data>
+  <data name="Automations_State_Active" xml:space="preserve">
+    <value>Actief</value>
+  </data>
+  <data name="Automations_State_AutoDisabledRuns" xml:space="preserve">
+    <value>Automatisch uitgeschakeld na {0} mislukte uitvoeringen</value>
+  </data>
+  <data name="Automations_State_AutoDisabledSchedule" xml:space="preserve">
+    <value>Automatisch uitgeschakeld na {0} planningsfouten</value>
+  </data>
+  <data name="Automations_State_Completed" xml:space="preserve">
+    <value>Voltooid</value>
+  </data>
+  <data name="Automations_State_Failing" xml:space="preserve">
+    <value>Mislukt</value>
+  </data>
+  <data name="Automations_State_Paused" xml:space="preserve">
+    <value>Onderbroken</value>
+  </data>
+  <data name="Automations_State_Running" xml:space="preserve">
+    <value>Wordt uitgevoerd</value>
+  </data>
+  <data name="Automations_Title" xml:space="preserve">
+    <value>Automatiseringen</value>
+  </data>
+  <data name="Automations_Unit_Days" xml:space="preserve">
+    <value>Dagen</value>
+  </data>
+  <data name="Automations_Unit_Hours" xml:space="preserve">
+    <value>Uren</value>
+  </data>
+  <data name="Automations_Unit_Minutes" xml:space="preserve">
+    <value>Minuten</value>
+  </data>
+  <data name="Automations_Unit_Seconds" xml:space="preserve">
+    <value>Seconden</value>
+  </data>
+  <data name="Automations_Unknown" xml:space="preserve">
+    <value>Onbekend</value>
+  </data>
+  <data name="Automations_Wake_NextHeartbeat" xml:space="preserve">
+    <value>Volgende heartbeat</value>
+  </data>
+  <data name="Automations_Wake_Now" xml:space="preserve">
+    <value>Nu</value>
+  </data>
+  <data name="Automations_Selected" xml:space="preserve">
+    <value>Geselecteerd</value>
+  </data>
+  <data name="Automations_AgentFilterFor" xml:space="preserve">
+    <value>Agentfilter: {0}</value>
+  </data>
+  <data name="Automations_CopyId" xml:space="preserve">
+    <value>Automatiserings-ID kopiëren</value>
+  </data>
+  <data name="Automations_CopyId_Done" xml:space="preserve">
+    <value>Automatiserings-ID {0} gekopieerd.</value>
+  </data>
+  <data name="Automations_CopyId_Failed" xml:space="preserve">
+    <value>Kan de automatiserings-ID niet kopiëren. Je kunt deze selecteren in de details van de automatisering.</value>
+  </data>
+  <data name="Automations_DeliveryMode_KeepSaved" xml:space="preserve">
+    <value>Huidige instelling behouden</value>
+  </data>
+  <data name="Automations_Editor_PreservedBody" xml:space="preserve">
+    <value>Deze automatisering gebruikt ook: {0}. Opslaan hier laat ze ongewijzigd. Wijzig ze op het web.</value>
+  </data>
+  <data name="Automations_Editor_PreservedTitle" xml:space="preserve">
+    <value>Meer instellingen op het web</value>
+  </data>
+  <data name="Automations_Field_DeliveryRouting" xml:space="preserve">
+    <value>Leveringsroutering</value>
+  </data>
+  <data name="Automations_Filter_AllAgents" xml:space="preserve">
+    <value>Alle agents</value>
+  </data>
+  <data name="Automations_Help_RunAtLocal" xml:space="preserve">
+    <value>Wordt op dit tijdstip uitgevoerd in de tijdzone van deze pc ({0}).</value>
+  </data>
+  <data name="Automations_Help_ToSaved" xml:space="preserve">
+    <value>Typ een ontvanger of kies er een die een andere automatisering gebruikt.</value>
+  </data>
+  <data name="Automations_OpenInWeb" xml:space="preserve">
+    <value>Openen op het web</value>
+  </data>
+  <data name="Automations_Payload_WebManaged" xml:space="preserve">
+    <value>Deze actie wordt op het web beheerd. Opslaan hier laat haar ongewijzigd.</value>
+  </data>
+  <data name="Automations_Schedule_WebManaged" xml:space="preserve">
+    <value>Deze planning wordt op het web beheerd. Opslaan hier laat haar ongewijzigd.</value>
+  </data>
+  <data name="Automations_Schedule_CustomCron" xml:space="preserve">
+    <value>Deze aangepaste kalenderregel bewerk je op het web. Opslaan hier behoudt haar, tenzij je hieronder een patroon kiest.</value>
+  </data>
+  <data name="Automations_UseLocalTimezone" xml:space="preserve">
+    <value>Tijdzone van deze pc gebruiken ({0})</value>
+  </data>
+  <data name="Automations_Redesign_ReadDenied" xml:space="preserve"><value>Deze operator kan automatiseringen niet lezen. Vraag een Gateway-beheerder om leestoegang.</value></data>
+  <data name="Automations_Redesign_LastSeen" xml:space="preserve"><value>Automatiseringen, laatst gezien op {0}</value></data>
+  <data name="Automations_Redesign_NeedYou" xml:space="preserve"><value>{0} automatiseringen hebben je nodig</value></data>
+  <data name="Automations_Redesign_OnSchedule" xml:space="preserve"><value>Alles loopt volgens planning</value></data>
+  <data name="Automations_Redesign_Next" xml:space="preserve"><value>Hierna: {0} om {1}.</value></data>
+  <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>Vernieuwen mislukt. De laatst bekende automatiseringen worden getoond.</value></data>
+  <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>Uitgeschakeld door de planner</value></data>
+  <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>{0} keer achter elkaar mislukt</value></data>
+  <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>Uitvoeringen bekijken</value></data>
+  <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>In het komende uur</value></data>
+  <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>Later vandaag</value></data>
+  <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>Morgen</value></data>
+  <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>Vorige keer mislukt</value></data>
+  <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>Niets anders gepland voor morgenavond.</value></data>
+  <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} herhalende automatiseringen</value></data>
+  <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} wachten op gebeurtenissen</value></data>
+  <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>Eerder vandaag</value></data>
+  <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>Plannerstatus onbekend</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>Planner</value></data>
+  <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>Binnenkort</value></data>
+  <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>Alle ({0})</value></data>
+  <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>Aan ({0})</value></data>
+  <data name="Automations_Redesign_OffCount" xml:space="preserve"><value>Gepauzeerd of uit ({0})</value></data>
+  <data name="Automations_Redesign_All" xml:space="preserve"><value>Alle</value></data>
+  <data name="Automations_Redesign_On" xml:space="preserve"><value>Aan</value></data>
+  <data name="Automations_Redesign_Off" xml:space="preserve"><value>Gepauzeerd of uit</value></data>
+  <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>Gepland</value></data>
+  <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>Alle automatiseringen</value></data>
+  <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>Geavanceerd</value></data>
+  <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>Chat openen: {0}</value></data>
+  <data name="Automations_Redesign_EventNoRuns" xml:space="preserve"><value>Wacht op een gebeurtenis. Nog geen uitvoeringen.</value></data>
+  <data name="Automations_Redesign_SuccessCount" xml:space="preserve"><value>{0}/{1} recente uitvoeringen geslaagd</value></data>
+  <data name="Automations_Redesign_AllRunsWeb" xml:space="preserve"><value>Alle uitvoeringen op het web</value></data>
+  <data name="Automations_Redesign_EditWeb" xml:space="preserve"><value>Bewerken op het web</value></data>
+  <data name="Automations_Redesign_LastRunChat" xml:space="preserve"><value>Laatste uitvoering in chat openen</value></data>
+  <data name="Automations_Redesign_CopyAsNew" xml:space="preserve"><value>Kopiëren als nieuw</value></data>
+  <data name="Automations_Redesign_Weekday" xml:space="preserve"><value>Dag van de week</value></data>
+  <data name="Automations_Redesign_ExactNextOnSave" xml:space="preserve"><value>De Gateway bepaalt de exacte volgende uitvoering bij het opslaan.</value></data>
+  <data name="Automations_Redesign_NeedYouOne" xml:space="preserve"><value>Eén automatisering heeft je nodig</value></data>
+  <data name="Automations_Redesign_Response" xml:space="preserve"><value>Samenvatting</value></data>
+  <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>“{0}” verwijderen?</value></data>
+  <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>Deze wordt samen met het schema en de uitvoeringsgeschiedenis verwijderd van {0}. Dit kan niet ongedaan worden gemaakt.</value></data>
+  <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>de verbonden Gateway</value></data>
+  <data name="Automations_Popup_AlertType" xml:space="preserve"><value>Waarschuwingsdialoog</value></data>
+  <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>Uitvoering in wachtrij</value></data>
+  <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>Uitvoering in wachtrij · {0}</value></data>
+  <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>Niet gestart: “{0}” wordt al uitgevoerd.</value></data>
+  <data name="Automations_Toast_Removed" xml:space="preserve"><value>“{0}” verwijderd</value></data>
+  <data name="Automations_Review_Today" xml:space="preserve"><value>Vandaag {0}</value></data>
+  <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>De planner heeft deze gestopt.</value></data>
+  <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>Planner aan</value></data>
+  <data name="Automations_Review_RunningNow" xml:space="preserve"><value>Wordt nu uitgevoerd</value></data>
+  <data name="Automations_Review_OnEvent" xml:space="preserve"><value>Bij gebeurtenis</value></data>
+  <data name="Automations_Review_Error" xml:space="preserve"><value>Fout</value></data>
+  <data name="Automations_Review_LastRun" xml:space="preserve"><value>Laatste uitvoering {0}</value></data>
+  <data name="Automations_Review_Tomorrow" xml:space="preserve"><value>Morgen {0}</value></data>
+  <data name="Automations_Review_OnceOn" xml:space="preserve"><value>Eenmalig op {0} om {1}</value></data>
+  <data name="Automations_Review_OnceToday" xml:space="preserve"><value>Eenmalig vandaag om {0}</value></data>
+  <data name="Automations_Review_OnOne" xml:space="preserve"><value>{0} aan</value></data>
+  <data name="Automations_Review_OnMany" xml:space="preserve"><value>{0} aan</value></data>
+  <data name="Automations_Review_PausedOne" xml:space="preserve"><value>{0} gepauzeerd of uit</value></data>
+  <data name="Automations_Review_PausedMany" xml:space="preserve"><value>{0} gepauzeerd of uit</value></data>
+  <data name="Automations_Review_AcrossAgents" xml:space="preserve"><value>bij {0} agents</value></data>
+  <data name="Automations_Review_SummaryJoin" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Automations_Review_SummaryEnd" xml:space="preserve"><value>{0}.</value></data>
+  <data name="Automations_Review_NothingScheduled" xml:space="preserve"><value>Nog niets gepland</value></data>
+  <data name="Automations_Review_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Automations_Review_EmptyWebCaption" xml:space="preserve"><value>Gebeurtenistriggers en aangepaste cron-schema's worden gemaakt in de webbedieningsinterface.</value></data>
+  <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>“{0}” als nieuw kopiëren</value></data>
+  <data name="Automations_Review_Repeats" xml:space="preserve"><value>Herhaalt</value></data>
+  <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>“{0}” kon niet worden gestart. Deze verbinding mist de machtiging operator.admin.</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0} (Verplicht)</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>Vul de verplichte velden in voordat u opslaat.</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>Kies een datum.</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>Kies een tijd.</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>Kies een dag van de week.</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>Voer een kanaal in.</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>Concept bewaard voor deze sessie.</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>Concept verwijderen</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>Meer tonen</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>Minder tonen</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>Alle {0} tonen</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>Ingevouwen</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>Uitvoering {0} in deze geschiedenis (tijd niet opgegeven)</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>Planning bijgewerkt om {0}</value></data>
+  <data name="Dashboards_Title" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="Dashboards_Refresh" xml:space="preserve">
+    <value>Vernieuwen</value>
+  </data>
+  <data name="Dashboards_BoardsFrom" xml:space="preserve">
+    <value>Borden van</value>
+  </data>
+  <data name="Dashboards_LatestBoardFormat" xml:space="preserve">
+    <value>Nieuwste: {0}, {1}</value>
+  </data>
+  <data name="Dashboards_ReadOnlyAgentFormat" xml:space="preserve">
+    <value>Borden zijn hier alleen-lezen; vraag {0} om er een te wijzigen.</value>
+  </data>
+  <data name="Dashboards_SortLabel" xml:space="preserve">
+    <value>Sorteren</value>
+  </data>
+  <data name="Dashboards_SortUpdated" xml:space="preserve">
+    <value>Onlangs bijgewerkt</value>
+  </data>
+  <data name="Dashboards_SortTitle" xml:space="preserve">
+    <value>Titel A tot Z</value>
+  </data>
+  <data name="Dashboards_SearchLabel" xml:space="preserve">
+    <value>Dashboards zoeken</value>
+  </data>
+  <data name="Dashboards_SearchPlaceholder" xml:space="preserve">
+    <value>Dashboards zoeken</value>
+  </data>
+  <data name="Dashboards_ResultCountFormat" xml:space="preserve">
+    <value>Aantal dashboards: {0}</value>
+  </data>
+  <data name="Dashboards_GalleryLabel" xml:space="preserve">
+    <value>Dashboardgalerij</value>
+  </data>
+  <data name="Dashboards_NoResults_Title" xml:space="preserve">
+    <value>Geen overeenkomende dashboards</value>
+  </data>
+  <data name="Dashboards_NoResults_Detail" xml:space="preserve">
+    <value>Probeer een andere zoekopdracht of auteur.</value>
+  </data>
+  <data name="Dashboards_Empty_Title" xml:space="preserve">
+    <value>Nog geen dashboards</value>
+  </data>
+  <data name="Dashboards_Empty_Detail" xml:space="preserve">
+    <value>Dashboards die in je sessies worden gemaakt, worden hier weergegeven.</value>
+  </data>
+  <data name="Dashboards_LoadError_Title" xml:space="preserve">
+    <value>Kan dashboards niet laden</value>
+  </data>
+  <data name="Dashboards_LoadErrorFormat" xml:space="preserve">
+    <value>Foutdetails: {0}</value>
+  </data>
+  <data name="Dashboards_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Dashboards_Loading" xml:space="preserve">
+    <value>Dashboards laden</value>
+  </data>
+  <data name="Dashboards_Live" xml:space="preserve">
+    <value>Live</value>
+  </data>
+  <data name="Dashboards_ByAuthorFormat" xml:space="preserve">
+    <value>Door {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedFormat" xml:space="preserve">
+    <value>Bijgewerkt: {0}</value>
+  </data>
+  <data name="Dashboards_UpdatedUnknown" xml:space="preserve">
+    <value>Bijwerktijd onbekend</value>
+  </data>
+  <data name="Dashboards_Disconnected_Title" xml:space="preserve">
+    <value>Niet verbonden met een gateway</value>
+  </data>
+  <data name="Dashboards_Disconnected_Detail" xml:space="preserve">
+    <value>Maak opnieuw verbinding met je gateway om je dashboards te lezen. Op deze computer wordt geen offline galerij opgeslagen.</value>
+  </data>
+  <data name="Dashboards_Disconnected_Action" xml:space="preserve">
+    <value>Verbindingsinstellingen openen</value>
+  </data>
+  <data name="Dashboards_Unavailable_Title" xml:space="preserve">
+    <value>Dashboards zijn niet beschikbaar</value>
+  </data>
+  <data name="Dashboards_Unavailable_Detail" xml:space="preserve">
+    <value>Deze gatewayverbinding kan geen sessiedashboards lezen. Vraag de eigenaar van de gateway om leestoegang of werk de gateway bij.</value>
+  </data>
+  <data name="Dashboards_OpenChat" xml:space="preserve">
+    <value>Chat openen</value>
+  </data>
+  <data name="Dashboards_BoardLabel" xml:space="preserve">
+    <value>Sessiedashboard</value>
+  </data>
+  <data name="Dashboards_BoardLoadError_Title" xml:space="preserve">
+    <value>Kan dit dashboard niet laden</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Title" xml:space="preserve">
+    <value>Een leeg bord, klaar voor gebruik</value>
+  </data>
+  <data name="Dashboards_BoardEmpty_Detail" xml:space="preserve">
+    <value>Voor deze sectie is geen inhoud aangeleverd. Vraag je agent in de chat.</value>
+  </data>
+  <data name="Dashboards_GridLabel" xml:space="preserve">
+    <value>Dashboardwidgets</value>
+  </data>
+  <data name="Dashboards_TabsLabel" xml:space="preserve">
+    <value>Dashboardtabbladen</value>
+  </data>
+  <data name="Dashboards_MoreTabs" xml:space="preserve">
+    <value>Meer tabbladen</value>
+  </data>
+  <data name="Dashboards_Widget_CellFormat" xml:space="preserve">
+    <value>Dashboardwidget: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_KindHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Dashboards_Widget_KindMcp" xml:space="preserve">
+    <value>MCP</value>
+  </data>
+  <data name="Dashboards_Widget_KindPlugin" xml:space="preserve">
+    <value>Invoegtoepassing</value>
+  </data>
+  <data name="Dashboards_Widget_Granted" xml:space="preserve">
+    <value>Toegestaan</value>
+  </data>
+  <data name="Dashboards_Widget_ActiveCapabilities" xml:space="preserve">
+    <value>Actieve widgetmogelijkheden</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkCapability" xml:space="preserve">
+    <value>Netwerk: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_ToolCapability" xml:space="preserve">
+    <value>Hulpprogramma: {0}</value>
+  </data>
+  <data name="Dashboards_Widget_Loading" xml:space="preserve">
+    <value>Widget laden</value>
+  </data>
+  <data name="Dashboards_Widget_Slow" xml:space="preserve">
+    <value>Deze widget doet er langer dan normaal over om te laden.</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorTitle" xml:space="preserve">
+    <value>Deze widget kan niet worden geladen</value>
+  </data>
+  <data name="Dashboards_Widget_ErrorDetail" xml:space="preserve">
+    <value>Het probleem blijft beperkt tot deze kaart.</value>
+  </data>
+  <data name="Dashboards_Widget_ShowDetails" xml:space="preserve">
+    <value>Details weergeven</value>
+  </data>
+  <data name="Dashboards_Widget_ContentUnavailable" xml:space="preserve">
+    <value>Widgetinhoud is niet beschikbaar.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnavailable" xml:space="preserve">
+    <value>De sandboxhost van de widget is niet beschikbaar.</value>
+  </data>
+  <data name="Dashboards_Widget_WebViewUnavailable" xml:space="preserve">
+    <value>Widgetinhoud vereist de Microsoft Edge WebView2 Runtime.</value>
+  </data>
+  <data name="Dashboards_Widget_RenderTimeout" xml:space="preserve">
+    <value>De widgetinhoud is niet volledig geladen. Selecteer Opnieuw proberen.</value>
+  </data>
+  <data name="Dashboards_Widget_StoppedResponding" xml:space="preserve">
+    <value>De widgetinhoud reageert herhaaldelijk niet meer. Selecteer Opnieuw proberen.</value>
+  </data>
+  <data name="Dashboards_Widget_AuthorizationFailed" xml:space="preserve">
+    <value>Widgetautorisatie is mislukt na herhaalde vernieuwingspogingen.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxOriginRequired" xml:space="preserve">
+    <value>Widgetautorisatie is mislukt na herhaalde vernieuwingspogingen. Als de gateway achter een reverse proxy of tunnel draait die de sandboxpoort van de widget niet doorstuurt, stel mcp.apps.sandboxOrigin dan in op een aparte openbare oorsprong die naar de sandboxlistener wordt gerouteerd.</value>
+  </data>
+  <data name="Dashboards_Widget_SandboxUnreachableHint" xml:space="preserve">
+    <value>De sandbox van de widget reageerde niet. Als de gateway achter een reverse proxy of tunnel draait die de sandboxpoort van de widget niet doorstuurt, stel mcp.apps.sandboxOrigin dan in op een aparte openbare oorsprong die naar de sandboxlistener wordt gerouteerd.</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApproval" xml:space="preserve">
+    <value>Goedkeuring vereist</value>
+  </data>
+  <data name="Dashboards_Widget_NeedsApprovalDetail" xml:space="preserve">
+    <value>Deze widget heeft om extra toegang gevraagd.</value>
+  </data>
+  <data name="Dashboards_Widget_NetworkAccess" xml:space="preserve">
+    <value>Netwerkoorsprongen</value>
+  </data>
+  <data name="Dashboards_Widget_HostTools" xml:space="preserve">
+    <value>Hosthulpprogramma's en -gegevens</value>
+  </data>
+  <data name="Dashboards_Widget_Rejected" xml:space="preserve">
+    <value>Toegang geweigerd</value>
+  </data>
+  <data name="Dashboards_Widget_RejectedDetail" xml:space="preserve">
+    <value>Deze widget blijft inactief totdat deze wordt verwijderd of vervangen.</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppTitle" xml:space="preserve">
+    <value>MCP-app</value>
+  </data>
+  <data name="Dashboards_Widget_McpAppDetail" xml:space="preserve">
+    <value>MCP-appwidgets zijn nog niet beschikbaar in Windows.</value>
+  </data>
+  <data name="Dashboards_Widget_DisabledPluginFormat" xml:space="preserve">
+    <value>Widget van uitgeschakelde invoegtoepassing {0}</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedTitle" xml:space="preserve">
+    <value>Widget nog niet beschikbaar in Windows</value>
+  </data>
+  <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
+    <value>{0}-widgets zijn nog niet beschikbaar in Windows.</value>
+  </data>
+  <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
+    <value>Dit rapport bevat ongeldige gegevens.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteInvalid" xml:space="preserve">
+    <value>Deze websitewidget heeft een geldig HTTPS-adres nodig.</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteOpen" xml:space="preserve">
+    <value>Website openen</value>
+  </data>
+  <data name="Command_GoToDashboards_Title" xml:space="preserve">
+    <value>Naar dashboards gaan</value>
+  </data>
+  <data name="Command_GoToDashboards_Subtitle" xml:space="preserve">
+    <value>Live borden uit je sessies</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_TitleFormat" xml:space="preserve">
+    <value>Dashboard openen: {0}</value>
+  </data>
+  <data name="Command_OpenSessionDashboard_Subtitle" xml:space="preserve">
+    <value>Sessiedashboard</value>
+  </data>
+  <data name="HubWindow_NavDashboards.Content" xml:space="preserve">
+    <value>Dashboards</value>
+  </data>
+  <data name="SessionsPage_OpenDashboard.Text" xml:space="preserve">
+    <value>Dashboard openen</value>
+  </data>
+  <data name="Dashboards_OpenAction" xml:space="preserve">
+    <value>Dashboard openen</value>
+  </data>
+  <data name="Dashboards_OpenBoardFor" xml:space="preserve">
+    <value>Dashboard openen: {0}</value>
+  </data>
+  <data name="Dashboards_NoSummary" xml:space="preserve">
+    <value>Geen samenvatting beschikbaar</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery" xml:space="preserve">
+    <value>Openen op het web</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_GalleryHint" xml:space="preserve">
+    <value>Opent Dashboards in je browser om dashboards te bewerken en widgettoegang goed te keuren.</value>
+  </data>
+  <data name="Dashboards_OpenWebGallery_BoardHint" xml:space="preserve">
+    <value>Opent de dashboardgalerie in je browser, niet dit dashboard. Zoek het daar op naam of sessiesleutel.</value>
+  </data>
+  <data name="Dashboards_MoreActions" xml:space="preserve">
+    <value>Meer opties</value>
+  </data>
+  <data name="Dashboards_CopySessionKey" xml:space="preserve">
+    <value>Sessiesleutel kopiëren</value>
+  </data>
+  <data name="Dashboards_Widget_WebsiteLinkDetail" xml:space="preserve">
+    <value>Deze website wordt geopend in je browser.</value>
+  </data>
+  <data name="Dashboards_OpenChatFor" xml:space="preserve">
+    <value>Chat openen: {0}</value>
+  </data>
+  <data name="Dashboards_FreshToday" xml:space="preserve">
+    <value>Vandaag bijgewerkt</value>
+  </data>
+  <data name="Dashboards_AgentBoards" xml:space="preserve">
+    <value>Dashboards van {0}</value>
+  </data>
+  <data name="Dashboards_ShowMore" xml:space="preserve">
+    <value>Meer tonen</value>
+  </data>
+  <data name="Dashboards_CopiedSessionKey" xml:space="preserve">
+    <value>Sessiesleutel gekopieerd</value>
+  </data>
+  <data name="Dashboards_CopyFailed" xml:space="preserve">
+    <value>De sessiesleutel kon niet worden gekopieerd.</value>
+  </data>
+  <data name="Usage_Title" xml:space="preserve"><value>Gebruik</value></data>
+  <data name="Usage_RangeFormat" xml:space="preserve"><value>{0} tot {1}</value></data>
+  <data name="Usage_RangeCaptionFormat" xml:space="preserve"><value>{0} · {1} (tijdzone)</value></data>
+  <data name="Usage_Refresh" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Usage_Refreshing" xml:space="preserve"><value>Gebruik wordt vernieuwd</value></data>
+  <data name="Usage_Export" xml:space="preserve"><value>CSV exporteren</value></data>
+  <data name="Usage_Exporting" xml:space="preserve"><value>Exporteren bezig</value></data>
+  <data name="Usage_Export_SessionsCsv" xml:space="preserve"><value>Sessies (CSV)</value></data>
+  <data name="Usage_Export_DailyCsv" xml:space="preserve"><value>Dagtotalen (CSV)</value></data>
+  <data name="Usage_Export_SavedFormat" xml:space="preserve"><value>{0} is opgeslagen.</value></data>
+  <data name="Usage_Export_Error_Offline" xml:space="preserve"><value>Maak verbinding met een gateway om gebruik te exporteren.</value></data>
+  <data name="Usage_Export_Error_Failed" xml:space="preserve"><value>Het gebruiksrapport kon niet worden gelezen of opgeslagen. Probeer het opnieuw.</value></data>
+  <data name="Usage_Export_Error_Incomplete" xml:space="preserve"><value>De gebruiksgegevens zijn onvolledig. Vernieuw en probeer het opnieuw, of verklein de periode.</value></data>
+  <data name="Usage_Export_Error_TooMany" xml:space="preserve"><value>Deze periode bevat meer sessies dan één export kan bevatten. Verklein de periode of de filters en probeer het opnieuw.</value></data>
+  <data name="Usage_ReadError_Unsupported" xml:space="preserve"><value>Deze gateway biedt dit niet.</value></data>
+  <data name="Usage_ReadError_Disconnected" xml:space="preserve"><value>De gateway is niet verbonden.</value></data>
+  <data name="Usage_ReadError_Failed" xml:space="preserve"><value>Het verzoek is mislukt.</value></data>
+  <data name="Usage_Filter_Range" xml:space="preserve"><value>Periode</value></data>
+  <data name="Usage_Filter_StartDate" xml:space="preserve"><value>Begindatum</value></data>
+  <data name="Usage_Filter_EndDate" xml:space="preserve"><value>Einddatum</value></data>
+  <data name="Usage_Filter_To" xml:space="preserve"><value>tot</value></data>
+  <data name="Usage_Filter_TimeZone" xml:space="preserve"><value>Tijdzone</value></data>
+  <data name="Usage_Filter_Scope" xml:space="preserve"><value>Bereik</value></data>
+  <data name="Usage_Filter_Show" xml:space="preserve"><value>Weergeven</value></data>
+  <data name="Usage_Preset_Today" xml:space="preserve"><value>Vandaag</value></data>
+  <data name="Usage_Preset_7d" xml:space="preserve"><value>7 dagen</value></data>
+  <data name="Usage_Preset_30d" xml:space="preserve"><value>30 dagen</value></data>
+  <data name="Usage_TimeZone_Utc" xml:space="preserve"><value>UTC</value></data>
+  <data name="Usage_Scope_Instance" xml:space="preserve"><value>Huidige instantie</value></data>
+  <data name="Usage_Scope_Family" xml:space="preserve"><value>Historische afstamming</value></data>
+  <data name="Usage_Metric_Tokens" xml:space="preserve"><value>Tokens</value></data>
+  <data name="Usage_PartialShort" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
+  <data name="Usage_PartialNote" xml:space="preserve"><value>Een deel van het gebruik wordt nog berekend, dus totalen kunnen stijgen.</value></data>
+  <data name="Usage_AtLeastFormat" xml:space="preserve"><value>≥ {0}</value></data>
+  <data name="Usage_EmptyValue" xml:space="preserve"><value>—</value></data>
+  <data name="Usage_Selected" xml:space="preserve"><value>Geselecteerd</value></data>
+  <data name="Usage_Query_Placeholder" xml:space="preserve"><value>Sessies zoeken</value></data>
+  <data name="Usage_Query_Label" xml:space="preserve"><value>Sessies filteren</value></data>
+  <data name="Usage_QueryWarnings_Title" xml:space="preserve"><value>Sommige filters zijn genegeerd</value></data>
+  <data name="Usage_Facet_agent" xml:space="preserve"><value>Agent</value></data>
+  <data name="Usage_Facet_model" xml:space="preserve"><value>Model</value></data>
+  <data name="Usage_Loading" xml:space="preserve"><value>Gebruik laden</value></data>
+  <data name="Usage_Empty_Title" xml:space="preserve"><value>Nog niets om te tellen</value></data>
+  <data name="Usage_Empty_Message" xml:space="preserve"><value>Geen gebruik in deze periode. Begin een gesprek of kies een ruimere periode om meer geschiedenis te bekijken.</value></data>
+  <data name="Usage_Forbidden_Title" xml:space="preserve"><value>Gebruik vereist leestoegang</value></data>
+  <data name="Usage_Forbidden_Message" xml:space="preserve"><value>Deze verbinding heeft geen operator.read-bereik. Koppel opnieuw met leestoegang om gebruik te zien.</value></data>
+  <data name="Usage_Error_Title" xml:space="preserve"><value>Gebruik kon niet worden geladen</value></data>
+  <data name="Usage_Error_Message" xml:space="preserve"><value>De gateway gaf geen gebruik terug. Probeer het opnieuw.</value></data>
+  <data name="Usage_Error_MessageFormat" xml:space="preserve"><value>De gateway meldde: {0}</value></data>
+  <data name="Usage_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Usage_Partial_Title" xml:space="preserve"><value>Gedeeltelijke resultaten</value></data>
+  <data name="Usage_Partial_Message" xml:space="preserve"><value>De gateway stopte eerder met lezen. Totalen bevatten wat tot nu toe is gelezen.</value></data>
+  <data name="Usage_Cache_Title" xml:space="preserve"><value>Bijwerken</value></data>
+  <data name="Usage_Cache_Checking" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Bijgewerkte totalen worden automatisch gecontroleerd.</value></data>
+  <data name="Usage_Cache_Paused" xml:space="preserve"><value>Gebruiksgegevens zijn mogelijk onvolledig. Automatische controles gepauzeerd; selecteer Vernieuwen om opnieuw te controleren.</value></data>
+  <data name="Usage_Daily_BarFormat" xml:space="preserve"><value>{0}: {1} tokens, kosten {2}</value></data>
+  <data name="Usage_Daily_PendingFormat" xml:space="preserve"><value>{0}: nog niet geladen</value></data>
+  <data name="Usage_Daily_NotLoaded" xml:space="preserve"><value>Nog niet geladen</value></data>
+  <data name="Usage_Table_Date" xml:space="preserve"><value>Datum</value></data>
+  <data name="Usage_Overview_Messages" xml:space="preserve"><value>Berichten</value></data>
+  <data name="Usage_Overview_ToolCalls" xml:space="preserve"><value>Hulpmiddelaanroepen</value></data>
+  <data name="Usage_Overview_CacheHitRate" xml:space="preserve"><value>Cache-hitratio</value></data>
+  <data name="Usage_Overview_Sessions" xml:space="preserve"><value>Sessies</value></data>
+  <data name="Usage_Overview_Errors" xml:space="preserve"><value>Fouten</value></data>
+  <data name="Usage_Overview_NoAgentData" xml:space="preserve"><value>Geen agentgegevens</value></data>
+  <data name="Usage_Overview_Unpriced" xml:space="preserve"><value>Zonder prijs</value></data>
+  <data name="Usage_Overview_ErrorsCountFormat" xml:space="preserve"><value>{0} fouten</value></data>
+  <data name="Usage_Providers_Title" xml:space="preserve"><value>Providerlimieten</value></data>
+  <data name="Usage_Providers_Loading" xml:space="preserve"><value>Gebruik per aanbieder laden</value></data>
+  <data name="Usage_Providers_Empty" xml:space="preserve"><value>Geen aanbieders melden abonnementsgebruik.</value></data>
+  <data name="Usage_Providers_Unavailable" xml:space="preserve"><value>Gebruik per aanbieder is niet beschikbaar.</value></data>
+  <data name="Usage_Providers_Refreshing" xml:space="preserve"><value>Gebruik per aanbieder wordt vernieuwd.</value></data>
+  <data name="Usage_Providers_NoQuota" xml:space="preserve"><value>Geen quotumgegevens gemeld.</value></data>
+  <data name="Usage_Providers_BudgetFormat" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Usage_Providers_CreditsFormat" xml:space="preserve"><value>{0} {1} (tegoed)</value></data>
+  <data name="Usage_Sessions_Title" xml:space="preserve"><value>Sessies</value></data>
+  <data name="Usage_Sessions_Sort" xml:space="preserve"><value>Sessies sorteren</value></data>
+  <data name="Usage_Sort_Cost" xml:space="preserve"><value>Hoogste kosten</value></data>
+  <data name="Usage_Sort_Errors" xml:space="preserve"><value>Meeste fouten</value></data>
+  <data name="Usage_Sort_Messages" xml:space="preserve"><value>Meeste berichten</value></data>
+  <data name="Usage_Sort_Recent" xml:space="preserve"><value>Meest recent</value></data>
+  <data name="Usage_Sort_Tokens" xml:space="preserve"><value>Meeste tokens</value></data>
+  <data name="Usage_Sessions_NoneInRange" xml:space="preserve"><value>Geen sessies in de periode</value></data>
+  <data name="Usage_Sessions_PageFormat" xml:space="preserve"><value>{0} tot {1} van {2}</value></data>
+  <data name="Usage_Sessions_PreviousPage" xml:space="preserve"><value>Vorige pagina</value></data>
+  <data name="Usage_Sessions_NextPage" xml:space="preserve"><value>Volgende pagina</value></data>
+  <data name="Usage_Sessions_Computing" xml:space="preserve"><value>Wordt berekend</value></data>
+  <data name="Usage_Sessions_SelectHint" xml:space="preserve"><value>Selecteer om details te bekijken.</value></data>
+  <data name="Usage_Details_AccessibleFormat" xml:space="preserve"><value>Details van {0}</value></data>
+  <data name="Usage_Details_Summary" xml:space="preserve"><value>sessieoverzicht</value></data>
+  <data name="Usage_Details_LoadFailedTitle" xml:space="preserve"><value>Sommige details konden niet worden geladen</value></data>
+  <data name="Usage_Details_LoadFailedFormat" xml:space="preserve"><value>Kan {0} niet laden: {1}</value></data>
+  <data name="Usage_Details_TokenSplitFormat" xml:space="preserve"><value>{0} in · {1} uit</value></data>
+  <data name="Usage_Details_MissingCostFormat" xml:space="preserve"><value>{0} items zonder prijs</value></data>
+  <data name="Usage_Details_Duration" xml:space="preserve"><value>Duur</value></data>
+  <data name="Usage_Overview_ErrorsCountFormatOne" xml:space="preserve"><value>{0} fout</value></data>
+  <data name="Usage_Details_MissingCostFormatOne" xml:space="preserve"><value>{0} item zonder prijs</value></data>
+  <data name="Usage_Sessions_NewestFirst" xml:space="preserve"><value>Nieuwste eerst</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormat" xml:space="preserve"><value>{0} sessies in deze periode</value></data>
+  <data name="Usage_Filter_SessionsInRangeFormatOne" xml:space="preserve"><value>{0} sessie in deze periode</value></data>
+  <data name="Usage_Summary_EstimatedCost" xml:space="preserve"><value>Geschatte kosten</value></data>
+  <data name="Usage_MissingCostNoteFormat" xml:space="preserve"><value>{0} gebruiksitems hebben geen bekende prijs, dus de geschatte kosten kunnen lager zijn dan de werkelijke.</value></data>
+  <data name="Usage_MissingCostNoteFormatOne" xml:space="preserve"><value>{0} gebruiksitem heeft geen bekende prijs, dus de geschatte kosten kunnen lager zijn dan de werkelijke.</value></data>
+  <data name="Usage_OpenWeb" xml:space="preserve"><value>Openen op het web</value></data>
+  <data name="Usage_OpenWebHint" xml:space="preserve"><value>Opent de pagina Gebruik van de gateway in je browser voor tijdlijnen, transcripties en andere gedetailleerde analyses. Je periode, filters en geselecteerde sessie worden niet overgenomen.</value></data>
+  <data name="Usage_Sessions_TruncatedFormat" xml:space="preserve"><value>{0} van {1} geladen; de totalen bevatten ze allemaal.</value></data>
+  <data name="Usage_Contributors_Title" xml:space="preserve"><value>Gebruiksverdeling</value></data>
+  <data name="Usage_Contributors_Label" xml:space="preserve"><value>Type verbruiker</value></data>
+  <data name="Usage_Contributors_Agent" xml:space="preserve"><value>Agents</value></data>
+  <data name="Usage_Contributors_Model" xml:space="preserve"><value>Modellen</value></data>
+  <data name="Usage_Contributors_Provider" xml:space="preserve"><value>Aanbieders</value></data>
+  <data name="Usage_Unsupported_Title" xml:space="preserve"><value>Gebruik is niet beschikbaar op deze gateway</value></data>
+  <data name="Usage_Unsupported_Message" xml:space="preserve"><value>Werk de gateway bij om hier kosten, tokens en sessies te zien.</value></data>
+  <data name="Usage_Sessions_LimitReachedFormat" xml:space="preserve"><value>De eerste {0} zijn geladen; er kunnen er meer zijn.</value></data>
+  <data name="Usage_AllowanceWarningFormat" xml:space="preserve"><value>{0}-limiet is {1} gebruikt</value></data>
+  <data name="Usage_Automation" xml:space="preserve"><value>automatisering</value></data>
+  <data name="Usage_BusiestDayFormat" xml:space="preserve"><value>Drukste dag: {0}, {1}</value></data>
+  <data name="Usage_CacheWrittenFormat" xml:space="preserve"><value>cache gelezen · {0} geschreven</value></data>
+  <data name="Usage_Chart" xml:space="preserve"><value>Grafiek</value></data>
+  <data name="Usage_ChartView" xml:space="preserve"><value>Grafiek of tabel</value></data>
+  <data name="Usage_ComputingFormat" xml:space="preserve"><value>Er worden nog {0} sessies berekend</value></data>
+  <data name="Usage_CostliestLoaded" xml:space="preserve"><value>Duurste geladen sessie</value></data>
+  <data name="Usage_DailyAverageFormat" xml:space="preserve"><value>Daggemiddelde {0}</value></data>
+  <data name="Usage_Detail_CacheSplit" xml:space="preserve"><value>Cache gelezen · geschreven</value></data>
+  <data name="Usage_Detail_InputOutput" xml:space="preserve"><value>Invoer · uitvoer</value></data>
+  <data name="Usage_Detail_ShareFormat" xml:space="preserve"><value>{0} van de kosten {1}</value></data>
+  <data name="Usage_Detail_ToolsFormat" xml:space="preserve"><value>{0} ({1} uniek)</value></data>
+  <data name="Usage_FromAutomation" xml:space="preserve"><value>van een automatisering</value></data>
+  <data name="Usage_Highlights" xml:space="preserve"><value>Hoogtepunten</value></data>
+  <data name="Usage_LastKnownFormat" xml:space="preserve"><value>Laatst bekend · {0}</value></data>
+  <data name="Usage_LoadedSessions" xml:space="preserve"><value>Geladen sessies</value></data>
+  <data name="Usage_Mast_30d" xml:space="preserve"><value>in de afgelopen 30 dagen</value></data>
+  <data name="Usage_Mast_7d" xml:space="preserve"><value>in de afgelopen 7 dagen</value></data>
+  <data name="Usage_Mast_Today" xml:space="preserve"><value>vandaag tot nu toe</value></data>
+  <data name="Usage_NoLoadedSessions" xml:space="preserve"><value>Geen in de geladen sessies.</value></data>
+  <data name="Usage_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Usage_OpenChatForFormat" xml:space="preserve"><value>Chat openen: {0}</value></data>
+  <data name="Usage_Options" xml:space="preserve"><value>Opties</value></data>
+  <data name="Usage_Options_LocalFormat" xml:space="preserve"><value>Lokale tijd ({0})</value></data>
+  <data name="Usage_OtherFormat" xml:space="preserve"><value>Overige ({0})</value></data>
+  <data name="Usage_PerDay" xml:space="preserve"><value>Dagelijks gebruik</value></data>
+  <data name="Usage_NoReportedDates" xml:space="preserve"><value>Geen gerapporteerde datums</value></data>
+  <data name="Usage_Hero_MostlyFormat" xml:space="preserve"><value>Vooral {0}</value></data>
+  <data name="Usage_Hero_TopModelFormat" xml:space="preserve"><value>Meest gebruikt model: {0}</value></data>
+  <data name="Usage_NearLimit" xml:space="preserve"><value>Bijna aan limiet</value></data>
+  <data name="Usage_ReportedDaysFormat" xml:space="preserve"><value>{0} dagen gerapporteerd</value></data>
+  <data name="Usage_Sessions_ShownLoadedFormat" xml:space="preserve"><value>{0} getoond · {1} geladen</value></data>
+  <data name="Usage_Preset_Custom" xml:space="preserve"><value>Aangepast</value></data>
+  <data name="Usage_ResetAtFormat" xml:space="preserve"><value>wordt hersteld op {0}</value></data>
+  <data name="Usage_SeeUsing" xml:space="preserve"><value>Bekijken wat het gebruikt</value></data>
+  <data name="Usage_SeeUsingProviderFormat" xml:space="preserve"><value>Bekijken wat {0} gebruikt</value></data>
+  <data name="Usage_ShowLess" xml:space="preserve"><value>Minder weergeven</value></data>
+  <data name="Usage_ShowMoreFormat" xml:space="preserve"><value>Nog {0} weergeven</value></data>
+  <data name="Usage_ShowMoreLoaded" xml:space="preserve"><value>Meer geladen sessies weergeven</value></data>
+  <data name="Usage_ShowOnlyFormat" xml:space="preserve"><value>Alleen {0} weergeven</value></data>
+  <data name="Usage_Table" xml:space="preserve"><value>Tabel</value></data>
+  <data name="Usage_NoProviderUsageFormat" xml:space="preserve"><value>Geen totaalgebruik gemeld voor {0}.</value></data>
+  <data name="Usage_Sessions_PartialLoadedFormat" xml:space="preserve"><value>{0} van {1} geladen; de totalen zijn nog onvolledig.</value></data>
+  <data name="Usage_Activity_MessageSplitFormat" xml:space="preserve"><value>{0} van jou, {1} van agents</value></data>
+  <data name="Usage_Export_BlockedTitle" xml:space="preserve"><value>Sessies kunnen nog niet worden geëxporteerd</value></data>
+  <data name="Usage_Export_BlockedMessage" xml:space="preserve"><value>Sommige sessies in dit bereik zijn niet geladen of worden nog geteld. Het bestand zou onvolledig zijn.</value></data>
+  <data name="Usage_Export_CoverageFormat" xml:space="preserve"><value>{0} geladen van {1}</value></data>
+  <data name="Usage_Export_CoverageUnknownFormat" xml:space="preserve"><value>{0} geladen; totaal niet gemeld</value></data>
+  <data name="Usage_Export_DailyAlternative" xml:space="preserve"><value>Dagtotalen exporteren</value></data>
+  <data name="Usage_Export_OpenFolder" xml:space="preserve"><value>Map openen</value></data>
+  <data name="Usage_Export_Error_OpenFolder" xml:space="preserve"><value>Windows kon de exportmap niet openen.</value></data>
+  <data name="Usage_Export_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Usage_Export_Range7d" xml:space="preserve"><value>Afgelopen 7 dagen</value></data>
+  <data name="Usage_Export_Range30d" xml:space="preserve"><value>Afgelopen 30 dagen</value></data>
 </root>

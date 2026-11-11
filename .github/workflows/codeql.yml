@@ -30,6 +30,8 @@ on:
       - "NuGet.Config"
       - "package.json"
       - "package-lock.json"
+      - "!src/**/*.md"
+      - "!tests/**/*.md"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master]
@@ -48,6 +50,8 @@ on:
       - "NuGet.Config"
       - "package.json"
       - "package-lock.json"
+      - "!src/**/*.md"
+      - "!tests/**/*.md"
   schedule:
     - cron: "29 */6 * * *"
 
@@ -78,7 +82,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/Initialize-ReactorPackages.ps1
+          dotnet restore
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

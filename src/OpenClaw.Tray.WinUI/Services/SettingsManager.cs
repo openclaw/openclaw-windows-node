@@ -7,11 +7,19 @@ using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mxc;
+using OpenClawTray.Presentation;
 
 namespace OpenClawTray.Services;
 
 internal sealed class SettingsPersistenceConflictException()
     : InvalidOperationException("Settings changed in another writer. Reload before saving.");
+
+/// <summary>Immutable presentation values and version captured by a successful settings commit.</summary>
+public sealed class SettingsSavedEventArgs(SettingsSnapshot snapshot) : EventArgs
+{
+    public SettingsSnapshot Snapshot { get; } = snapshot;
+}
 
 /// <summary>
 /// Manages application settings with JSON persistence.
@@ -36,14 +44,16 @@ public class SettingsManager
     public string SettingsDirectory => _settingsDirectory;
 
     /// <summary>Raised after settings are persisted to disk.</summary>
-    public event EventHandler? Saved;
+    public event EventHandler<SettingsSavedEventArgs>? Saved;
 
     internal event EventHandler? PersistenceStateChanged;
     internal bool HasPersistenceConflict => _hasPersistenceConflict;
     private volatile bool _hasPersistenceConflict;
 
     private readonly object _saveLock = new();
+    private long _saveVersion;
     private SettingsData _data = CreateDefaultData();
+    public NodeSandboxPolicyStore SandboxPolicies { get; } = new(CreateDefaultData());
     private volatile bool _persistedSystemRunEnabled;
     private string? _preservedElevenLabsCipher;
     private string? _preservedMiniMaxCipher;
@@ -169,6 +179,8 @@ public class SettingsManager
     public bool VoiceTtsEnabled { get => _data.VoiceTtsEnabled; set => _data = _data with { VoiceTtsEnabled = value }; }
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get => _data.ShowChatToolCalls; set => _data = _data with { ShowChatToolCalls = value }; }
+    /// <summary>Show supplied assistant reasoning in the chat timeline.</summary>
+    public bool ShowChatThinking { get => _data.ShowChatThinking; set => _data = _data with { ShowChatThinking = value }; }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
     public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
@@ -226,14 +238,18 @@ public class SettingsManager
         ClonePinnedPages(_data.PinnedPagesByGateway)
             .ToImmutableDictionary(entry => entry.Key, entry => entry.Value.ToImmutableArray(), StringComparer.Ordinal);
     public System.Collections.Immutable.ImmutableArray<string> GetPinnedPages(string scopeKey) =>
-        PinnedPagesByGateway.TryGetValue(OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey), out var pins) ? pins : [];
+        PinnedPagesByGateway.TryGetValue(OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey), out var pins)
+            ? pins : OpenClawTray.Presentation.PinnedPages.DefaultPins;
     public void TogglePinnedPage(string scopeKey, string tag, bool pinned)
     {
+        if (OpenClawTray.Presentation.PinnedPages.Find(tag) is null)
+            return;
         var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
         var all = ClonePinnedPages(_data.PinnedPagesByGateway);
-        all.TryGetValue(key, out var current);
+        IEnumerable<string> current = all.TryGetValue(key, out var stored)
+            ? stored : OpenClawTray.Presentation.PinnedPages.DefaultPins;
         var next = OpenClawTray.Presentation.PinnedPages.Toggle(current, tag, pinned);
-        if (next.IsEmpty) all.Remove(key); else all[key] = [.. next];
+        all[key] = [.. next];
         _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
     }
     public void SetPinnedPages(string scopeKey, IEnumerable<string>? tags)
@@ -241,7 +257,7 @@ public class SettingsManager
         var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
         var all = ClonePinnedPages(_data.PinnedPagesByGateway);
         var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
-        if (normalized.IsEmpty) all.Remove(key); else all[key] = [.. normalized];
+        all[key] = [.. normalized];
         _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
     }
     private static Dictionary<string, List<string>>? NullIfEmpty(Dictionary<string, List<string>> pins) =>
@@ -255,7 +271,7 @@ public class SettingsManager
         {
             if (string.IsNullOrWhiteSpace(key)) continue;
             var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
-            if (!normalized.IsEmpty) clone[key.Trim()] = [.. normalized];
+            clone[key.Trim()] = [.. normalized];
         }
         return clone;
     }
@@ -286,6 +302,8 @@ public class SettingsManager
     }
     public int SandboxTimeoutMs { get => _data.SandboxTimeoutMs > 0 ? _data.SandboxTimeoutMs : 30_000; set => _data = _data with { SandboxTimeoutMs = value }; }
     public long SandboxMaxOutputBytes { get => _data.SandboxMaxOutputBytes > 0 ? _data.SandboxMaxOutputBytes : 4 * 1024 * 1024; set => _data = _data with { SandboxMaxOutputBytes = value }; }
+    public string? SandboxUploadStagingPath { get => _data.SandboxUploadStagingPath; set => _data = _data with { SandboxUploadStagingPath = value }; }
+    public long SandboxMaxTransferBytes { get => _data.SandboxMaxTransferBytes; set => _data = _data with { SandboxMaxTransferBytes = value }; }
 
     public SettingsManager() : this(GetDefaultSettingsDirectory())
     {
@@ -336,6 +354,7 @@ public class SettingsManager
                 }
             }
             _persistedSystemRunEnabled = _data.NodeSystemRunEnabled;
+            SandboxPolicies.Persist(_data, () => { });
             loadSucceeded = true;
         }
         catch (Exception ex)
@@ -484,6 +503,8 @@ public class SettingsManager
                     ? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders : null,
             SandboxTimeoutMs = loaded.SandboxTimeoutMs > 0 ? loaded.SandboxTimeoutMs : defaults.SandboxTimeoutMs,
             SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes > 0 ? loaded.SandboxMaxOutputBytes : defaults.SandboxMaxOutputBytes,
+            SandboxMaxTransferBytes = loaded.SandboxMaxTransferBytes is > 0 and <= OpenClaw.Shared.FileTransfer.FileLimits.MaximumTransferBytes
+                ? loaded.SandboxMaxTransferBytes : defaults.SandboxMaxTransferBytes,
             McpOnlyMode = null
         };
 
@@ -641,6 +662,8 @@ public class SettingsManager
         SandboxCustomFolders = SandboxCustomFolders.Count == 0 ? null : CloneSandboxCustomFolders(SandboxCustomFolders),
         SandboxTimeoutMs = SandboxTimeoutMs,
         SandboxMaxOutputBytes = SandboxMaxOutputBytes,
+        SandboxUploadStagingPath = SandboxUploadStagingPath,
+        SandboxMaxTransferBytes = SandboxMaxTransferBytes,
         McpOnlyMode = null
     };
 
@@ -670,29 +693,55 @@ public class SettingsManager
 
     internal void SaveOrThrow()
     {
-        lock (_saveLock)
-        {
-            try
-            {
-                SaveCore();
-                SetPersistenceConflict(false);
-            }
-            catch (SettingsPersistenceConflictException)
-            {
-                SetPersistenceConflict(true);
-                throw;
-            }
-        }
+        PersistAndNotify(null);
     }
 
-    private void SetPersistenceConflict(bool conflict)
+    internal SettingsSnapshot CapturePresentationSnapshot()
     {
         lock (_saveLock)
+            return SettingsSnapshot.FromData(ToSettingsData(), _saveVersion);
+    }
+
+    private void PersistAndNotify(Action? edit)
+    {
+        Exception? failure = null;
+        SettingsSavedEventArgs? notification = null;
+        var notifyConflict = false;
+        lock (_saveLock)
         {
-            if (!conflict && !_hasPersistenceConflict) return;
-            _hasPersistenceConflict = conflict;
+            var before = edit is null ? null : ToSettingsData();
+            var hadPersistedGatewayUrl = HasPersistedGatewayUrl;
+            try
+            {
+                edit?.Invoke();
+                notification = new SettingsSavedEventArgs(SaveCore());
+                notifyConflict = _hasPersistenceConflict;
+                _hasPersistenceConflict = false;
+            }
+            catch (Exception ex)
+            {
+                if (before is not null)
+                {
+                    _data = before;
+                    HasPersistedGatewayUrl = hadPersistedGatewayUrl && !string.IsNullOrWhiteSpace(before.GatewayUrl);
+                }
+                if (ex is SettingsPersistenceConflictException)
+                {
+                    _hasPersistenceConflict = true;
+                    notifyConflict = true;
+                }
+                failure = ex;
+            }
         }
-        NotifyPersistenceStateChanged();
+        // Persistence and policy publication precede every external notification.
+        if (notifyConflict) NotifyPersistenceStateChanged();
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        Logger.Info("Settings saved");
+        try { Saved?.Invoke(this, notification!); }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
+        }
     }
 
     private void NotifyPersistenceStateChanged()
@@ -704,7 +753,7 @@ public class SettingsManager
         }
     }
 
-    private void SaveCore()
+    private SettingsSnapshot SaveCore()
     {
         lock (_saveLock)
         {
@@ -721,6 +770,8 @@ public class SettingsManager
             OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
 
             var data = ToSettingsData();
+            var sandboxSnapshot = MxcRequestBuilder.Snapshot(data);
+            var notificationSnapshot = SettingsSnapshot.FromData(data, _saveVersion + 1);
             // Apply DPAPI protection to the API key for on-disk storage only.
             // A failed decrypt keeps the original ciphertext so this save cannot
             // replace it with null.
@@ -757,51 +808,28 @@ public class SettingsManager
             try
             {
                 File.WriteAllText(temp, json);
-                File.Move(temp, _settingsFilePath, overwrite: true);
-                _persistedJson = json;
-                _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
+                SandboxPolicies.Persist(sandboxSnapshot, () =>
+                {
+                    File.Move(temp, _settingsFilePath, overwrite: true);
+                    _persistedJson = json;
+                    _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
+                    _saveVersion = notificationSnapshot.Version;
+                });
             }
             finally
             {
                 if (File.Exists(temp)) File.Delete(temp);
             }
+            return notificationSnapshot;
             }
 
-            Logger.Info("Settings saved");
-            try
-            {
-                Saved?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
-            }
         }
 
     }
 
     internal void UpdateAndSave(Action edit)
     {
-        lock (_saveLock)
-        {
-            var before = ToSettingsData();
-            var hadPersistedGatewayUrl = HasPersistedGatewayUrl;
-            try
-            {
-                edit();
-                SaveOrThrow();
-            }
-            catch
-            {
-                // The GatewayUrl setter stores explicit-target provenance beside
-                // SettingsData. Restoring the record alone leaves that flag set,
-                // and the getter then presents the setup default as a saved gateway.
-                _data = before;
-                HasPersistedGatewayUrl = hadPersistedGatewayUrl &&
-                    !string.IsNullOrWhiteSpace(before.GatewayUrl);
-                throw;
-            }
-        }
+        PersistAndNotify(edit);
     }
 
     private readonly record struct LoadedSettingSecret(string? Plaintext, string? Preserved);

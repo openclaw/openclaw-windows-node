@@ -12,6 +12,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     internal const string ProfileDirectoryPrefix = "search-browser-";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
+    private const int SharingViolation = unchecked((int)0x80070020);
     private readonly Process _process;
     private readonly Task _errors;
     private long _errorCharacters;
@@ -53,20 +54,11 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
         {
             using var timeout = new CancellationTokenSource(Timeout);
             var portFile = Path.Combine(profile, "DevToolsActivePort");
-            while (!File.Exists(portFile))
-            {
-                if (browser._process.HasExited) throw new InvalidOperationException("The owned browser exited before CDP was ready.");
-                await Task.Delay(PollInterval, timeout.Token);
-            }
-            var endpoint = await File.ReadAllLinesAsync(portFile, timeout.Token);
-            if (endpoint.Length < 2 || !endpoint[1].StartsWith("/devtools/browser/", StringComparison.Ordinal))
-                throw new InvalidDataException("The owned browser did not publish a complete debugger endpoint.");
-            var port = int.Parse(endpoint[0],
-                System.Globalization.CultureInfo.InvariantCulture);
+            var endpoint = await WaitForEndpointAsync(portFile, () => browser._process.HasExited, timeout.Token);
             stage = "initial page discovery";
             using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
             using var http = new HttpClient(handler);
-            var debuggerOrigin = new Uri($"http://127.0.0.1:{port}");
+            var debuggerOrigin = new Uri($"http://127.0.0.1:{endpoint.Port}");
             var pageEndpoint = await WaitForPageEndpointAsync(http, debuggerOrigin, timeout.Token);
             // The command-line about:blank page belongs to this unique process/profile.
             // Its page endpoint avoids a second target and browser-level startup commands.
@@ -108,6 +100,37 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
                     !endpoint.AbsolutePath.StartsWith("/devtools/page/", StringComparison.Ordinal))
                     throw new InvalidDataException("The owned page published an unexpected debugger endpoint.");
                 return endpoint;
+            }
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+    }
+
+    internal static async Task<Uri> WaitForEndpointAsync(
+        string portFile, Func<bool> hasExited, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (hasExited()) throw new InvalidOperationException("The owned browser exited before CDP was ready.");
+            string[] endpoint = [];
+            try
+            {
+                endpoint = await File.ReadAllLinesAsync(portFile, cancellationToken);
+            }
+            catch (FileNotFoundException)
+            {
+                // Chromium can create the file before it has finished publishing the endpoint.
+            }
+            catch (IOException error) when (error.HResult == SharingViolation)
+            {
+                // Keep the existing startup deadline while the publisher still owns its write handle.
+            }
+            if (endpoint.Length >= 2)
+            {
+                if (!endpoint[1].StartsWith("/devtools/browser/", StringComparison.Ordinal))
+                    throw new InvalidDataException("The owned browser did not publish a complete debugger endpoint.");
+                var port = int.Parse(endpoint[0], System.Globalization.CultureInfo.InvariantCulture);
+                return new Uri($"ws://127.0.0.1:{port}{endpoint[1]}");
             }
             await Task.Delay(PollInterval, cancellationToken);
         }

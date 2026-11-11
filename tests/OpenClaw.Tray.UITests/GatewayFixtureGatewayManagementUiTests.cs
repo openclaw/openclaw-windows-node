@@ -40,14 +40,17 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(heading);
             var setup = FindById(run, "OpenLocalGatewaySetupButton");
             Assert.NotNull(setup);
-            var developer = window.FindFirst(TreeScope.Descendants, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text),
-                new PropertyCondition(AutomationElement.NameProperty, "Developer")));
-            Assert.NotNull(developer);
-            await ScrollSettingsSectionIntoViewAsync(run, heading, developer);
+            if (hasWsl)
+            {
+                await WaitUiAsync(run, () => FindById(run, "RemoveLocalGatewayButton") is not null,
+                    "managed WSL removal action loaded");
+            }
+            var sectionEnd = hasWsl ? FindById(run, "RemoveLocalGatewayButton") : setup;
+            Assert.NotNull(sectionEnd);
+            await ScrollSettingsSectionIntoViewAsync(run, heading, sectionEnd);
             await WaitUiAsync(run, () => !heading.Current.IsOffscreen && !setup.Current.IsOffscreen,
                 "Local Gateway heading and setup action visible");
-            var asserted = new List<AutomationElement> { heading, setup, developer };
+            var asserted = new List<AutomationElement> { heading, setup };
             // Onboarding remains an active-WSL action. Coexistence exposes removal,
             // not onboarding of the currently selected native Gateway.
             var onboard = FindById(run, "OpenClawOnboardButton");
@@ -123,14 +126,14 @@ public sealed partial class GatewayFixtureUiTests
             if (!scroll.Current.VerticallyScrollable)
                 return;
             var scrollOwner = parent;
-            // Observe the section's trailing heading instead of deriving offsets
-            // from clipped UIA bounds, which differ with the mounted WSL cards.
+            // Use the final Gateway action as the scroll anchor rather than an
+            // unrelated following section, accounting for the mounted WSL cards.
             await WaitUiAsync(run, () =>
             {
                 var viewport = scrollOwner.Current.BoundingRectangle;
                 var end = sectionEnd.Current.BoundingRectangle;
                 var headingHeight = sectionStart.Current.BoundingRectangle.Height;
-                // UIA clips text bounds: a one-pixel sliver is not a visible heading.
+                // UIA clips element bounds: a one-pixel sliver is not a visible action.
                 if (!sectionEnd.Current.IsOffscreen && headingHeight > 0 && end.Height >= headingHeight
                     && end.Top >= viewport.Top && end.Bottom + headingHeight <= viewport.Bottom)
                     return true;
@@ -138,7 +141,7 @@ public sealed partial class GatewayFixtureUiTests
                     "Reached the end of Settings without revealing the complete Gateway section.");
                 scroll.Scroll(ScrollAmount.NoAmount, ScrollAmount.SmallIncrement);
                 return false;
-            }, "complete Gateway section through the Developer heading visible");
+            }, "complete Local Gateway section visible");
             return;
         }
         throw new InvalidOperationException("The mounted Settings section has no accessible scroll owner.");

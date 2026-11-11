@@ -370,7 +370,9 @@ public sealed class MxcSetupAndConnectTests
         var gateway = _fixture.ReadActiveGatewayRecord();
         var env = GatewayTokenEnv(gateway.SharedGatewayToken);
         var nodeId = _fixture.ReadActiveGatewayDeviceId();
-        const string commandText = "echo START && " + ProofExecutable;
+        var proofImage = Path.Combine(Environment.SystemDirectory, ProofExecutable);
+        Assert.True(File.Exists(proofImage), "The child-spawn proof executable must exist.");
+        var commandText = $"echo START && \"{proofImage}\"";
         var invokeParams = JsonSerializer.Serialize(new
         {
             nodeId,
