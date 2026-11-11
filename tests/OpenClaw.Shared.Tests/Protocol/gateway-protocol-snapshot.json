@@ -131,7 +131,7 @@
         "key", "model", "thinkingLevel", "fastMode", "verboseLevel", "traceLevel",
         "reasoningLevel", "responseUsage", "elevatedLevel", "execHost", "execSecurity",
         "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "pinned",
-        "unread", "archived", "expectedMarkedUnreadAt"
+        "unread", "archived", "expectedMarkedUnreadAt", "expectedSessionId"
       ],
       "requestFieldsSource": "ToPayload(string key",
       "_note": "Extended field set built by SessionPatch.ToPayload (strict additionalProperties:false upstream). The exact wire key allowlist is also asserted at runtime by GatewayProtocolModelsTests.SessionPatch_ToPayload_EmitsOnlyKnownGatewaySchemaFields.",

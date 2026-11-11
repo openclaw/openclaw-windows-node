@@ -6,6 +6,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
@@ -388,7 +389,8 @@ public sealed partial class SessionsPage : Page
         ArchivedList.IsEnabled = false;
         try
         {
-            await operation.PatchAsync(key, new SessionPatch { Archived = false });
+            var sessionId = _archived.Sessions.FirstOrDefault(session => session.Key == key)?.SessionId;
+            await operation.PatchAsync(key, WorkspaceSessionMenu.ArchivePatch(false, sessionId));
             await client.RequestSessionsAsync();
             if (operation.IsCurrent)
                 await _archived.RefreshAsync(client);

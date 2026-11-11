@@ -105,6 +105,18 @@ public sealed class WorkspaceSessionMenuTests
         Assert.True(guarded.HasChanges);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ArchivePatch_ArchivesOrRestoresAndNamesTheObservedSession(bool archive)
+    {
+        var patch = WorkspaceSessionMenu.ArchivePatch(archive, "session-1");
+
+        Assert.Equal(archive, patch.Archived.Value);
+        Assert.Equal("session-1", patch.ExpectedSessionId);
+        Assert.True(patch.HasChanges);
+    }
+
     [Fact]
     public void ForkRequest_SendsForkFromOnlyForActiveRun()
     {
