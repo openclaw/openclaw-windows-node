@@ -104,9 +104,7 @@ internal static class SessionsHubWorktreesView
             sections.Add(WorktreeGroup(context, T("WorktreesActiveGroup"), active, SessionTitle));
         if (removed.Length > 0)
             sections.Add(WorktreeGroup(context, T("WorktreesRemovedGroup"), removed, SessionTitle));
-        return VStack(18, sections.ToArray())
-                .WithTransitions(new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition { IsStaggeringEnabled = true },
-                    new Microsoft.UI.Xaml.Media.Animation.RepositionThemeTransition())
+        return PageHero.WithMotion(VStack(18, sections.ToArray()), context.ReducedMotion)
                 .Padding(0, 0, 12, 8)
             .AutomationId("SessionsHubWorktreeList");
     }

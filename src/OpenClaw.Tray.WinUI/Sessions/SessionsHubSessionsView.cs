@@ -684,22 +684,19 @@ internal static class SessionsHubSessionsView
                 colorId is null ? Theme.SecondaryText : SessionsHubView.Strong(colorId)).VAlign(VerticalAlignment.Center));
         titleLine.Add(TextBlock(title).FontSize(14).FontWeight(row.Unread ? FontWeights.SemiBold : FontWeights.Normal)
             .TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center));
+        Element? stoppedBadge = null;
         if (SessionsHubPresentation.HasStoppedWithError(row))
         {
             var error = string.IsNullOrWhiteSpace(row.LastRunError) ? T("NeedsAttentionFallback") : row.LastRunError!;
-            var stoppedBadge = Border(TextBlock(T("StoppedWithError")).FontSize(12)
-                    .Foreground(Theme.Ref("SystemFillColorCriticalBrush")))
-                .Background(Theme.Ref("SystemFillColorCriticalBackgroundBrush"))
-                .CornerRadius(4)
-                .Padding(6, 1)
-                .VAlign(VerticalAlignment.Center)
-                .ToolTip(error)
-                .AutomationName(T("StoppedWithError"))
-                .AutomationId("SessionsHubStoppedWithError:" + row.Key);
-            if (new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
-                stoppedBadge = stoppedBadge.WithTransitions(
-                    new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition());
-            titleLine.Add(stoppedBadge);
+            stoppedBadge = PageHero.AttentionBadge("SessionsHubStoppedWithError:" + row.Key, T("StoppedWithError"),
+                    error, FluentIconCatalog.StatusErr, PageHeroTone.Critical, context.ReducedMotion)
+                .VAlign(VerticalAlignment.Center);
+            // Below Wide, the title shares its line with status and actions, so the badge gets its own line.
+            if (context.IsWide)
+            {
+                titleLine.Add(stoppedBadge);
+                stoppedBadge = null;
+            }
         }
         if (row.Pinned)
             titleLine.Add(SessionsHubView.Glyph(FluentIconCatalog.Pin, 12, SessionsHubView.Strong("yellow")).VAlign(VerticalAlignment.Center));
@@ -743,6 +740,7 @@ internal static class SessionsHubSessionsView
                     Leading(row, agent, display.AgentId ?? row.Key, tone).Grid(column: 0),
                     VStack(3,
                             HStack(8, titleLine.ToArray()),
+                            stoppedBadge is null ? Empty() : stoppedBadge.HAlign(HorizontalAlignment.Left).Margin(0, 2, 0, 2),
                             HStack(6, meta.ToArray()))
                         .VAlign(VerticalAlignment.Center).Margin(12, 0, 0, 0).Grid(column: 1))
             .HAlign(HorizontalAlignment.Stretch)

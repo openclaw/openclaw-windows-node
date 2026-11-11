@@ -38,12 +38,14 @@ internal static class SessionsHubPresentation
     public static string AbsoluteTime(DateTime? utc) =>
         utc is { } value && value > DateTime.UnixEpoch ? value.ToLocalTime().ToString("g") : T("NotAvailable");
 
-    public enum StatusTone { Working, Attention, Ready, Unknown }
+    /// <summary>Time only for today, so the disconnected hero reads as a recent snapshot; otherwise date and time.</summary>
+    public static string LastSeenTime(DateTime utc)
+    {
+        var local = utc.ToLocalTime();
+        return local.Date == DateTime.Now.Date ? local.ToString("t") : local.ToString("g");
+    }
 
-    /// <summary>Attention membership comes only from the connected Gateway's tracked feed, never the inventory query.</summary>
-    public static IEnumerable<SessionInfo> AttentionRows(SessionsHubState state) => state.IsConnected
-        ? state.TrackedRows.Where(row => !row.Archived && Status(row).Tone == StatusTone.Attention)
-        : Enumerable.Empty<SessionInfo>();
+    public enum StatusTone { Working, Attention, Ready, Unknown }
 
     public static (string Label, StatusTone Tone) Status(SessionInfo row)
     {
@@ -219,7 +221,7 @@ internal static class SessionsHubPresentation
         if (!state.IsConnected)
         {
             return state.LastLoadedAtUtc is { } lastLoadedAt
-                ? (F("HeroSessionsLastSeenAt", AbsoluteTime(lastLoadedAt)), T("HeroSessionsDisconnectedDetail"))
+                ? (F("HeroSessionsLastSeenAt", LastSeenTime(lastLoadedAt)), T("HeroSessionsDisconnectedDetail"))
                 : (T("HeroSessionsDisconnected"), T("HeroSessionsDisconnectedDetail"));
         }
 

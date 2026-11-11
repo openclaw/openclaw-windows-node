@@ -105,21 +105,21 @@ public sealed class WorkspaceSettingsLayoutTests
             Assert.Equal(embedded, layout.Embedded);
             Assert.Equal(preferredOpen, layout.PaneOpen(preferredOpen, narrowExpanded: false));
         }
+    }
 
-        [Theory]
-        [InlineData(false, false, false, 0, 0)]
-        [InlineData(false, false, true, 0, 0)]
-        [InlineData(true, true, false, 0, 0)]
-        [InlineData(true, true, true, 0, 0)]
-        [InlineData(true, false, false, 56, 0)]
-        [InlineData(true, false, true, 0, 56)]
-        public void EmbeddedPageTopAllocation_AllocatesHistoryBandOnce(
-            bool embedded, bool workspacePaneOpen, bool supportsInset,
-            double expectedHostMargin, double expectedPageInset)
-        {
-            Assert.Equal((expectedHostMargin, expectedPageInset),
-                WorkspaceSettingsLayout.EmbeddedPageTopAllocation(embedded, workspacePaneOpen, supportsInset));
-        }
+    [Theory]
+    [InlineData(false, false, false, 0, 0)]
+    [InlineData(false, false, true, 0, 0)]
+    [InlineData(true, true, false, 0, 0)]
+    [InlineData(true, true, true, 0, 0)]
+    [InlineData(true, false, false, 56, 0)]
+    [InlineData(true, false, true, 0, 56)]
+    public void EmbeddedPageTopAllocation_AllocatesHistoryBandOnce(
+        bool embedded, bool workspacePaneOpen, bool supportsInset,
+        double expectedHostMargin, double expectedPageInset)
+    {
+        Assert.Equal((expectedHostMargin, expectedPageInset),
+            WorkspaceSettingsLayout.EmbeddedPageTopAllocation(embedded, workspacePaneOpen, supportsInset));
     }
 
     [Fact]
@@ -198,7 +198,6 @@ public sealed class WorkspaceSettingsLayoutTests
         var sessionsRoot = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Sessions", "SessionsHubRoot.cs"));
         Assert.Contains(".Margin(0, topInset, 0, 0)", sessionsRoot);
-        Assert.Contains(".Height(mastHeight + topInset)", sessionsRoot);
         Assert.Contains("Toast(context).Grid(row: 0)", sessionsRoot);
         Assert.Contains("SessionsHubDialogView.Render(context).WithKey(\"dialog\")", sessionsRoot);
     }

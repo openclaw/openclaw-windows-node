@@ -493,8 +493,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     FindById(run, "WorkspaceTogglePane")!, feedback, FindById(run, "SessionsHubHost")!);
                 var closeButtons = feedback.FindAll(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
-                Assert.Equal(1, closeButtons.Count);
-                Invoke(closeButtons[0]);
+                var closeButton = Assert.IsType<AutomationElement>(Assert.Single(closeButtons));
+                Invoke(closeButton);
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is null or { Current.IsOffscreen: true },
                     "dismiss feedback before next theme");
             }
@@ -848,12 +848,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
             await CaptureStateAsync(run, manifest, "expanded", async () =>
             {
-                const string attentionDetailsId = "SessionsHubAttentionDetails:agent:main:hub-deploy-failure";
                 var chatWindowCount = ChatWindowCount(run);
-                await WaitUiAsync(run, () => FindById(run, attentionDetailsId) is not null, "attention details action");
-                var attention = FindById(run, attentionDetailsId)!;
-                AssertVisibleInHub(run, attention, "attention details action");
-                Invoke(attention);
+                await ExpandStoppedSessionRowAsync(run, "stopped session row");
                 await WaitUiAsync(run, () => FindById(run, "SessionsHubDetails") is not null, "expanded session details");
                 CaptureSessionsWindow(run, "sessions-expanded-top.png");
                 ScrollIntoView(run, "SessionsHubDetails");
@@ -865,11 +861,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
             await CaptureStateAsync(run, manifest, "toast", async () =>
             {
-                const string attentionDetailsId = "SessionsHubAttentionDetails:agent:main:hub-deploy-failure";
-                await WaitUiAsync(run, () => FindById(run, attentionDetailsId) is not null, "attention details for toast");
-                var attention = FindById(run, attentionDetailsId)!;
-                AssertVisibleInHub(run, attention, "attention details for toast");
-                Invoke(attention);
+                await ExpandStoppedSessionRowAsync(run, "stopped session row for toast");
                 await WaitUiAsync(run, () => FindById(run, "SessionsHubCommandArchive") is not null,
                     "archive command for toast");
                 var archive = FindById(run, "SessionsHubCommandArchive")!;
@@ -2093,8 +2085,22 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             throw new InvalidOperationException("Sessions tab has no SelectionItemPattern.");
         ((SelectionItemPattern)sessionsSelection).Select();
         await WaitUiAsync(run, () => FindById(run, "SessionsHubList") is not null
-            && FindById(run, "SessionsHubAttentionDetails:agent:main:hub-deploy-failure") is not null,
+            && FindById(run, StoppedSessionRowId) is not null,
             "sessions baseline restored");
+    }
+
+    private const string StoppedSessionRowId = "SessionsHubRow:agent:main:hub-deploy-failure";
+
+    private static async Task ExpandStoppedSessionRowAsync(GatewayFixtureRun run, string description)
+    {
+        await WaitUiAsync(run, () => FindById(run, StoppedSessionRowId) is not null, description);
+        ScrollIntoView(run, StoppedSessionRowId);
+        var row = FindById(run, StoppedSessionRowId)!;
+        AssertVisibleInHub(run, row, description);
+        Assert.Contains("Stopped with an error", row.Current.Name, StringComparison.Ordinal);
+        if (!row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expand))
+            throw new InvalidOperationException($"{description} has no ExpandCollapsePattern.");
+        ((ExpandCollapsePattern)expand).Expand();
     }
 
     private static void DumpSessionsUia(GatewayFixtureRun run, string fileName = "sessions-uia.json")

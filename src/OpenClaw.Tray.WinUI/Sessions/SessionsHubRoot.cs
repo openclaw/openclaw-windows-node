@@ -52,10 +52,21 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
         var presentation = Props.Presentation;
         var (state, setState) = UseState(controller.State, threadSafe: true);
         var (width, setWidth) = UseState(1200d);
-        var (mastHeight, setMastHeight) = UseState(220d);
         var (topInset, setTopInset) = UseState(presentation.TopInset, threadSafe: true);
         var (collapsed, setCollapsed) = UseState(NoCollapsedGroups);
+        var highContrast = UseHighContrast();
+        var uiSettings = UseMemo(() => new global::Windows.UI.ViewManagement.UISettings(), []);
+        var (reducedMotion, setReducedMotion) = UseState(!uiSettings.AnimationsEnabled, threadSafe: true);
         var announce = this.UseAnnounce();
+
+        UseEffect((Func<Action>)(() =>
+        {
+            void Changed(global::Windows.UI.ViewManagement.UISettings sender, object args) =>
+                setReducedMotion(!sender.AnimationsEnabled);
+            uiSettings.AnimationsEnabledChanged += Changed;
+            setReducedMotion(!uiSettings.AnimationsEnabled);
+            return () => uiSettings.AnimationsEnabledChanged -= Changed;
+        }), uiSettings);
 
         UseEffect(() =>
         {
@@ -80,7 +91,7 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
         }), presentation);
 
         var context = new SessionsHubViewContext(
-            controller, state, width, DateTime.UtcNow, collapsed, setCollapsed);
+            controller, state, width, DateTime.UtcNow, collapsed, setCollapsed, reducedMotion);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -92,23 +103,18 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
         var body = state.Tab == SessionsHubTab.Worktrees
             ? SessionsHubWorktreesView.Render(context)
             : SessionsHubSessionsView.Render(context);
-        var header = Border(Header(context, UseHighContrast()))
+        var header = PageHero.WithMotion(Border(Header(context, highContrast)), reducedMotion)
             .Width(context.ContentWidth)
-            .Padding(0, 18, 0, 8)
-            .Margin(0, 0, 0, 12)
+            .Padding(0, 24, 0, 0)
+            .Margin(0, 0, 0, PageResponsiveLayout.GapStack)
             .HAlign(HorizontalAlignment.Center)
-            .OnSizeChanged((_, args) =>
-            {
-                if (args.NewSize.Height > 0 && Math.Abs(args.NewSize.Height - mastHeight) > 1)
-                    setMastHeight(args.NewSize.Height);
-            })
             .AutomationId("SessionsHubContentColumn")
             .WithKey("header");
         var banners = Border(Banners(context).WithKey("banners"))
             .Width(context.ContentWidth)
             .HAlign(HorizontalAlignment.Center)
             .WithKey("banner-host");
-        var pageBody = Border(body.WithKey("body"))
+        var pageBody = PageHero.WithMotion(Border(body.WithKey("body")), reducedMotion)
             .Width(context.ContentWidth)
             .Padding(0, 0, 0, 12)
             .HAlign(HorizontalAlignment.Center)
@@ -118,13 +124,6 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
             .HAlign(HorizontalAlignment.Stretch)
             .Margin(0, topInset, 0, 0);
         return Grid([GridSize.Star()], [GridSize.Star()],
-                Border(Empty()).Background(MastBrush())
-                    .Height(mastHeight + topInset)
-                    .HAlign(HorizontalAlignment.Stretch)
-                    .VAlign(VerticalAlignment.Top)
-                    .Set(border => border.IsHitTestVisible = false)
-                    .AutomationId("SessionsHubMastBackdrop")
-                    .Grid(row: 0),
                 pageScroll.Grid(row: 0),
                 Toast(context).Grid(row: 0).WithKey("notice-toast"),
                 SessionsHubDialogView.Render(context).WithKey("dialog"),
@@ -140,7 +139,7 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
             });
     }
 
-    private static Element Header(SessionsHubViewContext context, bool useHighContrast)
+    private static Element Header(SessionsHubViewContext context, bool highContrast)
     {
         var state = context.State;
         var controller = context.Controller;
@@ -155,8 +154,9 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
                         controller.SetTab(index == 1 ? SessionsHubTab.Worktrees : SessionsHubTab.Sessions);
                 })
             .Set(bar => SessionsHubView.TagItems(bar, "SessionsHubTab", ["Sessions", "Worktrees"]))
+            .HAlign(HorizontalAlignment.Left)
             .AutomationName(T("TabsLabel"))
-            .Margin(-12, 12, 0, 0);
+            .AutomationId("SessionsHubTabs");
         var refresh = SessionsHubView.IconButton(FluentIconCatalog.Refresh, T("Refresh"), () =>
             {
                 if (state.Tab == SessionsHubTab.Worktrees) _ = controller.LoadWorktreesAsync();
@@ -165,26 +165,6 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
             enabled: state.IsConnected, automationId: "SessionsPageRefresh");
         var web = SessionsHubView.CommandButton("\uE8A7", T("OpenGatewayWeb"), controller.OpenDashboard,
             enabled: state.IsConnected, automationId: "SessionsHubOpenGatewayWeb");
-        var eyebrowIcon = useHighContrast
-            ? SessionsHubView.Glyph(FluentIconCatalog.Sessions, 20, Theme.SecondaryText)
-                .AutomationId("SessionsHubEyebrowGlyph")
-            : Image("ms-appx:///Assets/SidebarIcons/Sessions.svg")
-                .Size(20, 20)
-                .AccessibilityHidden()
-                .AutomationId("SessionsHubEyebrowGlyph");
-        var text = VStack(8,
-                            HStack(PageResponsiveLayout.GapInner,
-                                eyebrowIcon.VAlign(VerticalAlignment.Center),
-                                TextBlock(T("Title")).FontSize(14).FontWeight(FontWeights.SemiBold)
-                                    .Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center)
-                                    .AutomationId("SessionsPageMarker")),
-                            TextBlock(headline).FontSize(32).FontWeight(FontWeights.SemiBold)
-                                .TextWrapping(TextWrapping.Wrap)
-                                .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level1)
-                                .AutomationId("SessionsHubMastHeadline"),
-                            TextBlock(subtitle).FontSize(14).Foreground(Theme.SecondaryText)
-                                .TextWrapping(TextWrapping.WrapWholeWords))
-                        .Grid(row: 0, column: 0);
         var actions = HStack(PageResponsiveLayout.GapInner,
                 When(state.IsReloading
                     || state.Load == SessionsHubLoad.Loading && state.Rows.Count > 0
@@ -193,36 +173,46 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
                     .WithKey("loading"),
                 web.WithKey("web"),
                 refresh.WithKey("refresh"))
-            .VAlign(VerticalAlignment.Top)
             .AutomationId("SessionsHubMastActions");
-        Element mast = context.IsNarrow
-            ? Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto],
-                text.Grid(row: 0),
-                actions.HAlign(HorizontalAlignment.Left).Margin(0, PageResponsiveLayout.GapGroup, 0, 0).Grid(row: 1),
-                tabs.Grid(row: 2).Margin(-12, 12, 0, 0))
-            : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto, GridSize.Auto],
-                text.Grid(row: 0, column: 0),
-                actions.Grid(row: 0, column: 1),
-                tabs.Grid(row: 1, column: 0, columnSpan: 2));
-        return mast;
+        var emphasis = state.Tab == SessionsHubTab.Worktrees && !string.IsNullOrWhiteSpace(state.GatewayName)
+            ? state.GatewayName
+            : null;
+        var answer = EmphasizedLine(headline, emphasis)
+            .FontSize(14).Foreground(Theme.SecondaryText)
+            .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
+            .AutomationId("SessionsHubMastHeadline");
+        var detail = string.IsNullOrWhiteSpace(subtitle)
+            ? null
+            : (Element)TextBlock(subtitle).FontSize(12).Foreground(Theme.SecondaryText)
+                .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(3)
+                .AutomationId("SessionsHubMastSubtitle");
+        var hero = PageHero.Header("SessionsHubMast", FluentIconCatalog.Sessions, T("Title"), "SessionsPageMarker",
+            answer, detail, actions, context.IsNarrow, context.ReducedMotion, highContrast, pageTag: "sessions");
+        return PageHero.WithMotion(VStack(PageResponsiveLayout.GapStack, hero, tabs), context.ReducedMotion)
+            .AutomationId("SessionsHubHeader");
     }
 
-    private static Brush MastBrush()
-    {
-        var accent = Application.Current.Resources["SystemAccentColor"] is Color color
-            ? color
-            : Color.FromArgb(255, 0, 103, 192);
-        return new LinearGradientBrush
+    /// <summary>Renders <paramref name="line"/> with one semibold primary run, as the Systems hero does for its Gateway.</summary>
+    private static TextBlockElement EmphasizedLine(string line, string? emphasis) =>
+        TextBlock(line).Set(native =>
         {
-            StartPoint = new global::Windows.Foundation.Point(0, 0),
-            EndPoint = new global::Windows.Foundation.Point(0, 1),
-            GradientStops =
+            native.Inlines.Clear();
+            var at = emphasis is null ? -1 : line.IndexOf(emphasis, StringComparison.Ordinal);
+            if (at < 0)
             {
-                new GradientStop { Color = Color.FromArgb(16, accent.R, accent.G, accent.B), Offset = 0 },
-                new GradientStop { Color = Color.FromArgb(0, accent.R, accent.G, accent.B), Offset = 1 },
-            },
-        };
-    }
+                native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line });
+                return;
+            }
+            native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line[..at] });
+            native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+            {
+                Text = emphasis,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(
+                    OpenClawTray.FunctionalUI.Core.Theme.ResolveColor("TextFillColorPrimary", native.ActualTheme)),
+            });
+            native.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line[(at + emphasis!.Length)..] });
+        });
 
     private static Element Banners(SessionsHubViewContext context)
     {
@@ -351,7 +341,8 @@ internal sealed record SessionsHubViewContext(
     double Width,
     DateTime NowUtc,
     IReadOnlySet<string> CollapsedGroups,
-    Action<IReadOnlySet<string>> SetCollapsedGroups)
+    Action<IReadOnlySet<string>> SetCollapsedGroups,
+    bool ReducedMotion = false)
 {
     public PageWidthTier Tier => PageResponsiveLayout.TierFor(Width);
     public double ContentWidth => PageResponsiveLayout.ContentWidth(Width);

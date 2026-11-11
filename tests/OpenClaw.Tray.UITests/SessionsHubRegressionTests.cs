@@ -149,7 +149,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 SessionsHubPresentation.MastCopy(new SessionsHubState()));
             var lastSeen = new DateTime(2026, 6, 1, 13, 30, 0, DateTimeKind.Utc);
             Assert.Equal(
-                (SessionsHubPresentation.F("HeroSessionsLastSeenAt", SessionsHubPresentation.AbsoluteTime(lastSeen)),
+                (SessionsHubPresentation.F("HeroSessionsLastSeenAt", SessionsHubPresentation.LastSeenTime(lastSeen)),
                     SessionsHubPresentation.T("HeroSessionsDisconnectedDetail")),
                 SessionsHubPresentation.MastCopy(new SessionsHubState { LastLoadedAtUtc = lastSeen }));
             Assert.Equal(
@@ -312,7 +312,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal(canSelect, select.IsEnabled);
             if (!canSelect)
                 Assert.Equal("No matching sessions to select", ToolTipService.GetToolTip(select));
-            Assert.Equal("Sessions", harness.Find<TextBlock>("SessionsHubMastHeadline").Text);
+            Assert.Equal("Sessions", harness.Find<TextBlock>("SessionsPageMarker").Text);
+            Assert.Equal(SessionsHubPresentation.MastCopy(harness.Controller.State).Headline,
+                harness.Find<TextBlock>("SessionsHubMastHeadline").Text);
         });
     }
 
@@ -706,38 +708,32 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 element => AutomationProperties.GetAutomationId(element) == "SessionsHubJumpBackIn");
             Assert.DoesNotContain(TestSupport.FindDescendants<FrameworkElement>(harness.Root!),
                 element => AutomationProperties.GetAutomationId(element) == "SessionsHubNeedsYou");
-            if (width is 1400 or 1000)
-            {
-                var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
-                var contentColumn = harness.Find<FrameworkElement>("SessionsHubContentColumn");
-                var backdropLeft = backdrop.TransformToVisual(harness.Root).TransformPoint(default).X;
-                var contentLeft = contentColumn.TransformToVisual(harness.Root).TransformPoint(default).X;
-                Assert.InRange(backdrop.ActualWidth, width - 1, width + 1);
-                Assert.InRange(Math.Abs(backdropLeft), 0, 1);
-                Assert.InRange(contentColumn.ActualWidth,
-                    PageResponsiveLayout.ContentWidth(width) - 1,
-                    PageResponsiveLayout.ContentWidth(width) + 1);
-                Assert.InRange(Math.Abs(contentLeft - ((width - contentColumn.ActualWidth) / 2)), 0, 1);
-            }
+            Assert.DoesNotContain(TestSupport.FindDescendants<FrameworkElement>(harness.Root!),
+                element => AutomationProperties.GetAutomationId(element) == "SessionsHubMastBackdrop");
+            var hero = harness.Find<FrameworkElement>("SessionsHubMast");
+            var heroLeft = hero.TransformToVisual(harness.Root).TransformPoint(default).X;
+            Assert.InRange(hero.ActualWidth,
+                PageResponsiveLayout.ContentWidth(width) - 1,
+                PageResponsiveLayout.ContentWidth(width) + 1);
+            Assert.InRange(Math.Abs(heroLeft - ((width - hero.ActualWidth) / 2)), 0, 1);
+            var title = harness.Find<TextBlock>("SessionsPageMarker");
+            Assert.Equal("Sessions", title.Text);
+            Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(title));
+            Assert.Contains(title, TestSupport.FindDescendants<TextBlock>(hero));
+            Assert.NotNull(harness.Find<FrameworkElement>("SessionsHubMast:Glyph"));
             var mastHeadline = harness.Find<TextBlock>("SessionsHubMastHeadline");
-            var eyebrow = harness.Find<TextBlock>("SessionsPageMarker");
-            var eyebrowIcon = harness.Find<Image>("SessionsHubEyebrowGlyph");
+            Assert.Contains(mastHeadline, TestSupport.FindDescendants<TextBlock>(hero));
             var openInWeb = harness.Find<Button>("SessionsHubOpenGatewayWeb");
             var openInWebGlyph = Assert.Single(TestSupport.FindDescendants<TextBlock>(openInWeb),
                 text => text.Text == "\uE8A7");
             Assert.Equal("Open in web", AutomationProperties.GetName(openInWeb));
             Assert.Equal("\uE8A7", openInWebGlyph.Text);
-            Assert.Equal(14, eyebrow.FontSize);
-            Assert.Equal(20, eyebrowIcon.Width);
-            Assert.Equal(20, eyebrowIcon.Height);
-            Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(eyebrowIcon));
-            Assert.NotEqual(((Microsoft.UI.Xaml.Media.SolidColorBrush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]).Color,
-                ((Microsoft.UI.Xaml.Media.SolidColorBrush)eyebrow.Foreground).Color);
-            var tab = harness.Find<SelectorBarItem>("SessionsHubTabSessions");
-            var tabText = Assert.Single(TestSupport.FindDescendants<TextBlock>(tab), item => item.Text == "Sessions");
-            var headlineLeft = mastHeadline.TransformToVisual(harness.Root).TransformPoint(default).X;
-            var tabLeft = tabText.TransformToVisual(harness.Root).TransformPoint(default).X;
-            Assert.InRange(Math.Abs(headlineLeft - tabLeft), 0, 1.25);
+            Assert.Contains(openInWeb, TestSupport.FindDescendants<Button>(hero));
+            var tabs = harness.Find<FrameworkElement>("SessionsHubTabs");
+            var tabsLeft = tabs.TransformToVisual(harness.Root).TransformPoint(default).X;
+            Assert.InRange(Math.Abs(heroLeft - tabsLeft), 0, 1.25);
+            Assert.True(tabs.TransformToVisual(harness.Root).TransformPoint(default).Y
+                >= hero.TransformToVisual(harness.Root).TransformPoint(default).Y + hero.ActualHeight);
             Assert.Equal(2, badges.Length);
             var firstRow = harness.Find<Expander>("SessionsHubRow:agent:main:responsive-0");
             Assert.Contains(SessionsHubPresentation.T("StoppedWithError"), AutomationProperties.GetName(firstRow));
@@ -783,22 +779,20 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task PageScroll_MovesHeaderButKeepsMastBackdropAnchored()
+    public async Task PageScroll_MovesHeroWithContentWithoutAFixedBackdrop()
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true, width: 1000, height: 520);
         var scrolled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        double backdropTop = 0;
         double markerTop = 0;
         await ui.RunOnUIAsync(() =>
         {
             var root = Assert.IsAssignableFrom<FrameworkElement>(harness.Root);
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
-            var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
             var marker = harness.Find<FrameworkElement>("SessionsPageMarker");
             Assert.True(scroll.ScrollableHeight > 200);
-            Assert.False(backdrop.IsHitTestVisible);
+            Assert.DoesNotContain(TestSupport.FindDescendants<FrameworkElement>(root),
+                element => AutomationProperties.GetAutomationId(element) == "SessionsHubMastBackdrop");
 
-            backdropTop = backdrop.TransformToVisual(root).TransformPoint(default).Y;
             markerTop = marker.TransformToVisual(root).TransformPoint(default).Y;
             scroll.ScrollCompleted += (_, _) => scrolled.TrySetResult();
             scroll.ScrollTo(0, 200);
@@ -808,35 +802,27 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         {
             var root = Assert.IsAssignableFrom<FrameworkElement>(harness.Root);
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
-            var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
             var marker = harness.Find<FrameworkElement>("SessionsPageMarker");
             Assert.InRange(scroll.VerticalOffset, 199, 201);
-            Assert.InRange(Math.Abs(
-                backdrop.TransformToVisual(root).TransformPoint(default).Y - backdropTop), 0, 0.5);
             Assert.True(marker.TransformToVisual(root).TransformPoint(default).Y < markerTop - 150);
         });
     }
 
     [Fact]
-    public async Task PageInset_UpdatesScrollViewportWithoutMovingBackdropOrRemounting()
+    public async Task PageInset_UpdatesScrollViewportWithoutRemounting()
     {
         await using var harness = await Harness.CreateAsync(
             ui, mount: true, width: 1000, height: 520, topInset: 56);
         await harness.RenderAsync();
         ScrollView? originalScroll = null;
         FrameworkElement? root = null;
-        double initialBackdropHeight = 0;
         await ui.RunOnUIAsync(() =>
         {
             root = Assert.IsAssignableFrom<FrameworkElement>(harness.Root);
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
             originalScroll = scroll;
-            var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
             Assert.Equal(56d, scroll.Margin.Top);
-            Assert.Equal(56d, scroll.TransformToVisual(root).TransformPoint(default).Y);
-            Assert.Equal(0d, backdrop.TransformToVisual(root).TransformPoint(default).Y);
-            initialBackdropHeight = backdrop.ActualHeight;
-            Assert.True(initialBackdropHeight > 56);
+            Assert.InRange(scroll.TransformToVisual(root).TransformPoint(default).Y, 55.5, 56.5);
         });
 
         await ui.RunOnUIAsync(() => harness.Presentation.ApplyTopInset(0));
@@ -844,12 +830,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await ui.RunOnUIAsync(() =>
         {
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
-            var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
             Assert.Same(originalScroll, scroll);
             Assert.Equal(0d, scroll.Margin.Top);
             Assert.InRange(scroll.TransformToVisual(root!).TransformPoint(default).Y, 0, 0.5);
-            Assert.Equal(initialBackdropHeight - 56, backdrop.ActualHeight, precision: 1);
-            Assert.Equal(0d, backdrop.TransformToVisual(root!).TransformPoint(default).Y);
         });
 
         await ui.RunOnUIAsync(() => harness.Presentation.ApplyTopInset(56));
@@ -857,12 +840,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await ui.RunOnUIAsync(() =>
         {
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
-            var backdrop = harness.Find<FrameworkElement>("SessionsHubMastBackdrop");
             Assert.Same(originalScroll, scroll);
             Assert.Equal(56d, scroll.Margin.Top);
-            Assert.Equal(56d, scroll.TransformToVisual(root!).TransformPoint(default).Y);
-            Assert.Equal(initialBackdropHeight, backdrop.ActualHeight, precision: 1);
-            Assert.Equal(0d, backdrop.TransformToVisual(root!).TransformPoint(default).Y);
+            Assert.InRange(scroll.TransformToVisual(root!).TransformPoint(default).Y, 55.5, 56.5);
         });
     }
 
@@ -919,35 +899,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         Assert.InRange(secondTop - firstBounds.Bottom,
             PageResponsiveLayout.GapInner - 0.5,
             PageResponsiveLayout.GapInner + 0.5);
-    }
-
-    [Fact]
-    public async Task AttentionStripe_RemainsFourDipsAcrossSameHostResize()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true, width: 1400, height: 700);
-        await ui.RunOnUIAsync(async () =>
-        {
-            var row = harness.Gateway.Page.Sessions.Single();
-            row.Status = "failed";
-            row.HasActiveRun = false;
-            row.LastRunError = "Responsive attention card";
-            await harness.Controller.ReloadAsync();
-        });
-
-        foreach (var width in new[] { 1400d, 1000d, 760d, 520d })
-        {
-            await ui.RunOnUIAsync(() => harness.Root!.Width = width);
-            await harness.RenderAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var card = harness.Find<FrameworkElement>("SessionsHubAttention:" + Harness.Key);
-                var stripe = harness.Find<FrameworkElement>("SessionsHubAttentionStripe:" + Harness.Key);
-                var cardLeft = card.TransformToVisual(harness.Root).TransformPoint(default).X;
-                var stripeLeft = stripe.TransformToVisual(harness.Root).TransformPoint(default).X;
-                Assert.InRange(stripe.ActualWidth, 3.9, 4.1);
-                Assert.InRange(Math.Abs(cardLeft - stripeLeft), 0, 1.25);
-            });
-        }
     }
 
     [Fact]
@@ -1175,146 +1126,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task NeedsYou_RemainsIndependentOfInventoryFiltersLoadingAndFailures()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        var first = new SessionInfo
-        {
-            Key = "agent:main:attention", SessionId = "attention-one", Label = "Deployment",
-            Status = "failed", HasActiveRun = false, LastRunError = "Deployment failed",
-        };
-        var second = new SessionInfo
-        {
-            Key = "agent:research:attention", SessionId = "attention-two", Label = "Background research",
-            Status = "timeout", HasActiveRun = false, IsBackground = true, LastRunError = "Research timed out",
-        };
-        var archived = new SessionInfo
-        {
-            Key = "agent:main:archived", Status = "failed", Archived = true,
-        };
-        await ui.RunOnUIAsync(() =>
-        {
-            harness.Gateway.Page = new SessionListPage { Sessions = [first, second, archived] };
-            harness.Controller.CloseDetails();
-        });
-
-        foreach (var filters in new SessionsHubFilters[]
-        {
-            new(Status: SessionArchiveFilter.Archived),
-            new(Status: SessionArchiveFilter.All),
-            new(),
-            new(AgentId: "other"),
-            new(Search: "no matching session"),
-            new(ActiveMinutes: "1", Limit: "1", IncludeGlobal: false, IncludeUnknown: true),
-            new(ShowCompleted: true, ShowBackground: true),
-        })
-        {
-            var response = new TaskCompletionSource<SessionListPage>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task reload = Task.CompletedTask;
-            await ui.RunOnUIAsync(() =>
-            {
-                harness.Gateway.List = _ => response.Task;
-                harness.Controller.SetFilters(filters, reload: false, persist: false);
-                harness.Controller.SetGroupBy(SessionsGroupBy.Agent);
-                harness.Controller.SetSort(SessionsSortColumn.Name, descending: false);
-                harness.Controller.SetPageSize(10);
-                harness.Controller.SetPage(2);
-                reload = harness.Controller.ReloadAsync();
-            });
-            try
-            {
-                await harness.RenderAsync();
-                await ui.RunOnUIAsync(() =>
-                {
-                    Assert.True(harness.Controller.State.IsReloading);
-                    Assert.Equal(filters, harness.Controller.State.Filters);
-                    AssertCards();
-                });
-            }
-            finally
-            {
-                response.TrySetResult(new SessionListPage());
-                await reload;
-            }
-            await harness.RenderAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(SessionsHubLoad.Loaded, harness.Controller.State.Load);
-                Assert.Empty(harness.Controller.State.Rows);
-                AssertCards();
-            });
-        }
-
-        await ui.RunOnUIAsync(async () =>
-        {
-            harness.Gateway.List = _ => Task.FromException<SessionListPage>(new TimeoutException("Inventory unavailable"));
-            await harness.Controller.ReloadAsync();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Equal(SessionsHubLoad.Failed, harness.Controller.State.Load);
-            Assert.NotNull(harness.Find<FrameworkElement>("SessionsHubLoadFailed"));
-            AssertCards();
-            var resolved = first.Clone();
-            resolved.Status = "done";
-            harness.Gateway.PublishSessions(resolved, second, archived);
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(async () =>
-        {
-            await WaitForElementAsync(harness, "SessionsHubAttention:" + first.Key, present: false);
-            Assert.NotNull(harness.Find<FrameworkElement>("SessionsHubAttention:" + second.Key));
-            harness.Gateway.Connected = false;
-            harness.Controller.RefreshConnection();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(async () =>
-        {
-            Assert.Empty(harness.Controller.State.TrackedRows);
-            await WaitForElementAsync(harness, "SessionsHubNeedsYou", present: false);
-        });
-
-        void AssertCards()
-        {
-            var section = harness.Find<FrameworkElement>("SessionsHubNeedsYou");
-            Assert.Equal(
-                ["SessionsHubAttention:" + first.Key, "SessionsHubAttention:" + second.Key],
-                TestSupport.FindDescendants<FrameworkElement>(section)
-                    .Select(AutomationProperties.GetAutomationId)
-                    .Where(id => id.StartsWith("SessionsHubAttention:", StringComparison.Ordinal))
-                    .OrderBy(id => id, StringComparer.Ordinal).ToArray());
-            Assert.Contains(TestSupport.FindDescendants<TextBlock>(section), text => text.Text == "Deployment failed");
-            Assert.Contains(TestSupport.FindDescendants<TextBlock>(section), text => text.Text == "Research timed out");
-        }
-    }
-
-    [Fact]
-    public async Task NeedsYou_RemainsVisibleWithNonemptyMountedSearchAndNoMatchingInventory()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        await ui.RunOnUIAsync(async () =>
-        {
-            var attention = harness.Gateway.Page.Sessions.Single();
-            attention.Status = "failed";
-            attention.HasActiveRun = false;
-            attention.LastRunError = "Waiting for recovery";
-            harness.Gateway.List = _ => Task.FromResult(new SessionListPage());
-            harness.Controller.CloseDetails();
-            harness.Controller.SetFilters(new SessionsHubFilters(Search: "unrelated query"), reload: false);
-            await harness.Controller.ReloadAsync();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Equal("unrelated query", harness.Find<TextBox>("SessionsHubSearch").Text);
-            Assert.Empty(harness.Controller.State.Rows);
-            Assert.True(IsShown(harness.Find<FrameworkElement>("SessionsHubNeedsYou"), harness.Root!));
-            Assert.True(IsShown(harness.Find<FrameworkElement>("SessionsHubAttention:" + Harness.Key), harness.Root!));
-        });
-    }
-
-    [Fact]
     public async Task ConfirmedDelete_ShowsDeletionNoticeWithoutUndoAction()
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true);
@@ -1346,7 +1157,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task AttentionCard_DetailsLoadsItsSessionOutsideTheInventoryFilters()
+    public async Task LoadAttentionRow_FindsItsSessionOutsideTheInventoryFilters()
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true);
         var attention = new SessionInfo
@@ -1358,6 +1169,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             AgentId: "other", Search: "unrelated", Status: SessionArchiveFilter.Archived,
             ActiveMinutes: "1", Limit: "1", IncludeGlobal: false);
         var detailsQueries = new List<SessionListQuery>();
+        var preferenceWrites = 0;
         await ui.RunOnUIAsync(() =>
         {
             harness.Gateway.Page = new SessionListPage { Sessions = [attention] };
@@ -1366,12 +1178,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             harness.Controller.SetFilters(filters, persist: false);
         });
         await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
+        await ui.RunOnUIAsync(async () =>
         {
             Assert.Empty(harness.Controller.State.Rows);
-            Invoke(harness.Find<Button>("SessionsHubAttentionOpen:" + attention.Key));
-            Assert.Equal([attention.Key], harness.OpenedSessions);
-            Assert.Equal(filters, harness.Controller.State.Filters);
             harness.Gateway.List = query =>
             {
                 detailsQueries.Add(query);
@@ -1383,12 +1192,13 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                     ? new SessionListPage { Sessions = [prefixMatch], HasMore = true, NextOffset = 1 }
                     : new SessionListPage { Sessions = [attention] });
             };
-            Invoke(harness.Find<Button>("SessionsHubAttentionDetails:" + attention.Key));
+            preferenceWrites = harness.ShowCompletedWrites;
+            Assert.True(await harness.Controller.LoadAttentionRowAsync(attention.Key));
         });
         await harness.RenderAsync();
-        await ui.RunOnUIAsync(async () =>
+        await ui.RunOnUIAsync(() =>
         {
-            await WaitForElementAsync(harness, "SessionsHubRow:" + attention.Key);
+            Assert.Contains(harness.Controller.State.Rows, row => row.Key == attention.Key);
             Assert.Equal([0, 1], detailsQueries.Select(query => query.Offset));
             Assert.All(detailsQueries, query =>
             {
@@ -1400,11 +1210,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 Assert.True(query.IncludeUnknown);
                 Assert.Equal(1, query.Limit);
             });
-            Assert.Equal(attention.Key, harness.Controller.State.DetailsKey);
-            Assert.True(harness.Controller.State.Filters.ShowBackground);
-            Assert.Equal(0, harness.ShowCompletedWrites);
-            Assert.True(harness.Find<Expander>("SessionsHubRow:" + attention.Key).IsExpanded);
-            Assert.NotNull(harness.Find<FrameworkElement>("SessionsHubNeedsYou"));
+            Assert.Equal(preferenceWrites, harness.ShowCompletedWrites);
         });
     }
 
@@ -1445,28 +1251,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task AttentionDetails_CanExpandALoadedReadOnlySnapshot()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        await ui.RunOnUIAsync(() =>
-        {
-            harness.Gateway.Connected = false;
-            harness.Controller.RefreshConnection();
-            harness.Controller.UseSnapshot([new SessionInfo { Key = Harness.Key, Status = "failed" }]);
-            harness.Controller.CloseDetails();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() => Invoke(harness.Find<Button>("SessionsHubAttentionDetails:" + Harness.Key)));
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.True(harness.Find<Expander>("SessionsHubRow:" + Harness.Key).IsExpanded);
-            Assert.False(harness.Controller.State.Permissions.CanWrite);
-            Assert.Null(harness.Controller.State.Notice);
-        });
-    }
-
-    [Fact]
     public async Task AttentionDetails_ReportsWhenTheSessionNoLongerExists()
     {
         await using var harness = await Harness.CreateAsync(ui);
@@ -1484,7 +1268,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task NeedsYou_DropsQueuedUpdatesFromAnOldConnection()
+    public async Task TrackedRows_DropQueuedUpdatesFromAnOldConnection()
     {
         await using var harness = await Harness.CreateAsync(ui);
         var attention = new SessionInfo { Key = "agent:main:attention", Status = "failed" };
@@ -1507,7 +1291,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task NeedsYou_UsesAcceptedTrackedSnapshotInsteadOfRawSessionEvent()
+    public async Task TrackedRows_UseAcceptedSnapshotInsteadOfRawSessionEvent()
     {
         await using var harness = await Harness.CreateAsync(ui);
         var accepted = new SessionInfo { Key = "agent:main:accepted", Status = "failed" };
@@ -1520,108 +1304,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await ui.YieldToRenderAsync();
         await ui.RunOnUIAsync(() =>
             Assert.Equal(accepted.Key, Assert.Single(harness.Controller.State.TrackedRows).Key));
-    }
-
-    [Fact]
-    public async Task AttentionCard_RevealsAndExpandsBelowFoldSession()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true, width: 900);
-        const string attentionKey = "agent:main:attention-below-fold";
-        await ui.RunOnUIAsync(async () =>
-        {
-            var seed = harness.Gateway.Page.Sessions.Single();
-            var rows = Enumerable.Range(0, 30).Select(index =>
-            {
-                var row = seed.Clone();
-                row.Key = $"agent:main:row-{index:D2}";
-                row.SessionId = $"session-{index:D2}";
-                row.Label = $"Roster row {index:D2}";
-                row.UpdatedAt = DateTime.UtcNow.AddMinutes(-index);
-                row.Status = "done";
-                row.HasActiveRun = false;
-                return row;
-            }).ToList();
-            var attention = seed.Clone();
-            attention.Key = attentionKey;
-            attention.SessionId = "attention-session";
-            attention.Label = "Attention below fold";
-            attention.Status = "failed";
-            attention.HasActiveRun = false;
-            attention.LastRunError = "Fixture failure";
-            attention.UpdatedAt = DateTime.UtcNow.AddHours(-2);
-            rows.Add(attention);
-            harness.Gateway.Page = new SessionListPage { Sessions = rows };
-            await harness.Controller.ReloadAsync();
-            harness.Controller.CloseDetails();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() => Invoke(harness.Find<Button>("SessionsHubAttentionDetails:" + attentionKey)));
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(async () =>
-        {
-            Assert.Equal(attentionKey, harness.Controller.State.DetailsKey);
-            Assert.Empty(harness.OpenedSessions);
-            Assert.Equal(1, harness.Controller.State.PageIndex);
-            var row = harness.Find<Expander>("SessionsHubRow:" + attentionKey);
-            Assert.True(row.IsExpanded);
-            await WaitForExpansionAsync(row, expanded: true);
-            var details = harness.FindShown<FrameworkElement>("SessionsHubDetails");
-            Assert.Contains(details, TestSupport.FindDescendants<FrameworkElement>(row));
-        });
-    }
-
-    [Fact]
-    public async Task RealHubViewport_PageScrollKeepsRosterUsableAndAttentionDetailsVisible()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true, width: 1000, height: 590);
-        const string attentionKey = "agent:main:real-hub-attention";
-        await ui.RunOnUIAsync(async () =>
-        {
-            var seed = harness.Gateway.Page.Sessions.Single();
-            var rows = Enumerable.Range(0, 18).Select(index =>
-            {
-                var row = seed.Clone();
-                row.Key = $"agent:main:real-hub-{index:D2}";
-                row.SessionId = $"real-hub-session-{index:D2}";
-                row.Label = $"Real hub session {index:D2}";
-                row.UpdatedAt = DateTime.UtcNow.AddMinutes(-index);
-                row.Status = index == 0 ? "running" : "done";
-                row.HasActiveRun = index == 0;
-                return row;
-            }).ToList();
-            var attention = seed.Clone();
-            attention.Key = attentionKey;
-            attention.SessionId = "real-hub-attention-session";
-            attention.Label = "Real hub attention";
-            attention.Status = "failed";
-            attention.HasActiveRun = false;
-            attention.LastRunError = "Fixture failure";
-            attention.UpdatedAt = DateTime.UtcNow.AddHours(-2);
-            rows.Add(attention);
-            harness.Gateway.Page = new SessionListPage { Sessions = rows };
-            await harness.Controller.ReloadAsync();
-            harness.Controller.CloseDetails();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            var pageScroll = harness.Find<ScrollView>("SessionsHubPageScroll");
-            Assert.True(pageScroll.ScrollableHeight > 0, "The real Hub viewport must expose page scrolling to the roster.");
-            Invoke(harness.Find<Button>("SessionsHubAttentionDetails:" + attentionKey));
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
-            () => TestSupport.FindDescendants<FrameworkElement>(harness.Root!)
-                .Any(element => AutomationProperties.GetAutomationId(element) == "SessionsHubDetails"
-                    && IsShown(element, harness.Root!)),
-            "real Hub attention details"));
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Equal(attentionKey, harness.Controller.State.DetailsKey);
-            var row = harness.FindShown<Expander>("SessionsHubRow:" + attentionKey);
-            Assert.True(row.IsExpanded);
-            Assert.True(harness.Find<ScrollView>("SessionsHubPageScroll").ScrollableHeight > 0);
-        });
     }
 
     [Fact]
