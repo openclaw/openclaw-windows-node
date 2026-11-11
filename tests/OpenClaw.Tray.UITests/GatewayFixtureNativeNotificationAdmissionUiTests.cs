@@ -45,7 +45,8 @@ public sealed partial class GatewayFixtureUiTests
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
                 new PropertyCondition(AutomationElement.NameProperty, "Close")))
                 .Cast<AutomationElement>(), button => !button.Current.IsOffscreen && button.Current.IsEnabled);
-            Assert.Equal(run.AppProcessId, close.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, close, run.AppProcessId),
+                "The recovery dialog action must belong to its retained native window.");
             Invoke(close);
             await WaitUiAsync(run, () => FindButtons(run, RetryButtonName).Count == 0, "recovery dialog closed without retry");
 

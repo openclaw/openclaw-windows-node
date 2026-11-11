@@ -123,7 +123,8 @@ internal static class OwnedWindowCapture
                 qualifiedGeometry is null ? null : ReadCurrentProcessGeometry(handle));
             var assertions = assertedElements.Select(element =>
             {
-                Assert.Equal(appProcessId, element.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, appProcessId),
+                    "Asserted control must belong to the captured native window and process.");
                 Assert.False(element.Current.IsOffscreen);
                 var area = element.Current.BoundingRectangle;
                 Assert.True(area.Width > 0 && area.Height > 0);

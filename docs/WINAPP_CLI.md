@@ -394,7 +394,8 @@ NuGet packages and setup action are options, not dependencies this guide adds.
 WinApp does not solve Gateway protocol/authentication errors, Node version
 selection, WSL service ownership, signing/promotion failures or Local AI GPU
 compatibility. Follow those production owners and keep the unresolved findings
-in [CI_FAILURES.md](CI_FAILURES.md) and their issues.
+in session tracking while investigating and fixing them. Report genuine blockers
+directly; do not create a checked-in failure backlog or treat diagnosis as a fix.
 
 ## Evidence and maintenance
 

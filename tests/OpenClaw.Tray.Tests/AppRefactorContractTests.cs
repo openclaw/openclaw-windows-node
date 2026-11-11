@@ -1741,10 +1741,9 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var reset = ExtractMethod(source, "ResetInputs");
 
-        // The "More ▾" overflow button is a sibling of SelectOptions in the shared
-        // StackPanel, so ResetInputs must remove it between steps or it leaks forward.
+        // The XAML owner must remove More even before the page joins the live tree.
         Assert.Contains("_moreOptionsButton", reset);
-        Assert.Contains("morePanel.Children.Remove(_moreOptionsButton)", reset);
+        Assert.Contains("StepInputsPanel.Children.Remove(_moreOptionsButton)", reset);
         Assert.Contains("_moreOptionsButton = null", reset);
     }
 
