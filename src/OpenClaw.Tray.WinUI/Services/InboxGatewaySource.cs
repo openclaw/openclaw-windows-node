@@ -51,6 +51,7 @@ internal sealed class InboxGatewaySource : IDisposable
     private int _epoch;
     private JsonElement? _cronList;
     private int _cronRefresh;
+    private int _cronStatusRefresh;
     private bool _approvalLimitReported;
     private bool? _schedulerEnabled;
     private JsonElement? _modelAuthStatus;
@@ -132,6 +133,7 @@ internal sealed class InboxGatewaySource : IDisposable
         client.StatusChanged += OnStatusChanged;
         client.PendingApprovalRequested += OnApprovalRequested;
         client.PendingApprovalResolved += OnApprovalResolved;
+        client.CronEventReceived += OnCronEventReceived;
         client.CronListUpdated += OnCronListUpdated;
         client.CronStatusUpdated += OnCronStatusUpdated;
     }
@@ -141,6 +143,7 @@ internal sealed class InboxGatewaySource : IDisposable
         client.StatusChanged -= OnStatusChanged;
         client.PendingApprovalRequested -= OnApprovalRequested;
         client.PendingApprovalResolved -= OnApprovalResolved;
+        client.CronEventReceived -= OnCronEventReceived;
         client.CronListUpdated -= OnCronListUpdated;
         client.CronStatusUpdated -= OnCronStatusUpdated;
     }
@@ -186,15 +189,40 @@ internal sealed class InboxGatewaySource : IDisposable
     private void OnCronListUpdated(object? sender, JsonElement payload) =>
         Post(sender, client => _ = LoadCronAsync(client, _epoch));
 
-    private void OnCronStatusUpdated(object? sender, JsonElement payload)
+    private void OnCronEventReceived(object? sender, JsonElement payload) => Post(sender, client =>
     {
-        bool? enabled = payload.ValueKind == JsonValueKind.Object &&
-            payload.TryGetProperty("enabled", out var value) &&
-            value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                ? value.GetBoolean()
-                : null;
-        Post(sender, _ =>
+        if (!client.IsConnectedToGateway || !client.HasHandshakeSnapshot)
+            return;
+        _ = LoadCronAsync(client, _epoch);
+        _ = LoadCronStatusAsync(client, _epoch);
+    });
+
+    private void OnCronStatusUpdated(object? sender, JsonElement payload) =>
+        Post(sender, client => _ = LoadCronStatusAsync(client, _epoch));
+
+    private async Task LoadCronStatusAsync(IOperatorGatewayClient client, int epoch)
+    {
+        if (!Supports(client, "cron.status"))
+            return;
+        var refresh = ++_cronStatusRefresh;
+        bool? enabled;
+        try
         {
+            var payload = await client.SendWizardRequestAsync("cron.status", new { }, RequestTimeoutMs()).ConfigureAwait(false);
+            enabled = payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("enabled", out var value) &&
+                value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? value.GetBoolean() : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Inbox] cron.status failed: {ex.GetType().Name}");
+            return;
+        }
+        Post(client, _ =>
+        {
+            if (epoch != _epoch || refresh != _cronStatusRefresh)
+                return;
             _schedulerEnabled = enabled;
             Recompute();
         });
@@ -206,7 +234,7 @@ internal sealed class InboxGatewaySource : IDisposable
         if (Supports(client, CronListMethod))
         {
             _ = LoadCronAsync(client, epoch);
-            Run(client.RequestCronStatusAsync, "cron.status");
+            _ = LoadCronStatusAsync(client, epoch);
         }
         if (HasScope(client, ApprovalsScope))
         {
@@ -420,20 +448,6 @@ internal sealed class InboxGatewaySource : IDisposable
         }
         catch (ObjectDisposedException)
         {
-        }
-    }
-
-    private static void Run(Func<Task> request, string method) => _ = ObserveAsync(request, method);
-
-    private static async Task ObserveAsync(Func<Task> request, string method)
-    {
-        try
-        {
-            await request().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"[Inbox] {method} failed: {ex.GetType().Name}");
         }
     }
 

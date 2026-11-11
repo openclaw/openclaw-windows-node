@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.TestSupport.Gateway;
 
@@ -11,8 +12,17 @@ public sealed partial class GatewayScenario
     public static GatewayScenario CreateInboxFeed(bool seedApproval = false, bool allowExplainPrompts = false)
     {
         var browse = CreateBrowse();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var job = Job("fixture-inbox-cron", "Fixture nightly archive", "main", true,
+            new { kind = "every", everyMs = 86_400_000 },
+            new { kind = "agentTurn", message = "Synthetic fixture only. Never executed." },
+            new { mode = "none" },
+            new { lastRunStatus = "error", lastRunAtMs = now - 60_000,
+                lastError = "Synthetic archive destination unavailable.", nextRunAtMs = now + 86_400_000 });
+        job["createdAtMs"] = now - 120_000;
+        job["updatedAtMs"] = now - 60_000;
         return new(browse._sessions, browse._reads, allowChatSend: allowExplainPrompts,
-            inboxFeed: new InboxFeedData(seedApproval));
+            cronJobs: [job], inboxFeed: new InboxFeedData(seedApproval));
     }
 
     /// <summary>Changes the fixture's authoritative inventory without sending an event.
@@ -20,8 +30,30 @@ public sealed partial class GatewayScenario
     public void ReplaceInboxApprovalForReconnect() => InboxFeed.ReplaceForReconnect();
 
     /// <summary>Admitted wire reads carrying explicit offset=0 and limit=200, not
-    /// legacy unpaged reads made by the native Automations page. No request text is retained.</summary>
+    /// other page sizes used by the native Automations page. No request text is retained.</summary>
     public int InboxFeedPagedReadCount => InboxFeed.PagedReadCount;
+
+    /// <summary>Changes synthetic scheduler input only; it never runs or edits a real job.</summary>
+    public void SetInboxAutomationState(bool failed, bool overdue = false, bool removed = false)
+    {
+        _ = InboxFeed;
+        var jobs = _cronJobs!;
+        lock (jobs)
+        {
+            if (removed)
+            {
+                jobs.Remove("fixture-inbox-cron");
+                return;
+            }
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            jobs["fixture-inbox-cron"]["state"] = JsonSerializer.SerializeToNode(new
+            {
+                lastRunStatus = failed ? "error" : "ok", lastRunAtMs = now - 60_000,
+                lastError = failed ? "Synthetic archive destination unavailable." : null,
+                nextRunAtMs = overdue ? now - 3_600_000 : now + 86_400_000,
+            });
+        }
+    }
 
     private InboxFeedData InboxFeed => _inboxFeed ??
         throw new InvalidOperationException("Inbox feed inputs require the inbox-feed scenario.");
@@ -45,7 +77,6 @@ public sealed partial class GatewayScenario
     // reconnect ownership remain in the real client and mounted app. All values are synthetic.
     private sealed class InboxFeedData
     {
-        private const int PageLimit = 200;
         private static readonly TimeSpan HydratedLifetime = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan LiveLifetime = TimeSpan.FromSeconds(45);
         private readonly object _sync = new();
@@ -103,17 +134,21 @@ public sealed partial class GatewayScenario
             return approval;
         }
 
+        public void RecordCronPage(JsonElement parameters)
+        {
+            if (OptionalInt(parameters, "offset") == 0 && OptionalInt(parameters, "limit") == 200)
+                lock (_sync) _pagedReadCount++;
+        }
+
         public object Read(string method, JsonElement parameters)
         {
-            ValidateProperties(parameters, method == "cron.list" ? ["includeDisabled", "offset", "limit"] : []);
+            ValidateProperties(parameters);
             lock (_sync)
             {
                 if (method == "exec.approval.list")
                     return _approval is { } approval && DateTimeOffset.UtcNow < _expires
                         ? new[] { approval } : Array.Empty<JsonElement>();
-                if (method == "cron.status") return new { enabled = true, jobs = 1, nextWakeAtMs = (long?)null };
-                // One immutable cron revision must not silently move job timestamps
-                // on each read. These credentials and the failure are the same episode.
+                // Repeated account reads describe the same credential expiry episode.
                 var now = _snapshotAtMs;
                 if (method == "models.authStatus")
                     return new
@@ -125,24 +160,7 @@ public sealed partial class GatewayScenario
                                 profiles = new[] { new { profileId = "fixture-token", type = "token", status = "expired" } } }
                         }
                     };
-                _ = OptionalBoolean(parameters, "includeDisabled");
-                var limit = PositiveInt(parameters, "limit", PageLimit);
-                if (limit > PageLimit || (parameters.TryGetProperty("offset", out var offset) &&
-                    (offset.ValueKind != JsonValueKind.Number || !offset.TryGetInt32(out var value) || value != 0)))
-                    throw new FixtureRequestException("INVALID_PARAMS", "Expected the bounded first fixture cron page.");
-                if (parameters.TryGetProperty("offset", out _) && parameters.TryGetProperty("limit", out _) && limit == PageLimit)
-                    _pagedReadCount++;
-                return new
-                {
-                    jobs = new[] { new { id = "fixture-inbox-cron", name = "Fixture nightly archive", enabled = true,
-                        schedule = new { kind = "every", everyMs = 86_400_000 }, sessionTarget = "isolated", wakeMode = "now",
-                        payload = new { kind = "agentTurn", message = "Synthetic fixture only. Never executed." },
-                        delivery = new { mode = "none" }, createdAtMs = now - 120_000, updatedAtMs = now - 60_000,
-                        state = new { lastRunStatus = "error", lastRunAtMs = now - 60_000,
-                            lastError = "Synthetic archive destination unavailable.", nextRunAtMs = now + 86_400_000 } } },
-                    total = 1, offset = 0, limit, hasMore = false, nextOffset = (int?)null,
-                    snapshotRevision = "fixture-inbox-revision-1"
-                };
+                throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown Inbox read.");
             }
         }
     }

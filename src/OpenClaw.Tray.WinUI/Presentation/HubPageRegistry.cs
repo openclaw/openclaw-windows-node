@@ -287,7 +287,7 @@ internal static class HubPageRegistry
     /// last-known machines with its own disconnected state instead of bouncing to Connection.
     /// </summary>
     public static bool ShouldKeepCurrentPageVisibleDuringDisconnect(string? currentTag) =>
-        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase) || IsSystemsTag(currentTag) ||
+        ResolvePage(currentTag?.ToLowerInvariant()) is HubPageKind.Config or HubPageKind.Cron or HubPageKind.Systems ||
         DashboardsRoute.IsDashboardsTag(currentTag);
 
     /// <summary>True for the Systems page, its legacy aliases and machine deep links.</summary>

@@ -36,6 +36,11 @@
          to escalate to an error here just because tests/Directory.Build.props
          sets TreatWarningsAsErrors=true. -->
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1904</WarningsNotAsErrors>
+
+    <!-- Reactor's Debug source-map generator emits a public ReactorSourceMapStaticInfo
+         type in every consuming assembly, so this harness would collide (CS0436) with
+         the referenced app's copy. The app keeps its source map and analyzers. -->
+    <ReactorSourceMap>false</ReactorSourceMap>
   </PropertyGroup>
 
   <ItemGroup>
@@ -60,7 +65,6 @@
     <ProjectReference Include="..\..\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj" Aliases="global,TrayRuntime" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
-    <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
 
   <Target Name="UseSourceSetupAssetsForPriConsumerCopy"
