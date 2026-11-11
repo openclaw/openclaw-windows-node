@@ -6,7 +6,6 @@ namespace OpenClawTray.Helpers;
 
 /// <summary>
 /// Refreshes the display metadata that Inno cannot update when Updatum replaces files.
-/// The installer still owns registration creation and all uninstall behavior.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed class InnoInstallationMetadata
@@ -17,7 +16,6 @@ internal sealed class InnoInstallationMetadata
     private const string DisplayNamePrefix = "OpenClaw Companion version ";
     private readonly Func<RegistryKey?> _openRegistration;
 
-    // The registry opener is the OS boundary; tests use a task-owned HKCU subtree.
     internal InnoInstallationMetadata(Func<RegistryKey?>? openRegistration = null)
     {
         _openRegistration = openRegistration ??
@@ -41,7 +39,7 @@ internal sealed class InnoInstallationMetadata
             var directory = Path.GetDirectoryName(executablePath)!;
             using var key = _openRegistration();
             if (key is null)
-                return null; // Portable runs never create an installation record.
+                return null;
 
             var location = ReadString(key, "InstallLocation");
             var displayName = ReadString(key, "DisplayName");
@@ -55,9 +53,6 @@ internal sealed class InnoInstallationMetadata
                 displayVersion is null)
                 return null;
 
-            // Do not use migration admission here: it intentionally rejects the stale
-            // version this startup repair owns. Never rewrite identity or uninstall fields.
-            // Separate value writes may be interrupted; the next startup repairs either field.
             if (displayVersion != version)
                 key.SetValue("DisplayVersion", version, RegistryValueKind.String);
             var expectedName = DisplayNamePrefix + version;
