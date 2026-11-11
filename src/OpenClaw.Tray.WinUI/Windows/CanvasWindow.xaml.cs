@@ -45,6 +45,7 @@ public sealed partial class CanvasWindow : WindowEx
     private bool _isFullScreen;
     private string? _pendingUrl;
     private string? _pendingHtml;
+    private string? _pendingNativeNavigationUrl;
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<bool>? _navigationTcs;
 
@@ -338,6 +339,7 @@ public sealed partial class CanvasWindow : WindowEx
                 // Re-validate URL before navigation (defense in depth)
                 if (IsUrlSafe(url))
                 {
+                    NoteNativeNavigation(url);
                     CanvasWebView.CoreWebView2.Navigate(url);
                 }
                 else
@@ -349,6 +351,7 @@ public sealed partial class CanvasWindow : WindowEx
             {
                 var html = _pendingHtml;
                 _pendingHtml = null;
+                _pendingNativeNavigationUrl = null;
                 CanvasWebView.CoreWebView2.NavigateToString(html);
             }
             else
@@ -453,14 +456,15 @@ public sealed partial class CanvasWindow : WindowEx
     // All-source interception also delivers frame and worker requests.
     // The bearer stays on the exact gateway origin and on a top-level
     // document navigation. A same-site frame is a different origin.
-    private static bool MayReceiveGatewayBearer(CoreWebView2WebResourceRequestedEventArgs args) =>
+    private bool MayReceiveGatewayBearer(CoreWebView2WebResourceRequestedEventArgs args) =>
         CanvasNavigationPolicy.MayAttachGatewayBearer(
             ToBearerSource(args.RequestedSourceKind),
             FetchHeader(args, "Sec-Fetch-Site"),
             FetchHeader(args, "Sec-Fetch-Dest"),
             FetchHeader(args, "Sec-Fetch-Mode"),
             FetchHeader(args, "Referer"),
-            args.Request.Uri);
+            args.Request.Uri,
+            _pendingNativeNavigationUrl);
 
     private static CanvasBearerSource ToBearerSource(CoreWebView2WebResourceRequestSourceKinds kind) =>
         kind switch
@@ -516,6 +520,7 @@ public sealed partial class CanvasWindow : WindowEx
 
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
+        _pendingNativeNavigationUrl = null;
         if (_navigationTcs != null)
         {
             var tcs = _navigationTcs;
@@ -616,6 +621,7 @@ public sealed partial class CanvasWindow : WindowEx
         
         if (_isWebViewInitialized)
         {
+            NoteNativeNavigation(url);
             CanvasWebView.CoreWebView2.Navigate(url);
         }
         else
@@ -636,6 +642,7 @@ public sealed partial class CanvasWindow : WindowEx
         
         if (_isWebViewInitialized)
         {
+            _pendingNativeNavigationUrl = null;
             CanvasWebView.CoreWebView2.NavigateToString(html);
         }
         else
@@ -805,9 +812,12 @@ public sealed partial class CanvasWindow : WindowEx
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _navigationTcs = tcs;
+        NoteNativeNavigation(url);
         CanvasWebView.CoreWebView2.Navigate(url);
         return tcs.Task;
     }
+
+    private void NoteNativeNavigation(string url) => _pendingNativeNavigationUrl = url;
     
     private static bool IsTrustedA2UIUrl(string url)
     {

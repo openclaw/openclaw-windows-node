@@ -74,11 +74,15 @@ public static class CanvasNavigationPolicy
         return !DangerousUrlPattern.IsMatch(url);
     }
 
+    private const string CanvasVirtualHostOrigin = "https://openclaw-canvas.local";
+
     /// <summary>
     /// Whether a WebView request may receive the gateway bearer.
     /// Same-site is not same-origin: a frame on another port or host of the
     /// same site must not inherit the bearer. A top-level navigation is the
-    /// only case that may omit an exact same-origin fetch site.
+    /// only case that may omit an exact same-origin fetch site, unless this
+    /// window itself is navigating to that exact URL or the request comes
+    /// from the canvas virtual host.
     /// </summary>
     public static bool MayAttachGatewayBearer(
         CanvasBearerSource source,
@@ -86,7 +90,8 @@ public static class CanvasNavigationPolicy
         string? fetchDestination,
         string? fetchMode,
         string? referer = null,
-        string? requestUri = null)
+        string? requestUri = null,
+        string? pendingNativeNavigationUrl = null)
     {
         if (source is CanvasBearerSource.SharedWorker or CanvasBearerSource.ServiceWorker)
             return false;
@@ -94,7 +99,21 @@ public static class CanvasNavigationPolicy
         if (source is not (CanvasBearerSource.Document or CanvasBearerSource.None))
             return false;
 
+        if (IsAboutBlank(referer))
+            return false;
+
+        // A missing Referer must not inherit the current document. The only
+        // no-Referer request that may carry the bearer is the exact URL this
+        // window is navigating to. HTML loaded with NavigateToString does not
+        // set that URL.
+        if (string.IsNullOrWhiteSpace(referer) &&
+            IsSameNavigationTarget(requestUri, pendingNativeNavigationUrl))
+            return true;
+
         var site = NormalizeFetchMetadata(fetchSite);
+        if (IsCanvasVirtualHost(referer) && site is not "same-site")
+            return true;
+
         if (site is "cross-site" or "same-site")
             return false;
 
@@ -114,6 +133,41 @@ public static class CanvasNavigationPolicy
 
         return IsTopLevelDocumentNavigation(fetchDestination, fetchMode);
     }
+
+    private static bool IsAboutBlank(string? uri) =>
+        !string.IsNullOrEmpty(uri) &&
+        (uri.Equals("about:blank", StringComparison.OrdinalIgnoreCase) ||
+         uri.StartsWith("about:blank?", StringComparison.OrdinalIgnoreCase) ||
+         uri.StartsWith("about:blank#", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsCanvasVirtualHost(string? referer) =>
+        IsOriginMatch(referer, CanvasVirtualHostOrigin);
+
+    private static bool IsSameNavigationTarget(string? requestUri, string? pendingNativeNavigationUrl)
+    {
+        if (string.IsNullOrEmpty(requestUri) || string.IsNullOrEmpty(pendingNativeNavigationUrl))
+            return false;
+
+        if (!Uri.TryCreate(requestUri, UriKind.Absolute, out var request) ||
+            !Uri.TryCreate(pendingNativeNavigationUrl, UriKind.Absolute, out var pending))
+        {
+            return false;
+        }
+
+        // Fragments are not sent on the WebView resource request.
+        return string.Equals(
+            request.GetLeftPart(UriPartial.Query),
+            pending.GetLeftPart(UriPartial.Query),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsOriginMatch(string? uri, string origin) =>
+        !string.IsNullOrEmpty(uri) &&
+        uri.StartsWith(origin, StringComparison.OrdinalIgnoreCase) &&
+        (uri.Length == origin.Length ||
+         uri[origin.Length] == '/' ||
+         uri[origin.Length] == '?' ||
+         uri[origin.Length] == '#');
 
     private static bool RefererMatchesRequest(string? referer, string? requestUri)
     {

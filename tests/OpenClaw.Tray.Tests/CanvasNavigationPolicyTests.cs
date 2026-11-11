@@ -98,4 +98,51 @@ public class CanvasNavigationPolicyTests
             referer: "http://frame.example:59731/",
             requestUri: "http://gw.example:61562/from-same-site"));
     }
+
+    [Fact]
+    public void MayAttachGatewayBearer_AllowsTheCanvasHostAndTheExactNativeNavigation()
+    {
+        Assert.True(CanvasNavigationPolicy.MayAttachGatewayBearer(
+            CanvasBearerSource.Document,
+            "cross-site",
+            "empty",
+            "cors",
+            referer: "https://openclaw-canvas.local/page.html",
+            requestUri: "http://gw.example:61562/api"));
+        Assert.False(CanvasNavigationPolicy.MayAttachGatewayBearer(
+            CanvasBearerSource.Document,
+            "cross-site",
+            null,
+            null,
+            referer: "https://evil.example/page.html",
+            requestUri: "http://gw.example:61562/api"));
+        Assert.False(CanvasNavigationPolicy.MayAttachGatewayBearer(
+            CanvasBearerSource.Document,
+            "same-origin",
+            null,
+            null,
+            referer: "about:blank"));
+        Assert.True(CanvasNavigationPolicy.MayAttachGatewayBearer(
+            CanvasBearerSource.Document,
+            "cross-site",
+            null,
+            null,
+            requestUri: "http://gw.example:61562/canvas?x=1",
+            pendingNativeNavigationUrl: "http://gw.example:61562/canvas?x=1#part"));
+        Assert.False(CanvasNavigationPolicy.MayAttachGatewayBearer(
+            CanvasBearerSource.Document,
+            null,
+            null,
+            null,
+            referer: "https://evil.example/",
+            requestUri: "http://gw.example:61562/canvas",
+            pendingNativeNavigationUrl: "http://gw.example:61562/canvas"));
+        Assert.False(CanvasNavigationPolicy.MayAttachGatewayBearer(
+            CanvasBearerSource.Document,
+            "same-site",
+            null,
+            null,
+            referer: "https://openclaw-canvas.local/page.html",
+            requestUri: "http://gw.example:61562/api"));
+    }
 }
