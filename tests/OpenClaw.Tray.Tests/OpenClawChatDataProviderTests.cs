@@ -1726,18 +1726,34 @@ public partial class OpenClawChatDataProviderTests(ITestOutputHelper output)
         {
             bridge.RaiseStatus(ConnectionStatus.Connected);
             await provider.LoadHistoryAsync("main", force: true);
-            var result = await provider.ExecuteLifecycleCommandAsync(
-                "main",
-                ChatLifecycleCommandKind.Compact);
+            var compacted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnChanged(object? sender, ChatDataChangedEventArgs args)
+            {
+                if (args.Snapshot.Timelines.TryGetValue("main", out var timeline) &&
+                    timeline.Entries is [{ Kind: ChatTimelineItemKind.Status }])
+                    compacted.TrySetResult();
+            }
 
-            Assert.True(result.Succeeded);
-            for (var attempt = 0; attempt < 40 && bridge.RequestedHistoryKeys.Count < 3; attempt++)
-                await Task.Delay(100);
+            provider.Changed += OnChanged;
+            try
+            {
+                var result = await provider.ExecuteLifecycleCommandAsync(
+                    "main",
+                    ChatLifecycleCommandKind.Compact);
 
-            Assert.Equal(3, bridge.RequestedHistoryKeys.Count);
-            var timeline = (await provider.LoadAsync()).Timelines["main"];
-            var compactedEntry = Assert.Single(timeline.Entries);
-            Assert.Equal(ChatTimelineItemKind.Status, compactedEntry.Kind);
+                Assert.True(result.Succeeded);
+                // Request admission precedes committing and publishing the retried history.
+                await compacted.Task.WaitAsync(TimeSpan.FromSeconds(4));
+
+                Assert.Equal(3, bridge.RequestedHistoryKeys.Count);
+                var timeline = (await provider.LoadAsync()).Timelines["main"];
+                var compactedEntry = Assert.Single(timeline.Entries);
+                Assert.Equal(ChatTimelineItemKind.Status, compactedEntry.Kind);
+            }
+            finally
+            {
+                provider.Changed -= OnChanged;
+            }
         }
     }
 
@@ -4050,9 +4066,106 @@ public partial class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AssistantFinal_BeforeQueuedSendAcknowledgmentDoesNotReopenTurn(bool transcriptSnapshot)
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, false, true)]
+    public async Task AssistantFinal_BeforeQueuedSendAcknowledgmentDoesNotReopenTurn(
+        bool transcriptSnapshot, bool lifecycleStarted, bool queuedFollowup, bool agentStream)
+    {
+        var drains = new Queue<Func<Task>>();
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()], queueDrainScheduler: work =>
+            {
+                drains.Enqueue(work);
+                return Task.CompletedTask;
+            });
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-3", Status = "started" });
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "second");
+        var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var acknowledge = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.SendBehavior = (text, _, _) =>
+        {
+            if (text != "second")
+                return Task.CompletedTask;
+            sending.TrySetResult();
+            return acknowledge.Task;
+        };
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        var drain = drains.Dequeue()();
+        try
+        {
+            await sending.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (lifecycleStarted)
+                bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
+            if (agentStream)
+            {
+                bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Working..."}""", runId: "run-2"));
+                bridge.RaiseAgent(MakeAgentEvent("tool",
+                    """{"phase":"start","toolCallId":"call","name":"read_file","args":{"path":"fixture.txt"}}""",
+                    runId: "run-2"));
+            }
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", RunId = "run-2", Role = "assistant",
+                State = "final", Text = "second answer", IsTranscriptSnapshot = transcriptSnapshot,
+            });
+            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+            if (queuedFollowup)
+            {
+                await provider.SendMessageAsync("main", "third");
+                Assert.Equal(lifecycleStarted ? ["first", "second"] : ["first", "second", "third"],
+                    bridge.SentMessages);
+            }
+            acknowledge.TrySetResult();
+            await drain.WaitAsync(TimeSpan.FromSeconds(10));
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
+            while (drains.TryDequeue(out var remaining))
+                await remaining();
+
+            var completed = snapshots[^1].Timelines["main"];
+            Assert.Equal(queuedFollowup, completed.TurnActive);
+            Assert.Equal(agentStream ? ["first", "second", "Working...", "second answer"] :
+                    queuedFollowup ? ["first", "second", "second answer", "third"] :
+                    ["first", "second", "second answer"],
+                completed.Entries.Where(entry => entry.Kind != ChatTimelineItemKind.ToolCall).Select(entry => entry.Text));
+            if (agentStream)
+            {
+                Assert.Equal([ChatTimelineItemKind.User, ChatTimelineItemKind.User,
+                    ChatTimelineItemKind.Assistant, ChatTimelineItemKind.ToolCall, ChatTimelineItemKind.Assistant],
+                    completed.Entries.Select(entry => entry.Kind));
+                Assert.Equal("read_file", Assert.Single(completed.Entries,
+                    entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToolName);
+            }
+            if (!queuedFollowup)
+                await provider.SendMessageAsync("main", "third");
+            Assert.Equal(["first", "second", "third"], bridge.SentMessages);
+        }
+        finally
+        {
+            acknowledge.TrySetResult();
+            await drain.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    [Theory]
+    [InlineData("run-2", true)]
+    [InlineData("unrelated", false)]
+    public async Task LateQueuedAcknowledgement_OnlyReconcilesItsCompletedRun(
+        string completedRunId, bool newerRun)
     {
         var drains = new Queue<Func<Task>>();
         var (bridge, provider, snapshots, _) = CreateProvider(
@@ -4071,10 +4184,8 @@ public partial class OpenClawChatDataProviderTests(ITestOutputHelper output)
         await provider.SendMessageAsync("main", "second");
         var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var acknowledge = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        bridge.SendBehavior = (text, _, _) =>
+        bridge.SendBehavior = (_, _, _) =>
         {
-            if (text != "second")
-                return Task.CompletedTask;
             sending.TrySetResult();
             return acknowledge.Task;
         };
@@ -4083,24 +4194,35 @@ public partial class OpenClawChatDataProviderTests(ITestOutputHelper output)
         try
         {
             await sending.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: completedRunId));
             bridge.RaiseChat(new ChatMessageInfo
             {
-                SessionKey = "main", RunId = "run-2", Role = "assistant",
-                State = "final", Text = "second answer", IsTranscriptSnapshot = transcriptSnapshot,
+                SessionKey = "main", RunId = completedRunId, Role = "assistant",
+                State = "final", Text = "completed answer",
             });
-            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+            if (newerRun)
+            {
+                bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "newer"));
+                bridge.RaiseChat(new ChatMessageInfo
+                {
+                    SessionKey = "main", RunId = "newer", Role = "assistant",
+                    State = "delta", Text = "newer response",
+                });
+            }
             acknowledge.TrySetResult();
             await drain.WaitAsync(TimeSpan.FromSeconds(10));
-            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-2"));
             while (drains.TryDequeue(out var remaining))
                 await remaining();
 
-            var completed = snapshots[^1].Timelines["main"];
-            Assert.False(completed.TurnActive);
-            Assert.Equal(["first", "second", "second answer"],
-                completed.Entries.Select(entry => entry.Text));
-            await provider.SendMessageAsync("main", "third");
-            Assert.Equal(["first", "second", "third"], bridge.SentMessages);
+            var actual = snapshots[^1].Timelines["main"];
+            Assert.True(actual.TurnActive);
+            Assert.Equal(newerRun
+                    ? ["first", "second", "completed answer", "newer response"]
+                    : ["first", "completed answer", "second"],
+                actual.Entries.Select(entry => entry.Text));
+            if (newerRun)
+                Assert.True(Assert.Single(actual.Entries, entry => entry.Text == "newer response").IsStreaming);
+            Assert.Equal(["first", "second"], bridge.SentMessages);
         }
         finally
         {

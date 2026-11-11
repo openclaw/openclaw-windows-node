@@ -233,6 +233,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
+    private OpenClaw.Shared.Cron.AutomationsOverviewSource? _automationsOverview;
+    internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview =>
+        _automationsOverview ?? throw new InvalidOperationException("Automations overview is not initialized.");
     private OpenClawTray.Presentation.Usage.UsageProviderReadSource? _usageProviderReads;
     internal OpenClawTray.Presentation.Usage.IUsageProviderReadSource UsageProviderReads =>
         _usageProviderReads ?? throw new InvalidOperationException("Usage provider reads are not initialized.");
@@ -791,6 +794,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             exit: Exit);
         _appState.UpdateInfo = UpdateCoordinator.BuildInitialInfo();
         _gatewayService = new GatewayService(_appState, _dispatcherQueue!);
+        _automationsOverview = new OpenClaw.Shared.Cron.AutomationsOverviewSource(
+            () => GatewayClient,
+            action =>
+            {
+                if (!_dispatcherQueue!.TryEnqueue(() => action()))
+                    Logger.Warn("Failed to dispatch Automations overview update during shutdown.");
+            });
         _usageProviderReads = new OpenClawTray.Presentation.Usage.UsageProviderReadSource(action =>
         {
             if (!_dispatcherQueue!.TryEnqueue(() => action()))
@@ -2365,6 +2375,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Delegate all 27 event subscriptions to GatewayService
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
+        _automationsOverview?.SetConnection(GatewayClient);
         SynchronizeUsageProviderConnection();
         _inboxGatewaySource?.AttachClient(e.NewClient);
 
@@ -2428,6 +2439,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             : null;
         OnUiThread(() =>
         {
+            _automationsOverview?.SetConnection(GatewayClient);
             SynchronizeUsageProviderConnection();
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);

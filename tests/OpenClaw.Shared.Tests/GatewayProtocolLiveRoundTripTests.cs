@@ -409,6 +409,93 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
+    private const string LegacySessionGuardRejection =
+        "invalid sessions.patch params: at root: unexpected property 'expectedSessionId'";
+
+    [Fact]
+    public async Task PatchSessionConfirmed_RetriesOnceWithoutTheGuard_WhenGatewayRejectsItAsAnUnknownProperty()
+    {
+        const string key = "agent:main:direct:legacy";
+        using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
+        server.OnMethod("sessions.patch", parameters =>
+        {
+            if (parameters.TryGetProperty("expectedSessionId", out _))
+                return LoopbackResponse.Reject("INVALID_REQUEST", LegacySessionGuardRejection);
+
+            return new { ok = true, key };
+        });
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", new TestLogger(),
+            tokenIsBootstrapToken: false, bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            var epoch = client.SessionMutationConnectionEpoch!.Value;
+
+            await client.PatchSessionConfirmedAsync(
+                key, new SessionPatch { Archived = true, ExpectedSessionId = "sess-1" }, epoch);
+            await client.PatchSessionConfirmedAsync(
+                key, new SessionPatch { Archived = false, ExpectedSessionId = "sess-1" }, epoch);
+
+            // Every patch offers the guard first, so nothing needs resetting when the Gateway is upgraded.
+            Assert.Equal(4, server.FrameCount("sessions.patch"));
+            Assert.Contains("\"expectedSessionId\":\"sess-1\"", server.FrameFor("sessions.patch", 0));
+            var archived = server.FrameFor("sessions.patch", 1);
+            Assert.DoesNotContain("expectedSessionId", archived);
+            Assert.Contains("\"archived\":true", archived);
+            Assert.Contains("\"expectedSessionId\":\"sess-1\"", server.FrameFor("sessions.patch", 2));
+            var unarchived = server.FrameFor("sessions.patch", 3);
+            Assert.DoesNotContain("expectedSessionId", unarchived);
+            Assert.Contains("\"archived\":false", unarchived);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData("Session agent:main:direct:x changed before patch. Retry.", true)]
+    [InlineData("expectedSessionId required for session lifecycle patch: agent:main:direct:x", true)]
+    [InlineData("invalid sessions.patch params: at root: unexpected property 'foo'", true)]
+    [InlineData("invalid sessions.patch params: at root: must have required property 'expectedSessionId'", true)]
+    // A session key is echoed into the stale error, so a crafted key must not read as a schema rejection.
+    [InlineData("Session invalid sessions.patch params: unexpected property 'expectedSessionId' changed before patch. Retry.", true)]
+    // Without a guard in the request there is nothing to drop, so an identical retry would be pointless.
+    [InlineData(LegacySessionGuardRejection, false)]
+    public async Task PatchSessionConfirmed_DoesNotRetry_UnlessTheGuardWasRejectedAsAnUnknownProperty(
+        string rejection, bool sendGuard)
+    {
+        const string key = "agent:main:direct:x";
+        using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
+        server.OnMethod("sessions.patch", _ => LoopbackResponse.Reject("INVALID_REQUEST", rejection));
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", new TestLogger(),
+            tokenIsBootstrapToken: false, bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            var epoch = client.SessionMutationConnectionEpoch!.Value;
+            var patch = new SessionPatch { Archived = true, ExpectedSessionId = sendGuard ? "sess-1" : null };
+
+            var rejected = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => client.PatchSessionConfirmedAsync(key, patch, epoch));
+
+            Assert.Equal(rejection, rejected.Message);
+            Assert.Equal(1, server.FrameCount("sessions.patch"));
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
     [Fact]
     public async Task ChatSend_UsesCallerProvidedIdempotencyKeyOnWire()
     {
@@ -1110,6 +1197,16 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 
         public bool HasFrame(string method) => TryGetFrame(method, occurrence: 0, out _);
 
+        public int FrameCount(string method)
+        {
+            var count = 0;
+            foreach (var f in _frames)
+            {
+                if (f.Method == method) count++;
+            }
+            return count;
+        }
+
         private bool TryGetFrame(string method, int occurrence, out string frame)
         {
             var seen = 0;
@@ -1265,8 +1362,11 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
-    private sealed record LoopbackResponse(bool Ok, object? Payload = null, string? Error = null)
+    private sealed record LoopbackResponse(bool Ok, object? Payload = null, object? Error = null)
     {
         public static LoopbackResponse Fail(string error) => new(false, Error: error);
+
+        /// <summary>A structured rejection, the shape a real Gateway sends: <c>error: { code, message }</c>.</summary>
+        public static LoopbackResponse Reject(string code, string message) => new(false, Error: new { code, message });
     }
 }

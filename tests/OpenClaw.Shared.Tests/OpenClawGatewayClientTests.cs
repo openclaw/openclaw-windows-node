@@ -1652,6 +1652,10 @@ public class OpenClawGatewayClientTests
     [InlineData("FORBIDDEN", null, "FORBIDDEN", null)]
     [InlineData("UNAVAILABLE", "AUTHENTICATED_PROFILE_UNAVAILABLE", "UNAVAILABLE", "AUTHENTICATED_PROFILE_UNAVAILABLE")]
     [InlineData("FORBIDDEN", "MISSING_SCOPE", "FORBIDDEN", "MISSING_SCOPE")]
+    [InlineData("CRON_JOB_CHANGED", null, "CRON_JOB_CHANGED", null)]
+    [InlineData("CRON_JOB_NOT_FOUND", null, "CRON_JOB_NOT_FOUND", null)]
+    [InlineData("INVALID_REQUEST", "CRON_JOB_CHANGED", "INVALID_REQUEST", "CRON_JOB_CHANGED")]
+    [InlineData("INVALID_REQUEST", "CRON_JOB_NOT_FOUND", "INVALID_REQUEST", "CRON_JOB_NOT_FOUND")]
     [InlineData("please leak this message", "lower case", null, null)]
     public async Task SendWizardRequestAsync_GatewayError_ExposesOnlyAllowlistedCodes(
         string code, string? detail, string? expectedCode, string? expectedDetail)

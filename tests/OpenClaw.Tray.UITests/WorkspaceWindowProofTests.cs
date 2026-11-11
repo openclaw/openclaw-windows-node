@@ -299,8 +299,9 @@ public sealed class WorkspaceWindowProofTests
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsSearchBox")))
             .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
         Invoke(Find(root, "SettingsSearch"));
-        await WaitUntilAsync(() => SearchBox() is not null);
-        var input = SearchBox()!;
+        AutomationElement? readyInput = null;
+        await WaitUntilAsync(() => (readyInput = SearchBox()) is not null);
+        var input = readyInput!;
         Assert.Equal(ControlType.Edit, input.Current.ControlType);
         await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
         System.Windows.Forms.SendKeys.SendWait("Go to General");
@@ -321,9 +322,10 @@ public sealed class WorkspaceWindowProofTests
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
         await WaitUntilAsync(() => SearchBox() is not null);
-        await WaitUntilAsync(() => SearchBox()!.Current.HasKeyboardFocus);
+        await WaitUntilAsync(() => SearchBox() is { } searchInput && searchInput.Current.HasKeyboardFocus);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
         await WaitUntilAsync(() => SearchBox() is not null);

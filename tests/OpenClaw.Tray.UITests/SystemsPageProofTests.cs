@@ -977,7 +977,10 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             await ui.RunOnUIAsync(async () =>
             {
                 Invoke(Find<Button>(surface, "SystemsAddSystem"));
-                await TestSupport.WaitForRenderedConditionAsync(() => OpenDialogs(surface).Length == 1, "Add system dialog");
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    OpenDialogs(surface) is [{ IsLoaded: true } dialog] &&
+                    TestSupport.FindDescendants<FrameworkElement>(dialog)
+                        .Any(element => element.Name == "BackgroundElement" && element.IsLoaded), "Add system dialog");
                 var add = Assert.Single(OpenDialogs(surface));
                 await AssertCenteredInWindowAsync(add, "Add system dialog is centered in the window");
                 Assert.Equal(SystemsText.S("OpenConnection"), add.PrimaryButtonText);
@@ -998,7 +1001,10 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 bar.IsOpen = true;
                 await ui.YieldToRenderAsync();
                 Invoke(FindCommand(surface, "SystemsForgetNode"));
-                await TestSupport.WaitForRenderedConditionAsync(() => OpenDialogs(surface).Length == 1, "Forget dialog");
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    OpenDialogs(surface) is [{ IsLoaded: true } dialog] &&
+                    TestSupport.FindDescendants<FrameworkElement>(dialog)
+                        .Any(element => element.Name == "BackgroundElement" && element.IsLoaded), "Forget dialog");
                 var forget = Assert.Single(OpenDialogs(surface));
                 Assert.Equal(ContentDialogButton.None, forget.DefaultButton);
                 Assert.Equal(SystemsText.F("ForgetTitle", "Studio"), forget.Title);

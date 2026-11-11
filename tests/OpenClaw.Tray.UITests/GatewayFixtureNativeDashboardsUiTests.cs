@@ -73,7 +73,7 @@ public sealed partial class GatewayFixtureUiTests
                         }
                         return control;
                     }
-                    void AssertPointOwner(CronPoint point) =>
+                    void AssertPointOwner(FixturePoint point) =>
                         Assert.Equal(hwnd, GetAncestor(WindowFromPoint(point), 2));
                     async Task ClickToggleAsync(string id, string expectedId)
                     {
@@ -82,7 +82,7 @@ public sealed partial class GatewayFixtureUiTests
                         // PrintWindow captures an owned HWND even behind other windows. Desktop
                         // point queries need a separately qualified foreground and physical-DPI context.
                         await NativeKeyboardProof.ActivateAsync(hwnd);
-                        var point = new CronPoint();
+                        var point = new FixturePoint();
                         var belongsToButton = false;
                         uint sent = 0;
                         var previousDpi = DashboardSetThreadDpiAwarenessContext(new IntPtr(-4));
@@ -96,7 +96,7 @@ public sealed partial class GatewayFixtureUiTests
                             Assert.True(button.Current.IsEnabled);
                             var bounds = button.Current.BoundingRectangle;
                             Assert.True(bounds.Width > 0 && bounds.Height > 0);
-                            point = new CronPoint
+                            point = new FixturePoint
                             {
                                 X = (int)Math.Round(bounds.Left + bounds.Width / 2),
                                 Y = (int)Math.Round(bounds.Top + bounds.Height / 2)
@@ -131,12 +131,12 @@ public sealed partial class GatewayFixtureUiTests
                             AssertPointOwner(cursor);
                             var input = new[]
                             {
-                                new CronInput { Mouse = new CronMouse { Flags = 2 } },
-                                new CronInput { Mouse = new CronMouse { Flags = 4 } },
+                                new FixtureInput { Mouse = new FixtureMouse { Flags = 2 } },
+                                new FixtureInput { Mouse = new FixtureMouse { Flags = 4 } },
                             };
-                            sent = SendInput(2, input, System.Runtime.InteropServices.Marshal.SizeOf<CronInput>());
+                            sent = SendInput(2, input, System.Runtime.InteropServices.Marshal.SizeOf<FixtureInput>());
                             if (sent == 1)
-                                SendInput(1, [input[1]], System.Runtime.InteropServices.Marshal.SizeOf<CronInput>());
+                                SendInput(1, [input[1]], System.Runtime.InteropServices.Marshal.SizeOf<FixtureInput>());
                             Assert.Equal(2u, sent);
                         }
                         finally { DashboardSetThreadDpiAwarenessContext(previousDpi); }
@@ -153,7 +153,7 @@ public sealed partial class GatewayFixtureUiTests
                     }
                     await NativeKeyboardProof.ActivateAsync(hwnd);
                     var negativeBounds = FindChrome("WorkspaceTogglePane")!.Current.BoundingRectangle;
-                    var negativePoint = new CronPoint
+                    var negativePoint = new FixturePoint
                     {
                         X = (int)Math.Round(negativeBounds.Left + negativeBounds.Width / 2),
                         Y = (int)Math.Round(negativeBounds.Top + negativeBounds.Height / 2)

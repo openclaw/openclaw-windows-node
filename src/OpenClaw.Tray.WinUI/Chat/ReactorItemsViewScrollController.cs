@@ -147,6 +147,8 @@ file sealed class InitialTailPositioner : IDisposable
     private readonly PointerEventHandler _readerPointerPressed;
     private readonly TypedEventHandler<UIElement, GettingFocusEventArgs> _readerGettingFocus;
     private bool _disclosureAnchored;
+    private bool _readerAnchored;
+    private int? _readerBringCorrelationId;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
@@ -621,6 +623,18 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
     {
+        if (ReferenceEquals(sender, _scrollView) && !_initialPending && !args.Cancel
+            && args.RequestEventArgs?.TargetElement is Control { FocusState: FocusState.Keyboard }
+            && sender.ScrollableHeight - args.TargetVerticalOffset > FollowThreshold)
+        {
+            // A real reader destination leaves the tail before the native offset can move.
+            // Edge anchoring can otherwise keep remeasuring virtual rows and starve this request.
+            _following = false;
+            _readerAnchored = true;
+            _readerBringCorrelationId = args.CorrelationId;
+            sender.VerticalAnchorRatio = 0;
+        }
+
         if (!_initialPending || !ReferenceEquals(sender, _scrollView)
             || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
             return;
@@ -652,6 +666,17 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
     {
+        if (ReferenceEquals(sender, _scrollView) && _readerBringCorrelationId == args.CorrelationId)
+        {
+            _readerBringCorrelationId = null;
+            if (IsNearBottom(sender))
+            {
+                _following = true;
+                if (!_disclosureAnchored)
+                    RestoreTailAnchor();
+            }
+        }
+
         if (_initialPending && ReferenceEquals(sender, _scrollView))
         {
             var correlationId = args.CorrelationId;
@@ -717,10 +742,12 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void RestoreTailAnchor()
     {
-        if (!_disclosureAnchored && _offsetCorrectionAnchorRequested is null)
+        _readerBringCorrelationId = null;
+        if (!_disclosureAnchored && !_readerAnchored && _offsetCorrectionAnchorRequested is null)
             return;
 
         _disclosureAnchored = false;
+        _readerAnchored = false;
         if (_scrollView is not null && _offsetCorrectionAnchorRequested is not null)
             _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
         _offsetCorrectionAnchorRequested = null;
@@ -758,7 +785,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
-        SetFollowing(IsNearBottom(sender));
+        SetFollowing(_readerBringCorrelationId is null && IsNearBottom(sender));
         ReportTailVisibility(IsAtBottom(sender));
         _confirmation.GeometryChanged();
         if (_initialPending && ReferenceEquals(sender, _scrollView))
@@ -942,8 +969,6 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _version++;
-        // Retire the old work, not unfinished admitted navigation. Cancellation,
-        // replacement and completed landing remain separate clear boundaries.
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
@@ -1007,6 +1032,8 @@ file sealed class InitialTailPositioner : IDisposable
         _scrollView = null;
         _fixtureObservation?.Attach(null);
         _disclosureAnchored = false;
+        _readerAnchored = false;
+        _readerBringCorrelationId = null;
         _offsetCorrectionAnchorRequested = null;
         _reportedAtTail = null;
     }

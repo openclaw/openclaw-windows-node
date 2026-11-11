@@ -260,6 +260,7 @@ public sealed partial class GatewayFixtureProtocolTests
         await using var peer = await FixturePeer.ConnectAsync(server, token);
         var create = await peer.RequestAsync("sessions.create", new { agentId = "research" });
         var key = create.GetProperty("key").GetString()!;
+        var sessionId = create.GetProperty("sessionId").GetString()!;
         await peer.RequestAsync("chat.send", SendParams("a"));
         await peer.RequestAsync("chat.send", new { sessionKey = key, message = "Independent B", idempotencyKey = "b" });
         var finals = await peer.ThroughAsync(e => IsChat(e, "final"));
@@ -267,10 +268,17 @@ public sealed partial class GatewayFixtureProtocolTests
         await peer.ThroughAsync(e => IsChat(e, "final") && e.GetProperty("payload").GetProperty("sessionKey").GetString() != firstKey);
         var history = await peer.RequestAsync("chat.history", new { sessionKey = key });
         Assert.Equal("Independent B", history.GetProperty("messages")[0].GetProperty("content").GetString());
-        await peer.RequestAsync("sessions.patch", new { key, label = "Renamed", archived = true });
+        // The Gateway rejects archive and unarchive without the observed session identity, and changes nothing.
+        var missingGuard = await Assert.ThrowsAsync<InvalidOperationException>(() => peer.RequestAsync("sessions.patch", new { key, archived = true }));
+        Assert.Equal($"expectedSessionId required for session lifecycle patch: {key}", missingGuard.Message);
+        var staleGuard = await Assert.ThrowsAsync<InvalidOperationException>(() => peer.RequestAsync("sessions.patch",
+            new { key, archived = true, expectedSessionId = "stale-session-id" }));
+        Assert.Equal($"Session {key} changed before patch. Retry.", staleGuard.Message);
+        Assert.Empty((await peer.RequestAsync("sessions.list", new { archived = true })).GetProperty("sessions").EnumerateArray());
+        await peer.RequestAsync("sessions.patch", new { key, label = "Renamed", archived = true, expectedSessionId = sessionId });
         var archived = await peer.RequestAsync("sessions.list", new { archived = true });
         Assert.Equal("Renamed", Assert.Single(archived.GetProperty("sessions").EnumerateArray()).GetProperty("label").GetString());
-        await peer.RequestAsync("sessions.patch", new { key, archived = false });
+        await peer.RequestAsync("sessions.patch", new { key, archived = false, expectedSessionId = sessionId });
         await peer.RequestAsync("sessions.reset", new { key });
         Assert.Empty((await peer.RequestAsync("chat.history", new { sessionKey = key })).GetProperty("messages").EnumerateArray());
         await peer.RequestAsync("sessions.delete", new { key, deleteTranscript = true });

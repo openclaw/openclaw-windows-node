@@ -378,11 +378,6 @@ It schedules retries after the rendering callback returns and fences them agains
 cancellation or replacement. If rows or the native scroll view disappear during
 initial positioning, it rearms when they return. Normal follow cannot interrupt
 initial positioning.
-If a completed bring needs an offset correction, the current tail row remains
-the native anchor at an interior ratio until completion or cancellation.
-The anchor callback rechecks the navigation generation, row index and source
-identity without realizing another row. This avoids both disabled-anchor layout
-cycles and edge anchoring undoing the correction as the virtualized extent changes.
 Tail followers use stable native bottom anchoring and the existing follow
 threshold. A reader away from the tail uses stable native top anchoring, so
 composer or connection-status height changes do not move visible text relative
@@ -396,6 +391,18 @@ an established reader. Followers and unfinished initial positioning retain
 the layout gate. Unload retires old callbacks and queues without discarding
 admitted initial positioning; cancellation, replacement and completion remain
 distinct boundaries.
+If a completed bring needs an offset correction, the current tail row remains
+the native anchor at an interior ratio until completion or cancellation.
+The anchor callback rechecks the navigation generation, row index and source
+identity without realizing another row. This avoids both disabled-anchor layout
+cycles and edge anchoring undoing the correction as the virtualized extent changes.
+Native anchoring otherwise follows the current follow mode and threshold, except
+for that bounded correction and while a reader toggles a disclosure header by
+pointer, Enter or Space: the transcript then anchors to the top, so the header
+stays put and its details grow downward, as on the web. Any other reader input
+restores the anchor for the current follow mode; explicit tail navigation
+restores bottom anchoring. Observation changes the ratio only on a mode
+transition, not by chasing each extent event.
 Actual tail visibility is tracked separately from follow eligibility. The
 **Jump to latest** button stays mounted as an overlay, so showing it does not
 shrink the transcript viewport or move the composer.
@@ -463,6 +470,9 @@ the queue at 160px or one third of the viewport height, whichever is smaller, so
 larger queues do not displace the composer. Promotion removes the queued row and
 shows the provider's normal sent message once. Empty queues remove the panel,
 without remounting the composer. This applies to Workspace's ChatPage.
+If acceptance arrives after that run has completed, the conversation owner places
+the sent message before its matching live output without reopening the completed
+turn or disturbing a newer response. Remaining queued messages can then drain.
 See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech

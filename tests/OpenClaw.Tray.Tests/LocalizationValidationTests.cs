@@ -241,14 +241,6 @@ public class LocalizationValidationTests
         "ConfigPage_ReconnectDialogBody",
         "ConfigPage_ReconnectDialogTitle",
         "ConfigPage_ReconnectDialogWaiting",
-        "CronPage_AmericaChicago.Content",
-        "CronPage_AmericaDenver.Content",
-        "CronPage_AmericaLosAngeles.Content",
-        "CronPage_AmericaNewYork.Content",
-        "CronPage_AsiaTokyo.Content",
-        "CronPage_EuropeBerlin.Content",
-        "CronPage_EuropeLondon.Content",
-        "CronPage_UTC.Content",
         "SandboxPage_16MiB.Content",
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
@@ -267,8 +259,6 @@ public class LocalizationValidationTests
         // seeded English-only across all 5 locales using the deferred-translation
         // pattern. Fetched at runtime via LocalizationHelper. Same precedent as
         // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
-        "CronPage_JobCompleted",
-        "CronPage_JobCompletedRanSuccessfully",
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
@@ -626,6 +616,43 @@ public class LocalizationValidationTests
         "fr-fr",
         "nl-nl",
         "pt-br",
+    };
+
+    /// <summary>
+    /// Automations values that are correctly spelled the same as English in some locales:
+    /// unit abbreviations, format-only strings and loanwords such as Agent, Prompt or Webhook.
+    /// Each entry lists exactly the locales that keep the English value.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> AutomationsIdenticalLocales = new(StringComparer.Ordinal)
+    {
+        ["Automations_AgentScope"] = ["nl-nl"],
+        ["Automations_DeliveryMode_Webhook"] = ["fr-fr", "pt-br", "zh-cn", "zh-tw"],
+        ["Automations_Duration_Hours"] = ["fr-fr", "pt-br"],
+        ["Automations_Duration_Milliseconds"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Duration_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Duration_Seconds"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Field_Agent"] = ["fr-fr", "nl-nl"],
+        ["Automations_Field_DeliveryMode"] = ["fr-fr"],
+        ["Automations_Field_Destination"] = ["fr-fr"],
+        ["Automations_Field_Expression"] = ["fr-fr"],
+        ["Automations_Field_Model"] = ["nl-nl"],
+        ["Automations_Field_Options"] = ["fr-fr"],
+        ["Automations_Field_Payload"] = ["nl-nl"],
+        ["Automations_Field_Prompt"] = ["nl-nl", "pt-br"],
+        ["Automations_Field_RunDate"] = ["fr-fr"],
+        ["Automations_Field_WebhookUrl"] = ["zh-cn", "zh-tw"],
+        ["Automations_Kind_Every"] = ["nl-nl"],
+        ["Automations_Notice_JobMessage"] = ["nl-nl", "pt-br"],
+        ["Automations_Payload_Script"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Relative_Days"] = ["nl-nl", "pt-br"],
+        ["Automations_Relative_Hours"] = ["fr-fr", "pt-br"],
+        ["Automations_Relative_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Review_SummaryEnd"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Review_SummaryJoin"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Schedule_WithTimezone"] = ["fr-fr", "nl-nl", "pt-br", "zh-tw"],
+        ["Automations_Session_Named"] = ["fr-fr"],
+        ["Automations_State_Active"] = ["fr-fr"],
+        ["Automations_Unit_Minutes"] = ["fr-fr"],
     };
 
     private static bool IsInvariantOrDeferred(string key, string value) =>
@@ -1169,6 +1196,8 @@ public class LocalizationValidationTests
                     "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
                 };
+                if (AutomationsIdenticalLocales.TryGetValue(key, out var automationsLocales))
+                    naturalLoanwordLocales = automationsLocales;
                 if (naturalLoanwordLocales.Length > 0 &&
                     identicalLocales.Order().SequenceEqual(naturalLoanwordLocales.Order()))
                     continue;

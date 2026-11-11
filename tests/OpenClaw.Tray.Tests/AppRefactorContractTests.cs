@@ -6,6 +6,24 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void AutomationsOverview_HasOneLazyHostOwnerBoundToTheLiveClientAndDisposedBeforeGateway()
+    {
+        var source = ReadAppSources();
+        Assert.Single(Regex.Matches(source, @"new OpenClaw\.Shared\.Cron\.AutomationsOverviewSource\("));
+        Assert.Contains("internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview", source);
+        Assert.DoesNotContain("_automationsOverview?.RefreshAsync", source);
+        Assert.DoesNotContain("_automationsOverview.RefreshAsync", source);
+        foreach (var hook in new[] { "OnOperatorClientChanged", "OnManagerStateChanged" })
+            Assert.Contains("_automationsOverview?.SetConnection(GatewayClient);", ExtractMethod(source, hook));
+        AssertInOrder(source, "automationsOverview.Dispose();", "await connectionManager.DisposeAsync();");
+
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
+        Assert.Contains("overviewSource: CurrentApp.AutomationsOverview", page);
+        Assert.DoesNotContain("new AutomationsOverviewSource", page);
+    }
+
+    [Fact]
     public void NodeService_ShutsDownProducersBeforeReleasingExecutorCleanupLeases()
     {
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
