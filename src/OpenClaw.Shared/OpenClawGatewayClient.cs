@@ -438,6 +438,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler? SelfProfileChanged;
+    public event EventHandler<SessionListChange>? SessionListChanged;
     public event EventHandler<JsonElement>? CronEventReceived;
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
@@ -3944,6 +3945,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
+                var changed = root.TryGetProperty("payload", out var changedPayload)
+                    && changedPayload.ValueKind == JsonValueKind.Object
+                    ? new SessionListChange(GetString(changedPayload, "reason"), GetString(changedPayload, "sessionKey"))
+                    : new SessionListChange(null, null);
+                SessionListChanged?.Invoke(this, changed);
                 ScheduleSessionRefresh(sourceConnectionGeneration);
                 break;
             case "config.changed":
@@ -5480,6 +5486,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             session.ReasoningDefault = null;
         if (item.TryGetProperty("verboseLevel", out var verbose))
             session.VerboseLevel = verbose.GetString();
+        PopulateSessionHubFields(session, item, authoritativeSessionList);
         if (item.TryGetProperty("systemSent", out var systemSent) &&
             (systemSent.ValueKind == JsonValueKind.True || systemSent.ValueKind == JsonValueKind.False))
             session.SystemSent = systemSent.GetBoolean();
