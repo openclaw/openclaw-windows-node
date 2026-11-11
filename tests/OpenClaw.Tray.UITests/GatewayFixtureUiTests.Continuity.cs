@@ -100,7 +100,8 @@ public sealed partial class GatewayFixtureUiTests
             // replaced by a reconnect re-render is not reported as a lost draft, and a draft the UI no
             // longer shows fails here instead of surfacing as the same opaque wait on the Send action.
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { } input &&
-                ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == afterReconnect,
+                input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) &&
+                ((ValuePattern)pattern).Current.Value == afterReconnect,
                 "composer keeps the draft after reconnect", ReconnectSendTimeout);
             AutomationElement? sendAction = null;
             try
@@ -133,7 +134,8 @@ public sealed partial class GatewayFixtureUiTests
                 FindById(run, "WorkspaceSessionsAdd") is { } add && !add.Current.IsEnabled,
                 "authoritative removal requires a new selection");
             CaptureContinuity(run, "continuity-removed.png");
-        }, scenario: GatewayScenario.CreateBrowse(requireAgentSelection: true, allowChatSend: true));
+        }, scenario: GatewayScenario.CreateBrowse(requireAgentSelection: true, allowChatSend: true),
+        testTimeout: ReconnectTestBudget);
     }
 
     private static void WriteComposerReceipt(GatewayFixtureRun run, string name, int[] expectedIdentity,

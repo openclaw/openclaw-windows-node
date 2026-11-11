@@ -204,19 +204,19 @@ public sealed class WorkspaceWindowProofTests
         AssertIconCenter(homeBounds, center, color => color.B > color.R + 70 && color.B > color.G + 50);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
         var researchEntry = await WaitForPopupAsync(root, "WorkspaceAgent:research");
-        Assert.Equal("Configured assistant, main", FindPopup(root, "WorkspaceAgent:main")!.Current.Name);
+        Assert.Equal("Configured assistant, main", (await WaitForPopupAsync(root, "WorkspaceAgent:main")).Current.Name);
         Assert.Equal("Research assistant, research", researchEntry.Current.Name);
-        Assert.Equal("No configured icon, fallback", FindPopup(root, "WorkspaceAgent:fallback")!.Current.Name);
+        Assert.Equal("No configured icon, fallback", (await WaitForPopupAsync(root, "WorkspaceAgent:fallback")).Current.Name);
         Assert.NotNull(FindPopup(root, "WorkspaceNewAgent"));
         await Task.Delay(500);
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         CaptureFlyout(root, theme, "agent-identities");
-        AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
+        AssertIconCenter((await WaitForPopupAsync(root, "WorkspaceAgent:main")).Current.BoundingRectangle, center,
             color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145,
             expectedWidth: toggle.Width * 32 / 40);
         // "fallback" has no image or text avatar, so it gets the generated face: pale teal background (D5F6F3).
-        AssertIconCenter(FindPopup(root, "WorkspaceAgent:fallback")!.Current.BoundingRectangle, center,
+        AssertIconCenter((await WaitForPopupAsync(root, "WorkspaceAgent:fallback")).Current.BoundingRectangle, center,
             color => color.R is > 190 and < 235 && color.G > color.R + 20 && color.B > color.R + 15,
             expectedWidth: toggle.Width * 32 / 40);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
@@ -280,7 +280,7 @@ public sealed class WorkspaceWindowProofTests
         foreach (var id in new[] { "WorkspaceOwnerProfile", "WorkspaceOwnerSettings", "WorkspaceOwnerPairDevice", "WorkspaceOwnerHelp" })
             Assert.NotNull(FindPopup(root, id));
         Assert.Equal("Disconnected", ownerMenu.Current.HelpText);
-        Assert.False(FindPopup(root, "WorkspaceOwnerProfile")!.Current.IsEnabled);
+        Assert.False((await WaitForPopupAsync(root, "WorkspaceOwnerProfile")).Current.IsEnabled);
         Assert.Null(FindPopup(root, "WorkspaceOwnerConnectionStatus"));
         CaptureFlyout(root, theme, "owner-account-menu");
         var statusFromMenu = await ExpandOwnerGatewayMenuAsync(root);
@@ -971,11 +971,11 @@ public sealed class WorkspaceWindowProofTests
         var chatStatusRow = await ExpandOwnerGatewayMenuAsync(root);
         Assert.Equal("Connection Status: Disconnected", chatStatusRow.Current.Name);
         Invoke(chatStatusRow);
-        var gatewayStatusOpen = await WaitForPopupAsync(root, "GatewayStatusOpenConnection");
+        await WaitForPopupAsync(root, "GatewayStatusOpenConnection");
         Assert.Equal(composerId, Find(root, "ChatComposerInput").GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         CaptureFlyout(root, theme, "owner-connection-status");
-        Invoke(gatewayStatusOpen);
+        Invoke(await WaitForPopupAsync(root, "GatewayStatusOpenConnection"));
         await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
         Invoke(Find(root, "SettingsBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
@@ -1152,10 +1152,10 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is null);
         await Task.Delay(350);
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
-        var notificationsFlyout = await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage");
+        await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage");
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null);
         Assert.False(IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Invoke(notificationsFlyout);
+        Invoke(await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
         Invoke(Find(workspaceElement, "WorkspaceBack"));
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));

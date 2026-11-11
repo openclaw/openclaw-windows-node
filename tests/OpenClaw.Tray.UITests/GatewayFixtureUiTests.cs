@@ -29,11 +29,14 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         int.TryParse(Environment.GetEnvironmentVariable(HandoffSettleTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(45);
     private const string ReconnectSendTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_RECONNECT_TIMEOUT_SECONDS";
-    // Post-reconnect composer and action checks, tunable for triage. Both waits sit inside the test's
-    // own 150 s body deadline, so a much larger override cannot report these failure messages first.
+    // Post-reconnect composer and action checks, tunable for triage.
     private static readonly TimeSpan ReconnectSendTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(ReconnectSendTimeoutVariable), out var reconnectSeconds) && reconnectSeconds > 0
             ? TimeSpan.FromSeconds(reconnectSeconds) : TimeSpan.FromSeconds(30);
+    // Fixed waits of the reconnect test (5 x 20 s default) plus both ReconnectSendTimeout waits and slack,
+    // so the wait's own failure message is reported before the body deadline.
+    private static readonly TimeSpan ReconnectTestBudget =
+        TimeSpan.FromSeconds(120) + ReconnectSendTimeout + ReconnectSendTimeout;
     // The primary action is the Stop affordance during a turn and the Send label otherwise. The
     // fixture forces OPENCLAW_LANGUAGE=en-US, so the localized label resolves to this value.
     private const string SendActionName = "Send";
