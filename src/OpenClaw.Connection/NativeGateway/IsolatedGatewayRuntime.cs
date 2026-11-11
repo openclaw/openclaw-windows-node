@@ -352,6 +352,14 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                     : "Gateway lifecycle is busy. Retry after it finishes. Credentials were not sent.",
                 FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
         }
+        catch (NativeGatewayContractException ex)
+        {
+            // The contract failure names the rejected operation and field, so it is safe to show.
+            Trace.TraceWarning("Isolated Gateway ownership inspection rejected a package response. Credentials were not sent.");
+            return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+                Detail: ex.Message,
+                FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
+        }
         catch (Exception ex) when (IsInspectionFailure(ex))
         {
             Trace.TraceWarning($"Isolated Gateway ownership inspection failed ({ex.GetType().Name}). Credentials were not sent.");

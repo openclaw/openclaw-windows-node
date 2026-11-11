@@ -58,6 +58,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private bool _adoptStart;
     private bool _loseStartAcknowledgement;
     private bool _refuseConditionalStop;
+    private string? _statusOverride;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -70,6 +71,8 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             int processId = other ? 4567 : ProcessId;
             if (args.SequenceEqual(["gateway-service", "status", "--json"]) && _statusFailure is not null)
                 throw _statusFailure;
+            if (args.SequenceEqual(["gateway-service", "status", "--json"]) && _statusOverride is not null)
+                return new NativeGatewayCommandResult(0, _statusOverride);
             if (args.SequenceEqual(["gateway-service", "status", "--json"]))
             {
                 if (_duringStatus is not null) await _duringStatus(ct);
@@ -1097,6 +1100,76 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         Assert.False(authorization.Allowed);
         Assert.Contains("Update the Gateway MSIX", authorization.Detail, StringComparison.Ordinal);
         Assert.Equal(GatewayErrorKind.Network, authorization.FailureKind);
+    }
+
+    [Fact]
+    public async Task InvalidLifecycleResponseAfterAValidContractProbeNamesTheOperationAndField()
+    {
+        var invocations = new List<string>();
+        var client = new NativeGatewayPackageClient((_, args, _) =>
+        {
+            invocations.Add(string.Join(" ", args));
+            return Task.FromResult(new NativeGatewayCommandResult(0, args[0] == "status"
+                ? """{"schemaVersion":1,"command":"status","integration":{"kind":"isolated-session","version":1}}"""
+                : """{"ok":true,"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1},"gateway":{"state":"running"}}"""));
+        });
+        Assert.Equal(NativeGatewayContract.IsolatedSessionV1,
+            await client.DetectAsync(_package, CancellationToken.None));
+        await using var runtime = new IsolatedGatewayRuntime(new Resolver(_package), client,
+            () => new WindowsTcpListenerSnapshotResult(_listeners, true, true),
+            () => new Dictionary<int, ulong> { [ProcessId] = 77 }, _ => true);
+
+        EndpointCredentialAuthorization authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(
+            runtime, _record, CancellationToken.None);
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(GatewayErrorKind.Network, authorization.FailureKind);
+        Assert.Contains("'clawctl gateway-service status'", authorization.Detail, StringComparison.Ordinal);
+        Assert.Contains("'gateway.port' is missing", authorization.Detail, StringComparison.Ordinal);
+        Assert.Contains("Credentials were not sent", authorization.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("does not expose", authorization.Detail, StringComparison.Ordinal);
+        Assert.Equal(["status --json", "gateway-service status --json"], invocations);
+    }
+
+    private const string StatusMissingPort =
+        """{"ok":true,"schemaVersion":1,"command":"gateway-service status","integration":{"kind":"isolated-session","version":1},"gateway":{"state":"running"}}""";
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidStatusAfterAStartNamesTheOperationAndFieldWithoutStoppingTheGateway(bool launchReceipts)
+    {
+        _supportsLaunchReceipts = launchReceipts;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        await _runtime.EnsureRunningAsync(_record, default);
+        Assert.Single(_calls, call => call.StartsWith("gateway-service start "));
+        _statusOverride = StatusMissingPort;
+
+        var result = await _runtime.InspectAsync(_record, default);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(GatewayEndpointProvenanceFailureReason.InspectionUnavailable, result.FailureReason);
+        Assert.Contains("'clawctl gateway-service status'", result.Detail, StringComparison.Ordinal);
+        Assert.Contains("'gateway.port' is missing", result.Detail, StringComparison.Ordinal);
+        Assert.Contains("Credentials were not sent", result.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop "));
+    }
+
+    [Fact]
+    public async Task InvalidStatusWithoutPermissionToStartNamesTheOperationAndField()
+    {
+        _statusOverride = StatusMissingPort;
+
+        EndpointCredentialAuthorization authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(
+            _runtime, _record, CancellationToken.None, allowStart: false);
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(GatewayErrorKind.Network, authorization.FailureKind);
+        Assert.Contains("'clawctl gateway-service status'", authorization.Detail, StringComparison.Ordinal);
+        Assert.Contains("'gateway.port' is missing", authorization.Detail, StringComparison.Ordinal);
+        Assert.Equal(["gateway-service status --json"], _calls);
     }
 
     [Fact]
