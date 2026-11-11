@@ -113,13 +113,12 @@ public sealed class GatewayActionTransport : IA2UIActionTransport
             contextJson: contextJson);
 
         // deliver=false keeps the raw CANVAS_A2UI line out of the visible
-        // chat; only the model's response is shown to the user. thinking=low
-        // matches the Android budget hint for a quick agentic step.
+        // chat; only the model's response is shown to the user. Inherit the
+        // session's effort so canvas actions do not change the user's choice.
         return new JsonObject
         {
             ["message"] = message,
             ["sessionKey"] = sessionKey,
-            ["thinking"] = "low",
             ["deliver"] = false,
             ["key"] = action.Id,
         };

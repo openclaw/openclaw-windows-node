@@ -253,10 +253,48 @@ public sealed partial class LocalAiPortLifecycleTests
             $"n-predict = {gatewayMaximum}",
             launch.PresetContent.Split(Environment.NewLine));
         Assert.Contains("ctx-size = 262144", launch.PresetContent.Split(Environment.NewLine));
+        Assert.DoesNotContain("reasoning =", launch.PresetContent);
+        Assert.DoesNotContain("reasoning = on", launch.PresetContent.Split(Environment.NewLine));
+        JsonElement model = provider.RootElement.GetProperty("models")[0];
+        JsonElement compat = model.GetProperty("compat");
+        Assert.Equal(new[] { "none", "medium" }, compat.GetProperty("supportedReasoningEfforts")
+            .EnumerateArray().Select(item => item.GetString()).ToArray());
+        Assert.Equal("none", compat.GetProperty("reasoningEffortMap").GetProperty("off").GetString());
+        Assert.Equal(JsonValueKind.Null, model.GetProperty("thinkingLevelMap").GetProperty("minimal").ValueKind);
+        Assert.Equal(JsonValueKind.Null, model.GetProperty("thinkingLevelMap").GetProperty("high").ValueKind);
         Assert.Contains("cache-type-k = q8_0", launch.PresetContent.Split(Environment.NewLine));
         Assert.Contains("cache-type-v = q8_0", launch.PresetContent.Split(Environment.NewLine));
         Assert.Contains("cache-type-k-draft = q8_0", launch.PresetContent.Split(Environment.NewLine));
         Assert.Contains("cache-type-v-draft = q8_0", launch.PresetContent.Split(Environment.NewLine));
+    }
+
+    [Fact]
+    public void Qwen38Provider_HidesUnsupportedMinimalButKeepsFourSupportedEfforts()
+    {
+        LocalModelInfo model = LocalModelCatalog.Find(LocalModelCatalog.Qwen38_27BModelId)!;
+        var manifest = ValidManifest() with
+        {
+            ModelCatalogId = model.Id,
+            ModelAlias = model.Id,
+            ModelAsset = new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(model.Weights.RelativePath),
+                SourceUrl = model.Weights.DownloadUri.AbsoluteUri,
+                SizeBytes = model.Weights.SizeBytes,
+                Sha256 = model.Weights.Sha256.Value,
+            },
+        };
+        var install = new LocalAiResolvedInstall(manifest, "llama-server", "model.gguf",
+            new Uri("http://127.0.0.1:28765/v1"));
+
+        using JsonDocument provider = JsonDocument.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install));
+        JsonElement configured = provider.RootElement.GetProperty("models")[0];
+        Assert.Equal(new[] { "none", "low", "medium", "high" },
+            configured.GetProperty("compat").GetProperty("supportedReasoningEfforts")
+                .EnumerateArray().Select(value => value.GetString()).ToArray());
+        Assert.Equal(JsonValueKind.Null,
+            configured.GetProperty("thinkingLevelMap").GetProperty("minimal").ValueKind);
+        Assert.False(configured.GetProperty("thinkingLevelMap").TryGetProperty("high", out _));
     }
 
     [Fact]

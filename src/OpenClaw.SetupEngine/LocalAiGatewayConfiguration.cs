@@ -59,8 +59,11 @@ internal static class LocalAiGatewayConfigBuilder
     {
         ArgumentNullException.ThrowIfNull(prior);
         ArgumentNullException.ThrowIfNull(originalInstall);
+        // Recreate the exact pre-recovery model shape with the known local
+        // credential; never replay a CLI-redacted API key from the snapshot.
         using JsonDocument provider = JsonDocument.Parse(
-            LocalAiGatewayProviderDefinition.BuildProviderJson(originalInstall));
+            LocalAiGatewayProviderDefinition.BuildProviderJsonForRollback(
+                prior.ProviderJson!, originalInstall));
         using JsonDocument primary = JsonDocument.Parse(prior.PrimaryModelJson!);
         object[] operations =
         [
@@ -118,7 +121,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         if (prior.ProviderExisted)
         {
             bool matchesCurrentInstall = install.Endpoint is not null &&
-                LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install);
+                LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(prior.ProviderJson!, install);
             bool matchesRecoveryInstall = false;
             if (!matchesCurrentInstall &&
                 ctx.LocalAiRecoveryOriginalInstall is { Endpoint: not null } originalInstall)
@@ -126,7 +129,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 string originalPrimary = JsonSerializer.Serialize(
                     LocalAiGatewayProviderDefinition.BuildPrimaryModel(originalInstall));
                 matchesRecoveryInstall =
-                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
                         prior.ProviderJson!,
                         originalInstall) &&
                     JsonEquals(originalPrimary, expectedPrimary);
@@ -254,9 +257,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         if (recoveryOriginal is not null &&
             current.ProviderExisted == prior.ProviderExisted &&
             (!current.ProviderExisted ||
-                LocalAiGatewayProviderDefinition.MatchesProviderJson(
-                    current.ProviderJson!,
-                    recoveryOriginal)) &&
+                LocalAiGatewayProviderDefinition.MatchesSameManagedProviderShape(
+                    prior.ProviderJson!, current.ProviderJson!, recoveryOriginal)) &&
             current.PrimaryModelExisted == prior.PrimaryModelExisted &&
             (!current.PrimaryModelExisted ||
                 JsonEquals(current.PrimaryModelJson!, prior.PrimaryModelJson!)))
@@ -367,9 +369,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         bool originalRestored =
             observed.ProviderExisted == prior.ProviderExisted &&
             (!observed.ProviderExisted ||
-                LocalAiGatewayProviderDefinition.MatchesProviderJson(
-                    observed.ProviderJson!,
-                    recoveryOriginal)) &&
+                LocalAiGatewayProviderDefinition.MatchesSameManagedProviderShape(
+                    prior.ProviderJson!, observed.ProviderJson!, recoveryOriginal)) &&
             observed.PrimaryModelExisted == prior.PrimaryModelExisted &&
             (!observed.PrimaryModelExisted ||
                 JsonEquals(observed.PrimaryModelJson!, prior.PrimaryModelJson!));
@@ -444,7 +445,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
 
         if ((current.ProviderExisted &&
-                !LocalAiGatewayProviderDefinition.MatchesProviderJson(current.ProviderJson!, install)) ||
+                !LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(current.ProviderJson!, install)) ||
             (current.PrimaryModelExisted &&
                 !currentPrimaryIsManaged &&
                 !currentPrimaryIsFallback &&

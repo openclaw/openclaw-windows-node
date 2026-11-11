@@ -922,6 +922,39 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.False(fixture.Store.Load()!.Pending);
     }
 
+    [Fact]
+    public async Task EndpointRecoveryMigratesExactLegacyProviderOnceAfterVerification()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.LoseReply = true;
+        Assert.False((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.LoseReply = false;
+        // The unconfirmed route is the exact shape an earlier release published.
+        var provider = fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!.AsObject();
+        RemoveEffortMetadata(provider);
+        fixture.Rpc.Revision++;
+        string credential = fixture.Lifecycle.GetApiKey()!;
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(provider.ToJsonString(), fixture.Install, credential));
+        var recovered = fixture.CreateLifecycle();
+        recovered.Register(Record, fixture.Rpc);
+        await recovered.PrepareAsync(fixture.Install, default);
+        var stages = new List<LocalAiRuntimeStartStage>();
+
+        var result = await recovered.CompleteStartAsync(fixture.Install, default,
+            new SynchronousProgress<LocalAiRuntimeStartStage>(stages.Add));
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal(1, fixture.Rpc.Verifications);
+        int verifying = stages.IndexOf(LocalAiRuntimeStartStage.VerifyingEndpoint);
+        Assert.InRange(verifying, 0, stages.IndexOf(LocalAiRuntimeStartStage.PublishingProvider) - 1);
+        Assert.Equal(2, fixture.Rpc.Writes);
+        Assert.False(fixture.Store.Load()!.Pending);
+        var migrated = fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!;
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(migrated.ToJsonString(), fixture.Install, credential));
+        Assert.Equal(credential, migrated["apiKey"]!.GetValue<string>());
+    }
+
     [Theory]
     [InlineData("none")]
     [InlineData("gateway")]
@@ -1944,6 +1977,62 @@ public sealed class NativeLocalAiLifecycleTests
             fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, cancellation.Token));
         Assert.False(fixture.Store.Exists);
         Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task NativeRecoveryMigratesExactLegacyQwenProviderAfterInference()
+    {
+        using var fixture = new Fixture();
+        await SeedLegacyPublishedProviderAsync(fixture);
+        string credential = fixture.Lifecycle.GetApiKey()!;
+
+        await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
+        Assert.Equal(fixture.Install.Endpoint!.Port, fixture.Lifecycle.GetRecoveryPort(fixture.Install));
+        var published = await fixture.Lifecycle.PublishAsync(fixture.Install);
+
+        Assert.True(published.Success, published.Detail);
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal(1, fixture.Rpc.Verifications);
+        Assert.Equal(1, fixture.Rpc.Writes);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString(),
+            fixture.Install, credential));
+        Assert.Equal(credential,
+            fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["apiKey"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task NativeTeardownAcceptsExactLegacyQwenProvider()
+    {
+        using var fixture = new Fixture();
+        await SeedLegacyPublishedProviderAsync(fixture);
+
+        var result = await fixture.Lifecycle.QuiesceAsync(fixture.Install, LocalAiQuiesceReason.Teardown);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Null(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+    }
+
+    private static async Task SeedLegacyPublishedProviderAsync(Fixture fixture)
+    {
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var provider = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(
+            fixture.Install, fixture.Lifecycle.GetApiKey()!))!.AsObject();
+        RemoveEffortMetadata(provider);
+        fixture.Rpc.Config["models"]!["providers"]!["llamacpp"] = provider;
+        fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"] = fixture.Model;
+        fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model] = new JsonObject();
+        fixture.Rpc.Revision++;
+    }
+
+    private static void RemoveEffortMetadata(JsonObject provider)
+    {
+        var model = ((JsonArray)provider["models"]!)[0]!.AsObject();
+        var compat = model["compat"]!.AsObject();
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
     }
 
     private sealed class Fixture : IDisposable

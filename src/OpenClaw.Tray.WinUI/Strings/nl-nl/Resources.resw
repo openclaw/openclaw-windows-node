@@ -10108,4 +10108,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>De oude modelinstellingen voor Lokale AI konden niet voor migratie worden gevalideerd. De Gateway-configuratie is niet gewijzigd.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>De oude modelinstellingen voor Lokale AI zijn gewijzigd voordat de migratie kon worden bevestigd. Maak opnieuw verbinding met de oorspronkelijke Gateway om dit te herstellen.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>De modelinstellingen voor Lokale AI zijn opgeslagen, maar het opnieuw starten van de WSL Gateway is niet bevestigd. Herstel de oorspronkelijke Gateway voordat je het opnieuw probeert.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>De opgeslagen route voor Lokale AI kon niet worden geverifieerd. Behoud het eindpunt en herstel de oorspronkelijke Gateway.</value></data>
 </root>

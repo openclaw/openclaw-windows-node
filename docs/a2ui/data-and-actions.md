@@ -167,11 +167,13 @@ an `agent.request` node event:
 {
   "message": "CANVAS_A2UI action=submit session=main surface=main component=btn-1 host=… instance=… ctx=… default=update_canvas",
   "sessionKey": "main",
-  "thinking": "low",
   "deliver": false,
   "key": "<action-id>"
 }
 ```
+
+The event carries no `thinking` override, so a canvas action runs with the
+session's own effort setting.
 
 `AgentMessageFormatter` is a deliberate byte-for-byte port of the Android
 node's formatter - the gateway parses tags identically across platforms.
