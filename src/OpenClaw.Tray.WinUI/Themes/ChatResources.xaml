@@ -12,8 +12,10 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
-            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatSendDisabledBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatSendDisabledTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF79C0FF" />
             <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFFF8A80" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="#FFA5D6FF" />
@@ -68,8 +70,10 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
-            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatSendDisabledBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatSendDisabledTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF0550AE" />
             <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFB81B27" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="#FF0A3069" />
@@ -132,6 +136,8 @@
             <SolidColorBrush x:Key="ChatSyntaxAttributeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSendDisabledBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatSendDisabledTextBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -173,6 +179,19 @@
     </ResourceDictionary.ThemeDictionaries>
     <Style x:Key="ChatQueueIconStyle" TargetType="Path">
         <Setter Property="Stroke" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
+    <!-- Composer context ring: the web dial's 2.5px track at 22% and its round-capped fill. -->
+    <Style x:Key="ChatContextRingStyle" TargetType="Path">
+        <Setter Property="Stroke" Value="{ThemeResource ChatSecondaryTextBrush}" />
+        <Setter Property="StrokeThickness" Value="2.5" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+    </Style>
+    <Style x:Key="ChatContextRingWarningStyle" TargetType="Path" BasedOn="{StaticResource ChatContextRingStyle}">
+        <Setter Property="Stroke" Value="{ThemeResource SystemFillColorCautionBrush}" />
+    </Style>
+    <Style x:Key="ChatContextRingCriticalStyle" TargetType="Path" BasedOn="{StaticResource ChatContextRingStyle}">
+        <Setter Property="Stroke" Value="{ThemeResource SystemFillColorCriticalBrush}" />
     </Style>
     <Style x:Key="ChatQueueDisabledIconStyle" TargetType="Path" BasedOn="{StaticResource ChatQueueIconStyle}">
         <Setter Property="Stroke" Value="{ThemeResource TextFillColorDisabledBrush}" />

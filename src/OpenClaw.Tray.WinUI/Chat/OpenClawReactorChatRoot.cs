@@ -490,7 +490,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 PlacementHistoryReady = placementHistoryReady,
                 PlacementTargetIsNew = isComposeOnly,
                 AgentIdentity = assistantIdentity,
-                AgentRosterPresentation = selectedRosterAgent
+                AgentRosterPresentation = selectedRosterAgent,
+                ContextUsage = contextUsage
             };
             composerElement = Component<ReactorChatComposer, ReactorChatComposerViewProps>(new(
                 props.ComposerSession,
@@ -530,22 +531,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
-        Element statsElement = effectiveThread is null
-            ? Empty()
-            : Component<ReactorChatThroughputStrip, ReactorChatThroughputStripProps>(new(
-                props.Provider as OpenClawChatDataProvider,
-                effectiveThread.Id,
-                contextUsage,
-                timeline.TurnActive));
         return Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
+            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
             ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
                 .WithKey("chat-pending-messages").Grid(row: 2),
-            composerArea.Grid(row: 3),
-            statsElement.Grid(row: 4))
+            composerArea.Grid(row: 3))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .Set(grid =>
             {

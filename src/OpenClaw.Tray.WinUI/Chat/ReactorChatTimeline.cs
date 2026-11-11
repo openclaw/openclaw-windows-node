@@ -260,20 +260,24 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         return Grid(
             [GridSize.Star()],
             [GridSize.Auto, GridSize.Star(), GridSize.Auto],
-            itemsView
-                .BindVerticalScrollController(
-                    annotatedScrollBarRef,
-                    rows.Count - 1,
-                    rows.Count,
-                    jumpRevision,
-                    initialTailRequestKey,
-                    displayedTailKey,
-                    setAtTail)
+            Border(Border(itemsView
+                    .BindVerticalScrollController(
+                        annotatedScrollBarRef,
+                        rows.Count - 1,
+                        rows.Count,
+                        jumpRevision,
+                        initialTailRequestKey,
+                        displayedTailKey,
+                        setAtTail)
+                    .AutomationName("Chat messages")
+                    .HAlign(HorizontalAlignment.Stretch)
+                    .VAlign(VerticalAlignment.Stretch)))
                 .Grid(row: 1, column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
-                .AutomationName("Chat messages")
                 .HAlign(HorizontalAlignment.Stretch)
-                .VAlign(VerticalAlignment.Stretch),
+                .VAlign(VerticalAlignment.Stretch)
+                .OnMount(control => ChatTranscriptFade.Attach((Microsoft.UI.Xaml.Controls.Border)control))
+                .OnUnmount(control => ChatTranscriptFade.Detach((Microsoft.UI.Xaml.Controls.Border)control)),
             AnnotatedScrollBar()
                 .Ref(annotatedScrollBarRef)
                 .Width(ChatVisuals.RailWidth(viewportWidth))

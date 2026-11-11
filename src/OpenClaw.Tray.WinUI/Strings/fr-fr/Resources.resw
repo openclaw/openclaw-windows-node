@@ -2956,14 +2956,32 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raisonnement</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>Jetons par seconde : dernière réponse du modèle, moyenne (μ) et 95e centile (p95) des appels de modèle récents de cette session. ~ indique une estimation en direct pendant la diffusion.</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>Ouvrir les détails d'utilisation du contexte</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>Utilisation de la fenêtre de contexte</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>Utilisation du contexte de la session : {0} sur {1} ({2} %)</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>Envoyer un message à l'assistant (Entrée pour envoyer)</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>Fenêtre de contexte</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>Jetons de la dernière exécution</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>Entrée</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>Sortie</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>Détails d'utilisation du contexte</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne.</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>Envoyer un message à {0}</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>Connexion…</value>
@@ -7936,7 +7954,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Paramètres du bac à sable</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>Disponible</value>
+    <value>Activé</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>Compatibilité</value>

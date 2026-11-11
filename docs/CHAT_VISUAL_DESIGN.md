@@ -109,9 +109,9 @@ aliases. Other Send glyph aliases are unchanged.
 
 `Themes/ChatResources.xaml` owns the following semantic aliases in Default
 (Dark), Light, and HighContrast. Chat retains native WinUI surfaces and Windows
-accent colors. Reading tones follow the web (softer prose, strong bold and
-headings, muted bullets) through native text brushes, and code syntax uses the
-web's highlight.js palette.
+accent colors. Assistant prose uses primary ink, like user messages; bold and
+headings retain stronger weight, while bullets and metadata stay muted. Code
+syntax uses the web's highlight.js palette.
 
 | Resource | Source / mapping |
 |---|---|
@@ -119,7 +119,8 @@ web's highlight.js palette.
 | `ChatComposerBrush`, `ChatCardBrush` | `CardBackgroundFillColorDefault`; system window in HC |
 | `ChatStrokeBrush`, `ChatQuestionCardStrokeBrush` | `ControlStrokeColorDefault`; system window text in HC |
 | `ChatTextBrush`, `ChatStrongTextBrush` | `TextFillColorPrimary`; system window text in HC |
-| `ChatProseTextBrush`, `ChatSecondaryTextBrush` | `TextFillColorSecondary`; system window text in HC |
+| `ChatProseTextBrush` | `TextFillColorPrimary`, so assistant prose reads as strongly as user text; system window text in HC |
+| `ChatSecondaryTextBrush` | `TextFillColorSecondary`; system window text in HC |
 | `ChatMutedTextBrush` | `TextFillColorTertiary`; system window text in HC |
 | `ChatSyntax*Brush` | Web highlight.js keyword, string, number, title, type and attribute colors per theme; comments use the muted/secondary tone; system window text in HC |
 | `ChatClawBrush` | Light/dark Windows accent variants; system window text in HC |
@@ -238,7 +239,14 @@ collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
 are never inferred; ambiguous identities and cycles stay top-level. Group
 counts include nested calls but not their wrapper. Each layer keeps its own
 expansion key, so opening a group never opens its first row.
-The last transcript row keeps a 24-pixel bottom inset above the composer.
+The last transcript row keeps a 38-pixel bottom inset above the composer: the
+32-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
+settled tail is fully opaque. `ChatTranscriptFade` redirects only the bottom
+32-pixel band through a composition alpha mask, not a color overlay, so translucent
+Mica shows through. The real transcript remains opaque and scrolls normally;
+an inner host clips the copied band from its normal rendering. Child replacement,
+resize and detach update or release the surface, clip and brushes. High contrast
+omits the mask, including when switched on while the window stays open.
 Existing chronological messages, reasoning,
 partial-output updates, collapsed-by-default disclosures and explicit group
 expansion are unchanged. This is a focused adaptation of the default web tool
@@ -579,17 +587,18 @@ A completed `/new` request cannot override a newer session or page navigation;
 the successful session remains discoverable without pulling the user back into chat.
 
 Workspace's sidebar owns session selection; the composer has no session picker.
-The footer has a leading Attach action, model/reasoning selectors, and
-quiet secondary actions beside the primary Send/Stop action. Every control stays
+The footer has a leading Attach ("+") action followed by the Node Sandbox shield,
+model/reasoning selectors, and quiet secondary actions beside the primary
+Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above
 the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
 chevron with a 44-pixel target, retaining the full textual automation name and
 tooltip. Attach, model, effort, Node Sandbox, voice and Send remain reachable in narrow
 layouts through actual-width observation rather than a compact-window mode.
 The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
-the microphone in the right-hand action group uses the Windows accent when the latest SDK probe
-supports containment and gray otherwise. It opens a compact native flyout with
-Available, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
+Attach in the leading group uses the Windows accent and a centered check when the latest SDK probe
+supports containment and a plain gray shield otherwise. It opens a compact native flyout with
+On, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
 settings action, not a toggle. Compatibility warns about approved uncontained
 execution on positively unsupported Windows. Failed/uncertain probes never imply
 compatibility; the runner independently admits each command. This does not describe
@@ -604,15 +613,38 @@ capture preserves existing target mount callbacks.
 There is no composer overflow menu. Voice preferences remain available in
 Settings > Voice, where "Read responses aloud" controls the same shared
 speaker mute state. Native focus, hover and disabled states remain.
+The composer exposes localized keyboard help: Enter sends, Shift+Enter adds a
+line. Its placeholder follows element-theme and system contrast changes, and its
+local brush is cleared on unmount before Reactor can reuse the TextBox.
 
-The context-usage footer shows the latest assistant request measurement, not
+The composer context ring follows the web composer's `ContextNotice`. A 16px
+progress ring sits in a 32px toolbar target immediately before the model picker:
+a 2.5px track at 22% of `ChatSecondaryTextBrush` and a round-capped fill that
+sweeps clockwise from twelve o'clock. The fill uses the secondary tone below 85%,
+`SystemFillColorCautionBrush` from 85% and `SystemFillColorCriticalBrush` from 95%.
+Its accessible name is the localized session context summary. Activating it opens a
+300px native flyout (14px padding) with an uppercase 11px bold "Context window"
+label, a 13px semibold "used / limit · percent" value, a 5px rounded bar, a divider,
+an uppercase "Latest run tokens" label and 12px Input/Output values from the
+same measurement as the context value (an unavailable-value placeholder when
+absent, and a literal zero for measured zero output). If message metadata supplies
+the context snapshot, stale session-list counters never fill its missing fields.
+Without message usage, the whole session measurement is used. Header and counter
+columns wrap and grow vertically for translated or enlarged text. The value-equal
+indicator component keeps its arc geometry when only the draft changes.
+The web popover's cost
+and plan-usage sections need Gateway data this client does not receive, so they are
+omitted. The ring is hidden when the context window size is unknown. There is no
+separate throughput or context strip below the composer.
+
+The context ring shows the latest assistant request measurement, not
 the sum of overlapping requests. Newer session snapshots may lower that value,
 including after compaction, but require an explicit positive total. A missing
 total does not make input/output billing counters authoritative because they
 may omit cached context. Cached seeding retains its existing fallback behavior.
 Undated duplicates preserve the known measurement timestamp only when their
 effective usage fields are unchanged, so matching older history cannot rewind
-the footer. Changed undated usage does not inherit a measurement timestamp.
+the ring. Changed undated usage does not inherit a measurement timestamp.
 
 The compact effort gauge is an explicitly requested exception to the font-icon
 convention: `ChatEffortGauge` renders the published web SVG geometry with native

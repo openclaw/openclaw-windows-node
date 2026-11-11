@@ -2956,14 +2956,32 @@
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>每秒令牌数：本会话中最新模型响应、平均值 (μ) 以及近期模型调用的第 95 百分位数 (p95)。~ 表示流式传输期间的实时估算。</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>打开上下文使用详情</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>上下文窗口使用情况</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>会话上下文使用情况：{1} 中的 {0}（{2}%）</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>给助手发送消息（按 Enter 发送）</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>上下文窗口</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>最近一次运行的令牌</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>输入</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>输出</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>上下文使用详情</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>按 Enter 发送，按 Shift+Enter 换行。</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>给 {0} 发送消息</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>连接中…</value>
@@ -7936,7 +7954,7 @@
     <value>沙盒设置</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>可用</value>
+    <value>已开启</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>兼容模式</value>
