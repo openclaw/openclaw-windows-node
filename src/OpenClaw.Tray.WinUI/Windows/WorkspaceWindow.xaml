@@ -191,6 +191,7 @@
         <toolkit:GridSplitter x:Name="SidebarSplitter" x:Uid="WorkspaceSidebarSplitter"
                               AutomationProperties.AutomationId="WorkspaceSidebarSplitter"
                               ResizeDirection="Columns" ResizeBehavior="CurrentAndNext"
+                              PreviewKeyDown="OnSidebarPreviewKeyDown"
                               IsThumbVisible="False"
                               HorizontalAlignment="Right" VerticalAlignment="Stretch"
                               Width="4" MinWidth="4" Padding="0" Background="Transparent"/>

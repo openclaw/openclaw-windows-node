@@ -1046,6 +1046,11 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
 
     private async Task AssertCenteredInWindowAsync(ContentDialog dialog, string label)
     {
+        await TestSupport.WaitForRenderedConditionAsync(() =>
+            TestSupport.FindDescendants<FrameworkElement>(dialog).Any(element =>
+                element.Name == "BackgroundElement" && element.IsLoaded &&
+                element.ActualWidth > 0 && element.ActualHeight > 0),
+            $"{label}: dialog card realized");
         var card = DialogCard(dialog);
         // WinUI detaches the template's SmokeLayerBackground at runtime; the card's LayoutRoot parent is the overlay.
         var layoutRoot = Assert.IsAssignableFrom<FrameworkElement>(VisualTreeHelper.GetParent(card));

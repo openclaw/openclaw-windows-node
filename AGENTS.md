@@ -19,8 +19,17 @@ Delegate independent work only when it benefits from separate context; keep
 one writer per worktree and give each task a bounded objective and evidence
 requirement. A tool's successful exit is not proof that the intended work ran.
 
+Before generating or changing networking, IPC, or cross-process handoff code,
+use [network-handoff](.agents/skills/network-handoff/SKILL.md), including for
+retries, deadlines, reconnect, configuration apply, process launch, cancellation,
+and cleanup. This is mandatory alongside the affected owner's route below,
+not only for setup or a reported failure. Trace the existing producer contract
+and installed-version support before adding consumer behavior. Missing producer
+guarantees require an evidenced upstream proposal, not a local workaround.
+
 | Task | Entry point |
 |---|---|
+| Generate, change, or review networking, IPC, or handoff behavior | [Network and handoff contracts](.agents/skills/network-handoff/SKILL.md), then the affected owner's guide |
 | Write, review, or restructure documentation/instructions | [Docs instructions](docs/AGENTS.md) and [technical-documentation](.agents/skills/technical-documentation/SKILL.md) |
 | Write or review a regression test | [Test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test) and [test-audit](.agents/skills/test-audit/SKILL.md) |
 | Select tests and required proof | [Windows testing](.agents/skills/openclaw-testing/SKILL.md); use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) for runtime evidence |

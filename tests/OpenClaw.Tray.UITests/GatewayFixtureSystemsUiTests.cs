@@ -449,8 +449,35 @@ public sealed partial class GatewayFixtureUiTests
                     pattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
                 }
             }
-            var collapsedTop = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Top;
-            var collapsedWidth = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
+            var collapsedViewport = System.Windows.Rect.Empty;
+            var previousCollapsedWidth = -1d;
+            await WaitUiAsync(run, () =>
+            {
+                if (FindById(run, "SystemsPageScroll") is not { Current.IsOffscreen: false } scroll ||
+                    FindById(run, "SystemsPageMarker") is not { Current.IsOffscreen: false } marker)
+                {
+                    previousCollapsedWidth = -1d;
+                    return false;
+                }
+                Assert.Equal(run.AppProcessId, scroll.Current.ProcessId);
+                Assert.Equal(run.AppProcessId, marker.Current.ProcessId);
+                var viewport = scroll.Current.BoundingRectangle;
+                var pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
+                if (viewport.IsEmpty || viewport.Width <= 0 || viewport.Height <= 0 ||
+                    !double.IsFinite(viewport.X) || !double.IsFinite(viewport.Y) ||
+                    !double.IsFinite(viewport.Width) || !double.IsFinite(viewport.Height) ||
+                    pattern.Current.VerticalScrollPercent is not (>= 0 and <= .1))
+                {
+                    previousCollapsedWidth = -1d;
+                    return false;
+                }
+                var stable = Math.Abs(viewport.Width - previousCollapsedWidth) < .1;
+                previousCollapsedWidth = viewport.Width;
+                if (stable) collapsedViewport = viewport;
+                return stable;
+            }, "collapsed Systems viewport settles at the top after scroll reset");
+            var collapsedTop = collapsedViewport.Top;
+            var collapsedWidth = collapsedViewport.Width;
             var previousExpandedWidth = -1d;
             Invoke(FindById(run, "SettingsTogglePane")!);
             await WaitUiAsync(run, () =>

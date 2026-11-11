@@ -20,6 +20,52 @@ public sealed partial class GatewayFixtureUiTests
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "GatewayFixture")]
+    public async Task CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining(bool includeRunId)
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenCorrelationChatAsync(run);
+            await SendCorrelationPromptAsync(run, "Fixture first question.");
+            await PublishLifecycleAsync(run, "fixture-chat-1", "start");
+            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
+                "assistant", new { delta = "Fixture partial answer." });
+            await WaitPrimaryActionAsync(run, "Stop");
+            await PublishLifecycleAsync(run, "fixture-chat-1", "end");
+            await WaitPrimaryActionAsync(run, "Send");
+
+            await run.Gateway.PublishChatSnapshotAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
+                "Fixture completed answer.", includeRunId);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture completed answer."),
+                "delayed persisted answer after completion");
+            await WaitPrimaryActionAsync(run, "Send");
+            Assert.False((await CorrelationTimelineAsync(run)).GetProperty("turnActive").GetBoolean());
+            await CompleteCorrelationRunAsync(run, "fixture-chat-1", "Fixture completed answer.");
+            Assert.Null(FindById(run, "ChatRunProgress"));
+            await CaptureIfRequestedAsync(run, "completed-run-late-snapshot-ready.png");
+
+            await SendCorrelationPromptAsync(run, "Fixture second question.");
+            await PublishLifecycleAsync(run, "fixture-chat-2", "start");
+            await SendCorrelationPromptAsync(run, "Fixture queued third question.");
+            var queued = await run.InvokeAsync("app.chat.queue.list", new { threadId = GatewayScenario.MainSessionKey });
+            Assert.Equal(1, queued.GetProperty("totalCount").GetInt32());
+            Assert.Equal(2, run.Gateway.Requests.Count(request => request.Method == "chat.send"));
+            await PublishLifecycleAsync(run, "fixture-chat-2", "end");
+            await run.WaitForAsync(() => Task.FromResult(
+                run.Gateway.Requests.Count(request => request.Method == "chat.send") == 3),
+                "queued follow-up dispatched once");
+            await PublishLifecycleAsync(run, "fixture-chat-3", "start");
+            await CompleteCorrelationRunAsync(run, "fixture-chat-3", "Fixture queued response complete.");
+            Assert.Equal(3, run.Gateway.Requests.Count(request => request.Method == "chat.send"));
+            queued = await run.InvokeAsync("app.chat.queue.list", new { threadId = GatewayScenario.MainSessionKey });
+            Assert.Equal(0, queued.GetProperty("totalCount").GetInt32());
+            await CaptureIfRequestedAsync(run, "completed-run-queue-drained.png");
+        }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
+    }
+
+    [GatewayFixtureUiTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "GatewayFixture")]
     public async Task CancelledRunLateFinalCannotEndNewerNativeTurn(bool terminalBeforeNewRun)
     {
         await WithAppAsync(async run =>

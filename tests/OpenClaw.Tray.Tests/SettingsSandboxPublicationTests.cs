@@ -305,11 +305,13 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         var earlier = Assert.Single(events, e => ReferenceEquals(e.Origin, firstOrigin));
         var later = Assert.Single(events, e => ReferenceEquals(e.Origin, secondOrigin));
         Assert.Equal("first", earlier.Snapshot.NotificationSound);
-        Assert.Equal(new[] { "connection" }, earlier.Snapshot.PinnedPagesFor("gateway"));
+        // This scope has no saved pin choice, so toggling Connection preserves the default Dashboards pin.
+        Assert.Equal(new[] { "dashboards", "connection" }, earlier.Snapshot.PinnedPagesFor("gateway"));
         Assert.Equal("second", later.Snapshot.NotificationSound);
-        Assert.Empty(later.Snapshot.PinnedPagesFor("gateway"));
+        Assert.Equal(new[] { "dashboards" }, later.Snapshot.PinnedPagesFor("gateway"));
         Assert.Equal(2, store.Current.Version);
         Assert.Equal("second", store.Current.NotificationSound);
+        Assert.Equal(new[] { "dashboards" }, store.Current.PinnedPagesFor("gateway"));
     }
 
     private sealed class ImmediateDispatcher : IUiDispatcher

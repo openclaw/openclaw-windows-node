@@ -72,7 +72,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal string? SelectedAgentId => _agentSelection.AgentId;
     internal WorkspaceDestination Destination => _navigation.Current;
     internal ChatPage ChatPage => _chat;
-    internal bool CanGoBack => _navigation.CanGoBack;
+    internal bool CanGoBack => (IsSettingsVisible && _settings?.HasOpenDashboard == true) || _navigation.CanGoBack;
 
     internal WorkspaceWindow(
         AppState state, AppNotificationService notifications, Action openTimeline)
@@ -425,7 +425,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateHistoryButtons()
     {
-        var back = _navigation.CanGoBack;
+        var back = CanGoBack;
         var forward = _navigation.CanGoForward;
         BackButton.IsEnabled = back;
         ForwardButton.IsEnabled = forward;
@@ -441,6 +441,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _preparedSettings = null;
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
+        view.PageNavigationChanged = UpdateHistoryButtons;
         view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.ExitRequested = ExitSettings;
@@ -679,8 +680,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
 
     private bool IsPinDestination(PinnedPageTag pin) =>
-        WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId),
-            _settings?.CurrentAgentId ?? SelectedAgentId ?? "main") == Destination.CompanionTag;
+        pin.Tag == DashboardsRoute.Tag
+            ? DashboardsRoute.IsDashboardsTag(Destination.CompanionTag)
+            : WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId),
+                _settings?.CurrentAgentId ?? SelectedAgentId ?? "main") == Destination.CompanionTag;
 
     private void SignalContentReady(FrameworkElement content)
     {
@@ -1338,6 +1341,27 @@ public sealed partial class WorkspaceWindow : WindowEx
             Math.Min(SidebarMaxWidth, e.NewSize.Width - SidebarMinContentWidth));
     }
 
+    private void OnSidebarPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
+            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
+        var delta = e.Key switch
+        {
+            global::Windows.System.VirtualKey.Left => -SidebarSplitter.KeyboardIncrement,
+            global::Windows.System.VirtualKey.Right => SidebarSplitter.KeyboardIncrement,
+            _ => 0,
+        };
+        if (delta == 0) return;
+        if (SidebarSplitter.FlowDirection == FlowDirection.RightToLeft) delta = -delta;
+        var next = SidebarColumn.ActualWidth + delta;
+        var boundary = delta < 0 ? SidebarColumn.MinWidth : SidebarColumn.MaxWidth;
+        var scale = NavigationSection.XamlRoot.RasterizationScale;
+        // Toolkit rejects 191.99998 at a 192-DIP minimum. Match the rendered pixel at either limit.
+        if (Math.Round(next * scale) != Math.Round(boundary * scale)) return;
+        SidebarColumn.Width = new GridLength(boundary);
+        e.Handled = true;
+    }
+
     private void OnSidebarSizeChanged(object sender, SizeChangedEventArgs e)
     {
         NavView.OpenPaneLength = e.NewSize.Width;
@@ -1406,6 +1430,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (DeferWhileModalOpen(NavigateBack)) return;
         _sidebarInvoked = false;
+        if (IsSettingsVisible && _settings?.TryReturnToDashboardGallery() == true)
+            return;
         PruneUnavailableGatewayHistory();
         if (_navigation.GoBack()) RenderDestination();
         else UpdateHistoryButtons();

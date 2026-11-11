@@ -68,6 +68,13 @@ colors:
   chatReadAloudText: rgba(0,0,0,0.43372549)
   chatUser: rgba(0,103,192,0.08)
   chatUserText: "#000000e4"
+  usageChartCacheRead: "#99ebff"
+  usagePalette1: "#005fb8"
+  usagePalette2: "#038387"
+  usagePalette3: "#8764b8"
+  usagePalette4: "#ca5010"
+  usagePalette5: "#c239b3"
+  usagePalette6: "#107c10"
   chatActionDisabled: "#00000037"
   chatActionDisabledText: "#ffffff"
   chatActionHover: "#0067c0e6"
@@ -724,6 +731,40 @@ x-colophon:
       chatUserText:
         resource: ChatUserTextBrush
         themes: { dark: "#ffffff", highContrast: "#000000" }
+      usageChartCacheRead:
+        resource: UsageChartCacheReadBrush
+        themes: { dark: "#005fb8", highContrast: "#3ff23f" }
+        usage: Cache-read segment of the Usage token breakdown. SystemAccentColorLight2 in light and SystemAccentColorDark1 in dark, the accent shade opposite AccentFillColorDefault so adjacent segments stay distinct; SystemColorGrayTextColor in high contrast. Other segments bind accent, success and caution fills. The daily chart also has an expandable text table.
+      usagePalette1:
+        resource: UsagePalette1Brush
+        themes: { dark: "#99ebff", highContrast: "#1aebff" }
+        usage: Usage page categorical slot 1 and data/selection accent. Follows the user's accent (SystemAccentColorDark1 light, Light2 dark); SystemColorHighlightColor keeps charts and selection marks visible in high contrast, where native button accent fills can match the plot background. Each palette slot has a matching UsagePaletteNTintBrush at 16% for badges, avatars and statistics; high-contrast tints use SystemColorWindowColor.
+      usageChartBar:
+        resource: UsageChartBarBrush
+        usage: Daily chart bars use solid SystemAccentColor in light and dark themes, and SystemColorHighlightColor in high contrast. Reported current-day bars use the same solid fill; their date and reported value carry the meaning. Day selection uses native keyboard focus and an accessible selected status.
+      usageCountPill:
+        resource: UsageCountPillBrush
+        usage: Neutral section count pill. TextFillColorPrimary at 16% brush opacity with primary text. High contrast uses SystemColorButtonFaceColor. Attention counts use the existing critical tint and critical foreground instead.
+      usagePalette2:
+        resource: UsagePalette2Brush
+        themes: { dark: "#4fc3c7", highContrast: "#8080ff" }
+        usage: Usage categorical teal. Agents, models and providers keep one slot page-wide (stable name hash). High contrast uses SystemColorHotlightColor.
+      usagePalette3:
+        resource: UsagePalette3Brush
+        themes: { dark: "#b4a0ff", highContrast: "#ffffff" }
+        usage: Usage categorical purple. High contrast uses SystemColorWindowTextColor.
+      usagePalette4:
+        resource: UsagePalette4Brush
+        themes: { dark: "#f7894a", highContrast: "#1aebff" }
+        usage: Usage categorical orange. High contrast uses SystemColorHighlightColor.
+      usagePalette5:
+        resource: UsagePalette5Brush
+        themes: { dark: "#ee7ae3", highContrast: "#8080ff" }
+        usage: Usage categorical magenta. High contrast uses SystemColorHotlightColor.
+      usagePalette6:
+        resource: UsagePalette6Brush
+        themes: { dark: "#6ccb5f", highContrast: "#ffffff" }
+        usage: Usage categorical green, also the cost color. Color never carries meaning alone; labels and values sit beside every swatch. High contrast uses SystemColorWindowTextColor.
       chatActionDisabled:
         resource: AccentButtonBackgroundDisabled
         themes: { dark: "#ffffff28", highContrast: "#000000" }
@@ -1052,6 +1093,21 @@ The [120-DPI comparison](.agents/design/reference/chat-comparison.png) preserves
 
 The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fluent glyphs. It is **not a verified pixel-identical native renderer**: Mica is wallpaper/activation-dependent; this host's native UI Automation reports Segoe UI Variable while Chromium resolves the requested family to Segoe UI; and text rasterization/layout rounding differ. The installed schema also lacks responsive breakpoints, row-hover opacity, gradient elevation borders and native input/flyout behavior. Fixed-size references must not become production layout code. High-contrast preview swatches are resource simulations, not evidence of Windows HC mode.
 
+## Dashboards expressive extension
+
+The standalone Dashboards page (`src/OpenClaw.Tray.WinUI/Dashboards/`) is the one place this system spends color on identity, at the product owner's direction: dashboards are visual workspaces, and a gallery of identical gray cards reads as a file list. The extension adds color without weakening the core rules.
+
+- **Placement.** Dashboards lives beside Chat as a pinnable page, not in the Settings section list. Scopes without saved pin choices show it after Home by default; custom lists and stored explicit empty lists remain unchanged. Older versions erased empty choices, so those missing entries receive the default on upgrade; see [Native Dashboards](docs/DASHBOARDS.md#scope). The page retains the Workspace sidebar and single Back/Forward history, including session deep links.
+- **Palette.** Six categorical hues (blue, teal, purple, pumpkin, berry, green) are theme resources in `Themes/DashboardResources.xaml`: `DashboardHue{n}Brush` (strong, at least 4.5:1 on cards in light and dark), `DashboardHue{n}SubtleBrush` (tinted tiles) and `DashboardHue{n}WashBrush` (card heading and metric backdrops), plus `DashboardOnHueBrush` for text on a strong fill. Light uses Fluent-style shades, dark uses tints. High contrast maps every hue to `SystemColorHighlightColor` and every wash to `SystemColorWindowColor`, so identity never carries meaning on its own.
+- **What hues mean.** A gallery card's hue is stable for its owning agent id (identity band); an author's hue is stable for the author id (board-header avatar). Widget kinds have fixed hues: HTML blue, report purple, website teal, MCP app pumpkin, other plugins green. Hues never encode state: live, approval, error and disconnected keep `positive`, `warning` and `critical`, and actions keep the system `accent`.
+- **Hero.** Gallery and board use the shared `Presentation/Adapters/PageHero.cs` card, with a system-accent wash contained within its border, not a full-page backdrop. The gallery title is Dashboards. Its answer line combines the agent picker and latest reported board update; its caption names the agent to ask for changes. Board view names the board and shows author/update metadata plus the reported Live tag. No summary tiles, decorative agent chip or Needs you section belongs here. The hero, tabs and content scroll together. Narrow actions reflow below the copy. Shared geometry and motion remain owned by `PageHero`, not a Dashboard-specific clone.
+- **Gallery.** Static cards show a 48-DIP, radius-8 identity tile with initials from up to two title words on an agent-tinted band (80 DIP, or 64 in dense inventories). Titles and summaries lead the Fresh today feature, without a cover. Summaries wrap within 440 DIP and use "No summary available" when absent. Author/update metadata and the optional Live tag share a footer with a right-aligned "Open board" label. Chat is a bordered, labeled sibling action on its own trailing row, never nested inside the card button. A Fresh today shelf requires at least five boards and at least two updates in the current local day; filters appear above five. Returning from a board restores its exact opening card, preserving search/sort and loaded card count, or focuses the named gallery heading if the board disappeared. The board header uses chat, refresh, and More options icons. Back belongs to the title bar.
+- **Results.** Dashboards and Usage share the neutral flyout toast surface: `FlyoutPresenterBackground`, `FlyoutBorderThemeBrush`, a 1px stroke, `ThemeShadow`, radius 8, padding 16x12, maximum width 480, bottom-center with margin 20. Only the icon carries severity color. Passive/error results dismiss after four seconds; errors use assertive announcements.
+- **Responsive geometry.** `Presentation/PageResponsiveLayout.cs` is the canonical host-width contract: Wide 1000+, Medium 720+, Narrow below 720 (minimum supported host 480), inner content maximum 1200, padding 32/20, gaps 8/12/16. Dashboards uses explicit rows/columns, 240-DIP-minimum board tiles, and layout cells outside motion decorators. Mast actions move below text in Narrow and secondary browser actions collapse to More options; filters and Fresh today stack deterministically. Do not infer the tier from window width or lower the shell minimum to manufacture a Narrow capture.
+- **Motion.** Cards rise 4px on hover (160ms decelerate), cards and widgets fade and rise on entry with a 45ms stagger, and the Live dot breathes over 1.8s. Loading tiles are static. Every loop and entrance is skipped when Windows animations are off (`UseReducedMotion`).
+- **Charts and tables.** Native report charts use the system accent with the peak at full strength and other bars at 55%, rounded tops and soft gridlines. Supplied numeric values appear above bars, without six-digit rounding; full values remain available in tooltips and automation names. Metrics get a hue rail on a matching wash, cycling from purple. The current strict report contract has no column types, date-axis metadata or illustrative-trend flag: table strings stay left-aligned, and Windows neither guesses numeric/currency columns nor invents chart metadata. HTML widget colors remain owned by widget content. Widget kind is in the accessible name, not a visible chip; granted access remains a visible badge.
+
+Do not reuse this palette outside Dashboards without updating this section, and keep it out of chat, setup and settings surfaces.
 ## Systems page
 
 Machine, worker and connected-app card lists use spacing token `2`
@@ -1197,6 +1253,17 @@ ComposerPickerOptions rows use full-row `subtleHover` and `subtlePressed` fills 
 TextBox ships as the stock `Microsoft.UI.Xaml.Controls.TextBox`, as used by `DirectUrlBox` in `Pages/ConnectionPage.xaml`, not a custom control template. The Colophon preview uses 14px body text, 32px single-line height, `sm` corners, exact text-control padding, pointer-over and disabled resource tokens, and the accent focus underline. WinUI has no separate pressed background for the input itself; pressing enters its focused state. The browser preview approximates the native elevation border with `controlLine` and does not reproduce the native focused-fill transition or clear-button template.
 
 Card binds its title to `subtitle` (`SubtitleTextBlockStyle`, 20/28 SemiBold) and its description to `body` (`BodyTextBlockStyle`, 14/20 Regular). Its Open report action references the shared HyperlinkButton, not a separately styled link. The card remains static while the action inherits the shared control's typography, hover, pressed, disabled, and focus states.
+
+### Usage daily facts
+
+The daily analysis card keeps tokens (with input/output), cache read/written,
+and sessions in three, two or one columns according to the available width.
+Three columns require 504 DIP of inner width: three 160-DIP minimums
+and two 12-DIP gaps. With narrow page padding of 20 DIP per side and card padding
+of 16 DIP per side, this fits at a 576-DIP content-host width. At least 332 DIP
+of inner width fits two columns, with the third fact on the next row. Smaller
+allocations stack all three facts. Existing width snapping, localized labels, native theme
+resources and wider three-column layouts remain unchanged.
 
 ### Native normal and accent buttons
 

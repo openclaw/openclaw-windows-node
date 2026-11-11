@@ -280,54 +280,116 @@ public sealed partial class ReactorChatLayoutProofTests
                 () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; state={transcriptScroll.State}"));
             async Task ScrollAwayAsync()
             {
-                // Establish reader intent through the normal transcript keyboard-focus path.
-                await ui.RunOnUIAsync(async () =>
+                // Temporary hosted-failure evidence. Observe only; native Idle can precede scroll completion.
+                var trace = new List<string>();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var dropped = 0;
+                void Observe(string phase, Func<string>? details = null)
                 {
-                    var items = Assert.Single(FindDescendants<ItemsView>(surface));
-                    var repeater = Assert.Single(FindDescendants<ItemsRepeater>(transcriptScroll));
-                    // Enter an earlier realized item, not the last physical child, which may be recycled.
-                    var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
-                        .Select(index => repeater.TryGetElement(index)).OfType<ItemContainer>()
-                        .SelectMany(row => FindDescendants<Button>(row))
-                        .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
-                            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
-                                .StartsWith("ChatCopy_", StringComparison.Ordinal));
-                    var entered = false;
-                    TypedEventHandler<UIElement, GettingFocusEventArgs> onReaderFocus = (_, args) =>
-                    {
-                        if (args.FocusState == FocusState.Keyboard)
-                            entered = true;
-                    };
-                    items.AddHandler(UIElement.GettingFocusEvent, onReaderFocus, true);
+                    if (trace.Count >= 64) { dropped++; return; }
                     try
                     {
-                        // A successful Focus call on the already focused control raises no new reader-input event.
-                        Assert.True(composer!.Focus(FocusState.Programmatic));
-                        Assert.True(reader.Focus(FocusState.Keyboard));
-                        await WaitForRenderedConditionAsync(() => entered,
-                            "transcript keyboard focus reaches the navigation owner");
+                        trace.Add(FormattableString.Invariant(
+                            $"{clock.Elapsed.TotalMilliseconds:F3}ms {phase}: offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; anchor={transcriptScroll.VerticalAnchorRatio}; state={transcriptScroll.State}; {details?.Invoke()}"));
                     }
-                    finally
+                    catch (Exception error)
                     {
-                        items.RemoveHandler(UIElement.GettingFocusEvent, onReaderFocus);
+                        trace.Add($"{phase}: observationError={error.GetType().Name}; hresult=0x{error.HResult:X8}");
                     }
-                });
-                await SettleAsync();
-                // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.
-                await ui.RunOnUIAsync(() =>
+                }
+                string Observations() => $"readerTrace(dropped={dropped}):\n{string.Join("\n", trace)}";
+                void ViewChanged(ScrollView sender, object args) => Observe("view");
+                void ExtentChanged(ScrollView sender, object args) => Observe("extent");
+                void StateChanged(ScrollView sender, object args) => Observe("state");
+                void Completed(ScrollView sender, ScrollingScrollCompletedEventArgs args) =>
+                    Observe("completed", () => $"correlation={args.CorrelationId}");
+                void Bringing(ScrollView sender, ScrollingBringingIntoViewEventArgs args) =>
+                    Observe("bring", () =>
+                    {
+                        var target = args.RequestEventArgs?.TargetElement;
+                        var row = target as ItemContainer ??
+                            (target is null ? null : Ancestors(target).OfType<ItemContainer>().FirstOrDefault());
+                        var index = row is not null && transcriptScroll.Content is ItemsRepeater repeater
+                            ? repeater.GetElementIndex(row) : (int?)null;
+                        return FormattableString.Invariant(
+                            $"correlation={args.CorrelationId}; target={target?.GetType().Name}; index={index}; requestedOffset={args.TargetVerticalOffset}; cancelled={args.Cancel}; animated={args.RequestEventArgs?.AnimationDesired}");
+                    });
+                try
                 {
-                    Assert.True(composer!.Focus(FocusState.Programmatic));
-                    transcriptScroll.ScrollTo(0, 0,
-                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
-                });
-                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                    () => transcriptScroll.State == ScrollingInteractionState.Idle &&
-                        transcriptScroll.VerticalOffset <= 1 &&
-                        FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
-                    "reader at the top with the jump control visible",
-                    () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
-                        $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
-                        $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}"));
+                    // Establish reader intent through the normal transcript keyboard-focus path.
+                    await ui.RunOnUIAsync(async () =>
+                    {
+                        transcriptScroll.ViewChanged += ViewChanged;
+                        transcriptScroll.ExtentChanged += ExtentChanged;
+                        transcriptScroll.StateChanged += StateChanged;
+                        transcriptScroll.BringingIntoView += Bringing;
+                        transcriptScroll.ScrollCompleted += Completed;
+                        Observe("start", () => FormattableString.Invariant(
+                            $"scale={surface.XamlRoot.RasterizationScale}; surface={surface.ActualWidth}x{surface.ActualHeight}; client={_captureWindow!.AppWindow.ClientSize.Width}x{_captureWindow.AppWindow.ClientSize.Height}"));
+                        var items = Assert.Single(FindDescendants<ItemsView>(surface));
+                        var repeater = Assert.Single(FindDescendants<ItemsRepeater>(transcriptScroll));
+                        // Enter an earlier realized item, not the last physical child, which may be recycled.
+                        var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
+                            .Select(index => repeater.TryGetElement(index)).OfType<ItemContainer>()
+                            .SelectMany(row => FindDescendants<Button>(row))
+                            .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
+                                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
+                                    .StartsWith("ChatCopy_", StringComparison.Ordinal));
+                        var entered = false;
+                        TypedEventHandler<UIElement, GettingFocusEventArgs> onReaderFocus = (_, args) =>
+                        {
+                            if (args.FocusState == FocusState.Keyboard)
+                                entered = true;
+                            Observe("focus", () => $"state={args.FocusState}");
+                        };
+                        items.AddHandler(UIElement.GettingFocusEvent, onReaderFocus, true);
+                        try
+                        {
+                            // A successful Focus call on the already focused control raises no new reader-input event.
+                            Observe("before-composer-focus");
+                            Assert.True(composer!.Focus(FocusState.Programmatic));
+                            Observe("before-reader-focus");
+                            Assert.True(reader.Focus(FocusState.Keyboard));
+                            Observe("after-reader-focus");
+                            await WaitForRenderedConditionAsync(() => entered,
+                                "transcript keyboard focus reaches the navigation owner", Observations);
+                        }
+                        finally
+                        {
+                            items.RemoveHandler(UIElement.GettingFocusEvent, onReaderFocus);
+                        }
+                    });
+                    await SettleAsync();
+                    // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        Observe("before-composer-refocus");
+                        Assert.True(composer!.Focus(FocusState.Programmatic));
+                        Observe("before-scroll-to-top");
+                        var correlation = transcriptScroll.ScrollTo(0, 0,
+                            new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                        Observe("scroll-to-top-returned", () => $"correlation={correlation}");
+                    });
+                    await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                        () => transcriptScroll.State == ScrollingInteractionState.Idle &&
+                            transcriptScroll.VerticalOffset <= 1 &&
+                            FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
+                        "reader at the top with the jump control visible",
+                        () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                            $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                            $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}\n{Observations()}"));
+                }
+                finally
+                {
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        transcriptScroll.ViewChanged -= ViewChanged;
+                        transcriptScroll.ExtentChanged -= ExtentChanged;
+                        transcriptScroll.StateChanged -= StateChanged;
+                        transcriptScroll.BringingIntoView -= Bringing;
+                        transcriptScroll.ScrollCompleted -= Completed;
+                    });
+                }
             }
             var viewportBeforeJump = await ui.RunOnUIAsync(() => Task.FromResult(
                 transcriptScroll.ViewportHeight));
@@ -401,6 +463,21 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => transcriptScroll.VerticalAnchorRatio == 1,
+                "bottom anchoring restored after the corrected jump"));
+            await CaptureAsync(surface, "Feedback-resized-jump-latest");
+
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
+            await PublishAsync();
+            await AwaitBottomAsync();
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
+                "\n\n" + string.Join("\n\n", Enumerable.Repeat("Keep following after the corrected jump.", 20))));
+            await PublishAsync();
+            await AwaitBottomAsync();
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
