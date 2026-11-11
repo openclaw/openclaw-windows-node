@@ -88,13 +88,13 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     }
 
     /// <summary>
-    /// Footer label. As in the web Control UI, a shared owner with a saved name keeps the shared marker
-    /// beside its first name (never its email or profile id); an unnamed shared owner shows the marker alone.
+    /// Footer label. A shared owner shows only its saved first name, never its email or profile id.
+    /// An unnamed shared owner shows Owner.
     /// Other profiles show their first name, else their fallback label, and no known profile shows Owner.
     /// </summary>
-    public string FooterLabel(string owner, string sharedOwner, Func<string, string> namedSharedOwner) =>
+    public string FooterLabel(string owner) =>
         IsSharedOwner
-            ? _firstName is { } name ? namedSharedOwner(name) : sharedOwner
+            ? _firstName ?? owner
             : _firstName ?? DisplayName ?? owner;
 
     public Task RefreshAsync(bool invalidate = false)

@@ -126,7 +126,7 @@ internal sealed record ChatSendCommit(
     string? StaleRunIdToAbort,
     bool BindAcceptedRun,
     bool RequeueRequired,
-    bool RetryDeferredSend,
+    bool ScheduleQueueDrain,
     TimeSpan DeferredRetryDelay,
     ChatOpenedLifecycleTransition? OpenedLifecycle,
     ChatRuntimeGeneration RuntimeGeneration);

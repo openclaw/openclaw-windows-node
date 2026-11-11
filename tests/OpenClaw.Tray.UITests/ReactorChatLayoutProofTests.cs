@@ -1345,8 +1345,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var waitingIcon = FindControl<Viewbox>(firstRow, "ChatQueueWaitingIcon_pending-1");
                 foreach (var icon in new[] { waitingIcon, removeIcon })
                 {
-                    Assert.Equal(14, icon.ActualWidth);
-                    Assert.Equal(14, icon.ActualHeight);
+                    AssertRoundedSquare(icon, 14);
                     var path = Assert.IsType<Microsoft.UI.Xaml.Shapes.Path>(icon.Child);
                     Assert.Equal(1.75, path.StrokeThickness);
                     Assert.Equal(PenLineCap.Round, path.StrokeStartLineCap);
@@ -1365,8 +1364,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(new Point(3, 6), trash.Figures[0].StartPoint);
                 Assert.Equal(new Rect(3, 2, 18, 20), trash.Bounds);
                 var avatar = FindControl<PersonPicture>(firstRow, "ChatQueueAvatar_pending-1");
-                Assert.Equal(width <= 560 ? 18 : 20, avatar.ActualWidth);
-                Assert.Equal(avatar.ActualWidth, avatar.ActualHeight);
+                AssertRoundedSquare(avatar, width <= 560 ? 18 : 20);
                 Assert.Equal(width <= 560 ? 6 : 8, avatar.Margin.Right);
                 Assert.True(Bounds(cancel, surface).Right <= Bounds(panel, surface).Right);
                 Assert.InRange(Bounds(panel, surface).Right - (Bounds(removeIcon, surface).Left + 7), 20, 22);
@@ -3322,6 +3320,19 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
     private static Rect Bounds(FrameworkElement control, UIElement root) =>
         control.TransformToVisual(root).TransformBounds(new Rect(0, 0, control.ActualWidth, control.ActualHeight));
+
+    private static void AssertRoundedSquare(FrameworkElement element, double size)
+    {
+        Assert.True(element.UseLayoutRounding);
+        var expected = NativeProofLayout.RoundedViewSize(size, element.XamlRoot.RasterizationScale);
+        // PersonPicture::OnSizeChanged (WinUI c29edd64) writes the rounded new size
+        // back to Width and Height to keep its native circle square.
+        var propertySize = element is PersonPicture ? expected : size;
+        Assert.Equal(propertySize, element.Width);
+        Assert.Equal(propertySize, element.Height);
+        Assert.Equal(expected, element.ActualWidth);
+        Assert.Equal(expected, element.ActualHeight);
+    }
 
     private static string NormalizeNewlines(string value) =>
         value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');

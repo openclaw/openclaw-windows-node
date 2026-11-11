@@ -113,7 +113,8 @@ public sealed partial class GatewayFixtureUiTests
         while (reminderRow.Current.ControlType != ControlType.ListItem)
             reminderRow = TreeWalker.ControlViewWalker.GetParent(reminderRow)
                 ?? throw new InvalidOperationException("Reminder has no Inbox list-item ancestor.");
-        Assert.Equal(run.AppProcessId, reminderRow.Current.ProcessId);
+        var owner = Assert.Single(AppWindows(run),
+            window => NativeUiOwnership.IsOwnedDescendant(window, reminderRow, run.AppProcessId));
         if (reminderRow.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll))
             ((ScrollItemPattern)scroll).ScrollIntoView();
         var expander = Assert.Single(reminderRow.FindAll(TreeScope.Descendants,
@@ -135,7 +136,7 @@ public sealed partial class GatewayFixtureUiTests
                 double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) &&
                 bounds.Width > 0 && bounds.Height > 0 &&
                 reminderRow.Current.BoundingRectangle.Contains(bounds) &&
-                AppWindows(run).Any(window => window.Current.BoundingRectangle.Contains(bounds));
+                owner.Current.BoundingRectangle.Contains(bounds);
         }, "expanded notification action visible and enabled");
     }
 }

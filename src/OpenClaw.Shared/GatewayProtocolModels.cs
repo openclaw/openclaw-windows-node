@@ -290,6 +290,8 @@ public sealed class SessionPatch
     public PatchField<SessionSendPolicy> SendPolicy { get; set; }
     public PatchField<SessionGroupActivation> GroupActivation { get; set; }
     public PatchField<string> Label { get; set; }
+    /// <summary>User-defined organization group (<c>category</c>); Clear ungroups the session.</summary>
+    public PatchField<string> Category { get; set; }
     public PatchField<bool> Pinned { get; set; }
     public PatchField<bool> Unread { get; set; }
     public PatchField<bool> Archived { get; set; }
@@ -300,6 +302,16 @@ public sealed class SessionPatch
     /// </summary>
     public PatchField<long> ExpectedMarkedUnreadAt { get; set; }
     /// <summary>
+    /// Session identity guard the gateway requires on lifecycle patches such as
+    /// <c>archived</c>: the patch is rejected when the row's <c>sessionId</c> is no
+    /// longer this one. A plain string, not tri-state, because the upstream schema
+    /// is a bare <c>NonEmptyString</c> that rejects null; null or blank omits it.
+    /// Not a mutation, so it never counts toward <see cref="HasChanges"/>.
+    /// Gateways before 2026.8.1 do not know the field; <c>PatchSessionConfirmedAsync</c>
+    /// retries without it when they reject it.
+    /// </summary>
+    public string? ExpectedSessionId { get; set; }
+    /// <summary>
     /// True when the patch would change something: any field cleared, or any
     /// field set to a meaningful value (a blank string value produces nothing).
     /// </summary>
@@ -308,7 +320,7 @@ public sealed class SessionPatch
         ProducesString(VerboseLevel) || ProducesString(TraceLevel) || ProducesString(ReasoningLevel) ||
         ResponseUsage.IsSpecified || ProducesString(ElevatedLevel) || ProducesString(ExecHost) ||
         ProducesString(ExecSecurity) || ProducesString(ExecAsk) || ProducesString(ExecNode) ||
-        SendPolicy.IsSpecified || GroupActivation.IsSpecified || ProducesString(Label) ||
+        SendPolicy.IsSpecified || GroupActivation.IsSpecified || ProducesString(Label) || ProducesString(Category) ||
         Pinned.IsSpecified || Unread.IsSpecified || Archived.IsSpecified;
 
     /// <summary>
@@ -318,8 +330,11 @@ public sealed class SessionPatch
     /// String fields map to the schema's <c>NonEmptyString</c> value type, so a
     /// blank/whitespace <i>value</i> is omitted (an empty string would be
     /// rejected and fail the whole patch) — clearing always uses null instead.
+    /// Passing <paramref name="includeSessionGuard"/> false also omits
+    /// <see cref="ExpectedSessionId"/>, for Gateways that predate the guard and
+    /// reject it as an unknown property.
     /// </summary>
-    internal Dictionary<string, object?> ToPayload(string key)
+    internal Dictionary<string, object?> ToPayload(string key, bool includeSessionGuard = true)
     {
         var payload = new Dictionary<string, object?> { ["key"] = key };
         AddString(payload, "model", Model);
@@ -337,10 +352,13 @@ public sealed class SessionPatch
         AddEncoded(payload, "sendPolicy", SendPolicy, p => p == SessionSendPolicy.Allow ? "allow" : "deny");
         AddEncoded(payload, "groupActivation", GroupActivation, g => g == SessionGroupActivation.Mention ? "mention" : "always");
         AddString(payload, "label", Label);
+        AddString(payload, "category", Category);
         AddEncoded(payload, "pinned", Pinned, v => v);
         AddEncoded(payload, "unread", Unread, v => v);
         AddEncoded(payload, "archived", Archived, v => v);
         AddEncoded(payload, "expectedMarkedUnreadAt", ExpectedMarkedUnreadAt, v => v);
+        if (includeSessionGuard && !string.IsNullOrWhiteSpace(ExpectedSessionId))
+            payload["expectedSessionId"] = ExpectedSessionId;
         return payload;
     }
 
@@ -383,17 +401,6 @@ public sealed class SessionPatch
     };
 }
 
-/// <summary>
-/// Typed result of <c>sessions.list</c> with <c>archived:true</c>: archived-only
-/// rows that are kept out of the client's live session tracking.
-/// </summary>
-public sealed class SessionListResult
-{
-    public IReadOnlyList<SessionInfo> Sessions { get; init; } = Array.Empty<SessionInfo>();
-
-    /// <summary>False when the connected gateway does not support the archived list filter.</summary>
-    public bool IsSupported { get; init; } = true;
-}
 
 // ── Session files (sessions.files.list / sessions.files.get) ──
 

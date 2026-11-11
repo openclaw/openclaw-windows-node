@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
@@ -50,7 +51,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("Customize pages", customize.Current.Name);
             const string draft = "Keep this other conversation draft";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
-            await WaitUiAsync(run, () => ComposerText(run) == draft &&
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { } composer &&
+                ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == draft &&
                 FindById(run, "ChatComposerPrimaryAction") is { Current.Name: "Send", Current.IsEnabled: true },
                 "non-main draft acknowledged before native pointer input");
             Assert.Null(FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}"));
@@ -122,7 +124,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     if (homeCandidate is null || defaultPin is null || pin is null || anchor is null || conversation is null || connection is null)
                         return false;
                     AutomationElement[] owners = [window, homeCandidate, defaultPin, pin, anchor, conversation, connection];
-                    if (owners.Any(element => element.Current.ProcessId != run.AppProcessId || element.Current.IsOffscreen)
+                    if (owners.Any(element => !NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId) ||
+                            element.Current.IsOffscreen)
                         || !pin.GetRuntimeId().SequenceEqual(connectionRow))
                         return false;
                     var homeRect = homeCandidate.Current.BoundingRectangle;
@@ -144,7 +147,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     foreach (AutomationElement label in labels)
                     {
                         var bounds = label.Current.BoundingRectangle;
-                        if (label.Current.ProcessId != run.AppProcessId || label.Current.IsOffscreen || !Usable(bounds)
+                        if (!NativeUiOwnership.IsOwnedDescendant(window, label, run.AppProcessId) ||
+                            label.Current.IsOffscreen || !Usable(bounds)
                             || bounds.Top < anchorRect.Top || bounds.Bottom > anchorRect.Bottom
                             || bounds.Left < homeRect.Left || bounds.Right > anchorRect.Left)
                             continue;
@@ -215,6 +219,75 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             OwnedWindowCapture.Save(run, window, "simplified-home-sidebar.png", home, customize,
                 FindById(run, "WorkspaceSessionsAdd")!);
         });
+    }
+
+    [Fact]
+    public void SessionsScrollPolicy_RejectsOffscreenTargetWithoutAMechanism()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            RequireScrollMechanism(targetVisible: false, hasScrollItemPattern: false,
+                hasScrollAncestor: false, "negative-control"));
+
+        Assert.Contains("no UIA scrolling mechanism", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    public void SessionsScrollPolicy_AllowsVisibleOrActuallyScrollableTargets(
+        bool visible, bool hasScrollItem, bool hasScrollAncestor) =>
+        RequireScrollMechanism(visible, hasScrollItem, hasScrollAncestor, "positive-control");
+
+    [Fact]
+    public void SessionsScrollPolicy_RejectsNoMovementWhileTargetRemainsOffscreen()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            RequireScrollProgress(targetVisible: false, before: 42, after: 42, "negative-progress"));
+
+        Assert.Contains("did not move", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(true, 42, 42)]
+    [InlineData(false, 42, 67)]
+    public void SessionsScrollPolicy_AllowsVisibilityOrMeasuredMovement(bool visible, double before, double after) =>
+        RequireScrollProgress(visible, before, after, "positive-progress");
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SessionsHeroNativeProof()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "sessions" });
+            await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker") is not null
+                && FindById(run, "SessionsHubMastHeadline") is { } loaded
+                && loaded.Current.Name.Contains("loaded sessions", StringComparison.Ordinal)
+                && FindById(run, "SessionsHubList") is not null, "Sessions hero loaded");
+
+            // Shared PageHero: title, live headline and actions above the Sessions and Worktrees tabs.
+            var marker = FindById(run, "SessionsPageMarker")!;
+            var headline = FindById(run, "SessionsHubMastHeadline")!;
+            var web = FindById(run, "SessionsHubOpenGatewayWeb")!;
+            var tabs = FindById(run, "SessionsHubTabs")!;
+            Assert.Equal("Sessions", marker.Current.Name);
+            Assert.True(web.Current.IsEnabled);
+            var title = marker.Current.BoundingRectangle;
+            Assert.True(headline.Current.BoundingRectangle.Top >= title.Bottom - 1,
+                $"Headline {headline.Current.BoundingRectangle} is not below the title {title}.");
+            Assert.True(tabs.Current.BoundingRectangle.Top >= headline.Current.BoundingRectangle.Bottom,
+                $"Tabs {tabs.Current.BoundingRectangle} overlap the hero headline {headline.Current.BoundingRectangle}.");
+            Assert.True(tabs.Current.BoundingRectangle.Top >= web.Current.BoundingRectangle.Bottom,
+                $"Tabs {tabs.Current.BoundingRectangle} overlap the hero actions {web.Current.BoundingRectangle}.");
+            CaptureSessionsWindow(run, "sessions-hero-top-light.png");
+
+            ((SelectionItemPattern)FindById(run, "SessionsHubTabWorktrees")!
+                .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            await WaitUiAsync(run, () => FindById(run, "SessionsHubWorktree:wt-auth") is not null
+                && FindById(run, "SessionsHubWorktree:wt-board") is not null, "Worktree card list loaded");
+            CaptureSessionsWindow(run, "sessions-worktree-card-gaps-light.png");
+        }, scenario: GatewayScenario.CreateSessionsHub());
     }
 
     [GatewayFixtureUiFact]
@@ -790,6 +863,100 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task SessionsDesignNativeWindowGallery()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "NavSessions") is not null, "Settings navigation");
+            Invoke(FindById(run, "NavSessions")!);
+            await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker") is not null
+                && FindById(run, "SessionsHubList") is not null, "Sessions redesign loaded");
+            CaptureSessionsWindow(run, "sessions-top.png");
+
+            CaptureSessionsWidths(run);
+            RestoreBaselineWindow(run);
+
+            var manifest = new List<CaptureStateResult>();
+            await CaptureStateAsync(run, manifest, "messages", async () =>
+            {
+                ScrollIntoView(run, "SessionsHubSearch");
+                var search = FindById(run, "SessionsHubSearch")!;
+                AssertVisibleInHub(run, search, "session name search");
+                ((ValuePattern)search.GetCurrentPattern(ValuePattern.Pattern)).SetValue("backlog");
+                await WaitUiAsync(run, () => FindButtonContaining(run, "backlog") is not null, "message search prompt");
+                var prompt = FindButtonContaining(run, "backlog")!;
+                AssertVisibleInHub(run, prompt, "message search prompt");
+                Invoke(prompt);
+                await WaitUiAsync(run, () => FindById(run, "SessionsHubTranscriptCount") is not null,
+                    "message search results");
+                CaptureSessionsWindow(run, "sessions-messages.png");
+            });
+
+            await CaptureStateAsync(run, manifest, "worktrees", async () =>
+            {
+                var tab = FindById(run, "SessionsHubTabWorktrees")!;
+                AssertVisibleInHub(run, tab, "Worktrees tab");
+                ((SelectionItemPattern)tab.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+                var worktreeId = "SessionsHubWorktree:" + GatewayScenario.HubBusyWorktreeId;
+                await WaitUiAsync(run, () => FindById(run, worktreeId) is not null, "worktrees list");
+                ScrollIntoView(run, worktreeId);
+                var worktree = FindById(run, worktreeId);
+                AssertVisibleInHub(run, worktree!, "worktree row");
+                if (worktree is not null && worktree.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expanderPattern))
+                    ((ExpandCollapsePattern)expanderPattern).Expand();
+                await Task.Delay(300);
+                ScrollIntoView(run, worktreeId);
+                CaptureSessionsWindow(run, "sessions-worktrees.png");
+            });
+
+            await CaptureStateAsync(run, manifest, "delete-dialog", async () =>
+            {
+                await OpenSessionsRowMenuAsync(run, "agent:main:hub-deploy-failure");
+                var delete = new AndCondition(
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
+                    new PropertyCondition(AutomationElement.NameProperty, "Delete…"));
+                await WaitUiAsync(run, () => FindInApp(run, delete) is { Current.IsEnabled: true },
+                    "single-session delete action");
+                Invoke(FindInApp(run, delete)!);
+                await WaitUiAsync(run, () => FindById(run, SessionsDialogBodyId) is not null, "delete popup");
+                CaptureSessionsWindow(run, "sessions-dialog-delete.png");
+            });
+
+            await CaptureStateAsync(run, manifest, "expanded", async () =>
+            {
+                var chatWindowCount = ChatWindowCount(run);
+                await ExpandStoppedSessionRowAsync(run, "stopped session row");
+                await WaitUiAsync(run, () => FindById(run, "SessionsHubDetails") is not null, "expanded session details");
+                CaptureSessionsWindow(run, "sessions-expanded-top.png");
+                ScrollIntoView(run, "SessionsHubDetails");
+                await WaitUiAsync(run, () => FindById(run, "SessionsHubDetails") is { Current.IsOffscreen: false },
+                    "visible expanded session details");
+                Assert.Equal(chatWindowCount, ChatWindowCount(run));
+                CaptureSessionsWindow(run, "sessions-expanded.png");
+            });
+
+            await CaptureStateAsync(run, manifest, "toast", async () =>
+            {
+                await ExpandStoppedSessionRowAsync(run, "stopped session row for toast");
+                await WaitUiAsync(run, () => FindById(run, "SessionsHubCommandArchive") is not null,
+                    "archive command for toast");
+                var archive = FindById(run, "SessionsHubCommandArchive")!;
+                AssertVisibleInHub(run, archive, "archive command for toast");
+                Invoke(archive);
+                await WaitUiAsync(run, () => FindById(run, "SessionsHubNoticeDismiss") is not null, "archive toast");
+                CaptureSessionsWindow(run, "sessions-toast.png");
+            });
+
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "sessions-capture-manifest.json"),
+                JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
+            Assert.DoesNotContain(manifest, entry => entry.Status == "failed");
+        }, scenario: GatewayScenario.CreateSessionsHub());
+
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder()
     {
         await WithAppAsync(async run =>
@@ -856,13 +1023,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 "archived conversation hidden from sidebar");
 
             await run.InvokeAsync("app.navigate", new { page = "sessions" });
-            await WaitUiAsync(run, () => FindById(run, "SessionsPageArchived") is not null, "Settings archive section");
-            var section = FindById(run, "SessionsPageArchived")!;
-            ScrollAncestorToBottom(run, section);
-            ((ExpandCollapsePattern)section.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "SessionsPageStatusArchived") is not null, "Settings archived status filter");
+            ((SelectionItemPattern)FindById(run, "SessionsPageStatusArchived")!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             var restoreId = $"SessionsPageUnarchive:{GatewayScenario.OtherSessionKey}";
             await WaitUiAsync(run, () => FindById(run, restoreId) is not null, "archived conversation in Settings");
-            ScrollAncestorToBottom(run, FindById(run, restoreId)!);
             await WaitUiAsync(run, () => FindById(run, restoreId)?.Current.IsOffscreen == false, "visible unarchive action");
             await CaptureIfRequestedAsync(run, "settings-archived-conversation.png");
             Invoke(FindById(run, restoreId)!);
@@ -1105,6 +1269,145 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr window);
 
+    private void ClickOwnedElement(GatewayFixtureRun run, AutomationElement window, AutomationElement target)
+    {
+        run.EnsureRunning();
+        Assert.Equal(run.AppProcessId, window.Current.ProcessId);
+        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, target, run.AppProcessId),
+            "Click target must belong to the verified native window.");
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        Assert.True(SetForegroundWindow(handle), "Cannot foreground owned fixture window.");
+        var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        Assert.NotEqual(IntPtr.Zero, previous);
+        try
+        {
+            ConfirmForegroundAfterRequest(handle);
+            AssertOwnedForeground(run, handle, "before-target-hit-test");
+            var bounds = target.Current.BoundingRectangle;
+            Assert.True(bounds.Width > 0 && bounds.Height > 0 && !target.Current.IsOffscreen);
+            var point = new FixturePoint { X = (int)(bounds.Left + bounds.Width / 2), Y = (int)(bounds.Top + bounds.Height / 2) };
+            Assert.Equal(handle, GetAncestor(WindowFromPoint(point), 2));
+            var hit = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+            // WinUI can return its content bridge instead of the target peer for point queries.
+            var bridgeContainsTarget = hit.Current.ClassName == "Microsoft.UI.Content.DesktopChildSiteBridge"
+                && hit.Current.ProcessId == run.AppProcessId
+                && hit.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                    AutomationElement.AutomationIdProperty, target.Current.AutomationId)) is not null;
+            Assert.True(target.Current.AutomationId == hit.Current.AutomationId || bridgeContainsTarget,
+                $"Target {target.Current.AutomationId} at {bounds}, point {point.X},{point.Y}; hit " +
+                $"{hit.Current.AutomationId}/{hit.Current.Name}/{hit.Current.ClassName}/{hit.Current.ControlType.ProgrammaticName} at {hit.Current.BoundingRectangle}");
+            Assert.True(SetCursorPos(point.X, point.Y));
+            Assert.True(GetCursorPos(out var actual));
+            Assert.Equal(point, actual);
+            AssertOwnedForeground(run, handle, "before-native-pointer-input");
+            Assert.Equal(handle, GetAncestor(WindowFromPoint(actual), 2));
+            var inputs = new[]
+            {
+                new FixtureInput { Mouse = new FixtureMouse { Flags = 2 } },
+                new FixtureInput { Mouse = new FixtureMouse { Flags = 4 } }
+            };
+            var sent = SendInput(2, inputs, Marshal.SizeOf<FixtureInput>());
+            if (sent == 1) SendInput(1, [inputs[1]], Marshal.SizeOf<FixtureInput>());
+            Assert.Equal(2u, sent);
+        }
+        finally { SetThreadDpiAwarenessContext(previous); }
+    }
+
+    private static void ConfirmForegroundAfterRequest(IntPtr handle, TimeSpan? foregroundTimeout = null) =>
+        ConfirmForegroundAfterRequest(handle,
+            () => SendMessageTimeout(handle, 0, IntPtr.Zero, IntPtr.Zero, 0,
+                checked((uint)FixtureForegroundTimeout.TotalMilliseconds), out _) != IntPtr.Zero,
+            GetForegroundWindow, foregroundTimeout);
+
+    private static void ConfirmForegroundAfterRequest(
+        IntPtr handle, Func<bool> acknowledge, Func<IntPtr> getForeground, TimeSpan? foregroundTimeout = null)
+    {
+        // Cross-thread activation is asynchronous. WM_NULL waits for the target queue to process it.
+        if (!acknowledge())
+            throw new InvalidOperationException(
+                $"Owned window 0x{handle.ToInt64():X} did not acknowledge activation within " +
+                $"{FixtureForegroundTimeout.TotalMilliseconds:0} ms (Win32 error {Marshal.GetLastWin32Error()}); " +
+                "refusing pointer input.");
+        // A popup can still hold foreground after the target queue acknowledges activation.
+        var foreground = IntPtr.Zero;
+        if (!SpinWait.SpinUntil(() => (foreground = getForeground()) == handle,
+                foregroundTimeout ?? FixtureForegroundTimeout))
+            AssertOwnedForeground(handle, foreground);
+    }
+
+    private static void AssertOwnedForeground(IntPtr handle, Func<IntPtr> getForeground) =>
+        AssertOwnedForeground(handle, getForeground());
+
+    private static void AssertOwnedForeground(IntPtr handle, IntPtr foreground)
+    {
+        if (foreground == handle) return;
+        GetWindowThreadProcessId(foreground, out var processId);
+        var className = new System.Text.StringBuilder(256);
+        var classLength = GetClassName(foreground, className, className.Capacity);
+        throw new InvalidOperationException(
+            $"Expected owned window 0x{handle.ToInt64():X} in the foreground, but found " +
+            $"0x{foreground.ToInt64():X} (PID {processId}, class {(classLength > 0 ? className.ToString() : "<unavailable>")}); " +
+            "refusing pointer input.");
+    }
+
+    private void AssertOwnedForeground(GatewayFixtureRun run, IntPtr expected, string phase)
+    {
+        var actual = GetForegroundWindow();
+        if (actual != expected)
+        {
+            object WindowState(IntPtr handle)
+            {
+                var threadId = GetWindowThreadProcessId(handle, out var processId);
+                return new
+                {
+                    hwnd = handle.ToInt64(),
+                    threadId,
+                    processId,
+                    belongsToTaskApp = processId == run.AppProcessId,
+                    exists = IsWindow(handle),
+                    visible = IsWindowVisible(handle),
+                    minimized = IsIconic(handle),
+                    maximized = IsZoomed(handle),
+                };
+            }
+
+            // Read ownership and native state only, never foreign window text or pixels.
+            output.WriteLine("fixture-foreground-mismatch: " + JsonSerializer.Serialize(new
+            {
+                phase,
+                timestampUtc = DateTimeOffset.UtcNow,
+                appProcessId = run.AppProcessId,
+                runnerProcessId = Environment.ProcessId,
+                expected = WindowState(expected),
+                actual = WindowState(actual),
+            }));
+        }
+        Assert.Equal(expected, actual);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixturePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixtureInput { public uint Type; public FixtureMouse Mouse; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixtureMouse { public int X, Y; public uint Data, Flags, Time; public nuint Extra; }
+    [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr handle, System.Text.StringBuilder className, int maxCount);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(FixturePoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out FixturePoint point);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, FixtureInput[] inputs, int size);
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus()
@@ -1123,15 +1426,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task OwnerFooterRendersNamedSharedOwnerForGatewayOwnerProfile()
+    public async Task OwnerFooterRendersOnlyNameForGatewayOwnerProfile()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture · Shared owner",
-                "named shared Gateway owner label in footer");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture",
+                "Gateway owner first name without a shared-owner marker in footer");
             var owner = FindById(run, "WorkspaceOwner")!;
-            Assert.Equal("Fixture · Shared owner", owner.Current.Name);
+            Assert.Equal("Fixture", owner.Current.Name);
             Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
             await WaitForAuthenticatedOwnerPhotoAsync(run);
         }, scenario: GatewayScenario.CreateBrowseWithOwnerProfile("gateway-owner", "Fixture Shared Person"));
@@ -1398,9 +1701,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             for (var depth = 0; depth < 15 && row.Current.ControlType != ControlType.ListItem; depth++)
                 row = TreeWalker.ControlViewWalker.GetParent(row)
                     ?? throw new InvalidOperationException("Session title has no list-item ancestor.");
-            var openChat = row.FindFirst(TreeScope.Descendants, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                new PropertyCondition(AutomationElement.NameProperty, "Open in chat")));
+            var openChat = row.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(button => button.Current.AutomationId.StartsWith("SessionsHubOpen:", StringComparison.Ordinal));
             Assert.NotNull(openChat);
             Invoke(openChat);
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)
@@ -1733,7 +2037,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                         ownedWindowHandle != 0 && owner.NativeWindowHandle == ownedWindowHandle &&
                         owner.ControlType == ControlType.Window && owner.IsEnabled && !owner.IsOffscreen &&
                         windowRuntimeId.Length > 0 && selectorWindow.GetRuntimeId().SequenceEqual(windowRuntimeId) &&
-                        current.ProcessId == ownedProcessId && current.ControlType == ControlType.ComboBox &&
+                        NativeUiOwnership.IsOwnedDescendant(selectorWindow, selector, ownedProcessId) &&
+                        current.ControlType == ControlType.ComboBox &&
                         current.AutomationId == SessionAgentSelectorId && current.IsEnabled && !current.IsOffscreen &&
                         selectorRuntimeId.Length > 0 && selector.GetRuntimeId().SequenceEqual(selectorRuntimeId) &&
                         HasFiniteBounds(ownerBounds) && HasFiniteBounds(bounds) && ownerBounds.Contains(bounds);
@@ -1882,6 +2187,16 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
             new PropertyCondition(AutomationElement.NameProperty, name)));
 
+    private static AutomationElement? FindButtonContaining(GatewayFixtureRun run, string text)
+    {
+        foreach (var window in AppWindows(run))
+        foreach (AutomationElement element in window.FindAll(TreeScope.Descendants,
+                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
+            if (element.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+                return element;
+        return null;
+    }
+
     private static AutomationElement? FindText(GatewayFixtureRun run, string text)
     {
         foreach (var window in AppWindows(run))
@@ -2009,6 +2324,483 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             catch (Exception error) { onProbeError?.Invoke(error); throw; }
         }, description, timeout);
     }
+
+    private static void ScrollIntoView(GatewayFixtureRun run, string automationId)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            try
+            {
+                var element = FindById(run, automationId);
+                if (element is null)
+                {
+                    Thread.Sleep(100);
+                    continue;
+                }
+                if (IsVisibleInHub(run, element))
+                    return;
+                var hasScrollItem = element.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var itemPattern);
+                var scrollAncestor = FindScrollAncestor(element);
+                RequireScrollMechanism(targetVisible: false, hasScrollItem, scrollAncestor is not null, automationId);
+                if (hasScrollItem)
+                    ((ScrollItemPattern)itemPattern).ScrollIntoView();
+                else
+                {
+                    var scroll = (ScrollPattern)scrollAncestor!.GetCurrentPattern(ScrollPattern.Pattern);
+                    var before = scroll.Current.VerticalScrollPercent;
+                    if (!scroll.Current.VerticallyScrollable)
+                        throw new InvalidOperationException($"{automationId} scroll ancestor is not vertically scrollable.");
+                    var targetBounds = element.Current.BoundingRectangle;
+                    var hubBounds = SettingsWindow(run).Current.BoundingRectangle;
+                    var amount = targetBounds.IsEmpty || targetBounds.Top >= hubBounds.Bottom
+                        ? ScrollAmount.LargeIncrement
+                        : ScrollAmount.LargeDecrement;
+                    scroll.Scroll(ScrollAmount.NoAmount, amount);
+                    Thread.Sleep(150);
+                    var after = ((ScrollPattern)scrollAncestor.GetCurrentPattern(ScrollPattern.Pattern))
+                        .Current.VerticalScrollPercent;
+                    element = FindById(run, automationId);
+                    RequireScrollProgress(element is not null && IsVisibleInHub(run, element), before, after, automationId);
+                }
+                Thread.Sleep(150);
+                element = FindById(run, automationId);
+                if (element is not null && IsVisibleInHub(run, element))
+                    return;
+            }
+            catch (Exception exception) when (exception is ElementNotAvailableException or NullReferenceException)
+            {
+                Thread.Sleep(100);
+            }
+        }
+        throw new InvalidOperationException($"Could not reacquire {automationId} for scrolling.");
+    }
+
+    private static AutomationElement? FindScrollAncestor(AutomationElement element)
+    {
+        var walker = TreeWalker.ControlViewWalker;
+        for (var current = walker.GetParent(element); current is not null; current = walker.GetParent(current))
+            if (current.TryGetCurrentPattern(ScrollPattern.Pattern, out _))
+                return current;
+        return null;
+    }
+
+    private static void RequireScrollMechanism(
+        bool targetVisible,
+        bool hasScrollItemPattern,
+        bool hasScrollAncestor,
+        string automationId)
+    {
+        if (!targetVisible && !hasScrollItemPattern && !hasScrollAncestor)
+            throw new InvalidOperationException(
+                $"{automationId} is offscreen and has no UIA scrolling mechanism.");
+    }
+
+    private static void RequireScrollProgress(bool targetVisible, double before, double after, string automationId)
+    {
+        if (!targetVisible && Math.Abs(after - before) < 0.01)
+            throw new InvalidOperationException(
+                $"{automationId} ScrollPattern did not move ({before:0.##} -> {after:0.##}).");
+    }
+
+    private static bool IsVisibleInHub(GatewayFixtureRun run, AutomationElement element)
+    {
+        var bounds = element.Current.BoundingRectangle;
+        var hub = SettingsWindow(run).Current.BoundingRectangle;
+        return !element.Current.IsOffscreen && !bounds.IsEmpty
+            && bounds.Left >= hub.Left - 1 && bounds.Right <= hub.Right + 1
+            && bounds.Top >= hub.Top - 1 && bounds.Bottom <= hub.Bottom + 1;
+    }
+
+    private static void AssertVisibleInHub(GatewayFixtureRun run, AutomationElement element, string state)
+    {
+        if (!IsVisibleInHub(run, element))
+            throw new InvalidOperationException(
+                $"{state} target {element.Current.AutomationId} is not fully visible in the owned Settings window.");
+    }
+
+    private static void CaptureSessionsWindow(GatewayFixtureRun run, string name)
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
+            return;
+        OwnedWindowCapture.Save(run, SettingsWindow(run), name);
+    }
+
+    private static AutomationElement SettingsWindow(GatewayFixtureRun run) =>
+        AppWindows(run).Single(candidate =>
+            candidate.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null);
+
+    private static int ChatWindowCount(GatewayFixtureRun run) =>
+        AppWindows(run).Count(window =>
+            window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceTitleBar")) is not null);
+
+    private static void CaptureSessionsWidths(GatewayFixtureRun run)
+    {
+        try
+        {
+            var window = SettingsWindow(run);
+            var handle = new IntPtr(window.Current.NativeWindowHandle);
+            var hostMarker = FindById(run, "SessionsHubHost")
+                ?? throw new InvalidOperationException("SessionsHubHost is not discoverable before resize.");
+            if (hostMarker.Current.BoundingRectangle.IsEmpty)
+                throw new InvalidOperationException("SessionsHubHost has no readable bounds before resize.");
+
+            var metrics = new List<WidthCaptureResult>();
+            foreach (var target in new[]
+                     {
+                         (Name: "1400", Host: 1386d, InitialWindow: 1661d, Tier: "Wide"),
+                         (Name: "1000", Host: 1007d, InitialWindow: 1280d, Tier: "Wide"),
+                         (Name: "760", Host: 754d, InitialWindow: 1021.14d, Tier: "Medium"),
+                     })
+            {
+                var sizing = ResizeSessionsWindow(run, target.InitialWindow, target.Host, target.Tier);
+                metrics.Add(CaptureWidth(run, $"sessions-width-{target.Name}", target.Host, target.Tier,
+                    "host target", sizing));
+            }
+
+            var scale = GetDpiForWindow(handle) / 96d;
+            Assert.True(GetWindowRect(handle, out var bounds));
+            var shellWidthPx = (int)Math.Round(1000 * scale);
+            Assert.True(SetWindowPos(handle, IntPtr.Zero, 0, bounds.Top, shellWidthPx, bounds.Height,
+                SetWindowPosNoActivate | SetWindowPosNoZOrder));
+            Thread.Sleep(400);
+            var shellExpandedHost = WaitForStableHostWidth(run, requireStableNavWidth: true);
+            var shellExpandedSizing = new WindowSizingResult(shellWidthPx, shellWidthPx, shellExpandedHost, 0);
+            metrics.Add(CaptureWidth(run, "sessions-width-shell-min-expanded", null, "Medium",
+                "1000 DIP shell minimum with pane expanded", shellExpandedSizing));
+            var paneToggle = FindById(run, "SettingsTogglePane")!;
+            AssertVisibleInHub(run, paneToggle, "Settings pane toggle");
+            Invoke(paneToggle);
+            var shellHost = WaitForStableHostWidth(run, requireStableNavWidth: true);
+            var shellSizing = new WindowSizingResult(shellWidthPx, shellWidthPx, shellHost, 0);
+            metrics.Add(CaptureWidth(run, "sessions-width-shell-min-collapsed", null, "Medium",
+                "1000 DIP shell minimum with pane collapsed", shellSizing));
+
+            Assert.True(metrics.Select(metric => metric.WindowWidthPx).Distinct().Count() >= 4);
+            Assert.Equal(metrics.Count, metrics.Select(metric => metric.Sha256).Distinct(StringComparer.Ordinal).Count());
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "sessions-widths.json"),
+                JsonSerializer.Serialize(metrics, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            DumpSessionsUia(run, "sessions-width-failure-uia.json");
+            CaptureSessionsWindow(run, "sessions-width-failure.png");
+            throw;
+        }
+    }
+
+    private static void RestoreBaselineWindow(GatewayFixtureRun run)
+    {
+        Invoke(FindById(run, "SettingsTogglePane")!);
+        Thread.Sleep(250);
+
+        var window = SettingsWindow(run);
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        var scale = GetDpiForWindow(handle) / 96d;
+        Assert.True(GetWindowRect(handle, out var bounds));
+        Assert.True(SetWindowPos(handle, IntPtr.Zero, 0, bounds.Top,
+            (int)Math.Round(1000 * scale), (int)Math.Round(650 * scale),
+            SetWindowPosNoActivate | SetWindowPosNoZOrder));
+        Thread.Sleep(400);
+    }
+
+    private static WindowSizingResult ResizeSessionsWindow(
+        GatewayFixtureRun run,
+        double initialWindowWidthDip,
+        double desiredHostWidthDip,
+        string expectedTier)
+    {
+        var handle = new IntPtr(SettingsWindow(run).Current.NativeWindowHandle);
+        var scale = GetDpiForWindow(handle) / 96d;
+        Assert.True(GetWindowRect(handle, out var before));
+        var initialWidthPx = (int)Math.Round(initialWindowWidthDip * scale);
+        var finalWidthPx = initialWidthPx;
+        Assert.True(SetWindowPos(handle, IntPtr.Zero, 0, before.Top, finalWidthPx, before.Height,
+            SetWindowPosNoActivate | SetWindowPosNoZOrder));
+        double measuredHost = 0;
+        var corrections = 0;
+        for (; corrections <= 2; corrections++)
+        {
+            measuredHost = WaitForStableHostWidth(run);
+            var measuredTier = measuredHost >= 1000 ? "Wide" : measuredHost >= 720 ? "Medium" : "Narrow";
+            if (Math.Abs(measuredHost - desiredHostWidthDip) <= 2 && measuredTier == expectedTier)
+                break;
+            if (corrections == 2)
+                throw new InvalidOperationException(
+                    $"Could not reach {desiredHostWidthDip:0.##} DIP {expectedTier} host after two corrections; measured {measuredHost:0.##} DIP {measuredTier}.");
+            Assert.True(GetWindowRect(handle, out var current));
+            finalWidthPx = current.Width + (int)Math.Round((desiredHostWidthDip - measuredHost) * scale);
+            Assert.True(SetWindowPos(handle, IntPtr.Zero, 0, current.Top, finalWidthPx, current.Height,
+                SetWindowPosNoActivate | SetWindowPosNoZOrder));
+        }
+        Assert.True(GetWindowRect(handle, out var after));
+        Assert.InRange(after.Width, finalWidthPx - 1, finalWidthPx + 1);
+        Assert.NotEqual(before.Width, after.Width);
+        return new WindowSizingResult(initialWidthPx, finalWidthPx, measuredHost, corrections);
+    }
+
+    private static double WaitForStableHostWidth(GatewayFixtureRun run, bool requireStableNavWidth = false)
+    {
+        double? previous = null;
+        double? previousNav = null;
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var handle = new IntPtr(SettingsWindow(run).Current.NativeWindowHandle);
+            var scale = GetDpiForWindow(handle) / 96d;
+            var marker = FindById(run, "SessionsHubHost")
+                ?? throw new InvalidOperationException("SessionsHubHost disappeared after resize.");
+            var current = marker.Current.BoundingRectangle.Width / scale;
+            if (current <= 0)
+                throw new InvalidOperationException("SessionsHubHost reported an empty width after resize.");
+            var navWidth = FindById(run, "NavSessions")?.Current.BoundingRectangle.Width / scale ?? 0;
+            if (previous is { } value && Math.Abs(value - current) <= 0.1
+                && (!requireStableNavWidth || previousNav is { } nav && Math.Abs(nav - navWidth) <= 0.1))
+                return current;
+            previous = current;
+            previousNav = navWidth;
+            Thread.Sleep(300);
+        }
+        throw new InvalidOperationException("SessionsHubHost width did not stabilize after resize.");
+    }
+
+    private static WidthCaptureResult CaptureWidth(
+        GatewayFixtureRun run,
+        string captureName,
+        double? requestedHostWidth,
+        string expectedTier,
+        string note,
+        WindowSizingResult sizing)
+    {
+        var window = SettingsWindow(run);
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        var scale = GetDpiForWindow(handle) / 96d;
+        Assert.True(GetWindowRect(handle, out var bounds));
+        var hostWidth = FindById(run, "SessionsHubHost")!.Current.BoundingRectangle.Width / scale;
+        var contentWidth = Math.Min(Math.Max(0, hostWidth - 2 * (hostWidth < 720 ? 20 : 32)), 1200);
+        var tier = hostWidth >= 1000 ? "Wide" : hostWidth >= 720 ? "Medium" : "Narrow";
+        CaptureSessionsWindow(run, captureName + ".png");
+        var imagePath = Path.Combine(run.ArtifactsDirectory, captureName + ".png");
+        var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(imagePath)));
+        var result = new WidthCaptureResult(
+            requestedHostWidth,
+            Math.Round(hostWidth, 2),
+            Math.Round(contentWidth, 2),
+            tier,
+            bounds.Width,
+            bounds.Height,
+            Math.Round(bounds.Width / scale, 2),
+            Math.Round(bounds.Height / scale, 2),
+            $"0x{handle.ToInt64():X}",
+            sizing.InitialWindowWidthPx,
+            sizing.FinalWindowWidthPx,
+            sizing.Corrections,
+            sha,
+            note);
+        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, captureName + "-metrics.json"),
+            JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        Assert.Equal(expectedTier, tier);
+        return result;
+    }
+
+    private static async Task CaptureStateAsync(
+        GatewayFixtureRun run,
+        List<CaptureStateResult> manifest,
+        string state,
+        Func<Task> capture)
+    {
+        try
+        {
+            await RestoreSessionsBaselineAsync(run);
+            await capture();
+            manifest.Add(new CaptureStateResult(state, "captured", null));
+        }
+        catch (Exception exception)
+        {
+            manifest.Add(new CaptureStateResult(state, "failed", exception.ToString()));
+            DumpSessionsUia(run, $"sessions-{state}-uia.json");
+            CaptureSessionsWindow(run, $"sessions-{state}-failure.png");
+        }
+    }
+
+    private static bool HasOpenSessionsOverlay(GatewayFixtureRun run) =>
+        FindInApp(run, new OrCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Menu),
+            new PropertyCondition(AutomationElement.ClassNameProperty, "FlyoutPresenter"),
+            new PropertyCondition(AutomationElement.ClassNameProperty, "MenuFlyoutPresenter"),
+            new PropertyCondition(AutomationElement.AutomationIdProperty, SessionsDialogBodyId),
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsHubPromptInput"))) is not null;
+
+    // The Reactor ContentDialog's own AutomationId is not exposed through the popup layer; its body text is.
+    private const string SessionsDialogBodyId = "SessionsHubDialogBody";
+
+    private static async Task RestoreSessionsBaselineAsync(GatewayFixtureRun run)
+    {
+        var window = SettingsWindow(run);
+        SetForegroundWindow(new IntPtr(window.Current.NativeWindowHandle));
+        // Escape with no overlay open leaves Settings ("Back to app"), so only dismiss what is open.
+        for (var attempt = 0; attempt < 2 && HasOpenSessionsOverlay(run); attempt++)
+        {
+            System.Windows.Forms.SendKeys.SendWait("{ESC}");
+            await Task.Delay(100);
+        }
+
+        if (FindById(run, "SessionsHubTranscriptClose") is { } transcriptClose)
+        {
+            AssertVisibleInHub(run, transcriptClose, "close transcript search");
+            Invoke(transcriptClose);
+        }
+        // The name filter is read-only while message search is open, so clear it after closing that.
+        if (FindById(run, "SessionsHubSearch") is { } nameSearch
+            && nameSearch.TryGetCurrentPattern(ValuePattern.Pattern, out var nameValue)
+            && ((ValuePattern)nameValue).Current.Value.Length > 0)
+        {
+            await WaitUiAsync(run, () => FindById(run, "SessionsHubSearch") is { Current.IsEnabled: true },
+                "name filter editable");
+            ((ValuePattern)FindById(run, "SessionsHubSearch")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("");
+        }
+        // An earlier state can leave the page scrolled below the tabs.
+        ScrollIntoView(run, "SessionsHubTabWorktrees");
+        var worktreesTab = FindById(run, "SessionsHubTabWorktrees")
+            ?? throw new InvalidOperationException("Worktrees tab is unavailable while restoring the baseline.");
+        AssertVisibleInHub(run, worktreesTab, "Worktrees tab reset");
+        if (!worktreesTab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var worktreesSelection))
+            throw new InvalidOperationException("Worktrees tab has no SelectionItemPattern.");
+        ((SelectionItemPattern)worktreesSelection).Select();
+        await WaitUiAsync(run, () => FindById(run, "SessionsHubWorktree:" + GatewayScenario.HubBusyWorktreeId) is not null,
+            "worktrees reset state");
+
+        ScrollIntoView(run, "SessionsHubTabSessions");
+        var sessionsTab = FindById(run, "SessionsHubTabSessions")
+            ?? throw new InvalidOperationException("Sessions tab is unavailable while restoring the baseline.");
+        AssertVisibleInHub(run, sessionsTab, "Sessions tab reset");
+        if (!sessionsTab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var sessionsSelection))
+            throw new InvalidOperationException("Sessions tab has no SelectionItemPattern.");
+        ((SelectionItemPattern)sessionsSelection).Select();
+        await WaitUiAsync(run, () => FindById(run, "SessionsHubList") is not null
+            && FindById(run, StoppedSessionRowId) is not null,
+            "sessions baseline restored");
+        // Rows stay expanded across states; an expanded row can be taller than the window.
+        if (FindById(run, StoppedSessionRowId) is { } stopped
+            && stopped.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var stoppedExpand)
+            && ((ExpandCollapsePattern)stoppedExpand).Current.ExpandCollapseState == ExpandCollapseState.Expanded)
+        {
+            ((ExpandCollapsePattern)stoppedExpand).Collapse();
+            await WaitUiAsync(run, () => FindById(run, StoppedSessionRowId) is { } row
+                && row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var state)
+                && ((ExpandCollapsePattern)state).Current.ExpandCollapseState == ExpandCollapseState.Collapsed,
+                "stopped session row collapsed");
+        }
+    }
+
+    private const string StoppedSessionRowId = "SessionsHubRow:agent:main:hub-deploy-failure";
+
+    private static async Task ExpandStoppedSessionRowAsync(GatewayFixtureRun run, string description)
+    {
+        await WaitUiAsync(run, () => FindById(run, StoppedSessionRowId) is not null, description);
+        ScrollIntoView(run, StoppedSessionRowId);
+        var row = FindById(run, StoppedSessionRowId)!;
+        AssertVisibleInHub(run, row, description);
+        Assert.Contains("Stopped with an error", row.Current.Name, StringComparison.Ordinal);
+        if (!row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expand))
+            throw new InvalidOperationException($"{description} has no ExpandCollapsePattern.");
+        ((ExpandCollapsePattern)expand).Expand();
+    }
+
+    private static void DumpSessionsUia(GatewayFixtureRun run, string fileName = "sessions-uia.json")
+    {
+        var windows = AppWindows(run).ToArray();
+        var rows = windows.SelectMany(window =>
+            window.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
+                .Where(element => element.Current.AutomationId.StartsWith("Sessions", StringComparison.Ordinal))
+                .Select(element => new
+                {
+                    window = window.Current.Name,
+                    element.Current.Name,
+                    element.Current.AutomationId,
+                    controlType = element.Current.ControlType.ProgrammaticName,
+                    element.Current.ClassName,
+                    hasScrollPattern = element.TryGetCurrentPattern(ScrollPattern.Pattern, out _),
+                    nearestScrollAncestor = FindScrollAncestor(element)?.Current.AutomationId,
+                    element.Current.IsOffscreen,
+                    bounds = element.Current.BoundingRectangle.ToString(),
+                })).ToArray();
+        var scrollCandidates = windows.SelectMany(window =>
+            window.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))
+                .Cast<AutomationElement>()
+                .Select(element => new
+                {
+                    window = window.Current.Name,
+                    element.Current.Name,
+                    element.Current.AutomationId,
+                    controlType = element.Current.ControlType.ProgrammaticName,
+                    element.Current.ClassName,
+                    bounds = element.Current.BoundingRectangle.ToString(),
+                })).ToArray();
+        File.WriteAllText(Path.Combine(run.ArtifactsDirectory, fileName),
+            JsonSerializer.Serialize(new
+            {
+                pageScrollFound = FindById(run, "SessionsHubPageScroll") is not null,
+                sessionsElements = rows,
+                scrollCandidates,
+            }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private sealed record CaptureStateResult(string State, string Status, string? Exception);
+    private sealed record WidthCaptureResult(
+        double? RequestedHostWidthDip,
+        double MeasuredHostWidthDip,
+        double ContentWidthDip,
+        string Tier,
+        int WindowWidthPx,
+        int WindowHeightPx,
+        double WindowWidthDip,
+        double WindowHeightDip,
+        string HubHwnd,
+        int InitialWindowWidthPx,
+        int FinalWindowWidthPx,
+        int Corrections,
+        string Sha256,
+        string Note);
+    private sealed record WindowSizingResult(
+        int InitialWindowWidthPx,
+        int FinalWindowWidthPx,
+        double MeasuredHostWidthDip,
+        int Corrections);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+        public readonly int Width => Right - Left;
+        public readonly int Height => Bottom - Top;
+    }
+
+    private const uint SetWindowPosNoZOrder = 0x0004;
+    private const uint SetWindowPosNoMove = 0x0002;
+    private const uint SetWindowPosNoActivate = 0x0010;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        IntPtr window,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
 
     private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, CancellationToken cancellationToken = default)
     {

@@ -873,10 +873,16 @@ internal sealed partial class SettingsShellView : UserControl
     {
         switch (ContentFrame.Content)
         {
-            case SessionsPage sessions: sessions.Initialize(); break;
+            case SessionsPage sessions:
+                // "agent:{id}:sessions" scopes the roster; the plain "sessions" route keeps the user's choice.
+                sessions.Initialize(_currentNavTag?.StartsWith("agent:", StringComparison.Ordinal) == true ? _currentAgentId : null);
+                break;
             case ConnectionPage connection: connection.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
-            case CronPage cron: cron.Initialize(); break;
+            case CronPage cron:
+                cron.AgentId = _currentAgentId;
+                cron.Initialize();
+                break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)
