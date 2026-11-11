@@ -552,15 +552,19 @@ internal static class SessionsHubSessionsView
         else if (item.IsEmptyGroup)
         {
             name = T("EmptyGroup");
-            content = TextBlock(T("EmptyGroup")).FontSize(12).Foreground(Theme.TertiaryText).Margin(36, 0, 0, 8);
+            content = TextBlock(T("EmptyGroup")).FontSize(12).Foreground(Theme.TertiaryText);
         }
         else
         {
             name = SessionsHubPresentation.GroupLabel(item.Group!, context.State.GroupBy, context.State.Agents);
             content = GroupHeader(context, item.Group!);
         }
-        // The ItemsView stack already separates items by 4 DIP; together they make the shared card gap.
-        return ItemContainer(content.Margin(0, 0, 12, PageResponsiveLayout.GapInner - ItemsViewItemSpacing).HAlign(HorizontalAlignment.Stretch))
+        // One margin per item (Reactor keeps only the last Margin). The ItemsView stack already
+        // separates items by 4 DIP; together they make the shared card gap.
+        var left = item.IsEmptyGroup ? 36 : 0;
+        var top = item.Row is null && !item.IsEmptyGroup ? PageResponsiveLayout.GapGroup : 0;
+        return ItemContainer(content.Margin(left, top, 12, PageResponsiveLayout.GapInner - ItemsViewItemSpacing)
+                .HAlign(HorizontalAlignment.Stretch))
             .Resources(resources => resources
                 .Set("ItemContainerPointerOverBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
                 .Set("ItemContainerPressedBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -652,7 +656,7 @@ internal static class SessionsHubSessionsView
             .AutomationName($"{label}, {count}")
             .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2)
             .AutomationId("SessionsHubGroup:" + (group.IsUngrouped ? "(none)" : group.Id));
-        return header.Margin(0, 12, 0, 4);
+        return header;
     }
 
     /// <summary>The hue a group header wears; null keeps it neutral (dates, people, ungrouped).</summary>
