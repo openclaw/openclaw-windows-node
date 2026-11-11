@@ -372,6 +372,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             await harness.Controller.ArchiveAsync(target, "Morning brief");
         });
         await harness.RenderAsync();
+        await ui.RunOnUIAsync(() => WaitForElementAsync(harness, "SessionsHubGroup:Release"));
         await ui.RunOnUIAsync(() =>
         {
             Assert.Contains("telegram", harness.Controller.State.Notice!.Message);
@@ -384,17 +385,26 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await harness.RenderAsync();
         await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(() =>
         {
-            var row = TestSupport.FindDescendants<Expander>(harness.Root!)
-                .FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == "SessionsHubRow:" + Harness.Key);
+            var row = TestSupport.FindDescendants<Expander>(harness.Root!).FirstOrDefault(element =>
+                AutomationProperties.GetAutomationId(element) == "SessionsHubRow:" + Harness.Key && IsShown(element, harness.Root!));
             var focus = FocusManager.GetFocusedElement(harness.Root!.XamlRoot) as DependencyObject;
             while (focus is not null && focus != row)
                 focus = VisualTreeHelper.GetParent(focus);
             return row is { IsExpanded: true } && focus == row && harness.Controller.State.RowReveal is null;
-        }, "archive Undo restored row focus"));
+        }, "archive Undo restored row focus", () =>
+        {
+            var rows = TestSupport.FindDescendants<Expander>(harness.Root!)
+                .Where(element => AutomationProperties.GetAutomationId(element) == "SessionsHubRow:" + Harness.Key).ToList();
+            var row = rows.FirstOrDefault(element => IsShown(element, harness.Root!)) ?? rows.FirstOrDefault();
+            var focused = FocusManager.GetFocusedElement(harness.Root!.XamlRoot) as FrameworkElement;
+            return $"Row copies: {rows.Count}; shown: {(row is null ? null : IsShown(row, harness.Root!))}; expanded: {row?.IsExpanded}; focused: {focused?.GetType().Name} " +
+                $"'{(focused is null ? null : AutomationProperties.GetAutomationId(focused))}'; " +
+                $"reveal pending: {harness.Controller.State.RowReveal is not null}; page: {harness.Controller.State.PageIndex}.";
+        }));
         await ui.RunOnUIAsync(() =>
         {
             Assert.Equal(1, harness.Controller.State.PageIndex);
-            Assert.True(harness.Find<Expander>("SessionsHubRow:" + Harness.Key).IsExpanded);
+            Assert.True(harness.FindShown<Expander>("SessionsHubRow:" + Harness.Key).IsExpanded);
             Assert.Null(harness.Controller.State.Notice);
             Assert.Equal(new[] { Harness.Key, Harness.Key }, harness.Gateway.PatchKeys);
             Assert.True(harness.Gateway.Patches[0].Archived.Value);
@@ -426,6 +436,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true);
         var acceptance = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var showCompleted = false;
         await ui.RunOnUIAsync(async () =>
         {
             var row = harness.Gateway.Page.Sessions.Single();
@@ -437,7 +448,8 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         {
             Invoke(harness.Find<Button>("SessionsHubNoticeAction"));
             Assert.True(harness.Controller.State.IsBusy);
-            harness.Controller.SetFilters(harness.Controller.State.Filters with { ShowCompleted = true });
+            showCompleted = !harness.Controller.State.Filters.ShowCompleted;
+            harness.Controller.SetFilters(harness.Controller.State.Filters with { ShowCompleted = showCompleted });
             acceptance.SetResult();
         });
         await harness.RenderAsync();
@@ -445,7 +457,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             () => !harness.Controller.State.IsBusy, "archive Undo acceptance"));
         await ui.RunOnUIAsync(() =>
         {
-            Assert.True(harness.Controller.State.Filters.ShowCompleted);
+            Assert.Equal(showCompleted, harness.Controller.State.Filters.ShowCompleted);
             Assert.Empty(harness.Controller.State.ExpandedKeys);
             Assert.Null(harness.Controller.State.RowReveal);
             Assert.Equal(2, harness.Gateway.Patches.Count);
@@ -496,15 +508,28 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await ui.RunOnUIAsync(() =>
             Assert.Contains(TestSupport.FindDescendants<TextBlock>(harness.Root!), text => text.Text == "Placement"));
 
+        // ContentDialog content renders in the XAML popup layer, outside the mounted root.
+        IEnumerable<FrameworkElement> OpenDialogContent() =>
+            VisualTreeHelper.GetOpenPopupsForXamlRoot(harness.Root!.XamlRoot)
+                .Where(popup => popup.Child is not null)
+                .SelectMany(popup => TestSupport.FindDescendants<FrameworkElement>(popup.Child));
         Task? pendingDialog = null;
-        await ui.RunOnUIAsync(() => pendingDialog = harness.Controller.CreateWorktreeAsync());
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
+        try
         {
-            var baseField = harness.Find<FrameworkElement>("SessionsHubNewWorktreeBase");
-            Assert.Contains(TestSupport.FindDescendants<TextBlock>(baseField), text => text.Text == "Base branch");
-            harness.Controller.CloseDialog(false);
-        });
+            await ui.RunOnUIAsync(() => { pendingDialog = harness.Controller.CreateWorktreeAsync(); });
+            await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+                () => OpenDialogContent().Any(element => AutomationProperties.GetAutomationId(element) == "SessionsHubNewWorktreeBase"
+                    && TestSupport.FindDescendants<TextBlock>(element).Any(text => text.Text == "Base branch")),
+                "New worktree base branch field"));
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() => harness.Controller.CloseDialog(false));
+            await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+                () => !VisualTreeHelper.GetOpenPopupsForXamlRoot(harness.Root!.XamlRoot).Any(popup =>
+                    popup.Child is ContentDialog || (popup.Child is not null && TestSupport.FindDescendants<ContentDialog>(popup.Child).Any())),
+                "New worktree dialog closed"));
+        }
         await pendingDialog!;
     }
 
@@ -1709,20 +1734,26 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     public async Task OldBranchLookup_DoesNotReplaceTheCurrentDialogChoices(string change)
     {
         await using var harness = await Harness.CreateAsync(ui);
+        Task firstCreate = Task.CompletedTask;
+        Task secondCreate = Task.CompletedTask;
+        Task oldLookup = Task.CompletedTask;
+        var oldResponse = new TaskCompletionSource<WorktreeBranchList>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var freshResponse = new TaskCompletionSource<WorktreeBranchList>(TaskCreationOptions.RunContinuationsAsynchronously);
         await ui.RunOnUIAsync(async () =>
         {
             harness.Gateway.Worktrees = Task.FromResult<IReadOnlyList<WorktreeRecord>?>(
                 [new WorktreeRecord("one", "one", "C:\\fixture", null, "main", null, "manual", null, 0, 0, null)]);
             await harness.Controller.LoadWorktreesAsync();
-            var firstCreate = harness.Controller.CreateWorktreeAsync();
+            firstCreate = harness.Controller.CreateWorktreeAsync();
+        });
+        // CreateWorktreeAsync queues its first branch load; let it settle before the race under test.
+        await ui.YieldToRenderAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
             harness.Controller.UpdateDialog(dialog => dialog with { BaseRef = "" });
-            var oldResponse = new TaskCompletionSource<WorktreeBranchList>(TaskCreationOptions.RunContinuationsAsynchronously);
             harness.Gateway.Branches = _ => oldResponse.Task;
-            var oldLookup = harness.Controller.LoadDialogBranchesAsync();
-
-            var freshResponse = new TaskCompletionSource<WorktreeBranchList>(TaskCreationOptions.RunContinuationsAsynchronously);
+            oldLookup = harness.Controller.LoadDialogBranchesAsync();
             harness.Gateway.Branches = _ => freshResponse.Task;
-            Task secondCreate = Task.CompletedTask;
             if (change != "superseded")
             {
                 harness.Controller.CloseDialog(false);
@@ -1732,8 +1763,15 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                     harness.Controller.RefreshConnection();
                     await harness.Controller.LoadWorktreesAsync();
                 }
+                harness.Gateway.Branches = _ => Task.FromResult(Branches("initial"));
                 secondCreate = harness.Controller.CreateWorktreeAsync();
             }
+        });
+        await ui.YieldToRenderAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            harness.Gateway.Branches = _ => freshResponse.Task;
+            harness.Controller.UpdateDialog(dialog => dialog with { BaseRef = "" });
             Assert.Equal("C:\\fixture", harness.Controller.State.Dialog?.Repo);
             var freshLookup = harness.Controller.LoadDialogBranchesAsync();
             if (change != "failed")

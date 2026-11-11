@@ -119,12 +119,8 @@ internal static class SessionsHubSessionsView
             controller.SetPage(index / current.State.PageSize);
         var group = SessionsHubProjection.Group(ordered, current.State.GroupBy, controller.KnownGroups())
             .FirstOrDefault(group => group.Rows.Any(row => row.Key == key));
-        if (group is not null && context.CollapsedGroups.Contains(group.Id))
-        {
-            var collapsed = new HashSet<string>(context.CollapsedGroups, StringComparer.Ordinal);
-            collapsed.Remove(group.Id);
-            context.SetCollapsedGroups(collapsed);
-        }
+        if (group is not null)
+            context.SetGroupCollapsed(group.Id, false);
         controller.SetTranscriptOpen(false);
         controller.RequestRowReveal(key, focus);
     }
@@ -445,19 +441,25 @@ internal static class SessionsHubSessionsView
             {
                 var view = reference.Current;
                 if (view is null || request is null) return () => { };
+                // Bringing the item into view can re-realize its container, so focus waits until it has run.
+                var broughtIntoView = false;
                 void FocusRestored(object? sender, object args)
                 {
                     var controller = Props.Context.Controller;
-                    if (!ReferenceEquals(controller.State.RowReveal, request))
+                    if (!broughtIntoView || !ReferenceEquals(controller.State.RowReveal, request))
                         return;
                     if (controller.State.Dialog is not null)
                     {
                         controller.CompleteRowReveal(request);
                         return;
                     }
-                    var row = FindRow(view, request.Key);
-                    if (row is not null && row.Focus(FocusState.Programmatic))
+                    // Complete only once focus survives a layout pass: re-realization can recycle the focused copy.
+                    if (FindRow(view, request.Key) is not { } row)
+                        return;
+                    if (HasFocusWithin(row))
                         controller.CompleteRowReveal(request);
+                    else
+                        FocusRow(row);
                 }
                 void Reveal(object sender, RoutedEventArgs args)
                 {
@@ -477,6 +479,7 @@ internal static class SessionsHubSessionsView
                         if (!request.Focus)
                             controller.CompleteRowReveal(request);
                     }
+                    broughtIntoView = true;
                 }
                 if (view.IsLoaded)
                     view.DispatcherQueue.TryEnqueue(() => Reveal(view, new RoutedEventArgs()));
@@ -499,11 +502,31 @@ internal static class SessionsHubSessionsView
                 .Ref(reference).AutomationName(T("ListLabel")).AutomationId("SessionsHubList");
         }
 
+        private static bool HasFocusWithin(Expander row)
+        {
+            for (var node = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(row.XamlRoot) as DependencyObject;
+                node is not null; node = VisualTreeHelper.GetParent(node))
+            {
+                if (ReferenceEquals(node, row))
+                    return true;
+            }
+            return false;
+        }
+
+        // Expander is not a tab stop; keyboard focus belongs on its header toggle.
+        private static bool FocusRow(Expander row) =>
+            row.Focus(FocusState.Programmatic)
+            || (Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(row) is UIElement header
+                && header.Focus(FocusState.Programmatic));
+
         private static Expander? FindRow(DependencyObject parent, string key)
         {
             for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
             {
                 var child = VisualTreeHelper.GetChild(parent, index);
+                // Recycled containers keep hidden copies of rows; only a shown row can take focus.
+                if (child is UIElement { Visibility: Visibility.Collapsed })
+                    continue;
                 if (child is Expander row && AutomationProperties.GetAutomationId(row) == "SessionsHubRow:" + key)
                     return row;
                 if (FindRow(child, key) is { } found)
@@ -536,8 +559,8 @@ internal static class SessionsHubSessionsView
             name = SessionsHubPresentation.GroupLabel(item.Group!, context.State.GroupBy, context.State.Agents);
             content = GroupHeader(context, item.Group!);
         }
-        var bottomMargin = item.Row is null ? 4 : PageResponsiveLayout.GapInner;
-        return ItemContainer(content.Margin(0, 0, 12, bottomMargin).HAlign(HorizontalAlignment.Stretch))
+        // The ItemsView stack already separates items by 4 DIP; together they make the shared card gap.
+        return ItemContainer(content.Margin(0, 0, 12, PageResponsiveLayout.GapInner - ItemsViewItemSpacing).HAlign(HorizontalAlignment.Stretch))
             .Resources(resources => resources
                 .Set("ItemContainerPointerOverBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
                 .Set("ItemContainerPressedBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -552,6 +575,8 @@ internal static class SessionsHubSessionsView
             .HAlign(HorizontalAlignment.Stretch)
             .WithKey(item.Key);
     }
+
+    private const double ItemsViewItemSpacing = 4;
 
     private static string RowAccessibleName(SessionsHubViewContext context, SessionInfo row, string title)
     {
@@ -609,12 +634,7 @@ internal static class SessionsHubSessionsView
         var collapsed = context.CollapsedGroups.Contains(group.Id);
         var count = group.Rows.Count == 1 ? T("CountOne") : F("CountMany", group.Rows.Count);
         var colorId = GroupColor(state.GroupBy, group);
-        void Toggle()
-        {
-            var next = new HashSet<string>(context.CollapsedGroups, StringComparer.Ordinal);
-            if (!next.Remove(group.Id)) next.Add(group.Id);
-            context.SetCollapsedGroups(next);
-        }
+        void Toggle() => context.SetGroupCollapsed(group.Id, !collapsed);
         var header = Button(
                 HStack(10,
                     SessionsHubView.Glyph(collapsed ? FluentIconCatalog.ChevronR : FluentIconCatalog.ChevronDown, 12, Theme.SecondaryText)

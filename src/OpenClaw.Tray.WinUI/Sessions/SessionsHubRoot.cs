@@ -54,6 +54,8 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
         var (width, setWidth) = UseState(1200d);
         var (topInset, setTopInset) = UseState(presentation.TopInset, threadSafe: true);
         var (collapsed, setCollapsed) = UseState(NoCollapsedGroups);
+        // Latest requested set, so a reveal and a user toggle in the same turn both apply in order.
+        var latestCollapsed = UseRef(NoCollapsedGroups);
         var highContrast = UseHighContrast();
         var uiSettings = UseMemo(() => new global::Windows.UI.ViewManagement.UISettings(), []);
         var (reducedMotion, setReducedMotion) = UseState(!uiSettings.AnimationsEnabled, threadSafe: true);
@@ -90,8 +92,19 @@ internal sealed class SessionsHubRoot : Component<SessionsHubRootProps>
             return () => presentation.Changed -= changed;
         }), presentation);
 
+        void SetGroupCollapsed(string id, bool isCollapsed)
+        {
+            if (latestCollapsed.Current.Contains(id) == isCollapsed)
+                return;
+            var next = new HashSet<string>(latestCollapsed.Current, StringComparer.Ordinal);
+            if (isCollapsed) next.Add(id);
+            else next.Remove(id);
+            latestCollapsed.Current = next;
+            setCollapsed(next);
+        }
+
         var context = new SessionsHubViewContext(
-            controller, state, width, DateTime.UtcNow, collapsed, setCollapsed, reducedMotion);
+            controller, state, width, DateTime.UtcNow, collapsed, SetGroupCollapsed, reducedMotion);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -341,7 +354,7 @@ internal sealed record SessionsHubViewContext(
     double Width,
     DateTime NowUtc,
     IReadOnlySet<string> CollapsedGroups,
-    Action<IReadOnlySet<string>> SetCollapsedGroups,
+    Action<string, bool> SetGroupCollapsed,
     bool ReducedMotion = false)
 {
     public PageWidthTier Tier => PageResponsiveLayout.TierFor(Width);
