@@ -2667,16 +2667,10 @@ public sealed partial class ConnectionPage : Page
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
-            // If the user is removing the currently-active gateway, tear
-            // down the live connection first — otherwise the connection
-            // manager keeps trying to talk to a record that no longer
-            // exists in the registry, which leaves the UI in a stale state.
+            // Save first. A failed save restores the record and must leave the
+            // live connection up. Disconnecting first moves the snapshot to Idle,
+            // and that tick dismisses the removal error.
             var wasActive = string.Equals(_gatewayRegistry?.ActiveGatewayId, gwId, StringComparison.Ordinal);
-            if (wasActive && _connectionManager != null)
-            {
-                try { await _connectionManager.DisconnectAsync(); }
-                catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway before removal: {ex.Message}"); }
-            }
             try
             {
                 _gatewayRegistry?.RemoveAndSave(gwId);
@@ -2692,6 +2686,16 @@ public sealed partial class ConnectionPage : Page
                 {
                     Logger.Warn($"ConnectionPage: Failed to show gateway removal error: {showError.Message}");
                 }
+
+                LoadSavedGateways();
+                RefreshFromSnapshot(_lastSnapshot);
+                return;
+            }
+
+            if (wasActive && _connectionManager != null)
+            {
+                try { await _connectionManager.DisconnectAsync(); }
+                catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway after removal: {ex.Message}"); }
             }
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);

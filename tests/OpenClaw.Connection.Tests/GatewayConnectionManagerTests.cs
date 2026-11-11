@@ -26,6 +26,22 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task DisconnectIfCurrentAsync_DisconnectsWhenADeviceIdUpdateReplacesTheSnapshot()
+    {
+        SetupGateway("settlement-same", "wss://same.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        await _manager.ConnectAsync("settlement-same");
+        var current = _manager.CurrentSnapshot;
+        await InvokeHandshakeSucceededAsync(_manager);
+        Assert.NotSame(current, _manager.CurrentSnapshot);
+        Assert.Equal(current.GatewayId, _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal(current.GatewayUrl, _manager.CurrentSnapshot.GatewayUrl);
+
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+        Assert.Equal(RoleConnectionState.Idle, _manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Fact]
     public async Task NativeRecovery_ProductionAuthorizerDoesNotDowngradeAtUnownedManualLoopback()
     {
         var path = Path.Combine(_tempDir, "saved-native");

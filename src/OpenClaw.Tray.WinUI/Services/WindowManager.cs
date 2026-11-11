@@ -977,9 +977,19 @@ internal sealed class WindowManager : IWindowManager
         if (registry is null)
             return;
         var before = registry.GetActive();
-        if (!registry.TryAdoptExternalSnapshot())
+        // The file lease can wait up to its own bound. Keep that wait off the UI thread.
+        // Registry change handlers marshal themselves back to the dispatcher.
+        var adoption = await Task.Run(() => registry.TryAdoptExternalSnapshot());
+        if (adoption == ExternalSnapshotAdoption.UnsavedEdits)
         {
-            Logger.Warn("Gateway list was not refreshed after setup closed because this session has unsaved Gateway edits or the saved list could not be read.");
+            Logger.Warn("Gateway list was not refreshed after setup closed because this session has unsaved Gateway edits.");
+            NotifySetupRegistryRecovery();
+            return;
+        }
+
+        if (adoption != ExternalSnapshotAdoption.Adopted)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because the saved list could not be read.");
             return;
         }
 

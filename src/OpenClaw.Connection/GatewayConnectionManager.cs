@@ -1082,10 +1082,18 @@ public sealed class GatewayConnectionManager :
     public async Task<bool> DisconnectIfCurrentAsync(GatewayConnectionSnapshot expected)
     {
         ThrowIfDisposed();
+        // Device, pairing, and role updates replace the snapshot object without
+        // starting a connection. A lifecycle generation that moves while this
+        // waits belongs to a newer connection, so leave that one up.
+        var generation = Interlocked.Read(ref _generation);
         await _transitionSemaphore.WaitAsync();
         try
         {
-            if (!ReferenceEquals(CurrentSnapshot, expected)) return false;
+            var current = CurrentSnapshot;
+            if (Interlocked.Read(ref _generation) != generation ||
+                !string.Equals(current.GatewayId, expected.GatewayId, StringComparison.Ordinal) ||
+                !string.Equals(current.GatewayUrl, expected.GatewayUrl, StringComparison.Ordinal))
+                return false;
             await DisconnectCoreAsync();
             return true;
         }

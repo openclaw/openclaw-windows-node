@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OpenClaw.Shared;
 using OpenClaw.Connection;
 using OpenClaw.TestSupport;
@@ -76,7 +77,7 @@ public class GatewayRegistryTests : IDisposable
         setup.Save();
 
         Assert.Throws<InvalidOperationException>(() => tray.Save());
-        Assert.True(tray.TryAdoptExternalSnapshot());
+        Assert.Equal(ExternalSnapshotAdoption.Adopted, tray.TryAdoptExternalSnapshot());
         Assert.Equal("gw-setup", tray.GetActive()!.Id);
         tray.Save();
         Console.WriteLine("ADOPT setup_record=gw-setup tray_save=ok active=gw-setup");
@@ -91,9 +92,61 @@ public class GatewayRegistryTests : IDisposable
         setup.AddOrUpdate(MakeRecord("gw-setup", "wss://setup.example"));
         setup.Save();
 
-        Assert.False(_registry.TryAdoptExternalSnapshot());
+        Assert.Equal(ExternalSnapshotAdoption.UnsavedEdits, _registry.TryAdoptExternalSnapshot());
         Assert.NotNull(_registry.GetById("gw-local"));
         Assert.Null(_registry.GetById("gw-setup"));
+    }
+
+    [Fact]
+    public void TryAdoptExternalSnapshot_MissingFileKeepsALoadedRegistry()
+    {
+        var record = MakeRecord("gw-1", "wss://one.example");
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+        _registry.Save();
+        File.Delete(Path.Combine(_tempDir, "gateways.json"));
+
+        Assert.Equal(ExternalSnapshotAdoption.Unavailable, _registry.TryAdoptExternalSnapshot());
+        Assert.Equal("gw-1", _registry.ActiveGatewayId);
+        Assert.Equal("wss://one.example", _registry.GetById("gw-1")!.Url);
+    }
+
+    [Fact]
+    public void TryAdoptExternalSnapshot_MissingFileOnAnEmptyRegistryIsAdopted()
+    {
+        Assert.Equal(ExternalSnapshotAdoption.Adopted, _registry.TryAdoptExternalSnapshot());
+        Assert.Empty(_registry.GetAll());
+        Assert.Null(_registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public void TryAdoptExternalSnapshot_UnreadableFileKeepsTheLoadedRegistry()
+    {
+        var files = new ReadThrowingFileSystem();
+        var registry = new GatewayRegistry(_tempDir, files);
+        var record = MakeRecord("gw-1", "wss://one.example");
+        registry.AddOrUpdate(record);
+        registry.SetActive(record.Id);
+        registry.Save();
+        files.ThrowOnRead = true;
+
+        Assert.Equal(ExternalSnapshotAdoption.Unavailable, registry.TryAdoptExternalSnapshot());
+        Assert.Equal("gw-1", registry.ActiveGatewayId);
+        Assert.Equal("wss://one.example", registry.GetById("gw-1")!.Url);
+    }
+
+    [Fact]
+    public void TryAdoptExternalSnapshot_UnsavedEditsReturnWithoutWaitingForTheFileLease()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-local", "wss://local.example"));
+        using var lease = PersistenceFileLease.Acquire(Path.Combine(_tempDir, "gateways.json"));
+        var started = Stopwatch.StartNew();
+        var adoption = _registry.TryAdoptExternalSnapshot();
+        started.Stop();
+
+        Assert.Equal(ExternalSnapshotAdoption.UnsavedEdits, adoption);
+        Assert.NotNull(_registry.GetById("gw-local"));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"adoption waited {started.Elapsed}");
     }
 
     [Fact]
@@ -108,11 +161,36 @@ public class GatewayRegistryTests : IDisposable
         other.AddOrUpdate(MakeRecord("gw-2", "wss://two.example"));
         other.Save();
 
+        GatewayRegistryChangedEventArgs? changed = null;
+        _registry.Changed += (_, args) => changed = args;
         Assert.Throws<InvalidOperationException>(() => _registry.RemoveAndSave("gw-1"));
         Assert.NotNull(_registry.GetById("gw-1"));
         Assert.Null(_registry.GetById("gw-2"));
         Assert.Equal("gw-1", _registry.ActiveGatewayId);
+        Assert.Null(changed);
         Console.WriteLine("REMOVE_ROLLBACK kept=gw-1 active=gw-1");
+    }
+
+    [Fact]
+    public void RemoveAndSave_ClearsTheActiveGatewayAndPublishesTheRemainingList()
+    {
+        var first = MakeRecord("gw-1", "wss://one.example");
+        var second = MakeRecord("gw-2", "wss://two.example");
+        _registry.AddOrUpdate(first);
+        _registry.AddOrUpdate(second);
+        _registry.SetActive(first.Id);
+        _registry.Save();
+        GatewayRegistryChangedEventArgs? changed = null;
+        _registry.Changed += (_, args) => changed = args;
+
+        _registry.RemoveAndSave(first.Id);
+
+        Assert.Null(_registry.GetById("gw-1"));
+        Assert.Equal("gw-2", Assert.Single(_registry.GetAll()).Id);
+        Assert.Null(_registry.ActiveGatewayId);
+        Assert.NotNull(changed);
+        Assert.Null(changed!.ActiveGatewayId);
+        Assert.Equal("gw-2", Assert.Single(changed.Records).Id);
     }
 
     [Fact]
@@ -754,6 +832,21 @@ public class GatewayRegistryTests : IDisposable
         public void Debug(string message) { }
         public void Warn(string message) => Warnings.Add(message);
         public void Error(string message, Exception? ex = null) { }
+    }
+
+    private sealed class ReadThrowingFileSystem : IFileSystem
+    {
+        public bool ThrowOnRead { get; set; }
+
+        public bool FileExists(string path) => File.Exists(path);
+        public string ReadAllText(string path) =>
+            ThrowOnRead ? throw new IOException("The saved Gateway registry could not be read.") : File.ReadAllText(path);
+        public void WriteAllText(string path, string content) => File.WriteAllText(path, content);
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+        public bool DirectoryExists(string path) => Directory.Exists(path);
+        public void CopyFile(string source, string destination, bool overwrite) =>
+            File.Copy(source, destination, overwrite);
+        public void DeleteFile(string path) => File.Delete(path);
     }
 
     private sealed class FailingTempWriteFileSystem : IFileSystem
