@@ -104,13 +104,6 @@ public sealed class SessionSearchResult
     public bool IsSupported { get; init; } = true;
 }
 
-/// <summary>Gateway-owned custom group catalog in display order.</summary>
-public sealed class SessionGroupCatalog
-{
-    public IReadOnlyList<string> Names { get; init; } = Array.Empty<string>();
-    public bool IsSupported { get; init; } = true;
-}
-
 /// <summary>A managed worktree a deletion left in place, with the Gateway's reason.</summary>
 public sealed record PreservedWorktreeInfo(string Id, string Branch, string Path, string Reason);
 
@@ -125,13 +118,6 @@ public sealed record SessionDeleteRequest(string Key)
 }
 
 public sealed record SessionDeleteOutcome(string Key, bool Deleted, PreservedWorktreeInfo? PreservedWorktree);
-
-/// <summary>A Gateway user profile that can own sessions (<c>users.list</c>).</summary>
-public sealed record GatewayUserProfile(string Id, string? DisplayName, string? Email)
-{
-    public string Label => !string.IsNullOrWhiteSpace(DisplayName) ? DisplayName!
-        : !string.IsNullOrWhiteSpace(Email) ? Email! : Id;
-}
 
 /// <summary>Managed worktree record (<c>worktrees.list</c>).</summary>
 public sealed record WorktreeRecord(

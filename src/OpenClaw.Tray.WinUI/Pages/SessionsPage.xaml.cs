@@ -25,7 +25,6 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
     private SessionsHubController? _controller;
     private ReactorHostControl? _reactorHost;
     private AppState? _appState;
-    private int? _selfProfileRevision;
     private readonly SessionsHubPresentationState _presentation = new();
 
     public SessionsPage()
@@ -46,9 +45,6 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState;
         if (_appState != null) _appState.PropertyChanged += OnAppStateChanged;
-        var profileRevisionChanged = _selfProfileRevision is { } previousRevision
-            && _appState is { } currentState && previousRevision != currentState.SelfProfileRevision;
-        _selfProfileRevision = _appState?.SelfProfileRevision;
         var controller = EnsureMounted();
 
         // The real-process accessibility suite has no gateway. Give it an
@@ -144,8 +140,6 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
         }
 
         controller.Activate(agentId);
-        if (profileRevisionChanged)
-            _ = controller.RefreshOwnerCatalogAsync();
     }
 
     private SessionsHubController EnsureMounted()
@@ -178,13 +172,6 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
             case nameof(AppState.AgentsList):
                 _controller?.RefreshAgents();
                 break;
-            case nameof(AppState.SelfProfileRevision):
-                if (_appState is { } state && state.SelfProfileRevision != _selfProfileRevision)
-                {
-                    _selfProfileRevision = state.SelfProfileRevision;
-                    _ = _controller?.RefreshOwnerCatalogAsync();
-                }
-                break;
         }
     }
 
@@ -203,16 +190,7 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
 
     IOperatorGatewayClient? ISessionsHubHost.Client => CurrentApp.GatewayClient;
 
-    IReadOnlyList<SessionInfo> ISessionsHubHost.TrackedSessions
-    {
-        get
-        {
-            var client = CurrentApp.GatewayClient;
-            return _appState?.GetSessionsForEpoch(
-                client?.SessionMutationConnectionEpoch,
-                client?.IsConnectedToGateway == true) ?? Array.Empty<SessionInfo>();
-        }
-    }
+    IReadOnlyList<SessionInfo> ISessionsHubHost.TrackedSessions => _appState?.Sessions ?? Array.Empty<SessionInfo>();
 
     string? ISessionsHubHost.GatewayName => CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayName;
 

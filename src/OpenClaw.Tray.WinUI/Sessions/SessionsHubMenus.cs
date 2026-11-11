@@ -119,14 +119,6 @@ internal static class SessionsHubMenus
         yield return MenuSubItem(T("MoveToGroup"), GroupItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.Folder) };
         yield return MenuSubItem(T("ColorMenu"), ColorItems(context, row)) with { IconElement = FontIcon(ColorGlyph) };
         yield return MenuSubItem(T("IconMenu"), IconItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.Develop) };
-        if (state.Permissions.Supports("sessions.assignOwner"))
-            yield return MenuSubItem(T("AssignOwner"), OwnerItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.People) };
-        if (SessionsHubProjection.IsCloudWorker(row))
-            yield return WithRosterHelp(SessionsHubView.Item(T("StopWorker"), FluentIconCatalog.Stop,
-                () => _ = controller.StopCloudWorkerAsync(row, title),
-                canWrite && SessionsHubProjection.CanStopCloudWorker(row) && state.Permissions.Supports("sessions.reclaim")),
-                state,
-                mutation: true);
     }
 
     private const string ColorGlyph = "\uE790";
@@ -198,57 +190,10 @@ internal static class SessionsHubMenus
         }
         if (items.Count > 0)
             items.Add(MenuSeparator());
-        items.Add(WithRosterHelp(SessionsHubView.Item(T("NewGroupEllipsis"), FluentIconCatalog.Add,
-            () => _ = controller.NewGroupAsync(row), enabled && state.Permissions.CanCreateGroup),
-            unavailableReason));
         if (row.Category is not null)
             items.Add(WithRosterHelp(SessionsHubView.Item(T("RemoveFromGroup"), null,
                 () => _ = controller.MoveToGroupAsync(row, null), enabled), unavailableReason));
         return items.ToArray();
-    }
-
-    public static MenuFlyoutItemBase[] OwnerItems(SessionsHubViewContext context, SessionInfo row)
-    {
-        var controller = context.Controller;
-        var state = context.State;
-        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
-        var unavailableReason = !state.CanMutateRows ? T("RosterNotCurrent") : null;
-        string T(string key) => SessionsHubPresentation.T(key);
-        var current = row.Owner;
-        bool IsCurrent(string type, string id) => current?.Type == type && current.Id == id;
-        var items = new List<MenuFlyoutItemBase>();
-        var ownerCatalogGeneration = controller.OwnerCatalogGeneration;
-        if (state.SelfProfileId is { } self)
-            items.Add(new RadioMenuFlyoutItemData(T("AssignToMe"), "session-owner", IsCurrent("human", self),
-                () => _ = controller.AssignOwnerAsync(row, "human", self, ownerCatalogGeneration)));
-        foreach (var profile in state.Profiles.Where(profile => profile.Id != state.SelfProfileId))
-        {
-            var id = profile.Id;
-            items.Add(new RadioMenuFlyoutItemData(profile.Label, "session-owner", IsCurrent("human", id),
-                () => _ = controller.AssignOwnerAsync(row, "human", id, ownerCatalogGeneration)));
-        }
-        if (state.Agents.Count > 0)
-        {
-            if (items.Count > 0) items.Add(MenuSeparator());
-            foreach (var agent in state.Agents)
-            {
-                var id = agent.Id;
-                items.Add(new RadioMenuFlyoutItemData(F("AgentOwner", agent.Name), "session-owner", IsCurrent("agent", id),
-                    () => _ = controller.AssignOwnerAsync(row, "agent", id, ownerCatalogGeneration)));
-            }
-        }
-        if (items.Count == 0)
-            items.Add(SessionsHubView.Item(T("NoOwners"), null, () => { }, enabled: false));
-        return enabled ? items.ToArray() : items.Select(item => Disable(item, unavailableReason)).ToArray();
-
-        static string F(string key, params object?[] args) => SessionsHubPresentation.F(key, args);
-        static MenuFlyoutItemBase Disable(MenuFlyoutItemBase item, string? reason) => item switch
-        {
-            RadioMenuFlyoutItemData radio => WithRosterHelp(
-                SessionsHubView.Item(radio.Text, radio.IsChecked ? FluentIconCatalog.Check : null, () => { }, enabled: false),
-                reason),
-            _ => WithRosterHelp(item, reason),
-        };
     }
 
     private static MenuFlyoutItemBase WithRosterHelp(
@@ -264,15 +209,4 @@ internal static class SessionsHubMenus
             : item;
     }
 
-    public static MenuFlyoutItemBase[] GroupHeaderMenu(SessionsHubViewContext context, string group)
-    {
-        var controller = context.Controller;
-        var enabled = context.State.Permissions.CanWrite && !context.State.IsBusy && context.State.GroupsSupported;
-        string T(string key) => SessionsHubPresentation.T(key);
-        return
-        [
-            SessionsHubView.Item(T("RenameGroup"), FluentIconCatalog.Rename, () => _ = controller.RenameGroupAsync(group), enabled),
-            SessionsHubView.Item(T("DeleteGroup"), FluentIconCatalog.Delete, () => _ = controller.DeleteGroupAsync(group), enabled),
-        ];
-    }
 }

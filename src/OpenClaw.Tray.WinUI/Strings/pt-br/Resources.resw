@@ -9238,12 +9238,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>Falha na ação</value>
   </data>
-  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
-    <value>Aplica-se somente ao modo de exibição Ativas.</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
-    <value>Qualquer momento</value>
-  </data>
   <data name="SessionsHub_AdminOnly" xml:space="preserve">
     <value>Requer acesso de administrador</value>
   </data>
@@ -9259,14 +9253,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_AgentFilter" xml:space="preserve">
     <value>Agente</value>
   </data>
-  <data name="SessionsHub_AgentOwner" xml:space="preserve">
-    <value>Agente: {0}</value>
-  </data>
   <data name="SessionsHub_AllAgents" xml:space="preserve">
     <value>Todos os agentes</value>
-  </data>
-  <data name="SessionsHub_Archive" xml:space="preserve">
-    <value>Arquivar</value>
   </data>
   <data name="SessionsHub_Archived" xml:space="preserve">
     <value>Arquivadas</value>
@@ -9291,24 +9279,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
     <value>Arquivada porque o painel dela não era mais usado</value>
-  </data>
-  <data name="SessionsHub_Assign" xml:space="preserve">
-    <value>Atribuir</value>
-  </data>
-  <data name="SessionsHub_AssignFailed" xml:space="preserve">
-    <value>Não foi possível atribuir o proprietário</value>
-  </data>
-    <data name="SessionsHub_OwnerCatalogChanged" xml:space="preserve">
-      <value>As opções de proprietário mudaram. Abra Atribuir proprietário novamente e tente de novo.</value>
-    </data>
-  <data name="SessionsHub_AssignOwner" xml:space="preserve">
-    <value>Atribuir proprietário</value>
-  </data>
-  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
-    <value>Atribuir um proprietário a {0}</value>
-  </data>
-  <data name="SessionsHub_AssignToMe" xml:space="preserve">
-    <value>Atribuir a mim</value>
   </data>
   <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
     <value>Chat na Web</value>
@@ -9396,15 +9366,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_DeleteFailures" xml:space="preserve">
     <value>Não foi possível excluir {0}. Primeiro erro: {1}</value>
-  </data>
-  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
-    <value>Excluir grupo</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
-    <value>Excluir o grupo &quot;{0}&quot;? As sessões dele não são excluídas; elas ficam sem grupo.</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
-    <value>Excluir grupo?</value>
   </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>Excluir uma sessão que não está arquivada requer acesso de administrador. Arquive-a primeiro ou peça a um administrador.</value>
@@ -9520,9 +9481,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_Filters" xml:space="preserve">
     <value>Filtros</value>
   </data>
-  <data name="SessionsHub_FiltersCount" xml:space="preserve">
-    <value>Filtros ({0})</value>
-  </data>
   <data name="SessionsHub_ForceRemove" xml:space="preserve">
     <value>Remover mesmo assim</value>
   </data>
@@ -9558,12 +9516,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_GroupByPerson" xml:space="preserve">
     <value>Agrupar por proprietário</value>
-  </data>
-  <data name="SessionsHub_GroupFailed" xml:space="preserve">
-    <value>Não foi possível atualizar os grupos</value>
-  </data>
-  <data name="SessionsHub_GroupOptions" xml:space="preserve">
-    <value>Opções do grupo {0}</value>
   </data>
   <data name="SessionsHub_GroupOther" xml:space="preserve">
     <value>Outros</value>
@@ -9634,9 +9586,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
     <value>Ultrarrápido</value>
   </data>
-  <data name="SessionsHub_Limit" xml:space="preserve">
-    <value>Sessões a carregar</value>
-  </data>
   <data name="SessionsHub_ListLabel" xml:space="preserve">
     <value>Sessões</value>
   </data>
@@ -9666,21 +9615,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_NeedsWrite" xml:space="preserve">
     <value>Requer acesso de gravação neste Gateway</value>
-  </data>
-  <data name="SessionsHub_NewGroup" xml:space="preserve">
-    <value>Novo grupo</value>
-  </data>
-  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
-    <value>Os grupos organizam as sessões para todos que usam este Gateway.</value>
-  </data>
-  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
-    <value>Novo grupo...</value>
-  </data>
-  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
-    <value>Nome do grupo</value>
-  </data>
-  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
-    <value>Criar um grupo</value>
   </data>
   <data name="SessionsHub_NewWorktree" xml:space="preserve">
     <value>Nova árvore de trabalho</value>
@@ -9721,14 +9655,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Criar uma árvore de trabalho</value>
   </data>
-  <data name="SessionsHub_NextPage" xml:space="preserve">
-    <value>Próxima página</value>
-  </data>
   <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
     <value>Não há sessões arquivadas que você possa excluir.</value>
-  </data>
-  <data name="SessionsHub_NoOwners" xml:space="preserve">
-    <value>Nenhuma pessoa ou agente disponível</value>
   </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Não disponível</value>
@@ -9750,12 +9678,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_Owner" xml:space="preserve">
     <value>Proprietário</value>
-  </data>
-  <data name="SessionsHub_PageOf" xml:space="preserve">
-    <value>Página {0} de {1}</value>
-  </data>
-  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
-    <value>Mostrando {0} a {1} de {2} carregadas ({3} no Gateway)</value>
   </data>
   <data name="SessionsHub_CloudWorker" xml:space="preserve">
     <value>Posicionamento</value>
@@ -9796,9 +9718,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
     <value>Árvores de trabalho mantidas: {0}.</value>
   </data>
-  <data name="SessionsHub_PreviousPage" xml:space="preserve">
-    <value>Página anterior</value>
-  </data>
   <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
     <value>Você pode navegar e pesquisar sessões. Alterá-las, arquivá-las ou excluí-las requer acesso de gravação neste Gateway.</value>
   </data>
@@ -9829,18 +9748,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
     <value>Remover árvore de trabalho?</value>
   </data>
-  <data name="SessionsHub_RenameGroup" xml:space="preserve">
-    <value>Renomear grupo</value>
-  </data>
-  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
-    <value>As sessões deste grupo passam para o novo nome.</value>
-  </data>
-  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
-    <value>Renomear grupo</value>
-  </data>
-  <data name="SessionsHub_ResetFilters" xml:space="preserve">
-    <value>Redefinir filtros</value>
-  </data>
   <data name="SessionsHub_Restore" xml:space="preserve">
     <value>Restaurar</value>
   </data>
@@ -9867,9 +9774,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filtrar por nome ou chave</value>
-  </data>
-  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
-    <value>Pesquisar transcrições</value>
   </data>
   <data name="SessionsHub_Select" xml:space="preserve">
     <value>Selecionar</value>
@@ -9921,30 +9825,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_StatusQueued" xml:space="preserve">
     <value>Na fila</value>
-  </data>
-  <data name="SessionsHub_StopWorker" xml:space="preserve">
-    <value>Parar máquina na nuvem</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
-    <value>Parar a máquina na nuvem de &quot;{0}&quot; e devolver a sessão ao Gateway? O trabalho em andamento na máquina é salvo antes de ela parar.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
-    <value>Aguarde a conclusão do turno atual antes de parar a máquina.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
-    <value>A máquina na nuvem de &quot;{0}&quot; foi parada.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
-    <value>Não foi possível parar a máquina na nuvem</value>
-  </data>
-  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
-    <value>Parar devolve a sessão ao Gateway.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
-    <value>Parar máquina na nuvem?</value>
-  </data>
-  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
-    <value>Esta máquina não pode ser parada agora.</value>
   </data>
   <data name="SessionsHub_TabSessions" xml:space="preserve">
     <value>Sessões</value>
@@ -10027,9 +9907,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
     <value>Nenhum resultado</value>
   </data>
-  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
-    <value>Pesquisando: {0}</value>
-  </data>
   <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
     <value>Pesquisar transcrições</value>
   </data>
@@ -10038,9 +9915,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
     <value>Este Gateway não oferece suporte à pesquisa de transcrições. Atualize o Gateway para usá-la.</value>
-  </data>
-  <data name="SessionsHub_Unarchive" xml:space="preserve">
-    <value>Desarquivar</value>
   </data>
   <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
     <value>&quot;{0}&quot; restaurada para as sessões ativas.</value>
@@ -10095,9 +9969,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
     <value>Não foi possível criar a árvore de trabalho</value>
-  </data>
-  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
-    <value>{0}, com base em {1}</value>
   </data>
   <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
     <value>Abrir a sessão proprietária {0} no chat</value>
@@ -10240,24 +10111,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Sessões arquivadas</value>
   </data>
-  <data name="SessionsHub_StatAttention" xml:space="preserve">
-    <value>Precisam de atenção</value>
-  </data>
-  <data name="SessionsHub_StatsLabel" xml:space="preserve">
-    <value>Resumo das sessões</value>
-  </data>
-  <data name="SessionsHub_StatWorking" xml:space="preserve">
-    <value>Em execução</value>
-  </data>
-  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
-    <value>o nome contém &quot;{0}&quot;</value>
-  </data>
-  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
-    <value>sessões globais excluídas</value>
-  </data>
-  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
-    <value>sessões sem informações de roteamento excluídas</value>
-  </data>
   <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>Excluir {0}</value></data>
   <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Mantidas</value></data>
   <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>A sessão principal</value></data>
@@ -10275,23 +10128,14 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_ForkRenameFailed" xml:space="preserve"><value>A bifurcação foi criada, mas o nome não pôde ser salvo: {0}</value></data>
   <data name="SessionsHub_MainSessionBody" xml:space="preserve"><value>Ela não pode ser arquivada nem excluída.</value></data>
   <data name="SessionsHub_MainSessionTitle" xml:space="preserve"><value>Sessão principal</value></data>
-  <data name="SessionsHub_MastAttentionMany" xml:space="preserve"><value>{0} sessões precisam de você</value></data>
-  <data name="SessionsHub_MastAttentionOne" xml:space="preserve"><value>Uma sessão precisa de você</value></data>
-  <data name="SessionsHub_MastEmpty" xml:space="preserve"><value>Ainda não há sessões</value></data>
-  <data name="SessionsHub_MastMoreAvailable" xml:space="preserve"><value>Há mais disponíveis.</value></data>
-  <data name="SessionsHub_MastReady" xml:space="preserve"><value>Continue de onde parou</value></data>
-  <data name="SessionsHub_MastSubtitle" xml:space="preserve"><value>{0} em execução entre {1} sessões carregadas.</value></data>
   <data name="SessionsHub_MessagesMatching" xml:space="preserve"><value>Mensagens correspondentes a “{0}”</value></data>
   <data name="SessionsHub_NeedsAttentionFallback" xml:space="preserve"><value>A última execução precisa de atenção.</value></data>
-  <data name="SessionsHub_NeedsYou" xml:space="preserve"><value>Precisam de você</value></data>
   <data name="SessionsHub_SessionUnavailable" xml:space="preserve"><value>Não foi possível exibir esta sessão. Atualize a lista e tente novamente.</value></data>
-  <data name="SessionsHub_NewGroupUnsupported" xml:space="preserve"><value>Novo grupo (não compatível com este Gateway)</value></data>
   <data name="SessionsHub_NewWorktreeDoesNotStartSession" xml:space="preserve"><value>Isso não inicia uma sessão.</value></data>
   <data name="SessionsHub_OpenGatewayWeb" xml:space="preserve"><value>Abrir na Web</value></data>
   <data name="SessionsHub_ResetDone" xml:space="preserve"><value>“{0}” redefinida.</value></data>
   <data name="SessionsHub_ResetRejected" xml:space="preserve"><value>O Gateway não redefiniu a sessão.</value></data>
   <data name="SessionsHub_SearchMessagesFor" xml:space="preserve"><value>Pesquisar “{0}” nas mensagens</value></data>
-  <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} parou</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Sessão sem título</value></data>
   <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} ativas, {1} removidas</value></data>
   <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Árvores de trabalho gerenciadas em {0}</value></data>
@@ -10320,8 +10164,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>O histórico da conversa é apagado e a sessão recomeça. A chave da sessão permanece a mesma.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Abrir pasta</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Opções</value></data>
-  <data name="SessionsHub_OpenChatShort" xml:space="preserve"><value>Abrir chat</value></data>
-  <data name="SessionsHub_DetailsShort" xml:space="preserve"><value>Detalhes</value></data>
   <data name="SessionsHub_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} de {1} exibidas · {2} carregadas</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>mais disponíveis</value></data>

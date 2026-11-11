@@ -9256,12 +9256,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>Action failed</value>
   </data>
-  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
-    <value>Applies to the Active view only.</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
-    <value>Any time</value>
-  </data>
   <data name="SessionsHub_AdminOnly" xml:space="preserve">
     <value>Requires administrator access</value>
   </data>
@@ -9277,14 +9271,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_AgentFilter" xml:space="preserve">
     <value>Agent</value>
   </data>
-  <data name="SessionsHub_AgentOwner" xml:space="preserve">
-    <value>Agent: {0}</value>
-  </data>
   <data name="SessionsHub_AllAgents" xml:space="preserve">
     <value>All agents</value>
-  </data>
-  <data name="SessionsHub_Archive" xml:space="preserve">
-    <value>Archive</value>
   </data>
   <data name="SessionsHub_Archived" xml:space="preserve">
     <value>Archived</value>
@@ -9309,24 +9297,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
     <value>Archived because its dashboard was no longer used</value>
-  </data>
-  <data name="SessionsHub_Assign" xml:space="preserve">
-    <value>Assign</value>
-  </data>
-  <data name="SessionsHub_AssignFailed" xml:space="preserve">
-    <value>Couldn't assign the owner</value>
-  </data>
-    <data name="SessionsHub_OwnerCatalogChanged" xml:space="preserve">
-      <value>Owner choices changed. Reopen Assign owner and try again.</value>
-    </data>
-  <data name="SessionsHub_AssignOwner" xml:space="preserve">
-    <value>Assign owner</value>
-  </data>
-  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
-    <value>Assign an owner for {0}</value>
-  </data>
-  <data name="SessionsHub_AssignToMe" xml:space="preserve">
-    <value>Assign to me</value>
   </data>
   <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
     <value>Web chat</value>
@@ -9414,15 +9384,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_DeleteFailures" xml:space="preserve">
     <value>{0} couldn't be deleted. First error: {1}</value>
-  </data>
-  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
-    <value>Delete group</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
-    <value>Delete the group &quot;{0}&quot;? Its sessions aren't deleted; they become ungrouped.</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
-    <value>Delete group?</value>
   </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>Deleting a session that isn't archived requires administrator access. Archive it first, or ask an administrator.</value>
@@ -9538,9 +9499,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_Filters" xml:space="preserve">
     <value>Filters</value>
   </data>
-  <data name="SessionsHub_FiltersCount" xml:space="preserve">
-    <value>Filters ({0})</value>
-  </data>
   <data name="SessionsHub_ForceRemove" xml:space="preserve">
     <value>Remove anyway</value>
   </data>
@@ -9576,12 +9534,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_GroupByPerson" xml:space="preserve">
     <value>Group by owner</value>
-  </data>
-  <data name="SessionsHub_GroupFailed" xml:space="preserve">
-    <value>Couldn't update groups</value>
-  </data>
-  <data name="SessionsHub_GroupOptions" xml:space="preserve">
-    <value>Options for group {0}</value>
   </data>
   <data name="SessionsHub_GroupOther" xml:space="preserve">
     <value>Other</value>
@@ -9652,9 +9604,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
     <value>Ultra fast</value>
   </data>
-  <data name="SessionsHub_Limit" xml:space="preserve">
-    <value>Sessions to load</value>
-  </data>
   <data name="SessionsHub_ListLabel" xml:space="preserve">
     <value>Sessions</value>
   </data>
@@ -9684,21 +9633,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_NeedsWrite" xml:space="preserve">
     <value>Requires write access on this Gateway</value>
-  </data>
-  <data name="SessionsHub_NewGroup" xml:space="preserve">
-    <value>New group</value>
-  </data>
-  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
-    <value>Groups organize sessions for everyone using this Gateway.</value>
-  </data>
-  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
-    <value>New group...</value>
-  </data>
-  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
-    <value>Group name</value>
-  </data>
-  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
-    <value>Create a group</value>
   </data>
   <data name="SessionsHub_NewWorktree" xml:space="preserve">
     <value>New worktree</value>
@@ -9739,14 +9673,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Create a worktree</value>
   </data>
-  <data name="SessionsHub_NextPage" xml:space="preserve">
-    <value>Next page</value>
-  </data>
   <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
     <value>There are no archived sessions you can delete.</value>
-  </data>
-  <data name="SessionsHub_NoOwners" xml:space="preserve">
-    <value>No people or agents available</value>
   </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Not available</value>
@@ -9768,12 +9696,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_Owner" xml:space="preserve">
     <value>Owner</value>
-  </data>
-  <data name="SessionsHub_PageOf" xml:space="preserve">
-    <value>Page {0} of {1}</value>
-  </data>
-  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
-    <value>Showing {0} to {1} of {2} loaded ({3} on the Gateway)</value>
   </data>
   <data name="SessionsHub_CloudWorker" xml:space="preserve">
     <value>Placement</value>
@@ -9814,9 +9736,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
     <value>Kept worktrees: {0}.</value>
   </data>
-  <data name="SessionsHub_PreviousPage" xml:space="preserve">
-    <value>Previous page</value>
-  </data>
   <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
     <value>You can browse and search sessions. Changing, archiving, or deleting them requires write access on this Gateway.</value>
   </data>
@@ -9847,18 +9766,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
     <value>Remove worktree?</value>
   </data>
-  <data name="SessionsHub_RenameGroup" xml:space="preserve">
-    <value>Rename group</value>
-  </data>
-  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
-    <value>Sessions in this group move to the new name.</value>
-  </data>
-  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
-    <value>Rename group</value>
-  </data>
-  <data name="SessionsHub_ResetFilters" xml:space="preserve">
-    <value>Reset filters</value>
-  </data>
   <data name="SessionsHub_Restore" xml:space="preserve">
     <value>Restore</value>
   </data>
@@ -9885,9 +9792,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filter by name or key</value>
-  </data>
-  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
-    <value>Search transcripts</value>
   </data>
   <data name="SessionsHub_Select" xml:space="preserve">
     <value>Select</value>
@@ -9939,30 +9843,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_StatusQueued" xml:space="preserve">
     <value>Queued</value>
-  </data>
-  <data name="SessionsHub_StopWorker" xml:space="preserve">
-    <value>Stop cloud worker</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
-    <value>Stop the cloud worker for &quot;{0}&quot; and return the session to the Gateway? Work in progress on the worker is captured before it stops.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
-    <value>Wait for the current turn to finish before stopping the worker.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
-    <value>Stopped the cloud worker for &quot;{0}&quot;.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
-    <value>Couldn't stop the cloud worker</value>
-  </data>
-  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
-    <value>Stopping returns the session to the Gateway.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
-    <value>Stop cloud worker?</value>
-  </data>
-  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
-    <value>This worker can't be stopped right now.</value>
   </data>
   <data name="SessionsHub_TabSessions" xml:space="preserve">
     <value>Sessions</value>
@@ -10045,9 +9925,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
     <value>No matches</value>
   </data>
-  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
-    <value>Searching: {0}</value>
-  </data>
   <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
     <value>Search transcripts</value>
   </data>
@@ -10056,9 +9933,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
     <value>This Gateway doesn't support transcript search. Update the Gateway to use it.</value>
-  </data>
-  <data name="SessionsHub_Unarchive" xml:space="preserve">
-    <value>Unarchive</value>
   </data>
   <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
     <value>Restored &quot;{0}&quot; to active sessions.</value>
@@ -10113,9 +9987,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
     <value>Couldn't create the worktree</value>
-  </data>
-  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
-    <value>{0}, based on {1}</value>
   </data>
   <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
     <value>Open the owning session {0} in chat</value>
@@ -10258,24 +10129,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Archived sessions</value>
   </data>
-  <data name="SessionsHub_StatAttention" xml:space="preserve">
-    <value>Need attention</value>
-  </data>
-  <data name="SessionsHub_StatsLabel" xml:space="preserve">
-    <value>Session summary</value>
-  </data>
-  <data name="SessionsHub_StatWorking" xml:space="preserve">
-    <value>Working now</value>
-  </data>
-  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
-    <value>name contains &quot;{0}&quot;</value>
-  </data>
-  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
-    <value>global sessions excluded</value>
-  </data>
-  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
-    <value>sessions without routing information excluded</value>
-  </data>
   <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>Delete {0}</value></data>
   <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Kept</value></data>
   <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>The main session</value></data>
@@ -10293,23 +10146,14 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_ForkRenameFailed" xml:space="preserve"><value>The fork was created, but its name could not be saved: {0}</value></data>
   <data name="SessionsHub_MainSessionBody" xml:space="preserve"><value>It can't be archived or deleted.</value></data>
   <data name="SessionsHub_MainSessionTitle" xml:space="preserve"><value>Main session</value></data>
-  <data name="SessionsHub_MastAttentionMany" xml:space="preserve"><value>{0} sessions need you</value></data>
-  <data name="SessionsHub_MastAttentionOne" xml:space="preserve"><value>One session needs you</value></data>
-  <data name="SessionsHub_MastEmpty" xml:space="preserve"><value>No sessions yet</value></data>
-  <data name="SessionsHub_MastMoreAvailable" xml:space="preserve"><value>More are available.</value></data>
-  <data name="SessionsHub_MastReady" xml:space="preserve"><value>Pick up where you left off</value></data>
-  <data name="SessionsHub_MastSubtitle" xml:space="preserve"><value>{0} working among {1} loaded sessions.</value></data>
   <data name="SessionsHub_MessagesMatching" xml:space="preserve"><value>Messages matching “{0}”</value></data>
   <data name="SessionsHub_NeedsAttentionFallback" xml:space="preserve"><value>The last run needs attention.</value></data>
-  <data name="SessionsHub_NeedsYou" xml:space="preserve"><value>Needs you</value></data>
   <data name="SessionsHub_SessionUnavailable" xml:space="preserve"><value>Couldn't show this session. Refresh the list and try again.</value></data>
-  <data name="SessionsHub_NewGroupUnsupported" xml:space="preserve"><value>New group (not supported by this Gateway)</value></data>
   <data name="SessionsHub_NewWorktreeDoesNotStartSession" xml:space="preserve"><value>This doesn't start a session.</value></data>
   <data name="SessionsHub_OpenGatewayWeb" xml:space="preserve"><value>Open in web</value></data>
   <data name="SessionsHub_ResetDone" xml:space="preserve"><value>Reset “{0}”.</value></data>
   <data name="SessionsHub_ResetRejected" xml:space="preserve"><value>The Gateway did not reset the session.</value></data>
   <data name="SessionsHub_SearchMessagesFor" xml:space="preserve"><value>Search messages for “{0}”</value></data>
-  <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} stopped</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Untitled session</value></data>
   <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} active, {1} removed</value></data>
   <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Managed worktrees on {0}</value></data>
@@ -10338,8 +10182,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>Its conversation history is cleared and the session starts fresh. The session key stays the same.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Open folder</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Options</value></data>
-  <data name="SessionsHub_OpenChatShort" xml:space="preserve"><value>Open chat</value></data>
-  <data name="SessionsHub_DetailsShort" xml:space="preserve"><value>Details</value></data>
   <data name="SessionsHub_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} of {1} shown · {2} loaded</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>more available</value></data>

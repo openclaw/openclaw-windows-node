@@ -20,9 +20,8 @@ public sealed partial class GatewayScenario
 
     private static readonly string[] HubMethods =
     [
-        "sessions.search", "sessions.groups.list", "sessions.groups.put", "sessions.groups.create", "sessions.groups.rename",
-        "sessions.groups.delete", "sessions.assignOwner", "sessions.reclaim", "sessions.patch", "sessions.delete",
-        "sessions.create", "sessions.reset", "sessions.compact", "users.list", "worktrees.list", "worktrees.branches",
+        "sessions.search", "sessions.patch", "sessions.delete",
+        "sessions.create", "sessions.reset", "sessions.compact", "worktrees.list", "worktrees.branches",
         "worktrees.create", "worktrees.remove", "worktrees.restore", "worktrees.gc",
     ];
 
@@ -144,7 +143,7 @@ public sealed partial class GatewayScenario
     {
         if (_hub is null)
             return null;
-        if (method is "sessions.list" or "sessions.subscribe" or "users.list" || HubMethods.Contains(method, StringComparer.Ordinal))
+        if (method is "sessions.list" or "sessions.subscribe" || HubMethods.Contains(method, StringComparer.Ordinal))
             return _hub.Respond(method, parameters);
         return null;
     }
@@ -158,14 +157,7 @@ public sealed partial class GatewayScenario
         private readonly DateTimeOffset _now;
         private readonly Dictionary<string, JsonObject> _rows = new(StringComparer.Ordinal);
         private readonly List<string> _keyOrder = [];
-        private readonly List<string> _groups = ["Release", "Research", "Ops"];
         private readonly List<JsonObject> _worktrees = [];
-        private readonly List<object> _profiles =
-        [
-            new { id = "fixture-owner", displayName = "Fixture Owner", emails = new[] { "owner@example.test" }, mergedInto = (string?)null },
-            new { id = "profile-ada", displayName = "Ada Lovelace", emails = new[] { "ada@example.test" }, mergedInto = (string?)null },
-            new { id = "profile-grace", displayName = "Grace Hopper", emails = new[] { "grace@example.test" }, mergedInto = (string?)null },
-        ];
         private int _created;
         private int _gcPolls;
 
@@ -212,18 +204,10 @@ public sealed partial class GatewayScenario
                     "sessions.list" => List(p),
                     "sessions.subscribe" => new { ok = true },
                     "sessions.search" => Search(p),
-                    "sessions.groups.list" => Groups(),
-                    "sessions.groups.put" => PutGroups(p),
-                    "sessions.groups.create" => CreateGroup(p),
-                    "sessions.groups.rename" => RenameGroup(p),
-                    "sessions.groups.delete" => DeleteGroup(p),
                     "sessions.patch" => Patch(p),
                     "sessions.delete" => Delete(p),
-                    "sessions.assignOwner" => AssignOwner(p),
-                    "sessions.reclaim" => Reclaim(p),
                     "sessions.create" => Create(p),
                     "sessions.reset" or "sessions.compact" => Lifecycle(method, p),
-                    "users.list" => new { profiles = _profiles },
                     "worktrees.list" => new { worktrees = _worktrees.Select(w => w.DeepClone()).ToArray() },
                     "worktrees.branches" => Branches(p),
                     "worktrees.create" => CreateWorktree(p),
@@ -236,7 +220,7 @@ public sealed partial class GatewayScenario
         }
 
         private static bool IsMutation(string method) => method is not (
-            "sessions.list" or "sessions.subscribe" or "sessions.search" or "sessions.groups.list" or "users.list" or "worktrees.list");
+            "sessions.list" or "sessions.subscribe" or "sessions.search" or "worktrees.list");
 
         private object List(JsonElement p)
         {
@@ -331,56 +315,6 @@ public sealed partial class GatewayScenario
             };
         }
 
-        private object Groups() => new { groups = _groups.Select((name, position) => new { name, position }).ToArray() };
-
-        private object PutGroups(JsonElement p)
-        {
-            ValidateProperties(p, "names");
-            if (!p.TryGetProperty("names", out var names) || names.ValueKind != JsonValueKind.Array)
-                throw new FixtureRequestException("INVALID_PARAMS", "names must be an array.");
-            _groups.Clear();
-            _groups.AddRange(names.EnumerateArray().Select(name => name.GetString()?.Trim()).OfType<string>()
-                .Where(name => name.Length > 0).Distinct(StringComparer.Ordinal));
-            return Changed(new { ok = true, groups = _groups.Select((name, position) => new { name, position }).ToArray() }, null);
-        }
-
-        private object CreateGroup(JsonElement p)
-        {
-            ValidateProperties(p, "name");
-            var name = RequiredString(p, "name").Trim();
-            var characters = 0;
-            foreach (var rune in name.EnumerateRunes())
-                characters++;
-            if (characters is 0 or > 512)
-                throw new FixtureRequestException("INVALID_PARAMS", "Group names must contain 1 to 512 characters.");
-            if (!_groups.Contains(name, StringComparer.Ordinal))
-                _groups.Add(name);
-            return Changed(new { ok = true, groups = _groups.Select((n, position) => new { name = n, position }).ToArray() }, null);
-        }
-
-        private object RenameGroup(JsonElement p)
-        {
-            ValidateProperties(p, "name", "to");
-            var name = RequiredString(p, "name");
-            var to = RequiredString(p, "to").Trim();
-            var index = _groups.IndexOf(name);
-            if (index < 0) throw new FixtureRequestException("INVALID_PARAMS", "Unknown group.");
-            _groups[index] = to;
-            var updated = 0;
-            foreach (var row in _rows.Values.Where(row => Str(row, "category") == name)) { row["category"] = to; updated++; }
-            return Changed(new { ok = true, groups = _groups.Select((n, position) => new { name = n, position }).ToArray(), updatedSessions = updated }, null);
-        }
-
-        private object DeleteGroup(JsonElement p)
-        {
-            ValidateProperties(p, "name");
-            var name = RequiredString(p, "name");
-            _groups.Remove(name);
-            var updated = 0;
-            foreach (var row in _rows.Values.Where(row => Str(row, "category") == name)) { row.Remove("category"); updated++; }
-            return Changed(new { ok = true, groups = _groups.Select((n, position) => new { name = n, position }).ToArray(), updatedSessions = updated }, null);
-        }
-
         private object Patch(JsonElement p)
         {
             ValidateProperties(p, "key", "agentId", "expectedSessionId", "label", "pinned", "unread", "archived", "category",
@@ -424,35 +358,6 @@ public sealed partial class GatewayScenario
                 ? new { id = HubBusyWorktreeId, branch = "openclaw/export-wizard", path = "C:/src/.openclaw-worktrees/export-wizard", reason = "busy" }
                 : null;
             return Changed(new { ok = true, key, deleted = true, archived = Array.Empty<string>(), worktreePreserved = preserved }, key);
-        }
-
-        private object AssignOwner(JsonElement p)
-        {
-            ValidateProperties(p, "key", "agentId", "owner");
-            var key = RequiredString(p, "key");
-            var row = Find(key);
-            if (!p.TryGetProperty("owner", out var owner) || owner.ValueKind != JsonValueKind.Object)
-                throw new FixtureRequestException("INVALID_PARAMS", "owner is required.");
-            ValidateProperties(owner, "type", "id");
-            var type = RequiredString(owner, "type");
-            var id = RequiredString(owner, "id");
-            var label = type == "human"
-                ? _profiles.Select(profile => JsonSerializer.SerializeToElement(profile))
-                    .FirstOrDefault(profile => profile.GetProperty("id").GetString() == id) is { ValueKind: JsonValueKind.Object } match
-                    ? match.GetProperty("displayName").GetString() : throw new FixtureRequestException("INVALID_PARAMS", "Unknown profile.")
-                : id == "research" ? "Fixture Research" : "Fixture Main";
-            var actor = new JsonObject { ["type"] = type, ["id"] = id, ["label"] = label };
-            row["owner"] = new JsonObject { ["actor"] = actor, ["assignedAt"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
-            return Changed(new { ok = true, key, owner = row["owner"]!.DeepClone() }, key);
-        }
-
-        private object Reclaim(JsonElement p)
-        {
-            ValidateProperties(p, "key", "agentId", "recoverToGateway");
-            var key = RequiredString(p, "key");
-            var row = Find(key);
-            row["placement"] = new JsonObject { ["state"] = "reclaimed", ["generation"] = 3 };
-            return Changed(new { ok = true, key, sessionId = Str(row, "sessionId"), placement = row["placement"]!.DeepClone() }, key);
         }
 
         private object Create(JsonElement p)

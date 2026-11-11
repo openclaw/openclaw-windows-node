@@ -199,20 +199,6 @@ public static class SessionsHubProjection
         return (rows.Skip(index * size).Take(size).ToArray(), index, pageCount);
     }
 
-    /// <summary>
-    /// Cloud-worker sessions expose Stop unless the placement is local/reclaimed,
-    /// a failed placement asks for restart, or an active worker is still running a turn.
-    /// </summary>
-    public static bool CanStopCloudWorker(SessionInfo row)
-    {
-        var state = row.PlacementState;
-        if (string.IsNullOrWhiteSpace(state) || state is "local" or "reclaimed")
-            return false;
-        if (state == "failed" && row.PlacementRecoveryAction == "restart")
-            return false;
-        return state != "active" || row.HasActiveRun != true;
-    }
-
     public static bool IsCloudWorker(SessionInfo row) =>
         !string.IsNullOrWhiteSpace(row.PlacementState) && row.PlacementState is not ("local" or "reclaimed");
 }

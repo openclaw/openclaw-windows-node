@@ -57,13 +57,11 @@ internal sealed class SessionsHubController
     private int _worktreeGeneration;
     private int _branchGeneration;
     private int _noticeGeneration;
-    private int _profileGeneration;
     // The client and authenticated connection the page currently shows; null while disconnected.
     // Actions capture it before any prompt, and every later step runs only while it is still
     // current, so nothing confirmed on one connection runs on another.
     private WorkspaceSessionOperation? _binding;
     private string? _liveSignature;
-    private bool _profilesLoaded;
     private bool _snapshotOnly;
 
     public SessionsHubController(ISessionsHubHost host, Action<Action> post)
@@ -141,7 +139,6 @@ internal sealed class SessionsHubController
             Load = SessionsHubLoad.Loaded,
             Rows = rows,
             LastLoadedAtUtc = DateTime.UtcNow,
-            TrackedRows = rows,
         });
     }
 
@@ -177,7 +174,6 @@ internal sealed class SessionsHubController
             GatewayName = _host.GatewayName,
             Load = connected ? s.Load : SessionsHubLoad.Idle,
             Rows = connected ? s.Rows : Array.Empty<SessionInfo>(),
-            TrackedRows = connected ? _host.TrackedSessions : Array.Empty<SessionInfo>(),
             Selection = connected ? s.Selection : SessionsHubSelection.Empty,
             Transcript = connected ? s.Transcript : s.Transcript with { IsSearching = false, Result = null, Error = null },
             Worktrees = connected ? s.Worktrees : new WorktreesState(),
@@ -196,8 +192,6 @@ internal sealed class SessionsHubController
         _loadGeneration++;
         _transcriptGeneration++;
         _worktreeGeneration++;
-        _profileGeneration++;
-        _profilesLoaded = false;
         _liveSignature = null;
         // Pending prompts resolve as cancelled so a confirmed action never runs on the new connection.
         CloseDialog(false);
@@ -209,7 +203,6 @@ internal sealed class SessionsHubController
             LoadError = null,
             Rows = Array.Empty<SessionInfo>(),
             LastLoadedAtUtc = connected ? null : s.LastLoadedAtUtc,
-            TrackedRows = Array.Empty<SessionInfo>(),
             HasMore = false,
             NextOffset = null,
             TotalCount = null,
@@ -219,10 +212,6 @@ internal sealed class SessionsHubController
             LabelDraft = (null, "", null),
             IsBusy = false,
             IsReloading = false,
-            GroupCatalog = Array.Empty<string>(),
-            GroupsSupported = false,
-            Profiles = Array.Empty<GatewayUserProfile>(),
-            SelfProfileId = null,
             Selection = SessionsHubSelection.Empty,
             Transcript = s.Transcript with { IsSearching = false, Result = null, Error = null },
             Worktrees = new WorktreesState(),
@@ -250,7 +239,6 @@ internal sealed class SessionsHubController
             var signature = SessionsHubProjection.LiveSignature(sessions);
             if (signature == _liveSignature) return;
             _liveSignature = signature;
-            Update(s => s with { TrackedRows = sessions.ToArray() });
             ScheduleChangeReload();
         });
     }
@@ -321,7 +309,6 @@ internal sealed class SessionsHubController
             Load = s.Load == SessionsHubLoad.Loaded ? SessionsHubLoad.Loaded : SessionsHubLoad.Loading,
             LoadError = null,
             IsReloading = true,
-            TrackedRows = _host.TrackedSessions,
         });
         try
         {
@@ -334,7 +321,6 @@ internal sealed class SessionsHubController
             }
             ApplyPage(page, append: false);
             Update(s => s with { IsReloading = false });
-            await LoadCatalogsAsync(client, generation);
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or NotSupportedException or OperationCanceledException)
         {
@@ -401,72 +387,6 @@ internal sealed class SessionsHubController
             };
         });
     }
-
-    private async Task LoadCatalogsAsync(IOperatorGatewayClient client, int generation)
-    {
-        var permissions = _state.Permissions;
-        var profileGeneration = _profileGeneration;
-        if (permissions.Supports("sessions.groups.list"))
-        {
-            try
-            {
-                var catalog = await client.ListSessionGroupsAsync();
-                if (generation == _loadGeneration && IsCurrent(_binding))
-                    Update(s => s with { GroupCatalog = catalog.Names, GroupsSupported = catalog.IsSupported });
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
-            {
-                new AppLogger().Warn($"[SessionsHub] Group catalog unavailable ({ex.GetType().Name}).");
-            }
-        }
-        if (generation != _loadGeneration || !ReferenceEquals(_host.Client, client)
-            || !IsCurrent(_binding) || profileGeneration != _profileGeneration)
-            return;
-        if (!_profilesLoaded)
-            await LoadOwnerCatalogAsync(client, profileGeneration);
-    }
-
-    /// <summary>Reloads assignable owners after the authenticated Gateway identity changes.</summary>
-    public Task RefreshOwnerCatalogAsync()
-    {
-        if (_snapshotOnly || _host.Client is not { IsConnectedToGateway: true } client || !IsCurrent(_binding))
-            return Task.CompletedTask;
-
-        var generation = ++_profileGeneration;
-        _profilesLoaded = false;
-        Update(s => s with { Profiles = Array.Empty<GatewayUserProfile>(), SelfProfileId = null });
-        return LoadOwnerCatalogAsync(client, generation);
-    }
-
-    private async Task LoadOwnerCatalogAsync(IOperatorGatewayClient client, int generation)
-    {
-        if (!IsOwnerCatalogRequestCurrent(client, generation))
-            return;
-        var permissions = _state.Permissions;
-        if (!permissions.CanWrite || !permissions.Supports("users.list"))
-            return;
-
-        _profilesLoaded = true;
-        try
-        {
-            var profiles = await client.ListUserProfilesAsync();
-            var self = permissions.Supports("users.self") ? await client.GetSelfProfileIdAsync() : null;
-            if (!IsOwnerCatalogRequestCurrent(client, generation))
-                return;
-            Update(s => s with { Profiles = profiles, SelfProfileId = self });
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or NotSupportedException)
-        {
-            if (generation == _profileGeneration)
-                _profilesLoaded = false;
-            new AppLogger().Warn($"[SessionsHub] Owner roster unavailable ({ex.GetType().Name}).");
-        }
-    }
-
-    private bool IsOwnerCatalogRequestCurrent(IOperatorGatewayClient client, int generation) =>
-        generation == _profileGeneration && ReferenceEquals(_host.Client, client) && IsCurrent(_binding);
-
-    public int OwnerCatalogGeneration => _profileGeneration;
 
     // ── View state ──
 
@@ -1251,44 +1171,6 @@ internal sealed class SessionsHubController
         _ => T("PreservedCleanupFailed"),
     };
 
-    public async Task AssignOwnerAsync(SessionInfo row, string type, string id, int ownerCatalogGeneration)
-    {
-        if (type == "human" &&
-            (ownerCatalogGeneration != _profileGeneration || !_profilesLoaded ||
-             (id != _state.SelfProfileId && _state.Profiles.All(profile => profile.Id != id))))
-        {
-            ShowNotice(T("AssignFailed"), T("OwnerCatalogChanged"), InfoBarSeverity.Informational);
-            return;
-        }
-        var assigned = await GuardedAsync(T("AssignFailed"), async operation =>
-        {
-            await operation.Client.AssignSessionOwnerAsync(row.Key, SessionsHubProjection.AgentId(row), type, id);
-        }, requireCurrentRoster: true);
-        if (assigned)
-            await ReloadAsync(preserveCount: true);
-    }
-
-    public async Task StopCloudWorkerAsync(SessionInfo row, string title)
-    {
-        if (!RequireCurrentRoster())
-            return;
-        if (PromptBinding() is not { } binding) return;
-        if (!await ConfirmAsync(T("StopWorkerTitle"), F("StopWorkerBody", title), T("StopWorker"), destructive: true,
-                icon: FluentIconCatalog.Stop,
-                facts:
-                [
-                    new SessionsHubDialogFact(T("WorktreeOwnerSession"), title),
-                    new SessionsHubDialogFact(T("CloudWorker"), T("PlacementActive")),
-                ]))
-            return;
-        var stopped = await GuardedAsync(T("StopWorkerFailed"),
-            operation => operation.Client.ReclaimSessionAsync(row.Key, SessionsHubProjection.AgentId(row)),
-            binding, requireCurrentRoster: true);
-        if (!stopped) return;
-        ShowNotice("", F("StopWorkerDone", title), InfoBarSeverity.Success);
-        await ReloadAsync(preserveCount: true);
-    }
-
     public Task ShowCheckpointsAsync(SessionInfo row, string title) =>
         SessionCheckpointDialogCoordinator.ShowAsync(
             _host.XamlRoot!,
@@ -1305,73 +1187,12 @@ internal sealed class SessionsHubController
     // ── Groups ──
 
     public IReadOnlyList<string> KnownGroups() =>
-        SessionsHubProjection.KnownCategories(_state.GroupCatalog, _state.Rows.Select(row => row.Category));
+        SessionsHubProjection.KnownCategories([], _state.Rows.Select(row => row.Category));
 
     public async Task MoveToGroupAsync(SessionInfo row, string? group, WorkspaceSessionOperation? binding = null)
     {
         // The Gateway registers a category when patching membership. Do not replace the catalog.
         await PatchAsync(row, new SessionPatch { Category = group is null ? SessionPatch.Clear : group }, binding);
-    }
-
-    public async Task NewGroupAsync(SessionInfo? moveRow = null)
-    {
-        if (moveRow is not null && !RequireCurrentRoster())
-            return;
-        if (PromptBinding() is not { } binding) return;
-        if (!_state.Permissions.CanCreateGroup)
-        {
-            ShowNotice("", T(_state.Permissions.SupportsGroupCreation ? "NeedsWrite" : "Unsupported"),
-                InfoBarSeverity.Informational);
-            return;
-        }
-        var name = await PromptAsync(T("NewGroupTitle"), T("NewGroupBody"), T("Create"),
-            placeholder: T("NewGroupPlaceholder"), icon: FluentIconCatalog.Add, inputLabel: T("Label"));
-        if (name is null) return;
-        if (moveRow is not null && !RequireCurrentRoster())
-            return;
-        if (!await CreateGroupAsync(name, binding)) return;
-        if (moveRow is not null)
-            await MoveToGroupAsync(moveRow, name, binding);
-        else
-            await ReloadAsync(preserveCount: true);
-    }
-
-    private Task<bool> CreateGroupAsync(string name, WorkspaceSessionOperation binding) =>
-        GuardedAsync(T("GroupFailed"), async operation =>
-        {
-            var catalog = await operation.Client.CreateSessionGroupAsync(name);
-            RequireBound(operation);
-            Update(s => s with { GroupCatalog = catalog.Names });
-        }, binding);
-
-    public async Task RenameGroupAsync(string name)
-    {
-        if (PromptBinding() is not { } binding) return;
-        var to = await PromptAsync(T("RenameGroupTitle"), T("RenameGroupBody"), T("Save"), name,
-            icon: FluentIconCatalog.Rename, inputLabel: T("Label"));
-        if (to is null || to == name) return;
-        var renamed = await GuardedAsync(T("GroupFailed"), async operation =>
-        {
-            var catalog = await operation.Client.RenameSessionGroupAsync(name, to);
-            RequireBound(operation);
-            Update(s => s with { GroupCatalog = catalog.Names });
-        }, binding);
-        if (renamed) await ReloadAsync(preserveCount: true);
-    }
-
-    public async Task DeleteGroupAsync(string name)
-    {
-        if (PromptBinding() is not { } binding) return;
-        if (!await ConfirmAsync(T("DeleteGroupTitle"), F("DeleteGroupBody", name), T("DeleteGroup"), destructive: true,
-                icon: FluentIconCatalog.Delete))
-            return;
-        var deleted = await GuardedAsync(T("GroupFailed"), async operation =>
-        {
-            var catalog = await operation.Client.DeleteSessionGroupAsync(name);
-            RequireBound(operation);
-            Update(s => s with { GroupCatalog = catalog.Names });
-        }, binding);
-        if (deleted) await ReloadAsync(preserveCount: true);
     }
 
     // ── Transcript search ──

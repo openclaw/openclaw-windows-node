@@ -184,52 +184,6 @@
       "_note": "Upstream SessionsSearchParamsSchema; scope reuses the sessions.list membership filters. Result: results[], sessions[], indexing, truncated, archivedTranscriptsExcluded."
     },
     {
-      "method": "sessions.groups.list",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": []
-    },
-    {
-      "method": "sessions.groups.put",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["names"]
-    },
-    {
-      "method": "sessions.groups.create",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["name"],
-      "_note": "Additive catalog creation requires an explicit Gateway advertisement. Newer contract implemented in the separate local Gateway change; never fall back to replacing a cached catalog."
-    },
-    {
-      "method": "sessions.groups.rename",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["name", "to"]
-    },
-    {
-      "method": "sessions.groups.delete",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["name"]
-    },
-    {
-      "method": "sessions.assignOwner",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["key", "agentId", "owner"],
-      "allowedExtraRequestFields": ["type", "id"],
-      "_note": "owner is { type: agent|human, id }; type and id are the nested owner object keys."
-    },
-    {
-      "method": "sessions.reclaim",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["key", "agentId"],
-      "_note": "Stops a cloud worker and returns the session to the Gateway (upstream SessionsReclaimParamsSchema)."
-    },
-    {
       "method": "sessions.compact",
       "kind": "request",
       "windowsUsage": "used",

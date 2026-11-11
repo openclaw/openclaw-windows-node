@@ -116,13 +116,9 @@ internal sealed record SessionsHubState
     public IReadOnlyList<SessionInfo> Rows { get; init; } = Array.Empty<SessionInfo>();
     public DateTime? LastLoadedAtUtc { get; init; }
     public string? GatewayName { get; init; }
-    /// <summary>Gateway-wide tracked sessions, independent of the roster query and its loading state.</summary>
-    public IReadOnlyList<SessionInfo> TrackedRows { get; init; } = Array.Empty<SessionInfo>();
     public bool HasMore { get; init; }
     public int? NextOffset { get; init; }
     public int? TotalCount { get; init; }
-    public IReadOnlyList<string> GroupCatalog { get; init; } = Array.Empty<string>();
-    public bool GroupsSupported { get; init; }
 
     public string? DetailsKey { get; init; }
     public IReadOnlySet<string> ExpandedKeys { get; init; } = new HashSet<string>(StringComparer.Ordinal);
@@ -138,8 +134,6 @@ internal sealed record SessionsHubState
     public SessionsHubNotice? Notice { get; init; }
 
     public TranscriptSearchState Transcript { get; init; } = new();
-    public IReadOnlyList<GatewayUserProfile> Profiles { get; init; } = Array.Empty<GatewayUserProfile>();
-    public string? SelfProfileId { get; init; }
     public WorktreesState Worktrees { get; init; } = new();
     /// <summary>The open confirmation or input dialog; rendered as a controlled Reactor ContentDialog.</summary>
     public SessionsHubDialog? Dialog { get; init; }

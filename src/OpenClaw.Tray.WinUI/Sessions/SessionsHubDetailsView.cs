@@ -52,7 +52,7 @@ internal static class SessionsHubDetailsView
             .AutomationId("SessionsHubTechnicalDetails");
         var information = new List<Element> { About(context, row) };
         if (SessionsHubProjection.IsCloudWorker(row))
-            information.Add(CloudWorker(context, row, title, canWrite));
+            information.Add(CloudWorker(row));
         var about = VStack(16, information.ToArray());
         var editing = VStack(10, customize, technical)
             .HAlign(HorizontalAlignment.Stretch);
@@ -325,12 +325,6 @@ internal static class SessionsHubDetailsView
         var state = context.State;
         var owner = row.Owner is { } value ? SessionsHubPresentation.OwnerLabel(value, state.Agents) : T("Unassigned");
         var group = row.Category ?? T("Ungrouped");
-        var assign = SessionsHubView.WithMutationHelp(DropDownButton(T("Assign"), MenuItems(SessionsHubMenus.OwnerItems(context, row)))
-            .Width(OrganizationActionWidth)
-            .HAlign(HorizontalAlignment.Right)
-            .IsEnabled(canWrite && state.Permissions.Supports("sessions.assignOwner"))
-            .AutomationName(F("AssignOwnerNamed", title))
-            .AutomationId("SessionsHubAssignOwner").Margin(0, 0, 0, 6), state, T("Assign"));
         var move = SessionsHubView.WithMutationHelp(DropDownButton(T("Move"), MenuItems(SessionsHubMenus.GroupItems(context, row)))
             .Width(OrganizationActionWidth)
             .HAlign(HorizontalAlignment.Right)
@@ -342,7 +336,6 @@ internal static class SessionsHubDetailsView
                 TextBlock(T("Owner")).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center).Grid(row: 0, column: 0),
                 TextBlock(owner).TextTrimming(TextTrimming.CharacterEllipsis).VAlign(VerticalAlignment.Center).Margin(12, 0)
                     .AutomationId("SessionsHubOwner").Grid(row: 0, column: 1),
-                assign.Grid(row: 0, column: 2),
                 TextBlock(T("Group")).Foreground(Theme.SecondaryText).VAlign(VerticalAlignment.Center).Grid(row: 1, column: 0),
                 (row.Category is { } category
                         ? SessionsHubView.Pill(category, SessionAppearance.PaletteColor(category), FluentIconCatalog.Folder)
@@ -424,17 +417,7 @@ internal static class SessionsHubDetailsView
             .AutomationId(automationId);
     }
 
-    private static Element CloudWorker(SessionsHubViewContext context, SessionInfo row, string title, bool canWrite)
-    {
-        var controller = context.Controller;
-        var canStop = SessionsHubProjection.CanStopCloudWorker(row);
-        var help = canStop ? T("StopWorkerHelp") : row.HasActiveRun == true ? T("StopWorkerBusy") : T("StopWorkerUnavailable");
-        return Section(T("CloudWorker"),
-            TextBlock(SessionsHubPresentation.Placement(row.PlacementState)).AutomationId("SessionsHubPlacement"),
-            TextBlock(help).FontSize(12).Foreground(Theme.SecondaryText).TextWrapping(TextWrapping.Wrap),
-            SessionsHubView.WithMutationHelp(
-                SessionsHubView.CommandButton(FluentIconCatalog.Stop, T("StopWorker"), () => _ = controller.StopCloudWorkerAsync(row, title),
-                    canWrite && canStop && context.State.Permissions.Supports("sessions.reclaim"), "SessionsHubStopWorker"),
-                context.State, T("StopWorker")));
-    }
+    private static Element CloudWorker(SessionInfo row) =>
+        Section(T("CloudWorker"),
+            TextBlock(SessionsHubPresentation.Placement(row.PlacementState)).AutomationId("SessionsHubPlacement"));
 }

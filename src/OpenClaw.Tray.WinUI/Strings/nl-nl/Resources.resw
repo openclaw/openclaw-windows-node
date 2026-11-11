@@ -9186,12 +9186,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>Actie mislukt</value>
   </data>
-  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
-    <value>Alleen van toepassing op de weergave Actief.</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
-    <value>Altijd</value>
-  </data>
   <data name="SessionsHub_AdminOnly" xml:space="preserve">
     <value>Vereist beheerderstoegang</value>
   </data>
@@ -9207,14 +9201,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_AgentFilter" xml:space="preserve">
     <value>AI-agent</value>
   </data>
-  <data name="SessionsHub_AgentOwner" xml:space="preserve">
-    <value>AI-agent: {0}</value>
-  </data>
   <data name="SessionsHub_AllAgents" xml:space="preserve">
     <value>Alle agents</value>
-  </data>
-  <data name="SessionsHub_Archive" xml:space="preserve">
-    <value>Archiveren</value>
   </data>
   <data name="SessionsHub_Archived" xml:space="preserve">
     <value>Gearchiveerd</value>
@@ -9239,24 +9227,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
     <value>Gearchiveerd omdat het dashboard niet meer werd gebruikt</value>
-  </data>
-  <data name="SessionsHub_Assign" xml:space="preserve">
-    <value>Toewijzen</value>
-  </data>
-  <data name="SessionsHub_AssignFailed" xml:space="preserve">
-    <value>Kan de eigenaar niet toewijzen</value>
-  </data>
-    <data name="SessionsHub_OwnerCatalogChanged" xml:space="preserve">
-      <value>De beschikbare eigenaren zijn gewijzigd. Open Eigenaar toewijzen opnieuw en probeer het nog eens.</value>
-    </data>
-  <data name="SessionsHub_AssignOwner" xml:space="preserve">
-    <value>Eigenaar toewijzen</value>
-  </data>
-  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
-    <value>Een eigenaar toewijzen voor {0}</value>
-  </data>
-  <data name="SessionsHub_AssignToMe" xml:space="preserve">
-    <value>Aan mij toewijzen</value>
   </data>
   <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
     <value>Webchat</value>
@@ -9344,15 +9314,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_DeleteFailures" xml:space="preserve">
     <value>Kan {0} niet verwijderen. Eerste fout: {1}</value>
-  </data>
-  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
-    <value>Groep verwijderen</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
-    <value>De groep &quot;{0}&quot; verwijderen? De sessies worden niet verwijderd, maar zijn daarna niet meer gegroepeerd.</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
-    <value>Groep verwijderen?</value>
   </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>Voor het verwijderen van een niet-gearchiveerde sessie is beheerderstoegang vereist. Archiveer de sessie eerst of vraag het een beheerder.</value>
@@ -9468,9 +9429,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_Filters" xml:space="preserve">
     <value>Filteropties</value>
   </data>
-  <data name="SessionsHub_FiltersCount" xml:space="preserve">
-    <value>Filteropties ({0})</value>
-  </data>
   <data name="SessionsHub_ForceRemove" xml:space="preserve">
     <value>Toch verwijderen</value>
   </data>
@@ -9506,12 +9464,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_GroupByPerson" xml:space="preserve">
     <value>Groeperen op eigenaar</value>
-  </data>
-  <data name="SessionsHub_GroupFailed" xml:space="preserve">
-    <value>Kan groepen niet bijwerken</value>
-  </data>
-  <data name="SessionsHub_GroupOptions" xml:space="preserve">
-    <value>Opties voor groep {0}</value>
   </data>
   <data name="SessionsHub_GroupOther" xml:space="preserve">
     <value>Overig</value>
@@ -9582,9 +9534,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
     <value>Ultrasnel</value>
   </data>
-  <data name="SessionsHub_Limit" xml:space="preserve">
-    <value>Te laden sessies</value>
-  </data>
   <data name="SessionsHub_ListLabel" xml:space="preserve">
     <value>Sessies</value>
   </data>
@@ -9614,21 +9563,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_NeedsWrite" xml:space="preserve">
     <value>Vereist schrijftoegang tot deze Gateway</value>
-  </data>
-  <data name="SessionsHub_NewGroup" xml:space="preserve">
-    <value>Nieuwe groep</value>
-  </data>
-  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
-    <value>Groepen ordenen sessies voor iedereen die deze Gateway gebruikt.</value>
-  </data>
-  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
-    <value>Nieuwe groep...</value>
-  </data>
-  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
-    <value>Groepsnaam</value>
-  </data>
-  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
-    <value>Een groep maken</value>
   </data>
   <data name="SessionsHub_NewWorktree" xml:space="preserve">
     <value>Nieuwe worktree</value>
@@ -9669,14 +9603,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Een worktree maken</value>
   </data>
-  <data name="SessionsHub_NextPage" xml:space="preserve">
-    <value>Volgende pagina</value>
-  </data>
   <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
     <value>Er zijn geen gearchiveerde sessies die u kunt verwijderen.</value>
-  </data>
-  <data name="SessionsHub_NoOwners" xml:space="preserve">
-    <value>Geen personen of agents beschikbaar</value>
   </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Niet beschikbaar</value>
@@ -9698,12 +9626,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_Owner" xml:space="preserve">
     <value>Eigenaar</value>
-  </data>
-  <data name="SessionsHub_PageOf" xml:space="preserve">
-    <value>Pagina {0} van {1}</value>
-  </data>
-  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
-    <value>{0} tot {1} van {2} geladen ({3} op de Gateway)</value>
   </data>
   <data name="SessionsHub_CloudWorker" xml:space="preserve">
     <value>Plaatsing</value>
@@ -9744,9 +9666,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
     <value>Behouden worktrees: {0}.</value>
   </data>
-  <data name="SessionsHub_PreviousPage" xml:space="preserve">
-    <value>Vorige pagina</value>
-  </data>
   <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
     <value>U kunt sessies bekijken en doorzoeken. Voor het wijzigen, archiveren of verwijderen ervan is schrijftoegang tot deze Gateway vereist.</value>
   </data>
@@ -9777,18 +9696,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
     <value>Worktree verwijderen?</value>
   </data>
-  <data name="SessionsHub_RenameGroup" xml:space="preserve">
-    <value>Naam van groep wijzigen</value>
-  </data>
-  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
-    <value>Sessies in deze groep krijgen de nieuwe naam.</value>
-  </data>
-  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
-    <value>Naam van groep wijzigen</value>
-  </data>
-  <data name="SessionsHub_ResetFilters" xml:space="preserve">
-    <value>Filters opnieuw instellen</value>
-  </data>
   <data name="SessionsHub_Restore" xml:space="preserve">
     <value>Herstellen</value>
   </data>
@@ -9815,9 +9722,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filteren op naam of sleutel</value>
-  </data>
-  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
-    <value>Transcripties doorzoeken</value>
   </data>
   <data name="SessionsHub_Select" xml:space="preserve">
     <value>Selecteren</value>
@@ -9869,30 +9773,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_StatusQueued" xml:space="preserve">
     <value>In wachtrij</value>
-  </data>
-  <data name="SessionsHub_StopWorker" xml:space="preserve">
-    <value>Cloudworker stoppen</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
-    <value>De cloudworker voor &quot;{0}&quot; stoppen en de sessie terugzetten naar de Gateway? Lopend werk op de worker wordt vastgelegd voordat deze stopt.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
-    <value>Wacht tot de huidige beurt is voltooid voordat u de worker stopt.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
-    <value>De cloudworker voor &quot;{0}&quot; is gestopt.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
-    <value>Kan de cloudworker niet stoppen</value>
-  </data>
-  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
-    <value>Door te stoppen wordt de sessie teruggezet naar de Gateway.</value>
-  </data>
-  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
-    <value>Cloudworker stoppen?</value>
-  </data>
-  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
-    <value>Deze worker kan nu niet worden gestopt.</value>
   </data>
   <data name="SessionsHub_TabSessions" xml:space="preserve">
     <value>Sessies</value>
@@ -9975,9 +9855,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
     <value>Geen resultaten</value>
   </data>
-  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
-    <value>Zoeken in: {0}</value>
-  </data>
   <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
     <value>Transcripties doorzoeken</value>
   </data>
@@ -9986,9 +9863,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
     <value>Deze Gateway ondersteunt het doorzoeken van transcripties niet. Werk de Gateway bij om dit te gebruiken.</value>
-  </data>
-  <data name="SessionsHub_Unarchive" xml:space="preserve">
-    <value>Uit archief halen</value>
   </data>
   <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
     <value>&quot;{0}&quot; teruggezet naar actieve sessies.</value>
@@ -10043,9 +9917,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
     <value>Kan de worktree niet maken</value>
-  </data>
-  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
-    <value>{0}, gebaseerd op {1}</value>
   </data>
   <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
     <value>De eigenaarsessie {0} openen in chat</value>
@@ -10188,24 +10059,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Gearchiveerde sessies</value>
   </data>
-  <data name="SessionsHub_StatAttention" xml:space="preserve">
-    <value>Vragen aandacht</value>
-  </data>
-  <data name="SessionsHub_StatsLabel" xml:space="preserve">
-    <value>Sessieoverzicht</value>
-  </data>
-  <data name="SessionsHub_StatWorking" xml:space="preserve">
-    <value>Nu bezig</value>
-  </data>
-  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
-    <value>naam bevat &quot;{0}&quot;</value>
-  </data>
-  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
-    <value>globale sessies uitgesloten</value>
-  </data>
-  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
-    <value>sessies zonder routeringsgegevens uitgesloten</value>
-  </data>
   <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>{0} verwijderen</value></data>
   <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Behouden</value></data>
   <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>De hoofdsessie</value></data>
@@ -10223,23 +10076,14 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_ForkRenameFailed" xml:space="preserve"><value>De fork is gemaakt, maar de naam kon niet worden opgeslagen: {0}</value></data>
   <data name="SessionsHub_MainSessionBody" xml:space="preserve"><value>Deze kan niet worden gearchiveerd of verwijderd.</value></data>
   <data name="SessionsHub_MainSessionTitle" xml:space="preserve"><value>Hoofdsessie</value></data>
-  <data name="SessionsHub_MastAttentionMany" xml:space="preserve"><value>{0} sessies hebben je nodig</value></data>
-  <data name="SessionsHub_MastAttentionOne" xml:space="preserve"><value>Eén sessie heeft je nodig</value></data>
-  <data name="SessionsHub_MastEmpty" xml:space="preserve"><value>Nog geen sessies</value></data>
-  <data name="SessionsHub_MastMoreAvailable" xml:space="preserve"><value>Er zijn er meer beschikbaar.</value></data>
-  <data name="SessionsHub_MastReady" xml:space="preserve"><value>Ga verder waar je was gebleven</value></data>
-  <data name="SessionsHub_MastSubtitle" xml:space="preserve"><value>{0} bezig van {1} geladen sessies.</value></data>
   <data name="SessionsHub_MessagesMatching" xml:space="preserve"><value>Berichten die overeenkomen met ‘{0}’</value></data>
   <data name="SessionsHub_NeedsAttentionFallback" xml:space="preserve"><value>De laatste uitvoering vraagt aandacht.</value></data>
-  <data name="SessionsHub_NeedsYou" xml:space="preserve"><value>Heeft je nodig</value></data>
   <data name="SessionsHub_SessionUnavailable" xml:space="preserve"><value>Deze sessie kan niet worden weergegeven. Vernieuw de lijst en probeer het opnieuw.</value></data>
-  <data name="SessionsHub_NewGroupUnsupported" xml:space="preserve"><value>Nieuwe groep (niet ondersteund door deze Gateway)</value></data>
   <data name="SessionsHub_NewWorktreeDoesNotStartSession" xml:space="preserve"><value>Hiermee wordt geen sessie gestart.</value></data>
   <data name="SessionsHub_OpenGatewayWeb" xml:space="preserve"><value>Openen op internet</value></data>
   <data name="SessionsHub_ResetDone" xml:space="preserve"><value>‘{0}’ opnieuw ingesteld.</value></data>
   <data name="SessionsHub_ResetRejected" xml:space="preserve"><value>De Gateway heeft de sessie niet opnieuw ingesteld.</value></data>
   <data name="SessionsHub_SearchMessagesFor" xml:space="preserve"><value>Berichten zoeken naar ‘{0}’</value></data>
-  <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} is gestopt</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>Sessie zonder titel</value></data>
   <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} actief, {1} verwijderd</value></data>
   <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>Beheerde worktrees op {0}</value></data>
@@ -10268,8 +10112,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>De gespreksgeschiedenis wordt gewist en de sessie begint opnieuw. De sessiesleutel blijft hetzelfde.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Map openen</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Opties</value></data>
-  <data name="SessionsHub_OpenChatShort" xml:space="preserve"><value>Chat openen</value></data>
-  <data name="SessionsHub_DetailsShort" xml:space="preserve"><value>Meer informatie</value></data>
   <data name="SessionsHub_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} van {1} getoond · {2} geladen</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>meer beschikbaar</value></data>

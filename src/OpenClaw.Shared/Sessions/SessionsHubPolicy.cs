@@ -23,11 +23,6 @@ public sealed record SessionsHubPermissions(bool IsConnected, IReadOnlyCollectio
 
     public bool CanManageWorktrees => IsAdmin && Supports("worktrees.list");
 
-    // Unknown advertisements are not enough for this additive RPC. Never fall back to replacing
-    // a cached catalog, which could remove an empty group another client just created.
-    public bool SupportsGroupCreation => AdvertisedMethods.Contains("sessions.groups.create", StringComparer.Ordinal);
-    public bool CanCreateGroup => IsConnected && (IsAdmin || Has(WriteScope)) && SupportsGroupCreation;
-
     private bool Has(string scope) => Scopes.Contains(scope, StringComparer.Ordinal);
 }
 

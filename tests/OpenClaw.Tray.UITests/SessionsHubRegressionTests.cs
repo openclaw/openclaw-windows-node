@@ -172,91 +172,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         });
     }
 
-    [Fact]
-    public async Task EmptyRoster_KeepsCustomGroupManagementReachable()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        await ui.RunOnUIAsync(async () =>
-        {
-            harness.Gateway.Page = new SessionListPage();
-            harness.Controller.SetGroupBy(SessionsGroupBy.Category);
-            await harness.Controller.ReloadAsync();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Empty(harness.Controller.State.Rows);
-            Assert.Contains("Release", harness.Controller.KnownGroups());
-            Assert.True(harness.Controller.State.CanMutateRows);
-            var groupMenu = harness.Find<Button>("SessionsHubGroupMenu:Release");
-            Assert.True(IsShown(groupMenu, harness.Root!));
-            Assert.True(groupMenu.IsEnabled);
-        });
-    }
-
-    [Fact]
-    public async Task OwnerCatalogRefresh_RejectsAnOlderProfileResponse()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        var oldProfiles = new TaskCompletionSource<IReadOnlyList<GatewayUserProfile>>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        Task staleRefresh = Task.CompletedTask;
-        await ui.RunOnUIAsync(async () =>
-        {
-            harness.Gateway.Methods = ["sessions.list", "sessions.patch", "sessions.groups.list", "users.list", "users.self"];
-            harness.Gateway.UserProfiles = () => Task.FromResult<IReadOnlyList<GatewayUserProfile>>(
-                [new GatewayUserProfile("owner-old", "Old owner", null)]);
-            harness.Gateway.SelfProfile = () => Task.FromResult<string?>("self-old");
-            await harness.Controller.ReloadAsync();
-            Assert.Equal("owner-old", Assert.Single(harness.Controller.State.Profiles).Id);
-            Assert.Equal("self-old", harness.Controller.State.SelfProfileId);
-
-            harness.Gateway.UserProfiles = () => oldProfiles.Task;
-            staleRefresh = harness.Controller.RefreshOwnerCatalogAsync();
-            Assert.Empty(harness.Controller.State.Profiles);
-            Assert.Null(harness.Controller.State.SelfProfileId);
-            harness.Gateway.UserProfiles = () => Task.FromResult<IReadOnlyList<GatewayUserProfile>>(
-                [new GatewayUserProfile("owner-new", "New owner", null)]);
-            harness.Gateway.SelfProfile = () => Task.FromResult<string?>("self-new");
-            await harness.Controller.RefreshOwnerCatalogAsync();
-        });
-        oldProfiles.SetResult([new GatewayUserProfile("owner-stale", "Stale owner", null)]);
-        await staleRefresh.WaitAsync(TimeSpan.FromSeconds(10));
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Equal("owner-new", Assert.Single(harness.Controller.State.Profiles).Id);
-            Assert.Equal("self-new", harness.Controller.State.SelfProfileId);
-            Assert.Equal(3, harness.Gateway.UserProfileReads);
-            Assert.Equal(3, harness.Gateway.SelfProfileReads);
-        });
-    }
-
-    [Fact]
-    public async Task OwnerAssignment_RejectsAnActionFromAnOlderCatalogGeneration()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        await ui.RunOnUIAsync(async () =>
-        {
-            harness.Gateway.Methods = ["sessions.list", "sessions.patch", "sessions.assignOwner", "sessions.groups.list", "users.list", "users.self"];
-            harness.Gateway.UserProfiles = () => Task.FromResult<IReadOnlyList<GatewayUserProfile>>(
-                [new GatewayUserProfile("owner-old", "Old owner", null)]);
-            harness.Gateway.SelfProfile = () => Task.FromResult<string?>("owner-old");
-            await harness.Controller.ReloadAsync();
-            var oldGeneration = harness.Controller.OwnerCatalogGeneration;
-
-            harness.Gateway.UserProfiles = () => Task.FromResult<IReadOnlyList<GatewayUserProfile>>(
-                [new GatewayUserProfile("owner-new", "New owner", null)]);
-            harness.Gateway.SelfProfile = () => Task.FromResult<string?>("owner-new");
-            await harness.Controller.RefreshOwnerCatalogAsync();
-            await harness.Controller.AssignOwnerAsync(
-                harness.Controller.State.Rows.Single(), "human", "owner-old", oldGeneration);
-
-            Assert.Empty(harness.Gateway.OwnerAssignments);
-            Assert.NotNull(harness.Controller.State.Notice);
-        });
-    }
-
     [Theory]
     [InlineData(SessionArchiveFilter.Active, "", "Current sessions", "2 shown of 5 loaded",
         "Loaded matches: 3. Background hidden, completed hidden, unrouted hidden. Change in Options.", true)]
@@ -969,15 +884,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 $"technical details content at {width}");
             Assert.True(technicalContent.ActualWidth >= technical.ActualWidth - 80,
                 $"Technical content width {technicalContent.ActualWidth} did not fill expander width {technical.ActualWidth} at {width}.");
-            var assign = harness.Find<DropDownButton>("SessionsHubAssignOwner");
-            var move = harness.Find<DropDownButton>("SessionsHubMoveGroup");
-            var assignBounds = assign.TransformToVisual(details).TransformBounds(
-                new global::Windows.Foundation.Rect(0, 0, assign.ActualWidth, assign.ActualHeight));
-            var moveBounds = move.TransformToVisual(details).TransformBounds(
-                new global::Windows.Foundation.Rect(0, 0, move.ActualWidth, move.ActualHeight));
-            Assert.InRange(assign.ActualWidth, 149, 151);
-            Assert.InRange(move.ActualWidth, 149, 151);
-            Assert.InRange(Math.Abs(assignBounds.Right - moveBounds.Right), 0, 1);
+            Assert.InRange(harness.Find<DropDownButton>("SessionsHubMoveGroup").ActualWidth, 149, 151);
             if (width == 720)
             {
                 var customizeBounds = customize.TransformToVisual(details).TransformBounds(
@@ -1017,7 +924,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task OrganizationActions_KeepEqual150DipWidthsAndRightEdgesAcrossSameHostResize()
+    public async Task MoveGroupAction_Keeps150DipWidthAcrossSameHostResize()
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true, width: 1200);
         foreach (var width in new[] { 1200d, 720d, 520d })
@@ -1027,16 +934,11 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var details = harness.Find<FrameworkElement>("SessionsHubDetails");
-                var assign = harness.Find<DropDownButton>("SessionsHubAssignOwner");
                 var move = harness.Find<DropDownButton>("SessionsHubMoveGroup");
-                var assignBounds = assign.TransformToVisual(details).TransformBounds(
-                    new global::Windows.Foundation.Rect(0, 0, assign.ActualWidth, assign.ActualHeight));
                 var moveBounds = move.TransformToVisual(details).TransformBounds(
                     new global::Windows.Foundation.Rect(0, 0, move.ActualWidth, move.ActualHeight));
-                Assert.InRange(assign.ActualWidth, 149, 151);
                 Assert.InRange(move.ActualWidth, 149, 151);
-                Assert.InRange(Math.Abs(assign.ActualWidth - move.ActualWidth), 0, 1);
-                Assert.InRange(Math.Abs(assignBounds.Right - moveBounds.Right), 0, 1);
+                Assert.True(moveBounds.Right <= details.ActualWidth + 1);
             });
         }
     }
@@ -1265,45 +1167,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal("Couldn't show this session. Refresh the list and try again.",
                 harness.Controller.State.Notice?.Message);
         });
-    }
-
-    [Fact]
-    public async Task TrackedRows_DropQueuedUpdatesFromAnOldConnection()
-    {
-        await using var harness = await Harness.CreateAsync(ui);
-        var attention = new SessionInfo { Key = "agent:main:attention", Status = "failed" };
-        await ui.RunOnUIAsync(() =>
-        {
-            harness.Gateway.PublishSessions(attention);
-            harness.Gateway.Epoch++;
-            harness.Gateway.Page = new SessionListPage();
-            harness.Controller.RefreshConnection();
-        });
-        await ui.YieldToRenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Empty(harness.Controller.State.TrackedRows);
-            harness.Gateway.PublishSessions(attention);
-        });
-        await ui.YieldToRenderAsync();
-        await ui.RunOnUIAsync(() =>
-            Assert.Equal(attention.Key, Assert.Single(harness.Controller.State.TrackedRows).Key));
-    }
-
-    [Fact]
-    public async Task TrackedRows_UseAcceptedSnapshotInsteadOfRawSessionEvent()
-    {
-        await using var harness = await Harness.CreateAsync(ui);
-        var accepted = new SessionInfo { Key = "agent:main:accepted", Status = "failed" };
-        var unaccepted = new SessionInfo { Key = "agent:main:raw-event", Status = "failed" };
-        await ui.RunOnUIAsync(() =>
-        {
-            harness.Gateway.Page = new SessionListPage { Sessions = [accepted] };
-            harness.Gateway.PublishUnacceptedSessions(unaccepted);
-        });
-        await ui.YieldToRenderAsync();
-        await ui.RunOnUIAsync(() =>
-            Assert.Equal(accepted.Key, Assert.Single(harness.Controller.State.TrackedRows).Key));
     }
 
     [Fact]
@@ -1766,45 +1629,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task LegacyGateway_DisablesCreationWithoutBlockingExistingGroupMoves()
-    {
-        await using var harness = await Harness.CreateAsync(ui);
-        await ui.RunOnUIAsync(async () =>
-        {
-            harness.Gateway.Methods = ["sessions.list", "sessions.patch", "sessions.groups.list", "sessions.groups.put"];
-            harness.Controller.RefreshConnection();
-            await harness.Controller.NewGroupAsync();
-            Assert.Null(harness.Controller.State.Dialog);
-            Assert.NotNull(harness.Controller.State.Notice);
-            await harness.Controller.MoveToGroupAsync(harness.Controller.State.Rows.Single(), "Release");
-
-            Assert.Equal("Release", Assert.Single(harness.Gateway.Patches).Category.Value);
-            Assert.Equal(0, harness.Gateway.CatalogReplacements);
-            Assert.Empty(harness.Gateway.CreatedGroups);
-        });
-    }
-
-    [Fact]
-    public async Task CreatingGroup_DoesNotReplaceACachedCatalog()
-    {
-        await using var harness = await Harness.CreateAsync(ui);
-        Task create = Task.CompletedTask;
-        await ui.RunOnUIAsync(() =>
-        {
-            create = harness.Controller.NewGroupAsync();
-            harness.Controller.UpdateDialog(dialog => dialog with { Text = "Mine" });
-            harness.Controller.CloseDialog(true);
-        });
-        await create.WaitAsync(TimeSpan.FromSeconds(10));
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.Equal(0, harness.Gateway.CatalogReplacements);
-            Assert.Equal("Mine", Assert.Single(harness.Gateway.CreatedGroups));
-            Assert.Contains("Other client's group", harness.Controller.State.GroupCatalog);
-        });
-    }
-
-    [Fact]
     public async Task QueryChanges_PreserveAnUnsavedRenameUntilTheSameSessionReturns()
     {
         await using var harness = await Harness.CreateAsync(ui);
@@ -2155,20 +1979,12 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         public Task PatchAcknowledgement = Task.CompletedTask;
         public Task<IReadOnlyList<WorktreeRecord>?> Worktrees = Task.FromResult<IReadOnlyList<WorktreeRecord>?>([]);
         public Func<string, Task<WorktreeBranchList>> Branches = _ => Task.FromResult(SessionsHubRegressionTests.Branches("initial"));
-        public Func<Task<IReadOnlyList<GatewayUserProfile>>>? UserProfiles;
-        public Func<Task<string?>>? SelfProfile;
         public bool Connected = true;
         public long Epoch = 1;
-        public string[] Methods = ["sessions.list", "sessions.patch", "sessions.search", "sessions.groups.list", "sessions.groups.put", "sessions.groups.create", "worktrees.list"];
+        public string[] Methods = ["sessions.list", "sessions.patch", "sessions.search", "worktrees.list"];
         public List<SessionPatch> Patches { get; } = [];
         public List<string> PatchKeys { get; } = [];
         public List<SessionDeleteRequest> Deletions { get; } = [];
-        public List<string> CreatedGroups { get; } = [];
-        public List<(string Key, string? AgentId, string OwnerType, string OwnerId)> OwnerAssignments { get; } = [];
-        public int CatalogReplacements;
-        public int UserProfileReads;
-        public int SelfProfileReads;
-        private SessionGroupCatalog _catalog = new() { Names = ["Release"] };
         private EventHandler<SessionInfo[]>? _sessionsUpdated;
 
         public void PublishSessions(params SessionInfo[] sessions)
@@ -2176,9 +1992,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Page = new SessionListPage { Sessions = sessions };
             _sessionsUpdated?.Invoke(this, sessions);
         }
-
-        public void PublishUnacceptedSessions(params SessionInfo[] sessions) =>
-            _sessionsUpdated?.Invoke(this, sessions);
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
@@ -2204,14 +2017,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 case "get_AdvertisedServerMethods": return Methods;
                 case nameof(IOperatorGatewayClient.ListSessionsPageAsync):
                     return List?.Invoke((SessionListQuery)args![0]!) ?? Task.FromResult(Page);
-                case nameof(IOperatorGatewayClient.ListSessionGroupsAsync):
-                    return Task.FromResult(_catalog);
-                case nameof(IOperatorGatewayClient.ListUserProfilesAsync):
-                    UserProfileReads++;
-                    return UserProfiles?.Invoke() ?? Task.FromResult<IReadOnlyList<GatewayUserProfile>>([]);
-                case nameof(IOperatorGatewayClient.GetSelfProfileIdAsync):
-                    SelfProfileReads++;
-                    return SelfProfile?.Invoke() ?? Task.FromResult<string?>(null);
                 case nameof(IOperatorGatewayClient.SearchSessionTranscriptsAsync): return Search;
                 case nameof(IOperatorGatewayClient.ListWorktreesAsync): return Worktrees;
                 case nameof(IOperatorGatewayClient.ListWorktreeBranchesAsync):
@@ -2220,22 +2025,11 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                     var request = (SessionDeleteRequest)args![0]!;
                     Deletions.Add(request);
                     return Task.FromResult(new SessionDeleteOutcome(request.Key, true, null));
-                case nameof(IOperatorGatewayClient.AssignSessionOwnerAsync):
-                    OwnerAssignments.Add(((string)args![0]!, (string?)args[1], (string)args[2]!, (string)args[3]!));
-                    return Task.FromResult<SessionOwnerInfo?>(null);
                 case nameof(IOperatorGatewayClient.PatchSessionConfirmedAsync):
                     PatchKeys.Add((string)args![0]!);
                     Patches.Add((SessionPatch)args![1]!);
                     return PatchAcknowledgement;
                 case nameof(IOperatorGatewayClient.RequestSessionsAsync): return Task.CompletedTask;
-                case nameof(IOperatorGatewayClient.PutSessionGroupsAsync):
-                    CatalogReplacements++;
-                    _catalog = new SessionGroupCatalog { Names = ["Release", "Mine"] };
-                    return Task.FromResult(_catalog);
-                case nameof(IOperatorGatewayClient.CreateSessionGroupAsync):
-                    CreatedGroups.Add((string)args![0]!);
-                    _catalog = new SessionGroupCatalog { Names = ["Release", "Other client's group", "Mine"] };
-                    return Task.FromResult(_catalog);
                 default: throw new NotSupportedException($"Unexpected Sessions proof call: {method.Name}");
             }
         }

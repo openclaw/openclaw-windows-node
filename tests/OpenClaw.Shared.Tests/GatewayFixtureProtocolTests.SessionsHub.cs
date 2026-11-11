@@ -73,7 +73,7 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
-    public async Task SessionsHub_MutationsGroupsOwnersAndDeletionRoundTrip()
+    public async Task SessionsHub_MutationsAndDeletionRoundTrip()
     {
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateSessionsHub(), token);
@@ -81,27 +81,14 @@ public sealed partial class GatewayFixtureProtocolTests
         var client = connected.Client;
         const string key = "agent:main:hub-task-01";
 
-        var groups = await client.PutSessionGroupsAsync(["Release", "Research", "Ops", "Customers"]).WaitAsync(Deadline);
-        Assert.Equal("Customers", groups.Names[^1]);
         await client.PatchSessionConfirmedAsync(key, new SessionPatch { Category = "Customers", ReasoningLevel = "stream" },
-            client.SessionMutationConnectionEpoch!.Value);
-        var renamed = await client.RenameSessionGroupAsync("Customers", "Clients");
-        Assert.Contains("Clients", renamed.Names);
+            client.SessionMutationConnectionEpoch!.Value).WaitAsync(Deadline);
         var row = (await client.ListSessionsPageAsync(new SessionListQuery { Search = "Backlog task 01" })).Sessions.Single();
-        Assert.Equal("Clients", row.Category);
+        Assert.Equal("Customers", row.Category);
         Assert.Equal("stream", row.ReasoningLevel);
-        await client.DeleteSessionGroupAsync("Clients");
+        await client.PatchSessionConfirmedAsync(key, new SessionPatch { Category = SessionPatch.Clear },
+            client.SessionMutationConnectionEpoch!.Value);
         Assert.Null((await client.ListSessionsPageAsync(new SessionListQuery { Search = "Backlog task 01" })).Sessions.Single().Category);
-
-        var profiles = await client.ListUserProfilesAsync();
-        Assert.Contains(profiles, profile => profile.Id == "profile-grace");
-        var owner = await client.AssignSessionOwnerAsync(key, "main", "human", "profile-grace");
-        Assert.Equal(new SessionOwnerInfo("human", "profile-grace", "Grace Hopper"), owner);
-
-        await client.ReclaimSessionAsync(GatewayScenario.HubCloudSessionKey, "research");
-        var cloud = (await client.ListSessionsPageAsync(new SessionListQuery { Limit = 100 })).Sessions
-            .Single(session => session.Key == GatewayScenario.HubCloudSessionKey);
-        Assert.False(SessionsHubProjection.CanStopCloudWorker(cloud));
 
         var archived = (await client.ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived, Limit = 100 })).Sessions;
         var admin = new SessionsHubPermissions(true, client.GrantedOperatorScopes, client.AdvertisedServerMethods);
@@ -117,34 +104,6 @@ public sealed partial class GatewayFixtureProtocolTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionDetailedAsync(
             new SessionDeleteRequest(key) { ArchivedOnly = true }));
-        Assert.Empty(server.UnexpectedRequests);
-    }
-
-    [Fact]
-    public async Task SessionsHub_AdditiveCreationPreservesOtherClientsGroupsAndIsIdempotent()
-    {
-        var token = CreateToken();
-        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateSessionsHub(), token);
-        await using var first = await ConnectedClient.OpenAsync(server, token, expectedSessionCount: HubActiveSessionCount);
-        await using var second = await ConnectedClient.OpenAsync(server, token, expectedSessionCount: HubActiveSessionCount);
-        var before = await first.Client.ListSessionGroupsAsync();
-
-        await second.Client.CreateSessionGroupAsync("Other client's group");
-        await Task.WhenAll(
-            first.Client.CreateSessionGroupAsync("Mine"),
-            second.Client.CreateSessionGroupAsync("Theirs"),
-            first.Client.CreateSessionGroupAsync("Mine"));
-        var after = await first.Client.ListSessionGroupsAsync();
-
-        Assert.Equal(before.Names, after.Names.Take(before.Names.Count));
-        Assert.Contains("Other client's group", after.Names);
-        Assert.Contains("Mine", after.Names);
-        Assert.Contains("Theirs", after.Names);
-        Assert.Equal(before.Names.Count + 3, after.Names.Count);
-
-        var unicodeName = string.Concat(Enumerable.Repeat("\U0001F680", 512));
-        Assert.Contains(unicodeName, (await first.Client.CreateSessionGroupAsync(unicodeName)).Names);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => first.Client.CreateSessionGroupAsync(unicodeName + "\U0001F680"));
         Assert.Empty(server.UnexpectedRequests);
     }
 
@@ -195,7 +154,8 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.False(permissions.CanWrite);
         Assert.False(permissions.CanManageWorktrees);
         Assert.NotEmpty((await client.ListSessionsPageAsync(new SessionListQuery()).WaitAsync(Deadline)).Sessions);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PutSessionGroupsAsync(["X"]));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionDetailedAsync(
+            new SessionDeleteRequest("agent:main:hub-task-01")));
     }
 
     [Fact]

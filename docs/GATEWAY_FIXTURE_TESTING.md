@@ -208,23 +208,18 @@ created session remains available for explicit sidebar selection. No provider, t
 Gateway is involved; other mutations and unsupported creation parameters still fail.
 
 The opt-in `sessions-hub` scenario backs the Settings Sessions page. It adds 30
-synthetic sessions (custom groups, owners, a cloud worker, global, unknown and
+synthetic sessions (categories, owners, a cloud worker, global, unknown and
 archived rows) to the browse set and accepts in-memory `sessions.list` filters
-and paging, `sessions.search` (including indexing and truncation states), group
-catalog edits, patch, delete (including a preserved busy worktree), owner
-assignment, `sessions.reclaim`, `users.list`, and the `worktrees.*` methods.
+and paging, `sessions.search` (including indexing and truncation states), patch,
+delete (including a preserved busy worktree), and the `worktrees.*` methods.
 `sessions-hub-readonly` grants only `operator.read` to show the limited page.
 `GatewayScenario.CreateSessionsHub(legacySessionsList: true)` rejects the
 `source`/`excludeDock` list params like Gateways before 2026.10.5 do. Run either
 interactively with `-Scenario sessions-hub` or `-Scenario sessions-hub-readonly`.
 
-New empty groups use the additive `sessions.groups.create {name}` contract, not
-a cached whole-catalog `sessions.groups.put`. The native action requires this
-method to be explicitly advertised and grants from `operator.write` or
-`operator.admin`; older Gateways keep creation unavailable rather than risking
-another client's empty groups. Moving sessions to existing categories still
-uses `sessions.patch`. The fixture implements this contract for client testing;
-it does not establish that the separate Gateway change has shipped.
+Moving sessions between existing categories uses `sessions.patch`. Creating,
+renaming or deleting categories, assigning owners and stopping cloud workers stay
+in the web dashboard.
 
 Sessions regression tests also exercise failed-query row replacement, visible
 refresh errors, transcript query/scope invalidation, acknowledged label drafts

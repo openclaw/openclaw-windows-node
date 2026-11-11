@@ -243,36 +243,10 @@ public interface IOperatorGatewayClient
     Task<OpenClaw.Shared.Sessions.SessionSearchResult> SearchSessionTranscriptsAsync(
         string query, OpenClaw.Shared.Sessions.SessionListQuery scope, int limit = 25, int timeoutMs = 20000)
         => Task.FromResult(new OpenClaw.Shared.Sessions.SessionSearchResult { IsSupported = false });
-    Task<OpenClaw.Shared.Sessions.SessionGroupCatalog> ListSessionGroupsAsync(int timeoutMs = 15000)
-        => Task.FromResult(new OpenClaw.Shared.Sessions.SessionGroupCatalog { IsSupported = false });
-    Task<OpenClaw.Shared.Sessions.SessionGroupCatalog> CreateSessionGroupAsync(string name, int timeoutMs = 15000)
-        => Task.FromException<OpenClaw.Shared.Sessions.SessionGroupCatalog>(
-            new NotSupportedException("sessions.groups.create is not supported."));
-    Task<OpenClaw.Shared.Sessions.SessionGroupCatalog> PutSessionGroupsAsync(
-        IReadOnlyList<string> names, int timeoutMs = 15000)
-        => Task.FromException<OpenClaw.Shared.Sessions.SessionGroupCatalog>(
-            new NotSupportedException("sessions.groups.put is not supported."));
-    Task<OpenClaw.Shared.Sessions.SessionGroupCatalog> RenameSessionGroupAsync(
-        string name, string to, int timeoutMs = 15000)
-        => Task.FromException<OpenClaw.Shared.Sessions.SessionGroupCatalog>(
-            new NotSupportedException("sessions.groups.rename is not supported."));
-    Task<OpenClaw.Shared.Sessions.SessionGroupCatalog> DeleteSessionGroupAsync(string name, int timeoutMs = 15000)
-        => Task.FromException<OpenClaw.Shared.Sessions.SessionGroupCatalog>(
-            new NotSupportedException("sessions.groups.delete is not supported."));
     Task<OpenClaw.Shared.Sessions.SessionDeleteOutcome> DeleteSessionDetailedAsync(
         OpenClaw.Shared.Sessions.SessionDeleteRequest request, int timeoutMs = 30000)
         => Task.FromException<OpenClaw.Shared.Sessions.SessionDeleteOutcome>(
             new NotSupportedException("Response-aware sessions.delete is not supported."));
-    Task<SessionOwnerInfo?> AssignSessionOwnerAsync(
-        string key, string? agentId, string ownerType, string ownerId, int timeoutMs = 15000)
-        => Task.FromException<SessionOwnerInfo?>(
-            new NotSupportedException("sessions.assignOwner is not supported."));
-    Task ReclaimSessionAsync(string key, string? agentId, int timeoutMs = 120000)
-        => Task.FromException(new NotSupportedException("sessions.reclaim is not supported."));
-    Task<IReadOnlyList<OpenClaw.Shared.Sessions.GatewayUserProfile>> ListUserProfilesAsync(int timeoutMs = 15000)
-        => Task.FromResult<IReadOnlyList<OpenClaw.Shared.Sessions.GatewayUserProfile>>(
-            Array.Empty<OpenClaw.Shared.Sessions.GatewayUserProfile>());
-    Task<string?> GetSelfProfileIdAsync(int timeoutMs = 12000) => Task.FromResult<string?>(null);
     Task<IReadOnlyList<OpenClaw.Shared.Sessions.WorktreeRecord>?> ListWorktreesAsync(int timeoutMs = 15000)
         => Task.FromResult<IReadOnlyList<OpenClaw.Shared.Sessions.WorktreeRecord>?>(null);
     Task<OpenClaw.Shared.Sessions.WorktreeBranchList> ListWorktreeBranchesAsync(

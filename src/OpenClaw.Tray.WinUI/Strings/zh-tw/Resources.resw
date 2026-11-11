@@ -9185,12 +9185,6 @@
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>動作失敗</value>
   </data>
-  <data name="SessionsHub_ActiveMinutesDisabled" xml:space="preserve">
-    <value>僅適用於「使用中」檢視。</value>
-  </data>
-  <data name="SessionsHub_ActiveMinutesPlaceholder" xml:space="preserve">
-    <value>任何時間</value>
-  </data>
   <data name="SessionsHub_AdminOnly" xml:space="preserve">
     <value>需要系統管理員存取權</value>
   </data>
@@ -9206,14 +9200,8 @@
   <data name="SessionsHub_AgentFilter" xml:space="preserve">
     <value>代理程式</value>
   </data>
-  <data name="SessionsHub_AgentOwner" xml:space="preserve">
-    <value>代理程式：{0}</value>
-  </data>
   <data name="SessionsHub_AllAgents" xml:space="preserve">
     <value>所有代理程式</value>
-  </data>
-  <data name="SessionsHub_Archive" xml:space="preserve">
-    <value>封存</value>
   </data>
   <data name="SessionsHub_Archived" xml:space="preserve">
     <value>已封存</value>
@@ -9238,24 +9226,6 @@
   </data>
   <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
     <value>因其儀表板已不再使用而封存</value>
-  </data>
-  <data name="SessionsHub_Assign" xml:space="preserve">
-    <value>指派</value>
-  </data>
-  <data name="SessionsHub_AssignFailed" xml:space="preserve">
-    <value>無法指派擁有者</value>
-  </data>
-    <data name="SessionsHub_OwnerCatalogChanged" xml:space="preserve">
-      <value>擁有者選項已變更。請重新開啟「指派擁有者」並再試一次。</value>
-    </data>
-  <data name="SessionsHub_AssignOwner" xml:space="preserve">
-    <value>指派擁有者</value>
-  </data>
-  <data name="SessionsHub_AssignOwnerNamed" xml:space="preserve">
-    <value>為 {0} 指派擁有者</value>
-  </data>
-  <data name="SessionsHub_AssignToMe" xml:space="preserve">
-    <value>指派給我</value>
   </data>
   <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
     <value>網頁聊天</value>
@@ -9343,15 +9313,6 @@
   </data>
   <data name="SessionsHub_DeleteFailures" xml:space="preserve">
     <value>{0} 個項目無法刪除。第一個錯誤：{1}</value>
-  </data>
-  <data name="SessionsHub_DeleteGroup" xml:space="preserve">
-    <value>刪除群組</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupBody" xml:space="preserve">
-    <value>要刪除群組「{0}」嗎？其中的工作階段不會被刪除，而是變成未分組。</value>
-  </data>
-  <data name="SessionsHub_DeleteGroupTitle" xml:space="preserve">
-    <value>刪除群組？</value>
   </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>刪除未封存的工作階段需要系統管理員存取權。請先封存，或洽詢系統管理員。</value>
@@ -9467,9 +9428,6 @@
   <data name="SessionsHub_Filters" xml:space="preserve">
     <value>篩選</value>
   </data>
-  <data name="SessionsHub_FiltersCount" xml:space="preserve">
-    <value>篩選（{0}）</value>
-  </data>
   <data name="SessionsHub_ForceRemove" xml:space="preserve">
     <value>仍要移除</value>
   </data>
@@ -9505,12 +9463,6 @@
   </data>
   <data name="SessionsHub_GroupByPerson" xml:space="preserve">
     <value>依擁有者分組</value>
-  </data>
-  <data name="SessionsHub_GroupFailed" xml:space="preserve">
-    <value>無法更新群組</value>
-  </data>
-  <data name="SessionsHub_GroupOptions" xml:space="preserve">
-    <value>群組 {0} 的選項</value>
   </data>
   <data name="SessionsHub_GroupOther" xml:space="preserve">
     <value>其他</value>
@@ -9581,9 +9533,6 @@
   <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
     <value>超快速</value>
   </data>
-  <data name="SessionsHub_Limit" xml:space="preserve">
-    <value>要載入的工作階段</value>
-  </data>
   <data name="SessionsHub_ListLabel" xml:space="preserve">
     <value>工作階段</value>
   </data>
@@ -9613,21 +9562,6 @@
   </data>
   <data name="SessionsHub_NeedsWrite" xml:space="preserve">
     <value>需要此 Gateway 的寫入存取權</value>
-  </data>
-  <data name="SessionsHub_NewGroup" xml:space="preserve">
-    <value>新增群組</value>
-  </data>
-  <data name="SessionsHub_NewGroupBody" xml:space="preserve">
-    <value>群組可為使用此 Gateway 的所有人整理工作階段。</value>
-  </data>
-  <data name="SessionsHub_NewGroupEllipsis" xml:space="preserve">
-    <value>新增群組...</value>
-  </data>
-  <data name="SessionsHub_NewGroupPlaceholder" xml:space="preserve">
-    <value>群組名稱</value>
-  </data>
-  <data name="SessionsHub_NewGroupTitle" xml:space="preserve">
-    <value>建立群組</value>
   </data>
   <data name="SessionsHub_NewWorktree" xml:space="preserve">
     <value>新增工作樹</value>
@@ -9668,14 +9602,8 @@
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>建立工作樹</value>
   </data>
-  <data name="SessionsHub_NextPage" xml:space="preserve">
-    <value>下一頁</value>
-  </data>
   <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
     <value>沒有您可以刪除的已封存工作階段。</value>
-  </data>
-  <data name="SessionsHub_NoOwners" xml:space="preserve">
-    <value>沒有可用的人員或代理程式</value>
   </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>無法使用</value>
@@ -9697,12 +9625,6 @@
   </data>
   <data name="SessionsHub_Owner" xml:space="preserve">
     <value>擁有者</value>
-  </data>
-  <data name="SessionsHub_PageOf" xml:space="preserve">
-    <value>第 {0} 頁，共 {1} 頁</value>
-  </data>
-  <data name="SessionsHub_PageRangeOfServer" xml:space="preserve">
-    <value>顯示第 {0} 到 {1} 項，已載入 {2} 項（Gateway 上共 {3} 項）</value>
   </data>
   <data name="SessionsHub_CloudWorker" xml:space="preserve">
     <value>部署位置</value>
@@ -9743,9 +9665,6 @@
   <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
     <value>保留的工作樹：{0}。</value>
   </data>
-  <data name="SessionsHub_PreviousPage" xml:space="preserve">
-    <value>上一頁</value>
-  </data>
   <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
     <value>您可以瀏覽及搜尋工作階段。變更、封存或刪除工作階段需要此 Gateway 的寫入存取權。</value>
   </data>
@@ -9776,18 +9695,6 @@
   <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
     <value>移除工作樹？</value>
   </data>
-  <data name="SessionsHub_RenameGroup" xml:space="preserve">
-    <value>重新命名群組</value>
-  </data>
-  <data name="SessionsHub_RenameGroupBody" xml:space="preserve">
-    <value>此群組中的工作階段會移至新名稱下。</value>
-  </data>
-  <data name="SessionsHub_RenameGroupTitle" xml:space="preserve">
-    <value>重新命名群組</value>
-  </data>
-  <data name="SessionsHub_ResetFilters" xml:space="preserve">
-    <value>重設篩選</value>
-  </data>
   <data name="SessionsHub_Restore" xml:space="preserve">
     <value>還原</value>
   </data>
@@ -9814,9 +9721,6 @@
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>依名稱或索引鍵篩選</value>
-  </data>
-  <data name="SessionsHub_SearchTranscripts" xml:space="preserve">
-    <value>搜尋對話記錄</value>
   </data>
   <data name="SessionsHub_Select" xml:space="preserve">
     <value>選取</value>
@@ -9868,30 +9772,6 @@
   </data>
   <data name="SessionsHub_StatusQueued" xml:space="preserve">
     <value>已排入佇列</value>
-  </data>
-  <data name="SessionsHub_StopWorker" xml:space="preserve">
-    <value>停止雲端工作節點</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBody" xml:space="preserve">
-    <value>要停止「{0}」的雲端工作節點，並將工作階段傳回 Gateway 嗎？工作節點上進行中的工作會在停止前保存。</value>
-  </data>
-  <data name="SessionsHub_StopWorkerBusy" xml:space="preserve">
-    <value>請等候目前回合完成後，再停止工作節點。</value>
-  </data>
-  <data name="SessionsHub_StopWorkerDone" xml:space="preserve">
-    <value>已停止「{0}」的雲端工作節點。</value>
-  </data>
-  <data name="SessionsHub_StopWorkerFailed" xml:space="preserve">
-    <value>無法停止雲端工作節點</value>
-  </data>
-  <data name="SessionsHub_StopWorkerHelp" xml:space="preserve">
-    <value>停止後，工作階段會傳回 Gateway。</value>
-  </data>
-  <data name="SessionsHub_StopWorkerTitle" xml:space="preserve">
-    <value>停止雲端工作節點？</value>
-  </data>
-  <data name="SessionsHub_StopWorkerUnavailable" xml:space="preserve">
-    <value>目前無法停止此工作節點。</value>
   </data>
   <data name="SessionsHub_TabSessions" xml:space="preserve">
     <value>工作階段</value>
@@ -9974,9 +9854,6 @@
   <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
     <value>沒有相符項目</value>
   </data>
-  <data name="SessionsHub_TranscriptScope" xml:space="preserve">
-    <value>搜尋範圍：{0}</value>
-  </data>
   <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
     <value>搜尋對話記錄</value>
   </data>
@@ -9985,9 +9862,6 @@
   </data>
   <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
     <value>此 Gateway 不支援搜尋對話記錄。請更新 Gateway 以使用此功能。</value>
-  </data>
-  <data name="SessionsHub_Unarchive" xml:space="preserve">
-    <value>取消封存</value>
   </data>
   <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
     <value>已將「{0}」還原至使用中的工作階段。</value>
@@ -10042,9 +9916,6 @@
   </data>
   <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
     <value>無法建立工作樹</value>
-  </data>
-  <data name="SessionsHub_WorktreeFromBase" xml:space="preserve">
-    <value>{0}，以 {1} 為基礎</value>
   </data>
   <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
     <value>在聊天中開啟所屬的工作階段 {0}</value>
@@ -10187,24 +10058,6 @@
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>已封存的工作階段</value>
   </data>
-  <data name="SessionsHub_StatAttention" xml:space="preserve">
-    <value>需要注意</value>
-  </data>
-  <data name="SessionsHub_StatsLabel" xml:space="preserve">
-    <value>工作階段摘要</value>
-  </data>
-  <data name="SessionsHub_StatWorking" xml:space="preserve">
-    <value>正在執行</value>
-  </data>
-  <data name="SessionsHub_ScopeNameContains" xml:space="preserve">
-    <value>名稱包含「{0}」</value>
-  </data>
-  <data name="SessionsHub_ScopeGlobalExcluded" xml:space="preserve">
-    <value>排除全域工作階段</value>
-  </data>
-  <data name="SessionsHub_ScopeUnknownExcluded" xml:space="preserve">
-    <value>排除沒有路由資訊的工作階段</value>
-  </data>
   <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>刪除 {0} 個</value></data>
   <data name="SessionsHub_DialogKept" xml:space="preserve"><value>保留</value></data>
   <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>主要工作階段</value></data>
@@ -10222,23 +10075,14 @@
   <data name="SessionsHub_ForkRenameFailed" xml:space="preserve"><value>已建立分支，但無法儲存名稱：{0}</value></data>
   <data name="SessionsHub_MainSessionBody" xml:space="preserve"><value>主要工作階段無法封存或刪除。</value></data>
   <data name="SessionsHub_MainSessionTitle" xml:space="preserve"><value>主要工作階段</value></data>
-  <data name="SessionsHub_MastAttentionMany" xml:space="preserve"><value>{0} 個工作階段需要您處理</value></data>
-  <data name="SessionsHub_MastAttentionOne" xml:space="preserve"><value>一個工作階段需要您處理</value></data>
-  <data name="SessionsHub_MastEmpty" xml:space="preserve"><value>尚無工作階段</value></data>
-  <data name="SessionsHub_MastMoreAvailable" xml:space="preserve"><value>還有更多工作階段。</value></data>
-  <data name="SessionsHub_MastReady" xml:space="preserve"><value>從上次的位置繼續</value></data>
-  <data name="SessionsHub_MastSubtitle" xml:space="preserve"><value>{1} 個已載入工作階段中有 {0} 個正在工作。</value></data>
   <data name="SessionsHub_MessagesMatching" xml:space="preserve"><value>符合「{0}」的訊息</value></data>
   <data name="SessionsHub_NeedsAttentionFallback" xml:space="preserve"><value>上次執行需要注意。</value></data>
-  <data name="SessionsHub_NeedsYou" xml:space="preserve"><value>需要您處理</value></data>
   <data name="SessionsHub_SessionUnavailable" xml:space="preserve"><value>無法顯示此工作階段。請重新整理清單後再試。</value></data>
-  <data name="SessionsHub_NewGroupUnsupported" xml:space="preserve"><value>新增群組（此 Gateway 不支援）</value></data>
   <data name="SessionsHub_NewWorktreeDoesNotStartSession" xml:space="preserve"><value>這不會啟動工作階段。</value></data>
   <data name="SessionsHub_OpenGatewayWeb" xml:space="preserve"><value>在網頁中開啟</value></data>
   <data name="SessionsHub_ResetDone" xml:space="preserve"><value>已重設「{0}」。</value></data>
   <data name="SessionsHub_ResetRejected" xml:space="preserve"><value>Gateway 未重設此工作階段。</value></data>
   <data name="SessionsHub_SearchMessagesFor" xml:space="preserve"><value>在訊息中搜尋「{0}」</value></data>
-  <data name="SessionsHub_StoppedTitle" xml:space="preserve"><value>{0} 已停止</value></data>
   <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>未命名工作階段</value></data>
   <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} 個使用中，{1} 個已移除</value></data>
   <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>{0} 上的受管理工作樹</value></data>
@@ -10267,8 +10111,6 @@
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>對話記錄將被清除，工作階段會重新開始。工作階段索引鍵保持不變。</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>開啟資料夾</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>選項</value></data>
-  <data name="SessionsHub_OpenChatShort" xml:space="preserve"><value>開啟聊天</value></data>
-  <data name="SessionsHub_DetailsShort" xml:space="preserve"><value>詳細資料</value></data>
   <data name="SessionsHub_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>顯示 {0}/{1} · 已載入 {2}</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>還有更多</value></data>

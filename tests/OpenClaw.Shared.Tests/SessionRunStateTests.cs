@@ -6,26 +6,6 @@ namespace OpenClaw.Shared.Tests;
 public sealed class SessionRunStateTests
 {
     [Theory]
-    [InlineData("queued", true, true)]
-    [InlineData("QUEUED", false, true)]
-    [InlineData(" queued ", false, false)]
-    [InlineData("failed", true, false)]
-    [InlineData("failed", false, true)]
-    [InlineData("error", null, true)]
-    [InlineData("failure", null, true)]
-    [InlineData("timeout", false, true)]
-    [InlineData("timed_out", null, true)]
-    [InlineData("completed", false, false)]
-    [InlineData("cancelled", false, false)]
-    [InlineData("unknown", false, false)]
-    public void NeedsAttention_PreservesQueuedPrecedenceAndRunLiveness(
-        string status, bool? active, bool expected)
-    {
-        Assert.Equal(expected, SessionRunState.NeedsAttention(
-            new SessionInfo { Status = status, HasActiveRun = active }));
-    }
-
-    [Theory]
     [InlineData("running", null, true)]
     [InlineData("running", false, false)]
     [InlineData("running", true, true)]

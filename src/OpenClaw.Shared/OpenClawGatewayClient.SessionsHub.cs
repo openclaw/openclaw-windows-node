@@ -183,56 +183,6 @@ public partial class OpenClawGatewayClient
         };
     }
 
-    // ── sessions.groups.* ──
-
-    public async Task<SessionGroupCatalog> ListSessionGroupsAsync(int timeoutMs = 15000)
-    {
-        var payload = await TryRequestPayloadAsync("sessions.groups.list", new { }, timeoutMs).ConfigureAwait(false);
-        return payload is null ? new SessionGroupCatalog { IsSupported = false } : ParseSessionGroupCatalog(payload.Value);
-    }
-
-    public async Task<SessionGroupCatalog> PutSessionGroupsAsync(
-        IReadOnlyList<string> names, int timeoutMs = 15000)
-    {
-        ArgumentNullException.ThrowIfNull(names);
-        var parameters = new Dictionary<string, object?> { ["names"] = names.ToArray() };
-        return ParseSessionGroupCatalog(await MutateAsync("sessions.groups.put", parameters, timeoutMs).ConfigureAwait(false));
-    }
-
-    public async Task<SessionGroupCatalog> CreateSessionGroupAsync(string name, int timeoutMs = 15000)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        var payload = await MutateAsync("sessions.groups.create", new { name = name.Trim() }, timeoutMs).ConfigureAwait(false);
-        return ParseSessionGroupCatalog(payload);
-    }
-
-    public async Task<SessionGroupCatalog> RenameSessionGroupAsync(string name, string to, int timeoutMs = 15000)
-    {
-        var payload = await MutateAsync("sessions.groups.rename", new { name, to }, timeoutMs).ConfigureAwait(false);
-        return ParseSessionGroupCatalog(payload);
-    }
-
-    public async Task<SessionGroupCatalog> DeleteSessionGroupAsync(string name, int timeoutMs = 15000)
-    {
-        var payload = await MutateAsync("sessions.groups.delete", new { name }, timeoutMs).ConfigureAwait(false);
-        return ParseSessionGroupCatalog(payload);
-    }
-
-    internal static SessionGroupCatalog ParseSessionGroupCatalog(JsonElement payload)
-    {
-        if (TryGetArray(payload, "groups") is not { } groups)
-            return new SessionGroupCatalog();
-        var names = groups.EnumerateArray()
-            .Where(group => group.ValueKind == JsonValueKind.Object)
-            .Select(group => (Name: NonBlank(GetString(group, "name")), Position: GetLongOrNull(group, "position") ?? long.MaxValue))
-            .Where(group => group.Name is not null)
-            .OrderBy(group => group.Position)
-            .Select(group => group.Name!)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-        return new SessionGroupCatalog { Names = names };
-    }
-
     // ── sessions.delete (response-aware, bulk-safe) ──
 
     public async Task<SessionDeleteOutcome> DeleteSessionDetailedAsync(SessionDeleteRequest request, int timeoutMs = 30000)
@@ -268,67 +218,6 @@ public partial class OpenClawGatewayClient
             GetString(payload, "key") ?? key,
             deleted,
             preserved);
-    }
-
-    // ── sessions.assignOwner / sessions.reclaim ──
-
-    public async Task<SessionOwnerInfo?> AssignSessionOwnerAsync(
-        string key, string? agentId, string ownerType, string ownerId, int timeoutMs = 15000)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentException.ThrowIfNullOrWhiteSpace(ownerType);
-        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
-        var parameters = new Dictionary<string, object?>
-        {
-            ["key"] = key,
-            ["owner"] = new Dictionary<string, object?> { ["type"] = ownerType, ["id"] = ownerId },
-        };
-        if (!string.IsNullOrWhiteSpace(agentId)) parameters["agentId"] = agentId;
-        var payload = await MutateAsync("sessions.assignOwner", parameters, timeoutMs).ConfigureAwait(false);
-        return payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("owner", out var owner)
-            ? ParseSessionOwner(owner) : null;
-    }
-
-    /// <summary>Stops a session's cloud worker and returns ownership to the Gateway (<c>sessions.reclaim</c>).</summary>
-    public async Task ReclaimSessionAsync(string key, string? agentId, int timeoutMs = 120000)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        var parameters = new Dictionary<string, object?> { ["key"] = key };
-        if (!string.IsNullOrWhiteSpace(agentId)) parameters["agentId"] = agentId;
-        await MutateAsync("sessions.reclaim", parameters, timeoutMs).ConfigureAwait(false);
-    }
-
-    // ── users.list / users.self ──
-
-    public async Task<IReadOnlyList<GatewayUserProfile>> ListUserProfilesAsync(int timeoutMs = 15000)
-    {
-        var payload = await TryRequestPayloadAsync("users.list", new { }, timeoutMs).ConfigureAwait(false);
-        return payload is null ? Array.Empty<GatewayUserProfile>() : ParseUserProfiles(payload.Value);
-    }
-
-    public async Task<string?> GetSelfProfileIdAsync(int timeoutMs = 12000)
-    {
-        var payload = await TryRequestPayloadAsync("users.self", new { }, timeoutMs).ConfigureAwait(false);
-        return payload is { ValueKind: JsonValueKind.Object } self
-               && self.TryGetProperty("profile", out var profile) && profile.ValueKind == JsonValueKind.Object
-            ? NonBlank(GetString(profile, "id"))
-            : null;
-    }
-
-    internal static IReadOnlyList<GatewayUserProfile> ParseUserProfiles(JsonElement payload)
-    {
-        if (TryGetArray(payload, "profiles") is not { } profiles)
-            return Array.Empty<GatewayUserProfile>();
-        return profiles.EnumerateArray()
-            .Where(profile => profile.ValueKind == JsonValueKind.Object)
-            .Where(profile => profile.TryGetProperty("mergedInto", out var merged) is false
-                || merged.ValueKind != JsonValueKind.String)
-            .Select(profile => new GatewayUserProfile(
-                GetString(profile, "id") ?? "",
-                NonBlank(GetString(profile, "displayName")),
-                GetStringArrayList(profile, "emails").FirstOrDefault()))
-            .Where(profile => profile.Id.Length > 0)
-            .ToArray();
     }
 
     // ── worktrees.* ──

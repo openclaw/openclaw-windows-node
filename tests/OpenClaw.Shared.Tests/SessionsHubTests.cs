@@ -157,16 +157,6 @@ public sealed class SessionsHubTests
     }
 
     [Fact]
-    public void ParseSessionGroupCatalog_OrdersByPositionAndDropsBlanks()
-    {
-        var catalog = OpenClawGatewayClient.ParseSessionGroupCatalog(Json("""
-            {"groups":[{"name":"Later","position":2},{"name":"First","position":0},{"name":" ","position":1}]}
-            """));
-
-        Assert.Equal(["First", "Later"], catalog.Names);
-    }
-
-    [Fact]
     public void ParseSessionDeleteOutcome_ReadsPreservedWorktreeAndRejectsNotOk()
     {
         var outcome = OpenClawGatewayClient.ParseSessionDeleteOutcome(Json("""
@@ -179,19 +169,6 @@ public sealed class SessionsHubTests
             OpenClawGatewayClient.ParseSessionDeleteOutcome(Json("""{"ok":false,"reason":"nope"}"""), "k"));
         Assert.Throws<InvalidOperationException>(() =>
             OpenClawGatewayClient.ParseSessionDeleteOutcome(Json("""{"ok":true,"key":"k"}"""), "k"));
-    }
-
-    [Fact]
-    public void ParseUserProfiles_SkipsMergedProfilesAndUsesEmailFallback()
-    {
-        var profiles = OpenClawGatewayClient.ParseUserProfiles(Json("""
-            {"profiles":[
-              {"id":"a","displayName":null,"emails":["a@example.test"],"mergedInto":null},
-              {"id":"b","displayName":"Bea","emails":[],"mergedInto":"a"}]}
-            """));
-
-        var profile = Assert.Single(profiles);
-        Assert.Equal("a@example.test", profile.Label);
     }
 
     [Fact]
@@ -382,21 +359,6 @@ public sealed class SessionsHubTests
         Assert.All(plan.Requests, request => Assert.True(request.ArchivedOnly));
     }
 
-    [Theory]
-    [InlineData(true, "operator.write", true, true)]
-    [InlineData(true, "operator.admin", true, true)]
-    [InlineData(true, "operator.sessions.write", true, false)]
-    [InlineData(true, "operator.read", true, false)]
-    [InlineData(true, "operator.admin", false, false)]
-    [InlineData(false, "operator.admin", true, false)]
-    public void GroupCreation_RequiresCatalogWriteAndAnExplicitAtomicMethod(
-        bool connected, string scope, bool advertised, bool expected)
-    {
-        var permissions = new SessionsHubPermissions(connected, [scope],
-            advertised ? ["sessions.groups.create"] : []);
-        Assert.Equal(expected, permissions.CanCreateGroup);
-    }
-
     [Fact]
     public void UndoArchivePatch_RestoresPinOnlyWhenPinned()
     {
@@ -418,24 +380,6 @@ public sealed class SessionsHubTests
         Assert.False(admin.Supports("worktrees.list"));
         Assert.False(admin.CanManageWorktrees);
         Assert.True(new SessionsHubPermissions(true, ["operator.admin"], []).Supports("worktrees.list"));
-    }
-
-    [Theory]
-    [InlineData(null, null, false, false)]
-    [InlineData("local", null, false, false)]
-    [InlineData("reclaimed", null, false, false)]
-    [InlineData("provisioning", null, false, true)]
-    [InlineData("active", null, false, true)]
-    [InlineData("active", null, true, false)]
-    [InlineData("failed", "restart", false, false)]
-    [InlineData("failed", "stop-first", false, true)]
-    public void CanStopCloudWorker_FollowsPlacementPolicy(string? state, string? recovery, bool running, bool expected)
-    {
-        var row = Row("a");
-        row.PlacementState = state;
-        row.PlacementRecoveryAction = recovery;
-        row.HasActiveRun = running;
-        Assert.Equal(expected, SessionsHubProjection.CanStopCloudWorker(row));
     }
 
     [Theory]

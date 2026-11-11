@@ -281,8 +281,6 @@ internal static class SessionsHubSessionsView
                 () => controller.SetFilters(filters with { IncludeGlobal = !filters.IncludeGlobal })),
             ToggleItem(T("IncludeUnknown"), filters.IncludeUnknown,
                 () => controller.SetFilters(filters with { IncludeUnknown = !filters.IncludeUnknown })),
-            MenuSeparator(),
-            SessionsHubView.Item(T("NewGroupUnsupported"), FluentIconCatalog.Add, () => { }, enabled: false),
         ];
     }
 
@@ -634,16 +632,7 @@ internal static class SessionsHubSessionsView
             .AutomationName($"{label}, {count}")
             .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2)
             .AutomationId("SessionsHubGroup:" + (group.IsUngrouped ? "(none)" : group.Id));
-        var canManage = state.GroupBy == SessionsGroupBy.Category && !group.IsUngrouped;
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                header.Grid(column: 0),
-                canManage
-                    ? SessionsHubView.IconButton(FluentIconCatalog.MoreOverflow, F("GroupOptions", label), () => { },
-                            automationId: "SessionsHubGroupMenu:" + group.Id)
-                        .WithFlyout(MenuItems(SessionsHubMenus.GroupHeaderMenu(context, group.Id)))
-                        .Grid(column: 1)
-                    : Empty())
-            .Margin(0, 12, 0, 4);
+        return header.Margin(0, 12, 0, 4);
     }
 
     /// <summary>The hue a group header wears; null keeps it neutral (dates, people, ungrouped).</summary>
