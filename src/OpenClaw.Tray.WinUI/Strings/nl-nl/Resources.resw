@@ -9910,6 +9910,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Tooldetails</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Deze details zijn niet meer beschikbaar. Maak indien nodig opnieuw verbinding en open de tool opnieuw vanuit het huidige gesprek.</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>Formaat van detailpaneel wijzigen</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Gebruik de pijltoetsen links en rechts om het formaat te wijzigen. Home kiest de minimale breedte; End kiest de maximale breedte.</value></data>
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Details weergeven</value></data>
 </root>

@@ -9962,6 +9962,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Detalhes da ferramenta</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Estes detalhes não estão mais disponíveis. Reconecte-se, se necessário, e reabra a ferramenta na conversa atual.</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionar painel de detalhes</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Use as setas para a esquerda e para a direita para redimensionar. Home seleciona a largura mínima; End seleciona a largura máxima.</value></data>
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Voltar à conversa</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar detalhes</value></data>
 </root>

@@ -1122,9 +1122,24 @@ Expanded tool cards show input and output without visible section headings.
 A one-pixel `ChatStrokeBrush` line separates them only when both are present.
 The sections retain 12,8 padding, selectable monospace text and accessible
 input/output/error names. The existing outcome footer keeps its own divider.
+An available side-panel action stays inside this card: commands use an
+8px-top/6px-right overlay and 58px first-section right inset, while generic tools
+pair the supplied preview with the action in an internal header above a divider.
+Its glyph shares Copy's 14px `ChatVisuals.ActionIconSize`; command/touch targets
+remain 40px and other targets 28px. Command first sections are at least 56px tall,
+without introducing a separate header row.
 
-Tool input uses native primary ink with syntax accents; output uses
-`ChatSecondaryTextBrush`, not reduced element opacity. PowerShell commands and
+Tool input uses native primary ink with syntax accents. Generic output and
+errors use `ChatTextBrush`. Command output uses `ChatCommandOutputBrush`: the
+native primary color with opacity derived from an 82% primary / 18% secondary
+alpha blend, not reduced element opacity. The Light ratio is
+`(0.82*228 + 0.18*158)/228`; Dark is `(0.82*255 + 0.18*197)/255`.
+HC keeps full system window text. `ChatToolActionHoverBrush` uses native
+`SubtleFillColorSecondary` at 70% for pointer hover and keyboard focus;
+`ChatToolActionHoverForegroundBrush` uses primary text. HC substitutes the
+system highlight/highlight-text pair at full opacity. These native mappings
+preserve the web hierarchy without importing its literal palette.
+PowerShell commands and
 JSON arguments use the following chat-local syntax resources. Unrecognized
 languages remain literal primary text. All syntax resources map to system
 window text in high contrast.

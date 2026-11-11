@@ -27,6 +27,10 @@ internal static class ToolCallCardRenderer
     private const int LiveHeadlineMilliseconds = 160;
     private const double ToolDetailsActionSize = 28;
     private const double ToolDetailsCommandActionSize = 40;
+    private const double ToolDetailsActionTopInset = 8;
+    private const double ToolDetailsActionRightInset = 6;
+    private const double ToolDetailsCommandTextInset = ToolDetailsCommandActionSize + 18;
+    private const double ToolDetailsCommandMinHeight = ToolDetailsCommandActionSize + 2 * ToolDetailsActionTopInset;
 
     private static readonly ConditionalWeakTable<Expander, ActivityExpanderBinding>
         s_activityBindings = new();
@@ -44,9 +48,8 @@ internal static class ToolCallCardRenderer
         bool showChevron = false, Action<bool>? onHeaderHover = null, Action<bool>? onHeaderFocus = null,
         Action? onExpansionChanged = null, IReadOnlyList<ChatToolCallNode>? children = null)
     {
-        var details = BuildDetails(entry, recovered);
-        var hasDetails = details.Count > 0 || entry.ToolResultReference?.IsTruncated == true ||
-            props.OnOpenToolDetails is not null;
+        var details = BuildDetails(entry, recovered, reserveActionSpace: IsCommand(entry));
+        var hasDetails = details.Count > 0 || entry.ToolResultReference?.IsTruncated == true;
         var toolName = string.IsNullOrWhiteSpace(entry.ToolName)
             ? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool")
             : entry.ToolName;
@@ -80,9 +83,10 @@ internal static class ToolCallCardRenderer
                 .WithKey("preview"),
             inlineStatus,
             onHeaderHover);
-        Element body = Component<ToolDetailsBody, ToolDetailsBodyProps>(
-            new(props, entry, VStack(4, BuildDetailsCard(details), recovery.WithKey("recovery"))))
-            .Margin(0, 2, 0, 6);
+        Element body = hasDetails
+            ? Component<ToolDetailsBody, ToolDetailsBodyProps>(new(props, entry, details, recovery))
+                .Margin(0, 2, 0, 6)
+            : Empty();
         // Web wrapper rows list their nested calls first, then their own input behind "Tool input".
         // Nested rows exist only while the wrapper is expanded.
         if (children is { Count: > 0 })
@@ -224,7 +228,7 @@ internal static class ToolCallCardRenderer
             });
 
     private sealed record ToolDetailsBodyProps(
-        ChatTimelinePresentationContext Context, ChatTimelineItem Entry, Element Content);
+        ChatTimelinePresentationContext Context, ChatTimelineItem Entry, List<Element> Details, Element Recovery);
 
     private sealed class ToolDetailsBody : Component<ToolDetailsBodyProps>
     {
@@ -232,45 +236,83 @@ internal static class ToolCallCardRenderer
         {
             var (hovered, setHovered) = UseState(false);
             var (focused, setFocused) = UseState(false);
+            var (actionFocused, setActionFocused) = UseState(false);
             var entry = Props.Entry;
             var context = Props.Context;
-            var command = ChatToolActivityPresentation.Classify(entry.ToolName, entry.ToolArgs) == ChatToolActivityCategory.Command;
+            var command = IsCommand(entry);
             var touch = new TouchCapabilities().TouchPresent != 0;
-            Element? action = null;
-            if (context.OnOpenToolDetails is { } open && context.SessionId is { } session)
-            {
-                var request = ChatToolDetailRequest.Capture(
-                    session, context.TimelineGeneration, context.HistoryRevision, entry);
-                var label = LocalizationHelper.GetString("Chat_Panel_OpenDetails");
-                var size = command || touch ? ToolDetailsCommandActionSize : ToolDetailsActionSize;
-                action = Button(
-                        TextBlock(FluentIconCatalog.OpenPane)
-                            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                            .FontSize(16)
-                            .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
-                            .Set(text => text.IsTextScaleFactorEnabled = false),
-                        () => open(request))
-                    .SubtleButton()
-                    .Resources(ChatVisuals.ToolbarButtonResources)
-                    .Width(size).Height(size).MinWidth(size).MinHeight(size).Padding(4)
-                    .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
-                    .AutomationId($"ChatToolDetails_{SanitizeAutomationId(entry.Id)}")
-                    .AutomationName(label)
-                    .ToolTip(label)
-                    .HAlign(HorizontalAlignment.Right)
-                    // Opacity preserves keyboard access and layout while pointer/focus reveals the command action.
-                    .Opacity(!command || hovered || focused || touch ? 1 : 0);
-            }
-            return Border(VStack(4, (action ?? Empty()).WithKey("open-details"), Props.Content.WithKey("content")))
+            var canOpen = context.OnOpenToolDetails is not null && context.SessionId is not null;
+            var label = LocalizationHelper.GetString("Chat_Panel_OpenDetails");
+            var size = command || touch ? ToolDetailsCommandActionSize : ToolDetailsActionSize;
+            var action = Button(
+                    TextBlock(FluentIconCatalog.OpenPane)
+                        .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                        .FontSize(ChatVisuals.ActionIconSize)
+                        .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                        .Set(text => text.IsTextScaleFactorEnabled = false),
+                    () =>
+                    {
+                        if (context.OnOpenToolDetails is { } open && context.SessionId is { } session)
+                            open(ChatToolDetailRequest.Capture(
+                                session, context.TimelineGeneration, context.HistoryRevision, entry));
+                    })
+                .SubtleButton()
+                .Resources(resources =>
+                {
+                    ChatVisuals.ToolbarButtonResources(resources);
+                    resources.Set("ButtonBackgroundPointerOver", Theme.Ref("ChatToolActionHoverBrush"))
+                        .Set("ButtonForegroundPointerOver", Theme.Ref("ChatToolActionHoverForegroundBrush"))
+                        .Set("ButtonForegroundPressed", Theme.Ref("ChatTextBrush"));
+                })
+                .Width(size).Height(size).MinWidth(size).MinHeight(size).Padding(4)
+                .BorderThickness(0)
+                .Background(Theme.Ref(actionFocused ? "ChatToolActionHoverBrush" : "SubtleFillColorTransparentBrush"))
+                .Foreground(Theme.Ref(actionFocused ? "ChatToolActionHoverForegroundBrush" : "ChatSecondaryTextBrush"))
+                .OnGotFocus((_, _) => setActionFocused(true))
+                .OnLostFocus((_, _) => setActionFocused(false))
+                .AutomationId($"ChatToolDetails_{SanitizeAutomationId(entry.Id)}")
+                .AutomationName(label)
+                .ToolTip(label)
+                .IsEnabled(canOpen)
+                .IsVisible(canOpen)
+                .HAlign(HorizontalAlignment.Right)
+                // Opacity preserves keyboard access and layout while pointer/focus reveals the command action.
+                .Opacity(!command || hovered || focused || touch ? 1 : 0);
+            var title = ToolPreview(entry);
+            if (string.IsNullOrWhiteSpace(title))
+                title = entry.ToolName ?? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool");
+            // Availability only changes actions, never the reader's parent or command text inset.
+            var content = Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                VStack(0, Props.Details.ToArray()).WithKey("sections").Grid(row: command ? 0 : 2),
+                command
+                    ? action.VAlign(VerticalAlignment.Top)
+                        .Margin(0, ToolDetailsActionTopInset, ToolDetailsActionRightInset, 0)
+                        .Grid(row: 0).WithKey("open-details")
+                    : Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        TextBlock(title).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
+                            .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                            .VAlign(VerticalAlignment.Center).Grid(column: 0),
+                        action.Grid(column: 1).WithKey("open-details"))
+                        .Margin(ChatVisuals.DetailHorizontalInset, 4, ToolDetailsActionRightInset, 4)
+                        .IsVisible(canOpen).Grid(row: 0)
+                        .AutomationId("ChatToolDetailsHeader").WithKey("detail-header"),
+                !command && canOpen
+                    ? Border(Empty()).Height(1).Background(Theme.Ref("ChatStrokeBrush"))
+                        .AccessibilityView(AccessibilityView.Raw).Grid(row: 1).WithKey("detail-header-divider")
+                    : Empty())
+                .MinHeight(command ? ToolDetailsCommandMinHeight : 0);
+            var card = BuildDetailsCard(content)
+                .AutomationId($"ChatToolDetailsCard_{SanitizeAutomationId(entry.Id)}")
                 .OnPointerEntered((_, _) => setHovered(true))
                 .OnPointerExited((_, _) => setHovered(false))
                 .OnGotFocus((_, _) => setFocused(true))
                 .OnLostFocus((_, _) => setFocused(false));
+            return VStack(4, card, Props.Recovery.WithKey("recovery"));
         }
     }
 
     private static List<Element> BuildDetails(
-        ChatTimelineItem entry, ChatToolOutputResult? recovered, bool panel = false)
+        ChatTimelineItem entry, ChatToolOutputResult? recovered, bool panel = false, bool reserveActionSpace = false)
     {
         var details = new List<Element>();
         var fullInput = entry.ToolName == "sessions_yield" ? null : entry.ToolInputDetails;
@@ -285,14 +327,14 @@ internal static class ToolCallCardRenderer
         {
             details.Add(BuildDetailSection(
                 LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
-                displayArgs, entry, panel).WithKey("input"));
+                displayArgs, entry, panel, reserveActionSpace: reserveActionSpace).WithKey("input"));
         }
         else if (entry.ToolName != "sessions_yield" && !string.IsNullOrWhiteSpace(entry.Text) &&
             !string.Equals(entry.Text, entry.ToolName, StringComparison.Ordinal))
         {
             details.Add(BuildDetailSection(
                 LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
-                entry.Text, entry, panel).WithKey("input"));
+                entry.Text, entry, panel, reserveActionSpace: reserveActionSpace).WithKey("input"));
         }
 
         var output = recovered?.Output ?? entry.ToolOutput;
@@ -309,7 +351,8 @@ internal static class ToolCallCardRenderer
                     entry.ToolResult == ChatToolCallStatus.Error
                         ? "Tool error"
                         : "Tool output"),
-                output, panel: panel).WithKey("output"));
+                output, panel: panel, commandOutput: IsCommand(entry),
+                reserveActionSpace: reserveActionSpace && details.Count == 0).WithKey("output"));
         }
 
         // Inline and panel readers share the sanitized input, literal output and outcome.
@@ -337,7 +380,10 @@ internal static class ToolCallCardRenderer
     private static Element BuildDetailsCard(List<Element> details) =>
         details.Count == 0
             ? Empty()
-            : Border(VStack(0, details.ToArray()))
+            : BuildDetailsCard(VStack(0, details.ToArray()));
+
+    private static BorderElement BuildDetailsCard(Element content) =>
+        Border(content)
                 .CornerRadius(ChatVisuals.SurfaceRadius)
                 .BorderThickness(1)
                 .BorderBrush(Theme.Ref("ChatStrokeBrush"))
@@ -345,15 +391,18 @@ internal static class ToolCallCardRenderer
                 .WithKey("details-card");
 
     private static Element BuildDetailSection(
-        string label, string content, ChatTimelineItem? input = null, bool panel = false)
+        string label, string content, ChatTimelineItem? input = null, bool panel = false,
+        bool commandOutput = false, bool reserveActionSpace = false)
     {
         var body = RichTextBlock(content)
             .Set(text =>
             {
                 // Reactor pools RichTextBlocks without clearing Markdown highlighters.
                 text.TextHighlighters.Clear();
+                text.ClearValue(Microsoft.UI.Xaml.Controls.RichTextBlock.ForegroundProperty);
+                text.ClearValue(UIElement.OpacityProperty);
                 text.Style = (Style)Application.Current.Resources[
-                    input is null ? "ChatSecondaryRichTextStyle" : "ChatRichTextStyle"];
+                    commandOutput ? "ChatCommandOutputRichTextStyle" : "ChatRichTextStyle"];
                 text.TextWrapping = TextWrapping.Wrap;
                 text.FontSize = 12;
                 text.FontWeight = FontWeights.Normal;
@@ -370,8 +419,14 @@ internal static class ToolCallCardRenderer
                     scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
                 })
                 .MaxHeight(240))
-            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset);
+            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset,
+                reserveActionSpace ? ToolDetailsCommandTextInset : ChatVisuals.DetailHorizontalInset,
+                ChatVisuals.DetailVerticalInset)
+            .MinHeight(reserveActionSpace ? ToolDetailsCommandMinHeight : 0);
     }
+
+    private static bool IsCommand(ChatTimelineItem entry) =>
+        ChatToolActivityPresentation.Classify(entry.ToolName, entry.ToolArgs) == ChatToolActivityCategory.Command;
 
     private static string FormatToolDisplayArgs(System.Text.Json.Nodes.JsonObject args)
     {

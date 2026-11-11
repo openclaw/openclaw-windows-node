@@ -213,6 +213,7 @@ internal static class ChatVisuals
     internal const double TurnGap = 4;
     internal const double DetailHorizontalInset = 12;
     internal const double DetailVerticalInset = 8;
+    internal const double ActionIconSize = 14;
     internal const double ToolRowMinHeight = 32;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;

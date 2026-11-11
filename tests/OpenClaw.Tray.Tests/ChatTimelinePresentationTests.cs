@@ -1347,7 +1347,11 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains(".BorderThickness(1)", card);
         Assert.Contains(".BorderBrush(Theme.Ref(\"ChatStrokeBrush\"))", card);
         Assert.Contains(".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))", card);
-        Assert.DoesNotContain(".ToolTip(", renderer);
+        // Disclosure rows have no hover tooltip; the separate panel-open icon does.
+        var actionStart = renderer.IndexOf("private sealed class ToolDetailsBody", StringComparison.Ordinal);
+        var actionEnd = renderer.IndexOf("private static List<Element> BuildDetails", actionStart, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ToolTip(", renderer[..actionStart] + renderer[actionEnd..]);
+        Assert.Contains(".ToolTip(label)", renderer[actionStart..actionEnd]);
     }
 
     [Fact]
@@ -1871,7 +1875,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
-        Assert.Contains(".Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)", renderer);
+        Assert.Contains(".Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset,", renderer);
+        Assert.Contains("reserveActionSpace ? ToolDetailsCommandTextInset : ChatVisuals.DetailHorizontalInset", renderer);
         Assert.Contains("var body = RichTextBlock(content)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);

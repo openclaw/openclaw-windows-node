@@ -83,15 +83,21 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var panel = Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
                 tabStrip.Grid(row: 0),
                 Grid([GridSize.Star()], [GridSize.Star()], bodies).Grid(row: 1))
-            .Background(Theme.Ref("LayerFillColorDefaultBrush"))
+            .Background(Theme.Ref("ChatCanvasBrush"))
             .AutomationId("ConversationPanel")
             .IsVisible(presented)
-            .Set(control => focus.Current?.Update(control, narrow, presented, () => setShowCompact(!showCompact)))
+            .Set(control =>
+            {
+                control.Style = (Style)Application.Current.Resources["ChatCanvasStyle"];
+                control.ClearValue(Microsoft.UI.Xaml.Controls.Panel.BackgroundProperty);
+                focus.Current?.Update(control, narrow, presented, () => setShowCompact(!showCompact));
+            })
             .WithKey("conversation-panel");
         var panelWidth = open && !narrow ? state.EffectiveWidth(width) : 0;
         var resize = Button(
                 Border(null).Background(Theme.Ref("ControlStrokeColorDefaultBrush")).Width(4).Height(40), () => { })
             .AutomationName(Text("Resize"))
+            .HelpText(Text("ResizeHelp"))
             .AutomationId("ConversationPanelResize")
             .ToolTip(Text("Resize"))
             .Resources(ChatVisuals.ToolbarButtonResources)
@@ -117,6 +123,15 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     .IsVisible(conversationVisible)
                     .Set(control => focus.Current?.SetConversation(control))
                     .Grid(row: 1),
+                Border(Empty()).Width(1)
+                    .Background(Theme.Ref("DividerStrokeColorDefaultBrush"))
+                    .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Stretch)
+                    .IsHitTestVisible(false)
+                    .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                    .AutomationId("ConversationPanelDivider")
+                    .IsVisible(open && !narrow)
+                    .WithKey("conversation-panel-divider")
+                    .Grid(column: 1, row: 1),
                 resize.Grid(column: 1, row: 1),
                 panel.Grid(column: narrow ? 0 : 2, row: 1))
             .OnMount(control =>
@@ -183,7 +198,8 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             _presented = presented;
             _selected = _state.Selected;
             _openVersion = _state.OpenVersion;
-            panel.TabFocusNavigation = narrow ? KeyboardNavigationMode.Cycle : KeyboardNavigationMode.Local;
+            panel.TabFocusNavigation = KeyboardNavigationMode.Local;
+            _root.TabFocusNavigation = narrow && presented ? KeyboardNavigationMode.Cycle : KeyboardNavigationMode.Local;
         }
 
         private void QueueFocus(Func<Control?> target, Func<Control?>? fallback = null)

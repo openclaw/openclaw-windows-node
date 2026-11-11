@@ -9909,6 +9909,7 @@
   <data name="Chat_Panel_Details" xml:space="preserve"><value>工具详情</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>这些详情已不可用。如有需要，请重新连接，然后从当前对话重新打开工具。</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>调整详情面板大小</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向键调整大小。Home 键选择最小宽度；End 键选择最大宽度。</value></data>
   <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>显示详情</value></data>
 </root>

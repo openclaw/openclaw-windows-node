@@ -13,6 +13,47 @@ namespace OpenClaw.Tray.UITests;
 public sealed partial class ReactorChatLayoutProofTests
 {
     [Theory]
+    [InlineData(FocusNavigationDirection.Next)]
+    [InlineData(FocusNavigationDirection.Previous)]
+    public async Task DetailsSlot_CompactTabTraversalIncludesBackAndExcludesHiddenConversation(
+        FocusNavigationDirection direction)
+    {
+        await WithChatAsync(480, async (surface, _, _, provider) =>
+        {
+            await PublishPanelToolAsync(provider, "Tool output");
+            await OpenPanelToolAsync(surface);
+            await ui.RunOnUIAsync(async () =>
+            {
+                var panel = FindControl<Grid>(surface, "ConversationPanel");
+                var back = FindControl<Button>(surface, "ConversationPanelToggle");
+                var conversation = FindControl<Border>(surface, "ChatConversation");
+                Assert.Equal(Visibility.Collapsed, conversation.Visibility);
+                var tab = Assert.IsType<TabViewItem>(FindControl<TabView>(panel, "ConversationPanelTabs").TabItems[0]);
+                Assert.True(tab.Focus(FocusState.Keyboard));
+                var reachedBack = false;
+                for (var step = 0; step < 32; step++)
+                {
+                    var move = await FocusManager.TryMoveFocusAsync(direction, new FindNextElementOptions { SearchRoot = surface });
+                    Assert.True(move.Succeeded);
+                    var focused = Assert.IsAssignableFrom<DependencyObject>(FocusManager.GetFocusedElement(surface.XamlRoot));
+                    Assert.DoesNotContain(focused, FindDescendants<DependencyObject>(conversation));
+                    if (ReferenceEquals(back, focused))
+                    {
+                        reachedBack = true;
+                        break;
+                    }
+                    Assert.Contains(focused, FindDescendants<DependencyObject>(panel));
+                }
+                Assert.True(reachedBack, "Tab traversal must leave the panel's inner focus scope to reach Back.");
+                var next = await FocusManager.TryMoveFocusAsync(direction, new FindNextElementOptions { SearchRoot = surface });
+                Assert.True(next.Succeeded);
+                Assert.Contains(FocusManager.GetFocusedElement(surface.XamlRoot),
+                    FindDescendants<DependencyObject>(panel));
+            });
+        });
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task DetailsSlot_CompactVisibilityCancelsSyntheticCapture(bool resizeIntoCompact)
@@ -166,7 +207,10 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             var snapshot = await provider.LoadAsync();
             var first = new ChatTimelineItem("one", ChatTimelineItemKind.ToolCall, "read first",
-                ToolName: toolName, ToolCallId: "call-one", ToolRunId: "run", ToolOutput: "First tool output");
+                ToolName: toolName, ToolCallId: "call-one", ToolRunId: "run", ToolOutput: "First tool output",
+                ToolInputDetails: toolName == "powershell"
+                    ? new("", "Write-Output '" + string.Concat(Enumerable.Repeat("literal output ", 12)) + "'\n# second line")
+                    : null);
             var second = first with { Id = "two", Text = "read second", ToolCallId = "call-two", ToolOutput = "Second tool output" };
             provider.Publish(snapshot with
             {
@@ -191,14 +235,48 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 var open = FindControl<Button>(surface, "ChatToolDetails_one");
                 Assert.Equal("\uE8A0", Assert.IsType<TextBlock>(open.Content).Text);
+                var copy = FindDescendants<Button>(surface).First(button =>
+                    AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal));
+                Assert.Equal(14, Assert.IsType<TextBlock>(copy.Content).FontSize);
+                Assert.Equal(Assert.IsType<TextBlock>(copy.Content).FontSize,
+                    Assert.IsType<TextBlock>(open.Content).FontSize);
                 Assert.Equal(AutomationProperties.GetName(open), ToolTipService.GetToolTip(open));
                 var touch = new Windows.Devices.Input.TouchCapabilities().TouchPresent != 0;
                 Assert.Equal(toolName == "powershell" && !touch ? 0d : 1d, open.Opacity);
                 var expander = FindControl<Expander>(surface, "ChatToolCall_one");
-                Assert.InRange(Bounds(expander, surface).Right - Bounds(open, surface).Right, 0, 48);
+                var card = FindControl<Border>(expander, "ChatToolDetailsCard_one");
+                var cardBounds = Bounds(card, surface);
+                var actionBounds = Bounds(open, surface);
+                Assert.True(actionBounds.Left >= cardBounds.Left && actionBounds.Right <= cardBounds.Right);
+                Assert.True(actionBounds.Top >= cardBounds.Top && actionBounds.Bottom <= cardBounds.Bottom);
+                Assert.Equal(toolName == "powershell" || touch ? 40 : 28, open.ActualWidth);
+                Assert.Equal(open.ActualWidth, open.ActualHeight);
                 var input = FindDescendants<RichTextBlock>(expander).First();
-                Assert.True(Bounds(open, surface).Bottom <= Bounds(input, surface).Top + 1,
-                    "The action must sit above the tool text without covering it.");
+                var inputBounds = Bounds(input, surface);
+                if (toolName == "powershell")
+                {
+                    Assert.InRange(actionBounds.Top - cardBounds.Top, 8, 10);
+                    Assert.InRange(cardBounds.Right - actionBounds.Right, 6, 8);
+                    Assert.InRange(inputBounds.Top - cardBounds.Top, 8, 10);
+                    Assert.True(inputBounds.Top < actionBounds.Bottom,
+                        "Command input starts beside the overlay, not below an extra header row.");
+                    Assert.True(inputBounds.Right <= actionBounds.Left - 10,
+                        "Reserved input space keeps selectable command text clear of the overlay.");
+                    Assert.DoesNotContain(FindDescendants<Grid>(card), grid =>
+                        AutomationProperties.GetAutomationId(grid) == "ChatToolDetailsHeader");
+                }
+                else
+                {
+                    var header = FindControl<Grid>(card, "ChatToolDetailsHeader");
+                    var title = FindDescendants<TextBlock>(header).Single(text => !ReferenceEquals(text, open.Content));
+                    Assert.False(string.IsNullOrWhiteSpace(title.Text));
+                    Assert.True(Bounds(title, surface).Right <= actionBounds.Left);
+                    Assert.True(Bounds(header, surface).Top >= cardBounds.Top);
+                    Assert.True(inputBounds.Top > Bounds(header, surface).Bottom);
+                    Assert.Contains(FindDescendants<Border>(card), border => border.Height == 1 &&
+                        Bounds(border, surface).Top >= Bounds(header, surface).Bottom &&
+                        Bounds(border, surface).Bottom <= inputBounds.Top);
+                }
                 Assert.True(open.Focus(FocusState.Keyboard));
             });
             await SettleAsync();
@@ -206,6 +284,16 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 var open = FindControl<Button>(surface, "ChatToolDetails_one");
                 Assert.Equal(1d, open.Opacity);
+                Assert.Equal(new Thickness(0), open.BorderThickness);
+                var foreground = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(open.Foreground);
+                var pointerForeground = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(
+                    open.Resources["ButtonForegroundPointerOver"]);
+                Assert.Equal(pointerForeground.Color, foreground.Color);
+                var background = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(open.Background);
+                var pointerBackground = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(
+                    open.Resources["ButtonBackgroundPointerOver"]);
+                Assert.Equal(pointerBackground.Color, background.Color);
+                Assert.Equal(pointerBackground.Opacity, background.Opacity);
             });
             await CaptureAsync(surface, $"ConversationDetailsAction-{toolName}-{width}");
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatToolDetails_one")));
@@ -215,7 +303,36 @@ public sealed partial class ReactorChatLayoutProofTests
                 var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
                 Assert.Single(tabs.TabItems);
                 Assert.Equal(0, tabs.SelectedIndex);
-                Assert.Equal(Visibility.Visible, FindControl<Grid>(surface, "ConversationPanel").Visibility);
+                var panel = FindControl<Grid>(surface, "ConversationPanel");
+                Assert.Equal(Visibility.Visible, panel.Visibility);
+                var conversation = FindControl<Border>(surface, "ChatConversation");
+                var canvas = Assert.IsType<Grid>(conversation.Child);
+                var conversationFill = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(canvas.Background);
+                var panelFill = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(panel.Background);
+                Assert.Equal(conversationFill.Color, panelFill.Color);
+                Assert.Equal(conversationFill.Opacity, panelFill.Opacity);
+                if (Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") != "HighContrast")
+                    Assert.Equal(0, panelFill.Color.A);
+                var divider = FindControl<Border>(surface, "ConversationPanelDivider");
+                Assert.False(divider.IsHitTestVisible);
+                Assert.Equal(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw,
+                    AutomationProperties.GetAccessibilityView(divider));
+                Assert.Equal(width < 652 ? Visibility.Collapsed : Visibility.Visible, divider.Visibility);
+                if (width >= 652)
+                {
+                    var separatorBounds = Bounds(divider, surface);
+                    var panelBounds = Bounds(panel, surface);
+                    Assert.InRange(separatorBounds.Width, 0.5, 1.5);
+                    Assert.InRange(separatorBounds.Top - panelBounds.Top, -1, 1);
+                    Assert.InRange(separatorBounds.Bottom - panelBounds.Bottom, -1, 1);
+                    Assert.True(separatorBounds.Left >= Bounds(conversation, surface).Right);
+                    Assert.True(separatorBounds.Right <= panelBounds.Left);
+                    var resize = FindControl<Button>(surface, "ConversationPanelResize");
+                    Assert.Equal(12, resize.Width);
+                    Assert.Equal(
+                        "Use Left and Right arrow keys to resize. Home selects the minimum width; End selects the maximum width.",
+                        new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(resize).GetHelpText());
+                }
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal(Draft, composer!.Text);
                 if (width < 652) Invoke(FindControl<Button>(surface, "ConversationPanelToggle"));
@@ -252,6 +369,8 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Empty(FindControl<TabView>(surface, "ConversationPanelTabs").TabItems);
+                Assert.Equal(Visibility.Collapsed,
+                    FindControl<Border>(surface, "ConversationPanelDivider").Visibility);
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal(Draft, composer!.Text);
                 Assert.Same(FindControl<Button>(surface, "ChatToolDetails_two"),
