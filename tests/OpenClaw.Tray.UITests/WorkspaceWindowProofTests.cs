@@ -133,13 +133,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(selector.Current.IsEnabled);
         var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
         dropdown.Expand();
-        await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window =>
-            window.FindFirst(TreeScope.Descendants, new PropertyCondition(
-                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
-        var entry = ProcessWindows(pid).Cast<AutomationElement>()
-            .Select(window => window.FindFirst(TreeScope.Descendants, new PropertyCondition(
-                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")))
-            .First(item => item is not null)!;
+        var entry = await WaitForPopupAsync(pid, "WorkspaceNewAgent");
         Assert.Equal("New agent", entry.Current.Name);
         Assert.True(entry.Current.IsEnabled);
         dropdown.Collapse();
@@ -209,9 +203,9 @@ public sealed class WorkspaceWindowProofTests
         AssertIconCenter(selectorBounds, center, color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145);
         AssertIconCenter(homeBounds, center, color => color.B > color.R + 70 && color.B > color.G + 50);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceAgent:research") is not null);
+        var researchEntry = await WaitForPopupAsync(root, "WorkspaceAgent:research");
         Assert.Equal("Configured assistant, main", FindPopup(root, "WorkspaceAgent:main")!.Current.Name);
-        Assert.Equal("Research assistant, research", FindPopup(root, "WorkspaceAgent:research")!.Current.Name);
+        Assert.Equal("Research assistant, research", researchEntry.Current.Name);
         Assert.Equal("No configured icon, fallback", FindPopup(root, "WorkspaceAgent:fallback")!.Current.Name);
         Assert.NotNull(FindPopup(root, "WorkspaceNewAgent"));
         await Task.Delay(500);
@@ -231,10 +225,9 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceNewAgent") is not null);
-        ((SelectionItemPattern)FindPopup(root, "WorkspaceNewAgent")!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-        await WaitUntilAsync(() => FindPopup(root, "AgentCreationDialog") is not null);
-        var creation = FindPopup(root, "AgentCreationDialog")!;
+        var newAgentEntry = await WaitForPopupAsync(root, "WorkspaceNewAgent");
+        ((SelectionItemPattern)newAgentEntry.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        var creation = await WaitForPopupAsync(root, "AgentCreationDialog");
         Assert.NotNull(creation.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "AgentCreationName")));
         Assert.Contains("operator.admin", string.Join(" ", creation.FindAll(TreeScope.Descendants,
@@ -283,15 +276,15 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal("Owner", Find(root, "WorkspaceOwner").Current.Name);
         Assert.Equal("Disconnected", Find(root, "WorkspaceOwner").Current.HelpText);
         // Shorter account menu: profile, Gateway submenu, Settings, Pair a device, Help & about.
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerGateway") is not null);
+        var ownerMenu = await WaitForPopupAsync(root, "WorkspaceOwnerGateway");
         foreach (var id in new[] { "WorkspaceOwnerProfile", "WorkspaceOwnerSettings", "WorkspaceOwnerPairDevice", "WorkspaceOwnerHelp" })
             Assert.NotNull(FindPopup(root, id));
-        Assert.Equal("Disconnected", FindPopup(root, "WorkspaceOwnerGateway")!.Current.HelpText);
+        Assert.Equal("Disconnected", ownerMenu.Current.HelpText);
         Assert.False(FindPopup(root, "WorkspaceOwnerProfile")!.Current.IsEnabled);
         Assert.Null(FindPopup(root, "WorkspaceOwnerConnectionStatus"));
         CaptureFlyout(root, theme, "owner-account-menu");
-        await ExpandOwnerGatewayMenuAsync(root);
-        Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
+        var statusFromMenu = await ExpandOwnerGatewayMenuAsync(root);
+        Assert.Equal("Connection Status: Disconnected", statusFromMenu.Current.Name);
         CaptureFlyout(root, theme, "owner-live-status");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
@@ -402,23 +395,43 @@ public sealed class WorkspaceWindowProofTests
         var forwardAfterForward = await WaitForSettingsForwardAsync("PermissionsPageMarker", expectedEnabled: false);
         Assert.False(forwardAfterForward.Current.IsEnabled);
 
-        AutomationElement? SearchBox() => ProcessWindows(root.Current.ProcessId).Cast<AutomationElement>()
-            .Select(window => window.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsSearchBox")))
-            .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
-        async Task<AutomationElement> WaitForSearchInputAsync()
+        AutomationElement? SearchBox() => FindPopupForPid(root.Current.ProcessId, "SettingsSearchBox");
+
+        // Keep the element the successful poll produced. A separate lookup after the wait races the
+        // popup's creation and its transient offscreen state, and comes back null instead of retrying.
+        async Task<AutomationElement> WaitForSearchBoxAsync()
         {
-            AutomationElement? observedInput = null;
-            // Retain the successful observation rather than racing another UIA tree lookup.
-            await WaitUntilAsync(() => (observedInput = SearchBox()) is not null);
-            var readyInput = observedInput!;
-            Assert.Equal(ControlType.Edit, readyInput.Current.ControlType);
-            await WaitUntilAsync(() => readyInput.Current.HasKeyboardFocus);
-            return readyInput;
+            AutomationElement? ready = null;
+            await WaitUntilAsync(() =>
+            {
+                try
+                {
+                    return (ready = SearchBox()) is { } found && found.Current.ControlType == ControlType.Edit;
+                }
+                catch (ElementNotAvailableException) { return false; }
+            });
+            return ready!;
+        }
+
+        // One fresh lookup per poll, so a box replaced between appearing and taking focus is retried
+        // instead of leaving the wait bound to a dead element.
+        async Task<AutomationElement> WaitForFocusedSearchBoxAsync()
+        {
+            AutomationElement? ready = null;
+            await WaitUntilAsync(() =>
+            {
+                try
+                {
+                    return (ready = SearchBox()) is { } found &&
+                        found.Current.ControlType == ControlType.Edit && found.Current.HasKeyboardFocus;
+                }
+                catch (ElementNotAvailableException) { return false; }
+            });
+            return ready!;
         }
 
         await InvokeWhenEnabledAsync(root, "SettingsSearch");
-        var input = await WaitForSearchInputAsync();
+        var input = await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
@@ -436,13 +449,13 @@ public sealed class WorkspaceWindowProofTests
             .All(item => item.Current.BoundingRectangle.Top >= toggle.Bottom));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
-        await WaitForSearchInputAsync();
+        await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Assert.True(IsVisible(root, "SettingsPageMarker"));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitForSearchInputAsync();
+        await WaitForSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Invoke(Find(root, "SettingsTogglePane"));
@@ -454,7 +467,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitForSearchInputAsync();
+        await WaitForSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
@@ -512,8 +525,8 @@ public sealed class WorkspaceWindowProofTests
 
         // The status pill's card is reached from the account menu's Gateway submenu status row.
         Invoke(Find(root, "SettingsOwner"));
-        await ExpandOwnerGatewayMenuAsync(root);
-        Invoke(FindPopup(root, "WorkspaceOwnerConnectionStatus")!);
+        var settingsStatusRow = await ExpandOwnerGatewayMenuAsync(root);
+        Invoke(settingsStatusRow);
         await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is not null);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is null);
@@ -955,21 +968,21 @@ public sealed class WorkspaceWindowProofTests
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is null);
         Invoke(Find(root, "WorkspaceOwner"));
-        await ExpandOwnerGatewayMenuAsync(root);
-        Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
-        Invoke(FindPopup(root, "WorkspaceOwnerConnectionStatus")!);
-        await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is not null);
+        var chatStatusRow = await ExpandOwnerGatewayMenuAsync(root);
+        Assert.Equal("Connection Status: Disconnected", chatStatusRow.Current.Name);
+        Invoke(chatStatusRow);
+        var gatewayStatusOpen = await WaitForPopupAsync(root, "GatewayStatusOpenConnection");
         Assert.Equal(composerId, Find(root, "ChatComposerInput").GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         CaptureFlyout(root, theme, "owner-connection-status");
-        Invoke(FindPopup(root, "GatewayStatusOpenConnection")!);
+        Invoke(gatewayStatusOpen);
         await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
         Invoke(Find(root, "SettingsBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Invoke(Find(root, "WorkspaceNotifications"));
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is not null);
-        Invoke(FindPopup(root, "WorkspaceNotificationsOpenPage")!);
+        var notificationsOpenPage = await WaitForPopupAsync(root, "WorkspaceNotificationsOpenPage");
+        Invoke(notificationsOpenPage);
         await WaitUntilAsync(() => IsVisible(root, "NotificationsPageMarker"));
         Invoke(Find(root, "WorkspaceBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
@@ -1033,10 +1046,7 @@ public sealed class WorkspaceWindowProofTests
         var dropdown = (ExpandCollapsePattern)Find(workspaceElement, "WorkspaceAssistantSelector")
             .GetCurrentPattern(ExpandCollapsePattern.Pattern);
         dropdown.Expand();
-        await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
-        var newAgent = ProcessWindows(pid).Cast<AutomationElement>().Select(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewAgent"))).First(item => item is not null)!;
+        var newAgent = await WaitForPopupAsync(pid, "WorkspaceNewAgent");
         Assert.Equal("New agent", newAgent.Current.Name);
         Assert.True(newAgent.Current.IsEnabled);
         dropdown.Collapse();
@@ -1142,10 +1152,10 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is null);
         await Task.Delay(350);
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
-        await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
+        var notificationsFlyout = await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage");
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null);
         Assert.False(IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Invoke(FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage")!);
+        Invoke(notificationsFlyout);
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
         Invoke(Find(workspaceElement, "WorkspaceBack"));
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));
@@ -1468,29 +1478,60 @@ public sealed class WorkspaceWindowProofTests
             new PropertyCondition(AutomationElement.ProcessIdProperty, pid));
 
     private static AutomationElement? FindPopup(AutomationElement root, string id) =>
-        ProcessWindows(root.Current.ProcessId).Cast<AutomationElement>()
-            .Select(window => window.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, id)))
-            .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
+        FindPopupForPid(root.Current.ProcessId, id);
 
-    /// <summary>Expands the account menu's Gateway submenu, where the connection status row lives.</summary>
-    private static async Task ExpandOwnerGatewayMenuAsync(AutomationElement root)
+    /// <summary>
+    /// Returns a popup control owned by this process, or null while its window is absent, being
+    /// rebuilt, or transiently offscreen. The popup lives in its own HWND, so every probe
+    /// re-enumerates the desktop's top-level windows for the process.
+    /// </summary>
+    private static AutomationElement? FindPopupForPid(int pid, string id)
     {
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerGateway") is not null);
-        ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerGateway")!
-            .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
-        Assert.Empty(FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.AcceleratorKey);
+        foreach (AutomationElement window in ProcessWindows(pid))
+        {
+            try
+            {
+                var element = window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+                if (element is not null && !element.Current.IsOffscreen) return element;
+            }
+            catch (ElementNotAvailableException) { }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Waits for a popup control and returns the element the successful poll observed. Looking the
+    /// control up again after the wait races the popup's own creation and offscreen transition:
+    /// the second lookup returns null instead of retrying, and dereferencing it throws.
+    /// </summary>
+    private static async Task<AutomationElement> WaitForPopupAsync(int pid, string id)
+    {
+        AutomationElement? ready = null;
+        await WaitUntilAsync(() => (ready = FindPopupForPid(pid, id)) is not null);
+        return ready!;
+    }
+
+    private static Task<AutomationElement> WaitForPopupAsync(AutomationElement root, string id) =>
+        WaitForPopupAsync(root.Current.ProcessId, id);
+
+    /// <summary>Expands the account menu's Gateway submenu, where the connection status row lives, and returns that row.</summary>
+    private static async Task<AutomationElement> ExpandOwnerGatewayMenuAsync(AutomationElement root)
+    {
+        var gatewayRow = await WaitForPopupAsync(root, "WorkspaceOwnerGateway");
+        ((ExpandCollapsePattern)gatewayRow.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        var statusRow = await WaitForPopupAsync(root, "WorkspaceOwnerConnectionStatus");
+        Assert.Empty(statusRow.Current.AcceleratorKey);
+        return statusRow;
     }
 
     /// <summary>Expands the account menu's Help &amp; about submenu (docs, apps, timeline, About).</summary>
     private static async Task ExpandOwnerHelpMenuAsync(AutomationElement root)
     {
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerHelp") is not null);
-        ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerHelp")!
-            .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerAbout") is not null);
-        Assert.Empty(FindPopup(root, "WorkspaceOwnerAbout")!.Current.AcceleratorKey);
+        var helpRow = await WaitForPopupAsync(root, "WorkspaceOwnerHelp");
+        ((ExpandCollapsePattern)helpRow.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        var aboutRow = await WaitForPopupAsync(root, "WorkspaceOwnerAbout");
+        Assert.Empty(aboutRow.Current.AcceleratorKey);
     }
 
     private static void CaptureFlyout(AutomationElement root, string theme, string name)

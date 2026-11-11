@@ -28,6 +28,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private static readonly TimeSpan HandoffSettleTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(HandoffSettleTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(45);
+    private const string ReconnectSendTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_RECONNECT_TIMEOUT_SECONDS";
+    // Post-reconnect composer and action checks, tunable for triage. Both waits sit inside the test's
+    // own 150 s body deadline, so a much larger override cannot report these failure messages first.
+    private static readonly TimeSpan ReconnectSendTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ReconnectSendTimeoutVariable), out var reconnectSeconds) && reconnectSeconds > 0
+            ? TimeSpan.FromSeconds(reconnectSeconds) : TimeSpan.FromSeconds(30);
+    // The primary action is the Stop affordance during a turn and the Send label otherwise. The
+    // fixture forces OPENCLAW_LANGUAGE=en-US, so the localized label resolves to this value.
+    private const string SendActionName = "Send";
     // The footer photo is a flat disc about 24 DIPs across, so a painted one covers hundreds of pixels at any display scale.
     private const int OwnerPhotoChannelTolerance = 8;
     private const int OwnerPhotoMinimumPixels = 150;
