@@ -1163,6 +1163,8 @@ public class LocalizationValidationTests
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],
+                    // The web's lowercase code-block label is the same word in French and Dutch.
+                    "Chat_Code_LanguageFallback" => ["fr-fr", "nl-nl"],
                     // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
                     "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],

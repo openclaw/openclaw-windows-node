@@ -743,7 +743,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (content.Count == 0)
             content.Add(BuildSafeMarkdown(string.Empty));
 
-        var bubble = Border(VStack(ChatVisuals.BlockGap, content.ToArray()))
+        var bubble = Border(VStack(ChatVisuals.MessageBlockGap, content.ToArray()))
             .Padding(0)
             .HAlign(HorizontalAlignment.Stretch);
 
@@ -828,6 +828,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         {
             Heading = ChatMarkdownPresentation.Heading,
             Paragraph = ChatMarkdownPresentation.Paragraph,
+            UnorderedList = items => ChatMarkdownPresentation.List(items, compactSecondaryReading),
+            OrderedList = (_, items) => ChatMarkdownPresentation.List(items, compactSecondaryReading),
+            ListItem = row => ChatMarkdownPresentation.ListItem(row, compactSecondaryReading),
+            ThematicBreak = ChatMarkdownPresentation.ThematicBreak,
             CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
             CodeFontFamily = ChatVisuals.CodeFontFamily,
             ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml |
@@ -836,19 +840,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
                     compactSecondaryReading ? ChatVisuals.ReasoningSize : 14,
                     FontWeights.Normal,
-                    "TextFillColorPrimaryBrush")
+                    "ChatProseTextBrush")
                 .IsTextSelectionEnabled(true),
             HtmlBlock = raw => Text(
                     ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw),
                     compactSecondaryReading ? ChatVisuals.ReasoningSize : 14,
                     FontWeights.Normal,
-                    "TextFillColorPrimaryBrush")
+                    "ChatProseTextBrush")
                 .IsTextSelectionEnabled(true),
         };
 
         return ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(
             Microsoft.UI.Reactor.Advanced.Factories.Markdown(
-                ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true), options)),
+                ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true), options), compactSecondaryReading),
             compactSecondaryReading);
     }
 

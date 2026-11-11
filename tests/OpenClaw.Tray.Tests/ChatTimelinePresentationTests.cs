@@ -157,7 +157,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("SetFollowing(IsNearBottom(sender))", binding);
-        Assert.Matches(@"_scrollView.VerticalAnchorRatio = _disclosureAnchored\s*\? 0\.0\s*: TailNavigationPolicy.ViewportAnchorRatio\(_following\)", binding);
+        Assert.Matches(@"_scrollView.VerticalAnchorRatio = _disclosureAnchored\s*\? 0\.0\s*: _offsetCorrectionAnchorRequested is not null\s*\? OffsetCorrectionAnchorRatio\s*: TailNavigationPolicy.ViewportAnchorRatio\(_following\)", binding);
         Assert.Contains("if (_following == following)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
@@ -183,6 +183,14 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("correctOffset &= _confirmation.CanCorrectOffset(targetItem)", retry);
         Assert.Contains("scrollView.HorizontalOffset, scrollView.ScrollableHeight", retry);
         Assert.Contains("_confirmation.OffsetCorrectionStarted(correlationId)", retry);
+        Assert.Contains("scrollView.AnchorRequested += _offsetCorrectionAnchorRequested", retry);
+        Assert.True(retry.IndexOf("scrollView.AnchorRequested += _offsetCorrectionAnchorRequested", StringComparison.Ordinal) <
+            retry.IndexOf("scrollView.ScrollTo(", StringComparison.Ordinal));
+        Assert.DoesNotContain("VerticalAnchorRatio = double.NaN", retry);
+        Assert.Contains("args.AnchorElement = target", retry);
+        Assert.Contains("repeater.TryGetElement(request.Index)", retry);
+        Assert.Contains("ReferenceEquals(target.DataContext, targetItem)", retry);
+        Assert.Contains("TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)", retry);
         Assert.Contains("IsInitialConfirmationCurrent(version, generation)", retry);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", retry);
         Assert.DoesNotContain("DispatcherTimer", binding);
@@ -212,6 +220,33 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("StartTailRequest(", completed);
         Assert.DoesNotContain("QueueTailRequest(", completed);
         Assert.DoesNotContain("AwaitLayout(", completed);
+    }
+
+    [Fact]
+    public void ReactorTimeline_BoundedOffsetCorrectionReleasesItsAnchorOnCompletionOrCancellation()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        static string Method(string source, string start, string end) =>
+            source[source.IndexOf(start, StringComparison.Ordinal)..source.IndexOf(end, StringComparison.Ordinal)];
+        Assert.Contains("RestoreTailAnchor();",
+            Method(binding, "private void CompleteInitialLanding(", "private void AttachScrollView()"));
+        Assert.Contains("if (_offsetCorrectionAnchorRequested is not null)\n            RestoreTailAnchor();",
+            Method(binding.Replace("\r\n", "\n"), "private void DetachLayout()", "private void DetachRendering()"));
+        var restore = Method(binding, "private void RestoreTailAnchor()", "private void OnReaderFocus(");
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null", restore);
+        Assert.Contains("ApplyViewportAnchor();", restore);
+        Assert.True(restore.IndexOf("_offsetCorrectionAnchorRequested = null", StringComparison.Ordinal) <
+            restore.IndexOf("ApplyViewportAnchor();", StringComparison.Ordinal));
+        Assert.Contains("private const double OffsetCorrectionAnchorRatio = 0.5", binding);
+        Assert.Matches(@"_offsetCorrectionAnchorRequested is not null\s*\? OffsetCorrectionAnchorRatio\s*: TailNavigationPolicy.ViewportAnchorRatio", binding);
+        var detach = Method(binding, "private void DetachScrollView()", "public void Dispose()");
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", detach);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null", detach);
+        Assert.Contains("RestoreTailAnchor();",
+            Method(binding, "private void CancelPendingNavigation()", "private void OnViewChanged("));
     }
 
     [Fact]
