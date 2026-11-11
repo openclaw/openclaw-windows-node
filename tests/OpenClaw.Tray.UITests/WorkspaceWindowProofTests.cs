@@ -932,17 +932,30 @@ public sealed class WorkspaceWindowProofTests
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
         var clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear");
+        var clearInvoked = false;
+        var initialEmptyObserved = false;
         if (clear is not null)
         {
             Invoke(clear);
+            clearInvoked = true;
             await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null);
+            initialEmptyObserved = true;
         }
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is null);
         await Task.Delay(350);
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
-        await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null);
+        try
+        {
+            await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null);
+        }
+        catch (Exception failure)
+        {
+            RecordReopenedInboxFailure(app, workspaceElement, theme, clear is not null,
+                clearInvoked, initialEmptyObserved, failure);
+            throw;
+        }
         Assert.False(IsVisible(workspaceElement, "NotificationsPageMarker"));
         Invoke(FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage")!);
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
@@ -1056,6 +1069,74 @@ public sealed class WorkspaceWindowProofTests
             new[] { "WorkspaceOwner", "WorkspaceNotifications", "WorkspaceAssistantSelector", "WorkspaceNavHome", "WorkspaceSessionsAdd" });
         Invoke(Find(workspaceElement, "WorkspaceReopenPane"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceOwner"));
+    }
+
+    private void RecordReopenedInboxFailure(AccessibilityAppFixture app, AutomationElement workspace,
+        string theme, bool clearObserved, bool clearInvoked, bool initialEmptyObserved, Exception original)
+    {
+        const int windowLimit = 8;
+        const int matchLimit = 24;
+        var matches = new List<object>();
+        var errors = new List<string>();
+        var truncated = false;
+        try
+        {
+            var windows = ProcessWindows(workspace.Current.ProcessId).Cast<AutomationElement>().ToArray();
+            truncated = windows.Length > windowLimit;
+            foreach (var window in windows.Take(windowLimit))
+            {
+                foreach (var id in new[] { "WorkspaceNotificationsOpenPage", "WorkspaceNotificationsClear",
+                    "WorkspaceNotificationsEmpty", "WorkspaceNotificationsList" })
+                {
+                    try
+                    {
+                        var peers = window.FindAll(TreeScope.Descendants,
+                            new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+                        foreach (AutomationElement peer in peers)
+                        {
+                            if (matches.Count == matchLimit) { truncated = true; break; }
+                            var value = peer.Current;
+                            matches.Add(new
+                            {
+                                id, matchesForId = peers.Count, runtimeId = peer.GetRuntimeId(),
+                                processId = value.ProcessId, ownerHwnd = window.Current.NativeWindowHandle,
+                                ownerRuntimeId = window.GetRuntimeId(), offscreen = value.IsOffscreen,
+                                enabled = value.IsEnabled,
+                                bounds = new { value.BoundingRectangle.X, value.BoundingRectangle.Y,
+                                    value.BoundingRectangle.Width, value.BoundingRectangle.Height },
+                            });
+                        }
+                    }
+                    catch (Exception error) { errors.Add($"{id}: {error.GetType().Name}; hresult=0x{error.HResult:X8}"); }
+                    if (matches.Count == matchLimit) break;
+                }
+                if (matches.Count == matchLimit) break;
+            }
+        }
+        catch (Exception error) { errors.Add($"enumeration: {error.GetType().Name}; hresult=0x{error.HResult:X8}"); }
+        try { Capture(app, theme, "reopened-inbox-failure"); }
+        catch (Exception error) { errors.Add($"capture: {error.GetType().Name}; hresult=0x{error.HResult:X8}"); }
+        try
+        {
+            var diagnostic = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                clearObserved, clearInvoked, initialEmptyObserved, reopenedObserved = true,
+                matches, truncated, errors,
+            }, new System.Text.Json.JsonSerializerOptions
+            {
+                NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+            });
+            if (ProofDirectory is { Length: > 0 } directory)
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, $"{theme}-reopened-inbox-failure.json"), diagnostic);
+            }
+            Console.WriteLine(diagnostic);
+        }
+        catch (Exception error)
+        {
+            original.Data["inboxFailureObservationError"] = $"{error.GetType().Name}; hresult=0x{error.HResult:X8}";
+        }
     }
 
     private static bool IsVisible(AutomationElement root, string id) =>

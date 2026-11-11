@@ -596,13 +596,41 @@ public sealed partial class GatewayFixtureUiTests
                         if (target == 1400)
                         {
                             var scroll = (ScrollPattern)FindById(run, "UsagePageRoot")!.GetCurrentPattern(ScrollPattern.Pattern);
-                            scroll.SetScrollPercent(ScrollPattern.NoScroll, 75);
-                            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 74,
-                                "Usage session cards scrolled into view");
+                            var requestedPercent = 0d;
+                            scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
+                            AutomationElement? expander = null;
+                            System.Windows.Rect collapsedHeader = System.Windows.Rect.Empty;
+                            await run.WaitForAsync(async () =>
+                            {
+                                await Task.Delay(UsageResizeSampleInterval);
+                                var position = scroll.Current;
+                                if (Math.Abs(position.VerticalScrollPercent - requestedPercent) > 0.01)
+                                    return false;
+                                var candidate = FindById(run, "UsageSessionExpander_agent:main:webchat:main");
+                                if (candidate is { Current.IsOffscreen: false })
+                                {
+                                    var bounds = candidate.Current.BoundingRectangle;
+                                    if (!bounds.IsEmpty && double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) &&
+                                        double.IsFinite(bounds.Top) && double.IsFinite(bounds.Left) &&
+                                        bounds.Width > 0 && bounds.Height > 0 &&
+                                        bounds.Top >= page.Top && bounds.Bottom <= page.Bottom)
+                                    {
+                                        expander = candidate;
+                                        collapsedHeader = bounds;
+                                        return true;
+                                    }
+                                }
+                                Assert.True(requestedPercent < 100 && position.VerticalViewSize is > 0 and < 100,
+                                    "Main Usage session header has no visible measured geometry at the end of the page.");
+                                // Overlapping half-viewport steps reveal the intended row, not a calendar-dependent offset.
+                                requestedPercent = Math.Min(100, requestedPercent +
+                                    50 * position.VerticalViewSize / (100 - position.VerticalViewSize));
+                                scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
+                                return false;
+                            }, "visible measured main Usage session header");
                             OwnedWindowCapture.Save(run, window, $"Usage-{theme}-separated-session-cards.png");
-                            var expander = FindById(run, "UsageSessionExpander_agent:main:webchat:main")
-                                ?? throw new InvalidOperationException("Missing main Usage session Expander.");
-                            var collapsedHeaderHeight = expander.Current.BoundingRectangle.Height;
+                            Assert.NotNull(expander);
+                            var collapsedHeaderHeight = collapsedHeader.Height;
                             ((ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
                             await WaitUiAsync(run, () => FindById(run, "UsageDetailCostValue") is not null,
                                 "expanded Usage session detail");
@@ -611,6 +639,13 @@ public sealed partial class GatewayFixtureUiTests
                             {
                                 await Task.Delay(UsageResizeSampleInterval);
                                 var expandedBounds = expander.Current.BoundingRectangle;
+                                if (expandedBounds.IsEmpty || !double.IsFinite(expandedBounds.Width) ||
+                                    !double.IsFinite(expandedBounds.Height) || expandedBounds.Width <= 0 ||
+                                    expandedBounds.Height <= 0)
+                                {
+                                    previousDetail = null;
+                                    return false;
+                                }
                                 var current = (Header: new System.Windows.Rect(expandedBounds.Left, expandedBounds.Top,
                                         expandedBounds.Width, collapsedHeaderHeight),
                                     Cost: FindById(run, "UsageDetailCostValue")!.Current.BoundingRectangle,
