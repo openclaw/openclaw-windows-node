@@ -6,6 +6,8 @@ namespace OpenClawTray.Services;
 /// <summary>
 /// Bounds one portable update download. Header arrival does not count as
 /// progress, so a stall after the headers still ends at this deadline.
+/// The same clock keeps running while bytes arrive, so a healthy download
+/// that outlasts <see cref="DefaultTimeout"/> ends there too.
 /// </summary>
 internal static class UpdateDownloadDeadline
 {
