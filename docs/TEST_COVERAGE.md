@@ -147,7 +147,8 @@ mandatory rendering proofs, not optional or skipped tests:
 ```
 
 The proofs exercise accessible expansion/collapse, ordered Markdown body content,
-nested and initially open disclosures, and expansion state across rerendering and
+nested and initially open disclosures, the message block gap around and inside
+disclosures and a following heading's lead-in, and expansion state across rerendering and
 resizing. Inside a disclosure, http/https links and bare URLs are live with chat
 link and inline-code styling; other link schemes, images, raw HTML and summary links
 stay inert text. They wait for native animation state and

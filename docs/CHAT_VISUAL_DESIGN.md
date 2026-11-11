@@ -439,6 +439,9 @@ on the same line or a later line; `open` sets the initial expanded state.
 Expansion remains user-owned across unrelated rerenders, body streaming updates,
 and resizing. Nested disclosures are supported to 16 levels. The body uses the
 existing Markdown typography, lists, tables, quotes, literal code frames, and Copy.
+A disclosure and the Markdown around it, and the blocks of its body, share the
+message's block gap (the compact rhythm in thinking text), and a heading right
+after a disclosure keeps its lead-in.
 The native control owns keyboard activation, focus, and accessible expansion state.
 
 This is an allowlisted Markdown extension, not general HTML rendering. Only

@@ -233,30 +233,43 @@ internal static class ChatMarkdownPresentation
         }
     }
 
+    /// <summary>
+    /// Renders recognized disclosures as native expanders between Markdown parts. The renderer
+    /// receives each Markdown part and whether it leads its message or disclosure body.
+    /// </summary>
     internal static Element Disclosures(
-        IReadOnlyList<ChatMarkdownPart> parts, Func<string, Element> renderMarkdown)
+        IReadOnlyList<ChatMarkdownPart> parts, Func<string, bool, Element> renderMarkdown,
+        bool compactSecondaryReading = false)
     {
         if (parts is [ChatMarkdownText markdown])
-            return renderMarkdown(markdown.Text);
-        return VStack(ChatVisuals.BlockGap, parts.Select((part, index) => part switch
+            return renderMarkdown(markdown.Text, true);
+        // A disclosure and the Markdown around it share the message's block rhythm.
+        return VStack(BlockRhythm(compactSecondaryReading), parts.Select((part, index) => part switch
         {
-            ChatMarkdownText text => renderMarkdown(text.Text),
+            ChatMarkdownText text => renderMarkdown(text.Text, index == 0),
             ChatMarkdownDisclosure disclosure =>
                 Component<ChatMarkdownDisclosureView, ChatMarkdownDisclosureProps>(
-                    new(disclosure, renderMarkdown)).WithKey($"disclosure:{index}"),
+                    new(disclosure, renderMarkdown, compactSecondaryReading)).WithKey($"disclosure:{index}"),
             _ => throw new InvalidOperationException("Unknown chat Markdown part."),
         }).ToArray());
     }
 
-    /// <summary>Only direct message blocks share rhythm; list and quote interiors remain untouched.</summary>
-    internal static Element MessageBlocks(Element element, bool compactSecondaryReading = false) =>
+    // Compact thinking text keeps its tighter pre-web rhythm.
+    private static double BlockRhythm(bool compactSecondaryReading) =>
+        compactSecondaryReading ? ChatVisuals.BlockGap : ChatVisuals.MessageBlockGap;
+
+    /// <summary>
+    /// Only direct message blocks share rhythm; list and quote interiors remain untouched.
+    /// Markdown that follows a disclosure does not lead the message, so a heading that opens it
+    /// keeps its lead-in.
+    /// </summary>
+    internal static Element MessageBlocks(Element element, bool compactSecondaryReading = false, bool leading = true) =>
         element is StackElement stack
             ? stack with
             {
-                // Compact thinking text keeps its tighter pre-web rhythm.
-                Spacing = compactSecondaryReading ? ChatVisuals.BlockGap : ChatVisuals.MessageBlockGap,
+                Spacing = BlockRhythm(compactSecondaryReading),
                 Children = stack.Children
-                    .Select((child, index) => ResetBlockEdges(child, index == 0 || compactSecondaryReading))
+                    .Select((child, index) => ResetBlockEdges(child, (leading && index == 0) || compactSecondaryReading))
                     .ToArray(),
             }
             : element;
@@ -504,7 +517,7 @@ internal static class ChatMarkdownPresentation
 }
 
 internal sealed record ChatMarkdownDisclosureProps(
-    ChatMarkdownDisclosure Disclosure, Func<string, Element> RenderMarkdown);
+    ChatMarkdownDisclosure Disclosure, Func<string, bool, Element> RenderMarkdown, bool CompactSecondaryReading);
 
 internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclosureProps>
 {
@@ -514,7 +527,8 @@ internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclos
         var (expanded, setExpanded) = UseState(disclosure.InitiallyExpanded);
         return Expander(
                 disclosure.Summary,
-                ChatMarkdownPresentation.Disclosures(disclosure.Body, Props.RenderMarkdown),
+                ChatMarkdownPresentation.Disclosures(
+                    disclosure.Body, Props.RenderMarkdown, Props.CompactSecondaryReading),
                 expanded,
                 setExpanded)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)

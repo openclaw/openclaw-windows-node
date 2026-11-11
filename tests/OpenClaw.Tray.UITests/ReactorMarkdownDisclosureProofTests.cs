@@ -25,7 +25,7 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
         "```text\nliteral <details> and </summary>\nsecond literal line\n```\n\n" +
         "| Key | Value |\n| --- | --- |\n| Evidence | Verified |\n\n" +
         "<details open><summary>Nested evidence</summary>\n\nNested body.\n\n</details>\n\n" +
-        "</details>\n\nAfter disclosure.";
+        "</details>\n\n### Next steps\n\nAfter disclosure.";
 
     // Dark and HighContrast have no assertion that differs from Light: the disclosure is a stock
     // Expander and sets no theme-dependent value. They exist only to produce review screenshots,
@@ -134,6 +134,16 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
                 var nested = Assert.Single(FindLogical<Expander>(host!),
                     control => Equals(control.Header, "Nested evidence"));
                 Assert.True(nested.IsExpanded);
+                // Disclosures take the message's block rhythm, around them and inside their bodies.
+                var messageParts = EnclosingStack(disclosure);
+                Assert.Equal(3, messageParts.Children.Count);
+                Assert.Equal(ChatVisuals.MessageBlockGap, messageParts.Spacing);
+                var bodyParts = EnclosingStack(nested);
+                Assert.Equal(2, bodyParts.Children.Count);
+                Assert.Equal(ChatVisuals.MessageBlockGap, bodyParts.Spacing);
+                // A heading right after a disclosure keeps the lead-in of a heading after any block.
+                var nextSteps = Assert.Single(FindLogical<RichTextBlock>(host!), text => CollectText(text) == "Next steps");
+                Assert.Equal(ChatVisuals.HeadingTopInset, nextSteps.Margin.Top);
                 Assert.Empty(FindLogical<Image>(host!));
                 Assert.Empty(FindLogical<RichTextBlock>(host!).SelectMany(text =>
                     text.Blocks.OfType<Paragraph>().SelectMany(paragraph => paragraph.Inlines.OfType<Hyperlink>())));
@@ -294,6 +304,17 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
             () => content.Visibility == (expanded ? Visibility.Visible : Visibility.Collapsed) &&
                 (!expanded || transform.TranslateY == 0),
             "native disclosure transition");
+    }
+
+    // Reactor hosts a component under its own element, so the part stack is the nearest StackPanel.
+    private static StackPanel EnclosingStack(DependencyObject element)
+    {
+        for (var parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is StackPanel stack)
+                return stack;
+        }
+        throw new Xunit.Sdk.XunitException("The disclosure has no enclosing StackPanel.");
     }
 
     private static string CollectText(RichTextBlock text) =>

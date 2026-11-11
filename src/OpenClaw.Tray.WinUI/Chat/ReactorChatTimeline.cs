@@ -824,7 +824,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var parts = InertSummaries(ChatMarkdownDisclosures.Parse(
             ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true)));
         return ChatMarkdownPresentation.Disclosures(
-            parts, markdown => BuildMarkdownBlocks(markdown, tryCopy, compactSecondaryReading));
+            parts, (markdown, leading) => BuildMarkdownBlocks(markdown, tryCopy, compactSecondaryReading, leading),
+            compactSecondaryReading);
     }
 
     // A summary is plain header text, so a web link kept for the body reads there as
@@ -839,7 +840,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             : part).ToArray();
 
     private static Element BuildMarkdownBlocks(
-        string text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
+        string text, Func<string, bool>? tryCopy, bool compactSecondaryReading, bool leading)
     {
         var options = new MarkdownOptions
         {
@@ -868,7 +869,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
 
         return ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Advanced.Factories.Markdown(text, options), compactSecondaryReading),
+            Microsoft.UI.Reactor.Advanced.Factories.Markdown(text, options), compactSecondaryReading, leading),
             compactSecondaryReading);
     }
 
