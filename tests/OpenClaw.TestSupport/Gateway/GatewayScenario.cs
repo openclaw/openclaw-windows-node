@@ -673,7 +673,7 @@ public sealed partial class GatewayScenario
     private object ListSessions(JsonElement p)
     {
         ValidateProperties(p, "agentId", "limit", "offset", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived",
-            "search", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock");
+            "search", "source", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock");
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");

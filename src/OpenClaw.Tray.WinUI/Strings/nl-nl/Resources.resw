@@ -1877,24 +1877,6 @@ Gebruik een van deze opties:
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>Windows-privacyinstellingen openen</value>
   </data>
-  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>💬 Sessies</value>
-  </data>
-  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
-    <value>Resetten</value>
-  </data>
-  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
-    <value>Comprimeren</value>
-  </data>
-  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
-    <value>Verwijderen</value>
-  </data>
-  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
-    <value>Geen actieve sessies</value>
-  </data>
-  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
-    <value>🤖 Beschikbare modellen</value>
-  </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ Instellingen</value>
   </data>
@@ -4333,15 +4315,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
   </data>
-  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
-    <value>Sessies</value>
-  </data>
-  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
-    <value>Vernieuwen</value>
-  </data>
-  <data name="SessionsPage_All.Text" xml:space="preserve">
-    <value>Alle</value>
-  </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>Voltooide sessies weergeven</value>
   </data>
@@ -4381,33 +4354,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>Verbinding openen</value>
-  </data>
-  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
-    <value>Sessies worden geladen…</value>
-  </data>
-  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>Geen sessies</value>
-  </data>
-  <data name="SessionsPage_Reset.Text" xml:space="preserve">
-    <value>Resetten</value>
-  </data>
-  <data name="SessionsPage_Compact.Text" xml:space="preserve">
-    <value>Compact maken</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
-    <value>Controlepunten</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Compactiecontrolepunten bekijken, vertakken of herstellen</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
-    <value>Transcript exporteren</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Het gesprekstranscript opslaan als tekstbestand</value>
-  </data>
-  <data name="SessionsPage_Delete.Text" xml:space="preserve">
-    <value>Verwijderen</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>Sessie resetten?</value>
@@ -4732,15 +4678,6 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>Controleer voor het delen</value>
-  </data>
-  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
-    <value>Gesprekken die deze gateway momenteel afhandelt, gegroepeerd per kanaal.</value>
-  </data>
-  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
-    <value>Sessies verschijnen hier wanneer een kanaal is verbonden en er verkeer loopt.</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
-    <value>Chat openen</value>
   </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>Voorbeeld</value>
@@ -5822,12 +5759,6 @@ Controleer of de gateway actief is.</value>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
   </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open this session in Chat</value>
-  </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
   </data>
@@ -6100,9 +6031,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>Heeft aandacht nodig</value>
-  </data>
-  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
-    <value>Laatste uitvoering gestopt</value>
   </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>Gateway-update vereist</value>
@@ -7081,10 +7009,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
-  <data name="SessionsPage_Archived" xml:space="preserve"><value>Gearchiveerd</value></data>
-  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>Geen gearchiveerde sessies.</value></data>
-  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>Gearchiveerde sessies zijn niet beschikbaar op deze gateway.</value></data>
-  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Sessie uit archief halen</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>

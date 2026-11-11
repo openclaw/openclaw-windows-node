@@ -72,7 +72,8 @@
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId", "archived", "includeDerivedTitles", "search", "limit", "includeGlobal", "includeUnknown", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock"],
+      "requestFields": ["agentId", "includeDerivedTitles", "search", "limit", "includeGlobal", "includeUnknown", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock"],
+      "_note": "The Sessions page also sends archived, offset and source through SessionListQuery.ToParameters (Shared/Sessions), which this construction-region guard does not scan; the fixture validates them.",
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
@@ -175,13 +176,6 @@
       "windowsUsage": "used",
       "requestFields": ["key", "deleteTranscript", "agentId", "expectedSessionId", "archivedOnly"],
       "_note": "archivedOnly restricts the delete to archived rows (operator.write); without it upstream requires operator.admin. expectedSessionId is the compare-and-delete guard."
-    },
-    {
-      "method": "sessions.search",
-      "kind": "request",
-      "windowsUsage": "used",
-      "requestFields": ["query", "limit", "scope"],
-      "_note": "Upstream SessionsSearchParamsSchema; scope reuses the sessions.list membership filters. Result: results[], sessions[], indexing, truncated, archivedTranscriptsExcluded."
     },
     {
       "method": "sessions.compact",
