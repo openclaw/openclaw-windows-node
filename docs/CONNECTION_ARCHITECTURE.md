@@ -547,7 +547,11 @@ cancellation, and window close. It adopts only the operation's known final
 registry output against its admitted baseline, refreshes the persistence
 baseline, and publishes changes outside locks. Stale live connections are
 disconnected conditionally against their captured connection snapshot; a newer
-connection is not canceled. External conflicts preserve live edits and provide
+connection is not canceled. The connection snapshot retains the manager's
+lifecycle generation across device, pairing and role updates, but not a
+reconnect to the same gateway. Conditional teardown compares published
+snapshots so a failed attempt that publishes no replacement remains retryable.
+External conflicts preserve live edits and provide
 an explicit reopen/reload recovery message instead of weakening save CAS.
 
 If settlement itself fails, `SetupPipelineSettlementException` retains the

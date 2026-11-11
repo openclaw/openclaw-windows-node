@@ -42,6 +42,82 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task DisconnectIfCurrentAsync_PreservesANewerConnectionToTheSameGateway()
+    {
+        SetupGateway("settlement-same", "wss://same.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        await _manager.ConnectAsync("settlement-same");
+        var beforeReconnect = _manager.CurrentSnapshot;
+
+        await _manager.ReconnectAsync();
+        var current = _manager.CurrentSnapshot;
+        var client = _manager.OperatorClient;
+        Assert.NotNull(client);
+        Assert.NotSame(beforeReconnect, current);
+        Assert.Equal(beforeReconnect.GatewayId, current.GatewayId);
+        Assert.Equal(beforeReconnect.GatewayUrl, current.GatewayUrl);
+
+        Assert.False(await _manager.DisconnectIfCurrentAsync(beforeReconnect));
+        Assert.Same(current, _manager.CurrentSnapshot);
+        Assert.Same(client, _manager.OperatorClient);
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_PreservesANewerNodeOnlyConnection()
+    {
+        SetupGateway("settlement-node", "wss://node.example");
+        _resolver.NodeCredential = new("node-token", false, CredentialResolver.SourceNodeDeviceToken);
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nodeConnector: node);
+        await manager.ConnectNodeOnlyAsync("settlement-node");
+        var beforeReconnect = manager.CurrentSnapshot;
+
+        await manager.ConnectNodeOnlyAsync("settlement-node");
+        var current = manager.CurrentSnapshot;
+        Assert.Equal(2, node.ConnectCount);
+        Assert.False(await manager.DisconnectIfCurrentAsync(beforeReconnect));
+        Assert.Same(current, manager.CurrentSnapshot);
+        Assert.True(await manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_AcceptsOnlyThePostDisconnectObservation()
+    {
+        SetupGateway("settlement-disconnect", "wss://disconnect.example");
+        _resolver.OperatorCredential = new("token", false, "test");
+        await _manager.ConnectAsync("settlement-disconnect");
+        var beforeDisconnect = _manager.CurrentSnapshot;
+
+        await _manager.DisconnectAsync();
+        var current = _manager.CurrentSnapshot;
+        Assert.False(await _manager.DisconnectIfCurrentAsync(beforeDisconnect));
+        Assert.Same(current, _manager.CurrentSnapshot);
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_RetriesFailedNativeTeardownWithoutAReplacementConnection()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime { StopException = new IOException("Native stop failed") };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        SetupGateway("replacement", "wss://replacement.example");
+
+        await Assert.ThrowsAsync<IOException>(() => manager.DisconnectAsync());
+        var current = manager.CurrentSnapshot;
+        Assert.True(runtime.Running);
+        runtime.StopException = null;
+
+        Assert.True(await manager.DisconnectIfCurrentAsync(current));
+        Assert.False(runtime.Running);
+        Assert.Equal(2, runtime.StopCount);
+    }
+
+    [Fact]
     public async Task NativeRecovery_ProductionAuthorizerDoesNotDowngradeAtUnownedManualLoopback()
     {
         var path = Path.Combine(_tempDir, "saved-native");
@@ -5763,6 +5839,7 @@ public class GatewayConnectionManagerTests : IDisposable
         public Action? BeforeEnsure { get; init; }
         public Action? BeforeInspect { get; init; }
         public Exception? StartException { get; init; }
+        public Exception? StopException { get; set; }
         public bool Running { get; set; }
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }
@@ -5798,6 +5875,8 @@ public class GatewayConnectionManagerTests : IDisposable
         public Task StopAsync(CancellationToken cancellationToken)
         {
             StopCount++;
+            if (StopException is not null)
+                throw StopException;
             Running = false;
             return Task.CompletedTask;
         }
