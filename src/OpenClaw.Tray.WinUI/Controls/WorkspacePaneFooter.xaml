@@ -62,7 +62,7 @@
                         <FontIcon x:Name="OwnerStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
                                   VerticalAlignment="Center" IsHitTestVisible="False"
                                   AutomationProperties.AccessibilityView="Raw"/>
-                        <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis"
+                        <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                    Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </Grid>
                 </StackPanel>

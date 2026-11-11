@@ -6418,6 +6418,12 @@
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>主导航</value>
   </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>调整侧边栏大小</value>
+  </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>分隔条</value>
+  </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>调整 JSON 预览大小</value>
   </data>

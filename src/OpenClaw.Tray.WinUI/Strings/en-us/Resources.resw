@@ -6463,6 +6463,12 @@ Make sure the gateway is running.</value>
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Main navigation</value>
   </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Resize sidebar</value>
+  </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>splitter</value>
+  </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Resize JSON preview</value>
   </data>

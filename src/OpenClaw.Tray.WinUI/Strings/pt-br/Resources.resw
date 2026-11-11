@@ -6437,6 +6437,12 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Navegação principal</value>
   </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Redimensionar barra lateral</value>
+  </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>divisor</value>
+  </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Redimensionar pré-visualização JSON</value>
   </data>

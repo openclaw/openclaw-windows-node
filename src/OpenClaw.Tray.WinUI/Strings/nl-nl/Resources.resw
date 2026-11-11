@@ -6419,6 +6419,12 @@ Controleer of de gateway actief is.</value>
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Hoofdnavigatie</value>
   </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Formaat van zijbalk wijzigen</value>
+  </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>scheidingslijn</value>
+  </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Formaat van JSON-voorbeeld wijzigen</value>
   </data>

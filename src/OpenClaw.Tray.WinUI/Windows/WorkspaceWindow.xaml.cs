@@ -25,6 +25,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     // VK_OEM_COMMA; VirtualKey has no named member for it.
     private const global::Windows.System.VirtualKey SettingsShortcutKey = (global::Windows.System.VirtualKey)188;
     private const string SettingsShortcutText = "Ctrl+,";
+    private const double SidebarMinContentWidth = 480;
+    private const double SidebarMaxWidth = 480;
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
@@ -1316,6 +1318,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
     private void UpdatePanePresentation()
     {
+        SidebarSplitter.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
         ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
@@ -1327,6 +1330,19 @@ public sealed partial class WorkspaceWindow : WindowEx
             _gatewayStatusFlyout.Hide();
         }
         UpdateTitleBarActions();
+    }
+
+    private void OnNavigationSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SidebarColumn.MaxWidth = Math.Max(SidebarColumn.MinWidth,
+            Math.Min(SidebarMaxWidth, e.NewSize.Width - SidebarMinContentWidth));
+    }
+
+    private void OnSidebarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        NavView.OpenPaneLength = e.NewSize.Width;
+        if (_settings is { } settings && IsSettingsVisible)
+            UpdateEmbeddedPageTopAllocation(settings);
     }
 
     // An embedded section sits to the right of the sidebar, which stays visible and usable. The

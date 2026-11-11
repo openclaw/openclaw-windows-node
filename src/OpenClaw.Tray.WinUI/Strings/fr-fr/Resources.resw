@@ -6418,6 +6418,12 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Navigation principale</value>
   </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Redimensionner la barre latérale</value>
+  </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>séparateur</value>
+  </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Redimensionner l’aperçu JSON</value>
   </data>
