@@ -9205,29 +9205,8 @@
   <data name="SessionsHub_DateYesterday" xml:space="preserve">
     <value>昨天</value>
   </data>
-  <data name="SessionsHub_Delete" xml:space="preserve">
-    <value>刪除</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
-    <value>刪除所有已封存項目</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
-    <value>要永久刪除 {0} 個已封存的工作階段及其對話記錄嗎？此動作無法復原。</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
-    <value>永久刪除所有已封存的工作階段</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
-    <value>刪除所有已封存的工作階段？</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
-    <value>其中 {0} 個工作階段有受管理的工作樹。仍在使用中或有未儲存工作的工作樹會予以保留，並在刪除後列出。</value>
-  </data>
   <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
     <value>無法刪除此工作階段。</value>
-  </data>
-  <data name="SessionsHub_DeletedMany" xml:space="preserve">
-    <value>已刪除 {0} 個工作階段。</value>
   </data>
   <data name="SessionsHub_DeletedOne" xml:space="preserve">
     <value>已刪除 1 個工作階段。</value>
@@ -9235,29 +9214,8 @@
   <data name="SessionsHub_DeleteFailed" xml:space="preserve">
     <value>無法刪除</value>
   </data>
-  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
-    <value>{0} 個項目無法刪除。第一個錯誤：{1}</value>
-  </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>刪除未封存的工作階段需要系統管理員存取權。請先封存，或洽詢系統管理員。</value>
-  </data>
-  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
-    <value>刪除選取項目</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
-    <value>要永久刪除 {0} 個工作階段及其對話記錄嗎？此動作無法復原。</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
-    <value>要永久刪除選取的工作階段及其對話記錄嗎？此動作無法復原。</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
-    <value>以您的存取權無法刪除任何選取的工作階段。主要工作階段無法刪除，而使用中的工作階段需要系統管理員存取權。</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
-    <value>將略過 {0} 個選取的工作階段，因為以您的存取權無法刪除它們。</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
-    <value>刪除選取的工作階段？</value>
   </data>
   <data name="SessionsHub_Details" xml:space="preserve">
     <value>詳細資料</value>
@@ -9526,9 +9484,6 @@
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>建立工作樹</value>
   </data>
-  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
-    <value>沒有您可以刪除的已封存工作階段。</value>
-  </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>無法使用</value>
   </data>
@@ -9645,24 +9600,6 @@
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>依名稱或索引鍵篩選</value>
-  </data>
-  <data name="SessionsHub_Select" xml:space="preserve">
-    <value>選取</value>
-  </data>
-  <data name="SessionsHub_SelectedMany" xml:space="preserve">
-    <value>已選取 {0} 項</value>
-  </data>
-  <data name="SessionsHub_SelectedOne" xml:space="preserve">
-    <value>已選取 1 項</value>
-  </data>
-  <data name="SessionsHub_SelectNamed" xml:space="preserve">
-    <value>選取 {0}</value>
-  </data>
-  <data name="SessionsHub_SelectPage" xml:space="preserve">
-    <value>選取此頁</value>
-  </data>
-  <data name="SessionsHub_SelectTip" xml:space="preserve">
-    <value>選擇多個工作階段以一次刪除</value>
   </data>
   <data name="SessionsHub_ShowAll" xml:space="preserve">
     <value>顯示所有工作階段</value>
@@ -9889,92 +9826,12 @@
   <data name="SessionsHub_Yes" xml:space="preserve">
     <value>是</value>
   </data>
-  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
-    <value>已提前停止：剩餘 {0} 個工作階段未確認已刪除。請重新整理以檢查。</value>
-  </data>
   <data name="SessionsHub_DeleteRefused" xml:space="preserve">
-    <value>閘道未刪除其中 {0} 個。</value>
+    <value>閘道未刪除此工作階段。</value>
   </data>
-  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
-    <value>確認期間清單已變更，因此未刪除任何項目。請檢查選取內容後再試一次。</value>
-  </data>
+  <data name="SessionsHub_DeleteRosterChanged" xml:space="preserve"><value>確認期間清單發生了變更，因此未刪除任何內容。請檢查此工作階段後再試一次。</value></data>
   <data name="SessionsHub_RosterNotCurrent" xml:space="preserve">
     <value>工作階段清單不是最新狀態。請等待重新整理完成後再變更工作階段。</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
-    <value>其中 1 個工作階段有受管理的工作樹。仍在使用中或有未儲存工作的工作樹會予以保留，並在刪除後列出。</value>
-  </data>
-  <data name="SessionsHub_Appearance" xml:space="preserve">
-    <value>外觀</value>
-  </data>
-  <data name="SessionsHub_ColorBlue" xml:space="preserve">
-    <value>藍色</value>
-  </data>
-  <data name="SessionsHub_ColorCyan" xml:space="preserve">
-    <value>青色</value>
-  </data>
-  <data name="SessionsHub_ColorFor" xml:space="preserve">
-    <value>{0} 的色彩</value>
-  </data>
-  <data name="SessionsHub_ColorGreen" xml:space="preserve">
-    <value>綠色</value>
-  </data>
-  <data name="SessionsHub_ColorHeader" xml:space="preserve">
-    <value>色彩</value>
-  </data>
-  <data name="SessionsHub_ColorMenu" xml:space="preserve">
-    <value>色彩</value>
-  </data>
-  <data name="SessionsHub_ColorNone" xml:space="preserve">
-    <value>無色彩</value>
-  </data>
-  <data name="SessionsHub_ColorOrange" xml:space="preserve">
-    <value>橙色</value>
-  </data>
-  <data name="SessionsHub_ColorPink" xml:space="preserve">
-    <value>粉紅色</value>
-  </data>
-  <data name="SessionsHub_ColorPurple" xml:space="preserve">
-    <value>紫色</value>
-  </data>
-  <data name="SessionsHub_ColorRed" xml:space="preserve">
-    <value>紅色</value>
-  </data>
-  <data name="SessionsHub_ColorYellow" xml:space="preserve">
-    <value>黃色</value>
-  </data>
-  <data name="SessionsHub_IconBook" xml:space="preserve">
-    <value>書籍</value>
-  </data>
-  <data name="SessionsHub_IconBot" xml:space="preserve">
-    <value>機器人</value>
-  </data>
-  <data name="SessionsHub_IconBraces" xml:space="preserve">
-    <value>程式碼</value>
-  </data>
-  <data name="SessionsHub_IconCoins" xml:space="preserve">
-    <value>硬幣</value>
-  </data>
-  <data name="SessionsHub_IconDefault" xml:space="preserve">
-    <value>預設圖示</value>
-  </data>
-  <data name="SessionsHub_IconFor" xml:space="preserve">
-    <value>{0} 的圖示</value>
-  </data>
-  <data name="SessionsHub_IconHeader" xml:space="preserve">
-    <value>圖示</value>
-  </data>
-  <data name="SessionsHub_IconKanban" xml:space="preserve">
-    <value>看板</value>
-  </data>
-  <data name="SessionsHub_IconMenu" xml:space="preserve">
-    <value>圖示</value>
-  </data>
-  <data name="SessionsHub_IconMonitor" xml:space="preserve">
-    <value>監視器</value>
-  </data>
-  <data name="SessionsHub_Selected" xml:space="preserve">
-    <value>已選取</value>
   </data>
   <data name="SessionsHub_StatAll" xml:space="preserve">
     <value>所有工作階段</value>
@@ -9982,14 +9839,6 @@
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>已封存的工作階段</value>
   </data>
-  <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>刪除 {0} 個</value></data>
-  <data name="SessionsHub_DialogKept" xml:space="preserve"><value>保留</value></data>
-  <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>主要工作階段</value></data>
-  <data name="SessionsHub_DialogNeverDeleted" xml:space="preserve"><value>永不刪除</value></data>
-  <data name="SessionsHub_DialogReasonMain" xml:space="preserve"><value>主要工作階段</value></data>
-  <data name="SessionsHub_DialogReasonNeedsAdmin" xml:space="preserve"><value>需要系統管理員權限</value></data>
-  <data name="SessionsHub_DialogScope" xml:space="preserve"><value>範圍</value></data>
-  <data name="SessionsHub_DialogWillDelete" xml:space="preserve"><value>將刪除</value></data>
   <data name="SessionsHub_FactPath" xml:space="preserve"><value>路徑</value></data>
   <data name="SessionsHub_ForkCreated" xml:space="preserve"><value>已建立「{0}」。</value></data>
   <data name="SessionsHub_ForkCreatedTitle" xml:space="preserve"><value>已分支對話</value></data>
@@ -10035,7 +9884,6 @@
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>對話記錄將被清除，工作階段會重新開始。工作階段索引鍵保持不變。</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>開啟資料夾</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>選項</value></data>
-  <data name="SessionsHub_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>顯示 {0}/{1} · 已載入 {2}</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>還有更多</value></data>
   <data name="SessionsHub_ShowMore" xml:space="preserve"><value>顯示更多</value></data>
@@ -10052,7 +9900,6 @@
   <data name="SessionsHub_CompletedShown" xml:space="preserve"><value>顯示已完成的工作階段</value></data>
   <data name="SessionsHub_UnroutedHidden" xml:space="preserve"><value>隱藏未路由的工作階段</value></data>
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>顯示未路由的工作階段</value></data>
-  <data name="SessionsHub_NoMatchingSelection" xml:space="preserve"><value>沒有可選取的符合工作階段</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已封存「{0}」（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>關閉通知</value></data>
 </root>

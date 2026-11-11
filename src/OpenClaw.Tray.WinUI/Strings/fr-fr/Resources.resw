@@ -9205,29 +9205,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_DateYesterday" xml:space="preserve">
     <value>Hier</value>
   </data>
-  <data name="SessionsHub_Delete" xml:space="preserve">
-    <value>Supprimer</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
-    <value>Supprimer toutes les archivées</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
-    <value>Supprimer définitivement {0} sessions archivées et leurs transcriptions ? Cette action est irréversible.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
-    <value>Supprimer définitivement toutes les sessions archivées</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
-    <value>Supprimer toutes les sessions archivées ?</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
-    <value>{0} de ces sessions ont des arbres de travail gérés. Un arbre de travail encore utilisé ou contenant du travail non enregistré est conservé et répertorié après la suppression.</value>
-  </data>
   <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
     <value>Cette session ne peut pas être supprimée.</value>
-  </data>
-  <data name="SessionsHub_DeletedMany" xml:space="preserve">
-    <value>{0} sessions supprimées.</value>
   </data>
   <data name="SessionsHub_DeletedOne" xml:space="preserve">
     <value>1 session supprimée.</value>
@@ -9235,29 +9214,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_DeleteFailed" xml:space="preserve">
     <value>Impossible de supprimer</value>
   </data>
-  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
-    <value>Impossible de supprimer {0} élément(s). Première erreur : {1}</value>
-  </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>La suppression d'une session non archivée nécessite un accès administrateur. Archivez-la d'abord ou contactez un administrateur.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
-    <value>Supprimer la sélection</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
-    <value>Supprimer définitivement {0} sessions et leurs transcriptions ? Cette action est irréversible.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
-    <value>Supprimer définitivement la session sélectionnée et sa transcription ? Cette action est irréversible.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
-    <value>Aucune des sessions sélectionnées ne peut être supprimée avec votre accès. Les sessions principales ne peuvent pas être supprimées et les sessions actives nécessitent un accès administrateur.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
-    <value>{0} sessions sélectionnées seront ignorées, car elles ne peuvent pas être supprimées avec votre accès.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
-    <value>Supprimer les sessions sélectionnées ?</value>
   </data>
   <data name="SessionsHub_Details" xml:space="preserve">
     <value>Détails</value>
@@ -9526,9 +9484,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Créer un arbre de travail</value>
   </data>
-  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
-    <value>Aucune session archivée ne peut être supprimée.</value>
-  </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Non disponible</value>
   </data>
@@ -9645,24 +9600,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filtrer par nom ou clé</value>
-  </data>
-  <data name="SessionsHub_Select" xml:space="preserve">
-    <value>Sélectionner</value>
-  </data>
-  <data name="SessionsHub_SelectedMany" xml:space="preserve">
-    <value>{0} sélectionnées</value>
-  </data>
-  <data name="SessionsHub_SelectedOne" xml:space="preserve">
-    <value>1 sélectionnée</value>
-  </data>
-  <data name="SessionsHub_SelectNamed" xml:space="preserve">
-    <value>Sélectionner {0}</value>
-  </data>
-  <data name="SessionsHub_SelectPage" xml:space="preserve">
-    <value>Sélectionner cette page</value>
-  </data>
-  <data name="SessionsHub_SelectTip" xml:space="preserve">
-    <value>Choisir plusieurs sessions à supprimer en une seule fois</value>
   </data>
   <data name="SessionsHub_ShowAll" xml:space="preserve">
     <value>Afficher toutes les sessions</value>
@@ -9889,92 +9826,12 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_Yes" xml:space="preserve">
     <value>Oui</value>
   </data>
-  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
-    <value>Arrêt anticipé : la suppression de {0} session(s) restante(s) n'a pas été confirmée. Actualisez pour vérifier.</value>
-  </data>
   <data name="SessionsHub_DeleteRefused" xml:space="preserve">
-    <value>La passerelle n'en a pas supprimé {0}.</value>
+    <value>La passerelle n'a pas supprimé cette session.</value>
   </data>
-  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
-    <value>La liste a changé pendant la confirmation, rien n'a donc été supprimé. Vérifiez votre sélection et réessayez.</value>
-  </data>
+  <data name="SessionsHub_DeleteRosterChanged" xml:space="preserve"><value>La liste a changé pendant la confirmation, rien n'a donc été supprimé. Vérifiez la session et réessayez.</value></data>
   <data name="SessionsHub_RosterNotCurrent" xml:space="preserve">
     <value>La liste des sessions n'est pas à jour. Attendez la fin de l'actualisation avant de modifier des sessions.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
-    <value>L'une de ces sessions a un arbre de travail géré. Un arbre de travail encore utilisé ou contenant du travail non enregistré est conservé et répertorié après la suppression.</value>
-  </data>
-  <data name="SessionsHub_Appearance" xml:space="preserve">
-    <value>Apparence</value>
-  </data>
-  <data name="SessionsHub_ColorBlue" xml:space="preserve">
-    <value>Bleu</value>
-  </data>
-  <data name="SessionsHub_ColorCyan" xml:space="preserve">
-    <value>Bleu cyan</value>
-  </data>
-  <data name="SessionsHub_ColorFor" xml:space="preserve">
-    <value>Couleur de {0}</value>
-  </data>
-  <data name="SessionsHub_ColorGreen" xml:space="preserve">
-    <value>Vert</value>
-  </data>
-  <data name="SessionsHub_ColorHeader" xml:space="preserve">
-    <value>Couleur</value>
-  </data>
-  <data name="SessionsHub_ColorMenu" xml:space="preserve">
-    <value>Couleur</value>
-  </data>
-  <data name="SessionsHub_ColorNone" xml:space="preserve">
-    <value>Aucune couleur</value>
-  </data>
-  <data name="SessionsHub_ColorOrange" xml:space="preserve">
-    <value>Orangé</value>
-  </data>
-  <data name="SessionsHub_ColorPink" xml:space="preserve">
-    <value>Rose</value>
-  </data>
-  <data name="SessionsHub_ColorPurple" xml:space="preserve">
-    <value>Violet</value>
-  </data>
-  <data name="SessionsHub_ColorRed" xml:space="preserve">
-    <value>Rouge</value>
-  </data>
-  <data name="SessionsHub_ColorYellow" xml:space="preserve">
-    <value>Jaune</value>
-  </data>
-  <data name="SessionsHub_IconBook" xml:space="preserve">
-    <value>Livre</value>
-  </data>
-  <data name="SessionsHub_IconBot" xml:space="preserve">
-    <value>Robot</value>
-  </data>
-  <data name="SessionsHub_IconBraces" xml:space="preserve">
-    <value>Code source</value>
-  </data>
-  <data name="SessionsHub_IconCoins" xml:space="preserve">
-    <value>Pièces</value>
-  </data>
-  <data name="SessionsHub_IconDefault" xml:space="preserve">
-    <value>Icône par défaut</value>
-  </data>
-  <data name="SessionsHub_IconFor" xml:space="preserve">
-    <value>Icône de {0}</value>
-  </data>
-  <data name="SessionsHub_IconHeader" xml:space="preserve">
-    <value>Icône</value>
-  </data>
-  <data name="SessionsHub_IconKanban" xml:space="preserve">
-    <value>Tableau</value>
-  </data>
-  <data name="SessionsHub_IconMenu" xml:space="preserve">
-    <value>Icône</value>
-  </data>
-  <data name="SessionsHub_IconMonitor" xml:space="preserve">
-    <value>Écran</value>
-  </data>
-  <data name="SessionsHub_Selected" xml:space="preserve">
-    <value>Sélectionné</value>
   </data>
   <data name="SessionsHub_StatAll" xml:space="preserve">
     <value>Toutes les sessions</value>
@@ -9982,14 +9839,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Sessions archivées</value>
   </data>
-  <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>Supprimer {0}</value></data>
-  <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Conservées</value></data>
-  <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>La session principale</value></data>
-  <data name="SessionsHub_DialogNeverDeleted" xml:space="preserve"><value>Jamais supprimée</value></data>
-  <data name="SessionsHub_DialogReasonMain" xml:space="preserve"><value>Session principale</value></data>
-  <data name="SessionsHub_DialogReasonNeedsAdmin" xml:space="preserve"><value>Accès administrateur requis</value></data>
-  <data name="SessionsHub_DialogScope" xml:space="preserve"><value>Étendue</value></data>
-  <data name="SessionsHub_DialogWillDelete" xml:space="preserve"><value>Seront supprimées</value></data>
   <data name="SessionsHub_FactPath" xml:space="preserve"><value>Chemin</value></data>
   <data name="SessionsHub_ForkCreated" xml:space="preserve"><value>« {0} » créée.</value></data>
   <data name="SessionsHub_ForkCreatedTitle" xml:space="preserve"><value>Conversation dupliquée</value></data>
@@ -10035,7 +9884,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>L’historique de la conversation est effacé et la session redémarre. La clé de session reste identique.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Ouvrir le dossier</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Paramètres</value></data>
-  <data name="SessionsHub_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} sur {1} affichées · {2} chargées</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>d’autres disponibles</value></data>
   <data name="SessionsHub_ShowMore" xml:space="preserve"><value>Afficher plus</value></data>
@@ -10052,7 +9900,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_CompletedShown" xml:space="preserve"><value>sessions terminées affichées</value></data>
   <data name="SessionsHub_UnroutedHidden" xml:space="preserve"><value>sessions non routées masquées</value></data>
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessions non routées affichées</value></data>
-  <data name="SessionsHub_NoMatchingSelection" xml:space="preserve"><value>Aucune session correspondante à sélectionner</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>« {0} » archivée ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Fermer la notification</value></data>
 </root>

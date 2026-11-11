@@ -32,16 +32,15 @@ internal static class SessionsHubDetailsView
         var title = titles.TryGetValue(row.Key, out var known) ? known : row.Key;
         var canWrite = state.Permissions.CanWrite && state.CanMutateRows;
 
-        var customize = Expander(T("Appearance"),
+        var settings = Expander(T("Overrides"),
                 VStack(16,
                     Overrides(context, row, title, canWrite),
-                    Appearance(context, row, title, canWrite),
                     Organization(context, row, title, canWrite))
                     .HAlign(HorizontalAlignment.Stretch),
                 true, _ => { })
             .HAlign(HorizontalAlignment.Stretch)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .AutomationId("SessionsHubCustomize");
+            .AutomationId("SessionsHubSettings");
         var technical = Expander("",
                 TechnicalFacts(context, row), false, _ => { })
             .HeaderTemplate(HStack(8,
@@ -54,7 +53,7 @@ internal static class SessionsHubDetailsView
         if (SessionsHubProjection.IsCloudWorker(row))
             information.Add(CloudWorker(row));
         var about = VStack(16, information.ToArray());
-        var editing = VStack(10, customize, technical)
+        var editing = VStack(10, settings, technical)
             .HAlign(HorizontalAlignment.Stretch);
         Element body = context.IsWide
             ? Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
@@ -130,7 +129,7 @@ internal static class SessionsHubDetailsView
         var draft = context.State.LabelDraft.Key == row.Key ? context.State.LabelDraft.Text : row.Label ?? "";
         var dirty = draft.Trim() != (row.Label ?? "").Trim();
         var thinkingValues = ThinkingValues(row);
-        return Section(T("Overrides"),
+        return VStack(8,
             Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 TextBox(draft, text => controller.SetLabelDraft(row.Key, text), T("LabelPlaceholder"), T("Label"))
                     .MaxLength(120)
@@ -236,88 +235,6 @@ internal static class SessionsHubDetailsView
             .HelpText(helpText)
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId(automationId);
-    }
-
-    /// <summary>Session color and icon, the same tags the Workspace sidebar and web client show.</summary>
-    private static Element Appearance(SessionsHubViewContext context, SessionInfo row, string title, bool canWrite)
-    {
-        var controller = context.Controller;
-        var state = context.State;
-        var unavailableReason = !state.CanMutateRows ? T("RosterNotCurrent") : null;
-        var colorId = SessionAppearance.NormalizeColor(row.Color);
-        var iconId = SessionAppearance.NormalizeIcon(row.Icon);
-        var swatches = new List<Element>
-        {
-            Swatch(null, colorId is null, canWrite, () => _ = controller.PatchAsync(row, new SessionPatch { Color = SessionPatch.Clear }),
-                unavailableReason),
-        };
-        foreach (var id in SessionAppearance.ColorIds)
-        {
-            var value = id;
-            swatches.Add(Swatch(value, colorId == value, canWrite,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Color = value }), unavailableReason));
-        }
-        var icons = new List<Element>
-        {
-            IconChoice(null, colorId, string.IsNullOrWhiteSpace(row.Icon), canWrite,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = SessionPatch.Clear }), unavailableReason),
-        };
-        foreach (var id in SessionAppearance.IconIds)
-        {
-            var value = id;
-            icons.Add(IconChoice(value, colorId, iconId == value, canWrite,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = value }), unavailableReason));
-        }
-        return Section(T("Appearance"),
-            TextBlock(T("ColorHeader")).FontSize(12),
-            HStack(2, swatches.ToArray()).AutomationName(F("ColorFor", title)).AutomationId("SessionsHubColorPicker"),
-            TextBlock(T("IconHeader")).FontSize(12).Margin(0, 4, 0, 0),
-            HStack(2, icons.ToArray()).AutomationName(F("IconFor", title)).AutomationId("SessionsHubIconPicker"));
-    }
-
-    private static Element Swatch(string? colorId, bool selected, bool enabled, Action apply, string? unavailableReason)
-    {
-        var label = colorId is null ? T("ColorNone") : SessionsHubPresentation.ColorLabel(colorId);
-        Element dot = colorId is null
-            ? Border(SessionsHubView.Glyph("\uE711", 10, Theme.SecondaryText)
-                    .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-                .Size(20, 20).CornerRadius(10).WithBorder(Theme.Ref("ControlStrongStrokeColorDefaultBrush"), 1)
-            : SessionsHubView.ColorDot(colorId, 20);
-        return Button(Border(dot)
-                    .Padding(2)
-                    .CornerRadius(14)
-                    .WithBorder(selected ? (colorId is null ? Theme.Accent : SessionsHubView.Strong(colorId)) : Theme.Ref("SubtleFillColorTransparentBrush"), 2),
-                selected ? () => { } : apply)
-            .SubtleButton()
-            .Padding(2)
-            .IsEnabled(enabled)
-            .AutomationName(label)
-            .ItemStatus(selected ? T("Selected") : "")
-            .ToolTip(unavailableReason ?? label)
-            .HelpText(unavailableReason ?? label)
-            .AutomationId("SessionsHubColor:" + (colorId ?? "none"));
-    }
-
-    private static Element IconChoice(
-        string? iconId, string? colorId, bool selected, bool enabled, Action apply, string? unavailableReason)
-    {
-        var label = iconId is null ? T("IconDefault") : SessionsHubPresentation.IconLabel(iconId);
-        var tint = colorId ?? "blue";
-        return Button(Border(SessionsHubView.Glyph(iconId is null ? FluentIconCatalog.Chat : SessionsHubPresentation.IconGlyph(iconId), 16,
-                            selected ? SessionsHubView.Strong(tint) : Theme.SecondaryText)
-                        .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-                    .Size(32, 32)
-                    .CornerRadius(6)
-                    .Background(selected ? SessionsHubView.Tint(tint) : Theme.Ref("SubtleFillColorTransparentBrush")),
-                selected ? () => { } : apply)
-            .SubtleButton()
-            .Padding(0)
-            .IsEnabled(enabled)
-            .AutomationName(label)
-            .ItemStatus(selected ? T("Selected") : "")
-            .ToolTip(unavailableReason ?? label)
-            .HelpText(unavailableReason ?? label)
-            .AutomationId("SessionsHubIcon:" + (iconId ?? "default"));
     }
 
     private static Element Organization(SessionsHubViewContext context, SessionInfo row, string title, bool canWrite)

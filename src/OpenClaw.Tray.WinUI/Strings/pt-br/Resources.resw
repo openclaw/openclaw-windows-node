@@ -9258,29 +9258,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_DateYesterday" xml:space="preserve">
     <value>Ontem</value>
   </data>
-  <data name="SessionsHub_Delete" xml:space="preserve">
-    <value>Excluir</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
-    <value>Excluir todas as arquivadas</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
-    <value>Excluir permanentemente {0} sessões arquivadas e as respectivas transcrições? Essa ação não pode ser desfeita.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
-    <value>Excluir permanentemente todas as sessões arquivadas</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
-    <value>Excluir todas as sessões arquivadas?</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
-    <value>{0} dessas sessões têm árvores de trabalho gerenciadas. Uma árvore de trabalho que ainda está em uso ou tem trabalho não salvo é preservada e listada após a exclusão.</value>
-  </data>
   <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
     <value>Esta sessão não pode ser excluída.</value>
-  </data>
-  <data name="SessionsHub_DeletedMany" xml:space="preserve">
-    <value>{0} sessões excluídas.</value>
   </data>
   <data name="SessionsHub_DeletedOne" xml:space="preserve">
     <value>1 sessão excluída.</value>
@@ -9288,29 +9267,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_DeleteFailed" xml:space="preserve">
     <value>Não foi possível excluir</value>
   </data>
-  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
-    <value>Não foi possível excluir {0}. Primeiro erro: {1}</value>
-  </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>Excluir uma sessão que não está arquivada requer acesso de administrador. Arquive-a primeiro ou peça a um administrador.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
-    <value>Excluir selecionadas</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
-    <value>Excluir permanentemente {0} sessões e as respectivas transcrições? Essa ação não pode ser desfeita.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
-    <value>Excluir permanentemente a sessão selecionada e a transcrição dela? Essa ação não pode ser desfeita.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
-    <value>Nenhuma das sessões selecionadas pode ser excluída com o seu acesso. As sessões principais não podem ser excluídas, e as sessões ativas exigem acesso de administrador.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
-    <value>{0} sessões selecionadas serão ignoradas porque não podem ser excluídas com o seu acesso.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
-    <value>Excluir as sessões selecionadas?</value>
   </data>
   <data name="SessionsHub_Details" xml:space="preserve">
     <value>Detalhes</value>
@@ -9579,9 +9537,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Criar uma árvore de trabalho</value>
   </data>
-  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
-    <value>Não há sessões arquivadas que você possa excluir.</value>
-  </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Não disponível</value>
   </data>
@@ -9698,24 +9653,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filtrar por nome ou chave</value>
-  </data>
-  <data name="SessionsHub_Select" xml:space="preserve">
-    <value>Selecionar</value>
-  </data>
-  <data name="SessionsHub_SelectedMany" xml:space="preserve">
-    <value>{0} selecionadas</value>
-  </data>
-  <data name="SessionsHub_SelectedOne" xml:space="preserve">
-    <value>1 selecionada</value>
-  </data>
-  <data name="SessionsHub_SelectNamed" xml:space="preserve">
-    <value>Selecionar {0}</value>
-  </data>
-  <data name="SessionsHub_SelectPage" xml:space="preserve">
-    <value>Selecionar esta página</value>
-  </data>
-  <data name="SessionsHub_SelectTip" xml:space="preserve">
-    <value>Escolha várias sessões para excluir de uma vez</value>
   </data>
   <data name="SessionsHub_ShowAll" xml:space="preserve">
     <value>Mostrar todas as sessões</value>
@@ -9942,92 +9879,12 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_Yes" xml:space="preserve">
     <value>Sim</value>
   </data>
-  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
-    <value>Interrompido antes do fim: a exclusão de {0} sessão(ões) restante(s) não foi confirmada. Atualize para verificar.</value>
-  </data>
   <data name="SessionsHub_DeleteRefused" xml:space="preserve">
-    <value>O gateway não excluiu {0} delas.</value>
+    <value>O Gateway não excluiu esta sessão.</value>
   </data>
-  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
-    <value>A lista mudou durante a confirmação, então nada foi excluído. Revise sua seleção e tente novamente.</value>
-  </data>
+  <data name="SessionsHub_DeleteRosterChanged" xml:space="preserve"><value>A lista mudou durante a confirmação, então nada foi excluído. Confira a sessão e tente novamente.</value></data>
   <data name="SessionsHub_RosterNotCurrent" xml:space="preserve">
     <value>A lista de sessões não está atualizada. Aguarde a conclusão da atualização antes de alterar sessões.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
-    <value>Uma dessas sessões tem uma árvore de trabalho gerenciada. Uma árvore de trabalho que ainda está em uso ou tem trabalho não salvo é preservada e listada após a exclusão.</value>
-  </data>
-  <data name="SessionsHub_Appearance" xml:space="preserve">
-    <value>Aparência</value>
-  </data>
-  <data name="SessionsHub_ColorBlue" xml:space="preserve">
-    <value>Azul</value>
-  </data>
-  <data name="SessionsHub_ColorCyan" xml:space="preserve">
-    <value>Ciano</value>
-  </data>
-  <data name="SessionsHub_ColorFor" xml:space="preserve">
-    <value>Cor de {0}</value>
-  </data>
-  <data name="SessionsHub_ColorGreen" xml:space="preserve">
-    <value>Verde</value>
-  </data>
-  <data name="SessionsHub_ColorHeader" xml:space="preserve">
-    <value>Cor</value>
-  </data>
-  <data name="SessionsHub_ColorMenu" xml:space="preserve">
-    <value>Cor</value>
-  </data>
-  <data name="SessionsHub_ColorNone" xml:space="preserve">
-    <value>Sem cor</value>
-  </data>
-  <data name="SessionsHub_ColorOrange" xml:space="preserve">
-    <value>Laranja</value>
-  </data>
-  <data name="SessionsHub_ColorPink" xml:space="preserve">
-    <value>Rosa</value>
-  </data>
-  <data name="SessionsHub_ColorPurple" xml:space="preserve">
-    <value>Roxo</value>
-  </data>
-  <data name="SessionsHub_ColorRed" xml:space="preserve">
-    <value>Vermelho</value>
-  </data>
-  <data name="SessionsHub_ColorYellow" xml:space="preserve">
-    <value>Amarelo</value>
-  </data>
-  <data name="SessionsHub_IconBook" xml:space="preserve">
-    <value>Livro</value>
-  </data>
-  <data name="SessionsHub_IconBot" xml:space="preserve">
-    <value>Robô</value>
-  </data>
-  <data name="SessionsHub_IconBraces" xml:space="preserve">
-    <value>Código</value>
-  </data>
-  <data name="SessionsHub_IconCoins" xml:space="preserve">
-    <value>Moedas</value>
-  </data>
-  <data name="SessionsHub_IconDefault" xml:space="preserve">
-    <value>Ícone padrão</value>
-  </data>
-  <data name="SessionsHub_IconFor" xml:space="preserve">
-    <value>Ícone de {0}</value>
-  </data>
-  <data name="SessionsHub_IconHeader" xml:space="preserve">
-    <value>Ícone</value>
-  </data>
-  <data name="SessionsHub_IconKanban" xml:space="preserve">
-    <value>Quadro</value>
-  </data>
-  <data name="SessionsHub_IconMenu" xml:space="preserve">
-    <value>Ícone</value>
-  </data>
-  <data name="SessionsHub_IconMonitor" xml:space="preserve">
-    <value>Monitor de vídeo</value>
-  </data>
-  <data name="SessionsHub_Selected" xml:space="preserve">
-    <value>Selecionado</value>
   </data>
   <data name="SessionsHub_StatAll" xml:space="preserve">
     <value>Todas as sessões</value>
@@ -10035,14 +9892,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Sessões arquivadas</value>
   </data>
-  <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>Excluir {0}</value></data>
-  <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Mantidas</value></data>
-  <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>A sessão principal</value></data>
-  <data name="SessionsHub_DialogNeverDeleted" xml:space="preserve"><value>Nunca excluída</value></data>
-  <data name="SessionsHub_DialogReasonMain" xml:space="preserve"><value>Sessão principal</value></data>
-  <data name="SessionsHub_DialogReasonNeedsAdmin" xml:space="preserve"><value>Requer acesso de administrador</value></data>
-  <data name="SessionsHub_DialogScope" xml:space="preserve"><value>Escopo</value></data>
-  <data name="SessionsHub_DialogWillDelete" xml:space="preserve"><value>Serão excluídas</value></data>
   <data name="SessionsHub_FactPath" xml:space="preserve"><value>Caminho</value></data>
   <data name="SessionsHub_ForkCreated" xml:space="preserve"><value>“{0}” criada.</value></data>
   <data name="SessionsHub_ForkCreatedTitle" xml:space="preserve"><value>Conversa bifurcada</value></data>
@@ -10088,7 +9937,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>O histórico da conversa é apagado e a sessão recomeça. A chave da sessão permanece a mesma.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Abrir pasta</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Opções</value></data>
-  <data name="SessionsHub_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} de {1} exibidas · {2} carregadas</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>mais disponíveis</value></data>
   <data name="SessionsHub_ShowMore" xml:space="preserve"><value>Mostrar mais</value></data>
@@ -10105,7 +9953,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_CompletedShown" xml:space="preserve"><value>sessões concluídas exibidas</value></data>
   <data name="SessionsHub_UnroutedHidden" xml:space="preserve"><value>sessões não roteadas ocultas</value></data>
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessões não roteadas exibidas</value></data>
-  <data name="SessionsHub_NoMatchingSelection" xml:space="preserve"><value>Nenhuma sessão correspondente para selecionar</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" arquivada ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dispensar notificação</value></data>
 </root>

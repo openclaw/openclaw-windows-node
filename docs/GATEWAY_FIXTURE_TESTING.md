@@ -218,12 +218,13 @@ delete (including a preserved busy worktree), and the `worktrees.*` methods.
 interactively with `-Scenario sessions-hub` or `-Scenario sessions-hub-readonly`.
 
 Moving sessions between existing categories uses `sessions.patch`. Creating,
-renaming or deleting categories, assigning owners and stopping cloud workers stay
-in the web dashboard.
+renaming or deleting categories, assigning owners, changing session colors/icons,
+bulk deletion and stopping cloud workers stay in the web dashboard.
+Single-session archive, Undo and confirmed deletion remain native.
 
 Sessions regression tests also exercise failed-query row replacement, visible
-refresh errors, transcript query/scope invalidation, acknowledged label drafts
-and clearing custom icons through mounted native controls. They use the actual
+refresh errors, transcript query/scope invalidation and acknowledged label drafts
+through mounted native controls. They use the actual
 controller and small external-client proxies, without another app process.
 They also cover preserving identity-bound rename drafts across filters,
 wire-equivalent search edits, superseded or reopened Worktree branch lookups,

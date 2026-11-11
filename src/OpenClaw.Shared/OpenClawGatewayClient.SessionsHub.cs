@@ -183,7 +183,7 @@ public partial class OpenClawGatewayClient
         };
     }
 
-    // ── sessions.delete (response-aware, bulk-safe) ──
+    // ── sessions.delete (response-aware, identity-guarded) ──
 
     public async Task<SessionDeleteOutcome> DeleteSessionDetailedAsync(SessionDeleteRequest request, int timeoutMs = 30000)
     {

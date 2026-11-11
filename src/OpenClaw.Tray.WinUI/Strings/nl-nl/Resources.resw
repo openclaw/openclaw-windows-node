@@ -9206,29 +9206,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_DateYesterday" xml:space="preserve">
     <value>Gisteren</value>
   </data>
-  <data name="SessionsHub_Delete" xml:space="preserve">
-    <value>Verwijderen</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
-    <value>Alle gearchiveerde verwijderen</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
-    <value>{0} gearchiveerde sessies en hun transcripties definitief verwijderen? Dit kan niet ongedaan worden gemaakt.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
-    <value>Alle gearchiveerde sessies definitief verwijderen</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
-    <value>Alle gearchiveerde sessies verwijderen?</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
-    <value>{0} van deze sessies hebben beheerde worktrees. Een worktree die nog in gebruik is of niet-opgeslagen werk bevat, blijft behouden en wordt na het verwijderen weergegeven.</value>
-  </data>
   <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
     <value>Deze sessie kan niet worden verwijderd.</value>
-  </data>
-  <data name="SessionsHub_DeletedMany" xml:space="preserve">
-    <value>{0} sessies verwijderd.</value>
   </data>
   <data name="SessionsHub_DeletedOne" xml:space="preserve">
     <value>1 sessie verwijderd.</value>
@@ -9236,29 +9215,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_DeleteFailed" xml:space="preserve">
     <value>Kan niet verwijderen</value>
   </data>
-  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
-    <value>Kan {0} niet verwijderen. Eerste fout: {1}</value>
-  </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>Voor het verwijderen van een niet-gearchiveerde sessie is beheerderstoegang vereist. Archiveer de sessie eerst of vraag het een beheerder.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
-    <value>Selectie verwijderen</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
-    <value>{0} sessies en hun transcripties definitief verwijderen? Dit kan niet ongedaan worden gemaakt.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
-    <value>De geselecteerde sessie en de transcriptie ervan definitief verwijderen? Dit kan niet ongedaan worden gemaakt.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
-    <value>Geen van de geselecteerde sessies kan met uw toegang worden verwijderd. Hoofdsessies kunnen niet worden verwijderd en voor actieve sessies is beheerderstoegang vereist.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
-    <value>{0} geselecteerde sessies worden overgeslagen omdat ze niet met uw toegang kunnen worden verwijderd.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
-    <value>Geselecteerde sessies verwijderen?</value>
   </data>
   <data name="SessionsHub_Details" xml:space="preserve">
     <value>Gegevens</value>
@@ -9527,9 +9485,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Een worktree maken</value>
   </data>
-  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
-    <value>Er zijn geen gearchiveerde sessies die u kunt verwijderen.</value>
-  </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Niet beschikbaar</value>
   </data>
@@ -9646,24 +9601,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filteren op naam of sleutel</value>
-  </data>
-  <data name="SessionsHub_Select" xml:space="preserve">
-    <value>Selecteren</value>
-  </data>
-  <data name="SessionsHub_SelectedMany" xml:space="preserve">
-    <value>{0} geselecteerd</value>
-  </data>
-  <data name="SessionsHub_SelectedOne" xml:space="preserve">
-    <value>1 geselecteerd</value>
-  </data>
-  <data name="SessionsHub_SelectNamed" xml:space="preserve">
-    <value>{0} selecteren</value>
-  </data>
-  <data name="SessionsHub_SelectPage" xml:space="preserve">
-    <value>Deze pagina selecteren</value>
-  </data>
-  <data name="SessionsHub_SelectTip" xml:space="preserve">
-    <value>Meerdere sessies kiezen om in één keer te verwijderen</value>
   </data>
   <data name="SessionsHub_ShowAll" xml:space="preserve">
     <value>Alle sessies weergeven</value>
@@ -9890,92 +9827,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_Yes" xml:space="preserve">
     <value>Ja</value>
   </data>
-  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
-    <value>Vroegtijdig gestopt: het verwijderen van {0} resterende sessie(s) is niet bevestigd. Vernieuw om te controleren.</value>
-  </data>
   <data name="SessionsHub_DeleteRefused" xml:space="preserve">
-    <value>De gateway heeft er {0} niet verwijderd.</value>
+    <value>De Gateway heeft deze sessie niet verwijderd.</value>
   </data>
-  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
-    <value>De lijst is gewijzigd tijdens het bevestigen, dus er is niets verwijderd. Controleer je selectie en probeer het opnieuw.</value>
-  </data>
+  <data name="SessionsHub_DeleteRosterChanged" xml:space="preserve"><value>De lijst is tijdens de bevestiging gewijzigd, dus er is niets verwijderd. Controleer de sessie en probeer het opnieuw.</value></data>
   <data name="SessionsHub_RosterNotCurrent" xml:space="preserve">
     <value>De sessielijst is niet actueel. Wacht tot het vernieuwen is voltooid voordat je sessies wijzigt.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
-    <value>Een van deze sessies heeft een beheerde worktree. Een worktree die nog in gebruik is of niet-opgeslagen werk bevat, blijft behouden en wordt na het verwijderen weergegeven.</value>
-  </data>
-  <data name="SessionsHub_Appearance" xml:space="preserve">
-    <value>Weergave</value>
-  </data>
-  <data name="SessionsHub_ColorBlue" xml:space="preserve">
-    <value>Blauw</value>
-  </data>
-  <data name="SessionsHub_ColorCyan" xml:space="preserve">
-    <value>Cyaan</value>
-  </data>
-  <data name="SessionsHub_ColorFor" xml:space="preserve">
-    <value>Kleur voor {0}</value>
-  </data>
-  <data name="SessionsHub_ColorGreen" xml:space="preserve">
-    <value>Groen</value>
-  </data>
-  <data name="SessionsHub_ColorHeader" xml:space="preserve">
-    <value>Kleur</value>
-  </data>
-  <data name="SessionsHub_ColorMenu" xml:space="preserve">
-    <value>Kleur</value>
-  </data>
-  <data name="SessionsHub_ColorNone" xml:space="preserve">
-    <value>Geen kleur</value>
-  </data>
-  <data name="SessionsHub_ColorOrange" xml:space="preserve">
-    <value>Oranje</value>
-  </data>
-  <data name="SessionsHub_ColorPink" xml:space="preserve">
-    <value>Roze</value>
-  </data>
-  <data name="SessionsHub_ColorPurple" xml:space="preserve">
-    <value>Paars</value>
-  </data>
-  <data name="SessionsHub_ColorRed" xml:space="preserve">
-    <value>Rood</value>
-  </data>
-  <data name="SessionsHub_ColorYellow" xml:space="preserve">
-    <value>Geel</value>
-  </data>
-  <data name="SessionsHub_IconBook" xml:space="preserve">
-    <value>Boek</value>
-  </data>
-  <data name="SessionsHub_IconBot" xml:space="preserve">
-    <value>Robot</value>
-  </data>
-  <data name="SessionsHub_IconBraces" xml:space="preserve">
-    <value>Broncode</value>
-  </data>
-  <data name="SessionsHub_IconCoins" xml:space="preserve">
-    <value>Munten</value>
-  </data>
-  <data name="SessionsHub_IconDefault" xml:space="preserve">
-    <value>Standaardpictogram</value>
-  </data>
-  <data name="SessionsHub_IconFor" xml:space="preserve">
-    <value>Pictogram voor {0}</value>
-  </data>
-  <data name="SessionsHub_IconHeader" xml:space="preserve">
-    <value>Pictogram</value>
-  </data>
-  <data name="SessionsHub_IconKanban" xml:space="preserve">
-    <value>Bord</value>
-  </data>
-  <data name="SessionsHub_IconMenu" xml:space="preserve">
-    <value>Pictogram</value>
-  </data>
-  <data name="SessionsHub_IconMonitor" xml:space="preserve">
-    <value>Beeldscherm</value>
-  </data>
-  <data name="SessionsHub_Selected" xml:space="preserve">
-    <value>Geselecteerd</value>
   </data>
   <data name="SessionsHub_StatAll" xml:space="preserve">
     <value>Alle sessies</value>
@@ -9983,14 +9840,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Gearchiveerde sessies</value>
   </data>
-  <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>{0} verwijderen</value></data>
-  <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Behouden</value></data>
-  <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>De hoofdsessie</value></data>
-  <data name="SessionsHub_DialogNeverDeleted" xml:space="preserve"><value>Nooit verwijderd</value></data>
-  <data name="SessionsHub_DialogReasonMain" xml:space="preserve"><value>Hoofdsessie</value></data>
-  <data name="SessionsHub_DialogReasonNeedsAdmin" xml:space="preserve"><value>Beheerderstoegang vereist</value></data>
-  <data name="SessionsHub_DialogScope" xml:space="preserve"><value>Bereik</value></data>
-  <data name="SessionsHub_DialogWillDelete" xml:space="preserve"><value>Worden verwijderd</value></data>
   <data name="SessionsHub_FactPath" xml:space="preserve"><value>Pad</value></data>
   <data name="SessionsHub_ForkCreated" xml:space="preserve"><value>‘{0}’ gemaakt.</value></data>
   <data name="SessionsHub_ForkCreatedTitle" xml:space="preserve"><value>Gesprek geforkt</value></data>
@@ -10036,7 +9885,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>De gespreksgeschiedenis wordt gewist en de sessie begint opnieuw. De sessiesleutel blijft hetzelfde.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Map openen</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Opties</value></data>
-  <data name="SessionsHub_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} van {1} getoond · {2} geladen</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>meer beschikbaar</value></data>
   <data name="SessionsHub_ShowMore" xml:space="preserve"><value>Meer tonen</value></data>
@@ -10053,7 +9901,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_CompletedShown" xml:space="preserve"><value>voltooide sessies weergegeven</value></data>
   <data name="SessionsHub_UnroutedHidden" xml:space="preserve"><value>niet-gerouteerde sessies verborgen</value></data>
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>niet-gerouteerde sessies weergegeven</value></data>
-  <data name="SessionsHub_NoMatchingSelection" xml:space="preserve"><value>Geen overeenkomende sessies om te selecteren</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" gearchiveerd ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Melding sluiten</value></data>
 </root>

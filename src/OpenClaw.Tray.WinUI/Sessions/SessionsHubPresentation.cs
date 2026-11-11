@@ -249,10 +249,6 @@ internal static class SessionsHubPresentation
 
     // ── Appearance ──
 
-    public static string ColorLabel(string colorId) => T("Color" + Pascal(colorId));
-
-    public static string IconLabel(string iconId) => T("Icon" + Pascal(iconId));
-
     public static string IconGlyph(string iconId) => iconId switch
     {
         "braces" => FluentIconCatalog.Develop,

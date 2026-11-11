@@ -174,7 +174,6 @@ internal sealed class SessionsHubController
             GatewayName = _host.GatewayName,
             Load = connected ? s.Load : SessionsHubLoad.Idle,
             Rows = connected ? s.Rows : Array.Empty<SessionInfo>(),
-            Selection = connected ? s.Selection : SessionsHubSelection.Empty,
             Transcript = connected ? s.Transcript : s.Transcript with { IsSearching = false, Result = null, Error = null },
             Worktrees = connected ? s.Worktrees : new WorktreesState(),
             IsBusy = connected && s.IsBusy,
@@ -214,7 +213,6 @@ internal sealed class SessionsHubController
             LabelDraft = (null, "", null),
             IsBusy = false,
             IsReloading = false,
-            Selection = SessionsHubSelection.Empty,
             Transcript = s.Transcript with { IsSearching = false, Result = null, Error = null },
             Worktrees = new WorktreesState(),
         });
@@ -385,7 +383,6 @@ internal sealed class SessionsHubController
                 NextOffset = page.NextOffset,
                 TotalCount = page.TotalCount,
                 LabelDraft = draft,
-                Selection = s.Selection.Reconcile(rows.Select(row => row.Key)),
             };
         });
     }
@@ -429,8 +426,6 @@ internal sealed class SessionsHubController
         var queryChanged = !SameServerQuery(previous, filters);
         if (queryChanged)
             ResetRosterForQueryChange();
-        // Client-only filters hide rows without a reload; never keep hidden rows selected.
-        Update(s => s with { Selection = s.Selection.Reconcile(filters.ApplyClientFilters(s.Rows).Select(row => row.Key)) });
         if (!reload || !queryChanged)
             return;
         _ = ReloadAsync();
@@ -466,8 +461,6 @@ internal sealed class SessionsHubController
             HasMore = false,
             NextOffset = null,
             TotalCount = null,
-            // Keep the draft while its row is filtered out. ApplyPage checks identity before reuse.
-            Selection = SessionsHubSelection.Empty,
         });
     }
 
@@ -559,15 +552,6 @@ internal sealed class SessionsHubController
         if (expected is null || ReferenceEquals(_state.Notice, expected))
             Update(s => s with { Notice = null });
     }
-
-    public void SetSelectionMode(bool enabled) => Update(s => s with
-    {
-        SelectionMode = enabled,
-        Selection = enabled ? s.Selection : SessionsHubSelection.Empty,
-    });
-
-    public void ToggleSelected(string key) => Update(s => s with { Selection = s.Selection.Toggle(key) });
-    public void SetSelected(IEnumerable<string> keys, bool selected) => Update(s => s with { Selection = s.Selection.Set(keys, selected) });
 
     private void ShowNotice(string title, string message, InfoBarSeverity severity, string? actionLabel = null, Action? action = null,
         bool persistent = false)
@@ -999,167 +983,27 @@ internal sealed class SessionsHubController
         if (string.IsNullOrWhiteSpace(row.SessionId)
             && (!ReferenceEquals(rowsBefore, _state.Rows) || _state.IsReloading))
         {
-            ShowNotice("", T("DeleteSelectionChanged"), InfoBarSeverity.Informational);
+            ShowNotice("", T("DeleteRosterChanged"), InfoBarSeverity.Informational);
             return;
         }
-        await DeleteRowsAsync([row], T("DeleteFailed"), binding);
-    }
-
-    public async Task DeleteSelectedAsync()
-    {
-        if (!RequireCurrentRoster())
-            return;
-        // Only rows the user can currently see; a hidden selection must never be deleted.
-        var rows = _state.Filters.ApplyClientFilters(_state.Rows).Where(row => _state.Selection.Contains(row.Key)).ToArray();
-        if (rows.Length == 0) return;
-        var plan = SessionsHubDeletion.Plan(rows, _state.Permissions, IsMain);
-        if (plan.Requests.Count == 0)
+        var request = new SessionDeleteRequest(row.Key)
         {
-            ShowNotice("", T("DeleteSelectedNoneAllowed"), InfoBarSeverity.Informational);
+            AgentId = SessionsHubProjection.AgentId(row),
+            ExpectedSessionId = string.IsNullOrWhiteSpace(row.SessionId) ? null : row.SessionId,
+            ArchivedOnly = row.Archived,
+        };
+        SessionDeleteOutcome? outcome = null;
+        var completed = await GuardedAsync(T("DeleteFailed"), async operation =>
+            outcome = await operation.Client.DeleteSessionDetailedAsync(request), binding, requireCurrentRoster: true);
+        if (!completed || outcome is null)
             return;
-        }
-        var body = plan.Requests.Count == 1 ? T("DeleteSelectedBodyOne") : F("DeleteSelectedBodyMany", plan.Requests.Count);
-        if (plan.Blocked.Count > 0)
-            body += "\n\n" + F("DeleteSelectedSkipped", plan.Blocked.Count);
-        if (PromptBinding() is not { } binding) return;
-        var rowsBefore = _state.Rows;
-        var kept = plan.Blocked.Select(blocked => new SessionsHubDialogListItem(
-            SessionsHubPresentation.Titles([blocked])[blocked.Key],
-            IsMain(blocked) ? T("DialogReasonMain") : T("DialogReasonNeedsAdmin"))).ToArray();
-        if (!await ConfirmAsync(T("DeleteSelectedTitle"), body, F("DeleteCount", plan.Requests.Count), destructive: true,
-                icon: FluentIconCatalog.Delete,
-                facts:
-                [
-                    new SessionsHubDialogFact(T("Selected"), rows.Length.ToString(System.Globalization.CultureInfo.CurrentCulture)),
-                    new SessionsHubDialogFact(T("DialogWillDelete"), plan.Requests.Count.ToString(System.Globalization.CultureInfo.CurrentCulture)),
-                ],
-                itemsLabel: kept.Length > 0 ? T("DialogKept") : null,
-                items: kept))
-            return;
-        // The roster may have reloaded while the dialog was open. Delete only confirmed rows that
-        // are still loaded, visible and selected. Requests carry the session id the user confirmed,
-        // so the Gateway refuses a replaced session. A row without an id has no such guard, so a
-        // reload with one in the plan needs a fresh confirmation.
-        // Any change to the loaded rows, including a reload already running when the dialog opened.
-        var reloaded = !ReferenceEquals(rowsBefore, _state.Rows) || _state.IsReloading;
-        var stillSelected = _state.Filters.ApplyClientFilters(_state.Rows)
-            .Where(row => _state.Selection.Contains(row.Key)).Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
-        plan = plan with { Requests = plan.Requests.Where(request => stillSelected.Contains(request.Key)).ToArray() };
-        if (plan.Requests.Count == 0 || (reloaded && plan.Requests.Any(request => request.ExpectedSessionId is null)))
-        {
-            ShowNotice("", T("DeleteSelectionChanged"), InfoBarSeverity.Informational);
-            return;
-        }
-        await ExecutePlanAsync(plan, T("DeleteFailed"), binding);
-        Update(s => s with { Selection = SessionsHubSelection.Empty, SelectionMode = false });
-    }
-
-    /// <summary>Loads every archived page first so the confirmation states the real count.</summary>
-    public async Task DeleteAllArchivedAsync()
-    {
-        if (!RequireCurrentRoster())
-            return;
-        var binding = _binding;
-        if (!IsCurrent(binding) || _state.IsBusy) return;
-        var client = binding!.Client;
-        var rows = new List<SessionInfo>();
-        try
-        {
-            Update(s => s with { IsBusy = true });
-            var archivedFilters = _state.Filters with { Status = SessionArchiveFilter.Archived, Search = "" };
-            var offset = 0;
-            while (true)
-            {
-                var page = await client.ListSessionsPageAsync(archivedFilters.ToQuery(offset, 100));
-                rows.AddRange(page.Sessions);
-                if (!page.HasMore || page.NextOffset is not { } next || next <= offset) break;
-                offset = next;
-            }
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
-        {
-            if (IsCurrent(binding))
-                ShowNotice(T("DeleteFailed"), ex.Message, InfoBarSeverity.Error);
-            return;
-        }
-        finally
-        {
-            if (ReferenceEquals(binding, _binding))
-                Update(s => s with { IsBusy = false });
-        }
-        if (!IsCurrent(binding)) return;
-        if (!RequireCurrentRoster()) return;
-        var plan = SessionsHubDeletion.PlanDeleteAllArchived(rows, _state.Permissions, IsMain);
-        if (plan.Requests.Count == 0)
-        {
-            ShowNotice("", T("NoArchivedToDelete"), InfoBarSeverity.Informational);
-            return;
-        }
-        var withWorktrees = rows.Count(row => row.Worktree is not null);
-        var body = F("DeleteAllArchivedBody", plan.Requests.Count);
-        if (withWorktrees > 0)
-            body += "\n\n" + (withWorktrees == 1 ? T("DeleteAllArchivedWorktreesOne") : F("DeleteAllArchivedWorktrees", withWorktrees));
-        if (!await ConfirmAsync(T("DeleteAllArchivedTitle"), body, F("DeleteCount", plan.Requests.Count), destructive: true,
-                icon: FluentIconCatalog.Delete,
-                facts:
-                [
-                    new SessionsHubDialogFact(T("DialogScope"),
-                        _state.Filters.AgentId is { } agentId
-                            ? _state.Agents.FirstOrDefault(agent => agent.Id == agentId)?.Name ?? agentId
-                            : T("AllAgents")),
-                    new SessionsHubDialogFact(T("StatArchived"),
-                        plan.Requests.Count.ToString(System.Globalization.CultureInfo.CurrentCulture)),
-                    new SessionsHubDialogFact(T("DialogNeverDeleted"), T("DialogMainSession")),
-                ]))
-            return;
-        await ExecutePlanAsync(plan, T("DeleteFailed"), binding);
-    }
-
-    private Task DeleteRowsAsync(IReadOnlyList<SessionInfo> rows, string failureTitle, WorkspaceSessionOperation? binding) =>
-        ExecutePlanAsync(SessionsHubDeletion.Plan(rows, _state.Permissions, IsMain), failureTitle, binding);
-
-    private async Task ExecutePlanAsync(SessionsDeletePlan plan, string failureTitle, WorkspaceSessionOperation? binding)
-    {
-        var deleted = 0;
-        var refused = 0;
-        var failures = new List<string>();
-        var preserved = new List<PreservedWorktreeInfo>();
-        var completed = await GuardedAsync(failureTitle, async operation =>
-        {
-            foreach (var request in plan.Requests)
-            {
-                RequireBound(operation);
-                try
-                {
-                    var outcome = await operation.Client.DeleteSessionDetailedAsync(request);
-                    if (outcome.Deleted) deleted++;
-                    else refused++;
-                    if (outcome.PreservedWorktree is { } kept) preserved.Add(kept);
-                }
-                catch (InvalidOperationException ex) when (ex is not WorkspaceSessionConnectionChangedException)
-                {
-                    failures.Add(ex.Message);
-                }
-            }
-        }, binding, requireCurrentRoster: true);
-        if (!completed && deleted == 0 && refused == 0) return;
-        if (!completed && _host.Client is { IsConnectedToGateway: true } current)
-            RefreshTrackedSessions(current);
-        foreach (var request in plan.Requests)
-            CloseDetails(request.Key);
-        var message = deleted == 1 ? T("DeletedOne") : F("DeletedMany", deleted);
-        if (failures.Count > 0)
-            message += " " + F("DeleteFailures", failures.Count, failures[0]);
-        // An interrupted run (timeout or connection change) left the rest unattempted or unknown.
-        if (refused > 0)
-            message += " " + F("DeleteRefused", refused);
-        var unconfirmed = completed ? 0 : plan.Requests.Count - deleted - refused - failures.Count;
-        if (unconfirmed > 0)
-            message += " " + F("DeleteInterrupted", unconfirmed);
-        if (preserved.Count > 0)
-            message += " " + F("PreservedWorktrees", string.Join(", ", preserved.Select(w => $"{w.Branch} ({PreservationReason(w.Reason)})")));
-        var severity = failures.Count > 0 || refused > 0 || unconfirmed > 0 ? InfoBarSeverity.Warning
-            : preserved.Count > 0 ? InfoBarSeverity.Informational : InfoBarSeverity.Success;
+        if (outcome.Deleted)
+            CloseDetails(row.Key);
+        var message = outcome.Deleted ? T("DeletedOne") : T("DeleteRefused");
+        if (outcome.PreservedWorktree is { } kept)
+            message += " " + F("PreservedWorktrees", $"{kept.Branch} ({PreservationReason(kept.Reason)})");
+        var severity = !outcome.Deleted ? InfoBarSeverity.Warning
+            : outcome.PreservedWorktree is not null ? InfoBarSeverity.Informational : InfoBarSeverity.Success;
         ShowNotice("", message, severity);
         await ReloadAsync(preserveCount: true);
     }
@@ -1485,8 +1329,6 @@ internal sealed class SessionsHubController
         bool destructive,
         string? icon = null,
         IReadOnlyList<SessionsHubDialogFact>? facts = null,
-        string? itemsLabel = null,
-        IReadOnlyList<SessionsHubDialogListItem>? items = null,
         string? noteTitle = null,
         string? noteMessage = null) =>
         await OpenDialog(new SessionsHubDialog(SessionsHubDialogKind.Confirm, title, body, confirmLabel, destructive,
@@ -1494,8 +1336,6 @@ internal sealed class SessionsHubController
         {
             Icon = icon ?? (destructive ? FluentIconCatalog.Delete : FluentIconCatalog.StatusOk),
             Facts = facts ?? Array.Empty<SessionsHubDialogFact>(),
-            ItemsLabel = itemsLabel,
-            Items = items ?? Array.Empty<SessionsHubDialogListItem>(),
             NoteTitle = noteTitle,
             NoteMessage = noteMessage,
         }) is not null;

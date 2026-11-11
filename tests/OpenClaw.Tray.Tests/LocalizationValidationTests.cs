@@ -1009,7 +1009,7 @@ public class LocalizationValidationTests
     {
         var keys = ReadSessionsHubReferences();
         Assert.Contains("SessionsHub_CloudWorker", keys);
-        Assert.Contains("SessionsHub_ColorRed", keys);
+        Assert.Contains("SessionsHub_Overrides", keys);
         Assert.Contains("SessionsPage_Status_Ready", keys);
         var failures = new List<string>();
         foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
@@ -1033,7 +1033,6 @@ public class LocalizationValidationTests
         Assert.Contains(sources, source => source.Contains(
             "internal static string T(string key) => LocalizationHelper.GetString(\"SessionsHub_\" + key);",
             StringComparison.Ordinal));
-        static string Pascal(string id) => char.ToUpperInvariant(id[0]) + id[1..];
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var unclassified = new List<string>();
         foreach (var source in sources)
@@ -1051,14 +1050,6 @@ public class LocalizationValidationTests
                 {
                     keys.Add(prefix + choice.Groups["a"].Value);
                     keys.Add(prefix + choice.Groups["b"].Value);
-                }
-                else if (arg == "\"Color\" + Pascal(colorId")
-                {
-                    keys.UnionWith(OpenClaw.Shared.Sessions.SessionAppearance.ColorIds.Select(id => prefix + "Color" + Pascal(id)));
-                }
-                else if (arg == "\"Icon\" + Pascal(iconId")
-                {
-                    keys.UnionWith(OpenClaw.Shared.Sessions.SessionAppearance.IconIds.Select(id => prefix + "Icon" + Pascal(id)));
                 }
                 else
                 {

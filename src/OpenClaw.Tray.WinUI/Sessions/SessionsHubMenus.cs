@@ -109,60 +109,11 @@ internal static class SessionsHubMenus
         _ => null,
     };
 
-    /// <summary>Move to group, assign owner, and stop cloud worker.</summary>
+    /// <summary>Move a session between the categories already present in the roster.</summary>
     private static IEnumerable<MenuFlyoutItemBase> Organization(SessionsHubViewContext context, SessionInfo row, string title)
     {
-        var controller = context.Controller;
-        var state = context.State;
-        var canWrite = state.Permissions.CanWrite && state.CanMutateRows;
         string T(string key) => SessionsHubPresentation.T(key);
         yield return MenuSubItem(T("MoveToGroup"), GroupItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.Folder) };
-        yield return MenuSubItem(T("ColorMenu"), ColorItems(context, row)) with { IconElement = FontIcon(ColorGlyph) };
-        yield return MenuSubItem(T("IconMenu"), IconItems(context, row)) with { IconElement = FontIcon(FluentIconCatalog.Develop) };
-    }
-
-    private const string ColorGlyph = "\uE790";
-
-    public static MenuFlyoutItemBase[] ColorItems(SessionsHubViewContext context, SessionInfo row)
-    {
-        var controller = context.Controller;
-        var state = context.State;
-        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
-        var unavailableReason = !state.CanMutateRows ? SessionsHubPresentation.T("RosterNotCurrent") : null;
-        var current = SessionAppearance.NormalizeColor(row.Color);
-        var items = new List<MenuFlyoutItemBase>
-        {
-            Radio(SessionsHubPresentation.T("ColorNone"), "session-color", current is null,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Color = SessionPatch.Clear }), enabled, unavailableReason),
-        };
-        foreach (var id in SessionAppearance.ColorIds)
-        {
-            var value = id;
-            items.Add(Radio(SessionsHubPresentation.ColorLabel(value), "session-color", current == value,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Color = value }), enabled, unavailableReason));
-        }
-        return items.ToArray();
-    }
-
-    public static MenuFlyoutItemBase[] IconItems(SessionsHubViewContext context, SessionInfo row)
-    {
-        var controller = context.Controller;
-        var state = context.State;
-        var enabled = state.Permissions.CanWrite && state.CanMutateRows;
-        var unavailableReason = !state.CanMutateRows ? SessionsHubPresentation.T("RosterNotCurrent") : null;
-        var current = SessionAppearance.NormalizeIcon(row.Icon);
-        var items = new List<MenuFlyoutItemBase>
-        {
-            Radio(SessionsHubPresentation.T("IconDefault"), "session-icon", string.IsNullOrWhiteSpace(row.Icon),
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = SessionPatch.Clear }), enabled, unavailableReason),
-        };
-        foreach (var id in SessionAppearance.IconIds)
-        {
-            var value = id;
-            items.Add(Radio(SessionsHubPresentation.IconLabel(value), "session-icon", current == value,
-                () => _ = controller.PatchAsync(row, new SessionPatch { Icon = value }), enabled, unavailableReason));
-        }
-        return items.ToArray();
     }
 
     /// <summary>Radio entry that degrades to a disabled, checkmarked item without write access.</summary>

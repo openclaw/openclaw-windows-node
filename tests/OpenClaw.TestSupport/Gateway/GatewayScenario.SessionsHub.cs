@@ -318,12 +318,12 @@ public sealed partial class GatewayScenario
         private object Patch(JsonElement p)
         {
             ValidateProperties(p, "key", "agentId", "expectedSessionId", "label", "pinned", "unread", "archived", "category",
-                "color", "icon", "thinkingLevel", "reasoningLevel", "verboseLevel", "fastMode", "model", "expectedMarkedUnreadAt");
+                "thinkingLevel", "reasoningLevel", "verboseLevel", "fastMode", "model", "expectedMarkedUnreadAt");
             var key = RequiredString(p, "key");
             var row = Find(key);
             if (key == MainSessionKey && OptionalBoolean(p, "archived") == true)
                 throw new FixtureRequestException("INVALID_PARAMS", "The main fixture session cannot be archived.");
-            foreach (var field in new[] { "label", "pinned", "unread", "archived", "category", "color", "icon", "thinkingLevel", "reasoningLevel", "verboseLevel", "fastMode", "model" })
+            foreach (var field in new[] { "label", "pinned", "unread", "archived", "category", "thinkingLevel", "reasoningLevel", "verboseLevel", "fastMode", "model" })
             {
                 if (!p.TryGetProperty(field, out var value)) continue;
                 if (value.ValueKind == JsonValueKind.Null) row.Remove(field);

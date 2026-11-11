@@ -174,17 +174,17 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
 
     [Theory]
     [InlineData(SessionArchiveFilter.Active, "", "Current sessions", "2 shown of 5 loaded",
-        "Loaded matches: 3. Background hidden, completed hidden, unrouted hidden. Change in Options.", true)]
+        "Loaded matches: 3. Background hidden, completed hidden, unrouted hidden. Change in Options.")]
     [InlineData(SessionArchiveFilter.Archived, "", "Archived sessions", "1 shown of 1 loaded",
-        "Loaded matches: 1. Background hidden, completed shown, unrouted hidden. Change in Options.", true)]
+        "Loaded matches: 1. Background hidden, completed shown, unrouted hidden. Change in Options.")]
     [InlineData(SessionArchiveFilter.All, "", "All sessions", "2 shown of 6 loaded",
-        "Loaded matches: 5. Background hidden, completed shown, unrouted hidden. Change in Options.", true)]
+        "Loaded matches: 5. Background hidden, completed shown, unrouted hidden. Change in Options.")]
     [InlineData(SessionArchiveFilter.Active, "needle", "Matching sessions", "1 shown of 1 loaded",
-        "Loaded matches: 1. Background hidden, completed hidden, unrouted hidden. Change in Options.", true)]
+        "Loaded matches: 1. Background hidden, completed hidden, unrouted hidden. Change in Options.")]
     [InlineData(SessionArchiveFilter.Active, "absent", "Matching sessions", "0 shown of 0 loaded",
-        "Loaded matches: 0. Background hidden, completed hidden, unrouted hidden. Change in Options.", false)]
-    public async Task InventoryHeadingCountFilterNoteAndSelect_DescribeTheLoadedView(
-        SessionArchiveFilter status, string search, string title, string count, string note, bool canSelect)
+        "Loaded matches: 0. Background hidden, completed hidden, unrouted hidden. Change in Options.")]
+    public async Task InventoryHeadingCountAndFilterNote_DescribeTheLoadedView(
+        SessionArchiveFilter status, string search, string title, string count, string note)
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true);
         await ui.RunOnUIAsync(async () =>
@@ -223,10 +223,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Contains(TestSupport.FindDescendants<TextBlock>(heading), text => text.Text == title);
             Assert.Equal(count, harness.Find<TextBlock>("SessionsHubInventoryCount").Text);
             Assert.Equal(note, harness.Find<TextBlock>("SessionsHubFilterNote").Text);
-            var select = harness.Find<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>("SessionsHubSelectToggle");
-            Assert.Equal(canSelect, select.IsEnabled);
-            if (!canSelect)
-                Assert.Equal("No matching sessions to select", ToolTipService.GetToolTip(select));
             Assert.Equal("Sessions", harness.Find<TextBlock>("SessionsPageMarker").Text);
             Assert.Equal(SessionsHubPresentation.MastCopy(harness.Controller.State).Headline,
                 harness.Find<TextBlock>("SessionsHubMastHeadline").Text);
@@ -265,7 +261,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task StaleRosterDisabledRowAndToolbarActions_ExplainWhyTheyAreUnavailable()
+    public async Task StaleRosterDisabledRowActions_ExplainWhyTheyAreUnavailable()
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true);
         const string rosterNotCurrent = "The session list is not current. Wait for refresh to finish before changing sessions.";
@@ -275,8 +271,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         {
             await harness.Controller.ReloadAsync();
             harness.Controller.OpenDetails(Harness.Key);
-            harness.Controller.SetSelectionMode(true);
-            harness.Controller.ToggleSelected(Harness.Key);
             harness.Gateway.List = _ => response.Task;
             reload = harness.Controller.ReloadAsync();
         });
@@ -289,10 +283,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal(rosterNotCurrent, ToolTipService.GetToolTip(rowAction));
             Assert.Equal(rosterNotCurrent, AutomationProperties.GetHelpText(rowAction));
 
-            var toolbarAction = harness.Find<Button>("SessionsHubDeleteSelected");
-            Assert.False(toolbarAction.IsEnabled);
-            Assert.Equal(rosterNotCurrent, ToolTipService.GetToolTip(toolbarAction));
-            Assert.Equal(rosterNotCurrent, AutomationProperties.GetHelpText(toolbarAction));
         });
         response.SetResult(harness.Gateway.Page);
         await reload.WaitAsync(TimeSpan.FromSeconds(10));
@@ -331,14 +321,12 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal("1 shown of 3 loaded", harness.Find<TextBlock>("SessionsHubInventoryCount").Text);
             Assert.Equal("Loaded matches: 3. Background shown, completed shown, unrouted shown. Change in Options.",
                 harness.Find<TextBlock>("SessionsHubFilterNote").Text);
-            harness.Controller.SetSelectionMode(true);
             harness.Controller.SetFilters(harness.Controller.State.Filters with { ShowBackground = false });
         });
         await harness.RenderAsync();
         await ui.RunOnUIAsync(() =>
         {
             Assert.Equal("2 shown of 3 loaded", harness.Find<TextBlock>("SessionsHubInventoryCount").Text);
-            Assert.True(harness.Find<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>("SessionsHubSelectToggle").IsEnabled);
         });
     }
 
@@ -492,36 +480,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Empty(harness.Controller.State.ExpandedKeys);
             Assert.Null(harness.Controller.State.RowReveal);
             Assert.Equal(2, harness.Gateway.Patches.Count);
-        });
-    }
-
-    [Fact]
-    public async Task SelectionCanBeCancelledAfterAllMatchingRowsAreHidden()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true);
-        await ui.RunOnUIAsync(async () =>
-        {
-            var row = harness.Gateway.Page.Sessions.Single();
-            row.IsBackground = true;
-            row.Status = "running";
-            row.HasActiveRun = true;
-            harness.Controller.SetFilters(new SessionsHubFilters(ShowBackground: true), reload: false);
-            await harness.Controller.ReloadAsync();
-            harness.Controller.SetSelectionMode(true);
-            harness.Controller.SetFilters(harness.Controller.State.Filters with { ShowBackground = false });
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            var select = harness.Find<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>("SessionsHubSelectToggle");
-            Assert.True(select.IsEnabled);
-            ((IToggleProvider)new ToggleButtonAutomationPeer(select).GetPattern(PatternInterface.Toggle)).Toggle();
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.False(harness.Controller.State.SelectionMode);
-            Assert.False(harness.Find<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>("SessionsHubSelectToggle").IsEnabled);
         });
     }
 
@@ -729,10 +687,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
 
             var agentFilter = harness.Find<FrameworkElement>("SessionsHubAgentFilter");
             var options = harness.Find<FrameworkElement>("SessionsHubOptions");
-            var selectToggle = harness.Find<FrameworkElement>("SessionsHubSelectToggle");
             FrameworkElement[] toolbarRow = width >= PageResponsiveLayout.WideMin
-                ? [agentFilter, options, selectToggle, search]
-                : [agentFilter, options, selectToggle];
+                ? [agentFilter, options, search]
+                : [agentFilter, options];
             var toolbarCenters = toolbarRow.Select(control =>
                 control.TransformToVisual(harness.Root).TransformPoint(default).Y + (control.ActualHeight / 2)).ToArray();
             Assert.InRange(toolbarCenters.Max() - toolbarCenters.Min(), 0, 1.5);
@@ -879,28 +836,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             () => $"Measured gap: {Gap()?.ToString() ?? "rows not laid out"}.");
     }
 
-    [Fact]
-    public async Task SelectionMode_HidesRowChatAndRestoresItWhenSelectionEnds()
-    {
-        await using var harness = await Harness.CreateAsync(ui, mount: true, width: 1400, height: 900);
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.True(harness.Find<Button>("SessionsHubOpen:" + Harness.Key).IsEnabled);
-            harness.Controller.SetSelectionMode(true);
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            Assert.DoesNotContain(TestSupport.FindDescendants<Button>(harness.Root!),
-                button => AutomationProperties.GetAutomationId(button) == "SessionsHubOpen:" + Harness.Key);
-            Assert.NotNull(harness.Find<CheckBox>("SessionsHubSelect:" + Harness.Key));
-            harness.Controller.SetSelectionMode(false);
-        });
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-            Assert.True(harness.Find<Button>("SessionsHubOpen:" + Harness.Key).IsEnabled));
-    }
-
     [Theory]
     [InlineData(1200)]
     [InlineData(720)]
@@ -932,13 +867,13 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.True(surface.R == surface.G && surface.G == surface.B, $"Expanded surface is tinted: {surface}.");
             Assert.NotEqual(Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(row.BorderBrush).Color,
                 ((Microsoft.UI.Xaml.Media.SolidColorBrush)Application.Current.Resources["AccentFillColorDefaultBrush"]).Color);
-            var customize = harness.Find<Expander>("SessionsHubCustomize");
+            var settings = harness.Find<Expander>("SessionsHubSettings");
             var technical = harness.Find<Expander>("SessionsHubTechnicalDetails");
-            Assert.Equal(HorizontalAlignment.Stretch, customize.HorizontalContentAlignment);
+            Assert.Equal(HorizontalAlignment.Stretch, settings.HorizontalContentAlignment);
             Assert.Equal(HorizontalAlignment.Stretch, technical.HorizontalContentAlignment);
-            var customizeContent = Assert.IsAssignableFrom<FrameworkElement>(customize.Content);
-            Assert.True(customizeContent.ActualWidth >= customize.ActualWidth - 80,
-                $"Customize content width {customizeContent.ActualWidth} did not fill expander width {customize.ActualWidth} at {width}.");
+            var settingsContent = Assert.IsAssignableFrom<FrameworkElement>(settings.Content);
+            Assert.True(settingsContent.ActualWidth >= settings.ActualWidth - 80,
+                $"Settings content width {settingsContent.ActualWidth} did not fill expander width {settings.ActualWidth} at {width}.");
             ((IExpandCollapseProvider)new ExpanderAutomationPeer(technical).GetPattern(PatternInterface.ExpandCollapse)).Expand();
             await WaitForExpansionAsync(technical, expanded: true);
             var technicalContent = Assert.IsAssignableFrom<FrameworkElement>(technical.Content);
@@ -950,12 +885,12 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.InRange(harness.Find<DropDownButton>("SessionsHubMoveGroup").ActualWidth, 149, 151);
             if (width == 720)
             {
-                var customizeBounds = customize.TransformToVisual(details).TransformBounds(
-                    new global::Windows.Foundation.Rect(0, 0, customize.ActualWidth, customize.ActualHeight));
+                var settingsBounds = settings.TransformToVisual(details).TransformBounds(
+                    new global::Windows.Foundation.Rect(0, 0, settings.ActualWidth, settings.ActualHeight));
                 var technicalBounds = technical.TransformToVisual(details).TransformBounds(
                     new global::Windows.Foundation.Rect(0, 0, technical.ActualWidth, technical.ActualHeight));
-                Assert.InRange(Math.Abs(customizeBounds.Left - technicalBounds.Left), 0, 1);
-                Assert.InRange(Math.Abs(customizeBounds.Right - technicalBounds.Right), 0, 1);
+                Assert.InRange(Math.Abs(settingsBounds.Left - technicalBounds.Left), 0, 1);
+                Assert.InRange(Math.Abs(settingsBounds.Right - technicalBounds.Right), 0, 1);
             }
             await VisualTestCapture.CaptureAsync(harness.Root!, $"SessionsInline-{width}-expanded");
             ((IExpandCollapseProvider)new ExpanderAutomationPeer(row).GetPattern(PatternInterface.ExpandCollapse)).Collapse();
@@ -1124,6 +1059,77 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.DoesNotContain(TestSupport.FindDescendants<Button>(harness.Root!),
                 button => AutomationProperties.GetAutomationId(button) == "SessionsHubNoticeAction");
             Assert.True(IsShown(harness.Find<FrameworkElement>("SessionsHubNotice"), harness.Root!));
+        });
+    }
+
+    [Theory]
+    [InlineData("operator.admin", true, false, false)]
+    [InlineData("operator.read", false, true, false)]
+    [InlineData("operator.write", false, false, false)]
+    [InlineData("operator.write", false, true, true)]
+    [InlineData("operator.admin", false, false, true)]
+    public async Task SingleDelete_PreservesMainProtectionPermissionsAndIdentity(
+        string scope, bool isMain, bool archived, bool allowed)
+    {
+        await using var harness = await Harness.CreateAsync(ui);
+        await ui.RunOnUIAsync(async () =>
+        {
+            harness.Gateway.Scopes = [scope];
+            var row = harness.Gateway.Page.Sessions.Single();
+            row.Key = isMain ? "agent:main:main" : Harness.Key;
+            row.Archived = archived;
+            harness.Controller.RefreshConnection();
+            await harness.Controller.ReloadAsync();
+            var deletion = harness.Controller.DeleteAsync(row, "Review");
+            Assert.Equal(allowed, harness.Controller.State.Dialog is not null);
+            Assert.Empty(harness.Gateway.Deletions);
+            if (allowed)
+                harness.Controller.CloseDialog(true);
+            await deletion;
+            if (!allowed)
+            {
+                Assert.Empty(harness.Gateway.Deletions);
+                Assert.NotNull(harness.Controller.State.Notice);
+                return;
+            }
+            var request = Assert.Single(harness.Gateway.Deletions);
+            Assert.Equal(Harness.Key, request.Key);
+            Assert.Equal("main", request.AgentId);
+            Assert.Equal("session-one", request.ExpectedSessionId);
+            Assert.Equal(archived, request.ArchivedOnly);
+        });
+    }
+
+    [Theory]
+    [InlineData("refused", InfoBarSeverity.Warning, true)]
+    [InlineData("preserved", InfoBarSeverity.Informational, false)]
+    [InlineData("timeout", InfoBarSeverity.Error, true)]
+    [InlineData("rejected", InfoBarSeverity.Error, true)]
+    public async Task SingleDelete_ReportsTheGatewayOutcomeWithoutFalseSuccess(
+        string result, InfoBarSeverity severity, bool detailsRemainOpen)
+    {
+        await using var harness = await Harness.CreateAsync(ui);
+        await ui.RunOnUIAsync(async () =>
+        {
+            harness.Gateway.Delete = request => result switch
+            {
+                "timeout" => Task.FromException<SessionDeleteOutcome>(new TimeoutException()),
+                "rejected" => Task.FromException<SessionDeleteOutcome>(new InvalidOperationException("Delete rejected")),
+                _ => Task.FromResult(new SessionDeleteOutcome(request.Key, result != "refused",
+                    result == "preserved" ? new PreservedWorktreeInfo("worktree-one", "feature", @"C:\fixture", "busy") : null)),
+            };
+            var deletion = harness.Controller.DeleteAsync(harness.Gateway.Page.Sessions.Single(), "Review");
+            harness.Controller.CloseDialog(true);
+            await deletion;
+            Assert.Single(harness.Gateway.Deletions);
+            var notice = Assert.IsType<SessionsHubNotice>(harness.Controller.State.Notice);
+            Assert.Equal(severity, notice.Severity);
+            Assert.Null(notice.Action);
+            Assert.Equal(detailsRemainOpen, harness.Controller.State.ExpandedKeys.Contains(Harness.Key));
+            if (result == "preserved")
+                Assert.Contains("feature", notice.Message);
+            else
+                Assert.DoesNotContain("Deleted 1 session", notice.Message);
         });
     }
 
@@ -1519,7 +1525,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal(SessionsHubLoad.Failed, harness.Controller.State.Load);
             Assert.Empty(harness.Controller.State.Rows);
             Assert.Null(harness.Controller.State.DetailsRow);
-            Assert.Empty(harness.Controller.State.Selection.Keys);
         });
     }
 
@@ -1663,22 +1668,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         });
     }
 
-    [Theory]
-    [InlineData("data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\"/>")]
-    [InlineData("\U0001F680")]
-    public async Task DefaultIcon_ClearsAStoredCustomIcon(string icon)
-    {
-        await using var harness = await Harness.CreateAsync(ui, icon, mount: true);
-        await ui.RunOnUIAsync(() => Invoke(harness.Find<Button>("SessionsHubIcon:default")));
-        await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            var patch = Assert.Single(harness.Gateway.Patches);
-            Assert.True(patch.Icon.IsSpecified);
-            Assert.True(patch.Icon.IsClear);
-        });
-    }
-
     [Fact]
     public async Task LabelAcknowledgement_PreservesANewerDraft()
     {
@@ -1749,7 +1738,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     [Theory]
     [InlineData("")]
     [InlineData("name")]
-    public async Task WireEquivalentSearchEdit_KeepsDetailsSelectionAndTranscriptResults(string search)
+    public async Task WireEquivalentSearchEdit_KeepsDetailsAndTranscriptResults(string search)
     {
         await using var harness = await Harness.CreateAsync(ui);
         await ui.RunOnUIAsync(async () =>
@@ -1757,7 +1746,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             harness.Controller.SetFilters(harness.Controller.State.Filters with { Search = search });
             harness.Controller.OpenDetails(Harness.Key);
             harness.Controller.SetLabelDraft(Harness.Key, "Unsaved name");
-            harness.Controller.ToggleSelected(Harness.Key);
             harness.Controller.SetTranscriptQuery("transcript");
             await harness.Controller.RunTranscriptSearchAsync();
             var rows = harness.Controller.State.Rows;
@@ -1770,7 +1758,6 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Same(rows, harness.Controller.State.Rows);
             Assert.Equal(Harness.Key, harness.Controller.State.DetailsRow?.Key);
             Assert.Equal("Unsaved name", harness.Controller.State.LabelDraft.Text);
-            Assert.Contains(Harness.Key, harness.Controller.State.Selection.Keys);
             Assert.Same(result, harness.Controller.State.Transcript.Result);
         });
     }
@@ -1918,13 +1905,13 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         Branches = [new WorktreeBranch(name)], DefaultBranch = name,
     };
 
-    private static SessionListPage Page(string label = "Initial name", string? icon = null) => new()
+    private static SessionListPage Page(string label = "Initial name") => new()
     {
         Sessions =
         [
             new SessionInfo
             {
-                Key = Harness.Key, SessionId = "session-one", Label = label, Icon = icon,
+                Key = Harness.Key, SessionId = "session-one", Label = label,
                 IsMain = false, Status = "active", UpdatedAt = DateTime.UtcNow,
             },
         ],
@@ -1995,7 +1982,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         public void OpenDashboard() { }
 
         public static async Task<Harness> CreateAsync(
-            UIThreadFixture thread, string? icon = null, bool mount = false, double width = 1200,
+            UIThreadFixture thread, bool mount = false, double width = 1200,
             string theme = "Light", double height = 800, double topInset = 0)
         {
             var harness = new Harness(thread);
@@ -2004,7 +1991,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 harness.Presentation.ApplyTopInset(topInset);
                 harness.Client = DispatchProxy.Create<IOperatorGatewayClient, GatewayProxy>();
                 harness.Gateway = (GatewayProxy)harness.Client;
-                harness.Gateway.Page = Page(icon: icon);
+                harness.Gateway.Page = Page();
                 harness.Controller = new SessionsHubController(harness, action =>
                 {
                     if (!thread.Dispatcher.TryEnqueue(() => action()))
@@ -2067,6 +2054,8 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         public Task<IReadOnlyList<WorktreeRecord>?> Worktrees = Task.FromResult<IReadOnlyList<WorktreeRecord>?>([]);
         public Func<string, Task<WorktreeBranchList>> Branches = _ => Task.FromResult(SessionsHubRegressionTests.Branches("initial"));
         public bool Connected = true;
+        public string[] Scopes = ["operator.admin", "operator.write", "operator.read"];
+        public Func<SessionDeleteRequest, Task<SessionDeleteOutcome>>? Delete;
         public List<string> Resets { get; } = [];
         public long Epoch = 1;
         public string[] Methods = ["sessions.list", "sessions.patch", "sessions.search", "worktrees.list"];
@@ -2101,7 +2090,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 case "get_IsConnectedToGateway": return Connected;
                 case "get_SessionMutationConnectionEpoch": return Epoch;
                 case "get_MainSessionKey": return "agent:main:main";
-                case "get_GrantedOperatorScopes": return new[] { "operator.admin", "operator.write", "operator.read" };
+                case "get_GrantedOperatorScopes": return Scopes;
                 case "get_AdvertisedServerMethods": return Methods;
                 case nameof(IOperatorGatewayClient.ListSessionsPageAsync):
                     return List?.Invoke((SessionListQuery)args![0]!) ?? Task.FromResult(Page);
@@ -2112,7 +2101,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                 case nameof(IOperatorGatewayClient.DeleteSessionDetailedAsync):
                     var request = (SessionDeleteRequest)args![0]!;
                     Deletions.Add(request);
-                    return Task.FromResult(new SessionDeleteOutcome(request.Key, true, null));
+                    return Delete?.Invoke(request) ?? Task.FromResult(new SessionDeleteOutcome(request.Key, true, null));
                 case nameof(IOperatorGatewayClient.PatchSessionConfirmedAsync):
                     PatchKeys.Add((string)args![0]!);
                     Patches.Add((SessionPatch)args![1]!);

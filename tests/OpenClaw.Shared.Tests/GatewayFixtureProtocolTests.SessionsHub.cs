@@ -91,16 +91,19 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Null((await client.ListSessionsPageAsync(new SessionListQuery { Search = "Backlog task 01" })).Sessions.Single().Category);
 
         var archived = (await client.ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived, Limit = 100 })).Sessions;
-        var admin = new SessionsHubPermissions(true, client.GrantedOperatorScopes, client.AdvertisedServerMethods);
-        var plan = SessionsHubDeletion.PlanDeleteAllArchived(archived, admin, _ => false);
-        var outcomes = new List<SessionDeleteOutcome>();
-        foreach (var request in plan.Requests)
-            outcomes.Add(await client.DeleteSessionDetailedAsync(request));
-        Assert.All(outcomes, outcome => Assert.True(outcome.Deleted));
-        var preserved = Assert.Single(outcomes, outcome => outcome.PreservedWorktree is not null);
+        var target = Assert.Single(archived, item => item.Key == GatewayScenario.HubPreservedSessionKey);
+        var preserved = await client.DeleteSessionDetailedAsync(new SessionDeleteRequest(target.Key)
+        {
+            AgentId = "main",
+            ExpectedSessionId = target.SessionId,
+            ArchivedOnly = true,
+        });
+        Assert.True(preserved.Deleted);
         Assert.Equal(GatewayScenario.HubPreservedSessionKey, preserved.Key);
         Assert.Equal("busy", preserved.PreservedWorktree!.Reason);
-        Assert.Empty((await client.ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived })).Sessions);
+        var remaining = (await client.ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived })).Sessions;
+        Assert.Equal(archived.Where(item => item.Key != target.Key).Select(item => item.Key),
+            remaining.Select(item => item.Key));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionDetailedAsync(
             new SessionDeleteRequest(key) { ArchivedOnly = true }));

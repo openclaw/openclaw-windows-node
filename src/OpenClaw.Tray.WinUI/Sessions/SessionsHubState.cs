@@ -124,8 +124,6 @@ internal sealed record SessionsHubState
     public IReadOnlySet<string> ExpandedKeys { get; init; } = new HashSet<string>(StringComparer.Ordinal);
     public SessionsHubRowReveal? RowReveal { get; init; }
     public (string? Key, string Text, string? SessionId) LabelDraft { get; init; } = (null, "", null);
-    public bool SelectionMode { get; init; }
-    public SessionsHubSelection Selection { get; init; } = SessionsHubSelection.Empty;
     public bool IsBusy { get; init; }
     /// <summary>A roster reload is in flight; appending a page now would mix filters.</summary>
     public bool IsReloading { get; init; }
@@ -150,8 +148,6 @@ internal enum SessionsHubDialogKind
 
 internal sealed record SessionsHubDialogFact(string Label, string Value);
 
-internal sealed record SessionsHubDialogListItem(string Text, string Reason);
-
 /// <summary>
 /// One pending dialog. <see cref="Completion"/> resolves with the final dialog on confirm, null on cancel;
 /// text and worktree fields are drafts updated as the user types.
@@ -169,8 +165,6 @@ internal sealed record SessionsHubDialog(
     public string? InputLabel { get; init; }
     public string Icon { get; init; } = FluentIconCatalog.StatusOk;
     public IReadOnlyList<SessionsHubDialogFact> Facts { get; init; } = Array.Empty<SessionsHubDialogFact>();
-    public string? ItemsLabel { get; init; }
-    public IReadOnlyList<SessionsHubDialogListItem> Items { get; init; } = Array.Empty<SessionsHubDialogListItem>();
     public string? NoteTitle { get; init; }
     public string? NoteMessage { get; init; }
     public string Repo { get; init; } = "";

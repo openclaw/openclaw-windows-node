@@ -876,29 +876,6 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             RestoreBaselineWindow(run);
 
             var manifest = new List<CaptureStateResult>();
-            await CaptureStateAsync(run, manifest, "select", async () =>
-            {
-                ScrollIntoView(run, "SessionsHubSelectToggle");
-                var select = FindById(run, "SessionsHubSelectToggle")!;
-                AssertVisibleInHub(run, select, "select mode action");
-                Invoke(select);
-                await WaitUiAsync(run, () => FindById(run, "SessionsHubSelectedCount") is not null, "selection mode");
-                foreach (var checkboxId in SettingsWindow(run).FindAll(TreeScope.Descendants,
-                             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.CheckBox))
-                         .Cast<AutomationElement>()
-                         .Select(element => element.Current.AutomationId)
-                         .Where(id => id.StartsWith("SessionsHubSelect:", StringComparison.Ordinal))
-                         .Take(3)
-                         .ToArray())
-                {
-                    ScrollIntoView(run, checkboxId);
-                    var checkbox = FindById(run, checkboxId)!;
-                    AssertVisibleInHub(run, checkbox, $"selection checkbox {checkboxId}");
-                    Invoke(checkbox);
-                }
-                CaptureSessionsWindow(run, "sessions-select.png");
-            });
-
             await CaptureStateAsync(run, manifest, "messages", async () =>
             {
                 ScrollIntoView(run, "SessionsHubSearch");
@@ -933,22 +910,13 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
             await CaptureStateAsync(run, manifest, "delete-dialog", async () =>
             {
-                ScrollIntoView(run, "SessionsHubSelectToggle");
-                var select = FindById(run, "SessionsHubSelectToggle")!;
-                AssertVisibleInHub(run, select, "select mode for delete dialog");
-                Invoke(select);
-                await WaitUiAsync(run, () => FindById(run, "SessionsHubSelectedCount") is not null, "selection mode for delete");
-                var checkbox = SettingsWindow(run).FindAll(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.CheckBox))
-                    .Cast<AutomationElement>()
-                    .First(element => element.Current.AutomationId.StartsWith("SessionsHubSelect:", StringComparison.Ordinal));
-                ScrollIntoView(run, checkbox.Current.AutomationId);
-                checkbox = FindById(run, checkbox.Current.AutomationId)!;
-                AssertVisibleInHub(run, checkbox, "delete selection checkbox");
-                Invoke(checkbox);
-                var delete = FindById(run, "SessionsHubDeleteSelected")!;
-                AssertVisibleInHub(run, delete, "delete selected action");
-                Invoke(delete);
+                await OpenSessionsRowMenuAsync(run, "agent:main:hub-deploy-failure");
+                var delete = new AndCondition(
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
+                    new PropertyCondition(AutomationElement.NameProperty, "Delete…"));
+                await WaitUiAsync(run, () => FindInApp(run, delete) is { Current.IsEnabled: true },
+                    "single-session delete action");
+                Invoke(FindInApp(run, delete)!);
                 await WaitUiAsync(run, () => FindById(run, SessionsDialogBodyId) is not null, "delete popup");
                 CaptureSessionsWindow(run, "sessions-dialog-delete.png");
             });
@@ -2677,11 +2645,6 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         {
             AssertVisibleInHub(run, transcriptClose, "close transcript search");
             Invoke(transcriptClose);
-        }
-        if (FindById(run, "SessionsHubClearSelection") is { } clearSelection)
-        {
-            AssertVisibleInHub(run, clearSelection, "clear session selection");
-            Invoke(clearSelection);
         }
         // The name filter is read-only while message search is open, so clear it after closing that.
         if (FindById(run, "SessionsHubSearch") is { } nameSearch

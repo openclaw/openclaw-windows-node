@@ -307,57 +307,7 @@ public sealed class SessionsHubTests
         Assert.Equal(["r20", "r21", "r22"], page.Select(row => row.Key));
     }
 
-    // ── Selection, deletion, permissions ──
-
-    [Fact]
-    public void Selection_TogglesPagesAndReconcilesRemovedRows()
-    {
-        var selection = SessionsHubSelection.Empty.Toggle("a").Set(["b", "c"], selected: true);
-        Assert.Equal(3, selection.Count);
-        Assert.Null(selection.PageState(["a", "z"]));
-        Assert.True(selection.PageState(["a", "b"]));
-
-        selection = selection.Toggle("a").Reconcile(["b", "x"]);
-
-        Assert.Equal(["b"], selection.Keys);
-        Assert.False(selection.PageState(["x"]));
-    }
-
-    [Fact]
-    public void DeletePlan_BlocksMainAndAdminOnlyRowsAndGuardsIdentity()
-    {
-        var write = new SessionsHubPermissions(true, ["operator.write"], []);
-        var rows = new[]
-        {
-            Row("agent:main:main", archived: true),
-            Row("agent:main:archived", archived: true),
-            Row("agent:main:active"),
-        };
-
-        var plan = SessionsHubDeletion.Plan(rows, write, row => row.Key == "agent:main:main");
-
-        var request = Assert.Single(plan.Requests);
-        Assert.Equal("agent:main:archived", request.Key);
-        Assert.True(request.ArchivedOnly);
-        Assert.Equal("id-agent:main:archived", request.ExpectedSessionId);
-        Assert.Equal("main", request.AgentId);
-        Assert.Equal(["agent:main:main", "agent:main:active"], plan.Blocked.Select(row => row.Key));
-
-        var admin = new SessionsHubPermissions(true, ["operator.admin"], []);
-        var adminPlan = SessionsHubDeletion.Plan(rows, admin, _ => false);
-        Assert.False(adminPlan.Requests.Single(r => r.Key == "agent:main:active").ArchivedOnly);
-    }
-
-    [Fact]
-    public void DeleteAllArchived_PlansOnlyArchivedRows()
-    {
-        var admin = new SessionsHubPermissions(true, ["operator.admin"], []);
-        var plan = SessionsHubDeletion.PlanDeleteAllArchived(
-            [Row("a", archived: true), Row("b"), Row("c", archived: true)], admin, _ => false);
-
-        Assert.Equal(["a", "c"], plan.Requests.Select(request => request.Key));
-        Assert.All(plan.Requests, request => Assert.True(request.ArchivedOnly));
-    }
+    // ── Deletion and permissions ──
 
     [Fact]
     public void UndoArchivePatch_RestoresPinOnlyWhenPinned()
@@ -374,9 +324,13 @@ public sealed class SessionsHubTests
         Assert.False(read.CanWrite);
         Assert.False(read.CanManageWorktrees);
         Assert.False(read.CanDelete(Row("a", archived: true)));
+        var write = new SessionsHubPermissions(true, ["operator.write"], []);
+        Assert.True(write.CanDelete(Row("a", archived: true)));
+        Assert.False(write.CanDelete(Row("a")));
 
         var admin = new SessionsHubPermissions(true, ["operator.admin"], ["sessions.list"]);
         Assert.True(admin.CanWrite);
+        Assert.True(admin.CanDelete(Row("a")));
         Assert.False(admin.Supports("worktrees.list"));
         Assert.False(admin.CanManageWorktrees);
         Assert.True(new SessionsHubPermissions(true, ["operator.admin"], []).Supports("worktrees.list"));
@@ -406,20 +360,6 @@ public sealed class SessionsHubTests
     [InlineData(null, false)]
     public void ListFallback_RecognizesOnlyRejectedPageSourceParams(string? message, bool expected) =>
         Assert.Equal(expected, OpenClawGatewayClient.IsRejectedPageSourceParam(message));
-
-    [Fact]
-    public void Selection_PageKeysExcludeRowsInCollapsedGroups()
-    {
-        var rows = new[] { Row("a", category: "Ops"), Row("b", category: "Ops"), Row("c", category: "Release"), Row("d") };
-        var groups = SessionsHubProjection.Group(rows, SessionsGroupBy.Category, ["Ops", "Release"]);
-        var collapsed = new HashSet<string>(StringComparer.Ordinal) { "Ops" };
-
-        var keys = SessionsHubSelection.ExpandedKeys(rows, groups, collapsed);
-
-        Assert.Equal(["c", "d"], keys);
-        Assert.Equal(["a", "b", "c", "d"],
-            SessionsHubSelection.ExpandedKeys(rows, groups, new HashSet<string>(StringComparer.Ordinal)));
-    }
 
     // ── Appearance ──
 
@@ -457,17 +397,13 @@ public sealed class SessionsHubTests
         Assert.Equal(expected, SessionAppearance.Initials(name));
 
     [Fact]
-    public void Patch_EmitsCategoryColorAndIconAndClearsWithNull()
+    public void Patch_EmitsCategoryAndClearsWithNull()
     {
-        var set = new SessionPatch { Category = "Ops", Color = "green", Icon = "book" }.ToPayload("k");
+        var set = new SessionPatch { Category = "Ops" }.ToPayload("k");
         Assert.Equal("Ops", set["category"]);
-        Assert.Equal("green", set["color"]);
-        Assert.Equal("book", set["icon"]);
-        var clear = new SessionPatch { Category = SessionPatch.Clear, Color = SessionPatch.Clear, Icon = SessionPatch.Clear };
+        var clear = new SessionPatch { Category = SessionPatch.Clear };
         Assert.True(clear.HasChanges);
         var payload = clear.ToPayload("k");
-        Assert.True(payload.ContainsKey("color") && payload["color"] is null);
-        Assert.True(payload.ContainsKey("icon") && payload["icon"] is null);
         Assert.True(payload.ContainsKey("category") && payload["category"] is null);
     }
 

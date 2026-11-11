@@ -213,16 +213,7 @@ public sealed partial class GatewayFixtureUiTests
     /// <summary>Opens the Sessions page's Reset confirmation for the main session (admin scope required).</summary>
     private static async Task OpenSessionsResetDialogAsync(GatewayFixtureRun run, string description)
     {
-        var rowId = "SessionsHubRow:" + GatewayScenario.MainSessionKey;
-        await WaitUiAsync(run, () => FindById(run, rowId) is not null, "main session row");
-        ScrollIntoView(run, rowId);
-        if (!FindById(run, rowId)!.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expand))
-            throw new InvalidOperationException("The main session row has no ExpandCollapsePattern.");
-        ((ExpandCollapsePattern)expand).Expand();
-        await WaitUiAsync(run, () => FindById(run, "SessionsHubCommandMore") is { Current.IsEnabled: true },
-            "expanded session actions");
-        ScrollIntoView(run, "SessionsHubCommandMore");
-        Invoke(FindById(run, "SessionsHubCommandMore")!);
+        await OpenSessionsRowMenuAsync(run, GatewayScenario.MainSessionKey);
         var reset = new AndCondition(
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
             new PropertyCondition(AutomationElement.NameProperty, "Reset session…"));
@@ -230,5 +221,19 @@ public sealed partial class GatewayFixtureUiTests
         Invoke(FindInApp(run, reset)!);
         await WaitUiAsync(run, () => FindById(run, SessionsDialogBodyId) is { Current.IsOffscreen: false }
             && FindButton(run, "Cancel") is not null, description);
+    }
+
+    private static async Task OpenSessionsRowMenuAsync(GatewayFixtureRun run, string key)
+    {
+        var rowId = "SessionsHubRow:" + key;
+        await WaitUiAsync(run, () => FindById(run, rowId) is not null, "session row");
+        ScrollIntoView(run, rowId);
+        if (!FindById(run, rowId)!.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expand))
+            throw new InvalidOperationException("The session row has no ExpandCollapsePattern.");
+        ((ExpandCollapsePattern)expand).Expand();
+        await WaitUiAsync(run, () => FindById(run, "SessionsHubCommandMore") is { Current.IsEnabled: true },
+            "expanded session actions");
+        ScrollIntoView(run, "SessionsHubCommandMore");
+        Invoke(FindById(run, "SessionsHubCommandMore")!);
     }
 }

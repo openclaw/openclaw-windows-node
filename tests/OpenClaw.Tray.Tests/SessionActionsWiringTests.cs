@@ -43,9 +43,7 @@ public sealed class SessionActionsWiringTests
         // Reset uses the page's controlled dialog; other shared actions keep the Workspace runner.
         Assert.Contains("ResetAsync(row, title)", controller);
         Assert.Contains("_menu.ExecuteAsync(action, ToWorkspaceSession(row, title), row)", controller);
-        // Bulk, delete-all-archived, and forced worktree removal confirm first.
-        Assert.Contains("ConfirmAsync(T(\"DeleteSelectedTitle\")", controller);
-        Assert.Contains("ConfirmAsync(T(\"DeleteAllArchivedTitle\")", controller);
+        // Forced worktree removal also confirms first.
         Assert.Contains("ConfirmAsync(T(\"ForceRemoveTitle\")", controller);
         // Runtime dialogs use localized keys. Destructive dialogs keep the action accent-styled
         // while explicitly focusing the non-accent Close button.
@@ -125,8 +123,7 @@ public sealed class SessionActionsWiringTests
         Assert.Contains(
             "FirstOrDefault(checkpoint => !string.IsNullOrWhiteSpace(checkpoint.Id))",
             checkpoints);
-        // Deletes are compare-and-delete per row and Gateway rejections are surfaced, not swallowed.
-        Assert.Contains("SessionsHubDeletion.Plan(", controller);
+        // Gateway rejections are surfaced, not swallowed.
         Assert.Contains("ShowNotice(failureTitle, ex.Message, InfoBarSeverity.Error)", controller);
     }
 
@@ -147,11 +144,8 @@ public sealed class SessionActionsWiringTests
         // A same-client reconnect also ends the binding, and actions keep the binding captured before their prompt.
         Assert.Contains("if (_binding is { IsCurrent: true } ? false : _binding is not null || connected)", controller);
         Assert.Contains("() => _ = UndoArchiveAsync(row, binding)", controller);
-        Assert.Contains("await ExecutePlanAsync(plan, T(\"DeleteFailed\"), binding);", controller);
         // Prompting actions need a live connection before the prompt opens, never a later fallback.
         Assert.Contains("if (PromptBinding() is not { } binding) return;", controller);
-        // Identity-less rows are never deleted on a confirmation made before a reload.
-        Assert.Contains("reloaded && plan.Requests.Any(request => request.ExpectedSessionId is null)", controller);
     }
 
     [Fact]

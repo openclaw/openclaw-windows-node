@@ -131,7 +131,7 @@
       "requestFields": [
         "key", "model", "thinkingLevel", "fastMode", "verboseLevel", "traceLevel",
         "reasoningLevel", "responseUsage", "elevatedLevel", "execHost", "execSecurity",
-        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "category", "color", "icon", "pinned",
+        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "category", "pinned",
         "unread", "archived", "expectedMarkedUnreadAt"
       ],
       "requestFieldsSource": "ToPayload(string key",

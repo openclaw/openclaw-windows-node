@@ -9276,29 +9276,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_DateYesterday" xml:space="preserve">
     <value>Yesterday</value>
   </data>
-  <data name="SessionsHub_Delete" xml:space="preserve">
-    <value>Delete</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchived" xml:space="preserve">
-    <value>Delete all archived</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedBody" xml:space="preserve">
-    <value>Permanently delete {0} archived sessions and their transcripts? This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTip" xml:space="preserve">
-    <value>Permanently delete every archived session</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedTitle" xml:space="preserve">
-    <value>Delete all archived sessions?</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktrees" xml:space="preserve">
-    <value>{0} of these sessions have managed worktrees. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
-  </data>
   <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
     <value>This session can't be deleted.</value>
-  </data>
-  <data name="SessionsHub_DeletedMany" xml:space="preserve">
-    <value>Deleted {0} sessions.</value>
   </data>
   <data name="SessionsHub_DeletedOne" xml:space="preserve">
     <value>Deleted 1 session.</value>
@@ -9306,29 +9285,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_DeleteFailed" xml:space="preserve">
     <value>Couldn't delete</value>
   </data>
-  <data name="SessionsHub_DeleteFailures" xml:space="preserve">
-    <value>{0} couldn't be deleted. First error: {1}</value>
-  </data>
   <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
     <value>Deleting a session that isn't archived requires administrator access. Archive it first, or ask an administrator.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelected" xml:space="preserve">
-    <value>Delete selected</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyMany" xml:space="preserve">
-    <value>Permanently delete {0} sessions and their transcripts? This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedBodyOne" xml:space="preserve">
-    <value>Permanently delete the selected session and its transcript? This can't be undone.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedNoneAllowed" xml:space="preserve">
-    <value>None of the selected sessions can be deleted with your access. Main sessions can't be deleted, and active sessions need administrator access.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedSkipped" xml:space="preserve">
-    <value>{0} selected sessions will be skipped because they can't be deleted with your access.</value>
-  </data>
-  <data name="SessionsHub_DeleteSelectedTitle" xml:space="preserve">
-    <value>Delete selected sessions?</value>
   </data>
   <data name="SessionsHub_Details" xml:space="preserve">
     <value>Details</value>
@@ -9597,9 +9555,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
     <value>Create a worktree</value>
   </data>
-  <data name="SessionsHub_NoArchivedToDelete" xml:space="preserve">
-    <value>There are no archived sessions you can delete.</value>
-  </data>
   <data name="SessionsHub_NotAvailable" xml:space="preserve">
     <value>Not available</value>
   </data>
@@ -9716,24 +9671,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
     <value>Filter by name or key</value>
-  </data>
-  <data name="SessionsHub_Select" xml:space="preserve">
-    <value>Select</value>
-  </data>
-  <data name="SessionsHub_SelectedMany" xml:space="preserve">
-    <value>{0} selected</value>
-  </data>
-  <data name="SessionsHub_SelectedOne" xml:space="preserve">
-    <value>1 selected</value>
-  </data>
-  <data name="SessionsHub_SelectNamed" xml:space="preserve">
-    <value>Select {0}</value>
-  </data>
-  <data name="SessionsHub_SelectPage" xml:space="preserve">
-    <value>Select this page</value>
-  </data>
-  <data name="SessionsHub_SelectTip" xml:space="preserve">
-    <value>Choose several sessions to delete at once</value>
   </data>
   <data name="SessionsHub_ShowAll" xml:space="preserve">
     <value>Show all sessions</value>
@@ -9960,92 +9897,12 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_Yes" xml:space="preserve">
     <value>Yes</value>
   </data>
-  <data name="SessionsHub_DeleteInterrupted" xml:space="preserve">
-    <value>Stopped early: {0} remaining sessions weren't confirmed as deleted. Refresh to check.</value>
-  </data>
   <data name="SessionsHub_DeleteRefused" xml:space="preserve">
-    <value>The Gateway didn't delete {0} of them.</value>
+    <value>The Gateway didn't delete this session.</value>
   </data>
-  <data name="SessionsHub_DeleteSelectionChanged" xml:space="preserve">
-    <value>The list changed while you were confirming, so nothing was deleted. Review your selection and try again.</value>
-  </data>
+  <data name="SessionsHub_DeleteRosterChanged" xml:space="preserve"><value>The list changed while you were confirming, so nothing was deleted. Review the session and try again.</value></data>
   <data name="SessionsHub_RosterNotCurrent" xml:space="preserve">
     <value>The session list is not current. Wait for refresh to finish before changing sessions.</value>
-  </data>
-  <data name="SessionsHub_DeleteAllArchivedWorktreesOne" xml:space="preserve">
-    <value>One of these sessions has a managed worktree. A worktree that is still in use or has unsaved work is preserved and listed after deletion.</value>
-  </data>
-  <data name="SessionsHub_Appearance" xml:space="preserve">
-    <value>Appearance</value>
-  </data>
-  <data name="SessionsHub_ColorBlue" xml:space="preserve">
-    <value>Blue</value>
-  </data>
-  <data name="SessionsHub_ColorCyan" xml:space="preserve">
-    <value>Cyan</value>
-  </data>
-  <data name="SessionsHub_ColorFor" xml:space="preserve">
-    <value>Color for {0}</value>
-  </data>
-  <data name="SessionsHub_ColorGreen" xml:space="preserve">
-    <value>Green</value>
-  </data>
-  <data name="SessionsHub_ColorHeader" xml:space="preserve">
-    <value>Color</value>
-  </data>
-  <data name="SessionsHub_ColorMenu" xml:space="preserve">
-    <value>Color</value>
-  </data>
-  <data name="SessionsHub_ColorNone" xml:space="preserve">
-    <value>No color</value>
-  </data>
-  <data name="SessionsHub_ColorOrange" xml:space="preserve">
-    <value>Orange</value>
-  </data>
-  <data name="SessionsHub_ColorPink" xml:space="preserve">
-    <value>Pink</value>
-  </data>
-  <data name="SessionsHub_ColorPurple" xml:space="preserve">
-    <value>Purple</value>
-  </data>
-  <data name="SessionsHub_ColorRed" xml:space="preserve">
-    <value>Red</value>
-  </data>
-  <data name="SessionsHub_ColorYellow" xml:space="preserve">
-    <value>Yellow</value>
-  </data>
-  <data name="SessionsHub_IconBook" xml:space="preserve">
-    <value>Book</value>
-  </data>
-  <data name="SessionsHub_IconBot" xml:space="preserve">
-    <value>Bot</value>
-  </data>
-  <data name="SessionsHub_IconBraces" xml:space="preserve">
-    <value>Code</value>
-  </data>
-  <data name="SessionsHub_IconCoins" xml:space="preserve">
-    <value>Coins</value>
-  </data>
-  <data name="SessionsHub_IconDefault" xml:space="preserve">
-    <value>Default icon</value>
-  </data>
-  <data name="SessionsHub_IconFor" xml:space="preserve">
-    <value>Icon for {0}</value>
-  </data>
-  <data name="SessionsHub_IconHeader" xml:space="preserve">
-    <value>Icon</value>
-  </data>
-  <data name="SessionsHub_IconKanban" xml:space="preserve">
-    <value>Board</value>
-  </data>
-  <data name="SessionsHub_IconMenu" xml:space="preserve">
-    <value>Icon</value>
-  </data>
-  <data name="SessionsHub_IconMonitor" xml:space="preserve">
-    <value>Monitor</value>
-  </data>
-  <data name="SessionsHub_Selected" xml:space="preserve">
-    <value>Selected</value>
   </data>
   <data name="SessionsHub_StatAll" xml:space="preserve">
     <value>All sessions</value>
@@ -10053,14 +9910,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_StatArchived" xml:space="preserve">
     <value>Archived sessions</value>
   </data>
-  <data name="SessionsHub_DeleteCount" xml:space="preserve"><value>Delete {0}</value></data>
-  <data name="SessionsHub_DialogKept" xml:space="preserve"><value>Kept</value></data>
-  <data name="SessionsHub_DialogMainSession" xml:space="preserve"><value>The main session</value></data>
-  <data name="SessionsHub_DialogNeverDeleted" xml:space="preserve"><value>Never deleted</value></data>
-  <data name="SessionsHub_DialogReasonMain" xml:space="preserve"><value>Main session</value></data>
-  <data name="SessionsHub_DialogReasonNeedsAdmin" xml:space="preserve"><value>Needs admin access</value></data>
-  <data name="SessionsHub_DialogScope" xml:space="preserve"><value>Scope</value></data>
-  <data name="SessionsHub_DialogWillDelete" xml:space="preserve"><value>Will be deleted</value></data>
   <data name="SessionsHub_FactPath" xml:space="preserve"><value>Path</value></data>
   <data name="SessionsHub_ForkCreated" xml:space="preserve"><value>Created “{0}”.</value></data>
   <data name="SessionsHub_ForkCreatedTitle" xml:space="preserve"><value>Conversation forked</value></data>
@@ -10106,7 +9955,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>Its conversation history is cleared and the session starts fresh. The session key stays the same.</value></data>
   <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>Open folder</value></data>
   <data name="SessionsHub_Options" xml:space="preserve"><value>Options</value></data>
-  <data name="SessionsHub_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>{0} of {1} shown · {2} loaded</value></data>
   <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>more available</value></data>
   <data name="SessionsHub_ShowMore" xml:space="preserve"><value>Show more</value></data>
@@ -10123,7 +9971,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_CompletedShown" xml:space="preserve"><value>completed shown</value></data>
   <data name="SessionsHub_UnroutedHidden" xml:space="preserve"><value>unrouted hidden</value></data>
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>unrouted shown</value></data>
-  <data name="SessionsHub_NoMatchingSelection" xml:space="preserve"><value>No matching sessions to select</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>Archived "{0}" ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dismiss notification</value></data>
 </root>

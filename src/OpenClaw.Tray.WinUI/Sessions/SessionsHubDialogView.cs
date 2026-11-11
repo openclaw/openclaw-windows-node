@@ -48,7 +48,6 @@ internal static class SessionsHubDialogView
                 .AutomationId("SessionsHubDialogHeader"),
             body,
             Facts(dialog),
-            Items(dialog),
             string.IsNullOrWhiteSpace(dialog.NoteTitle) && string.IsNullOrWhiteSpace(dialog.NoteMessage)
                 ? Empty()
                 : (InfoBar(dialog.NoteTitle, dialog.NoteMessage) with { IsOpen = true })
@@ -114,21 +113,6 @@ internal static class SessionsHubDialogView
             .CornerRadius(8)
             .Padding(12)
             .AutomationId("SessionsHubDialogFacts");
-    }
-
-    private static Element Items(SessionsHubDialog dialog)
-    {
-        if (dialog.Items.Count == 0)
-            return Empty();
-        var rows = dialog.Items.Select(item =>
-            Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                TextBlock(item.Text).TextWrapping(TextWrapping.Wrap).Grid(column: 0),
-                TextBlock(item.Reason).FontSize(12).Foreground(Theme.SecondaryText)
-                    .Margin(12, 0, 0, 0).Grid(column: 1))).ToArray();
-        return VStack(8,
-            TextBlock(dialog.ItemsLabel ?? "").FontSize(12).FontWeight(Microsoft.UI.Text.FontWeights.SemiBold)
-                .Foreground(Theme.SecondaryText),
-            VStack(6, rows)).AutomationId("SessionsHubDialogItems");
     }
 
     private static Element NewWorktree(SessionsHubViewContext context, SessionsHubDialog dialog)

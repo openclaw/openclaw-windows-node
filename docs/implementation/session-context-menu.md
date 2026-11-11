@@ -77,8 +77,9 @@ count is the current client page size
 against the loaded server-filtered rows, not the Gateway total. The caption
 reports matches among those loaded rows and the effective background, completed,
 and unrouted visibility settings. Completed sessions remain visible in Archived
-and All regardless of the Current-only completed toggle. Empty selection is
-disabled, but an existing selection mode can still be cancelled.
+and All regardless of the Current-only completed toggle. Single-session
+archive, Undo and confirmed deletion remain native. Appearance editing,
+multi-select deletion and deleting all archived sessions are web-only.
 
 Native session expanders stay open independently. Ordinary expansion does not
 request scrolling; archive Undo reveals the necessary page
