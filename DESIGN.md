@@ -1204,6 +1204,18 @@ completed native proof.
 
 ## Workspace shell
 
+The native workspace sidebar starts at 256 DIPs. Its trailing 4-DIP splitter
+(spacing step `1`) has no visible grip, stays within the pane's trailing inset,
+and supports dragging and Left/Right keys when focused. The pane
+stays between 192 and 480 DIPs and leaves at least 480 DIPs for content at the
+supported window sizes. Collapse/reopen retains the current window's width.
+Narrowing the window temporarily limits the pane; widening restores the chosen width;
+restarting the app restores the default. Embedded pinned pages follow the same
+pane edge. Narrow panes truncate the footer status rather than wrapping it.
+The agent selector retains its original sizing with 4,8,0,8 padding;
+the native ComboBox already reserves its own chevron column.
+Full Settings retains its separate navigation layout.
+
 ### Navigation search popup
 
 Workspace and Settings retain their existing 40px search icon buttons. There is
@@ -1239,7 +1251,7 @@ The landing window is the native Home and Sessions workspace (`Windows/Workspace
 
 Current Settings keeps Gateway administration together: Connection first, followed by Systems, Automations, Usage, and Config as direct entries; there is no Gateway Advanced group. Channels is managed in the Gateway Dashboard, including legacy Channels/activity routes. Connection and its group header/separator stay visible while disconnected. Agents and Tools contains the existing Agents subtree, Sessions, Models, and Local AI. Agents and Sessions retain their Gateway availability rules, while Models and Local AI remain reachable offline. This Computer retains its existing tools. System contains General, conditional Diagnostics, and About, with Fluent glyph fallbacks for its colorful sidebar icons in High Contrast. About uses the colorful book-and-lightbulb icon. General contains notification preferences alongside managed-Gateway setup/onboarding/removal and its always-reachable Advanced diagnostics switch. About owns updates and app/Gateway information; notification history remains in the bell flyout and its existing history route, separate from preferences. Permissions contains a distinct app-access consent section, not a replacement for node capability permissions.
 
-- **Pane and toolbar.** The `NavigationViewExpandedPaneBackground` reveals Mica; there is no extra pane border or general 8px inset. PaneHeader margin is 4,8,4,8. The 40x40 pane button sits at x=4, y=8 below the title bar. Back/Forward align to the right of the same 40px toolbar with an 8px gap and the default SubtleButton padding, yielding 40px widths. Their disabled state represents empty navigation history. The selector sits 8px below the toolbar, with 4,8,28,8 padding and a trailing 12px U+E70D glyph. It shows No agents loaded until production has a roster; selected agents use `AgentIdentityBadge`.
+- **Pane and toolbar.** The `NavigationViewExpandedPaneBackground` reveals Mica; there is no extra pane border or general 8px inset. PaneHeader margin is 4,8,4,8. The 40x40 pane button sits at x=4, y=8 below the title bar. Back/Forward align to the right of the same 40px toolbar with an 8px gap and the default SubtleButton padding, yielding 40px widths. Their disabled state represents empty navigation history. The selector sits 8px below the toolbar, with 4,8,0,8 padding and the native trailing 12px U+E70D glyph. It shows No agents loaded until production has a roster; selected agents use `AgentIdentityBadge`.
 - **Menu.** Home is a 36px row with 4px horizontal and 2px vertical outer margins, a 3x16 accent indicator and the original `Chat.svg` at 22px centered in a 24px column. The iconless native presenter reserves 8px before that column, followed by a 16px gap to Home. The Sessions header is 40px tall with 16px leading and 4px trailing insets, 14px semibold text, and a 40x36 add button. No conversations to show replaces session rows in the supplied state; add is disabled while disconnected.
 - **Owner footer.** The PaneFooter uses 4,8,4,8 margins and a 4px column gap. The Owner button is the shared `UserIdentityBadge`, with native SubtleButton states, 8px padding and a retained 1px border, a 24px PersonPicture, 12px column spacing and a 10px status dot followed by a 4px gap and Caption text. `statusTone` follows connection state, never authorization. It reads the authenticated `users.self` profile or falls back to Owner. Chat and Settings share this footer (`WorkspacePaneFooter`): Owner, then 40x36 Dashboard and notification SubtleButtons vertically centered against it. Both use 16px monochrome Segoe Fluent glyphs in the default text color: Dashboard is ViewDashboard U+F246 and the bell is Ringer U+EA8F with a 16px InfoBadge at its top-right. The Settings compact rail stacks the three as 40px icons, and while Chat's pane is hidden only Dashboard and the bell appear in the title bar.
 - **Connection status.** `Controls/GatewayStatusContent.xaml` is a 304px flyout of Gateway, Operator, and Node rows split by 1px `line` dividers, closing with an Open Connection link. Each row pairs a 10px status dot with a body-strong label over a caption `muted` detail, and reveals an `accent` action link (Reconnect, Approve) only when that layer needs one. The dot binds the Fluent system fill for its state: `positive` connected, `warning` attention, `critical` error, `muted` unknown, never color alone.

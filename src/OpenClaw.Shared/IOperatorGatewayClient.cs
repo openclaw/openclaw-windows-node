@@ -43,6 +43,8 @@ public interface IOperatorGatewayClient
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
     /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
     event EventHandler? SelfProfileChanged { add { } remove { } }
+    /// <summary>The Gateway pushed <c>sessions.changed</c>; any Sessions page inventory may be stale.</summary>
+    event EventHandler<SessionListChange>? SessionListChanged { add { } remove { } }
     /// <summary>Raw <c>cron</c> Gateway event payload (job ran, changed, or was removed).</summary>
     event EventHandler<JsonElement>? CronEventReceived { add { } remove { } }
     /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
@@ -234,9 +236,38 @@ public interface IOperatorGatewayClient
             IsSupported = false,
             Error = "sessions.create is not supported by this gateway client."
         });
-    /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
-    Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
-        => Task.FromResult(new SessionListResult { IsSupported = false });
+
+    Task<OpenClaw.Shared.Sessions.SessionListPage> ListSessionsPageAsync(
+        OpenClaw.Shared.Sessions.SessionListQuery query, int timeoutMs = 15000)
+        => Task.FromResult(new OpenClaw.Shared.Sessions.SessionListPage { IsSupported = false });
+    Task<OpenClaw.Shared.Sessions.SessionSearchResult> SearchSessionTranscriptsAsync(
+        string query, OpenClaw.Shared.Sessions.SessionListQuery scope, int limit = 25, int timeoutMs = 20000)
+        => Task.FromResult(new OpenClaw.Shared.Sessions.SessionSearchResult { IsSupported = false });
+    Task<OpenClaw.Shared.Sessions.SessionDeleteOutcome> DeleteSessionDetailedAsync(
+        OpenClaw.Shared.Sessions.SessionDeleteRequest request, int timeoutMs = 30000)
+        => Task.FromException<OpenClaw.Shared.Sessions.SessionDeleteOutcome>(
+            new NotSupportedException("Response-aware sessions.delete is not supported."));
+    Task<IReadOnlyList<OpenClaw.Shared.Sessions.WorktreeRecord>?> ListWorktreesAsync(int timeoutMs = 15000)
+        => Task.FromResult<IReadOnlyList<OpenClaw.Shared.Sessions.WorktreeRecord>?>(null);
+    Task<OpenClaw.Shared.Sessions.WorktreeBranchList> ListWorktreeBranchesAsync(
+        string repoRoot, int timeoutMs = 15000)
+        => Task.FromException<OpenClaw.Shared.Sessions.WorktreeBranchList>(
+            new NotSupportedException("worktrees.branches is not supported."));
+    Task<OpenClaw.Shared.Sessions.WorktreeRecord?> CreateWorktreeAsync(
+        string repoRoot, string? name, string? baseRef, int timeoutMs = 120000)
+        => Task.FromException<OpenClaw.Shared.Sessions.WorktreeRecord?>(
+            new NotSupportedException("worktrees.create is not supported."));
+    Task<OpenClaw.Shared.Sessions.WorktreeRemoveResult> RemoveWorktreeAsync(
+        string id, bool force, int timeoutMs = 120000)
+        => Task.FromException<OpenClaw.Shared.Sessions.WorktreeRemoveResult>(
+            new NotSupportedException("worktrees.remove is not supported."));
+    Task<OpenClaw.Shared.Sessions.WorktreeRecord?> RestoreWorktreeAsync(string id, int timeoutMs = 120000)
+        => Task.FromException<OpenClaw.Shared.Sessions.WorktreeRecord?>(
+            new NotSupportedException("worktrees.restore is not supported."));
+    Task<OpenClaw.Shared.Sessions.WorktreeGcResult> RunWorktreeGcAsync(
+        string? jobId = null, int timeoutMs = 60000)
+        => Task.FromException<OpenClaw.Shared.Sessions.WorktreeGcResult>(
+            new NotSupportedException("worktrees.gc is not supported."));
 
     // ─── Automations (cron) ───
     // Response-aware cron APIs shared by every implementer through SendWizardRequestAsync.

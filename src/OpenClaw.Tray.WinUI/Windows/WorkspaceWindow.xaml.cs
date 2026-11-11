@@ -25,6 +25,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     // VK_OEM_COMMA; VirtualKey has no named member for it.
     private const global::Windows.System.VirtualKey SettingsShortcutKey = (global::Windows.System.VirtualKey)188;
     private const string SettingsShortcutText = "Ctrl+,";
+    private const double SidebarMinContentWidth = 480;
+    private const double SidebarMaxWidth = 480;
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
@@ -1083,10 +1085,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private UserAvatarImage? _shownAvatar;
     private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _ownerImage;
 
-    // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
     private string OwnerLabel() =>
-        _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
-            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        _identity.FooterLabel(Text("Owner.Text"));
 
     private void UpdateOwnerIdentity()
     {
@@ -1329,6 +1329,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
     private void UpdatePanePresentation()
     {
+        SidebarSplitter.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
         ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
@@ -1340,6 +1341,40 @@ public sealed partial class WorkspaceWindow : WindowEx
             _gatewayStatusFlyout.Hide();
         }
         UpdateTitleBarActions();
+    }
+
+    private void OnNavigationSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SidebarColumn.MaxWidth = Math.Max(SidebarColumn.MinWidth,
+            Math.Min(SidebarMaxWidth, e.NewSize.Width - SidebarMinContentWidth));
+    }
+
+    private void OnSidebarPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
+            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
+        var delta = e.Key switch
+        {
+            global::Windows.System.VirtualKey.Left => -SidebarSplitter.KeyboardIncrement,
+            global::Windows.System.VirtualKey.Right => SidebarSplitter.KeyboardIncrement,
+            _ => 0,
+        };
+        if (delta == 0) return;
+        if (SidebarSplitter.FlowDirection == FlowDirection.RightToLeft) delta = -delta;
+        var next = SidebarColumn.ActualWidth + delta;
+        var boundary = delta < 0 ? SidebarColumn.MinWidth : SidebarColumn.MaxWidth;
+        var scale = NavigationSection.XamlRoot.RasterizationScale;
+        // Toolkit rejects 191.99998 at a 192-DIP minimum. Match the rendered pixel at either limit.
+        if (Math.Round(next * scale) != Math.Round(boundary * scale)) return;
+        SidebarColumn.Width = new GridLength(boundary);
+        e.Handled = true;
+    }
+
+    private void OnSidebarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        NavView.OpenPaneLength = e.NewSize.Width;
+        if (_settings is { } settings && IsSettingsVisible)
+            UpdateEmbeddedPageTopAllocation(settings);
     }
 
     // An embedded section sits to the right of the sidebar, which stays visible and usable. The

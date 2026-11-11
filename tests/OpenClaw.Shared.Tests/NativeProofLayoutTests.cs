@@ -26,15 +26,20 @@ public sealed class NativeProofLayoutTests
     }
 
     [Theory]
-    [InlineData(1, 182, 182)]
-    [InlineData(1.25, 182.39999389648438, 228)]
-    [InlineData(1.5, 182, 273)]
-    [InlineData(1.75, 182.28572082519531, 319)]
-    [InlineData(2, 182, 364)]
-    public void HeroSize_UsesExactPhysicalRoundingAndWinUiFloatStorage(double scale, double expectedView, int physical)
+    [InlineData(182, 1, 182, 182)]
+    [InlineData(182, 1.25, 182.39999389648438, 228)]
+    [InlineData(182, 1.5, 182, 273)]
+    [InlineData(182, 1.75, 182.28572082519531, 319)]
+    [InlineData(182, 2, 182, 364)]
+    [InlineData(14, 1, 14, 14)]
+    [InlineData(14, 1.75, 14.285714149475098, 25)]
+    [InlineData(18, 1, 18, 18)]
+    [InlineData(18, 1.75, 18.285715103149414, 32)]
+    public void ConfiguredSize_UsesExactPhysicalRoundingAndWinUiFloatStorage(
+        double configuredSize, double scale, double expectedView, int physical)
     {
-        Assert.Equal(expectedView, NativeProofLayout.RoundedViewSize(182, scale));
-        Assert.Equal(physical, NativeProofLayout.PhysicalPixels(182, scale));
+        Assert.Equal(expectedView, NativeProofLayout.RoundedViewSize(configuredSize, scale));
+        Assert.Equal(physical, NativeProofLayout.PhysicalPixels(configuredSize, scale));
         Assert.Equal(physical, NativeProofLayout.PhysicalPixels(expectedView, scale));
     }
 
