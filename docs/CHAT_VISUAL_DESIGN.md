@@ -78,8 +78,8 @@ chrome keeps the native WinUI ramp.
 | Footer, hover metadata, status, error | 12/18 | 12; error 13 | Error stays on the status ramp |
 | Permission card | 14 title, 12/18 body and decisions, 11 caption | not compared | Native card chrome |
 
-The pinned provider-review and child-activity panels keep stock WinUI body and
-caption sizes as native chrome.
+The pinned provider-review panel and on-demand subagent pane keep stock WinUI
+body and caption sizes as native chrome.
 
 Additional shared glyph aliases live in `FluentIconCatalog`: `ChevronDown`
 (E70D) and `Stop` (E71A).
@@ -146,9 +146,22 @@ output have separate stable identities so late input does not replace an
 already-open output control.
 
 Native disclosure headers and action targets keep their existing sizing; compact
-spacing does not clip header content or shrink hit targets. Provider review and
-child-agent details share a scrolling region capped at 160 pixels, leaving more
-room for the conversation while keeping all supplied details accessible.
+spacing does not clip header content or shrink hit targets. Provider review retains a scrolling region capped at 160 pixels.
+Child-agent details instead open through **Subagents** above the conversation.
+The pane starts closed, lists non-archived direct subagents present in the
+Gateway's current session snapshot, and opens a read-only child transcript with
+Back and Close. It reuses the provider's history/retry path without changing the
+main session, composer, draft, or attachments. Other parent-linked sessions are
+not classified as subagents. Disconnect or parent selection closes the pane.
+
+This first version intentionally has no separate child discovery/pagination,
+descendant tree, Stop, persisted layout, or docking controls. Its session-list
+scope is not a claim that every historical child has been discovered.
+`ChatVisuals` gives the right pane 40 percent of its host width, clamped to
+260 through 360 DIPs. Below 680 DIPs of chat-host width it occupies the chat area
+while retaining the hidden main conversation. The composer and question dock
+measure the remaining conversation column, not the full shell. Provider review
+stays in its existing owner and is not removed with the obsolete bottom bar.
 
 Gateway-truncated tool results keep their typed truncation flag and canonical
 saved result-message/session/call identity, separately from invocation input.

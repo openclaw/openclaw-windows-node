@@ -8260,4 +8260,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Paramètres</value>
   </data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>Sous-agents</value></data>
+  <data name="Chat_Subagents_Back" xml:space="preserve"><value>Retour aux sous-agents</value></data>
+  <data name="Chat_Subagents_Close" xml:space="preserve"><value>Fermer les sous-agents</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Aucun sous-agent dans la liste actuelle des sessions.</value></data>
+  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>Aucun message pour le moment.</value></data>
 </root>

@@ -329,10 +329,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             LoadToolOutputAsync: dataProvider is null ? null : dataProvider.LoadToolOutputAsync,
             ToolDetailsProfileState: dataProvider?.ToolDetailsProfileState ?? default,
             ReadToolDetailsProfileState: dataProvider is null ? null : dataProvider.ReadToolDetailsProfileState,
-            ChildThreads: isGatewayConnected && effectiveThread is not null
-                ? snapshot.Threads.Where(child => !child.IsArchived
-                    && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
-                : [],
             ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null,
             UserDisplayName: props.UserDisplayName,
             UserProfilePicture: props.UserProfilePicture);
@@ -537,7 +533,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 effectiveThread.Id,
                 contextUsage,
                 timeline.TurnActive));
-        return Grid(
+        var conversation = Grid(
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
@@ -556,6 +552,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .VAlign(VerticalAlignment.Stretch)
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
             .OnUnmount(ChatVisuals.StopObserving);
+        return Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(
+            effectiveThread?.Id, isGatewayConnected, conversation,
+            isGatewayConnected && effectiveThread is not null
+                ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
+                    && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
+                : [],
+            child => Component<ReactorChatSubagentTranscript, ReactorChatSubagentTranscriptProps>(new(
+                child, snapshot, nativeProvider, showToolCalls, showChatThinking,
+                toolCallsCollapseVersion, props.TryCopyText)).WithKey(child.Id)));
     }
 
     private static Element RenderLoading() =>

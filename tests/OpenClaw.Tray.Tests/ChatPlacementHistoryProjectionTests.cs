@@ -25,6 +25,21 @@ public sealed class ChatPlacementHistoryProjectionTests
         Assert.Null(threads[2].CurrentActivity);
     }
 
+    [Theory]
+    [InlineData("agent:main:subagent:child", null, true)]
+    [InlineData("agent:research:worker", "subagent", true)]
+    [InlineData("agent:main:cron:job", "cron", false)]
+    [InlineData("agent:main:fork", "custom", false)]
+    public void ChildPanelDistinguishesSubagentsFromOtherParentLinkedSessions(
+        string key, string? classification, bool isSubagent)
+    {
+        var snapshot = ChatSnapshotProjector.Project(Input(ConnectionStatus.Connected) with
+        {
+            Sessions = [new() { Key = key, ParentSessionKey = "parent", Classification = classification }],
+        });
+        Assert.Equal(isSubagent, Assert.Single(snapshot.Threads).IsSubagent);
+    }
+
     [Fact]
     public void OlderHistoryPreservesActiveRowsAndRevisionWhileRetiringResetCursor()
     {

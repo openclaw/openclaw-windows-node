@@ -998,6 +998,14 @@ The `buttonHorizontal` (11px), `buttonTop` (5px), and `buttonBottom` (6px) token
 
 ## Information hierarchy
 
+The initial native subagent pane uses `ChatVisuals.SubagentsPaneWidth` (360 DIPs),
+`SubagentsPaneMinWidth` (260), `SubagentsPaneWidthRatio` (0.4), and
+`SubagentsNarrowWidth` (680). Wide presentation reserves the clamped fraction
+beside the retained conversation; narrow presentation shows the pane in place.
+Rows reuse the chat detail insets (12 horizontal, 8 vertical), 4-DIP compact gap,
+native body text, and 13-DIP status text. Surfaces bind native layer and chat
+stroke resources. No custom palette, docking, or persisted geometry in v1.
+
 1. **One subject per screen.** Decide what the screen is for and let that element win.
 2. **Size and weight before color.** Establish the hierarchy in grayscale first; color is the last 10%.
 3. **One accent.** `accent` means "act here" (selection, focus, primary action). If everything is accented, nothing is.

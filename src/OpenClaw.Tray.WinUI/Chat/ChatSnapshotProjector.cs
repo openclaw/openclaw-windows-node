@@ -152,6 +152,7 @@ internal static class ChatSnapshotProjector
                 ContinuationMessage = NativeToolProjector.SanitizeToolDisplayValue(review.ContinuationMessage),
             } : null,
             IsBackground = display.IsBackground,
+            IsSubagent = string.Equals(display.Classification, "subagent", StringComparison.OrdinalIgnoreCase),
             IsArchived = session.Archived,
             IsChannelSession = display.Classification.ToLowerInvariant() is "direct" or "group" or "channel" or "thread",
             Status = SessionVisibilityFilter.ToChatThreadStatus(session),

@@ -40,7 +40,6 @@ public sealed record ChatTimelinePresentationContext(
     Func<ChatToolOutputRequest, CancellationToken, Task<ChatToolOutputResult>>? LoadToolOutputAsync = null,
     ChatToolDetailsProfileState ToolDetailsProfileState = default,
     Func<ChatToolDetailsProfileState>? ReadToolDetailsProfileState = null,
-    IReadOnlyList<ChatThread>? ChildThreads = null,
     SessionProviderReviewInfo? ProviderReview = null,
     bool LoadingOlderHistory = false,
     ChatToolActivityExpansionState? ToolExpansionState = null,

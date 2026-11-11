@@ -118,6 +118,7 @@ public record ChatThread
     public bool WaitingForSubagents { get; init; }
     public OpenClaw.Shared.SessionProviderReviewInfo? ProviderReview { get; init; }
     public bool IsBackground { get; init; }
+    public bool IsSubagent { get; init; }
     public bool IsArchived { get; init; }
     public bool IsChannelSession { get; init; }
     public ChatThreadStatus Status { get; init; }

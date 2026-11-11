@@ -200,6 +200,10 @@ internal static class ChatVisuals
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
     internal const double ActivityDetailsMaxHeight = 160;
+    internal const double SubagentsPaneWidth = 360;
+    internal const double SubagentsPaneMinWidth = 260;
+    internal const double SubagentsNarrowWidth = 680;
+    internal const double SubagentsPaneWidthRatio = 0.4;
     internal const double TranscriptTopInset = 8;
     internal const double TranscriptBottomInset = 24;
     internal const double JumpLatestSize = 32;

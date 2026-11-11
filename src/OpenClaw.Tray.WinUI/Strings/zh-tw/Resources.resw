@@ -8260,4 +8260,9 @@
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>設定</value>
   </data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>子代理程式</value></data>
+  <data name="Chat_Subagents_Back" xml:space="preserve"><value>返回子代理程式清單</value></data>
+  <data name="Chat_Subagents_Close" xml:space="preserve"><value>關閉子代理程式面板</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>目前的工作階段清單中沒有子代理程式。</value></data>
+  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>尚無訊息。</value></data>
 </root>

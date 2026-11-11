@@ -325,8 +325,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                             .TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true))
                         .HAlign(HorizontalAlignment.Stretch).AutomationId("ChatProviderReview")
                         .AutomationName(LocalizedOrDefault("Chat_Review_Required", "Provider review required"))
-                    : Empty(),
-                Component<ReactorChildActivity, ReactorChildActivityProps>(new(props.Timeline.ChildThreads ?? []))))
+                    : Empty()))
                 .MaxHeight(ChatVisuals.ActivityDetailsMaxHeight)
                 .AutomationId("ChatActivityDetails")
                 .Margin(ChatVisuals.Gutter(viewportWidth), 0).Grid(row: 2, column: 0))

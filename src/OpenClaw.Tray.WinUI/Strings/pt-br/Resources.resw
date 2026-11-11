@@ -8313,4 +8313,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Configurações</value>
   </data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagentes</value></data>
+  <data name="Chat_Subagents_Back" xml:space="preserve"><value>Voltar aos subagentes</value></data>
+  <data name="Chat_Subagents_Close" xml:space="preserve"><value>Fechar subagentes</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Nenhum subagente na lista de sessões atual.</value></data>
+  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>Nenhuma mensagem ainda.</value></data>
 </root>

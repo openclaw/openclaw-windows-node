@@ -8331,4 +8331,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Settings</value>
     <comment>Large title at the top of the Settings sidebar.</comment>
   </data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagents</value></data>
+  <data name="Chat_Subagents_Back" xml:space="preserve"><value>Back to subagents</value></data>
+  <data name="Chat_Subagents_Close" xml:space="preserve"><value>Close subagents</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>No subagents in the current session list.</value></data>
+  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>No messages yet.</value></data>
 </root>

@@ -226,7 +226,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 snapshot.Threads[0] with { WaitingForSubagents = true,
                     ProviderReview = new("provider-review", "proof-run", "Synthetic review explanation",
                         "Continue only after reviewing the request.", false) },
-                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof",
+                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof", IsSubagent = true,
                     Activity = ChatActivity.Working, CurrentActivity = "Checking the synthetic change" }] };
             await PublishAsync();
             await ResumeFollowingAsync(surface);
@@ -243,7 +243,6 @@ public sealed partial class ReactorChatLayoutProofTests
                 return bounds.Top >= 0 && bounds.Bottom <= scroll.ActualHeight;
             }, "visible waiting-for-subagents feedback"));
             await CaptureAsync(surface, "Feedback-child-wait");
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatChildActivity").IsExpanded = true);
             await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatProviderReview").IsExpanded = true);
             await SettleAsync();
             await AwaitDisclosureAnimationsAsync(surface);
@@ -254,7 +253,11 @@ public sealed partial class ReactorChatLayoutProofTests
                 details.ChangeView(null, details.ScrollableHeight, null, disableAnimation: true);
             });
             await SettleAsync();
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsToggle")));
+            await SettleAsync();
             await CaptureAsync(surface, "Feedback-child-details");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsClose")));
+            await SettleAsync();
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
                 FindControl<TextBlock>(host, "ChatRunProgressText").Text));
 
@@ -1030,14 +1033,21 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private sealed class ConversationParityBridge(ChatHistoryInfo history, SessionInfo session) : IChatGatewayBridge
     {
+        public SessionInfo[] Children { get; set; } = [];
+        public ChatHistoryInfo? ChildHistory { get; set; }
+        public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;
         public string MainSessionKey => history.SessionKey;
         public bool HasHandshakeSnapshot => true;
-        public SessionInfo[] GetSessionList() => [session.Clone()];
+        public SessionInfo[] GetSessionList() => new[] { session }.Concat(Children).Select(row => row.Clone()).ToArray();
         public ModelsListInfo? GetCurrentModelsList() => null;
         public void StartProactiveBootstrap() => SessionsUpdated?.Invoke(this, GetSessionList());
-        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) => Task.FromResult(history);
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
+        {
+            HistoryRequests.Enqueue(sessionKey ?? "");
+            return Task.FromResult(ChildHistory is { } child && child.SessionKey == sessionKey ? child : history);
+        }
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
             Task.FromResult(new CommandCatalog { IsSupported = false });
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId,
