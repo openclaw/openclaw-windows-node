@@ -581,7 +581,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 Publish(commit.AcceptedSnapshot);
             if (commit.RequeuedSnapshot is not null)
                 Publish(commit.RequeuedSnapshot);
-            if (commit.RetryDeferredSend)
+            if (commit.ScheduleQueueDrain)
                 ScheduleQueuedSendDrain(threadId, commit.DeferredRetryDelay);
 
             if (commit.StaleRunIdToAbort is not null)

@@ -100,8 +100,12 @@ public sealed class UIThreadFixture : IDisposable
     /// </summary>
     public Grid Container { get; private set; } = null!;
 
+    internal bool UsesProductionResources { get; }
+
     public UIThreadFixture()
     {
+        UsesProductionResources = TestAppResourceLoader.IsProductionProfile(
+            Environment.GetEnvironmentVariable(TestAppResourceLoader.ProfileVariable));
         Console.WriteLine($"UIThreadFixture process={Environment.ProcessId}; WindowsAppSDK={WinAppSdkMajorMinor >> 16}.{WinAppSdkMajorMinor & 0xffff}");
         IsSlow = string.Equals(
             Environment.GetEnvironmentVariable("SLOW_UI_TESTS"), "1", StringComparison.Ordinal);
@@ -308,7 +312,7 @@ public sealed class UIThreadFixture : IDisposable
                     {
                         try
                         {
-                            app.MergeStandardResources();
+                            app.InitializeResources(UsesProductionResources);
                             if (!app.Resources.ContainsKey("TextFillColorSecondaryBrush"))
                                 throw new InvalidOperationException("The WinUI test resource map did not initialize.");
                             _startupPhase = "ready";

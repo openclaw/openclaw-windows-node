@@ -5,6 +5,45 @@ namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class WorkspaceSettingsLayoutTests
 {
+    [Fact]
+    public void PinnedPaneToggle_IsAboveSettingsWithoutRaisingTheChatSurface()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var document = System.Xml.Linq.XDocument.Load(Path.Combine(root,
+            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var settings = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "SettingsSection");
+        var navigation = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "NavigationSection");
+        var toggle = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "PaneToggleChrome");
+        Assert.Same(settings.Parent, toggle.Parent);
+        Assert.Same(settings.Parent, navigation.Parent);
+        var siblings = settings.Parent!.Elements().ToList();
+        Assert.True(siblings.IndexOf(navigation) < siblings.IndexOf(settings));
+        Assert.True(siblings.IndexOf(settings) < siblings.IndexOf(toggle));
+        Assert.Equal("1", (string?)toggle.Attribute("Grid.Row"));
+        Assert.Equal("{Binding Visibility, ElementName=NavigationSection}",
+            (string?)toggle.Attribute("Visibility"));
+        Assert.Equal("48", (string?)toggle.Attribute("Width"));
+        Assert.Equal("56", (string?)toggle.Attribute("Height"));
+        Assert.Null(toggle.Attribute("Background"));
+        Assert.Equal("0", (string?)toggle.Attribute("TabIndex"));
+        var history = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Name") == "SettingsHistoryBar");
+        Assert.Equal("1", (string?)history.Attribute("TabIndex"));
+        Assert.True(siblings.IndexOf(toggle) < siblings.IndexOf(history));
+        foreach (var name in new[] { "CollapsePaneButton", "ReopenPaneButton" })
+        {
+            var button = document.Descendants().Single(element =>
+                (string?)element.Attribute(x + "Name") == name);
+            Assert.Same(toggle, button.Parent);
+            Assert.Equal("OnTogglePane", (string?)button.Attribute("Click"));
+            Assert.NotEqual("False", (string?)button.Attribute("IsHitTestVisible"));
+        }
+    }
+
     [Theory]
     [InlineData(false, false, false, 0, 0)]
     [InlineData(false, false, true, 0, 0)]

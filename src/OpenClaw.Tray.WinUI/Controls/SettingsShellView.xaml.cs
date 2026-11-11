@@ -876,7 +876,10 @@ internal sealed partial class SettingsShellView : UserControl
             case SessionsPage sessions: sessions.Initialize(); break;
             case ConnectionPage connection: connection.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
-            case CronPage cron: cron.Initialize(); break;
+            case CronPage cron:
+                cron.AgentId = _currentAgentId;
+                cron.Initialize();
+                break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)

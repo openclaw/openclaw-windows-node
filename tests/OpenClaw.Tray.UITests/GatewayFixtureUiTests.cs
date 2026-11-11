@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
@@ -50,7 +51,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Equal("Customize pages", customize.Current.Name);
             const string draft = "Keep this other conversation draft";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
-            await WaitUiAsync(run, () => ComposerText(run) == draft &&
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { } composer &&
+                ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == draft &&
                 FindById(run, "ChatComposerPrimaryAction") is { Current.Name: "Send", Current.IsEnabled: true },
                 "non-main draft acknowledged before native pointer input");
             Assert.Null(FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}"));
@@ -1104,6 +1106,144 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    private void ClickOwnedElement(GatewayFixtureRun run, AutomationElement window, AutomationElement target)
+    {
+        run.EnsureRunning();
+        Assert.Equal(run.AppProcessId, window.Current.ProcessId);
+        Assert.Equal(run.AppProcessId, target.Current.ProcessId);
+        var handle = new IntPtr(window.Current.NativeWindowHandle);
+        Assert.True(SetForegroundWindow(handle), "Cannot foreground owned fixture window.");
+        var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        Assert.NotEqual(IntPtr.Zero, previous);
+        try
+        {
+            ConfirmForegroundAfterRequest(handle);
+            AssertOwnedForeground(run, handle, "before-target-hit-test");
+            var bounds = target.Current.BoundingRectangle;
+            Assert.True(bounds.Width > 0 && bounds.Height > 0 && !target.Current.IsOffscreen);
+            var point = new FixturePoint { X = (int)(bounds.Left + bounds.Width / 2), Y = (int)(bounds.Top + bounds.Height / 2) };
+            Assert.Equal(handle, GetAncestor(WindowFromPoint(point), 2));
+            var hit = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+            // WinUI can return its content bridge instead of the target peer for point queries.
+            var bridgeContainsTarget = hit.Current.ClassName == "Microsoft.UI.Content.DesktopChildSiteBridge"
+                && hit.Current.ProcessId == run.AppProcessId
+                && hit.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                    AutomationElement.AutomationIdProperty, target.Current.AutomationId)) is not null;
+            Assert.True(target.Current.AutomationId == hit.Current.AutomationId || bridgeContainsTarget,
+                $"Target {target.Current.AutomationId} at {bounds}, point {point.X},{point.Y}; hit " +
+                $"{hit.Current.AutomationId}/{hit.Current.Name}/{hit.Current.ClassName}/{hit.Current.ControlType.ProgrammaticName} at {hit.Current.BoundingRectangle}");
+            Assert.True(SetCursorPos(point.X, point.Y));
+            Assert.True(GetCursorPos(out var actual));
+            Assert.Equal(point, actual);
+            AssertOwnedForeground(run, handle, "before-native-pointer-input");
+            Assert.Equal(handle, GetAncestor(WindowFromPoint(actual), 2));
+            var inputs = new[]
+            {
+                new FixtureInput { Mouse = new FixtureMouse { Flags = 2 } },
+                new FixtureInput { Mouse = new FixtureMouse { Flags = 4 } }
+            };
+            var sent = SendInput(2, inputs, Marshal.SizeOf<FixtureInput>());
+            if (sent == 1) SendInput(1, [inputs[1]], Marshal.SizeOf<FixtureInput>());
+            Assert.Equal(2u, sent);
+        }
+        finally { SetThreadDpiAwarenessContext(previous); }
+    }
+
+    private static void ConfirmForegroundAfterRequest(IntPtr handle, TimeSpan? foregroundTimeout = null) =>
+        ConfirmForegroundAfterRequest(handle,
+            () => SendMessageTimeout(handle, 0, IntPtr.Zero, IntPtr.Zero, 0,
+                checked((uint)FixtureForegroundTimeout.TotalMilliseconds), out _) != IntPtr.Zero,
+            GetForegroundWindow, foregroundTimeout);
+
+    private static void ConfirmForegroundAfterRequest(
+        IntPtr handle, Func<bool> acknowledge, Func<IntPtr> getForeground, TimeSpan? foregroundTimeout = null)
+    {
+        // Cross-thread activation is asynchronous. WM_NULL waits for the target queue to process it.
+        if (!acknowledge())
+            throw new InvalidOperationException(
+                $"Owned window 0x{handle.ToInt64():X} did not acknowledge activation within " +
+                $"{FixtureForegroundTimeout.TotalMilliseconds:0} ms (Win32 error {Marshal.GetLastWin32Error()}); " +
+                "refusing pointer input.");
+        // A popup can still hold foreground after the target queue acknowledges activation.
+        var foreground = IntPtr.Zero;
+        if (!SpinWait.SpinUntil(() => (foreground = getForeground()) == handle,
+                foregroundTimeout ?? FixtureForegroundTimeout))
+            AssertOwnedForeground(handle, foreground);
+    }
+
+    private static void AssertOwnedForeground(IntPtr handle, Func<IntPtr> getForeground) =>
+        AssertOwnedForeground(handle, getForeground());
+
+    private static void AssertOwnedForeground(IntPtr handle, IntPtr foreground)
+    {
+        if (foreground == handle) return;
+        GetWindowThreadProcessId(foreground, out var processId);
+        var className = new System.Text.StringBuilder(256);
+        var classLength = GetClassName(foreground, className, className.Capacity);
+        throw new InvalidOperationException(
+            $"Expected owned window 0x{handle.ToInt64():X} in the foreground, but found " +
+            $"0x{foreground.ToInt64():X} (PID {processId}, class {(classLength > 0 ? className.ToString() : "<unavailable>")}); " +
+            "refusing pointer input.");
+    }
+
+    private void AssertOwnedForeground(GatewayFixtureRun run, IntPtr expected, string phase)
+    {
+        var actual = GetForegroundWindow();
+        if (actual != expected)
+        {
+            object WindowState(IntPtr handle)
+            {
+                var threadId = GetWindowThreadProcessId(handle, out var processId);
+                return new
+                {
+                    hwnd = handle.ToInt64(),
+                    threadId,
+                    processId,
+                    belongsToTaskApp = processId == run.AppProcessId,
+                    exists = IsWindow(handle),
+                    visible = IsWindowVisible(handle),
+                    minimized = IsIconic(handle),
+                    maximized = IsZoomed(handle),
+                };
+            }
+
+            // Read ownership and native state only, never foreign window text or pixels.
+            output.WriteLine("fixture-foreground-mismatch: " + JsonSerializer.Serialize(new
+            {
+                phase,
+                timestampUtc = DateTimeOffset.UtcNow,
+                appProcessId = run.AppProcessId,
+                runnerProcessId = Environment.ProcessId,
+                expected = WindowState(expected),
+                actual = WindowState(actual),
+            }));
+        }
+        Assert.Equal(expected, actual);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixturePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixtureInput { public uint Type; public FixtureMouse Mouse; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FixtureMouse { public int X, Y; public uint Data, Flags, Time; public nuint Extra; }
+    [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr handle, System.Text.StringBuilder className, int maxCount);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(FixturePoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out FixturePoint point);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, FixtureInput[] inputs, int size);
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]

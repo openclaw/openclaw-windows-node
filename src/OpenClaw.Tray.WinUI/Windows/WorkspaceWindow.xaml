@@ -190,8 +190,8 @@
                      Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
                      AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
         </Grid>
-        <!-- Opted-in page backdrops extend under this chrome; the pane buttons must stay above them. -->
-        <Grid x:Name="PaneToggleChrome" Grid.Row="1"
+        <!-- Keep only the pane buttons above full-frame embedded pages, not the Chat surface. -->
+        <Grid x:Name="PaneToggleChrome" Grid.Row="1" TabIndex="0"
               Visibility="{Binding Visibility, ElementName=NavigationSection}"
               HorizontalAlignment="Left" VerticalAlignment="Top" Width="48" Height="56">
             <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
@@ -207,7 +207,7 @@
                 <FontIcon Glyph="&#xE90C;" FontSize="16"/>
             </Button>
         </Grid>
-        <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
+        <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" TabIndex="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
             <Button x:Name="SettingsBackButton" x:Uid="NavBackButton" Click="OnBack"
                     Width="40" Height="40" Padding="0"

@@ -28,7 +28,9 @@ public sealed partial class GatewayFixtureProtocolTests
             Assert.False(cron.GetProperty("hasMore").GetBoolean());
             Assert.Equal(200, cron.GetProperty("limit").GetInt32());
             Assert.True(scenario.InboxFeedPagedReadCount > 0, "Real reader must supply bounded canonical pagination parameters.");
-            Assert.Equal("fixture-inbox-revision-1", cron.GetProperty("snapshotRevision").GetString());
+            Assert.Matches("^[A-F0-9]{64}$", cron.GetProperty("snapshotRevision").GetString()!);
+            var sameInventory = await client.ReadSearchCatalogAsync("cron.list", new { includeDisabled = true }, deadline.Token);
+            Assert.Equal(cron.GetProperty("snapshotRevision").GetString(), sameInventory.GetProperty("snapshotRevision").GetString());
             var job = Assert.Single(cron.GetProperty("jobs").EnumerateArray());
             Assert.Equal("Fixture nightly archive", job.GetProperty("name").GetString());
             Assert.Equal("error", job.GetProperty("state").GetProperty("lastRunStatus").GetString());
@@ -82,6 +84,33 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal("fixture-inbox-reconnected", row.GetProperty("id").GetString());
         Assert.Equal("echo fixture-reconnected", row.GetProperty("request").GetProperty("command").GetString());
         Assert.Single(server.Events); // Reconnect input changed only the read inventory.
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task InboxFeed_NativeAutomationQueriesKeepFiltersPagingAndReadOnlyAuthority()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateInboxFeed();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var query = new Cron.CronListQuery { AgentId = "main", Query = "nightly", Limit = 1, SortBy = Cron.CronSortBy.Name };
+        var page = await client.ListCronJobsAsync(query).WaitAsync(Deadline);
+        Assert.Equal("fixture-inbox-cron", Assert.Single(page.Jobs).Id);
+        Assert.Empty((await client.ListCronJobsAsync(query with { AgentId = "research" }).WaitAsync(Deadline)).Jobs);
+        Assert.Empty((await client.ListCronJobsAsync(query with { Enabled = Cron.CronEnabledFilter.Disabled }).WaitAsync(Deadline)).Jobs);
+        Assert.Empty((await client.ListCronJobsAsync(query with { Offset = 1 }).WaitAsync(Deadline)).Jobs);
+        Assert.Equal("fixture-inbox-cron", (await client.GetCronJobAsync("fixture-inbox-cron").WaitAsync(Deadline)).Id);
+        Assert.Empty((await client.ListCronRunsAsync(new Cron.CronRunsQuery { JobId = "fixture-inbox-cron" }).WaitAsync(Deadline)).Entries);
+        foreach (var method in new[] { "cron.add", "cron.update", "cron.remove", "cron.run" })
+        {
+            Assert.DoesNotContain(method, client.AdvertisedServerMethods);
+            var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(method, new { id = "fixture-inbox-cron" }));
+            Assert.Equal("FORBIDDEN", GatewayRequestErrors.Code(error));
+        }
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.list", new { unknown = true }));
+        Assert.Single(scenario.GetCronJobs());
         Assert.Empty(server.UnexpectedRequests);
     }
 

@@ -18,18 +18,18 @@ namespace OpenClaw.Tray.UITests;
 /// Why no resource merge in the ctor: in WinAppSDK 1.8, accessing
 /// <see cref="Application.Resources"/> during ctor throws COMException — the
 /// underlying COM object isn't fully wired until after construction returns.
-/// Resources are set up by <see cref="MergeStandardResources"/>, called from the
+/// Resources are set up by <see cref="InitializeResources"/>, called from the
 /// fixture once the dispatcher confirms the app is alive.
 ///
-/// Renderers that look up theme keys (e.g. <c>BodyTextBlockStyle</c>) wrap each
-/// lookup in try/catch and tolerate missing keys, so tests still get a live
-/// visual tree even before the merge happens — assertions on text content,
-/// hierarchy, and click handlers don't depend on theme styles.
+/// The default profile retains legacy synthetic resources. Production-resource
+/// proof loads App.xaml once, without fallback resources or per-case replacement.
 /// </summary>
 internal sealed class TestApp : Application, IXamlMetadataProvider
 {
     // The generated product provider includes native WinUI templates and setup controls.
     private readonly OpenClawTray.OpenClaw_Tray_WinUI_XamlTypeInfo.XamlMetaDataProvider _metadata = new();
+
+    internal bool UsesProductionResources { get; private set; }
 
     public IXamlType GetXamlType(Type type) => _metadata.GetXamlType(type);
 
@@ -89,11 +89,23 @@ internal sealed class TestApp : Application, IXamlMetadataProvider
     ];
 
     /// <summary>
-    /// Merge XamlControlsResources + production App.xaml's custom keys so
-    /// renderers that look them up resolve a real value. Call this ON THE UI
-    /// THREAD after Application.Current is set.
+    /// Called once after the Application.Start callback returns, before fixture readiness.
     /// </summary>
-    public void MergeStandardResources()
+    public void InitializeResources(bool useProductionResources)
+    {
+        if (useProductionResources)
+        {
+            var markup = TestAppResourceLoader.LoadProductionMarkup(
+                Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT"));
+            Resources = (ResourceDictionary)XamlReader.Load(markup.ToString());
+            UsesProductionResources = true;
+            return;
+        }
+
+        MergeStandardResources();
+    }
+
+    private void MergeStandardResources()
     {
         if (!TryGetResources(out var resources))
         {
