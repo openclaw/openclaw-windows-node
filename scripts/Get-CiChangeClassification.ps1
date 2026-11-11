@@ -199,6 +199,7 @@ function Test-IsSafeDocumentationPath([string]$Path) {
         [System.StringComparer]::OrdinalIgnoreCase)
     @(
         "AGENTS.md",
+        "DESIGN.md",
         "DEVELOPMENT.md",
         "README.md",
         "SECURITY.md",

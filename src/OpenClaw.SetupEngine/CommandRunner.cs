@@ -228,55 +228,67 @@ public sealed class CommandRunner : ICommandRunner
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeout);
+        var phase = "execution";
 
         try
         {
-            if (stdinInput != null || stdinStream != null)
+            try
             {
-                try
+                if (stdinInput != null || stdinStream != null)
                 {
-                    if (stdinStream != null)
+                    try
                     {
-                        await stdinStream.CopyToAsync(process.StandardInput.BaseStream, timeoutCts.Token);
-                        await process.StandardInput.BaseStream.FlushAsync(timeoutCts.Token);
-                    }
-                    else
-                    {
-                        await process.StandardInput.WriteAsync(stdinInput!.AsMemory(), timeoutCts.Token);
-                        await process.StandardInput.FlushAsync(timeoutCts.Token);
-                    }
+                        if (stdinStream != null)
+                        {
+                            await stdinStream.CopyToAsync(process.StandardInput.BaseStream, timeoutCts.Token);
+                            await process.StandardInput.BaseStream.FlushAsync(timeoutCts.Token);
+                        }
+                        else
+                        {
+                            await process.StandardInput.WriteAsync(stdinInput!.AsMemory(), timeoutCts.Token);
+                            await process.StandardInput.FlushAsync(timeoutCts.Token);
+                        }
 
-                    process.StandardInput.Close();
+                        process.StandardInput.Close();
+                    }
+                    catch (IOException) when (process.HasExited)
+                    {
+                        // The child exited before consuming all input. Preserve its exit status/output.
+                    }
                 }
-                catch (IOException) when (process.HasExited)
-                {
-                    // The child exited before consuming all input. Preserve its exit status/output.
-                }
+
+                await WaitForProcessExitOnlyAsync(process, timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Timeout (not user cancellation)
+                timedOut = true;
+                TryKill(process);
             }
 
-            await WaitForProcessExitOnlyAsync(process, timeoutCts.Token);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            // Timeout (not user cancellation)
-            timedOut = true;
-            TryKill(process);
+            phase = "output-drain";
+            if (!timedOut)
+                _logger.CommandExitObserved(process.ExitCode, sw.Elapsed);
+
+            var outputClosed = Task.WhenAll(stdoutClosed.Task, stderrClosed.Task);
+            await WaitForOutputDrainAsync(
+                outputClosed,
+                timeout,
+                sw.Elapsed,
+                timedOut,
+                allowInheritedPipeHandleEscape,
+                ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // User cancelled
-            TryKill(process);
+            // Preserve execution cleanup; post-exit cancellation only interrupts the drain.
+            if (phase == "execution")
+                TryKill(process);
+            _logger.CommandCancelled(
+                phase, process.HasExited, stdoutClosed.Task.IsCompletedSuccessfully,
+                stderrClosed.Task.IsCompletedSuccessfully, timedOut, sw.Elapsed);
             throw;
         }
-
-        var outputClosed = Task.WhenAll(stdoutClosed.Task, stderrClosed.Task);
-        await WaitForOutputDrainAsync(
-            outputClosed,
-            timeout,
-            sw.Elapsed,
-            timedOut,
-            allowInheritedPipeHandleEscape,
-            ct).ConfigureAwait(false);
 
         sw.Stop();
         var result = new CommandResult(

@@ -141,7 +141,7 @@ public sealed class SetupReadyWindow : Window
         binding.RequireCurrent();
         _requireLiveModel();
         if (!_presentation.CompleteMount(generation)) throw new SetupNativeReadinessExpiredException();
-        if (_presentation.IsReady && page is AiReadyPage ready) ready.AdmitChoices();
+        if (_presentation.IsReady && page is AiReadyPage ready) ready.AdmitChatAction();
         Activate();
     }
 
@@ -171,7 +171,7 @@ public sealed class SetupReadyWindow : Window
         {
             _choice?.RequireCurrent();
             if (_presentation.IsReady && _choice is not null && _frame.Content is AiReadyPage page)
-                page.AdmitChoices();
+                page.AdmitChatAction();
             else ShowFailure();
         }
         catch (Exception) { ShowFailure(); }

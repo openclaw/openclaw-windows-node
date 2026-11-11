@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
@@ -99,7 +100,10 @@ public static class ReactorChatHostExtensions
         Func<string, Task>? onReadAloud = null,
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
-        bool initialThreadIsExplicitSelection = true)
+        bool initialThreadIsExplicitSelection = true,
+        IChatAgentRosterSource? agentRosterSource = null,
+        string userDisplayName = "",
+        ImageSource? userProfilePicture = null)
     {
         ArgumentNullException.ThrowIfNull(composerSession);
         MountedReactorChat? mounted = null;
@@ -126,9 +130,12 @@ public static class ReactorChatHostExtensions
                 onReadAloud,
                 onStopSpeaking,
                 onOpenCheckpoints,
-                InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection);
+                InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
+                AgentRosterSource: agentRosterSource,
+                UserDisplayName: userDisplayName,
+                UserProfilePicture: userProfilePicture);
             var host = new ReactorHostControl();
-            mounted = new MountedReactorChat(target, host, callbacks, composerSession);
+            mounted = new MountedReactorChat(target, host, callbacks, props);
             host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
             target.Child = host;
             VisualTestCapture.ScheduleSignalCapture(target);
@@ -155,9 +162,21 @@ public sealed class MountedReactorChat(
     Border target,
     ReactorHostControl host,
     ReactorChatHostCallbacks callbacks,
-    ChatComposerSession session) : IDisposable
+    OpenClawReactorChatRootProps props) : IDisposable
 {
+    private readonly ChatComposerSession session = props.ComposerSession;
     private int _disposed;
+
+    internal void ApplyUserIdentity(string displayName, ImageSource? profilePicture)
+    {
+        if (_disposed != 0 ||
+            (props.UserDisplayName == displayName && ReferenceEquals(props.UserProfilePicture, profilePicture)))
+            return;
+
+        props = props with { UserDisplayName = displayName, UserProfilePicture = profilePicture };
+        // Mount reconciles the same root component, retaining its selected thread, composer and queue.
+        host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
+    }
 
     internal string? CurrentThreadId => session.ViewModel.Inputs?.CurrentThread.Id;
 

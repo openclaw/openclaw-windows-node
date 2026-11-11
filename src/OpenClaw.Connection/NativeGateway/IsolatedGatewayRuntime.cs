@@ -35,9 +35,13 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     internal static readonly TimeSpan StartupTimeout =
         ResolveStartupTimeout(Environment.GetEnvironmentVariable(StartupTimeoutEnvironmentVariable));
     internal static readonly TimeSpan StartupConfirmationTimeout = TimeSpan.FromSeconds(10);
+    /// <summary>One finite allowance for native preparation, listener proof and operator admission.</summary>
+    public static TimeSpan AdmissionTimeout => NativeGatewayEndpointSecurity.CredentialHandoffTimeout;
     private static readonly TimeSpan StartupPollInterval = TimeSpan.FromSeconds(2);
     private readonly Dictionary<string, VerifiedGateway> _proofs = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _ownedStarts = new(StringComparer.Ordinal);
+    // Null retains shipping v1's legacy lifecycle behavior. Receipt-capable starts
+    // retain the caller-selected ID before dispatch, including a lost acknowledgement.
+    private readonly Dictionary<string, string?> _ownedStarts = new(StringComparer.Ordinal);
     private bool _disposed;
     private sealed record VerifiedGateway(GatewayRecord Record, NativeGatewayPackage Package, IsolatedGatewayStatus Status);
 
@@ -116,9 +120,10 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                     throw new NativeGatewayListenerException(conflict);
                 }
                 startedThisCall = package;
-                _ownedStarts.Add(package.PackageFamilyName);
+                string? attemptId = status.SupportsLaunchReceipts ? Guid.NewGuid().ToString("N") : null;
+                _ownedStarts[package.PackageFamilyName] = attemptId;
                 _logger.Info($"Starting the package-managed Gateway on port {endpoint.Port}.");
-                status = await StartAndWaitAsync(package, endpoint.Port, cancellationToken).ConfigureAwait(false);
+                status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
             }
             if (status.State != "running" || status.Port != endpoint.Port)
             {
@@ -140,12 +145,12 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         }
         catch
         {
-            if (startedThisCall is not null)
+            if (startedThisCall is not null && _ownedStarts.TryGetValue(startedThisCall.PackageFamilyName, out var attemptId))
             {
                 try
                 {
                     _logger.Info("Rolling back the Gateway start requested by this attempt.");
-                    await _client.StopAsync(startedThisCall, CancellationToken.None).ConfigureAwait(false);
+                    await StopLaunchAsync(startedThisCall, attemptId, CancellationToken.None).ConfigureAwait(false);
                     _ownedStarts.Remove(startedThisCall.PackageFamilyName);
                 }
                 catch (Exception cleanupFailure) when (IsInspectionFailure(cleanupFailure))
@@ -196,7 +201,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     }
 
     private async Task<IsolatedGatewayStatus> StartAndWaitAsync(
-        NativeGatewayPackage package, int port, CancellationToken cancellationToken)
+        NativeGatewayPackage package, int port, string? attemptId, CancellationToken cancellationToken)
     {
         var startedAt = _timeProvider.GetTimestamp();
         bool acknowledged = false;
@@ -209,7 +214,14 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             _logger.Info($"Native Gateway start requested on port {port} (budget {(int)StartupTimeout.TotalSeconds}s).");
             // A failed/ambiguous start response is not a pending-start acknowledgement.
             // In particular, older packages omit the lifecycle state on exit 1.
-            await _client.StartAsync(package, linked.Token).ConfigureAwait(false);
+            if (attemptId is null)
+                await _client.StartAsync(package, linked.Token).ConfigureAwait(false);
+            else
+            {
+                var launch = await _client.StartAsync(package, attemptId, linked.Token).ConfigureAwait(false);
+                if (launch.Disposition == "adopted")
+                    _ownedStarts.Remove(package.PackageFamilyName);
+            }
             linked.Token.ThrowIfCancellationRequested();
             acknowledged = true;
             _logger.Info($"Native Gateway start acknowledged after {_timeProvider.GetElapsedTime(startedAt).TotalSeconds:0.0}s.");
@@ -425,9 +437,12 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 provenance.Kind is not (GatewayEndpointProvenanceKind.ExpectedManagedGateway or GatewayEndpointProvenanceKind.NoListener))
                 throw new NativeGatewayListenerException(provenance);
 
-            bool owned = _ownedStarts.Contains(package.PackageFamilyName);
+            bool owned = _ownedStarts.TryGetValue(package.PackageFamilyName, out var attemptId);
+            if (!owned && status.State is not ("running" or "stopped" or "not-started"))
+                throw new NativeGatewayContractException(
+                    "Companion cannot restart an unready Gateway launch that it does not own. Check Gateway status before retrying.");
             _proofs.Remove(record.Id);
-            await _client.StopAsync(package, cancellationToken).ConfigureAwait(false);
+            await StopLaunchAsync(package, owned ? attemptId : null, cancellationToken).ConfigureAwait(false);
             status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
             _logger.Info($"Gateway stop reported: {status.Describe()}.");
             if (status.State is not ("stopped" or "not-started"))
@@ -436,9 +451,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             _ownedStarts.Remove(package.PackageFamilyName);
             await EnsureRunningCoreAsync(record, endpoint, cancellationToken).ConfigureAwait(false);
             // An explicit restart must not turn a pre-existing service into a detach-owned start.
-            if (owned)
-                _ownedStarts.Add(package.PackageFamilyName);
-            else
+            if (!owned)
                 _ownedStarts.Remove(package.PackageFamilyName);
         }
         finally
@@ -450,13 +463,13 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private async Task StopOwnedAsync(CancellationToken cancellationToken)
     {
         List<Exception> failures = [];
-        foreach (string family in _ownedStarts.ToArray())
+        foreach (var (family, attemptId) in _ownedStarts.ToArray())
         {
             try
             {
                 NativeGatewayPackage package = await _resolver.ResolveAsync(family, cancellationToken).ConfigureAwait(false);
                 NativeGatewayPaths.ValidatePackage(package, family);
-                await _client.StopAsync(package, cancellationToken).ConfigureAwait(false);
+                await StopLaunchAsync(package, attemptId, cancellationToken).ConfigureAwait(false);
                 _ownedStarts.Remove(family);
             }
             catch (Exception ex) when (IsInspectionFailure(ex))
@@ -467,6 +480,9 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         if (failures.Count > 0)
             throw new AggregateException("One or more Companion-owned Gateways could not be stopped.", failures);
     }
+
+    private Task StopLaunchAsync(NativeGatewayPackage package, string? attemptId, CancellationToken ct) =>
+        attemptId is null ? _client.StopAsync(package, ct) : _client.StopAsync(package, attemptId, ct);
 
     private static bool IsInspectionFailure(Exception ex) =>
         ex is InvalidOperationException or IOException or Win32Exception or COMException or UnauthorizedAccessException or TimeoutException;

@@ -21,6 +21,7 @@ public sealed partial class NativeGatewaySetupPage : Page
     private const int MaxLogLines = 300;
     private readonly NativeGatewayPackageResolver _resolver = new();
     private readonly NativeGatewayMsixInstaller _installer = new();
+    private readonly NativeGatewayStagedPackageRegistrar _registrar = new();
     private readonly List<SetupPhaseStatus> _rows = [];
     private readonly List<string> _stepHeaders = [];
     private readonly Queue<string> _logLines = new();
@@ -140,7 +141,9 @@ public sealed partial class NativeGatewaySetupPage : Page
 
     private async Task RunOperationAsync(CancellationToken cancellationToken)
     {
-        AttachLog(SetupWindow.Active?.NativeSetupLog);
+        var log = SetupWindow.Active?.NativeSetupLog;
+        using var logLease = log?.RetainForOperation();
+        AttachLog(log);
         FailureBar.IsOpen = false;
         _loggedStep = -1;
         _log?.Info("Native Gateway setup started.");
@@ -260,7 +263,7 @@ public sealed partial class NativeGatewaySetupPage : Page
         StatusText.Text = SetupLocalization.GetString("Onboarding_Native_Checking");
         var acquiredMissingPackage = false;
         var package = await NativeGatewayPackageAcquisition.EnsureAsync(
-            _resolver, async ct => { acquiredMissingPackage = await InstallAsync(ct); },
+            _resolver, async ct => { acquiredMissingPackage = await InstallAsync(ct); }, RegisterStagedPackageAsync,
             () =>
             {
                 _log?.Info("WinGet finished. Waiting for the Gateway package registration.");
@@ -350,6 +353,26 @@ public sealed partial class NativeGatewaySetupPage : Page
         cancellationToken.ThrowIfCancellationRequested();
         _rows[3].Apply(SetupInstallationStatus.Complete);
         navigate(preparation);
+    }
+
+    private async Task<NativeGatewayStagedRegistrationResult> RegisterStagedPackageAsync(CancellationToken cancellationToken)
+    {
+        _log?.Info("The Gateway package is not registered for this Windows user after WinGet. " +
+            $"Registering the staged {NativeGatewayPackageIdentity.StoreFamilyName} package for this user.");
+        try
+        {
+            var result = await _registrar.RegisterAsync(cancellationToken);
+            _log?.Info(result == NativeGatewayStagedRegistrationResult.Registered
+                ? "Windows registered the staged Gateway package for this Windows user."
+                : "No staged Gateway package was found. Waiting for Microsoft Store deployment.");
+            return result;
+        }
+        catch (NativeGatewayPackageRegistrationException ex)
+        {
+            // Setup may still continue if Windows registered the package concurrently.
+            _log?.Warn($"Staged Gateway package registration failed: {ex.Message}");
+            throw;
+        }
     }
 
     private async Task<bool> InstallAsync(CancellationToken cancellationToken)
@@ -453,13 +476,18 @@ public sealed partial class NativeGatewaySetupPage : Page
         CollectDiagnosticsButton.Visibility = packageVisibility;
         OpenTerminalButton.Visibility = packageVisibility;
         var hasLogFile = _log?.FilePath is not null;
-        RecoveryGuidance.Text = ex is NativeGatewayStartupTimeoutException timeout
-            ? SetupLocalization.Format("Onboarding_Native_StartTimeoutGuidance",
-                (int)timeout.Budget.TotalSeconds, IsolatedGatewayRuntime.StartupTimeoutEnvironmentVariable)
-            : packageActions ? SetupLocalization.GetString("Onboarding_Native_RecoveryGuidance") : "";
+        RecoveryGuidance.Text = ex switch
+        {
+            NativeGatewayStartupTimeoutException timeout => SetupLocalization.Format("Onboarding_Native_StartTimeoutGuidance",
+                (int)timeout.Budget.TotalSeconds, IsolatedGatewayRuntime.StartupTimeoutEnvironmentVariable),
+            NativeGatewayPackageRegistrationException => SetupLocalization.Format("Onboarding_Native_RegistrationGuidance",
+                NativeGatewayPackageRegistration.ManualRegistrationCommand),
+            _ when packageActions => SetupLocalization.GetString("Onboarding_Native_RecoveryGuidance"),
+            _ => "",
+        };
         RecoveryGuidance.Visibility = RecoveryGuidance.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         RecoveryResult.Text = "";
-        RecoveryPanel.Visibility = packageActions || hasLogFile
+        RecoveryPanel.Visibility = packageActions || hasLogFile || RecoveryGuidance.Text.Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
     }

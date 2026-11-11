@@ -13,12 +13,12 @@ public sealed class OfficialSupportSourceTests
         var workspace = Read("Windows", "WorkspaceWindow.xaml.cs");
         Assert.Contains("""("Support", SupportLinks.OfficialSupportUrl)""", workspace);
         Assert.Contains("""("Documentation", "https://docs.openclaw.ai")""", workspace);
-        Assert.Contains("""("Community", "https://discord.gg/clawd")""", workspace);
-        var markup = Read("Pages", "SettingsPage.xaml");
+        Assert.Contains("""("Community", "https://openclaw.ai/discord?from=openclaw-windows-node-community")""", workspace);
+        var markup = Read("Pages", "AboutPage.xaml");
         Assert.Contains("x:Uid=\"SettingsPage_AppInfoSupport\"", markup);
         Assert.Contains("Click=\"OnSupportLink\"", markup);
         Assert.Contains("""OpenShellTarget(SupportLinks.OfficialSupportUrl, "support")""",
-            Read("Pages", "SettingsPage.xaml.cs"));
+            Read("Pages", "AboutPage.xaml.cs"));
     }
 
     [Fact]

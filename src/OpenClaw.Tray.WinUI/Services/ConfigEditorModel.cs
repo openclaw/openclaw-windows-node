@@ -15,6 +15,37 @@ internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
 
 internal static class ConfigEditorModel
 {
+    internal static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
+    {
+        var current = schema;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty("properties", out var properties) ||
+                properties.ValueKind != JsonValueKind.Object ||
+                !properties.TryGetProperty(segment, out current))
+                return null;
+        }
+        return current;
+    }
+
+    internal static string? ResolveSearchSection(JsonElement schema, string path)
+    {
+        if (ResolveSchemaAtPath(schema, path) is null) return null;
+        var section = path;
+        while (true)
+        {
+            var node = ResolveSchemaAtPath(schema, section);
+            if (node is { ValueKind: JsonValueKind.Object } value &&
+                value.TryGetProperty("properties", out var properties) &&
+                properties.ValueKind == JsonValueKind.Object)
+                return section;
+            if (section.Length == 0) return null;
+            var separator = section.LastIndexOf('.');
+            section = separator < 0 ? "" : section[..separator];
+        }
+    }
+
     public static ConfigEditorSnapshot CaptureSnapshot(JsonElement configResponse)
     {
         var root = ExtractConfigRoot(configResponse);

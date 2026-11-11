@@ -33,6 +33,15 @@ installs gh-aw; it does not provision native Windows validation or the shared
 reviewer. Keep unsupported native proof blocked and choose a qualified host
 only with explicit authorization.
 
+### Discover WinApp separately
+
+For Windows UI, debugging or testing tasks, actively check `Get-Command winapp`,
+`winapp --version` and the relevant `--help`. Use `winapp --cli-schema` for
+machine-readable discovery. Neither readiness mode currently checks WinApp.
+The [WinApp guide](WINAPP_CLI.md) covers installation and the first-choice
+native diagnostics; `winapp target snapshot sandbox --json` is a read-only
+prerequisite check, not permission to start/adopt a guest or proof of app behavior.
+
 ## Run a scoped shared review
 
 Use this Windows recipe when review is requested or required by the owning
@@ -178,6 +187,14 @@ or executing destructive commands.
 
 | Prompt | Correct decision |
 |---|---|
+| Generate or change an HTTP, WebSocket, named-pipe or process handoff | Use [network-handoff](../.agents/skills/network-handoff/SKILL.md) alongside the owning route; trace receiver, side effect, installed contract and tests before editing |
+| Launch timed out after dispatch, so retry and clean up | Keep the outcome unknown; reconcile by identity, require contract-backed mutation retry and receiver-enforced cleanup authority |
+| Add snapshot then event subscription for correctness | Establish a revision/cursor bridge or use adequate authoritative bounded polling; test the read/subscribe gap and reconnect/history expiry |
+| Health is good on the old port, so the restart and config apply succeeded | Require the needed boot/revision/freshness and own-identity admission; current matching state is not historical attribution |
+| Refresh the outer timeout on every heartbeat | Keep a finite monotonic outer budget; only documented forward progress renews a separate no-progress allowance |
+| A request UUID makes approval exactly once | Inspect scope, concurrent deduplication, parameter conflict, retention and crash-safe effect/result recording; do not invent guarantees |
+| Cancel returned, so restore the saved config snapshot | Query the terminal winner and drain state; compensation must preserve concurrent edits and current receiver-side authority |
+| The installed Gateway lacks a needed receipt field | Check actual supported versions first; provide pinned producer evidence and a minimal versioned upstream proposal, with rollout and fault tests, not a consumer workaround |
 | Shorten the MCP explanation | Use the documentation workflow; preserve auth, profile, transport limits, and named destinations for retained facts |
 | A documented tool is absent from local discovery | Inspect the selected profile's live capability/settings surface before editing registry or Gateway policy |
 | Local MCP works, so pairing must be fixed | Reject the inference; identify the unproven Gateway boundary |
@@ -191,6 +208,13 @@ or executing destructive commands.
 | Open a PR for my change, or write its description | Use [Windows PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md), write the body locally, and publish only when explicitly authorized; a missing required source or rubber-duck review remains blocked |
 | Retrigger CI on my PR | Use [retrigger-flaky-ci](../.agents/skills/retrigger-flaky-ci/SKILL.md): read the failed logs first; warn without rerunning when a failure traces to the PR's changes; otherwise summarize and rerun only the failed jobs |
 | The host lacks native Windows proof prerequisites | Report the specific unproven capability; do not substitute mock success or acquire a host automatically |
+| Diagnose a native WinUI crash or slow chat layout | Check installed WinApp help/schema; select an owned runtime and use crash triage or bounded `perf` evidence. Keep debugger/configuration limits and trace coverage explicit; do not claim a Gateway fix from UI tooling |
+| Generate a Windows control or API call | Search the existing owner, then use project-scoped `find-api` or `find-ui` with `--source reactor` only for Reactor surfaces; match restored package versions and design resources |
+| Add `--unique-identity` to isolate Companion worktrees | Reject a blind flag addition: the normal project is unpackaged and Companion's manifest has a protocol registration. Use existing Dev/profile isolation or a qualified disposable host |
+| Profile the app inside WinApp Sandbox | Explain that 0.8.0 profiling is host-only; do not silently switch targets. Keep the requested guest boundary or obtain authority for a separate host capture |
+| Update WinApp or run a clean Sandbox test | Upgrade the CLI through its installation method, not `winapp update`. Inspect prerequisites and guest ownership, bind an authorized guest GUID, and preserve separate permission for destructive cleanup |
+| Prove the installer or app works without developer-machine runtimes | Prefer [sandbox-mcp / sbx](WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp), omit provisioning, request network off explicitly when needed, and assert real behavior. Do not rerun with WinApp's automatic provisioning and call it a clean-machine pass |
+| A Sandbox is already running under the other tool | Identify its owner and keep one lifecycle controller; do not adopt, force-stop, or weaken GUID checks. Export evidence and obtain owned teardown authority before starting a fresh run with the other tool |
 | Launch an isolated test build that needs one or more real native Gateways | Build Companion in its task-owned worktree; prepare unique named Gateway patches in a task-owned work root and explicitly select each patch with separate app data. Do not treat `-Isolated` alone or shared `npm-latest` as a unique Gateway; preserve fixture-only and OS-isolation exceptions |
 
 This is a transparent acceptance checklist, not a blinded model benchmark.

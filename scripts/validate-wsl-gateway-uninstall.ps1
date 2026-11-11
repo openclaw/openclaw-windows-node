@@ -234,10 +234,10 @@ function Resolve-UsablePathValue {
 }
 
 function Expand-ExecApprovalsHomePath {
-    param([string]$Path, [string]$Home)
-    if ($Path -eq '~') { return $Home }
+    param([string]$Path, [string]$HomePath)
+    if ($Path -eq '~') { return $HomePath }
     if ($Path.StartsWith('~\') -or $Path.StartsWith('~/')) {
-        return Join-Path $Home $Path.Substring(2)
+        return Join-Path $HomePath $Path.Substring(2)
     }
     return $Path
 }

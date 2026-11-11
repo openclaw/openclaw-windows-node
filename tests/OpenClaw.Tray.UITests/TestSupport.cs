@@ -83,19 +83,35 @@ public static class TestSupport
         action.Invoke(page, [card, new RoutedEventArgs()]);
     }
 
+    private const string RenderedConditionTimeoutVariable = "OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS";
+    private static readonly TimeSpan RenderedConditionTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(RenderedConditionTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+    // Re-check even when no frame renders (off-screen windows, dynamically inserted children).
+    private static readonly TimeSpan RenderedConditionPollInterval = TimeSpan.FromMilliseconds(50);
+
     public static async Task WaitForRenderedConditionAsync(
         Func<bool> predicate, string operation, Func<string>? diagnostics = null)
     {
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Check(object? sender, object args)
+        void Evaluate()
         {
-            if (predicate()) settled.TrySetResult();
+            try { if (predicate()) settled.TrySetResult(); }
+            catch (Exception ex) { settled.TrySetException(ex); }
         }
+        void Check(object? sender, object args) => Evaluate();
+        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
+            ?? throw new InvalidOperationException("WaitForRenderedConditionAsync must run on the UI thread.");
+        var timer = dispatcher.CreateTimer();
+        timer.Interval = RenderedConditionPollInterval;
+        timer.IsRepeating = true;
+        timer.Tick += (_, _) => Evaluate();
         CompositionTarget.Rendering += Check;
+        timer.Start();
         try
         {
-            Check(null, EventArgs.Empty);
-            await settled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Evaluate();
+            await settled.Task.WaitAsync(RenderedConditionTimeout);
         }
         catch (TimeoutException)
         {
@@ -104,6 +120,7 @@ public static class TestSupport
         }
         finally
         {
+            timer.Stop();
             CompositionTarget.Rendering -= Check;
         }
     }
@@ -178,6 +195,9 @@ public static class TestSupport
                 break;
             case ScrollViewer sv when sv.Content is FrameworkElement sc:
                 foreach (var d in FindLogical<T>(sc)) yield return d;
+                break;
+            case ScrollView view when view.Content is FrameworkElement content:
+                foreach (var d in FindLogical<T>(content)) yield return d;
                 break;
             case TabView tv:
                 foreach (var ti in tv.TabItems.OfType<TabViewItem>())

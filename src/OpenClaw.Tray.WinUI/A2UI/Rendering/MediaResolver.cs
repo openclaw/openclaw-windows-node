@@ -328,12 +328,23 @@ public sealed class MediaResolver : IDisposable
 
     /// <summary>
     /// Decode SVG bytes through D2D's static SVG 1.1 subset (no scripts, no SMIL, no &lt;foreignObject&gt;,
-    /// no external fetches — that's our trust model). Two pieces of defense-in-depth on top:
+    /// no external fetches — that's our trust model). Three pieces of defense-in-depth on top:
     ///   - DOCTYPE pre-strip in case D2D's XML parser would resolve external entities (XXE / billion-laughs).
+    ///   - Pre-decode budget (<see cref="SvgGeometryBudget"/>) on path data and element count,
+    ///     because D2D's parse of pathological input can block the UI thread past the wall-clock
+    ///     timeout.
     ///   - Wall-clock timeout because a 1 MiB SVG can hold pathologically expensive geometry.
     /// </summary>
     private async Task<ImageSource?> SvgFromBytesAsync(byte[] bytes, CancellationToken cancellationToken)
     {
+        if (!SvgGeometryBudget.TryPrepareSvgForDecode(bytes, out var sanitized, out var rejection))
+        {
+            _logger.Warn($"[A2UI] SVG rejected before decode: {rejection}");
+            return null;
+        }
+
+        bytes = sanitized;
+
         if (!await s_svgDecodeSemaphore.WaitAsync(SvgRenderTimeout, cancellationToken))
         {
             _logger.Warn("[A2UI] SVG decode queue saturated");
@@ -342,7 +353,6 @@ public sealed class MediaResolver : IDisposable
 
         try
         {
-            bytes = StripDoctype(bytes);
             var svg = new SvgImageSource();
             using var ms = new InMemoryRandomAccessStream();
             using (var w = new DataWriter(ms))
@@ -392,74 +402,6 @@ public sealed class MediaResolver : IDisposable
         return head.StartsWith("<?xml", StringComparison.Ordinal)
             || head.StartsWith("<svg", StringComparison.OrdinalIgnoreCase)
             || head.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Remove the first <c>&lt;!DOCTYPE …&gt;</c> declaration (including any internal subset
-    /// in <c>[…]</c>) from the byte stream. SVG content has no need for a DOCTYPE — browsers
-    /// ignore it — but stripping it pre-empts XXE / entity-expansion attacks regardless of
-    /// what the downstream XML parser does.
-    /// </summary>
-    internal static byte[] StripDoctype(byte[] bytes)
-    {
-        if (bytes == null || bytes.Length == 0) return bytes ?? Array.Empty<byte>();
-        int idx = IndexOfAsciiCi(bytes, 0, "<!DOCTYPE");
-        if (idx < 0) return bytes;
-        int cursor = idx + "<!DOCTYPE".Length;
-        int firstGt = IndexOfByte(bytes, cursor, (byte)'>');
-        if (firstGt < 0) return bytes;
-        int bracket = IndexOfByteInRange(bytes, cursor, firstGt, (byte)'[');
-        int end;
-        if (bracket < 0)
-        {
-            end = firstGt;
-        }
-        else
-        {
-            int closeBracket = IndexOfByte(bytes, bracket + 1, (byte)']');
-            if (closeBracket < 0) return bytes;
-            end = IndexOfByte(bytes, closeBracket + 1, (byte)'>');
-            if (end < 0) return bytes;
-        }
-        var result = new byte[bytes.Length - (end - idx + 1)];
-        System.Buffer.BlockCopy(bytes, 0, result, 0, idx);
-        System.Buffer.BlockCopy(bytes, end + 1, result, idx, bytes.Length - end - 1);
-        return result;
-    }
-
-    private static int IndexOfByte(byte[] haystack, int start, byte needle)
-    {
-        for (int i = start; i < haystack.Length; i++)
-            if (haystack[i] == needle) return i;
-        return -1;
-    }
-
-    private static int IndexOfByteInRange(byte[] haystack, int start, int endExclusive, byte needle)
-    {
-        int limit = Math.Min(endExclusive, haystack.Length);
-        for (int i = start; i < limit; i++)
-            if (haystack[i] == needle) return i;
-        return -1;
-    }
-
-    private static int IndexOfAsciiCi(byte[] haystack, int start, string asciiNeedle)
-    {
-        if (asciiNeedle.Length == 0) return start;
-        int last = haystack.Length - asciiNeedle.Length;
-        for (int i = start; i <= last; i++)
-        {
-            bool match = true;
-            for (int j = 0; j < asciiNeedle.Length; j++)
-            {
-                byte b = haystack[i + j];
-                char c = asciiNeedle[j];
-                byte upper = (b >= (byte)'a' && b <= (byte)'z') ? (byte)(b - 0x20) : b;
-                char nUpper = (c >= 'a' && c <= 'z') ? (char)(c - 0x20) : c;
-                if (upper != (byte)nUpper) { match = false; break; }
-            }
-            if (match) return i;
-        }
-        return -1;
     }
 
     // Truncation alone leaks query/fragment for any URL shorter than 60

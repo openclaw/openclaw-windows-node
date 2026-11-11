@@ -1,5 +1,14 @@
+// <summary>
+// Defines Workspace destinations, route dispatch, and the window's Back and Forward history.
+// Settings tags are normalized so aliases share one history identity and unavailable sections can be pruned.
+// Usage:
+//   if (WorkspaceNavigation.TryResolveWorkspace(tag, out var destination))
+//       history.Navigate(destination);
+// </summary>
+
 namespace OpenClawTray.Presentation;
 
+/// <summary>Identifies a top-level Workspace page.</summary>
 internal enum WorkspacePageId
 {
     Home, Notifications, Settings
@@ -7,19 +16,51 @@ internal enum WorkspacePageId
 
 internal enum CompanionPageId
 {
-    Connection, Sessions, Channels, Instances, Cron, AgentEvents, Agents,
-    Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
+    Connection, Sessions, Instances, Cron, Agents,
+    Config, Usage, LocalAi, DefaultModel, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
 /// <summary>
 /// One entry in the Workspace window's single history. <see cref="SessionKey"/> identifies a chat;
 /// <see cref="CompanionTag"/> identifies the Settings section shown in the same window.
+/// <see cref="Embedded"/> shows that section beside the Workspace sidebar, without Settings' own
+/// section list, instead of replacing the whole window.
 /// </summary>
 internal sealed record WorkspaceDestination(
-    WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null)
+   WorkspacePageId Page, string? SessionKey = null, string? CompanionTag = null, bool Embedded = false)
 {
-    public static WorkspaceDestination Settings(string companionTag) =>
-        new(WorkspacePageId.Settings, null, companionTag);
+   /// <summary>
+   /// Creates a native page destination. Dashboards always uses the standalone pinned-page
+   /// presentation, including session links and command navigation, never the Settings section list.
+   /// </summary>
+   public static WorkspaceDestination Settings(string companionTag, bool embedded = false) =>
+       new(WorkspacePageId.Settings, null, companionTag, embedded || DashboardsRoute.IsDashboardsTag(companionTag));
+
+   /// <summary>The replacement for a pruned section keeps the presentation the user was in.</summary>
+   public static WorkspaceDestination PrunedFallback(WorkspaceDestination current, string fallbackTag) =>
+       Settings(fallbackTag, current.Page == WorkspacePageId.Settings && current.Embedded);
+
+   /// <summary>
+   /// The control to refocus when leaving Settings: the one that opened it, unless a sidebar row was
+   /// invoked to leave (a deliberate navigation that owns focus). History exits always restore it.
+   /// </summary>
+   public static T? SettingsExitFocus<T>(T? saved, SettingsExitCause cause) where T : class =>
+       cause == SettingsExitCause.SidebarActivation ? null : saved;
+}
+
+public enum SettingsExitCause { History, SidebarActivation }
+
+/// <summary>
+/// Escape leaves full Settings for the app, matching the macOS Settings sidebar. Anything that already
+/// owns Escape keeps it: a control that handled the key, an open flyout, menu, picker or dialog, and
+/// text or selection editors. Auto-repeat and pinned pages beside the sidebar never leave.
+/// </summary>
+internal static class SettingsEscapePolicy
+{
+    public static bool ExitsSettings(
+        WorkspaceDestination current, bool handled, bool isRepeat, bool overlayOpen, bool focusInEditor) =>
+        current is { Page: WorkspacePageId.Settings, Embedded: false }
+        && !handled && !isRepeat && !overlayOpen && !focusInEditor;
 }
 
 /// <summary>
@@ -39,14 +80,23 @@ internal static class WorkspaceNavigation
     {
         "agents", "agent-detail", "writer-detail", "dashboards", "dashboard-detail", "canvas",
         "systems", "system-detail", "automations", "automation-detail", "plugins", "skills",
-        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more"
+        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more",
+        "agentevents"
     };
 
+    /// <summary>Dispatches a route to the Workspace host or companion navigation host.</summary>
     public static void Dispatch(
         string? tag,
         Action<WorkspaceDestination> openWorkspace,
-        Action<string> openCompanion)
+        Action<string> openCompanion,
+        Action<string> openDashboard)
     {
+        if (tag is "channels" or "activity")
+        {
+            openDashboard("channels");
+            return;
+        }
+
         if (TryResolveWorkspace(tag, out var destination))
         {
             openWorkspace(destination);
@@ -56,9 +106,30 @@ internal static class WorkspaceNavigation
         if (tag!.StartsWith("workspace:", StringComparison.Ordinal))
             throw new ArgumentException("Unknown Workspace route. Use workspace:home or workspace:notifications.", nameof(tag));
 
+        if (tag != "command-center" &&
+            HubPageRegistry.ResolvePage(HubPageRegistry.NormalizeTag(tag, "main")) is null)
+            throw new ArgumentException("Unknown companion Settings route.", nameof(tag));
+
         openCompanion(tag);
     }
 
+    /// <summary>
+    /// Reports destination admission using the same route policy. Native hosts may complete
+    /// synchronously; Dashboard hosts wait for Windows to accept the browser launch.
+    /// </summary>
+    public static Task<bool> DispatchAsync(
+        string? tag,
+        Func<WorkspaceDestination, Task<bool>> openWorkspace,
+        Func<string, Task<bool>> openCompanion,
+        Func<string, Task<bool>> openDashboard)
+    {
+        Task<bool>? admission = null;
+        Dispatch(tag, destination => admission = openWorkspace(destination),
+            section => admission = openCompanion(section), path => admission = openDashboard(path));
+        return admission ?? throw new InvalidOperationException("The navigation route was not dispatched.");
+    }
+
+    /// <summary>Resolves a tag to a Workspace destination without dispatching it.</summary>
     public static bool TryResolveWorkspace(string? tag, out WorkspaceDestination destination)
     {
         destination = new(WorkspacePageId.Home);
@@ -78,10 +149,11 @@ internal static class WorkspaceNavigation
         return DeprecatedRoutes.Contains(route);
     }
 
+    /// <summary>Returns the canonical companion tag for a companion page and optional agent scope.</summary>
     public static string CompanionTag(CompanionPageId page, string agentId = "main") => page switch
     {
         CompanionPageId.LocalAi => "local-ai",
-        CompanionPageId.AgentEvents => "agentevents",
+        CompanionPageId.DefaultModel => "model",
         CompanionPageId.Agents => $"agent:{agentId}",
         _ => page.ToString().ToLowerInvariant()
     };
@@ -91,19 +163,30 @@ internal static class WorkspaceNavigation
     /// scope stays in the tag, except About, which keeps its own identity so Back restores it.
     /// </summary>
     public static string NormalizeSettingsTag(string tag, string agentId) =>
-        tag is "about" or "info" ? "about" : HubPageRegistry.NormalizeTag(tag, agentId);
+        HubPageRegistry.NormalizeTag(tag, agentId);
 
 }
 
+/// <summary>Maintains one Workspace window history and its retained chat destination.</summary>
 internal sealed class WorkspaceNavigationHistory
 {
     private readonly Stack<WorkspaceDestination> _back = new();
     private readonly Stack<WorkspaceDestination> _forward = new();
     public WorkspaceDestination Current { get; private set; } = new(WorkspacePageId.Home);
     public WorkspaceDestination ChatDestination { get; private set; } = new(WorkspacePageId.Home);
+    private WorkspaceDestination _appDestination = new(WorkspacePageId.Home);
+
+    /// <summary>
+    /// Where Settings' Back to app returns: the most recently shown app destination (chat, Notifications
+    /// or a pinned page beside the sidebar), with chat resolved to the retained conversation.
+    /// </summary>
+    public WorkspaceDestination AppDestination =>
+        _appDestination.Page == WorkspacePageId.Home ? ChatDestination : _appDestination;
+
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
+    /// <summary>Selects a chat session, preserving the current non-chat page when appropriate.</summary>
     public bool SelectChatSession(string sessionKey, string? previousSessionKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
@@ -125,6 +208,7 @@ internal sealed class WorkspaceNavigationHistory
         return true;
     }
 
+    /// <summary>Removes a closed chat session from the current destination and both history stacks.</summary>
     public bool RemoveSession(string key, string? replacementKey)
     {
         var replacement = new WorkspaceDestination(WorkspacePageId.Home, replacementKey);
@@ -160,6 +244,8 @@ internal sealed class WorkspaceNavigationHistory
             destination is { Page: WorkspacePageId.Settings, CompanionTag: { } tag } && shouldRemove(tag);
         RemoveFrom(_back, Match);
         RemoveFrom(_forward, Match);
+        if (Match(_appDestination))
+            _appDestination = new(WorkspacePageId.Home);
     }
 
     /// <summary>
@@ -209,6 +295,7 @@ internal sealed class WorkspaceNavigationHistory
             _forward.Push(destination);
     }
 
+    /// <summary>Navigates to a destination and records the previous destination for Back.</summary>
     public bool Navigate(WorkspaceDestination destination)
     {
         if (destination == Current)
@@ -219,6 +306,7 @@ internal sealed class WorkspaceNavigationHistory
         return true;
     }
 
+    /// <summary>Moves Back one destination when history is available.</summary>
     public bool GoBack()
     {
         if (!_back.TryPop(out var previous))
@@ -228,6 +316,7 @@ internal sealed class WorkspaceNavigationHistory
         return true;
     }
 
+    /// <summary>Moves Forward one destination when history is available.</summary>
     public bool GoForward()
     {
         if (!_forward.TryPop(out var next))
@@ -242,5 +331,7 @@ internal sealed class WorkspaceNavigationHistory
         Current = destination;
         if (destination.Page == WorkspacePageId.Home)
             ChatDestination = destination;
+        if (destination is not { Page: WorkspacePageId.Settings, Embedded: false })
+            _appDestination = destination;
     }
 }
