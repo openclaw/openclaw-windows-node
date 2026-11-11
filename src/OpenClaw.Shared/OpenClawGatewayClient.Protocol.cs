@@ -485,6 +485,12 @@ public partial class OpenClawGatewayClient
         return TrySendTrackedRequestAsync("sessions.patch", patch.ToPayload(key));
     }
 
+    /// <summary>
+    /// Applies a <see cref="SessionPatch"/> and waits for the Gateway to accept it. A Gateway that predates
+    /// <see cref="SessionPatch.ExpectedSessionId"/> rejects that unknown property before it changes anything,
+    /// so the patch is then retried once without it. Any other rejection propagates unchanged.
+    /// <paramref name="timeoutMs"/> applies to each request, so the retry gets its own.
+    /// </summary>
     public async Task PatchSessionConfirmedAsync(
         string key, SessionPatch patch, long connectionEpoch, int timeoutMs = 15000)
     {
@@ -492,10 +498,29 @@ public partial class OpenClawGatewayClient
         ArgumentNullException.ThrowIfNull(patch);
         if (!patch.HasChanges)
             throw new ArgumentException("The session patch must contain a change.", nameof(patch));
-        var payload = await SendResponseRequestAsync(
-            "sessions.patch", patch.ToPayload(key), timeoutMs, connectionEpoch).ConfigureAwait(false);
+        JsonElement payload;
+        try
+        {
+            payload = await SendResponseRequestAsync(
+                "sessions.patch", patch.ToPayload(key), timeoutMs, connectionEpoch).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (
+            !string.IsNullOrWhiteSpace(patch.ExpectedSessionId) && IsSessionGuardUnknownProperty(ex.Message))
+        {
+            _logger.Info("sessions.patch expectedSessionId unsupported on gateway; retrying without it");
+            payload = await SendResponseRequestAsync(
+                "sessions.patch", patch.ToPayload(key, includeSessionGuard: false), timeoutMs, connectionEpoch).ConfigureAwait(false);
+        }
         RequireSessionMutationAccepted(payload, key);
     }
+
+    // The schema rejection starts with the method prefix. The stale and missing-guard errors echo the
+    // session key after a different fixed prefix, so a crafted key cannot pass for a schema rejection.
+    private static bool IsSessionGuardUnknownProperty(string? message) =>
+        message is not null
+        && message.StartsWith("invalid sessions.patch params", StringComparison.Ordinal)
+        && message.Contains("unexpected property", StringComparison.Ordinal)
+        && message.Contains("expectedSessionId", StringComparison.Ordinal);
 
     public async Task DeleteSessionConfirmedAsync(string key, long connectionEpoch, int timeoutMs = 15000)
     {

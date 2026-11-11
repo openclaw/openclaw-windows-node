@@ -330,8 +330,10 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         });
     }
 
-    [Fact]
-    public async Task ArchiveUndo_RevealsItsPageAndGroupAndReturnsFocusToTheRestoredRow()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ArchiveUndo_RevealsItsPageAndGroupAndReturnsFocusToTheRestoredRow(bool wasPinned)
     {
         await using var harness = await Harness.CreateAsync(ui, mount: true);
         SessionInfo? target = null;
@@ -342,9 +344,11 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             target.Label = "Morning brief";
             target.Channel = "telegram";
             target.Category = "Release";
+            target.Pinned = wasPinned;
             target.Status = "running";
             target.HasActiveRun = true;
             var other = target.Clone();
+            other.Pinned = wasPinned;
             other.Key = "agent:main:other";
             other.SessionId = "other";
             other.Channel = "slack";
@@ -397,6 +401,27 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal(new[] { Harness.Key, Harness.Key }, harness.Gateway.PatchKeys);
             Assert.True(harness.Gateway.Patches[0].Archived.Value);
             Assert.False(harness.Gateway.Patches[1].Archived.Value);
+            Assert.All(harness.Gateway.Patches, patch => Assert.Equal("session-one", patch.ExpectedSessionId));
+            Assert.Equal(wasPinned, harness.Gateway.Patches[1].Pinned.IsSpecified);
+            if (wasPinned)
+                Assert.True(harness.Gateway.Patches[1].Pinned.Value);
+        });
+    }
+
+    [Fact]
+    public async Task ArchiveAndUnarchive_CarryTheObservedSessionIdentity()
+    {
+        await using var harness = await Harness.CreateAsync(ui);
+        await ui.RunOnUIAsync(async () =>
+        {
+            var row = harness.Gateway.Page.Sessions.Single();
+            await harness.Controller.ArchiveAsync(row, "Review");
+            row.Archived = true;
+            await harness.Controller.ReloadAsync();
+            await harness.Controller.UnarchiveAsync(row, "Review");
+            Assert.Equal(new[] { Harness.Key, Harness.Key }, harness.Gateway.PatchKeys);
+            Assert.Equal(new[] { true, false }, harness.Gateway.Patches.Select(patch => patch.Archived.Value));
+            Assert.All(harness.Gateway.Patches, patch => Assert.Equal("session-one", patch.ExpectedSessionId));
         });
     }
 

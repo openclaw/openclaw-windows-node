@@ -310,13 +310,6 @@ public sealed class SessionsHubTests
     // ── Deletion and permissions ──
 
     [Fact]
-    public void UndoArchivePatch_RestoresPinOnlyWhenPinned()
-    {
-        Assert.Equal(true, SessionsHubDeletion.UndoArchivePatch(true).ToPayload("k")["pinned"]);
-        Assert.False(SessionsHubDeletion.UndoArchivePatch(false).ToPayload("k").ContainsKey("pinned"));
-    }
-
-    [Fact]
     public void Permissions_DisconnectedOrReadOnlyCannotMutate()
     {
         Assert.False(SessionsHubPermissions.Disconnected.CanWrite);

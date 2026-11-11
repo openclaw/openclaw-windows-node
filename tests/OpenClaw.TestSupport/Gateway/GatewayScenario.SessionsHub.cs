@@ -323,6 +323,12 @@ public sealed partial class GatewayScenario
             var row = Find(key);
             if (key == MainSessionKey && OptionalBoolean(p, "archived") == true)
                 throw new FixtureRequestException("INVALID_PARAMS", "The main fixture session cannot be archived.");
+            // Same lifecycle admission as the browse and interactive Gateway fixtures.
+            var expectedSessionId = OptionalString(p, "expectedSessionId");
+            if (OptionalBoolean(p, "archived") is not null && expectedSessionId is null)
+                throw new FixtureRequestException("INVALID_REQUEST", $"expectedSessionId required for session lifecycle patch: {key}");
+            if (expectedSessionId is not null && expectedSessionId != row["sessionId"]?.GetValue<string>())
+                throw new FixtureRequestException("INVALID_REQUEST", $"Session {key} changed before patch. Retry.");
             foreach (var field in new[] { "label", "pinned", "unread", "archived", "category", "thinkingLevel", "reasoningLevel", "verboseLevel", "fastMode", "model" })
             {
                 if (!p.TryGetProperty(field, out var value)) continue;

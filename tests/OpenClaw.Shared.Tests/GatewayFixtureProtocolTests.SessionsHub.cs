@@ -90,6 +90,17 @@ public sealed partial class GatewayFixtureProtocolTests
             client.SessionMutationConnectionEpoch!.Value);
         Assert.Null((await client.ListSessionsPageAsync(new SessionListQuery { Search = "Backlog task 01" })).Sessions.Single().Category);
 
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PatchSessionConfirmedAsync(key,
+            new SessionPatch { Archived = true }, client.SessionMutationConnectionEpoch!.Value));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PatchSessionConfirmedAsync(key,
+            new SessionPatch { Archived = true, ExpectedSessionId = "replaced-session" }, client.SessionMutationConnectionEpoch!.Value));
+        await client.PatchSessionConfirmedAsync(key, new SessionPatch { Archived = true, ExpectedSessionId = row.SessionId },
+            client.SessionMutationConnectionEpoch!.Value);
+        Assert.Contains((await client.ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived })).Sessions,
+            item => item.Key == key);
+        await client.PatchSessionConfirmedAsync(key, new SessionPatch { Archived = false, ExpectedSessionId = row.SessionId },
+            client.SessionMutationConnectionEpoch!.Value);
+
         var archived = (await client.ListSessionsPageAsync(new SessionListQuery { Archive = SessionArchiveFilter.Archived, Limit = 100 })).Sessions;
         var target = Assert.Single(archived, item => item.Key == GatewayScenario.HubPreservedSessionKey);
         var preserved = await client.DeleteSessionDetailedAsync(new SessionDeleteRequest(target.Key)

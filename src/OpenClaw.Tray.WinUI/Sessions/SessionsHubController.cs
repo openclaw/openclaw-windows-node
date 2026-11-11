@@ -903,7 +903,7 @@ internal sealed class SessionsHubController
             return;
         }
         var binding = _binding;
-        var archived = await GuardedAsync(T("ArchiveFailed"), operation => operation.PatchAsync(row.Key, new SessionPatch { Archived = true }),
+        var archived = await GuardedAsync(T("ArchiveFailed"), operation => operation.PatchAsync(row.Key, WorkspaceSessionMenu.ArchivePatch(true, row.SessionId)),
             binding, requireCurrentRoster: true);
         if (!archived) return;
         CloseDetails(row.Key);
@@ -926,8 +926,11 @@ internal sealed class SessionsHubController
             || navigation.PageIndex != _state.PageIndex || navigation.PageSize != _state.PageSize
             || navigation.GroupBy != _state.GroupBy || navigation.SortColumn != _state.SortColumn
             || navigation.SortDescending != _state.SortDescending;
+        var patch = WorkspaceSessionMenu.ArchivePatch(false, row.SessionId);
+        if (row.Pinned)
+            patch.Pinned = true;
         var restored = await GuardedAsync(T("UndoFailed"), operation =>
-            operation.PatchAsync(row.Key, SessionsHubDeletion.UndoArchivePatch(row.Pinned)), binding, requireCurrentRoster: true);
+            operation.PatchAsync(row.Key, patch), binding, requireCurrentRoster: true);
         if (restored)
         {
             if (!IsCurrent(binding)) return;
@@ -946,7 +949,7 @@ internal sealed class SessionsHubController
     public async Task UnarchiveAsync(SessionInfo row, string title)
     {
         var restored = await GuardedAsync(T("UnarchiveFailed"), operation =>
-            operation.PatchAsync(row.Key, new SessionPatch { Archived = false }), requireCurrentRoster: true);
+            operation.PatchAsync(row.Key, WorkspaceSessionMenu.ArchivePatch(false, row.SessionId)), requireCurrentRoster: true);
         if (!restored) return;
         ShowNotice("", F("UnarchivedFormat", title), InfoBarSeverity.Success);
         await ReloadAsync(preserveCount: true);

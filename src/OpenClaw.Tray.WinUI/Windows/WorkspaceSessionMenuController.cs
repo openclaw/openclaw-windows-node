@@ -301,7 +301,7 @@ internal sealed class WorkspaceSessionMenuController
         }
         if (!EnsureMutationAllowed())
             return;
-        await operation.PatchAsync(session.Key, new SessionPatch { Archived = !session.IsArchived });
+        await operation.PatchAsync(session.Key, WorkspaceSessionMenu.ArchivePatch(!session.IsArchived, info?.SessionId));
         if (!session.IsArchived)
             _leaveSession(session.Key);
         await RefreshAsync(operation);

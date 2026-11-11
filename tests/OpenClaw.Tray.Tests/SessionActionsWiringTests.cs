@@ -22,12 +22,13 @@ public sealed class SessionActionsWiringTests
         Assert.DoesNotContain("ArchivedHeader", workspaceXaml);
         Assert.DoesNotContain("WorkspaceArchivedSession", workspaceXaml);
         Assert.DoesNotContain("_archived", workspace);
+        Assert.DoesNotContain("ArchivedSessionsSource", workspace);
         // Settings Sessions owns archived browsing through its server-filtered Archived view.
         Assert.Contains("\"SessionsPageStatus\", [\"Active\", \"Archived\", \"All\"]", view);
         Assert.Contains("\"SessionsPageUnarchive:\" + row.Key", view);
         // Unarchive waits for Gateway acceptance on the captured connection.
         Assert.Contains("new WorkspaceSessionOperation(client", controller);
-        Assert.Contains("operation.PatchAsync(row.Key, new SessionPatch { Archived = false })", controller);
+        Assert.Contains("operation.PatchAsync(row.Key, WorkspaceSessionMenu.ArchivePatch(false, row.SessionId))", controller);
     }
 
     [Fact]

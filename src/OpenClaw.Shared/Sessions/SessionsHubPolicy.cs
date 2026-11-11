@@ -26,18 +26,6 @@ public sealed record SessionsHubPermissions(bool IsConnected, IReadOnlyCollectio
     private bool Has(string scope) => Scopes.Contains(scope, StringComparer.Ordinal);
 }
 
-public static class SessionsHubDeletion
-{
-    /// <summary>Undo restores the archive and, when the row was pinned, its pin.</summary>
-    public static SessionPatch UndoArchivePatch(bool wasPinned)
-    {
-        var patch = new SessionPatch { Archived = false };
-        if (wasPinned)
-            patch.Pinned = true;
-        return patch;
-    }
-}
-
 public static class WorktreesProjection
 {
     public static IReadOnlyList<WorktreeRecord> Sort(IEnumerable<WorktreeRecord> rows) =>
