@@ -547,6 +547,10 @@ public sealed partial class GatewayFixtureUiTests
                     var name = $"Usage-{theme}-hero-{(target == 0 ? "shell-minimum" : "1400")}";
                     try
                     {
+                        var scroll = (ScrollPattern)FindById(run, "UsagePageRoot")!.GetCurrentPattern(ScrollPattern.Pattern);
+                        scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                        await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
+                            FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top before hero capture");
                         var before = UsageWindowBounds(handle);
                         var beforeHost = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
                         var expected = ResizeUsageWindow(handle, target == 0 ? 1000 : target + before.Width / scale - beforeHost,
@@ -598,7 +602,6 @@ public sealed partial class GatewayFixtureUiTests
                         Assert.Equal(target == 0 ? PageWidthTier.Medium : PageWidthTier.Wide, PageResponsiveLayout.TierFor(host));
                         if (target == 1400)
                         {
-                            var scroll = (ScrollPattern)FindById(run, "UsagePageRoot")!.GetCurrentPattern(ScrollPattern.Pattern);
                             var requestedPercent = 0d;
                             scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
                             AutomationElement? expander = null;
