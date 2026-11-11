@@ -285,8 +285,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "SessionsHubWorktree:wt-auth") is not null
                 && FindById(run, "SessionsHubWorktree:wt-board") is not null, "Worktree card list loaded");
             CaptureSessionsWindow(run, "sessions-worktree-card-gaps-light.png");
-
-        });
+        }, scenario: GatewayScenario.CreateSessionsHub());
     }
 
     [GatewayFixtureUiFact]
@@ -950,7 +949,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 var delete = FindById(run, "SessionsHubDeleteSelected")!;
                 AssertVisibleInHub(run, delete, "delete selected action");
                 Invoke(delete);
-                await WaitUiAsync(run, () => FindById(run, "SessionsHubDialog") is not null, "delete popup");
+                await WaitUiAsync(run, () => FindById(run, SessionsDialogBodyId) is not null, "delete popup");
                 CaptureSessionsWindow(run, "sessions-dialog-delete.png");
             });
 
@@ -2657,7 +2656,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Menu),
             new PropertyCondition(AutomationElement.ClassNameProperty, "FlyoutPresenter"),
             new PropertyCondition(AutomationElement.ClassNameProperty, "MenuFlyoutPresenter"),
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsHubDialog"))) is not null;
+            new PropertyCondition(AutomationElement.AutomationIdProperty, SessionsDialogBodyId),
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsHubPromptInput"))) is not null;
+
+    // The Reactor ContentDialog's own AutomationId is not exposed through the popup layer; its body text is.
+    private const string SessionsDialogBodyId = "SessionsHubDialogBody";
 
     private static async Task RestoreSessionsBaselineAsync(GatewayFixtureRun run)
     {
@@ -2670,6 +2673,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await Task.Delay(100);
         }
 
+        if (FindById(run, "SessionsHubSearch") is { } nameSearch
+            && nameSearch.TryGetCurrentPattern(ValuePattern.Pattern, out var nameValue)
+            && ((ValuePattern)nameValue).Current.Value.Length > 0)
+            ((ValuePattern)nameValue).SetValue("");
         if (FindById(run, "SessionsHubTranscriptClose") is { } transcriptClose)
         {
             AssertVisibleInHub(run, transcriptClose, "close transcript search");

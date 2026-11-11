@@ -168,7 +168,7 @@ public sealed partial class GatewayFixtureUiTests
             var cancel = FindButton(run, "Cancel")!;
             var dialogIdentity = cancel.GetRuntimeId();
             OwnedWindowCapture.Save(run, window, "01-settings-dialog-before-disconnect.png",
-                FindById(run, SessionsResetDialogId)!, cancel);
+                FindById(run, SessionsDialogBodyId)!, cancel);
 
             // Stop only this run's synthetic server so reconnect cannot hide the prune transition.
             await run.Gateway.DisposeAsync();
@@ -185,12 +185,12 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Null(FindById(run, "PermissionsPageMarker"));
             Assert.Equal(dialogIdentity, FindButton(run, "Cancel")!.GetRuntimeId());
             OwnedWindowCapture.Save(run, window, "02-settings-dialog-retains-pruned-page.png",
-                FindById(run, SessionsResetDialogId)!, FindButton(run, "Cancel")!);
+                FindById(run, SessionsDialogBodyId)!, FindButton(run, "Cancel")!);
 
             Invoke(FindButton(run, "Cancel")!);
             await WaitUiAsync(run, () => FindById(run, expectedMarker) is { Current.IsOffscreen: false },
                 "required fallback or latest intent after dialog closes");
-            Assert.Null(FindById(run, SessionsResetDialogId));
+            Assert.Null(FindById(run, SessionsDialogBodyId));
             Assert.Null(FindById(run, "SessionsPageMarker"));
             var destinationWindow = Assert.Single(AppWindows(run), candidate =>
                 !candidate.Current.IsOffscreen && candidate.FindFirst(TreeScope.Descendants,
@@ -210,8 +210,6 @@ public sealed partial class GatewayFixtureUiTests
         }, allowSessionMutations: true);
     }
 
-    private const string SessionsResetDialogId = "SessionsHubDialog";
-
     /// <summary>Opens the Sessions page's Reset confirmation for the main session (admin scope required).</summary>
     private static async Task OpenSessionsResetDialogAsync(GatewayFixtureRun run, string description)
     {
@@ -230,7 +228,7 @@ public sealed partial class GatewayFixtureUiTests
             new PropertyCondition(AutomationElement.NameProperty, "Reset session…"));
         await WaitUiAsync(run, () => FindInApp(run, reset) is { Current.IsEnabled: true }, "session action menu");
         Invoke(FindInApp(run, reset)!);
-        await WaitUiAsync(run, () => FindById(run, SessionsResetDialogId) is { Current.IsOffscreen: false }
+        await WaitUiAsync(run, () => FindById(run, SessionsDialogBodyId) is { Current.IsOffscreen: false }
             && FindButton(run, "Cancel") is not null, description);
     }
 }
