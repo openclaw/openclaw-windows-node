@@ -300,6 +300,16 @@ public sealed class SessionPatch
     /// </summary>
     public PatchField<long> ExpectedMarkedUnreadAt { get; set; }
     /// <summary>
+    /// Session identity guard the gateway requires on lifecycle patches such as
+    /// <c>archived</c>: the patch is rejected when the row's <c>sessionId</c> is no
+    /// longer this one. A plain string, not tri-state, because the upstream schema
+    /// is a bare <c>NonEmptyString</c> that rejects null; null or blank omits it.
+    /// Not a mutation, so it never counts toward <see cref="HasChanges"/>.
+    /// Gateways before 2026.8.1 do not know the field; <c>PatchSessionConfirmedAsync</c>
+    /// retries without it when they reject it.
+    /// </summary>
+    public string? ExpectedSessionId { get; set; }
+    /// <summary>
     /// True when the patch would change something: any field cleared, or any
     /// field set to a meaningful value (a blank string value produces nothing).
     /// </summary>
@@ -318,8 +328,11 @@ public sealed class SessionPatch
     /// String fields map to the schema's <c>NonEmptyString</c> value type, so a
     /// blank/whitespace <i>value</i> is omitted (an empty string would be
     /// rejected and fail the whole patch) — clearing always uses null instead.
+    /// Passing <paramref name="includeSessionGuard"/> false also omits
+    /// <see cref="ExpectedSessionId"/>, for Gateways that predate the guard and
+    /// reject it as an unknown property.
     /// </summary>
-    internal Dictionary<string, object?> ToPayload(string key)
+    internal Dictionary<string, object?> ToPayload(string key, bool includeSessionGuard = true)
     {
         var payload = new Dictionary<string, object?> { ["key"] = key };
         AddString(payload, "model", Model);
@@ -341,6 +354,8 @@ public sealed class SessionPatch
         AddEncoded(payload, "unread", Unread, v => v);
         AddEncoded(payload, "archived", Archived, v => v);
         AddEncoded(payload, "expectedMarkedUnreadAt", ExpectedMarkedUnreadAt, v => v);
+        if (includeSessionGuard && !string.IsNullOrWhiteSpace(ExpectedSessionId))
+            payload["expectedSessionId"] = ExpectedSessionId;
         return payload;
     }
 

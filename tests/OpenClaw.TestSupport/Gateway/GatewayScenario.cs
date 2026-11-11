@@ -757,7 +757,7 @@ public sealed partial class GatewayScenario
     {
         var delete = method == "sessions.delete";
         ValidateProperties(p, delete ? ["key", "deleteTranscript"] :
-            ["key", "label", "pinned", "unread", "archived", "expectedMarkedUnreadAt"]);
+            ["key", "label", "pinned", "unread", "archived", "expectedMarkedUnreadAt", "expectedSessionId"]);
         var key = RequiredString(p, "key");
         if (key == MainSessionKey && (delete || (OptionalBoolean(p, "archived") ?? false)))
             throw new FixtureRequestException("INVALID_PARAMS", "The main fixture session cannot be removed.");
@@ -772,6 +772,12 @@ public sealed partial class GatewayScenario
                 _sessionChanges[key] = null;
                 return new { ok = true, key, deleted = true };
             }
+            // Mirrors the Gateway's lifecycle admission: archive and unarchive must name the observed session.
+            var expectedSessionId = OptionalString(p, "expectedSessionId");
+            if (OptionalBoolean(p, "archived") is not null && expectedSessionId is null)
+                throw new FixtureRequestException("INVALID_REQUEST", $"expectedSessionId required for session lifecycle patch: {key}");
+            if (expectedSessionId is not null && expectedSessionId != row["sessionId"]?.GetValue<string>())
+                throw new FixtureRequestException("INVALID_REQUEST", $"Session {key} changed before patch. Retry.");
             foreach (var field in new[] { "label", "pinned", "unread", "archived" })
                 if (p.TryGetProperty(field, out var value))
                     row[field] = JsonNode.Parse(value.GetRawText());
