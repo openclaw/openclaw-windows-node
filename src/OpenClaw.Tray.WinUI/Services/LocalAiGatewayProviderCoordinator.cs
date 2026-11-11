@@ -14,32 +14,48 @@ namespace OpenClawTray.Services;
 internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecycle
 {
     private const int MaximumConfigBytes = 1024 * 1024;
+    // Exists while a guarded WSL legacy-model migration may be saved but not yet
+    // adopted by a confirmed Gateway restart and readback.
+    private const string MigrationJournalFileName = "wsl-gateway-migration-unconfirmed";
+    private const string LegacyMigrationValidationFallback =
+        "The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed.";
 
     private readonly ILocalAiGatewayConfigurationTransport? _configuration;
     private readonly ILocalAiGatewayAtomicConfigurationTransport? _atomicConfiguration;
     private readonly Func<string>? _getApiKey;
     private readonly IOpenClawLogger _logger;
     private readonly Func<string, string>? _getString;
+    private readonly LocalAiPaths? _paths;
+    // Used only when no Local AI data directory was supplied, so retries on
+    // this instance still remember an unconfirmed WSL migration restart.
+    private bool _migrationRestartUnconfirmed;
 
+    /// <param name="paths">
+    /// Local AI data directory that persists the WSL migration-restart journal across
+    /// coordinator instances and app restarts. Without it the journal is per-instance.
+    /// </param>
     public LocalAiGatewayProviderCoordinator(
         IWslCommandRunner commands,
         ILocalAiGatewayDistroResolver distroResolver,
         IOpenClawLogger logger,
-        Func<string, string>? getString = null)
+        Func<string, string>? getString = null,
+        LocalAiPaths? paths = null)
         : this(new WslLocalAiGatewayConfigurationTransport(
             commands ?? throw new ArgumentNullException(nameof(commands)),
-            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger, getString)
+            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger, getString, paths)
     {
     }
 
     public LocalAiGatewayProviderCoordinator(
         ILocalAiGatewayConfigurationTransport configuration,
         IOpenClawLogger logger,
-        Func<string, string>? getString = null)
+        Func<string, string>? getString = null,
+        LocalAiPaths? paths = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _getString = getString;
+        _paths = paths;
     }
 
     public LocalAiGatewayProviderCoordinator(
@@ -187,9 +203,13 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         {
             // Admission accepted the current shape or the exact pre-effort shape;
             // only the latter needs its owned model array upgraded.
-            return MatchesProvider(current.ProviderJson!, install)
-                ? admission
-                : await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
+            if (!MatchesProvider(current.ProviderJson!, install))
+                return await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
+            // A prior WSL migration may have saved this shape without a confirmed
+            // restart. Finish adopting it before reporting the route as published.
+            return _atomicConfiguration is null && IsMigrationRestartUnconfirmed()
+                ? await RestartMigratedProviderAsync(install).ConfigureAwait(false)
+                : admission;
         }
 
         if (_atomicConfiguration is not null)
@@ -329,19 +349,88 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 ["config", "set", LocalAiGatewayProviderDefinition.ProviderModelsPath,
                     models, "--strict-json", "--replace", "--dry-run"], ct).ConfigureAwait(false);
             if (!dryRun.Routed || !dryRun.Result!.Success)
-                return Failed(Localized("LocalAi_GatewayLegacyMigrationValidation", "The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed."));
+                return Failed(Localized("LocalAi_GatewayLegacyMigrationValidation", LegacyMigrationValidationFallback));
+            // Journal before the guarded write: a write that lands followed by a
+            // failed restart or a crash must not later pass the current-shape fast path.
+            if (!TryMarkMigrationRestartUnconfirmed())
+                return Failed(Localized("LocalAi_GatewayLegacyMigrationValidation", LegacyMigrationValidationFallback));
             LocalAiGatewayCommandOutcome applied = await _configuration.RunAsync(args, ct).ConfigureAwait(false);
             if (!applied.Routed || !applied.Result!.Success)
                 return Failed(Localized("LocalAi_GatewayLegacyMigrationChanged", "The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile."));
-            // The conditional write has landed; drain the restart despite
-            // cancellation so the running Gateway can adopt this revision.
-            LocalAiGatewayCommandOutcome restarted = await _configuration.RunAsync(
-                ["gateway", "restart"], CancellationToken.None).ConfigureAwait(false);
-            if (!restarted.Routed || !restarted.Result!.Success)
-                return Failed(Localized("LocalAi_GatewayLegacyMigrationRestart", "The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying."));
+            return await RestartMigratedProviderAsync(install).ConfigureAwait(false);
         }
 
         return await VerifyMigratedProviderAsync(install).ConfigureAwait(false);
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> RestartMigratedProviderAsync(LocalAiResolvedInstall install)
+    {
+        // The conditional write has landed; drain the restart despite
+        // cancellation so the running Gateway can adopt this revision.
+        LocalAiGatewayCommandOutcome restarted = await _configuration!.RunAsync(
+            ["gateway", "restart"], CancellationToken.None).ConfigureAwait(false);
+        if (!restarted.Routed || !restarted.Result!.Success)
+            return Failed(Localized("LocalAi_GatewayLegacyMigrationRestart", "The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying."));
+        LocalAiEndpointLifecycleResult verified = await VerifyMigratedProviderAsync(install).ConfigureAwait(false);
+        if (verified.Success)
+            ClearMigrationRestartUnconfirmed();
+        return verified;
+    }
+
+    private string MigrationJournalPath() =>
+        _paths!.ResolveContainedPath(MigrationJournalFileName, "Local AI WSL migration journal");
+
+    /// <summary>Fails closed: an unreadable journal counts as an unconfirmed restart.</summary>
+    private bool IsMigrationRestartUnconfirmed()
+    {
+        if (_paths is null) return _migrationRestartUnconfirmed;
+        try
+        {
+            _ = File.GetAttributes(MigrationJournalPath());
+            return true;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"The Local AI WSL migration journal could not be read ({ex.GetType().Name}); confirming the Gateway restart.");
+            return true;
+        }
+    }
+
+    private bool TryMarkMigrationRestartUnconfirmed()
+    {
+        _migrationRestartUnconfirmed = true;
+        if (_paths is null) return true;
+        try
+        {
+            Directory.CreateDirectory(_paths.RootDirectory);
+            using var stream = new FileStream(MigrationJournalPath(), FileMode.Create, FileAccess.Write, FileShare.None);
+            stream.Flush(flushToDisk: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            _logger.Warn($"The Local AI WSL migration journal could not be written ({ex.GetType().Name}); no Gateway configuration was changed.");
+            return false;
+        }
+    }
+
+    private void ClearMigrationRestartUnconfirmed()
+    {
+        _migrationRestartUnconfirmed = false;
+        if (_paths is null) return;
+        try
+        {
+            File.Delete(MigrationJournalPath());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // A stale journal only costs one more confirmed restart on the next publish.
+            _logger.Warn($"The Local AI WSL migration journal could not be cleared ({ex.GetType().Name}).");
+        }
     }
 
     private async Task<LocalAiEndpointLifecycleResult> VerifyMigratedProviderAsync(LocalAiResolvedInstall install)

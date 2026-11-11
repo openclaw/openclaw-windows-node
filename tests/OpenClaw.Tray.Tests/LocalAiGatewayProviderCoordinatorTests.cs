@@ -117,6 +117,97 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Single(commands.Calls, call => call.Contains("restart"));
     }
 
+    [Fact]
+    public async Task WslPublish_UnconfirmedMigrationRestartIsRetainedAcrossCoordinators()
+    {
+        var install = Install(28_765);
+        using var data = new TempDirectory();
+        var legacy = LegacyProviderJson(install);
+        var commands = new FakeWslCommandRunner(legacy,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)) { IndeterminateRestartCalls = [1] };
+
+        var first = await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install);
+
+        Assert.False(first.Success);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install, "llama-local"));
+        Assert.Equal(legacy, commands.ActiveProviderJson);
+
+        // A new process sees the upgraded file; it must still restart and read back.
+        var retry = await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install);
+
+        Assert.True(retry.Success, retry.Detail);
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+        Assert.Equal(commands.ProviderJson, commands.ActiveProviderJson);
+        Assert.Single(commands.Calls, call => call.Contains("--expect-current-json"));
+        int callsAfterRetry = commands.Calls.Count;
+
+        var settled = await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install);
+
+        Assert.True(settled.Success, settled.Detail);
+        Assert.DoesNotContain(commands.Calls.Skip(callsAfterRetry), call => call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslPublish_FailedRetryRestartKeepsMigrationUnconfirmed()
+    {
+        var install = Install(28_765);
+        using var data = new TempDirectory();
+        var commands = new FakeWslCommandRunner(LegacyProviderJson(install),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)) { IndeterminateRestartCalls = [1, 2] };
+
+        Assert.False((await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install)).Success);
+        var retry = await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install);
+
+        Assert.False(retry.Success);
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+
+        var recovered = await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install);
+
+        Assert.True(recovered.Success, recovered.Detail);
+        Assert.Equal(3, commands.Calls.Count(call => call.Contains("restart")));
+        Assert.Equal(commands.ProviderJson, commands.ActiveProviderJson);
+    }
+
+    [Fact]
+    public async Task WslPublish_UnconfirmedMigrationRestartIsRetainedWithoutDataDirectory()
+    {
+        var install = Install(28_765);
+        var commands = new FakeWslCommandRunner(LegacyProviderJson(install),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)) { IndeterminateRestartCalls = [1] };
+        var coordinator = CreateCoordinator(commands);
+
+        Assert.False((await coordinator.PublishAsync(install)).Success);
+        var retry = await coordinator.PublishAsync(install);
+
+        Assert.True(retry.Success, retry.Detail);
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("restart")));
+    }
+
+    [Fact]
+    public async Task WslPublish_CurrentRouteWithoutMigrationJournalDoesNotRestart()
+    {
+        var install = Install(28_765);
+        using var data = new TempDirectory();
+        var commands = new FakeWslCommandRunner(LocalAiGatewayProviderDefinition.BuildProviderJson(install, "llama-local"),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+
+        var result = await CreateCoordinator(commands, paths: new LocalAiPaths(data.Path)).PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("set"));
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        public TempDirectory() => Directory.CreateDirectory(Path);
+        public void Dispose()
+        {
+            try { Directory.Delete(Path, recursive: true); } catch (IOException) { }
+        }
+    }
+
     /// <summary>The exact provider shape published before effort metadata was added.</summary>
     private static string LegacyProviderJson(LocalAiResolvedInstall install, string apiKey = "llama-local")
     {
@@ -1062,18 +1153,22 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
 
     private static LocalAiGatewayProviderCoordinator CreateCoordinator(
         FakeWslCommandRunner commands,
-        string distroName = "OpenClawGateway") =>
+        string distroName = "OpenClawGateway",
+        LocalAiPaths? paths = null) =>
         CreateCoordinatorForRegistry(
             commands,
-            CreateRegistry(ManagedRecord("managed", distroName)));
+            CreateRegistry(ManagedRecord("managed", distroName)),
+            paths);
 
     private static LocalAiGatewayProviderCoordinator CreateCoordinatorForRegistry(
         FakeWslCommandRunner commands,
-        GatewayRegistry? registry) =>
+        GatewayRegistry? registry,
+        LocalAiPaths? paths = null) =>
         new(
             commands,
             new LocalAiGatewayDistroResolver(registry),
-            NullLogger.Instance);
+            NullLogger.Instance,
+            paths: paths);
 
     private static GatewayRegistry CreateRegistry(params GatewayRecord[] records)
     {

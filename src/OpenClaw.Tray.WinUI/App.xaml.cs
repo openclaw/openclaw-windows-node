@@ -878,7 +878,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             // Model recovery also covers the local runtime's health check.
             new WslExeCommandRunner(localAiLogger, TimeSpan.FromSeconds(420)),
             new LocalAiGatewayDistroResolver(_gatewayRegistry),
-            localAiLogger, LocalizationHelper.GetString);
+            localAiLogger, LocalizationHelper.GetString, localAiPaths);
         _localAiGatewayLifecycle = new LocalAiGatewayLifecycle(localAiPaths,
             SettingsManager.SettingsDirectoryPath, () => _gatewayRegistry, () => _connectionManager,
             localAiEndpointLifecycle, localAiLogger, LocalizationHelper.GetString);
