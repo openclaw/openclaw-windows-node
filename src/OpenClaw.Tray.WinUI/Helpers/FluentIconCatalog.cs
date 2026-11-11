@@ -1,3 +1,4 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -131,8 +132,56 @@ static class FluentIconCatalog
     public const string Export = "\uEDE1";        // Export — matches SessionsPage export glyph
     public const string Delete = "\uE74D";        // Delete — matches SessionsPage delete glyph
 
-    public static FontFamily SymbolThemeFontFamily =>
-        (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
+    private static FontFamily? s_symbolThemeFontFamily;
+    private static bool s_symbolThemeFallbackWarned;
+
+    /// <summary>
+    /// The icon font from the theme resource (<c>SymbolThemeFontFamily</c>:
+    /// Segoe Fluent Icons on Win11, Segoe MDL2 Assets on Win10). When the
+    /// lookup throws or returns null — observed as a degraded resource state
+    /// after extended uptime — falls back to Segoe MDL2 Assets (shipped on
+    /// both Win10 and Win11) and warns once instead of failing silently, so
+    /// icon rows keep rendering instead of going blank.
+    /// </summary>
+    public static FontFamily SymbolThemeFontFamily
+    {
+        get
+        {
+            if (s_symbolThemeFontFamily is not null)
+                return s_symbolThemeFontFamily;
+
+            FontFamily? resolved = null;
+            try
+            {
+                resolved = Application.Current?.Resources["SymbolThemeFontFamily"] as FontFamily;
+            }
+            catch (Exception ex)
+            {
+                WarnSymbolThemeFallbackOnce("SymbolThemeFontFamily lookup threw " + ex.GetType().Name + ": " + ex.Message);
+            }
+
+            if (resolved is null)
+            {
+                WarnSymbolThemeFallbackOnce("SymbolThemeFontFamily resource unavailable; falling back to Segoe MDL2 Assets");
+                resolved = new FontFamily("Segoe MDL2 Assets");
+            }
+
+            s_symbolThemeFontFamily = resolved;
+            return resolved;
+        }
+    }
+
+    private static void WarnSymbolThemeFallbackOnce(string reason)
+    {
+        if (s_symbolThemeFallbackWarned)
+            return;
+        s_symbolThemeFallbackWarned = true;
+#if OPENCLAW_SETUP_UI
+        System.Diagnostics.Debug.WriteLine("FluentIconCatalog: " + reason);
+#else
+        OpenClawTray.Services.Logger.Warn("FluentIconCatalog: " + reason);
+#endif
+    }
 
     /// <summary>
     /// Builds a <see cref="FontIcon"/> for the given PUA glyph using the

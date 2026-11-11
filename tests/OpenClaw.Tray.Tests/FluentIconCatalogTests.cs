@@ -109,6 +109,20 @@ public sealed class FluentIconCatalogTests
     }
 
     [Fact]
+    public void Catalog_SymbolThemeFontFamily_FallsBackAndWarnsInsteadOfFailingSilently()
+    {
+        var src = ReadCatalogSource();
+        // The theme-resource lookup must be guarded: a degraded resource state
+        // after extended uptime blanked icon rows silently (#1567).
+        Assert.Contains("catch (Exception", src);
+        // The fallback must be the Win10/Win11-shared MDL2 font — never a
+        // hardcoded "Segoe Fluent Icons" (see NativeWinUiSources guard below).
+        Assert.Contains("new FontFamily(\"Segoe MDL2 Assets\")", src);
+        // The first fallback must be logged so the degradation is diagnosable.
+        Assert.Contains("WarnSymbolThemeFallbackOnce", src);
+    }
+
+    [Fact]
     public void NativeWinUiSources_DoNotHardcodeSegoeFluentIcons()
     {
         var repositoryRoot = TestRepositoryPaths.GetRepositoryRoot();

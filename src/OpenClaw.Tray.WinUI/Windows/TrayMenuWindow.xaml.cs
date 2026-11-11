@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -886,16 +887,26 @@ public sealed partial class TrayMenuWindow : WindowEx
     {
         if (string.IsNullOrEmpty(icon))
             return null;
-        if (FluentIconCatalog.IsPuaGlyph(icon))
-            return FluentIconCatalog.Build(icon!);
-        // Wrap emoji in a PathIcon-shaped surrogate via FontIcon so the row
-        // layout is consistent. FontIcon happily renders non-PUA characters
-        // using the default font family fallback.
-        return new FontIcon
+        try
         {
-            Glyph = icon!,
-            FontSize = 14
-        };
+            if (FluentIconCatalog.IsPuaGlyph(icon))
+                return FluentIconCatalog.Build(icon!);
+            // Wrap emoji in a PathIcon-shaped surrogate via FontIcon so the row
+            // layout is consistent. FontIcon happily renders non-PUA characters
+            // using the default font family fallback.
+            return new FontIcon
+            {
+                Glyph = icon!,
+                FontSize = 14
+            };
+        }
+        catch (Exception ex)
+        {
+            // Icon construction must never fail silently: a swallowed failure
+            // here renders the row with an empty icon column and no trace.
+            Logger.Warn("TrayMenuWindow.ResolveIcon failed for '" + icon + "': " + ex);
+            return null;
+        }
     }
 
     /// <summary>
