@@ -2692,6 +2692,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 "name filter editable");
             ((ValuePattern)FindById(run, "SessionsHubSearch")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("");
         }
+        // An earlier state can leave the page scrolled below the tabs.
+        ScrollIntoView(run, "SessionsHubTabWorktrees");
         var worktreesTab = FindById(run, "SessionsHubTabWorktrees")
             ?? throw new InvalidOperationException("Worktrees tab is unavailable while restoring the baseline.");
         AssertVisibleInHub(run, worktreesTab, "Worktrees tab reset");
@@ -2701,6 +2703,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         await WaitUiAsync(run, () => FindById(run, "SessionsHubWorktree:" + GatewayScenario.HubBusyWorktreeId) is not null,
             "worktrees reset state");
 
+        ScrollIntoView(run, "SessionsHubTabSessions");
         var sessionsTab = FindById(run, "SessionsHubTabSessions")
             ?? throw new InvalidOperationException("Sessions tab is unavailable while restoring the baseline.");
         AssertVisibleInHub(run, sessionsTab, "Sessions tab reset");
