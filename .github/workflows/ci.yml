@@ -1046,6 +1046,26 @@ jobs:
         -CollectNativeFailureMetadata
         -CaptureHostExit
 
+    - name: Run Release reader layout proof
+      if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      env:
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
+        OPENCLAW_VISUAL_TEST_DIR: ${{ github.workspace }}\TestResults\ReaderRelease\observations
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -Configuration Release
+        -ResultsDirectory TestResults\ReaderRelease
+        -TrxFileName ReaderRelease.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~ReactorChatLayoutProofTests.ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch"
+        -ExpectedTestCount 2
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
     - name: Run latest stable profile compatibility
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 15

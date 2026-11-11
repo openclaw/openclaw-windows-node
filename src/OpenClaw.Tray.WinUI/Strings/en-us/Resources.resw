@@ -6360,6 +6360,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw is verifying whether this device can run Local AI. This only takes a moment.</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copy code</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Code block</value></data>
+  <data name="Chat_Code_LanguageFallback" xml:space="preserve"><value>code</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Current model</value></data>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>

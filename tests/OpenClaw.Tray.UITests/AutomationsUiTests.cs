@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
 using OpenClaw.TestSupport.Gateway;
@@ -1625,6 +1626,62 @@ public sealed partial class GatewayFixtureUiTests
             "reacquired combo after selection");
     }
 
+    private static bool HasMeasuredEditorBounds(global::System.Windows.Rect bounds) =>
+        !bounds.IsEmpty && double.IsFinite(bounds.Left) && double.IsFinite(bounds.Top) &&
+        double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) &&
+        double.IsFinite(bounds.Right) && double.IsFinite(bounds.Bottom) &&
+        bounds.Width > 0 && bounds.Height > 0;
+
+    private static (double Percent, bool SearchedFromTop) NextEditorScrollTarget(
+        global::System.Windows.Rect bounds, global::System.Windows.Rect viewport,
+        double currentPercent, double viewSize, bool searchedFromTop)
+    {
+        Assert.True(HasMeasuredEditorBounds(viewport) && double.IsFinite(currentPercent) &&
+            currentPercent is >= 0 and <= 100 && double.IsFinite(viewSize) && viewSize is > 0 and < 100,
+            "Editor scroll metrics must be finite and describe a visible scrollable viewport.");
+        if (!HasMeasuredEditorBounds(bounds))
+        {
+            if (!searchedFromTop) return (0, true);
+            Assert.True(currentPercent < 100, "Editor field has no measured geometry at the end of the page.");
+            return (Math.Min(100, currentPercent + 50 * viewSize / (100 - viewSize)), true);
+        }
+        var delta = bounds.Bottom > viewport.Bottom ? bounds.Bottom - viewport.Bottom
+            : bounds.Top < viewport.Top ? bounds.Top - viewport.Top : 0;
+        var range = viewport.Height * (100 / viewSize - 1);
+        Assert.True(double.IsFinite(range) && range > 0, "Invalid editor scroll range.");
+        return (Math.Clamp(currentPercent + delta * 100 / range, 0, 100), searchedFromTop);
+    }
+
+    [Fact]
+    public void EditorScrollTarget_UnknownGeometryResetsOnceThenSearchesWithoutInventingBounds()
+    {
+        var viewport = new global::System.Windows.Rect(0, 0, 200, 200);
+        foreach (var unknown in new[] { global::System.Windows.Rect.Empty,
+            new global::System.Windows.Rect(0, double.NaN, 100, 20),
+            new global::System.Windows.Rect(double.PositiveInfinity, 0, 100, 20),
+            new global::System.Windows.Rect(0, 0, double.PositiveInfinity, 20),
+            new global::System.Windows.Rect(0, 0, 100, 0) })
+        {
+            Assert.False(HasMeasuredEditorBounds(unknown));
+            Assert.Equal((0d, true), NextEditorScrollTarget(unknown, viewport, 70, 50, false));
+            Assert.Equal((50d, true), NextEditorScrollTarget(unknown, viewport, 0, 50, true));
+            Assert.Equal((100d, true), NextEditorScrollTarget(unknown, viewport, 75, 50, true));
+        }
+    }
+
+    [Theory]
+    [InlineData(-40, 20, 30)]
+    [InlineData(220, 20, 70)]
+    [InlineData(50, 20, 50)]
+    public void EditorScrollTarget_MeasuredGeometryPreservesVisibleOrOffscreenPosition(
+        double top, double height, double expected)
+    {
+        var bounds = new global::System.Windows.Rect(0, top, 100, height);
+        Assert.True(HasMeasuredEditorBounds(bounds));
+        Assert.Equal((expected, false),
+            NextEditorScrollTarget(bounds, new(0, 0, 200, 200), 50, 50, false));
+    }
+
     private static async Task ScrollEditorFieldIntoViewAsync(GatewayFixtureRun run, string id)
     {
         await WaitUiAsync(run, () => FindById(run, id) is not null, $"reconciled editor field {id}");
@@ -1660,7 +1717,7 @@ public sealed partial class GatewayFixtureUiTests
             var current = Read();
             var bounds = current.Field.Current.BoundingRectangle;
             var viewport = current.Viewport;
-            return !bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0
+            return HasMeasuredEditorBounds(bounds)
                 && !current.Field.Current.IsOffscreen && !viewport.IsEmpty
                 && bounds.Top >= viewport.Top && bounds.Bottom <= viewport.Bottom
                 && bounds.Left >= viewport.Left && bounds.Right <= viewport.Right;
@@ -1669,6 +1726,23 @@ public sealed partial class GatewayFixtureUiTests
         var initial = FindById(run, id) ?? throw new InvalidOperationException($"Missing editor field {id}.");
         if (initial.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var item))
             ((ScrollItemPattern)item).ScrollIntoView();
+        var searchedFromTop = false;
+        var receiptOptions = new JsonSerializerOptions
+        {
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        };
+        void RecordStep(int attempt, string phase, double requested, object observation) =>
+            File.AppendAllText(Path.Combine(run.ArtifactsDirectory, "automation-editor-scroll.jsonl"),
+                JsonSerializer.Serialize(new { id, attempt, phase, requested, searchedFromTop, observation },
+                    receiptOptions) + Environment.NewLine);
+        object Observe((AutomationElement Field, AutomationElement Owner, ScrollPattern Scroll,
+            global::System.Windows.Rect Viewport) current) => new
+        {
+            bounds = current.Field.Current.BoundingRectangle, viewport = current.Viewport,
+            measured = HasMeasuredEditorBounds(current.Field.Current.BoundingRectangle),
+            offscreen = current.Field.Current.IsOffscreen, ownerClass = current.Owner.Current.ClassName,
+            percent = current.Scroll.Current.VerticalScrollPercent, viewSize = current.Scroll.Current.VerticalViewSize,
+        };
         for (var attempt = 0; attempt < 12; attempt++)
         {
             if (FullyVisible()) return;
@@ -1677,16 +1751,29 @@ public sealed partial class GatewayFixtureUiTests
                 var current = Read();
                 var bounds = current.Field.Current.BoundingRectangle;
                 var info = current.Scroll.Current;
-                var delta = bounds.Bottom > current.Viewport.Bottom ? bounds.Bottom - current.Viewport.Bottom
-                    : bounds.Top - current.Viewport.Top;
-                var range = current.Viewport.Height * (100 / info.VerticalViewSize - 1);
-                Assert.True(range > 0, $"Invalid editor scroll range for {id}.");
-                var percent = Math.Clamp(info.VerticalScrollPercent + delta * 100 / range, 0, 100);
-                current.Scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
-                return percent;
+                var target = NextEditorScrollTarget(bounds, current.Viewport,
+                    info.VerticalScrollPercent, info.VerticalViewSize, searchedFromTop);
+                searchedFromTop = target.SearchedFromTop;
+                RecordStep(attempt, "before", target.Percent, Observe(current));
+                current.Scroll.SetScrollPercent(ScrollPattern.NoScroll, target.Percent);
+                return target.Percent;
             });
-            await WaitUiAsync(run, () => FullyVisible() || Math.Abs(Read().Scroll.Current.VerticalScrollPercent - next) < 1,
-                "editor scroll reaches computed position");
+            try
+            {
+                await WaitUiAsync(run, () => FullyVisible() || Math.Abs(Read().Scroll.Current.VerticalScrollPercent - next) < 1,
+                    "editor scroll reaches computed position");
+            }
+            catch (Exception failure)
+            {
+                try { RecordStep(attempt, "failed", next, OwnedWindowCapture.WithPhysicalCoordinates(() => Observe(Read()))); }
+                catch (Exception observationError)
+                {
+                    failure.Data["editorScrollObservationError"] =
+                        $"{observationError.GetType().Name}; hresult=0x{observationError.HResult:X8}";
+                }
+                throw;
+            }
+            RecordStep(attempt, "settled", next, OwnedWindowCapture.WithPhysicalCoordinates(() => Observe(Read())));
         }
         var final = Read();
         var finalBounds = OwnedWindowCapture.WithPhysicalCoordinates(() => final.Field.Current.BoundingRectangle);

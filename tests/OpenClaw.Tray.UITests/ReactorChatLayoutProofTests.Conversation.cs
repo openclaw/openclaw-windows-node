@@ -291,10 +291,6 @@ public sealed partial class ReactorChatLayoutProofTests
                 var sequence = 0;
                 var droppedCritical = 0;
                 var droppedGeometry = 0;
-                var topCorrelation = -1;
-                var topCompleted = false;
-                var bringCorrelation = -1;
-                var bringCompleted = false;
                 void Observe(string phase, Func<string>? details = null, bool critical = true)
                 {
                     var currentSequence = ++sequence;
@@ -367,16 +363,9 @@ public sealed partial class ReactorChatLayoutProofTests
                 void ViewChanged(ScrollView sender, object args) => Observe("view", critical: false);
                 void ExtentChanged(ScrollView sender, object args) => Observe("extent", critical: false);
                 void StateChanged(ScrollView sender, object args) => Observe("state", critical: false);
-                void Completed(ScrollView sender, ScrollingScrollCompletedEventArgs args)
-                {
-                    if (args.CorrelationId == topCorrelation) topCompleted = true;
-                    if (args.CorrelationId == bringCorrelation) bringCompleted = true;
+                void Completed(ScrollView sender, ScrollingScrollCompletedEventArgs args) =>
                     Observe("completed", () => $"correlation={args.CorrelationId}");
-                }
-                void Bringing(ScrollView sender, ScrollingBringingIntoViewEventArgs args)
-                {
-                    bringCorrelation = args.CorrelationId;
-                    bringCompleted = false;
+                void Bringing(ScrollView sender, ScrollingBringingIntoViewEventArgs args) =>
                     Observe("bring", () =>
                     {
                         var target = args.RequestEventArgs?.TargetElement;
@@ -387,7 +376,6 @@ public sealed partial class ReactorChatLayoutProofTests
                         return FormattableString.Invariant(
                             $"correlation={args.CorrelationId}; target={target?.GetType().Name}; index={index}; requestedOffset={args.TargetVerticalOffset}; cancelled={args.Cancel}; animated={args.RequestEventArgs?.AnimationDesired}");
                     });
-                }
                 try
                 {
                     // Establish reader intent through the normal transcript keyboard-focus path.
@@ -440,88 +428,18 @@ public sealed partial class ReactorChatLayoutProofTests
                         Observe("before-composer-refocus");
                         Assert.True(composer!.Focus(FocusState.Programmatic));
                         Observe("before-scroll-to-top");
-                        topCorrelation = transcriptScroll.ScrollTo(0, 0,
+                        var correlation = transcriptScroll.ScrollTo(0, 0,
                             new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
-                        Observe("scroll-to-top-returned", () => $"correlation={topCorrelation}");
+                        Observe("scroll-to-top-returned", () => $"correlation={correlation}");
                     });
-                    try
-                    {
-                        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                            () => transcriptScroll.State == ScrollingInteractionState.Idle &&
-                                transcriptScroll.VerticalOffset <= 1 &&
-                                FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
-                            "reader at the top with the jump control visible",
-                            () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
-                                $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
-                                $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}\n{Observations()}"));
-                    }
-                    catch (Xunit.Sdk.FailException original)
-                    {
-                        double? previousAnchor = null;
-                        var outcome = "not-started";
-                        string? restoreError = null;
-                        bool? finalTopCompleted = null;
-                        bool? finalBringCompleted = null;
-                        string? beforeRestoreGeometry = null;
-                        try
-                        {
-                            try
-                            {
-                                await ui.RunOnUIAsync(() =>
-                                {
-                                    previousAnchor = transcriptScroll.VerticalAnchorRatio;
-                                    Observe("edge-probe-before", () =>
-                                        $"bring={bringCorrelation}; bringCompleted={bringCompleted}; top={topCorrelation}; topCompleted={topCompleted}");
-                                    if (!transcriptScroll.IsLoaded || previousAnchor != 1)
-                                        throw new InvalidOperationException("The original loaded edge-anchored scroll view is required.");
-                                    transcriptScroll.VerticalAnchorRatio = 0;
-                                    Observe("edge-probe-top-anchor");
-                                });
-                                // Observe the existing request, never retry it. This diagnostic cannot pass the test.
-                                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                                    () => topCompleted && transcriptScroll.State == ScrollingInteractionState.Idle &&
-                                        transcriptScroll.VerticalOffset <= 1 &&
-                                        FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
-                                    "counterfactual completion of the original top request"));
-                                outcome = "original-request-completed-at-top";
-                            }
-                            catch (Exception error)
-                            {
-                                outcome = $"probeError={error.GetType().Name}; hresult=0x{error.HResult:X8}";
-                            }
-                            finally
-                            {
-                                if (previousAnchor is { } anchor)
-                                {
-                                    try
-                                    {
-                                        await ui.RunOnUIAsync(() =>
-                                        {
-                                            finalTopCompleted = topCompleted;
-                                            finalBringCompleted = bringCompleted;
-                                            beforeRestoreGeometry = RealizedGeometry();
-                                            Observe("edge-probe-before-restore", () =>
-                                                $"outcome={outcome}; bringCompleted={bringCompleted}; topCompleted={topCompleted}");
-                                            transcriptScroll.VerticalAnchorRatio = anchor;
-                                        });
-                                    }
-                                    catch (Exception error)
-                                    {
-                                        restoreError = $"{error.GetType().Name}; hresult=0x{error.HResult:X8}";
-                                    }
-                                }
-                            }
-                            await ui.RunOnUIAsync(() => Console.WriteLine(
-                                $"reader-edge-counterfactual: outcome={outcome}; restoreError={restoreError ?? "none"}; " +
-                                $"bringCompleted={finalBringCompleted?.ToString() ?? "not-observed"}; topCompleted={finalTopCompleted?.ToString() ?? "not-observed"}\n" +
-                                $"beforeRestoreGeometry:\n{beforeRestoreGeometry ?? "not-observed"}\n{Observations()}"));
-                        }
-                        finally
-                        {
-                            // Preserve the original timeout even if probing, restoration, or reporting fails.
-                            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(original).Throw();
-                        }
-                    }
+                    await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                        () => transcriptScroll.State == ScrollingInteractionState.Idle &&
+                            transcriptScroll.VerticalOffset <= 1 &&
+                            FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
+                        "reader at the top with the jump control visible",
+                        () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                            $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                            $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}\n{Observations()}"));
                 }
                 finally
                 {
@@ -607,6 +525,21 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => transcriptScroll.VerticalAnchorRatio == 1,
+                "bottom anchoring restored after the corrected jump"));
+            await CaptureAsync(surface, "Feedback-resized-jump-latest");
+
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
+            await PublishAsync();
+            await AwaitBottomAsync();
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
+                "\n\n" + string.Join("\n\n", Enumerable.Repeat("Keep following after the corrected jump.", 20))));
+            await PublishAsync();
+            await AwaitBottomAsync();
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));

@@ -117,7 +117,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("itemsView.StartBringItemIntoView(", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
-        Assert.Contains("_following = IsNearBottom(sender)", binding);
+        Assert.Contains("_following = _readerBringCorrelationId is null && IsNearBottom(sender)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
@@ -140,6 +140,14 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("correctOffset &= _confirmation.CanCorrectOffset(targetItem)", retry);
         Assert.Contains("scrollView.HorizontalOffset, scrollView.ScrollableHeight", retry);
         Assert.Contains("_confirmation.OffsetCorrectionStarted(correlationId)", retry);
+        Assert.Contains("scrollView.AnchorRequested += _offsetCorrectionAnchorRequested", retry);
+        Assert.True(retry.IndexOf("scrollView.AnchorRequested += _offsetCorrectionAnchorRequested", StringComparison.Ordinal) <
+            retry.IndexOf("scrollView.ScrollTo(", StringComparison.Ordinal));
+        Assert.DoesNotContain("VerticalAnchorRatio = double.NaN", retry);
+        Assert.Contains("args.AnchorElement = target", retry);
+        Assert.Contains("repeater.TryGetElement(request.Index)", retry);
+        Assert.Contains("ReferenceEquals(target.DataContext, targetItem)", retry);
+        Assert.Contains("TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)", retry);
         Assert.Contains("IsInitialConfirmationCurrent(version, generation)", retry);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", retry);
         Assert.DoesNotContain("DispatcherTimer", binding);
@@ -169,6 +177,60 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("StartTailRequest(", completed);
         Assert.DoesNotContain("QueueTailRequest(", completed);
         Assert.DoesNotContain("AwaitLayout(", completed);
+    }
+
+    [Fact]
+    public void ReactorTimeline_BoundedOffsetCorrectionReleasesItsAnchorOnCompletionOrCancellation()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        static string Method(string source, string start, string end) =>
+            source[source.IndexOf(start, StringComparison.Ordinal)..source.IndexOf(end, StringComparison.Ordinal)];
+        Assert.Contains("RestoreTailAnchor();",
+            Method(binding, "private void CompleteInitialLanding(", "private void AttachScrollView()"));
+        Assert.Contains("if (_offsetCorrectionAnchorRequested is not null)\n            RestoreTailAnchor();",
+            Method(binding.Replace("\r\n", "\n"), "private void DetachLayout()", "private void DetachRendering()"));
+        var restore = Method(binding, "private void RestoreTailAnchor()", "private void OnReaderFocus(");
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null", restore);
+        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", restore);
+        var detach = Method(binding, "private void DetachScrollView()", "public void Dispose()");
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", detach);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null", detach);
+        Assert.Contains("RestoreTailAnchor();",
+            Method(binding, "private void CancelPendingNavigation()", "private void OnViewChanged("));
+    }
+
+    [Fact]
+    public void ReactorTimeline_KeyboardReaderBringYieldsEdgeAnchorWithoutAddingNavigation()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var start = binding.IndexOf("private void OnBringingIntoView(", StringComparison.Ordinal);
+        var end = binding.IndexOf("private void OnScrollCompleted(", start, StringComparison.Ordinal);
+        var bring = binding[start..end];
+        Assert.Contains("!_initialPending && !args.Cancel", bring);
+        Assert.Contains("Control { FocusState: FocusState.Keyboard }", bring);
+        Assert.Contains("sender.ScrollableHeight - args.TargetVerticalOffset > FollowThreshold", bring);
+        Assert.True(bring.IndexOf("_following = false;", StringComparison.Ordinal) <
+            bring.IndexOf("sender.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
+        Assert.Contains("_following = false;", bring);
+        Assert.Contains("_readerBringCorrelationId = args.CorrelationId;", bring);
+        Assert.DoesNotContain("ScrollTo(", bring);
+        Assert.DoesNotContain("StartBringIntoView(", bring);
+        Assert.DoesNotContain("GetOrCreateElement(", bring);
+        Assert.DoesNotContain("UpdateLayout(", bring);
+
+        var completionEnd = binding.IndexOf("private void OnScrollStateChanged(", end, StringComparison.Ordinal);
+        var completion = binding[end..completionEnd];
+        Assert.Contains("_readerBringCorrelationId == args.CorrelationId", completion);
+        Assert.Contains("if (IsNearBottom(sender))", completion);
+        Assert.Contains("RestoreTailAnchor();", completion);
+        var detach = binding[binding.IndexOf("private void DetachScrollView()", StringComparison.Ordinal)..
+            binding.IndexOf("public void Dispose()", binding.IndexOf("private void DetachScrollView()", StringComparison.Ordinal), StringComparison.Ordinal)];
+        Assert.Contains("_readerBringCorrelationId = null;", detach);
     }
 
     [Fact]
@@ -1220,18 +1282,18 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.RemoveHandler(UIElement.PointerPressedEvent, _readerPointerPressed)", binding);
         Assert.Contains("global::Windows.System.VirtualKey.Enter or global::Windows.System.VirtualKey.Space", binding);
 
-        // Only the Expander's own header toggle switches to top anchoring, after the
-        // ordinary reader-input cancellation has run.
+        // Disclosure growth keeps its header in place, independently of native reader navigation.
         var input = Slice("private void OnReaderInput", "private bool IsDisclosureHeader");
         Assert.True(input.IndexOf("CancelPendingNavigation();", StringComparison.Ordinal)
             < input.IndexOf("scrollView.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
         Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
 
-        // Any other reader input and every programmatic tail scroll returns to bottom anchoring.
+        // Tail dispatch and ordinary no-motion input restore bottom anchoring.
         Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
         Assert.Contains("RestoreTailAnchor();", Slice("private void CancelPendingNavigation", "_version++"));
         Assert.Contains("RestoreTailAnchor();", Slice("private bool StartTailRequest", "private object? GetRequestItem"));
         Assert.Contains("RestoreTailAnchor();", Slice("// Reflow needs an offset correction", "scrollView.ScrollTo("));
+        Assert.Contains("_readerAnchored = false;", Slice("private void DetachScrollView", "public void Dispose"));
         Assert.Contains("_disclosureAnchored = false;", Slice("private void DetachScrollView", "public void Dispose"));
     }
 

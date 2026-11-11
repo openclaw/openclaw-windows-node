@@ -6344,6 +6344,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve"><value>MiniMax (nuvem, requer chave da API)</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copiar código</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloco de código</value></data>
+  <data name="Chat_Code_LanguageFallback" xml:space="preserve"><value>código</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Modelo atual</value></data>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Outros modelos</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Nenhum modelo correspondente</value></data>

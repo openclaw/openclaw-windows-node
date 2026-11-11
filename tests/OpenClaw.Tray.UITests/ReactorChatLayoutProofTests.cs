@@ -2957,7 +2957,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var nested = VStack(2, TextBlock("Nested list content").Margin(8)).Margin(3, 7, 5, 9);
                 var before = VStack(8, TextBlock("Before").Margin(0, 8), nested);
                 var normalized = Assert.IsType<StackElement>(ChatMarkdownPresentation.MessageBlocks(before));
-                Assert.Equal(8, normalized.Spacing);
+                Assert.Equal(ChatVisuals.MessageBlockGap, normalized.Spacing);
                 Assert.Equal(new Thickness(3, 0, 5, 0), normalized.Children[1].Modifiers?.Margin);
                 Assert.Same(nested.Children, Assert.IsType<StackElement>(normalized.Children[1]).Children);
                 Assert.Equal(new Thickness(8), nested.Children[0].Modifiers?.Margin);
@@ -2972,12 +2972,16 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(4, blocks.Length);
                 Assert.All(blocks, block =>
                 {
-                    Assert.Equal(0, block.Margin.Top);
+                    // Only a heading after another block keeps the web's extra half-gap lead-in.
+                    Assert.Equal(block == blocks[1] ? ChatVisuals.HeadingTopInset : 0, block.Margin.Top);
                     Assert.Equal(0, block.Margin.Bottom);
                 });
                 for (var index = 1; index < blocks.Length; index++)
+                {
+                    var expected = ChatVisuals.MessageBlockGap + (index == 1 ? ChatVisuals.HeadingTopInset : 0);
                     Assert.InRange(Bounds(blocks[index], surface).Top - Bounds(blocks[index - 1], surface).Bottom,
-                        7, 9);
+                        expected - 1, expected + 1);
+                }
             });
         });
     }

@@ -152,6 +152,11 @@ for configuration/identity verification are retained under `TestResults\GatewayF
 This targeted Release check does not replace the ordinary Debug fixture inventory.
 Only that fixture build sets `RequireSignedCleanupHost=false`; signed release
 packaging retains its normal signing requirement.
+The same built Release output also runs the mounted reader layout proof at
+480 and 1100 DIP in a separate exact-two-case invocation. It retains the
+Standard resource profile and original predicates, with reports under
+`TestResults\ReaderRelease`; it does not enable capture-driven resizing or
+replace the Debug full UI lane.
 
 ```powershell
 .\build.ps1

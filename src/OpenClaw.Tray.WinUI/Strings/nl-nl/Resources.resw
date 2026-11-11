@@ -6292,6 +6292,7 @@ Controleer of de gateway actief is.</value>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert of dit apparaat lokale AI kan uitvoeren. Dit duurt slechts een moment.</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Code kopiëren</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Codeblok</value></data>
+  <data name="Chat_Code_LanguageFallback" xml:space="preserve"><value>code</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Huidig model</value></data>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Andere modellen</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Geen overeenkomende modellen</value></data>

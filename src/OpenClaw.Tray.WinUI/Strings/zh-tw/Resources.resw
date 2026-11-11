@@ -6291,6 +6291,7 @@
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查此裝置是否可以執行本機 AI。這只需要片刻。</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>複製程式碼</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>程式碼區塊</value></data>
+  <data name="Chat_Code_LanguageFallback" xml:space="preserve"><value>程式碼</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>目前的模型</value></data>
   <data name="Chat_Model_Other" xml:space="preserve"><value>其他模型</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>沒有符合的模型</value></data>

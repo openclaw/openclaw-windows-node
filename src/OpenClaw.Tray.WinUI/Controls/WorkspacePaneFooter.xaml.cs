@@ -27,6 +27,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     private const double ButtonGap = 4;
     private const double TitleBarButtonHeight = 32;
     private readonly double _paneButtonHeight;
+    private readonly FlyoutShowRequest _notificationsShow;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
     private string _automationIdPrefix = "Workspace";
     private InboxFeed? _inbox;
@@ -41,6 +42,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     public WorkspacePaneFooter()
     {
         InitializeComponent();
+        _notificationsShow = new FlyoutShowRequest(NotificationsFlyout, ReopenNotifications);
         _paneButtonHeight = DashboardButton.Height;
         ApplyAutomationIds();
         ApplyLayout();
@@ -136,6 +138,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
     internal void HideFlyouts()
     {
+        _notificationsShow.Cancel();
         NotificationsFlyout.Hide();
         OwnerButton.Flyout?.Hide();
     }
@@ -152,6 +155,18 @@ public sealed partial class WorkspacePaneFooter : UserControl
     internal Style BadgeStyle(ConnectionStatusAccent accent) => (Style)Resources[$"ConnectionBadge{accent}"];
 
     private void OnDashboardClick(object sender, RoutedEventArgs e) => DashboardRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnNotificationsClick(object sender, RoutedEventArgs e)
+    {
+        // Button.Flyout handles ordinary opens, but WinUI drops them during its previous close.
+        _notificationsShow.DeferUntilClosed();
+    }
+
+    private void ReopenNotifications()
+    {
+        if (_inbox is not null && NotificationsButton.IsLoaded && NotificationsButton.IsEnabled)
+            _notificationsShow.ShowAt(NotificationsButton);
+    }
 
     private void OnNotificationsOpening(object sender, object e)
     {

@@ -1098,7 +1098,11 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("2", (string?)bell.Attribute("Grid.Column"));
         Assert.Equal("OnDashboardClick", (string?)dashboard.Attribute("Click"));
         Assert.Equal("WorkspaceShell_DashboardButton", (string?)dashboard.Attribute(x + "Uid"));
-        Assert.Null(bell.Attribute("Click"));
+        Assert.Equal("OnNotificationsClick", (string?)bell.Attribute("Click"));
+        var footerCode = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("new FlyoutShowRequest(NotificationsFlyout, ReopenNotifications)", footerCode);
+        Assert.Contains("_notificationsShow.DeferUntilClosed();", footerCode);
+        Assert.Contains("_notificationsShow.Cancel();", footerCode);
         var flyout = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "Flyout");
         Assert.Equal("OnNotificationsOpening", (string?)flyout.Attribute("Opening"));
         Assert.Equal("OnNotificationsClosed", (string?)flyout.Attribute("Closed"));

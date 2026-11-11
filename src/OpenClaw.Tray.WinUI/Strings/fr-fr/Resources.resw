@@ -6291,6 +6291,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw vérifie si cet appareil peut exécuter l'IA locale. Cela ne prend qu'un instant.</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copier le code</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloc de code</value></data>
+  <data name="Chat_Code_LanguageFallback" xml:space="preserve"><value>code</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Modèle actuel</value></data>
   <data name="Chat_Model_Other" xml:space="preserve"><value>Autres modèles</value></data>
   <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Aucun modèle correspondant</value></data>

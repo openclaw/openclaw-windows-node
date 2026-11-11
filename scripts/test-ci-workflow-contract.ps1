@@ -812,6 +812,22 @@ foreach ($token in @("steps.release-fixture-build.outcome == 'success'",
     Assert-Contains -Text $releaseFixtureStep -Expected $token -Message "Targeted Release fixture lost '$token'."
 }
 Assert-NotContains -Text $releaseFixtureStep -Unexpected 'continue-on-error:' -Message 'Release correlation proof must fail closed.'
+$releaseReaderStep = Get-StepBlock -Text $fixtureJob -Name 'Run Release reader layout proof'
+foreach ($token in @("steps.release-fixture-build.outcome == 'success'",
+        "steps.ui-runtime.outcome == 'success'", "steps.ui-desktop.outcome == 'success'",
+        'timeout-minutes: 5', 'OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard',
+        '\TestResults\ReaderRelease\observations', './scripts/Invoke-CiTest.ps1',
+        '-Configuration Release', '-ResultsDirectory TestResults\ReaderRelease',
+        '-TrxFileName ReaderRelease.trx', '-Runtime win-x64',
+        '-Filter "FullyQualifiedName~ReactorChatLayoutProofTests.ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch"',
+        '-ExpectedTestCount 2', '-RequireAllTestsPassed', '-HangTimeoutSeconds 120',
+        '-CollectNativeFailureMetadata', '-CaptureHostExit')) {
+    Assert-Contains -Text $releaseReaderStep -Expected $token -Message "Targeted Release reader proof lost '$token'."
+}
+foreach ($token in @('continue-on-error:', 'OPENCLAW_VISUAL_TEST:', 'OPENCLAW_NATIVE_COMPOSITOR_CAPTURE:',
+        'OPENCLAW_GATEWAY_FIXTURE_APP:', '-AnimationPreference')) {
+    Assert-NotContains -Text $releaseReaderStep -Unexpected $token -Message "Release reader proof must preserve the mounted test path: '$token'."
+}
 $fixtureStep = Get-StepBlock -Text $fixtureJob -Name "Run mock Gateway application scenarios"
 foreach ($token in @(
         'timeout-minutes: 30',
@@ -1029,8 +1045,8 @@ foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 13) {
-    throw "Expected 13 wrapped project runs including targeted Release correlation proof, found $runnerUses."
+if ($runnerUses -ne 14) {
+    throw "Expected 14 wrapped project runs including targeted Release correlation and reader proofs, found $runnerUses."
 }
 $runnerParseErrors = $null
 $runnerAst = [Management.Automation.Language.Parser]::ParseInput($runner, [ref]$null, [ref]$runnerParseErrors)

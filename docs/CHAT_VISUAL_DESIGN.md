@@ -26,20 +26,28 @@ leave prose centered. Accessible sender and footer identity remain.
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
 96-pixel minimum height. Its vertical padding is 8 pixels and the editor-to-toolbar
 gap is 4 pixels. The editor retains its 44-pixel minimum height and grows with
-multiline input; action targets and text sizes are unchanged. Message and code
-surfaces use 12-pixel corners.
+multiline input; action targets and text sizes are unchanged. Message surfaces
+use 12-pixel corners and code cards use the web's 10-pixel corners.
 These are chat surface tokens, not replacements for standard control radii.
 General layout spacing is on the 4-pixel grid. The question dock preserves the
 upstream 7/9/11/14-pixel option gaps, insets and typography instead.
 
 Prose uses native body type at 14 pixels with 21-pixel line height. Headings
-use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks use one uniform
-8-pixel gap, with
-zero extra top/bottom block margins. List markers and items share the prose
-ramp in the primary tone, so each marker sits on its first line's baseline in
-tight and loose lists; quote paragraphs follow the paragraph ramp. Table cells
-keep the Markdown control's 14-pixel metrics with a bold header, where the web
-uses 13 pixels. List spacing is unchanged.
+use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks follow the web's
+`--chat-block-gap`: one uniform 14-pixel gap (`ChatVisuals.MessageBlockGap`),
+with zero extra top/bottom block margins, except that a heading after another
+block adds 7 pixels for the web's 1.5x heading lead-in. Prose, tight list items
+and table cells use the softer web text tone (`ChatProseRichTextStyle`); headings
+and bold runs use the strong tone. List markers share the prose ramp, so each
+marker sits on its first line's baseline in tight and loose lists, and occupy a
+right-aligned 20-pixel column so item text starts 24 pixels in, as on the web.
+Bullets use the muted tone and numbers the prose tone. Items are 6 pixels apart
+(the web's 0.4em). Quote paragraphs follow the paragraph ramp. Table cells keep
+the Markdown control's 14-pixel metrics with a bold header, where the web uses
+13 pixels. Thematic breaks are a 1-pixel native divider. Inline code keeps its
+surrounding tone on a subtle fill chip; WinUI text highlighters cannot draw the
+web chip's border or padding. Bold, inline-code and syntax highlighter brushes
+are re-resolved when the element's theme changes.
 Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
 Assistant turns use 4-pixel outer spacing without extra body padding. User
 bubbles, thinking blocks and tool details use 12-pixel horizontal and 8-pixel
@@ -47,15 +55,25 @@ vertical insets. Related labels, details and action footers use one 4-pixel gap
 rather than accumulating stack spacing and margins. Comparisons
 normalize the released web header separately rather than adding fake app chrome.
 Code remains literal and selectable, with native horizontal and vertical
-scrolling rather than truncation. Its header exposes the supplied language and
-the existing Copy action. The code body uses native Consolas at 13 pixels with
+scrolling rather than truncation. The card follows the web `.code-block-wrapper`:
+a 1-pixel stroke over the existing native card fill, a header with the lowercase language
+(or the localized `code` fallback) and the existing Copy action at 8/8/4/14-pixel
+insets, and code 14 pixels from the side and bottom edges. The code body uses
+native Consolas at 13 pixels with
 18-pixel line height, matching the web's line rhythm while compensating for
 Consolas's smaller glyphs relative to the web's 12-pixel monospace face.
 The language label uses the same family at 12 pixels. Max-height line stacking
 allows larger or fallback glyphs to grow instead of clipping at text scales.
-The frame keeps 12-pixel horizontal and 8-pixel vertical padding so the more
-readable leading does not crowd compact conversations. Code text uses the
-native secondary text brush for a calmer tone, with system window text in HC.
+Code text uses the prose tone, with system window text in HC.
+`ChatCodeSyntax` classifies common fence languages (TypeScript/JavaScript, JSON,
+C#, C-family, Python, PowerShell, shell, YAML, TOML, SQL, CSS and XML/HTML) into
+the web's highlight.js roles. `ChatMarkdownPresentation.ApplyCodeSyntax` colors
+them with theme-resolved text highlighters over Reactor's single literal run, so
+reconcile never rebuilds unchanged code and selection survives re-renders. Colors
+refresh on load and theme change and are cleared on unmount, before Reactor pools
+the control. Comments use the muted color without italics. Unknown languages,
+blocks over 32,000 characters or 4,000 colored spans, and High Contrast stay plain.
+Compact thinking text keeps its tighter 8-pixel block and 2-pixel list rhythm.
 
 Chat text sizes are pinned by `ReactorChatLayoutProofTests.FontContract.cs`,
 `ReactorMarkdownReadingRampProofTests.cs` and the Worked header assertions in
@@ -90,8 +108,10 @@ aliases. Other Send glyph aliases are unchanged.
 ## Theme resources
 
 `Themes/ChatResources.xaml` owns the following semantic aliases in Default
-(Dark), Light, and HighContrast. Chat retains native WinUI surfaces, text and
-Windows accent colors; the web reference supplies geometry and motion, not colors.
+(Dark), Light, and HighContrast. Chat retains native WinUI surfaces and Windows
+accent colors. Reading tones follow the web (softer prose, strong bold and
+headings, muted bullets) through native text brushes, and code syntax uses the
+web's highlight.js palette.
 
 | Resource | Source / mapping |
 |---|---|
@@ -99,17 +119,21 @@ Windows accent colors; the web reference supplies geometry and motion, not color
 | `ChatComposerBrush`, `ChatCardBrush` | `CardBackgroundFillColorDefault`; system window in HC |
 | `ChatStrokeBrush`, `ChatQuestionCardStrokeBrush` | `ControlStrokeColorDefault`; system window text in HC |
 | `ChatTextBrush`, `ChatStrongTextBrush` | `TextFillColorPrimary`; system window text in HC |
-| `ChatSecondaryTextBrush` | `TextFillColorSecondary`; system window text in HC |
+| `ChatProseTextBrush`, `ChatSecondaryTextBrush` | `TextFillColorSecondary`; system window text in HC |
+| `ChatMutedTextBrush` | `TextFillColorTertiary`; system window text in HC |
+| `ChatSyntax*Brush` | Web highlight.js keyword, string, number, title, type and attribute colors per theme; comments use the muted/secondary tone; system window text in HC |
 | `ChatClawBrush` | Light/dark Windows accent variants; system window text in HC |
 | `ChatQuestionOptionBrush`, `ChatQuestionOptionHoverBrush` | Native default/secondary control fills; system window in HC |
 | `ChatQuestionSelectedBrush`, `ChatQuestionSelectedStrokeBrush` | Windows accent tint and stroke; system window/highlight in HC |
 | `ChatQuestionSubmitStyle` | Native accent fill and text-on-accent brushes, including system HC mappings |
 | `ChatUserBrush` | Windows accent at low opacity; full system highlight in HC |
 | `ChatUserTextBrush` | Primary text; system highlight text in HC |
-| `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush` |
+| `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush`, for headings |
+| `ChatProseRichTextStyle` | Native rich-text Foreground binding to `ChatProseTextBrush`, for Markdown prose |
 | `ChatSecondaryRichTextStyle` | Native rich-text Foreground binding to `ChatSecondaryTextBrush`, for thinking text |
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
 | `ChatSecondaryTextStyle` | Native progress/result TextBlock binding to `ChatSecondaryTextBrush` |
+| `ChatMutedTextStyle` | Native TextBlock binding to `ChatMutedTextBrush`, for list bullets |
 | `ChatQuestionCardStyle` | Native question Border bindings to card fill and question-specific stroke |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
@@ -354,8 +378,13 @@ It schedules retries after the rendering callback returns and fences them agains
 cancellation or replacement. If rows or the native scroll view disappear during
 initial positioning, it rearms when they return. Normal follow cannot interrupt
 initial positioning.
+If a completed bring needs an offset correction, the current tail row remains
+the native anchor at an interior ratio until completion or cancellation.
+The anchor callback rechecks the navigation generation, row index and source
+identity without realizing another row. This avoids both disabled-anchor layout
+cycles and edge anchoring undoing the correction as the virtualized extent changes.
 Native bottom anchoring and the existing follow threshold are unchanged, except
-while a reader toggles a disclosure header by pointer, Enter or Space: the
+for that bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
 transcript then anchors to the top, so the header stays put and its details
 grow downward, as on the web. Any other reader input or programmatic tail scroll
 restores bottom anchoring.
