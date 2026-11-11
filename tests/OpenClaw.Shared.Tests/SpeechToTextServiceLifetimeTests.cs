@@ -181,6 +181,42 @@ public sealed class SpeechToTextServiceLifetimeTests
         Assert.Null(failure);
     }
 
+    [Fact]
+    public async Task Dispose_WaitsForTheInFlightTranscriptionBeforeReturning()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new SpeechToTextService(new RecordingLogger())
+        {
+            TranscriptionOverride = token => HoldUntilReleased(entered, release, token)
+        };
+
+        var transcribe = Task.Run(() => service.TranscribeAsync([], "en"));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var disposeReturned = new ManualResetEventSlim();
+        var dispose = Task.Run(() =>
+        {
+            service.Dispose();
+            disposeReturned.Set();
+        });
+
+        try
+        {
+            Assert.False(
+                disposeReturned.Wait(TimeSpan.FromMilliseconds(500)),
+                "Dispose returned while inference still held the gate.");
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
+        await transcribe.WaitAsync(TimeSpan.FromSeconds(5));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(disposeReturned.IsSet);
+    }
+
     private static async IAsyncEnumerable<TranscriptionResult> HoldUntilReleased(
         TaskCompletionSource entered,
         TaskCompletionSource release,

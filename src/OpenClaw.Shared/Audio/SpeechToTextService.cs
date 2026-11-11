@@ -226,6 +226,8 @@ public sealed class SpeechToTextService : IDisposable
 
     public void Dispose()
     {
+        // Shutdown waits out one in-flight transcription. A timeout would free
+        // the native model while that transcription still uses it.
         // A second dispose is a no-op. The semaphore stays alive so a transcription
         // that already queued on it can observe that the service is gone and return.
         if (_disposed) return;
