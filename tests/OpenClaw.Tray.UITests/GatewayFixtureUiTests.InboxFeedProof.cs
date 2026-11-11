@@ -178,16 +178,17 @@ public sealed partial class GatewayFixtureUiTests
             foreach (var window in AppWindows(run))
             {
                 var windowBounds = window.Current.BoundingRectangle;
-                if (!HeaderControlReady(window, windowBounds)) continue;
+                if (!HeaderControlReady(window, window, windowBounds)) continue;
                 var page = window.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, "NotificationsPage"));
-                if (!HeaderControlReady(page, windowBounds)) continue;
+                if (!HeaderControlReady(window, page, windowBounds)) continue;
                 var pageBounds = page!.Current.BoundingRectangle;
                 var heading = page.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, "NotificationsPageMarker"));
                 var candidate = page.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, $"WorkspaceNotificationsTab{tab}"));
-                if (!HeaderControlReady(heading, pageBounds) || !HeaderControlReady(candidate, pageBounds)) continue;
+                if (!HeaderControlReady(window, heading, pageBounds) ||
+                    !HeaderControlReady(window, candidate, pageBounds)) continue;
                 readyTab = candidate;
                 return true;
             }
@@ -195,12 +196,13 @@ public sealed partial class GatewayFixtureUiTests
         }, $"visible enabled Inbox page tab: {tab}");
         Invoke(readyTab!);
 
-        bool HeaderControlReady(AutomationElement? element, System.Windows.Rect viewport)
+        bool HeaderControlReady(AutomationElement owner, AutomationElement? element, System.Windows.Rect viewport)
         {
             if (element is null) return false;
             var info = element.Current;
             var bounds = info.BoundingRectangle;
-            return info.ProcessId == run.AppProcessId && !info.IsOffscreen && info.IsEnabled &&
+            return NativeUiOwnership.IsOwnedDescendant(owner, element, run.AppProcessId) &&
+                !info.IsOffscreen && info.IsEnabled &&
                 HasBounds(viewport) && HasBounds(bounds) && viewport.Contains(bounds);
         }
 

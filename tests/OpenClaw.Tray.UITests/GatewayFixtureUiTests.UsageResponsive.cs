@@ -545,6 +545,7 @@ public sealed partial class GatewayFixtureUiTests
                 foreach (var target in theme == "Light" ? new[] { 1400, 0 } : new[] { 1400 })
                 {
                     var name = $"Usage-{theme}-hero-{(target == 0 ? "shell-minimum" : "1400")}";
+                    var topRestored = target != 1400;
                     try
                     {
                         var before = UsageWindowBounds(handle);
@@ -649,10 +650,17 @@ public sealed partial class GatewayFixtureUiTests
                                     previousDetail = null;
                                     return false;
                                 }
+                                var cost = FindById(run, "UsageDetailCostValue");
+                                var tokens = FindById(run, "UsageDetailTokensValue");
+                                if (cost is null || tokens is null)
+                                {
+                                    previousDetail = null;
+                                    return false;
+                                }
                                 var current = (Header: new System.Windows.Rect(expandedBounds.Left, expandedBounds.Top,
                                         expandedBounds.Width, collapsedHeaderHeight),
-                                    Cost: FindById(run, "UsageDetailCostValue")!.Current.BoundingRectangle,
-                                    Tokens: FindById(run, "UsageDetailTokensValue")!.Current.BoundingRectangle);
+                                    Cost: cost.Current.BoundingRectangle,
+                                    Tokens: tokens.Current.BoundingRectangle);
                                 var stable = previousDetail == current;
                                 previousDetail = current;
                                 return stable && current.Cost.Top >= current.Header.Bottom
@@ -719,9 +727,6 @@ public sealed partial class GatewayFixtureUiTests
                             AssertUsageCaptureUnobstructed(run, name);
                             OwnedWindowCapture.Save(run, window, $"Usage-{theme}-1400-expanded-session.png", visibleAnchors);
                             AssertUsageCaptureUnobstructed(run, name);
-                            scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
-                            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
-                                FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top restored");
                         }
                     }
                     catch (Exception error)
@@ -733,9 +738,31 @@ public sealed partial class GatewayFixtureUiTests
                     }
                     finally
                     {
+                        if (target == 1400)
+                        {
+                            try
+                            {
+                                var pageRoot = FindById(run, "UsagePageRoot")
+                                    ?? throw new InvalidOperationException("Missing Usage viewport during top restoration.");
+                                ((ScrollPattern)pageRoot.GetCurrentPattern(ScrollPattern.Pattern))
+                                    .SetScrollPercent(ScrollPattern.NoScroll, 0);
+                                await WaitUiAsync(run, () =>
+                                    FindById(run, "UsagePageRoot") is { } currentPage &&
+                                    ((ScrollPattern)currentPage.GetCurrentPattern(ScrollPattern.Pattern))
+                                        .Current.VerticalScrollPercent == 0 &&
+                                    FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top restored");
+                                topRestored = true;
+                            }
+                            catch (Exception cleanupError)
+                            {
+                                failures.Add($"{name} top restoration: {cleanupError}");
+                                manifests.Add(new { name, cleanupError = cleanupError.ToString() });
+                            }
+                        }
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "hero-manifest.json"),
                             JsonSerializer.Serialize(manifests, new JsonSerializerOptions { WriteIndented = true }));
                     }
+                    if (!topRestored) break;
                 }
                 Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
                 if (FindById(run, "SettingsSearch") is { Current.IsOffscreen: false })

@@ -789,6 +789,84 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         Assert.Equal(1, Assert.IsType<Runtime>(ownedRuntime).Disposals);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WizardMore_BuildAndResetBeforeMountKeepOneExpansionButton(bool gatewayMore)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var resources = OnboardingWindowsFlowTests.LoadProgressResources(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!);
+            Application.Current.Resources.MergedDictionaries.Add(resources);
+            WizardPage? wizard = null;
+            try
+            {
+                wizard = new WizardPage();
+                var select = Find<ListView>(wizard, "SelectOptions");
+                var panel = Assert.IsType<StackPanel>(Find<Border>(wizard, "StepCard").Child);
+                var originalChildren = panel.Children.ToArray();
+                Assert.False(wizard.IsLoaded);
+                Assert.Null(wizard.XamlRoot);
+                Assert.Null(select.Parent);
+
+                const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+                typeof(WizardPage).GetField("_stepType", flags)!.SetValue(wizard, "select");
+                var build = typeof(WizardPage).GetMethod("BuildOptions", flags)!;
+                var reset = typeof(WizardPage).GetMethod("ResetInputs", flags)!;
+                var moreField = typeof(WizardPage).GetField("_moreOptionsButton", flags)!;
+                var options = gatewayMore
+                    ? new[] { new { value = "skip", label = "Skip for now" }, new { value = "__more", label = "More" } }
+                    : new[] { new { value = "skip", label = "Skip for now" } }
+                        .Concat(Enumerable.Range(1, 6).Select(i => new { value = $"provider-{i}", label = $"Provider {i}" })).ToArray();
+                var step = JsonSerializer.SerializeToElement(new { options });
+                string[] expectedVisible = gatewayMore
+                    ? ["skip"]
+                    : ["skip", "provider-1", "provider-2", "provider-3", "provider-4", "provider-5"];
+
+                Button Build()
+                {
+                    Assert.True(Assert.IsType<bool>(build.Invoke(wizard, [step, default(JsonElement)])));
+                    Assert.Equal(expectedVisible, select.Items.Cast<ListViewItem>()
+                        .Select(item => Assert.IsType<WizardOptionValue>(item.Tag).Value));
+                    var builtMore = Assert.Single(panel.Children.OfType<Button>());
+                    Assert.Same(builtMore, moreField.GetValue(wizard));
+                    Assert.Same(builtMore, panel.Children[panel.Children.IndexOf(select) + 1]);
+                    return builtMore;
+                }
+
+                var previousMore = Build();
+                reset.Invoke(wizard, null);
+                Assert.Null(moreField.GetValue(wizard));
+                Assert.Empty(select.Items);
+                Assert.Equal(originalChildren, panel.Children.ToArray());
+                var more = Build();
+                Assert.NotSame(previousMore, more);
+                Assert.False(wizard.IsLoaded);
+                ui.Container.Children.Add(wizard);
+                await WaitAsync(() => wizard.IsLoaded && more.IsLoaded, "pre-mount More button loaded");
+                if (!gatewayMore)
+                {
+                    Invoke(more);
+                    Assert.Null(moreField.GetValue(wizard));
+                    Assert.DoesNotContain(more, panel.Children);
+                    Assert.Equal(["skip", "provider-1", "provider-2", "provider-3", "provider-4", "provider-5", "provider-6"],
+                        select.Items.Cast<ListViewItem>().Select(item => Assert.IsType<WizardOptionValue>(item.Tag).Value));
+                }
+            }
+            finally
+            {
+                if (wizard is not null)
+                {
+                    ui.Container.Children.Remove(wizard);
+                    await Assert.IsAssignableFrom<Task>(typeof(WizardPage)
+                        .GetMethod("CancelAndWaitAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(wizard, null));
+                }
+                Application.Current.Resources.MergedDictionaries.Remove(resources);
+            }
+        });
+    }
+
     [Fact]
     public async Task NativeFallback_GatewayMoreRejectsAnOverlappingContinue()
     {
