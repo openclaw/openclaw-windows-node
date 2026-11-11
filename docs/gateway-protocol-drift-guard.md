@@ -7,6 +7,13 @@ pinning. See the
 [Gateway, node, and exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md#are-we-pinned-to-a-gateway-protocol-version-or-a-gateway-release)
 for those separate version axes.
 
+Navigation search adds response-aware `sessions.search` and filtered
+`sessions.list` reads. Their request shapes are pinned against the released
+`v2026.10.9` schema (`8b18b5578f66eab1501cba4cef2310d88bfb9a41`).
+Transcript requests use `{ query, limit, scope }`, not top-level agent/session
+filters alongside scope. Parser and loopback tests additionally cover incomplete
+results and caller cancellation without closing the shared connection.
+
 ## Why this exists
 
 The Windows companion can silently drift from the upstream OpenClaw gateway
@@ -20,9 +27,24 @@ suite whenever the typed client and the pinned schema diverge.
 
 The typed client implements the richer protocol surface -
 `commands.list`, the extended `sessions.patch` field set, `sessions.files.list`/
-`get`, and `sessions.compaction.list`/`get`/`branch`/`restore` - across
-`OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
-`GatewayProtocolModels.cs`. This guard pins that whole surface.
+`get`, `sessions.compaction.list`/`get`/`branch`/`restore`, and the Usage page's
+unadvertised `sessions.usage` read - across
+`OpenClawGatewayClient.Protocol.cs`, `OpenClawGatewayClient.Usage.cs` and the
+DTO/payload builders in `GatewayProtocolModels.cs` and `Usage/SessionsUsageQuery.cs`.
+This guard pins that whole surface.
+
+The pinned `sessions.usage` fields are the subset of upstream `main` the native
+page sends, including the server-side overview (`projection`, `query`, paging
+and sort). Creator, day/hour/session selection, recent keys, context weight and
+the `sessions.usage.timeseries`/`.logs` reads are left to the Gateway's web Usage
+page. Released Gateways, including every version setup installs (`latest`
+2026.10.9 and `extended-stable` 2026.9.36), reject the overview
+parameters as unexpected properties, so the client retries once with
+`SessionsUsageQuery.WithoutServerOverview()` and keeps the basic shape for the
+rest of the connection. If that request is also rejected for an unexpected
+property, the Gateway is older than any setup installs: the client reports
+`sessions.usage` as unsupported for the connection and the page asks for a
+Gateway update instead of showing partial figures.
 
 Active and archived `sessions.list` requests set `includeDerivedTitles: true`
 so unlabeled conversations can use the Gateway's generated titles. Direct-peer
@@ -42,7 +64,7 @@ unit tests still pass on their fixed sample payloads.
 | File | Role |
 | --- | --- |
 | `tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json` | The pinned canonical schema mirror. **Edit this when upstream changes.** |
-| `tests/OpenClaw.Shared.Tests/Protocol/GatewayProtocolDriftTests.cs` | The guard. Cross-checks the snapshot against `OpenClawGatewayClient*.cs` + `GatewayProtocolModels.cs`. |
+| `tests/OpenClaw.Shared.Tests/Protocol/GatewayProtocolDriftTests.cs` | The guard. Cross-checks the snapshot against `OpenClawGatewayClient*.cs`, `GatewayProtocolModels.cs` and `SessionsUsageQuery.cs`. |
 
 ## What the guard checks
 

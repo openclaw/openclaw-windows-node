@@ -5,6 +5,7 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
+- [WinApp CLI developer tools](#winapp-cli-developer-tools)
 - [Project Structure](#project-structure)
 - [Building](#building)
 - [Architecture Overview](#architecture-overview)
@@ -44,6 +45,38 @@ See [agent readiness](docs/AGENT_WORKFLOWS.md#check-host-and-tool-readiness).
   - Default gateway URL: `ws://localhost:18789`
   - You'll need a valid authentication token from your OpenClaw instance
 - **Local MCP Server** - Windows node capabilities can also be validated without a gateway by enabling Local MCP Server in the tray Settings UI and using `winnode`
+
+## WinApp CLI developer tools
+
+Windows developers and coding agents should have Microsoft's **WinApp CLI**
+available and use it actively for native UI inspection, crash diagnosis,
+performance measurement and disposable app testing. The researched baseline is
+0.8.0 (Public Preview), not a new product build dependency.
+
+```powershell
+Get-Command winapp -All
+winapp --version
+winapp --help
+```
+
+With installation authority, install using
+`winget install --id Microsoft.WinAppCli --exact --source winget`, or upgrade
+using `winget upgrade --id Microsoft.WinAppCli --exact --source winget`.
+`winapp update` changes project SDK dependencies, not the CLI.
+The setup/readiness scripts do not currently manage this tool.
+
+Read [WinApp CLI for developers and coding agents](docs/WINAPP_CLI.md) for the
+recommended fixture-first workflow, API and Reactor sample discovery, stowed
+exception diagnostics, DevTools, ETW performance analysis, Sandbox ownership,
+and opportunities grounded in our issue/PR history. Use `--help` and
+`--cli-schema` rather than guessing flags. WinApp complements `.\build.ps1`,
+the existing test suites and release packaging; it does not replace them.
+Our [sandbox-mcp](https://github.com/shanselman/sandbox-mcp) tooling is
+complementary: use its `sbx` CLI or `windows-sandbox` MCP tools for fresh
+dependency checks, offline runs and installer/uninstaller audits. Prefer WinApp
+Sandbox for runtime-prepared, package-aware development. Follow the
+[task-based choice and ownership rules](docs/WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp);
+both tools use the same single Windows Sandbox slot.
 
 ## Project Structure
 
@@ -137,6 +170,19 @@ This restores prerequisites as needed and builds the shared library, tray app, s
 Legacy MXC payload cleanup uses the Windows PowerShell included with Windows and does not require PowerShell 7.
 
 ### Build Individual Projects
+
+Before a direct WinUI build, restore, run, or the first Visual Studio restore,
+initialize the repository-local feed for the published Reactor packages:
+
+```powershell
+.\scripts\Initialize-ReactorPackages.ps1
+```
+
+`NuGet.Config` maps Reactor exclusively to this verified feed. `build.ps1` and
+`run-app-local.ps1` initialize it before building; `run-app-local.ps1 -NoBuild`
+does not acquire packages and requires existing output. Shared-only builds do
+not require Reactor. The initializer does not change the global NuGet cache or
+configuration.
 
 **Shared Library:**
 ```bash
@@ -639,10 +685,12 @@ Reactor.WinUI                    Component · hooks · ReactorHostControl · Win
 
 **Lifecycle:**
 
-- One `OpenClawChatDataProvider` instance lives on `App` (`App.ChatProvider`),
-  created in `InitializeGatewayClient` and disposed inside
-  `UnsubscribeGatewayEvents`. Its lifetime is independent of Workspace, so
-  closing the window does not stop background Gateway/MCP operations.
+- `OpenClawChatCoordinator`, created once by `App`, owns the active
+  `OpenClawChatDataProvider` (`App.ChatProvider`). `SetOperatorClient`
+  replaces it when the operator client changes and disposes it when the client
+  is cleared; app shutdown disposes the coordinator. Its lifetime is independent
+  of Workspace, so closing the window does not stop background Gateway/MCP
+  operations.
 - `ReactorChatHostExtensions` mounts a dedicated `ReactorHostControl` in
   Workspace's `ChatPage` as the child of `<Border x:Name="ChatHost"/>`.
   `MountedReactorChat` owns the composer session and disposes it exactly once.
@@ -698,7 +746,7 @@ The gateway sends structured events over WebSocket. The client parses these into
 | `agent` (stream=tool) | `HandleToolEvent` | Tool execution (exec, read, write, etc.) | Activity with tool name + args |
 | `chat` | `HandleChatEvent` | Assistant chat messages | Toast notification for short messages |
 | `health` | `ParseChannelHealth` | Channel health status | Channel status in tray menu |
-| `session` | `HandleSessionEvent` | Session list updates | Session display refresh |
+| `session` | `ScheduleSessionRefresh` | Session list updates | Session display refresh |
 | `usage` | `ParseUsage` | Token usage, cost, requests | Usage info in status window |
 
 #### Notification Classification
@@ -1207,10 +1255,8 @@ Historical counts and estimates in docs do not establish current CI status.
 
 ## Developing & Testing the Onboarding Wizard
 
-This section describes the legacy FunctionalUI onboarding implementation, not
-the current native setup or post-setup chat host. Use
-[docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) for the current flow.
-Post-setup chat is hosted only by Workspace's ChatPage.
+Use [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) for the current
+flow. Post-setup chat is hosted only by Workspace's ChatPage.
 
 ### Building
 
@@ -1243,15 +1289,13 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
    $env:OPENCLAW_SKIP_UPDATE_CHECK = "1"
    ```
 3. Build and run: `./build.ps1 -Project WinUI` then launch the exe
-4. Navigate through all 6 screens to verify
+4. Navigate through each setup screen you changed to verify
 
 ### Architecture
 
-- **FunctionalUI**: `src/OpenClawTray.FunctionalUI/` - Minimal declarative WinUI helper layer used by onboarding
-- **Pages**: `src/OpenClaw.Tray.WinUI/Onboarding/Pages/` - Functional UI components for each wizard screen
-- **Services**: `src/OpenClaw.Tray.WinUI/Onboarding/Services/` - State management, setup code decoder, permission checker, health check, input validation
-- **Widgets**: `src/OpenClaw.Tray.WinUI/Onboarding/Widgets/` - Shared UI components (cards, step indicators, feature rows)
-- **Window**: `src/OpenClaw.Tray.WinUI/Onboarding/OnboardingWindow.cs` - Host window with WebView2 overlay for chat
+- **Setup UI**: `src/OpenClaw.SetupEngine.UI/` - `SetupWindow`, wizard `Pages/` and shared `Controls/`
+- **Setup engine**: `src/OpenClaw.SetupEngine/` - `SetupPipeline`, `SetupWizardRunner`, onboarding flow policies and setup steps
+- **FunctionalUI**: `src/OpenClawTray.FunctionalUI/` - Minimal declarative WinUI helper layer still used by some tray pages and chat rendering
 - **Helpers**: `src/OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` - Current Workspace WebView2 initialization and gateway chat URL helper
 
 ---

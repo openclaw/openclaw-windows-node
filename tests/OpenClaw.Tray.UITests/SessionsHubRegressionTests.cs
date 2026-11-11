@@ -2078,6 +2078,8 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         public int ShowCompletedWrites;
         public List<string> OpenedSessions { get; } = [];
         public void OpenChat(string sessionKey) => OpenedSessions.Add(sessionKey);
+        public void OpenSessionDashboard(string sessionKey) => OpenedDashboards.Add(sessionKey);
+        public List<string> OpenedDashboards { get; } = [];
         public void OpenConnection() { }
         public void OpenDashboard() { }
 

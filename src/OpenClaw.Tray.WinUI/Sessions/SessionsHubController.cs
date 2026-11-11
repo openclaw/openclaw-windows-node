@@ -26,6 +26,7 @@ internal interface ISessionsHubHost
     ElementTheme ActualTheme { get; }
     bool ShowCompletedSessions { get; set; }
     void OpenChat(string sessionKey);
+    void OpenSessionDashboard(string sessionKey);
     void OpenConnection();
     void OpenDashboard();
 }
@@ -666,6 +667,8 @@ internal sealed class SessionsHubController
     // ── Session actions ──
 
     public void OpenInChat(string key) => _host.OpenChat(key);
+
+    public void OpenSessionDashboard(string key) => _host.OpenSessionDashboard(key);
 
     public void OpenConnection() => _host.OpenConnection();
 

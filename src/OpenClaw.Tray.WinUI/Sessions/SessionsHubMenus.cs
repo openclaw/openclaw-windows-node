@@ -31,6 +31,8 @@ internal static class SessionsHubMenus
         var items = new List<MenuFlyoutItemBase>
         {
             SessionsHubView.Item(T("OpenInChat"), FluentIconCatalog.Chat, () => controller.OpenInChat(row.Key), row.Kind != "global"),
+            SessionsHubView.Item(LocalizationHelper.GetString("SessionsPage_OpenDashboard.Text"), FluentIconCatalog.DashboardView,
+                () => controller.OpenSessionDashboard(row.Key)),
             MenuSeparator(),
         };
         var extrasInserted = false;

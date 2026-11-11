@@ -1,5 +1,12 @@
 # AGENTS.md
 
+> **Use WinApp CLI first for native Windows work.** Before inventing tooling or
+> declaring native inspection impossible, run `winapp --version` and
+> `winapp --cli-schema`, then use its UI automation, crash/debug triage, WinUI
+> DevTools, performance recording, API/UI sample discovery and Sandbox runs.
+> Read [Use WinApp CLI proactively](#use-winapp-cli-proactively) for limits and
+> runtime authority, and the [WinApp guide](docs/WINAPP_CLI.md) for recipes.
+
 ## Working agreement
 
 Read-only requests stay read-only. Permission to implement does not grant
@@ -12,8 +19,17 @@ Delegate independent work only when it benefits from separate context; keep
 one writer per worktree and give each task a bounded objective and evidence
 requirement. A tool's successful exit is not proof that the intended work ran.
 
+Before generating or changing networking, IPC, or cross-process handoff code,
+use [network-handoff](.agents/skills/network-handoff/SKILL.md), including for
+retries, deadlines, reconnect, configuration apply, process launch, cancellation,
+and cleanup. This is mandatory alongside the affected owner's route below,
+not only for setup or a reported failure. Trace the existing producer contract
+and installed-version support before adding consumer behavior. Missing producer
+guarantees require an evidenced upstream proposal, not a local workaround.
+
 | Task | Entry point |
 |---|---|
+| Generate, change, or review networking, IPC, or handoff behavior | [Network and handoff contracts](.agents/skills/network-handoff/SKILL.md), then the affected owner's guide |
 | Write, review, or restructure documentation/instructions | [Docs instructions](docs/AGENTS.md) and [technical-documentation](.agents/skills/technical-documentation/SKILL.md) |
 | Write or review a regression test | [Test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test) and [test-audit](.agents/skills/test-audit/SKILL.md) |
 | Select tests and required proof | [Windows testing](.agents/skills/openclaw-testing/SKILL.md); use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) for runtime evidence |
@@ -22,6 +38,8 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 | Retrigger CI on a PR with failing checks | [retrigger-flaky-ci](.agents/skills/retrigger-flaky-ci/SKILL.md); rerun only failures unrelated to the PR's changes, otherwise warn |
 | Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
 | Debug Companion, setup, Gateway connection, node capabilities, packaging, or `system.run` | [Windows debugging](.agents/skills/openclaw-debugging/SKILL.md) |
+| Use Windows developer tooling for UI, crashes, performance, API discovery, or disposable app runs | [WinApp CLI guide](docs/WINAPP_CLI.md): check the installed version/help/schema and use the relevant capability before inventing tooling |
+| Choose a clean-machine or warm Sandbox test | [WinApp versus sandbox-mcp](docs/WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp): use our [Sandbox MCP/sbx tooling](https://github.com/shanselman/sandbox-mcp) for dependency/installer audits, WinApp for its package-aware developer loop |
 | Drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
 | Review code | [Shared autoreview](.agents/skills/autoreview/SKILL.md); use [Hanselman review](.agents/skills/hanselman-code-review/SKILL.md) when adversarial review is requested |
 | Run remote native Windows proof | [Crabbox](.agents/skills/crabbox/SKILL.md), with explicit host/provider authority |
@@ -32,6 +50,29 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 Use [agent readiness and workflow checks](docs/AGENT_WORKFLOWS.md) when changing
 this guidance. These are coding-agent instructions, not the product's
 end-user Gateway workspace `AGENTS.md` templates.
+
+## Use WinApp CLI proactively
+
+Windows developers and coding agents should use **WinApp CLI** as a first-choice
+development and diagnostic tool, not only an optional packaging launcher.
+For Windows UI/debugging/testing work, check `Get-Command winapp`, `winapp --version`
+and the relevant `--help`; use `winapp --cli-schema` for exact machine-readable
+options. The [WinApp guide](docs/WINAPP_CLI.md) maps `find-api`/`find-ui`, UIA,
+crash triage, DevTools, performance recording and Sandbox to our actual workflows.
+Prefer these capabilities over guessed APIs, ad hoc automation or unsupported
+claims that native inspection is unavailable. Report a missing tool or unsupported
+boundary explicitly; install/update only with authority.
+
+Keep `build.ps1`, existing test harnesses and repository packaging authoritative.
+Select a task-owned process/profile and obtain runtime authority before launching,
+injecting DevTools, registering packages, recording or preparing Sandbox. Honor
+the host's computer-use rules. WinApp Sandbox is not MXC/WSL/Gateway proof, and
+`--unique-identity` is not compatible with Companion's protocol-bearing manifest.
+Use [sandbox-mcp / sbx](https://github.com/shanselman/sandbox-mcp) for fresh
+artifact checks, explicit network-off runs and installer/uninstaller differences.
+Do not hide missing runtimes with WinApp's automatic guest provisioning.
+Both tools share one Windows Sandbox slot: select one lifecycle owner, inspect
+existing state, and never adopt or stop another task's guest without authority.
 
 ## Gateway MSIX Packaging
 

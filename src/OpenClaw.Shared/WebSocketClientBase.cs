@@ -880,8 +880,9 @@ public abstract class WebSocketClientBase : IDisposable
         long expectedConnectionGeneration,
         CancellationToken cancellationToken)
     {
+        var transportCancellation = _cts.Token;
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            _cts.Token,
+            transportCancellation,
             cancellationToken);
         try
         {
@@ -910,11 +911,13 @@ public abstract class WebSocketClientBase : IDisposable
             try
             {
                 var written = Encoding.UTF8.GetBytes(message, buffer);
+                linkedCancellation.Token.ThrowIfCancellationRequested();
+                // A caller may leave the queue, but aborting a partial frame closes the shared socket.
                 await ws.SendAsync(
                         buffer.AsMemory(0, written),
                         WebSocketMessageType.Text,
                         true,
-                        linkedCancellation.Token)
+                        transportCancellation)
                     .ConfigureAwait(false);
                 return IsCurrentConnection(ws, expectedConnectionGeneration);
             }

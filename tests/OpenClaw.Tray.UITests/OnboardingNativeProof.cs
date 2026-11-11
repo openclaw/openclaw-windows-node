@@ -241,6 +241,9 @@ internal static class OnboardingNativeProof
         finally { CompositionTarget.Rendering -= OnRendering; }
     }
 
+    /// <summary>Verify a valid same-process HWND without changing activation or foreground state.</summary>
+    internal static void AssertOwned(Window window) => AssertOwned(Handle(window));
+
     internal static void ActivateOwned(Window window)
     {
         var handle = Handle(window);

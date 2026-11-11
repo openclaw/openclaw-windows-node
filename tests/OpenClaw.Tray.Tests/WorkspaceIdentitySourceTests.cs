@@ -119,7 +119,79 @@ public sealed class WorkspaceIdentitySourceTests
         Assert.Equal("gateway-owner", Assert.Single(proxy.AvatarRequests).ProfileId);
         Assert.True(source.IsSharedOwner);
         Assert.Equal("Owner Person", source.DisplayName);
+        Assert.Equal("Owner Person", source.SharedOwnerName);
         Assert.Null(source.Avatar);
+    }
+
+    private static string Label(WorkspaceIdentitySource source) =>
+        source.FooterLabel("Owner", "Shared owner", name => name + " · Shared owner");
+
+    [Theory]
+    [InlineData("""{"profile":{"id":"gateway-owner","displayName":"  Barbara  "}}""", "Barbara · Shared owner")]
+    [InlineData("""{"profile":{"id":"gateway-owner","displayName":"Barbara Person"}}""", "Barbara · Shared owner")]
+    [InlineData("""{"profile":{"id":"gateway-owner","displayName":"   ","emails":["owner@example.test"]}}""", "Shared owner")]
+    [InlineData("""{"profile":{"id":"gateway-owner","emails":["owner@example.test"]}}""", "Shared owner")]
+    [InlineData("""{"profile":{"id":"gateway-owner"}}""", "Shared owner")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Ada"}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"  Ada Lovelace  "}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Ada\tAugusta\nLovelace"}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Ada\u00a0Lovelace"}}""", "Ada")]
+    [InlineData("""{"profile":{"id":"person","displayName":"Mary-Jane Watson"}}""", "Mary-Jane")]
+    [InlineData("""{"profile":{"id":"person","displayName":"\u674e\u660e"}}""", "\u674e\u660e")]
+    [InlineData("""{"profile":{"id":"person","emails":["ada@example.test"]}}""", "ada@example.test")]
+    [InlineData("""{"profile":{"id":"person with spaces"}}""", "person with spaces")]
+    [InlineData("""{"profile":{"id":"person"}}""", "person")]
+    public async Task FooterShowsSavedSharedOwnerNameWithMarkerButNeverItsEmailOrId(string profile, string expected)
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(JsonDocument.Parse(profile).RootElement.Clone());
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        Assert.Equal("Owner", Label(source));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Equal(expected, Label(source));
+    }
+
+    [Fact]
+    public async Task SharedOwnerNameFollowsTheCurrentProfile()
+    {
+        var (client, proxy) = Gateway();
+        object current = new { profile = new { id = "gateway-owner", displayName = "Barbara" } };
+        proxy.Response = () => Task.FromResult(JsonSerializer.SerializeToElement(current));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Equal("Barbara · Shared owner", Label(source));
+        current = new { profile = new { id = "person", displayName = "Ada" } };
+        await source.RefreshAsync(invalidate: true);
+        Assert.Null(source.SharedOwnerName);
+        Assert.Equal("Ada", Label(source));
+        current = new { profile = new { id = "gateway-owner" } };
+        await source.RefreshAsync(invalidate: true);
+        Assert.Null(source.SharedOwnerName);
+        Assert.Equal("Shared owner", Label(source));
+    }
+
+    [Fact]
+    public async Task FooterShortensOnlyTheSavedNameAndClearsItOnDisconnect()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Response = () => Task.FromResult(Profile("Ada Lovelace"));
+        var source = new WorkspaceIdentitySource(() => { }, category => Assert.Fail(category));
+        source.SetConnection(client, ConnectionStatus.Connected);
+        await source.RefreshAsync();
+        Assert.Equal("Ada", Label(source));
+        Assert.Equal("Ada Lovelace", source.DisplayName);
+
+        proxy.Response = () => Task.FromResult(Profile(null, "ada@example.test"));
+        await source.RefreshAsync(invalidate: true);
+        Assert.Equal("ada@example.test", Label(source));
+
+        proxy.Response = () => Task.FromResult(Profile("Grace Hopper"));
+        await source.RefreshAsync(invalidate: true);
+        Assert.Equal("Grace", Label(source));
+        source.SetConnection(null, ConnectionStatus.Disconnected);
+        Assert.Equal("Owner", Label(source));
     }
 
     [Fact]
@@ -234,22 +306,25 @@ public sealed class WorkspaceIdentitySourceTests
                 "malformed" => Task.FromResult(JsonSerializer.SerializeToElement(new { })),
                 _ => throw new GatewayRequestException("x", "FORBIDDEN", null),
             }
-            : Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner" } }));
+            : Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner", displayName = "Barbara" } }));
         var source = new WorkspaceIdentitySource(() => { }, _ => { });
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
         Assert.True(source.IsSharedOwner);
+        Assert.Equal("Barbara · Shared owner", Label(source));
         fail = true;
         await source.RefreshAsync(invalidate: true);
         Assert.False(source.IsSharedOwner);
+        Assert.Null(source.SharedOwnerName);
         Assert.Null(source.DisplayName);
+        Assert.Equal("Owner", Label(source));
     }
 
     [Fact]
     public async Task ContextSwitchAndDisconnectClearSharedOwner()
     {
         var (client, proxy) = Gateway();
-        proxy.Response = () => Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner" } }));
+        proxy.Response = () => Task.FromResult(JsonSerializer.SerializeToElement(new { profile = new { id = "gateway-owner", displayName = "Barbara" } }));
         var source = new WorkspaceIdentitySource(() => { }, _ => { });
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
@@ -257,11 +332,14 @@ public sealed class WorkspaceIdentitySourceTests
         var (next, _) = Gateway();
         source.SetConnection(next, ConnectionStatus.Connected);
         Assert.False(source.IsSharedOwner);
+        Assert.Null(source.SharedOwnerName);
         Assert.Null(source.DisplayName);
         source.SetConnection(client, ConnectionStatus.Connected);
         await source.RefreshAsync();
         source.SetConnection(null, ConnectionStatus.Disconnected);
         Assert.False(source.IsSharedOwner);
+        Assert.Null(source.SharedOwnerName);
+        Assert.Equal("Owner", Label(source));
     }
 
     [Fact]
@@ -532,14 +610,17 @@ public sealed class WorkspaceIdentitySourceTests
     }
 
     [Fact]
-    public void WorkspaceFooterUsesMacOSOwnerLabelsWithoutStatusOrSetupStates()
+    public void WorkspaceFooterUsesUpstreamOwnerLabelsWithoutStatusOrSetupStates()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("_identity.IsSharedOwner ? Text(\"SharedOwner.Text\") : name ?? Text(\"Owner.Text\")", source);
+        Assert.Contains("_identity.FooterLabel(Text(\"Owner.Text\"), Text(\"SharedOwner.Text\"),", source);
+        Assert.Contains("LocalizationHelper.Format(\"WorkspaceShell_SharedOwnerNamedFormat\", ownerName)", source);
         Assert.Contains("footer.ApplyIdentity(label, name ?? \"\")", source);
         Assert.Contains("footer.ApplyAvatar(_ownerImage)", source);
+        Assert.Contains("_chat.ApplyUserIdentity(name ?? \"\", _ownerImage)", source);
+        Assert.Contains("_chat.ApplyUserIdentity(_identity.DisplayName ?? \"\", image)", source);
         Assert.DoesNotContain("settings/profile", source);
         Assert.DoesNotContain("SetUpProfile", source);
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
@@ -547,7 +628,10 @@ public sealed class WorkspaceIdentitySourceTests
             var resw = File.ReadAllText(Path.Combine(root,
                 "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
             Assert.Contains("\"WorkspaceShell_Owner.Text\"", resw);
-            Assert.Contains("\"WorkspaceShell_SharedOwner.Text\"", resw);
+            var values = System.Xml.Linq.XDocument.Parse(resw).Root!.Elements("data")
+                .ToDictionary(data => (string)data.Attribute("name")!, data => (string)data.Element("value")!);
+            // The named label keeps the same localized marker as the unnamed label.
+            Assert.Equal("{0} · " + values["WorkspaceShell_SharedOwner.Text"], values["WorkspaceShell_SharedOwnerNamedFormat"]);
             foreach (var removed in new[] { "OwnerLoading", "OwnerUnavailable", "OwnerUnnamed", "SetUpProfile" })
                 Assert.DoesNotContain("WorkspaceShell_" + removed, resw);
         }

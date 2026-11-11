@@ -7,7 +7,7 @@
     xmlns:winex="using:WinUIEx"
     MinWidth="800" MinHeight="560">
     <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
-    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown">
+    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown" KeyDown="OnRootKeyDown">
         <Grid.Resources>
             <DataTemplate x:Key="AgentIdentityTemplate">
                 <controls:AgentIdentityBadge/>
@@ -69,27 +69,9 @@
                                 <FontIcon Glyph="&#xE721;" FontSize="16"/>
                                 <Button.Flyout>
                                     <Flyout x:Name="WorkspaceSearchFlyout" Placement="BottomEdgeAlignedLeft"
-                                            Opening="OnWorkspaceSearchOpening" Opened="OnWorkspaceSearchOpened">
-                                        <AutoSuggestBox x:Name="WorkspaceSearchBox"
-                                                        AutomationProperties.AutomationId="WorkspaceSearchBox"
-                                                        QueryIcon="Find" TextMemberPath="Title" Width="320"
-                                                        PreviewKeyDown="OnWorkspaceSearchKeyDown"
-                                                        TextChanged="OnWorkspaceSearchTextChanged"
-                                                        SuggestionChosen="OnWorkspaceSearchSuggestionChosen"
-                                                        QuerySubmitted="OnWorkspaceSearchQuerySubmitted">
-                                            <AutoSuggestBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <StackPanel Orientation="Horizontal" Spacing="8" Padding="4">
-                                                        <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
-                                                        <StackPanel>
-                                                            <TextBlock Text="{Binding Title}" Style="{StaticResource BodyTextBlockStyle}"/>
-                                                            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
-                                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </AutoSuggestBox.ItemTemplate>
-                                        </AutoSuggestBox>
+                                            Opening="OnWorkspaceSearchOpening" Opened="OnWorkspaceSearchOpened"
+                                            Closed="OnWorkspaceSearchClosed">
+                                        <controls:SearchHost x:Name="WorkspaceSearchHost"/>
                                     </Flyout>
                                 </Button.Flyout>
                             </Button>

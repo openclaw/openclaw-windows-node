@@ -41,6 +41,14 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     /// <summary>The profile is the Gateway's shared-credential owner, which must not imply one identified person.</summary>
     public bool IsSharedOwner { get; private set; }
 
+    /// <summary>The shared owner's saved display name (trimmed), never its email or profile id; null otherwise.</summary>
+    public string? SharedOwnerName { get; private set; }
+
+    /// <summary>The profile's first email for the account menu; never set for the shared owner.</summary>
+    public string? Email { get; private set; }
+
+    private string? _firstName;
+
     /// <summary>Gateway-served avatar for the authenticated user; scoped to the current connection only and never persisted.</summary>
     public UserAvatarImage? Avatar { get; private set; }
 
@@ -72,9 +80,22 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         _scopeReported = false;
         DisplayName = null;
         IsSharedOwner = false;
+        SharedOwnerName = null;
+        Email = null;
+        _firstName = null;
         changed();
         return true;
     }
+
+    /// <summary>
+    /// Footer label. As in the web Control UI, a shared owner with a saved name keeps the shared marker
+    /// beside its first name (never its email or profile id); an unnamed shared owner shows the marker alone.
+    /// Other profiles show their first name, else their fallback label, and no known profile shows Owner.
+    /// </summary>
+    public string FooterLabel(string owner, string sharedOwner, Func<string, string> namedSharedOwner) =>
+        IsSharedOwner
+            ? _firstName is { } name ? namedSharedOwner(name) : sharedOwner
+            : _firstName ?? DisplayName ?? owner;
 
     public Task RefreshAsync(bool invalidate = false)
     {
@@ -193,6 +214,9 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 var profile = ReadProfile(response);
                 DisplayName = profile.DisplayName;
                 IsSharedOwner = profile.ProfileId == GatewayOwnerProfileId;
+                SharedOwnerName = IsSharedOwner ? profile.SavedName : null;
+                Email = IsSharedOwner ? null : profile.Email;
+                _firstName = profile.SavedName?.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0];
                 var key = (profile.ProfileId, profile.AvatarRevision);
                 var refetch = _forceAvatar || key != _avatarKey;
                 if (key != _avatarKey)
@@ -224,6 +248,9 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 if (_invalidateAgain) continue;
                 DisplayName = null;
                 IsSharedOwner = false;
+                SharedOwnerName = null;
+                Email = null;
+                _firstName = null;
                 Avatar = null;
                 _avatarKey = null;
                 var failure = Classify(ex);
@@ -307,7 +334,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         }
     }
 
-    internal readonly record struct SelfProfile(string DisplayName, string ProfileId, string? AvatarRevision);
+    internal readonly record struct SelfProfile(string DisplayName, string ProfileId, string? AvatarRevision, string? SavedName, string? Email = null);
 
     internal static string ReadDisplayName(JsonElement response) => ReadProfile(response).DisplayName;
 
@@ -352,6 +379,6 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
             };
 
         var profileId = id.GetString()!;
-        return new SelfProfile(displayName ?? firstEmail ?? profileId, profileId, revision);
+        return new SelfProfile(displayName ?? firstEmail ?? profileId, profileId, revision, displayName, firstEmail);
     }
 }

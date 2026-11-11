@@ -64,7 +64,7 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
             {
                 using var agents = System.Text.Json.JsonDocument.Parse("""
                     {"defaultId":"main","mainKey":"main","agents":[
-                      {"id":"main","name":"Roster alias","identity":{"name":"Configured assistant","emoji":"C","avatarUrl":"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Crect%20width='32'%20height='32'%20fill='teal'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='8'%20fill='white'/%3E%3C/svg%3E"}},
+                      {"id":"main","identity":{"name":"Configured assistant","emoji":"C","avatarUrl":"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Crect%20width='32'%20height='32'%20fill='teal'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='8'%20fill='white'/%3E%3C/svg%3E"}},
                       {"id":"research","identity":{"name":"Research assistant","emoji":"\ud83d\udd2c"}},
                       {"id":"fallback","name":"No configured icon"}
                     ]}
@@ -243,6 +243,9 @@ public sealed partial class SessionsPage : Page, ISessionsHubHost, ISettingsPage
         CurrentApp.PendingChatSessionKey = sessionKey;
         ((IAppCommands)CurrentApp).Navigate("chat");
     }
+
+    void ISessionsHubHost.OpenSessionDashboard(string sessionKey) =>
+        ((IAppCommands)CurrentApp).Navigate(DashboardsRoute.ForSession(sessionKey));
 
     void ISessionsHubHost.OpenConnection() => ((IAppCommands)CurrentApp).Navigate("connection");
 

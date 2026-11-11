@@ -65,11 +65,11 @@ public sealed class ReactorMarkdownTableProofTests
                 _ui.Container.Children.Add(proofSurface);
             });
             await _ui.YieldToRenderAsync();
-            await _ui.RunOnUIAsync(() => VisualTestCapture.CaptureAsync(proofSurface!, "ReactorMarkdownTable"));
-            await _ui.PauseAsync("GFM table and literal pipe fence at 320 px");
 
             await _ui.RunOnUIAsync(() =>
             {
+                // A dispatcher yield is not a layout barrier; capture is optional in CI.
+                _ui.Container.UpdateLayout();
                 var table = Assert.Single(
                     FindLogical<Grid>(root!),
                     grid => grid.ColumnDefinitions.Count == 2 && grid.RowDefinitions.Count == 6);
@@ -111,6 +111,8 @@ public sealed class ReactorMarkdownTableProofTests
                     grid => grid.ColumnDefinitions.Count == 2 && grid.RowDefinitions.Count == 6);
                 Assert.InRange(host!.ActualWidth, 1, 320);
             });
+            await _ui.RunOnUIAsync(() => VisualTestCapture.CaptureAsync(proofSurface!, "ReactorMarkdownTable"));
+            await _ui.PauseAsync("GFM table and literal pipe fence at 320 px");
         }
         finally
         {

@@ -107,8 +107,38 @@ internal enum InitialTailLanding
     Wait,
     Landed,
     Retry,
+    CorrectOffset,
     GiveUp,
 }
+
+// Content-free value copy for the existing GiveUp warning. It never retains the
+// target object or correlation/generation identities and cannot drive navigation.
+internal readonly record struct InitialTailDiagnosticSnapshot(
+    int ObservedFrames,
+    int Retries,
+    int SettledFrames,
+    bool HasExpectedTarget,
+    bool HasCorrelation,
+    bool BringCompleted,
+    bool AttemptActive);
+
+// One attempt's numeric observations, never navigation inputs. Null means the
+// read was unavailable; zero is a real observed offset. No native objects survive.
+internal readonly record struct InitialTailAttemptDiagnostics(
+    double? ProposedOffset,
+    double? BringOffset,
+    double? BringScrollableHeight,
+    int? TargetIndex,
+    double? CompletedOffset,
+    double? CompletedScrollableHeight,
+    bool? CompletionSourceItemMatches,
+    double? MaxObservedOffset);
+
+// Values at our callback only: later native listeners may still change the args.
+// Null is an unavailable/failed read, not false. Never used to control navigation.
+internal readonly record struct InitialTailBringOptionsObservation(
+    bool? CancelAtCallback,
+    bool? AnimationDesiredAtCallback);
 
 // A dispatched bring-into-view can be dropped or reset by a concurrent layout
 // (for example a session switch restoring cached rows), leaving the reader at
@@ -132,6 +162,17 @@ internal sealed class InitialTailConfirmation
     private object? _targetItem;
     private bool _bringCompleted;
     private bool _attemptActive;
+    private bool _offsetCorrection;
+    private InitialTailAttemptDiagnostics _attemptDiagnostics;
+    private InitialTailBringOptionsObservation _bringOptionsObservation;
+
+    public InitialTailBringOptionsObservation BringOptionsObservation => _bringOptionsObservation;
+
+    public InitialTailAttemptDiagnostics AttemptDiagnostics => _attemptDiagnostics;
+
+    public InitialTailDiagnosticSnapshot Diagnostics => new(
+        _observedFrames, _retries, _settledFrames, _targetItem is not null,
+        _correlationId is not null, _bringCompleted, _attemptActive);
 
     public int Reset(object? targetItem = null)
     {
@@ -143,11 +184,17 @@ internal sealed class InitialTailConfirmation
 
     public bool IsCurrent(int generation) => generation == _generation;
 
+    public bool CanCorrectOffset(object? targetItem) =>
+        !_attemptActive && _bringCompleted && _correlationId is not null
+        && targetItem is not null && ReferenceEquals(_targetItem, targetItem);
+
     public void Invalidate()
     {
         _generation++;
         _attemptActive = false;
         _targetItem = null;
+        _attemptDiagnostics = default;
+        _bringOptionsObservation = default;
     }
 
     public void BeginAttempt(object? targetItem = null)
@@ -157,27 +204,86 @@ internal sealed class InitialTailConfirmation
         _targetItem = targetItem;
         _bringCompleted = false;
         _attemptActive = true;
+        _offsetCorrection = false;
+        _attemptDiagnostics = default;
+        _bringOptionsObservation = default;
     }
 
-    public void BringingIntoView(int correlationId, object? targetItem)
+    public void OffsetCorrectionStarted(int correlationId)
     {
-        if (!_attemptActive || correlationId < 0 || _targetItem is null
+        if (!_attemptActive || _targetItem is null || correlationId < 0)
+            return;
+
+        _offsetCorrection = true;
+        _correlationId = correlationId;
+        _bringCompleted = false;
+        _settledFrames = 0;
+    }
+
+    public void BringingIntoView(int correlationId, object? targetItem,
+        (double ProposedOffset, double Offset, double ScrollableHeight)? geometry = null, int? targetIndex = null)
+    {
+        if (!_attemptActive || _offsetCorrection || correlationId < 0 || _targetItem is null
             || !ReferenceEquals(_targetItem, targetItem))
             return;
 
         _correlationId = correlationId;
         _bringCompleted = false;
         _settledFrames = 0;
+        _bringOptionsObservation = default;
+        _attemptDiagnostics = _attemptDiagnostics with
+        {
+            ProposedOffset = Finite(geometry?.ProposedOffset),
+            BringOffset = Finite(geometry?.Offset),
+            BringScrollableHeight = Finite(geometry?.ScrollableHeight),
+            TargetIndex = targetIndex,
+            CompletedOffset = null,
+            CompletedScrollableHeight = null,
+            CompletionSourceItemMatches = null,
+        };
+        ObserveOffset(geometry?.Offset);
     }
 
-    public void ScrollCompleted(int correlationId)
+    public void ObserveBringOptions(int correlationId, object? targetItem,
+        bool? cancelAtCallback, bool? animationDesiredAtCallback)
+    {
+        if (!_attemptActive || _correlationId != correlationId || _targetItem is null
+            || !ReferenceEquals(_targetItem, targetItem))
+            return;
+
+        _bringOptionsObservation = new(cancelAtCallback, animationDesiredAtCallback);
+    }
+
+    public void ScrollCompleted(int correlationId,
+        (double Offset, double ScrollableHeight)? geometry = null,
+        object? currentSourceItem = null, bool sourceReadSucceeded = false)
     {
         if (!_attemptActive || _correlationId != correlationId)
             return;
 
         _bringCompleted = true;
         _settledFrames = 0;
+        _attemptDiagnostics = _attemptDiagnostics with
+        {
+            CompletedOffset = Finite(geometry?.Offset),
+            CompletedScrollableHeight = Finite(geometry?.ScrollableHeight),
+            CompletionSourceItemMatches = sourceReadSucceeded
+                ? _targetItem is not null && ReferenceEquals(_targetItem, currentSourceItem) : null,
+        };
+        ObserveOffset(geometry?.Offset);
     }
+
+    public void ObserveOffset(double? offset)
+    {
+        if (_attemptActive && _correlationId is not null && Finite(offset) is { } value)
+            _attemptDiagnostics = _attemptDiagnostics with
+            {
+                MaxObservedOffset = Math.Max(_attemptDiagnostics.MaxObservedOffset ?? value, value),
+            };
+    }
+
+    private static double? Finite(double? value) =>
+        value is { } number && double.IsFinite(number) ? number : null;
 
     public void GeometryChanged() => _settledFrames = 0;
 
@@ -207,7 +313,7 @@ internal sealed class InitialTailConfirmation
 
         _retries++;
         _settledFrames = 0;
-        return InitialTailLanding.Retry;
+        return _bringCompleted ? InitialTailLanding.CorrectOffset : InitialTailLanding.Retry;
     }
 }
 

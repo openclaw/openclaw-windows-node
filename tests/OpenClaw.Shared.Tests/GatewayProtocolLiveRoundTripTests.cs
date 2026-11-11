@@ -33,6 +33,13 @@ namespace OpenClaw.Shared.Tests;
 /// </summary>
 public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 {
+    private const string TransitionTimeoutVariable = "OPENCLAW_TEST_GATEWAY_TRANSITION_TIMEOUT_SECONDS";
+    // Ceiling for observing a connection transition the test triggered; loaded runners
+    // can delay delivery well past the client's ~1 s reconnect backoff.
+    private static readonly TimeSpan TransitionTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(TransitionTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
+
     private readonly ITestOutputHelper _output;
     private readonly string _identityDir;
 
@@ -104,6 +111,41 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         Assert.Equal(key, session.Key);
         Assert.Equal(archived, session.Archived);
         Assert.Equal(title, SessionDisplayResolver.Resolve(session).Title);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OlderHistory_UsesOpaqueCursorOrCanonicalBoundaryOnWire(bool boundary)
+    {
+        using var server = new LoopbackGatewayServer();
+        var request = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.OnMethod("chat.history", parameters =>
+        {
+            request.TrySetResult(parameters.Clone());
+            return new { sessionId = "instance", messages = Array.Empty<object>() };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        var page = boundary ? new ChatHistoryPageRequest(null, "instance", "first-message")
+            : new ChatHistoryPageRequest("opaque:older", "instance");
+        await client.RequestChatHistoryAsync("agent:main:main", page: page);
+        var sent = await request.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("agent:main:main", sent.GetProperty("sessionKey").GetString());
+        Assert.Equal(3 * 1024 * 1024, sent.GetProperty("maxBytes").GetInt32());
+        Assert.Equal(boundary ? 1 : 1000, sent.GetProperty("limit").GetInt32());
+        Assert.Equal(!boundary, sent.TryGetProperty("cursor", out var cursor));
+        if (boundary)
+        {
+            Assert.Equal("first-message", sent.GetProperty("messageId").GetString());
+            Assert.Equal("instance", sent.GetProperty("sessionId").GetString());
+        }
+        else
+        {
+            Assert.Equal("opaque:older", cursor.GetString());
+            Assert.False(sent.TryGetProperty("messageId", out _));
+        }
         await client.DisconnectAsync();
     }
 
@@ -590,26 +632,42 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 
             // Real server-initiated drop, mirroring a gateway restart: a
             // one-way Close frame. The gate must hold from drop observation
-            // onward.
-            await server.CloseOutputOnCurrentSocketAsync("gateway restart");
-            _output.WriteLine("[trace] server sent one-way Close frame on socket #1; client drop observation begins");
-            for (var i = 0; i < 120 && client.IsConnectedToGateway; i++)
-                await Task.Delay(50);
-            Assert.False(client.IsConnectedToGateway);
-            _output.WriteLine("[trace] client observed drop: handshake snapshot cleared, readiness false");
+            // onward. The reconnect socket is accepted without a challenge so
+            // the disconnected window stays open until the test delivers it.
+            var socket2Accepted = server.WaitForNextSocketAsync();
+            server.WithholdGreetingOnAccept();
+            var disconnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnDropStatus(object? _, ConnectionStatus status)
+            {
+                if (status == ConnectionStatus.Disconnected) disconnected.TrySetResult(true);
+            }
+            client.StatusChanged += OnDropStatus;
+            try
+            {
+                await server.CloseOutputOnCurrentSocketAsync("gateway restart");
+                _output.WriteLine("[trace] server sent one-way Close frame on socket #1; client drop observation begins");
+                await disconnected.Task.WaitAsync(TransitionTimeout);
+                Assert.False(client.IsConnectedToGateway);
+                _output.WriteLine("[trace] client observed drop: handshake snapshot cleared, readiness false");
 
-            // The same mutation submitted during the disconnected window must
-            // also report not-sent, with nothing reaching the wire.
-            Assert.False(await client.ResetSessionAsync("agent:main:main"));
-            Assert.Throws<InvalidOperationException>(() => server.FrameFor("sessions.reset", occurrence: 1));
-            _output.WriteLine("[trace] sessions.reset during disconnected window: withheld (submission=false)");
+                // The same mutation submitted during the disconnected window must
+                // also report not-sent, with nothing reaching the wire.
+                Assert.False(await client.ResetSessionAsync("agent:main:main"));
+                Assert.Throws<InvalidOperationException>(() => server.FrameFor("sessions.reset", occurrence: 1));
+                _output.WriteLine("[trace] sessions.reset during disconnected window: withheld (submission=false)");
+            }
+            finally
+            {
+                client.StatusChanged -= OnDropStatus;
+            }
 
             // The client's real auto-reconnect path (receive-loop exit ->
             // ReconnectWithBackoffAsync, 1s+ backoff) must re-run the dance on
-            // a fresh socket: challenge is auto-sent on accept, and the gate
-            // reopens only after the fresh hello-ok.
+            // a fresh socket, and the gate reopens only after the fresh hello-ok.
+            await socket2Accepted.WaitAsync(TransitionTimeout);
+            await server.SendTextToCurrentSocketAsync(LoopbackGatewayServer.ChallengeFrame);
             var connect2 = await server.WaitFrameAsync("connect", occurrence: 1, timeoutMs: 15_000);
-            _output.WriteLine("[trace] socket #2 accepted; challenge auto-resent; connect captured: " + connect2);
+            _output.WriteLine("[trace] socket #2 accepted; challenge delivered; connect captured: " + connect2);
             for (var i = 0; i < 200 && !client.IsConnectedToGateway; i++)
                 await Task.Delay(50);
             Assert.True(client.IsConnectedToGateway);
@@ -876,6 +934,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         private readonly ConcurrentQueue<(string Method, string Frame)> _frames = new();
         private volatile string? _greeting;
         private WebSocket? _currentSocket;
+        private TaskCompletionSource<WebSocket>? _socketAcceptedAwaiter;
         private readonly HashSet<string> _silentMethods = new(StringComparer.Ordinal);
 
         public int Port { get; }
@@ -934,6 +993,19 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         /// accepted, before reading anything from the client. Used for the
         /// connect.challenge event that gates the client's connect request.</summary>
         public void SendGreetingOnAccept(string frame) => _greeting = frame;
+
+        /// <summary>Accept later sockets without the challenge, holding the
+        /// handshake until the test sends it.</summary>
+        public void WithholdGreetingOnAccept() => _greeting = null;
+
+        /// <summary>Resolves when the next client WebSocket is accepted.
+        /// Register before triggering the reconnect.</summary>
+        public Task WaitForNextSocketAsync()
+        {
+            var awaiter = new TaskCompletionSource<WebSocket>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _socketAcceptedAwaiter, awaiter);
+            return awaiter.Task;
+        }
 
         /// <summary>Challenge frame sent on accept in the handshake; also sent
         /// manually mid-connection by the withheld-handshake trace tests.</summary>
@@ -1078,6 +1150,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 
             var socket = wsCtx.WebSocket;
             Volatile.Write(ref _currentSocket, socket);
+            Interlocked.Exchange(ref _socketAcceptedAwaiter, null)?.TrySetResult(socket);
             var greeting = _greeting;
             if (!string.IsNullOrEmpty(greeting))
             {

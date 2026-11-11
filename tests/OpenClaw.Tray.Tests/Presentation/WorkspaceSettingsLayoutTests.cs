@@ -42,42 +42,23 @@ public sealed class WorkspaceSettingsLayoutTests
             Assert.Equal("OnTogglePane", (string?)button.Attribute("Click"));
             Assert.NotEqual("False", (string?)button.Attribute("IsHitTestVisible"));
         }
-        var source = File.ReadAllText(Path.Combine(root,
-            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        var focus = source[source.IndexOf("private bool HasChatNavigationFocus()", StringComparison.Ordinal)..
-            source.IndexOf("private void OnWorkspaceSizeChanged(", StringComparison.Ordinal)];
-        Assert.Contains("element == NavigationSection || element == PaneToggleChrome", focus);
     }
 
     [Theory]
-    [InlineData(0, true, false, true)]
-    [InlineData(719, true, true, false)]
-    [InlineData(720, true, false, true)]
-    [InlineData(800, true, false, true)]
-    [InlineData(719, false, true, false)]
-    [InlineData(720, false, false, false)]
-    public void HostWidth_SelectsChromeWithoutChangingRequestedDestination(
-        double width, bool requestedEmbedded, bool narrow, bool effectiveEmbedded)
+    [InlineData(false, false, false, 0, 0)]
+    [InlineData(false, false, true, 0, 0)]
+    [InlineData(false, true, false, 0, 0)]
+    [InlineData(false, true, true, 0, 0)]
+    [InlineData(true, true, false, 0, 0)]
+    [InlineData(true, true, true, 0, 0)]
+    [InlineData(true, false, false, 56, 0)]
+    [InlineData(true, false, true, 0, 56)]
+    public void EmbeddedHistory_IsAllocatedExactlyOnce(
+        bool embedded, bool paneOpen, bool supportsInset, double margin, double inset)
     {
-        var destination = WorkspaceDestination.Settings("usage", requestedEmbedded);
-        var layout = WorkspaceSettingsLayout.Project(width, destination.Embedded);
-        Assert.Equal(narrow, layout.Narrow);
-        Assert.Equal(effectiveEmbedded, layout.Embedded);
-        Assert.Equal("usage", destination.CompanionTag);
-        Assert.Equal(requestedEmbedded, destination.Embedded);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void NarrowExpansionNeverOverridesTheWidePreference(bool preferredOpen)
-    {
-        var wide = WorkspaceSettingsLayout.Project(800, embedded: false);
-        var narrow = WorkspaceSettingsLayout.Project(719, embedded: false);
-        Assert.Equal(preferredOpen, wide.PaneOpen(preferredOpen, narrowExpanded: false));
-        Assert.False(narrow.PaneOpen(preferredOpen, narrowExpanded: false));
-        Assert.True(narrow.PaneOpen(preferredOpen, narrowExpanded: true));
-        Assert.Equal(preferredOpen, wide.PaneOpen(preferredOpen, narrowExpanded: true));
+        var result = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(embedded, paneOpen, supportsInset);
+        Assert.Equal(margin, result.HostMarginTop);
+        Assert.Equal(inset, result.PageTopInset);
     }
 
     [Theory]
@@ -85,94 +66,32 @@ public sealed class WorkspaceSettingsLayoutTests
     [InlineData(false, true, 0)]
     [InlineData(true, false, 0)]
     [InlineData(true, true, 0)]
-    public void PageTopInset_ReservesHistoryBandOnlyForCollapsedFullSettings(
-        bool contentOnly, bool paneOpen, double expected)
-    {
+    public void FullSettingsHistory_DoesNotDuplicateEmbeddedAllocation(bool contentOnly, bool paneOpen, double expected) =>
         Assert.Equal(expected, WorkspaceSettingsLayout.PageTopInset(contentOnly, paneOpen));
-    }
-
-    [Theory]
-    [InlineData(800)]
-    [InlineData(1024)]
-    [InlineData(1280)]
-    public void ReachableWindowSizesPreserveExistingEmbeddingAndPanePreference(double width)
-    {
-        foreach (var embedded in new[] { false, true })
-        foreach (var preferredOpen in new[] { false, true })
-        {
-            var layout = WorkspaceSettingsLayout.Project(width, embedded);
-            Assert.False(layout.Narrow);
-            Assert.Equal(embedded, layout.Embedded);
-            Assert.Equal(preferredOpen, layout.PaneOpen(preferredOpen, narrowExpanded: false));
-        }
-    }
-
-    [Theory]
-    [InlineData(false, false, false, 0, 0)]
-    [InlineData(false, false, true, 0, 0)]
-    [InlineData(true, true, false, 0, 0)]
-    [InlineData(true, true, true, 0, 0)]
-    [InlineData(true, false, false, 56, 0)]
-    [InlineData(true, false, true, 0, 56)]
-    public void EmbeddedPageTopAllocation_AllocatesHistoryBandOnce(
-        bool embedded, bool workspacePaneOpen, bool supportsInset,
-        double expectedHostMargin, double expectedPageInset)
-    {
-        Assert.Equal((expectedHostMargin, expectedPageInset),
-            WorkspaceSettingsLayout.EmbeddedPageTopAllocation(embedded, workspacePaneOpen, supportsInset));
-    }
 
     [Fact]
-    public void ResizeDoesNotReplaceDeferredUserNavigationOrRemountThePage()
-    {
-        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        var resize = source[source.IndexOf("private void ApplySettingsLayoutAfterResize()", StringComparison.Ordinal)..
-            source.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)];
-        Assert.DoesNotContain("DeferWhileModalOpen", resize);
-        Assert.DoesNotContain("_deferred.", resize);
-        Assert.DoesNotContain("RenderDestination", resize);
-        Assert.DoesNotContain("ShowSection", resize);
-        var apply = source[source.IndexOf("private void ApplySettingsPresentation(", StringComparison.Ordinal)..
-            source.IndexOf("private bool HasChatNavigationFocus()", StringComparison.Ordinal)];
-        Assert.DoesNotContain("_navigation.", apply);
-        Assert.DoesNotContain("ShowSection", apply);
-        Assert.DoesNotContain(".Navigate(", apply);
-        var shell = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
-        Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftCompact", shell);
-        Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftMinimal", shell);
-    }
-
-    [Fact]
-    public void OptionalPageInset_PreservesOrdinaryFrameAllocationAndAppliesAfterInitialization()
+    public void OptedInPageAllocation_PreservesOrdinaryPagePaddingAndNavigationIdentity()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var shell = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
-        var allocation = shell[shell.IndexOf("private void UpdatePageAllocation()", StringComparison.Ordinal)..
+        var chrome = shell[shell.IndexOf("private void UpdatePaneChrome()", StringComparison.Ordinal)..
             shell.IndexOf("internal bool ContentOnly", StringComparison.Ordinal)];
-        Assert.Contains("_hostContentTopInset", allocation);
+        Assert.Contains("UpdatePageAllocation();", chrome);
+        var contentOnly = shell[shell.IndexOf("internal bool ContentOnly", StringComparison.Ordinal)..
+            shell.IndexOf("private void UpdatePageAllocation()", StringComparison.Ordinal)];
+        Assert.Contains("ApplyNavPaneState(settings);", contentOnly);
+        Assert.Contains("UpdatePageAllocation();", contentOnly);
+        var allocation = shell[shell.IndexOf("private void UpdatePageAllocation()", StringComparison.Ordinal)..
+            shell.IndexOf("public object? CurrentPage", StringComparison.Ordinal)];
+        Assert.Contains("ContentFrame.Content is ISettingsPageContentInset page", allocation);
+        Assert.Contains("page.ApplyTopInset(ContentOnly ? _hostContentTopInset", allocation);
         Assert.Contains("WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen)", allocation);
         Assert.Contains("SetHostContentTopInset(double inset)", allocation);
-        Assert.Contains("ContentFrame.Content is ISettingsPageContentInset page", allocation);
-        Assert.Contains("ContentFrame.Margin = new Thickness(0);", allocation);
-        Assert.Contains("page.ApplyTopInset(inset);", allocation);
-        Assert.Contains("ContentFrame.Margin = new Thickness(0, inset, 0, 0);", allocation);
+        Assert.DoesNotContain("ContentFrame.Margin", allocation);
         Assert.DoesNotContain(".Navigate(", allocation);
-
-        var paneChrome = shell[shell.IndexOf("private void UpdatePaneChrome()", StringComparison.Ordinal)..
-            shell.IndexOf("// Back/Forward live in the window-level pair", StringComparison.Ordinal)];
-        Assert.Contains("UpdatePageAllocation();", paneChrome);
-        var contentOnly = shell[shell.IndexOf("internal bool ContentOnly", StringComparison.Ordinal)..
-            shell.IndexOf("public object? CurrentPage", StringComparison.Ordinal)];
-        Assert.Contains("UpdatePageAllocation();", contentOnly);
-
         var navigated = shell[shell.IndexOf("private void OnContentFrameNavigated(", StringComparison.Ordinal)..
             shell.IndexOf("private void OnContentFrameNavigationFailed(", StringComparison.Ordinal)];
-        Assert.Contains("InitializeCurrentPage();", navigated);
-        Assert.Contains("UpdatePageAllocation();", navigated);
-        Assert.Contains("ArmContentReady(", navigated);
         Assert.True(navigated.IndexOf("InitializeCurrentPage();", StringComparison.Ordinal) <
             navigated.IndexOf("PageContentChanged?.Invoke();", StringComparison.Ordinal));
         Assert.True(navigated.IndexOf("PageContentChanged?.Invoke();", StringComparison.Ordinal) <
@@ -182,23 +101,52 @@ public sealed class WorkspaceSettingsLayoutTests
         var window = File.ReadAllText(Path.Combine(root,
             "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
         var hostAllocation = window[window.IndexOf("private void UpdateEmbeddedPageTopAllocation(", StringComparison.Ordinal)..
-            window.IndexOf("private bool HasChatNavigationFocus()", StringComparison.Ordinal)];
+            window.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)];
         Assert.Contains("view.SetHostContentTopInset(allocation.PageTopInset);", hostAllocation);
-        Assert.Contains("SettingsSection.Margin", hostAllocation);
+        Assert.Contains("allocation.HostMarginTop", hostAllocation);
         Assert.Contains("EmbeddedOperationInfo.Margin = new Thickness(0, allocation.PageTopInset, 0, 0);", hostAllocation);
         var leavingSettings = window[window.IndexOf("private void LeaveSettings()", StringComparison.Ordinal)..
             window.IndexOf("private void OnSettingsWorkspaceRoute(", StringComparison.Ordinal)];
         Assert.Contains("SetHostContentTopInset(0)", leavingSettings);
+    }
 
-        var sessionsPage = File.ReadAllText(Path.Combine(root,
-            "src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs"));
-        Assert.Contains("ISettingsPageContentInset", sessionsPage);
-        Assert.Contains("new SessionsHubRootProps(controller, _presentation)", sessionsPage);
-        Assert.Contains("_presentation.ApplyTopInset(topInset)", sessionsPage);
-        var sessionsRoot = File.ReadAllText(Path.Combine(root,
-            "src", "OpenClaw.Tray.WinUI", "Sessions", "SessionsHubRoot.cs"));
-        Assert.Contains(".Margin(0, topInset, 0, 0)", sessionsRoot);
-        Assert.Contains("Toast(context).Grid(row: 0)", sessionsRoot);
-        Assert.Contains("SessionsHubDialogView.Render(context).WithKey(\"dialog\")", sessionsRoot);
+    [Theory]
+    [InlineData("cron", "ms-appx:///Assets/SidebarIcons/Cron.svg")]
+    [InlineData("instances", "ms-appx:///Assets/SidebarIcons/Instances.svg")]
+    [InlineData("usage", "ms-appx:///Assets/SidebarIcons/Usage.svg")]
+    public void HeroIcon_ReusesExistingSidebarAsset(string tag, string expected) =>
+        Assert.Equal(expected, PinnedPages.Find(tag)!.IconUri);
+
+    [Fact]
+    public void DashboardRoot_ReconcilesStateAfterSubscriptionAndFencesQueuedUnmountedRefresh()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.Tray.WinUI", "Dashboards", "ReactorDashboardsRoot.cs"));
+        var subscription = source[source.IndexOf("var current = true;", StringComparison.Ordinal)..
+            source.IndexOf("}), state);", StringComparison.Ordinal)];
+        Assert.Contains("state.Changed += OnChanged;\n            OnChanged();", subscription.Replace("\r\n", "\n"));
+        Assert.Contains("if (current)", subscription);
+        Assert.Contains("current = false;", subscription);
+        Assert.Contains("state.Changed -= OnChanged;", subscription);
+        Assert.DoesNotContain("LoadAsync", subscription);
+        Assert.DoesNotContain("Mount(", subscription);
+    }
+
+    [Theory]
+    [InlineData(false, 56)]
+    [InlineData(true, 0)]
+    public void DashboardSessionRoute_RetainsStandaloneIdentityAcrossHistoryAllocation(bool paneOpen, double expectedInset)
+    {
+        var route = DashboardsRoute.ForSession("agent:main:report with spaces");
+        var destination = WorkspaceDestination.Settings(route);
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(destination);
+        var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(destination.Embedded, paneOpen, supportsInset: true);
+        Assert.Equal(0, allocation.HostMarginTop);
+        Assert.Equal(expectedInset, allocation.PageTopInset);
+        Assert.True(destination.Embedded);
+        Assert.Equal(route, history.Current.CompanionTag);
+        Assert.Same(destination, history.Current);
     }
 }
