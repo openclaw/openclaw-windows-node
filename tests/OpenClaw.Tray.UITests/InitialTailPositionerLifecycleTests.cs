@@ -125,32 +125,122 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
         finally { await CleanupAsync(owner); }
     }
 
-    private async Task<ItemsView> MountReaderAsync()
+    [Fact]
+    public async Task ReaderMountBarrier_CannotCompleteFromDispatcherDrainBeforeNativeLoaded()
     {
-        var items = await ui.RunOnUIAsync(() =>
+        ItemsView? items = null;
+        Grid? detachedHost = null;
+        Task? mounted = null;
+        using var cancellation = new CancellationTokenSource();
+        try
         {
-            ui.Container.Children.Clear();
-            var view = new ItemsView
+            await ui.RunOnUIAsync(() =>
             {
-                Width = 320, Height = 240,
-                Layout = new StackLayout(),
-                ItemsSource = Enumerable.Range(0, 240).Select(i => $"row-{i}").ToArray(),
-                ItemTemplate = (DataTemplate)XamlReader.Load(
-                    """<DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><ItemContainer><TextBlock Text="{Binding}" Height="40"/></ItemContainer></DataTemplate>""")
-            };
-            ui.Container.Children.Add(view);
-            return Task.FromResult(view);
-        });
-        await ui.YieldToRenderAsync();
-        await ui.RunOnUIAsync(() =>
+                ui.Container.Children.Clear();
+                detachedHost = new Grid();
+                items = CreateReader();
+                mounted = AwaitReaderMountAsync(items, () => detachedHost.Children.Add(items), cancellation.Token);
+            });
+            // Reproduce the former precondition deterministically: a dispatcher
+            // drain completes even though this native tree has not been loaded.
+            await ui.YieldToRenderAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.False(items!.IsLoaded);
+                Assert.False(mounted!.IsCompleted);
+                ui.Container.Children.Add(detachedHost!);
+            });
+            await mounted!;
+            await ui.RunOnUIAsync(() => AssertReaderMounted(items!));
+        }
+        finally
         {
+            try
+            {
+                cancellation.Cancel();
+                if (mounted is not null)
+                {
+                    try { await mounted; }
+                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                    { /* Join the canceled test-owned wait; do not suppress timeout or assertion failures. */ }
+                }
+            }
+            finally { await CleanupAsync(null); }
+        }
+    }
+
+    private Task<ItemsView> MountReaderAsync() => ui.RunOnUIAsync(async () =>
+    {
+        ui.Container.Children.Clear();
+        var items = CreateReader();
+        try
+        {
+            await AwaitReaderMountAsync(items, () => ui.Container.Children.Add(items));
+            AssertReaderMounted(items);
+            return items;
+        }
+        catch
+        {
+            ui.Container.Children.Remove(items);
+            throw;
+        }
+    });
+
+    private static ItemsView CreateReader() => new()
+    {
+        Width = 320, Height = 240,
+        Layout = new StackLayout(),
+        ItemsSource = Enumerable.Range(0, 240).Select(i => $"row-{i}").ToArray(),
+        ItemTemplate = (DataTemplate)XamlReader.Load(
+            """<DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><ItemContainer><TextBlock Text="{Binding}" Height="40"/></ItemContainer></DataTemplate>""")
+    };
+
+    private static TimeSpan MountTimeout =>
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+
+    // Must run on the fixture UI thread. Subscribe before insertion, then join
+    // actual native Loaded/layout readiness rather than assuming a queue drain
+    // scheduled the next XAML load pass. Every subscription is retired on failure.
+    private static async Task AwaitReaderMountAsync(ItemsView items, Action attach, CancellationToken cancellationToken = default)
+    {
+        var mounted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Observe()
+        {
+            if (items.IsLoaded && items.XamlRoot is not null &&
+                items.ScrollView is { IsLoaded: true, ViewportHeight: > 0, ScrollableHeight: > 60 })
+                mounted.TrySetResult();
+        }
+        void Loaded(object sender, RoutedEventArgs args) => Observe();
+        void Layout(object? sender, object args) => Observe();
+        items.Loaded += Loaded;
+        items.LayoutUpdated += Layout;
+        try
+        {
+            attach();
             items.UpdateLayout();
-            Assert.True(items.IsLoaded);
-            Assert.NotNull(items.ScrollView);
-            Assert.True(items.ScrollView.ScrollableHeight > 60);
-            Assert.Equal(0, items.ScrollView.VerticalOffset);
-        });
-        return items;
+            Observe();
+            await mounted.Task.WaitAsync(MountTimeout, cancellationToken);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException($"Reader mount did not reach native readiness: loaded={items.IsLoaded}, " +
+                $"hasXamlRoot={items.XamlRoot is not null}, scrollLoaded={items.ScrollView?.IsLoaded}, " +
+                $"viewport={items.ScrollView?.ViewportHeight}, extent={items.ScrollView?.ScrollableHeight}.", ex);
+        }
+        finally
+        {
+            items.Loaded -= Loaded;
+            items.LayoutUpdated -= Layout;
+        }
+    }
+
+    private static void AssertReaderMounted(ItemsView items)
+    {
+        Assert.True(items.IsLoaded);
+        Assert.NotNull(items.ScrollView);
+        Assert.True(items.ScrollView.ScrollableHeight > 60);
+        Assert.Equal(0, items.ScrollView.VerticalOffset);
     }
 
     private static Owner BeginInitialAtReader(ItemsView items)
