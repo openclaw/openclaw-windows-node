@@ -274,7 +274,8 @@ internal static class ToolCallCardRenderer
     private static Element BuildDetailSection(string label, string content, ChatTimelineItem? input = null)
     {
         // Selection lives on the record (see ChatMarkdownPresentation.CodeBlock): a
-        // setter-only value is overwritten with false on every Reactor pass.
+        // setter-only value is overwritten with false whenever Reactor mounts a
+        // recycled control.
         var body = (RichTextBlock(content) with { IsTextSelectionEnabled = true })
             .Set(text =>
             {

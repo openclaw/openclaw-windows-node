@@ -344,8 +344,9 @@ internal static class ChatMarkdownPresentation
                     .Margin(ChatVisuals.CodeInset, ChatVisuals.CodeHeaderTopInset,
                         ChatVisuals.CodeHeaderTrailingInset, ChatVisuals.CodeHeaderBottomInset),
                 // Declare selection on the record: Reactor writes this non-nullable flag on
-                // every mount and update, so a setter-only true flipped the reused control off
-                // and back on, and WinUI faulted releasing selection grippers mid-flip.
+                // every mount before setters run, and its pool keeps a returned RichTextBlock
+                // selectable, so a setter-only true flipped a recycled control off and back
+                // on and WinUI faulted releasing stale selection grippers mid-flip.
                 ScrollViewer((RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize, IsTextSelectionEnabled = true })
                         .Set(text =>
                         {
