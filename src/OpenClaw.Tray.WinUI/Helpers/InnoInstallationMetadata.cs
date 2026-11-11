@@ -4,9 +4,6 @@ using Microsoft.Win32;
 
 namespace OpenClawTray.Helpers;
 
-/// <summary>
-/// Refreshes the display metadata that Inno cannot update when Updatum replaces files.
-/// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed class InnoInstallationMetadata
 {
