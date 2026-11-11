@@ -27,7 +27,7 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("OnUnarchiveSession", settingsXaml);
         Assert.Contains("new ArchivedSessionsSource", settings);
         Assert.Contains("new WorkspaceSessionOperation", settings);
-        Assert.Contains("new SessionPatch { Archived = false }", settings);
+        Assert.Contains("WorkspaceSessionMenu.ArchivePatch(false, sessionId)", settings);
         var document = XDocument.Parse(settingsXaml);
         var section = Assert.Single(document.Descendants(),
             element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "ArchivedSection"));

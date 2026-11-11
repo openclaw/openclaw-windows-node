@@ -26,6 +26,9 @@
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <RootNamespace>OpenClaw.Tray.UITests</RootNamespace>
+    <!-- Preview.17 emits a public source-map helper also exported by the app.
+         Keep source mapping in the production assembly, not the test harness. -->
+    <ReactorSourceMap>false</ReactorSourceMap>
     <DefineConstants Condition="'$(LocalAiProofBaseline)' == 'true'">$(DefineConstants);LOCAL_AI_BASELINE</DefineConstants>
 
     <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the
@@ -33,6 +36,11 @@
          to escalate to an error here just because tests/Directory.Build.props
          sets TreatWarningsAsErrors=true. -->
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1904</WarningsNotAsErrors>
+
+    <!-- Reactor's Debug source-map generator emits a public ReactorSourceMapStaticInfo
+         type in every consuming assembly, so this harness would collide (CS0436) with
+         the referenced app's copy. The app keeps its source map and analyzers. -->
+    <ReactorSourceMap>false</ReactorSourceMap>
   </PropertyGroup>
 
   <ItemGroup>
@@ -57,8 +65,23 @@
     <ProjectReference Include="..\..\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj" Aliases="global,TrayRuntime" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
-    <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
+
+  <Target Name="UseSourceSetupAssetsForPriConsumerCopy"
+          AfterTargets="AddPriPayloadFilesToCopyToOutputDirectoryItems">
+    <ItemGroup>
+      <!-- Like the tray consumer, use stable sources rather than transient
+           SetupEngine.UI PRI expansion files, retaining the qualified URI paths. -->
+      <_AllChildProjectItemsWithTargetPath
+          Remove="@(_AllChildProjectItemsWithTargetPath)"
+          Condition="$([System.String]::Copy('%(_AllChildProjectItemsWithTargetPath.TargetPath)').StartsWith('OpenClaw.SetupEngine.UI\Assets\Setup\'))" />
+      <_SetupPriAssetSource Include="..\..\src\OpenClaw.Tray.WinUI\Assets\Setup\**\*" />
+      <_AllChildProjectItemsWithTargetPath Include="@(_SetupPriAssetSource)">
+        <TargetPath>OpenClaw.SetupEngine.UI\Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </_AllChildProjectItemsWithTargetPath>
+    </ItemGroup>
+  </Target>
 
   <!-- A WinExe ProjectReference copies its named PRI but not its compiled
        window payload. The unpackaged testhost also needs a default PRI name. -->

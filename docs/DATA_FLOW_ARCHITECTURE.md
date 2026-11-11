@@ -10,7 +10,7 @@ approval and sandboxing. For that end-to-end path, see the
 
 ## Overview
 
-The tray app uses a single observable model (`AppState`) as the source of truth for all gateway-cached state. A dedicated event handler service (`GatewayService`) owns all 27 WebSocket event subscriptions and dispatches updates to `AppState` on the UI thread. Pages subscribe to `AppState.PropertyChanged` for live updates.
+The tray app uses a shared observable model (`AppState`) for gateway-cached state that several surfaces read. A dedicated event handler service (`GatewayService`) owns those WebSocket event subscriptions and dispatches updates to `AppState` on the UI thread. Request/response surfaces such as Automations keep their own page store instead. Pages subscribe to `AppState.PropertyChanged` for live updates.
 
 ![AppState data flow: gateway to UI](diagrams/data-flow-appstate.svg)
 
@@ -20,21 +20,22 @@ The tray app uses a single observable model (`AppState`) as the source of truth 
 
 ### AppState (`Services/AppState.cs`)
 
-Single source of truth for all gateway-cached data. Implements `INotifyPropertyChanged`.
+Source of truth for shared gateway-cached data. Implements `INotifyPropertyChanged`.
 
 ```
 src/OpenClaw.Tray.WinUI/Services/AppState.cs
 ```
 
-**Properties** (24+): `Status`, `CurrentActivity`, `Sessions`, `Channels`, `Nodes`, `Usage`, `UsageCost`, `UsageStatus`, `GatewaySelf`, `NodePairList`, `DevicePairList`, `ModelsList`, `Presence`, `AgentsList`, `Config`, `ConfigSchema`, `CronList`, `CronStatus`, `CronRuns`, `AgentFilesList`, `AgentFileContent`, `AuthFailureMessage`, `UpdateInfo`, `LastCheckTime`
+**Properties** (20+): `Status`, `CurrentActivity`, `Sessions`, `Channels`, `Nodes`, `Usage`, `UsageCost`, `UsageStatus`, `GatewaySelf`, `NodePairList`, `DevicePairList`, `ModelsList`, `Presence`, `AgentsList`, `Config`, `ConfigSchema`, `AgentFilesList`, `AgentFileContent`, `AuthFailureMessage`, `UpdateInfo`, `LastCheckTime`
 
 **Threading model**: All property writes must happen on the UI thread (enforced by `Debug.Assert` in `SetField`). This guarantees `PropertyChanged` fires on the UI thread, so pages can update UI directly without `DispatcherQueue.TryEnqueue`.
 
 **Lifetime**: Created once in `App.OnLaunched`, lives for the app's lifetime. Accessible globally via `((App)Application.Current).AppState`. Connections come and go; pages always have a single stable view of the data.
 
+The standalone Event Stream page has been removed. Chat still consumes the Gateway `AgentEventReceived` stream directly through `IChatGatewayBridge` and `OpenClawChatDataProvider` for live rendering. `AppState` no longer retains a separate event buffer. The Connection Timeline remains a separate diagnostics action.
+
 **Key methods**:
 - `ClearCachedData()` - resets all gateway data fields on disconnect (does NOT reset `Status` - that's managed by `OnManagerStateChanged`)
-- `AddAgentEvent(evt)` - ring buffer, newest-first, capped at 400
 - `GetAgentIds()` - computed from `AgentsList` JSON
 - `SetSessionPreview/GetSessionPreview/PruneSessionPreviews` - thread-safe via lock
 
@@ -87,7 +88,7 @@ App creates `AppState` and `GatewayService` in `OnLaunched` and wires them toget
 - `IAppCommands` implementation
 
 **What moved out**:
-- 27 gateway event handlers → `GatewayService`
+- Gateway event handlers → `GatewayService`
 - 20+ `_last*` cached fields → `AppState` properties
 - Toast dedup state → `ToastService`
 - Diagnostic clipboard methods → `DiagnosticsClipboardService`
@@ -124,16 +125,26 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 |------|----------|
 | ConnectionPage | Status, NodePairList, DevicePairList, Channels, UsageCost, Sessions, GatewaySelf |
 | SessionsPage | Sessions, ModelsList |
-| UsagePage | Usage, UsageCost, UsageStatus |
-| InstancesPage | Nodes, Presence |
+| UsagePage | Nothing in AppModel. `UsagePageController` reads `sessions.usage` and `usage.status` through `IOperatorGatewayClient` |
+| SystemsPage | Status, Nodes, Presence, Sessions, NodePairList, DevicePairList (plus `SystemsInventoryChanged` and `NodeHostStatsReceived` client events) |
 | ConfigPage | Config, ConfigSchema |
-| CronPage | CronList, CronStatus, CronRuns |
+| CronPage | Status (connection only); data is request/response through `AutomationsStore`, filtered to the route agent until the user picks another agent or All agents |
 | WorkspacePage | AgentFilesList, AgentFileContent |
-| AgentEventsPage | AgentEventAdded (separate event) |
 | AboutPage | GatewaySelf |
 
 Pages that don't observe AppState: ChatPage, SettingsPage, SandboxPage,
 VoiceSettingsPage.
+
+Systems inventory comes from `environments.list`, with `node.list` and
+`system.info` supplying exact-identity joins and reported resources.
+`node.hostStats` events update those resources; no local sampler feeds the
+page directly. Windows host sampling is published to the Gateway first.
+`sessions.list` provides related loaded sessions, while `node.pair.list` and
+`device.pair.list` provide pairing awareness. Missing desktop flags remain
+unknown; invalid resource ranges are unavailable, never zero-usage
+substitutes. Legacy inventory derives only from the live Gateway handshake,
+reported nodes and presence. Local device identity marks "this device"; local
+time supports receipt/freshness, not invented Gateway records or measurements.
 
 Workspace is the only application chat host. Its retained `ChatPage` observes
 the app-owned `OpenClawChatDataProvider`, not a Settings frame or a tray popup.
@@ -158,7 +169,7 @@ HubWindow no longer caches gateway data or forwards updates to pages.
 ```
 src/OpenClaw.Tray.WinUI/Services/
 ├── AppState.cs                    - Observable model (INPC, 24+ properties)
-├── GatewayService.cs              - 27 event subscriptions, UI dispatch
+├── GatewayService.cs              - AppState event subscriptions, UI dispatch
 ├── IAppCommands.cs                - Page → App command interface
 ├── ToastService.cs                - Toast display, dedup, sound config
 ├── DiagnosticsClipboardService.cs - Copy* diagnostic clipboard methods

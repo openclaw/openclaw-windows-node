@@ -21,19 +21,20 @@ internal enum HubPageKind
     Connection,
     LocalAi,
     DefaultModel,
-    Instances,
+    Systems,
     Config,
     Usage,
     Permissions,
     Voice,
     Sandbox,
     Settings,
+    About,
     Notifications,
     Debug,
     Sessions,
-    AgentEvents,
     Cron,
-    Workspace
+    Workspace,
+    Dashboards
 }
 
 internal enum HubCommandActionKind
@@ -107,15 +108,16 @@ internal static class HubPageRegistry
             HubPageKind.Connection => ("HubWindow_NavigationViewItem_88.Content", FluentIconCatalog.Plug),
             HubPageKind.LocalAi => ("HubWindow_NavigationViewItem_LocalAi.Content", FluentIconCatalog.Inference),
             HubPageKind.Sessions => ("HubWindow_NavigationViewItem_91.Content", FluentIconCatalog.Sessions),
-            HubPageKind.AgentEvents => ("HubWindow_NavigationViewItem_94.Content", FluentIconCatalog.AgentEvents),
+            HubPageKind.Dashboards => ("HubWindow_NavDashboards.Content", FluentIconCatalog.Dashboard),
             HubPageKind.DefaultModel => ("HubWindow_NavigationViewItem_DefaultModel.Content", FluentIconCatalog.Settings),
             HubPageKind.Cron => ("HubWindow_NavigationViewItem_124.Content", FluentIconCatalog.Cron),
             HubPageKind.Workspace => ("WorkspacePage_TextBlock_22.Text", FluentIconCatalog.Workspace),
-            HubPageKind.Instances => ("HubWindow_NavigationViewItem_112.Content", FluentIconCatalog.Devices),
+            HubPageKind.Systems => ("HubWindow_NavigationViewItem_112.Content", FluentIconCatalog.Devices),
             HubPageKind.Config => ("HubWindow_NavigationViewItem_118.Content", FluentIconCatalog.Settings),
             HubPageKind.Usage => ("HubWindow_NavigationViewItem_121.Content", FluentIconCatalog.Money),
             HubPageKind.Permissions => ("HubWindow_NavigationViewItem_136.Content", FluentIconCatalog.Permissions),
             HubPageKind.Settings => ("HubWindow_NavigationViewItem_133.Content", FluentIconCatalog.Settings),
+            HubPageKind.About => ("HubWindow_AboutItem.Content", FluentIconCatalog.About),
             HubPageKind.Notifications => ("Onboarding_Perm_Notifications", FluentIconCatalog.Notifications),
             HubPageKind.Debug => ("HubWindow_NavigationViewItem_145.Content", FluentIconCatalog.Bug),
             _ => throw new ArgumentException("No search presentation is registered for this destination.", nameof(tag))
@@ -148,16 +150,18 @@ internal static class HubPageRegistry
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
-        "Command_GoToAgentEvents_Title",
-        "Command_GoToAgentEvents_Subtitle",
+        "Command_GoToDashboards_Title",
+        "Command_GoToDashboards_Subtitle",
+        "Command_OpenSessionDashboard_TitleFormat",
+        "Command_OpenSessionDashboard_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
         "Command_GoToWorkspace_Subtitle",
         "Command_GoToChannels_Title",
         "Command_GoToChannels_Subtitle",
-        "Command_GoToInstances_Title",
-        "Command_GoToInstances_Subtitle",
+        "Command_GoToSystems_Title",
+        "Command_GoToSystems_Subtitle",
         "Command_GoToConfig_Title",
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
@@ -166,6 +170,10 @@ internal static class HubPageRegistry
         "Command_GoToPermissions_Subtitle",
         "Command_GoToSettings_Title",
         "Command_GoToSettings_Subtitle",
+        "Command_GoToNotificationPreferences_Title",
+        "Command_GoToNotificationPreferences_Subtitle",
+        "Command_GoToAbout_Title",
+        "Command_GoToAbout_Subtitle",
         "Command_GoToNotifications_Title",
         "Command_GoToNotifications_Subtitle",
         "Command_OpenDashboard_Title",
@@ -184,9 +192,11 @@ internal static class HubPageRegistry
     /// <summary>Maps a route alias to its canonical companion tag for the current agent.</summary>
     public static string NormalizeTag(string tag, string currentAgentId) => tag switch
     {
-        "home" or "general" => "connection",
-        "about" or "info" => "settings",
-        "nodes" => "instances",
+        "home" => "connection",
+        "general" => "settings",
+        "about" or "info" => "about",
+        "notification-preferences" => "settings",
+        "nodes" or "instances" => "systems",
         "cron" => $"agent:{currentAgentId}:cron",
         "workspace" => $"agent:{currentAgentId}:workspace",
         _ => tag
@@ -198,23 +208,37 @@ internal static class HubPageRegistry
         "connection" => HubPageKind.Connection,
         "local-ai" => HubPageKind.LocalAi,
         "model" => HubPageKind.DefaultModel,
-        "nodes" or "instances" => HubPageKind.Instances,
+        "systems" or "nodes" or "instances" => HubPageKind.Systems,
         "config" => HubPageKind.Config,
         "usage" => HubPageKind.Usage,
         "capabilities" or "permissions" => HubPageKind.Permissions,
         "voice" => HubPageKind.Voice,
         "sandbox" => HubPageKind.Sandbox,
-        "settings" or "info" or "about" => HubPageKind.Settings,
+        "settings" or "notification-preferences" => HubPageKind.Settings,
+        "info" or "about" => HubPageKind.About,
         "notifications" => HubPageKind.Notifications,
         "debug" => HubPageKind.Debug,
-        "home" or "general" => HubPageKind.Connection,
+        "home" => HubPageKind.Connection,
+        "general" => HubPageKind.Settings,
         "conversations" or "sessions" => HubPageKind.Sessions,
-        "agentevents" => HubPageKind.AgentEvents,
         "cron" => HubPageKind.Cron,
         "workspace" => HubPageKind.Workspace,
+        _ when DashboardsRoute.IsDashboardsTag(tag) => HubPageKind.Dashboards,
+        _ when SystemsMachine(tag) is not null => HubPageKind.Systems,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
         _ => null
     };
+
+    private const string SystemsMachinePrefix = "systems:";
+
+    /// <summary>Machine id from a <c>systems:&lt;environment id&gt;</c> deep link, or null.</summary>
+    public static string? SystemsMachine(string? tag) =>
+        tag is { Length: > 8 } && tag.StartsWith(SystemsMachinePrefix, StringComparison.Ordinal)
+            ? tag[SystemsMachinePrefix.Length..]
+            : null;
+
+    /// <summary>The rail item tag for a destination; machine deep links highlight Systems.</summary>
+    public static string NavigationTag(string tag) => SystemsMachine(tag) is null ? tag : "systems";
 
     private static HubPageKind? ResolveAgentPage(string tag)
     {
@@ -225,7 +249,6 @@ internal static class HubPageRegistry
         return parts[2] switch
         {
             "sessions" => HubPageKind.Sessions,
-            "agentevents" => HubPageKind.AgentEvents,
             "cron" => HubPageKind.Cron,
             "workspace" => HubPageKind.Workspace,
             _ => null
@@ -249,16 +272,26 @@ internal static class HubPageRegistry
         return tag.StartsWith("agent:", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("chat", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("sessions", StringComparison.OrdinalIgnoreCase) ||
+            tag.Equals("systems", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("instances", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("agentevents", StringComparison.OrdinalIgnoreCase) ||
+            SystemsMachine(tag) is not null ||
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("usage", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("cron", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("workspace", StringComparison.OrdinalIgnoreCase);
+            tag.Equals("workspace", StringComparison.OrdinalIgnoreCase) ||
+            DashboardsRoute.IsDashboardsTag(tag);
     }
 
+    /// <summary>
+    /// Pages that stay open when the Gateway disconnects. Systems keeps showing
+    /// last-known machines with its own disconnected state instead of bouncing to Connection.
+    /// </summary>
     public static bool ShouldKeepCurrentPageVisibleDuringDisconnect(string? currentTag) =>
-        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase);
+        ResolvePage(currentTag?.ToLowerInvariant()) is HubPageKind.Config or HubPageKind.Cron or HubPageKind.Systems ||
+        DashboardsRoute.IsDashboardsTag(currentTag);
+
+    /// <summary>True for the Systems page, its legacy aliases and machine deep links.</summary>
+    public static bool IsSystemsTag(string? tag) => ResolvePage(tag) == HubPageKind.Systems;
 
 #if !OPENCLAW_TRAY_TESTS
     public static Type? ResolvePageType(string? tag) => ResolvePage(tag) switch
@@ -266,19 +299,20 @@ internal static class HubPageRegistry
         HubPageKind.Connection => typeof(ConnectionPage),
         HubPageKind.LocalAi => typeof(LocalAiPage),
         HubPageKind.DefaultModel => typeof(DefaultModelPage),
-        HubPageKind.Instances => typeof(InstancesPage),
+        HubPageKind.Systems => typeof(SystemsPage),
         HubPageKind.Config => typeof(ConfigPage),
         HubPageKind.Usage => typeof(UsagePage),
         HubPageKind.Permissions => typeof(PermissionsPage),
         HubPageKind.Voice => typeof(VoiceSettingsPage),
         HubPageKind.Sandbox => typeof(SandboxPage),
         HubPageKind.Settings => typeof(SettingsPage),
+        HubPageKind.About => typeof(AboutPage),
         HubPageKind.Notifications => typeof(NotificationsPage),
         HubPageKind.Debug => typeof(DebugPage),
         HubPageKind.Sessions => typeof(SessionsPage),
-        HubPageKind.AgentEvents => typeof(AgentEventsPage),
         HubPageKind.Cron => typeof(CronPage),
         HubPageKind.Workspace => typeof(WorkspacePage),
+        HubPageKind.Dashboards => typeof(DashboardsPage),
         _ => null
     };
 #endif
@@ -293,7 +327,7 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "AI", "Command_GoToDefaultModel", "model");
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
-        AddNavigation(commands, context, "🧠", "Command_GoToAgentEvents", "agentevents");
+        AddNavigation(commands, context, "📊", "Command_GoToDashboards", DashboardsRoute.Tag);
         commands.Add(new HubCommand(
             "🧠",
             Format(context, "Command_GoToCron_Title", context.CurrentAgentId),
@@ -305,12 +339,14 @@ internal static class HubPageRegistry
             Get(context, "Command_GoToWorkspace_Subtitle"),
             HubCommandAction.Navigate($"agent:{context.CurrentAgentId}")));
         AddNavigation(commands, context, "📡", "Command_GoToChannels", "channels");
-        AddNavigation(commands, context, "📡", "Command_GoToInstances", "instances");
+        AddNavigation(commands, context, "📡", "Command_GoToSystems", "systems");
         AddNavigation(commands, context, "📡", "Command_GoToConfig", "config");
         AddNavigation(commands, context, "📡", "Command_GoToUsage", "usage");
         AddNavigation(commands, context, "🛡️", "Command_GoToPermissions", "permissions");
         AddNavigation(commands, context, "⚙️", "Command_GoToSettings", "settings");
         AddNavigation(commands, context, "🔔", "Command_GoToNotifications", "notifications");
+        AddNavigation(commands, context, "🔔", "Command_GoToNotificationPreferences", "notification-preferences");
+        AddNavigation(commands, context, "ℹ️", "Command_GoToAbout", "about");
         commands.Add(new HubCommand(
             "🌐",
             Get(context, "Command_OpenDashboard_Title"),
@@ -336,6 +372,11 @@ internal static class HubPageRegistry
                 $"Go to session: {sessionKey}",
                 "Open in dashboard",
                 HubCommandAction.OpenDashboard($"sessions/{sessionKey}")));
+            commands.Add(new HubCommand(
+                "📊",
+                Format(context, "Command_OpenSessionDashboard_TitleFormat", sessionKey),
+                Get(context, "Command_OpenSessionDashboard_Subtitle"),
+                HubCommandAction.Navigate(DashboardsRoute.ForSession(sessionKey))));
         }
 
         return commands.ToImmutable();

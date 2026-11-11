@@ -1,5 +1,6 @@
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -117,62 +118,30 @@ public class AppStateTests
         Assert.DoesNotContain(nameof(AppState.AuthFailureMessage), fired);
     }
 
-    // ── AddAgentEvent ring buffer ───────────────────────────────────────
-
     [Fact]
-    public void AddAgentEvent_NewestFirst()
+    public void FindAgent_ComposesRosterFirstIdentityAndNotifiesChatOnRosterChanges()
     {
         var state = CreateState();
-        var evt1 = new AgentEventInfo { RunId = "r1", Seq = 1 };
-        var evt2 = new AgentEventInfo { RunId = "r2", Seq = 2 };
+        using var roster = JsonDocument.Parse("""{"agents":[{"id":"main","name":"Roster Assistant"}]}""");
+        var rosterUpdates = 0;
+        state.AgentRosterChanged += (_, _) => rosterUpdates++;
 
-        state.AddAgentEvent(evt1);
-        state.AddAgentEvent(evt2);
+        state.AgentsList = roster.RootElement.Clone();
+        state.AgentIdentities = new Dictionary<string, ChatAgentIdentity>(StringComparer.Ordinal)
+        {
+            ["main"] = new("main", "Gateway identity", "data:image/png;base64,AA==", "✨"),
+        };
 
-        Assert.Equal(2, state.AgentEvents.Count);
-        Assert.Equal("r2", state.AgentEvents[0].RunId); // newest first
-        Assert.Equal("r1", state.AgentEvents[1].RunId);
-    }
+        var agent = Assert.IsType<ChatAgentPresentation>(state.FindAgent("main"));
+        Assert.Equal("Roster Assistant", agent.Name);
+        Assert.Equal("data:image/png;base64,AA==", agent.AvatarUrl);
+        Assert.Equal("✨", agent.Emoji);
+        Assert.Equal(2, rosterUpdates);
 
-    [Fact]
-    public void AddAgentEvent_CapsAt400()
-    {
-        var state = CreateState();
-        for (int i = 0; i < 450; i++)
-            state.AddAgentEvent(new AgentEventInfo { RunId = $"r{i}", Seq = i });
+        state.ClearAgentIdentities();
 
-        Assert.Equal(400, state.AgentEvents.Count);
-        Assert.Equal("r449", state.AgentEvents[0].RunId); // newest
-    }
-
-    [Fact]
-    public void AddAgentEvent_FiresAgentEventAdded()
-    {
-        var state = CreateState();
-        AgentEventInfo? received = null;
-        state.AgentEventAdded += evt => received = evt;
-
-        var expected = new AgentEventInfo { RunId = "test", Seq = 1 };
-        state.AddAgentEvent(expected);
-
-        Assert.NotNull(received);
-        Assert.Equal("test", received.RunId);
-    }
-
-    [Fact]
-    public void ClearAgentEvents_ClearsAndFiresPropertyChanged()
-    {
-        var state = CreateState();
-        state.AddAgentEvent(new AgentEventInfo { RunId = "r1", Seq = 1 });
-        Assert.Single(state.AgentEvents);
-
-        var fired = new List<string>();
-        state.PropertyChanged += (_, e) => fired.Add(e.PropertyName!);
-
-        state.ClearAgentEvents();
-
-        Assert.Empty(state.AgentEvents);
-        Assert.Contains(nameof(AppState.AgentEvents), fired);
+        Assert.Null(state.FindAgent("main")?.AvatarUrl);
+        Assert.Equal(3, rosterUpdates);
     }
 
     // ── Session previews ────────────────────────────────────────────────

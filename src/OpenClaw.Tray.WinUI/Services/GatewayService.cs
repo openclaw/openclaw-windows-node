@@ -1,9 +1,13 @@
 using Microsoft.UI.Dispatching;
 using OpenClaw.Shared;
+using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
 
@@ -38,6 +42,7 @@ internal sealed class GatewayService
     // Client tracking for stale-event safety
     private IOperatorGatewayClient? _currentClient;
     private int _clientGeneration;
+    private int _agentIdentityRevision;
 
     public GatewayService(AppState state, DispatcherQueue dispatcher)
     {
@@ -70,6 +75,9 @@ internal sealed class GatewayService
         // Clear service-level caches on actual client swap
         if (!ReferenceEquals(oldClient, newClient))
         {
+            _agentIdentityRevision++;
+            _state.AgentsList = null;
+            _state.ClearAgentIdentities();
             _lastChannelStatusSignature = null;
             _sessionActivities.Clear();
             _displayedSessionKey = null;
@@ -119,12 +127,8 @@ internal sealed class GatewayService
         client.SessionPreviewUpdated += OnSessionPreviewUpdated;
         client.SessionCommandCompleted += OnSessionCommandCompleted;
         client.GatewaySelfUpdated += OnGatewaySelfUpdated;
-        client.CronListUpdated += OnCronListUpdated;
-        client.CronStatusUpdated += OnCronStatusUpdated;
-        client.CronRunsUpdated += OnCronRunsUpdated;
         client.ConfigUpdated += OnConfigUpdated;
         client.ConfigSchemaUpdated += OnConfigSchemaUpdated;
-        client.AgentEventReceived += OnAgentEventReceived;
         client.NodePairListUpdated += OnNodePairListUpdated;
         client.DevicePairListUpdated += OnDevicePairListUpdated;
         client.ModelsListUpdated += OnModelsListUpdated;
@@ -151,12 +155,8 @@ internal sealed class GatewayService
         client.SessionPreviewUpdated -= OnSessionPreviewUpdated;
         client.SessionCommandCompleted -= OnSessionCommandCompleted;
         client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
-        client.CronListUpdated -= OnCronListUpdated;
-        client.CronStatusUpdated -= OnCronStatusUpdated;
-        client.CronRunsUpdated -= OnCronRunsUpdated;
         client.ConfigUpdated -= OnConfigUpdated;
         client.ConfigSchemaUpdated -= OnConfigSchemaUpdated;
-        client.AgentEventReceived -= OnAgentEventReceived;
         client.NodePairListUpdated -= OnNodePairListUpdated;
         client.DevicePairListUpdated -= OnDevicePairListUpdated;
         client.ModelsListUpdated -= OnModelsListUpdated;
@@ -179,6 +179,8 @@ internal sealed class GatewayService
     private void OnConnectionStatusChanged(object? sender, ConnectionStatus status)
     {
         if (sender != _currentClient) return;
+        var statusClient = _currentClient;
+        var statusEpoch = statusClient?.SessionMutationConnectionEpoch;
 
         DiagnosticsJsonlService.Write("connection.status", new
         {
@@ -193,6 +195,9 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(statusClient, _currentClient) ||
+                statusClient?.SessionMutationConnectionEpoch != statusEpoch)
+                return;
             if (status == ConnectionStatus.Connected)
             {
                 _state.AuthFailureMessage = null;
@@ -200,6 +205,7 @@ internal sealed class GatewayService
 
             if (status == ConnectionStatus.Disconnected || status == ConnectionStatus.Error)
             {
+                _agentIdentityRevision++;
                 _state.ClearCachedData();
                 // Pair lists were just cleared — notify the approval coordinator so it
                 // reconciles to empty (resolving any open approvals / closing the dialog)
@@ -214,6 +220,8 @@ internal sealed class GatewayService
     private void OnAuthenticationFailed(object? sender, string message)
     {
         if (sender != _currentClient) return;
+        var authClient = _currentClient;
+        var authEpoch = authClient?.SessionMutationConnectionEpoch;
 
         Logger.Error($"Authentication failed: {message}");
         DiagnosticsJsonlService.Write("connection.auth_failed", new { message });
@@ -223,6 +231,9 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(authClient, _currentClient) ||
+                authClient?.SessionMutationConnectionEpoch != authEpoch)
+                return;
             _state.AuthFailureMessage = message;
             AuthenticationFailed?.Invoke(this, message);
         });
@@ -322,14 +333,15 @@ internal sealed class GatewayService
 
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
     {
-        if (sender != _currentClient) return;
+        if (sender != _currentClient || sender is not IOperatorGatewayClient client) return;
+        var generation = _clientGeneration;
+        var epoch = client.SessionMutationConnectionEpoch;
+        if (!client.IsConnectedToGateway) return;
 
         var activeKeys = new HashSet<string>(sessions.Select(s => s.Key), StringComparer.Ordinal);
 
         // Throttled preview request (capture client ref for safety)
-        var client = _currentClient;
-        if (client != null &&
-            sessions.Length > 0 &&
+        if (sessions.Length > 0 &&
             DateTime.UtcNow - _lastPreviewRequestUtc > TimeSpan.FromSeconds(5))
         {
             _lastPreviewRequestUtc = DateTime.UtcNow;
@@ -339,6 +351,10 @@ internal sealed class GatewayService
 
         EnqueueModelUpdate(() =>
         {
+            if (!ReferenceEquals(client, _currentClient) ||
+                generation != _clientGeneration || !client.IsConnectedToGateway ||
+                epoch != client.SessionMutationConnectionEpoch)
+                return;
             _state.Sessions = sessions;
             _state.PruneSessionPreviews(activeKeys);
         });
@@ -412,12 +428,6 @@ internal sealed class GatewayService
             _state.SetSessionPreview(preview.Key, preview);
     }
 
-    private void OnAgentEventReceived(object? sender, AgentEventInfo evt)
-    {
-        if (sender != _currentClient) return;
-        EnqueueModelUpdate(() => _state.AddAgentEvent(evt));
-    }
-
     // ── Category A: Simple data (just update AppState) ──────────────────
 
     private void OnUsageUpdated(object? sender, GatewayUsageInfo usage)
@@ -430,27 +440,6 @@ internal sealed class GatewayService
     {
         if (sender != _currentClient) return;
         EnqueueModelUpdate(() => _state.UsageStatus = usageStatus);
-    }
-
-    private void OnCronListUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.CronList = cloned);
-    }
-
-    private void OnCronStatusUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.CronStatus = cloned);
-    }
-
-    private void OnCronRunsUpdated(object? sender, JsonElement data)
-    {
-        if (sender != _currentClient) return;
-        var cloned = data.Clone();
-        EnqueueModelUpdate(() => _state.CronRuns = cloned);
     }
 
     private void OnConfigUpdated(object? sender, JsonElement data)
@@ -469,13 +458,64 @@ internal sealed class GatewayService
 
     private void OnAgentsListUpdated(object? sender, JsonElement data)
     {
-        if (sender != _currentClient) return;
+        if (sender != _currentClient || sender is not IOperatorGatewayClient client) return;
         var cloned = data.Clone();
         EnqueueModelUpdate(() =>
         {
             _state.AgentsListUnsupported = false;
             _state.AgentsList = cloned;
+            RefreshAgentIdentities(client, cloned);
         });
+    }
+
+    /// <summary>
+    /// Resolves each roster agent's Gateway identity (agent.identity.get), as the Control UI does,
+    /// so an agent without a configured name shows the Gateway's resolved name instead of its ID.
+    /// Runs on the UI thread; results apply only while the client and roster are still current.
+    /// </summary>
+    private void RefreshAgentIdentities(IOperatorGatewayClient client, JsonElement roster)
+    {
+        var generation = _clientGeneration;
+        var revision = ++_agentIdentityRevision;
+        var previous = _state.AgentIdentities;
+        var agentIds = WorkspaceProjection.Agents(roster, []).Select(agent => agent.Id).ToArray();
+        _ = LoadAsync();
+
+        async Task LoadAsync()
+        {
+            var failures = 0;
+            string? failure = null;
+            var results = await Task.WhenAll(agentIds.Select(async agentId =>
+            {
+                try
+                {
+                    var response = await client.SendWizardRequestAsync("agent.identity.get", new { agentId })
+                        .ConfigureAwait(false);
+                    return ChatWelcomePresentation.ParseAgentIdentity(agentId, response);
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref failures);
+                    failure = ex.GetType().Name;
+                    return previous.GetValueOrDefault(agentId);
+                }
+            })).ConfigureAwait(false);
+            if (failures > 0)
+                Logger.Warn($"[GatewayService] agent.identity.get failed for {failures} agent(s): {failure}");
+
+            _dispatcher.TryEnqueue(() =>
+            {
+                if (generation != _clientGeneration || revision != _agentIdentityRevision) return;
+                var identities = results.OfType<ChatAgentIdentity>()
+                    .ToDictionary(identity => identity.AgentId, StringComparer.Ordinal);
+                var current = _state.AgentIdentities;
+                if (identities.Count != current.Count ||
+                    identities.Any(entry => !Equals(current.GetValueOrDefault(entry.Key), entry.Value)))
+                {
+                    _state.AgentIdentities = identities;
+                }
+            });
+        }
     }
 
     private void OnAgentsListUnsupportedChanged(object? sender, bool unsupported)

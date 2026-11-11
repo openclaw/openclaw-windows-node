@@ -4,15 +4,19 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
 
-/// <summary>One native Settings destination the user may pin to the main sidebar.</summary>
-/// <param name="Tag">Canonical Settings route tag, resolved through the single Workspace history at click time.</param>
-/// <param name="LabelKey">Existing Settings navigation label resource, so pins never carry a competing vocabulary.</param>
-/// <param name="IconAsset">File name (without extension) under Assets/SidebarIcons shared with the Settings navigation.</param>
-internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset);
+/// <summary>One native page the user may pin to the main sidebar.</summary>
+/// <param name="Tag">Canonical page route tag, resolved through the single Workspace history at click time.</param>
+/// <param name="LabelKey">Native navigation label resource, shared with Settings where that page also appears.</param>
+/// <param name="IconAsset">File name (without extension) under Assets/SidebarIcons.</param>
+internal sealed record PinnablePage(string Tag, string LabelKey, string IconAsset)
+{
+    public string IconUri => $"ms-appx:///Assets/SidebarIcons/{IconAsset}.svg";
+}
 
 /// <summary>
 /// Owner of the pinnable native page catalog and of pin list rules. Home (fixed), Settings, the
-/// This Computer group and Debug (diagnostics-gated) are not pinnable; agent-scoped routes use the
+/// This Computer group and Debug (diagnostics-gated) are not pinnable. Dashboards is a standalone
+/// pinnable page, not a Settings section; agent-scoped routes use the
 /// <c>cron</c> tag, which is normalized to the selected agent when the route is admitted.
 /// Pins are a local, per-Gateway shortcut list and never grant access to a page.
 /// </summary>
@@ -21,13 +25,16 @@ internal static class PinnedPages
     /// <summary>Scope used before any Gateway is saved. The parentheses keep it distinct from any generated Gateway id.</summary>
     public const string UnconfiguredScope = "(unconfigured)";
 
+    /// <summary>Used only for a Gateway scope without a saved choice; explicit empty lists remain empty.</summary>
+    public static ImmutableArray<string> DefaultPins { get; } = [DashboardsRoute.Tag];
+
     public static ImmutableArray<PinnablePage> Catalog { get; } =
     [
         new("connection", "HubWindow_NavigationViewItem_88.Content", "Connection"),
         new("sessions", "HubWindow_NavigationViewItem_91.Content", "Sessions"),
+        new(DashboardsRoute.Tag, "HubWindow_NavDashboards.Content", "Dashboards"),
         new("instances", "HubWindow_NavigationViewItem_112.Content", "Instances"),
         new("cron", "HubWindow_NavigationViewItem_124.Content", "Cron"),
-        new("agentevents", "HubWindow_NavigationViewItem_94.Content", "AgentEvents"),
         new("config", "HubWindow_NavigationViewItem_118.Content", "Config"),
         new("usage", "HubWindow_NavigationViewItem_121.Content", "Usage"),
     ];

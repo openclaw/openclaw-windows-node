@@ -43,6 +43,7 @@ public sealed class FunctionalUiFlyoutIdentityTests
         Button? initialPicker = null;
         Flyout? initialFlyout = null;
         FrameworkElement? initialContent = null;
+        (double Width, double Height)? previousRootSize = null;
         var loaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var opened = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -51,6 +52,7 @@ public sealed class FunctionalUiFlyoutIdentityTests
         {
             await RunOnUIAsync(() =>
             {
+                previousRootSize = (_ui.Container.Width, _ui.Container.Height);
                 TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
                 _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 640, 480));
                 _ui.Container.Width = 600;
@@ -159,6 +161,14 @@ public sealed class FunctionalUiFlyoutIdentityTests
             var closeRequested = false;
             await RunOnUIAsync(() =>
             {
+                // Clearing children does not reset the shared root's explicit layout constraints.
+                if (previousRootSize is { } previous)
+                {
+                    _ui.Container.Width = previous.Width;
+                    _ui.Container.Height = previous.Height;
+                    Assert.Equal(previous.Width, _ui.Container.Width);
+                    Assert.Equal(previous.Height, _ui.Container.Height);
+                }
                 if (initialFlyout?.IsOpen == true)
                 {
                     closeRequested = true;

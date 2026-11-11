@@ -77,6 +77,86 @@ public class SetupLoggerTests : IDisposable
         Assert.Contains(entries, entry => entry.Message == "after");
     }
 
+    [Fact]
+    public async Task OperationLeaseKeepsFileOpenThroughCancellationCleanup()
+    {
+        var path = Path.Combine(_tempDir, "native-setup.jsonl");
+        using var logger = new SetupLogger(path);
+        using var cancellation = new CancellationTokenSource();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishCleanup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        async Task RunOperationAsync()
+        {
+            using var lease = logger.RetainForOperation();
+            started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                cancellationObserved.SetResult();
+                await finishCleanup.Task;
+                logger.Info("terminal cancellation cleanup");
+                throw;
+            }
+        }
+
+        var operation = RunOperationAsync();
+        await started.Task;
+        cancellation.Cancel();
+        logger.Dispose();
+        try
+        {
+            await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(operation.IsCompleted);
+            logger.Info("cleanup in progress");
+        }
+        finally
+        {
+            finishCleanup.TrySetResult();
+            try { await operation; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+        Assert.Equal(cancellation.Token, exception.CancellationToken);
+        logger.Info("after operation");
+        var text = File.ReadAllText(path);
+        Assert.Contains("cleanup in progress", text);
+        Assert.Contains("terminal cancellation cleanup", text);
+        Assert.DoesNotContain("after operation", text);
+    }
+
+    [Fact]
+    public void DisposeWaitsForEveryOperationLeaseAndRejectsNewLeases()
+    {
+        var path = Path.Combine(_tempDir, "native-setup.jsonl");
+        using var logger = new SetupLogger(path);
+        var first = logger.RetainForOperation();
+        var second = logger.RetainForOperation();
+
+        logger.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => logger.RetainForOperation());
+        first.Dispose();
+        first.Dispose();
+        logger.Info("second operation remains");
+        Assert.Throws<IOException>(() =>
+        {
+            using var locked = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        });
+        second.Dispose();
+        logger.Info("all operations ended");
+
+        var text = File.ReadAllText(path);
+        Assert.Contains("second operation remains", text);
+        Assert.DoesNotContain("all operations ended", text);
+        using var reopened = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.True(reopened.CanWrite);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(2)]
