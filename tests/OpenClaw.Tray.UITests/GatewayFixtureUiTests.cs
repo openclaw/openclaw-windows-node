@@ -254,27 +254,31 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task SessionsEyebrowNativeProof()
+    public async Task SessionsHeroNativeProof()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "sessions" });
             await WaitUiAsync(run, () => FindById(run, "SessionsPageMarker") is not null
-                && FindById(run, "SessionsHubList") is not null, "Sessions eyebrow loaded");
+                && FindById(run, "SessionsHubMastHeadline") is { } loaded
+                && loaded.Current.Name.Contains("loaded sessions", StringComparison.Ordinal)
+                && FindById(run, "SessionsHubList") is not null, "Sessions hero loaded");
 
+            // Shared PageHero: title, live headline and actions above the Sessions and Worktrees tabs.
             var marker = FindById(run, "SessionsPageMarker")!;
+            var headline = FindById(run, "SessionsHubMastHeadline")!;
+            var web = FindById(run, "SessionsHubOpenGatewayWeb")!;
+            var tabs = FindById(run, "SessionsHubTabs")!;
             Assert.Equal("Sessions", marker.Current.Name);
-            CaptureSessionsWindow(run, "sessions-gradient-top-light.png");
-
-            var pageScroll = FindScrollAncestor(marker)
-                ?? throw new InvalidOperationException("Sessions page scroll ancestor is not discoverable.");
-            var scroll = (ScrollPattern)pageScroll.GetCurrentPattern(ScrollPattern.Pattern);
-            Assert.True(scroll.Current.VerticallyScrollable);
-            scroll.SetScrollPercent(ScrollPattern.NoScroll, 55);
-            await Task.Delay(150);
-            Assert.True(((ScrollPattern)pageScroll.GetCurrentPattern(ScrollPattern.Pattern))
-                .Current.VerticalScrollPercent > 0);
-            CaptureSessionsWindow(run, "sessions-gradient-scrolled-light.png");
+            Assert.True(web.Current.IsEnabled);
+            var title = marker.Current.BoundingRectangle;
+            Assert.True(headline.Current.BoundingRectangle.Top >= title.Bottom - 1,
+                $"Headline {headline.Current.BoundingRectangle} is not below the title {title}.");
+            Assert.True(tabs.Current.BoundingRectangle.Top >= headline.Current.BoundingRectangle.Bottom,
+                $"Tabs {tabs.Current.BoundingRectangle} overlap the hero headline {headline.Current.BoundingRectangle}.");
+            Assert.True(tabs.Current.BoundingRectangle.Top >= web.Current.BoundingRectangle.Bottom,
+                $"Tabs {tabs.Current.BoundingRectangle} overlap the hero actions {web.Current.BoundingRectangle}.");
+            CaptureSessionsWindow(run, "sessions-hero-top-light.png");
 
             ((SelectionItemPattern)FindById(run, "SessionsHubTabWorktrees")!
                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
@@ -2648,12 +2652,23 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }
     }
 
+    private static bool HasOpenSessionsOverlay(GatewayFixtureRun run) =>
+        FindInApp(run, new OrCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Menu),
+            new PropertyCondition(AutomationElement.ClassNameProperty, "FlyoutPresenter"),
+            new PropertyCondition(AutomationElement.ClassNameProperty, "MenuFlyoutPresenter"),
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsHubDialog"))) is not null;
+
     private static async Task RestoreSessionsBaselineAsync(GatewayFixtureRun run)
     {
         var window = SettingsWindow(run);
         SetForegroundWindow(new IntPtr(window.Current.NativeWindowHandle));
-        System.Windows.Forms.SendKeys.SendWait("{ESC}{ESC}");
-        await Task.Delay(100);
+        // Escape with no overlay open leaves Settings ("Back to app"), so only dismiss what is open.
+        for (var attempt = 0; attempt < 2 && HasOpenSessionsOverlay(run); attempt++)
+        {
+            System.Windows.Forms.SendKeys.SendWait("{ESC}");
+            await Task.Delay(100);
+        }
 
         if (FindById(run, "SessionsHubTranscriptClose") is { } transcriptClose)
         {

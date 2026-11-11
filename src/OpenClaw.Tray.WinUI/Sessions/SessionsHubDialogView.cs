@@ -60,7 +60,7 @@ internal static class SessionsHubDialogView
                 IsOpen = true,
                 CloseButtonText = LocalizationHelper.GetString("SessionActionPrompt_CancelLabel"),
                 DefaultButton = destructive ? ContentDialogButton.None : ContentDialogButton.Primary,
-                IsPrimaryButtonEnabled = dialog.IsValid,
+                IsPrimaryButtonEnabled = dialog.IsValid && context.State.IsConnected,
                 OnClosed = result => controller.CloseDialog(result == ContentDialogResult.Primary),
             })
             .Set(native =>

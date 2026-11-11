@@ -193,8 +193,10 @@ internal sealed class SessionsHubController
         _transcriptGeneration++;
         _worktreeGeneration++;
         _liveSignature = null;
-        // Pending prompts resolve as cancelled so a confirmed action never runs on the new connection.
-        CloseDialog(false);
+        // A new connection cancels pending prompts so a confirmed action never runs on it. A plain
+        // disconnect keeps the prompt open for the Settings shell, but it cannot be confirmed.
+        if (connected)
+            CloseDialog(false);
         Update(s => s with
         {
             Notice = null,
@@ -1473,7 +1475,7 @@ internal sealed class SessionsHubController
         var dialog = _state.Dialog;
         if (dialog is null) return;
         Update(s => s with { Dialog = null });
-        dialog.Completion.TrySetResult(confirmed && dialog.IsValid ? dialog : null);
+        dialog.Completion.TrySetResult(confirmed && dialog.IsValid && _state.IsConnected ? dialog : null);
     }
 
     private async Task<bool> ConfirmAsync(

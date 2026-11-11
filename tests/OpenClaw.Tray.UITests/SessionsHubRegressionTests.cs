@@ -413,6 +413,37 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task PendingPrompt_SurvivesDisconnectWithoutConfirmingAndClosesOnReconnect()
+    {
+        await using var harness = await Harness.CreateAsync(ui);
+        await ui.RunOnUIAsync(async () =>
+        {
+            var row = harness.Gateway.Page.Sessions.Single();
+            var disconnected = harness.Controller.RunSharedActionAsync(WorkspaceSessionMenuAction.Reset, row, "Review");
+            Assert.NotNull(harness.Controller.State.Dialog);
+            harness.Gateway.Connected = false;
+            harness.Controller.RefreshConnection();
+            // The Settings shell defers navigation pruning until this real prompt closes.
+            Assert.NotNull(harness.Controller.State.Dialog);
+            harness.Controller.CloseDialog(true);
+            await disconnected;
+            Assert.Empty(harness.Gateway.Resets);
+
+            harness.Gateway.Connected = true;
+            harness.Controller.RefreshConnection();
+            await harness.Controller.ReloadAsync();
+            row = harness.Gateway.Page.Sessions.Single();
+            var reconnected = harness.Controller.RunSharedActionAsync(WorkspaceSessionMenuAction.Reset, row, "Review");
+            Assert.NotNull(harness.Controller.State.Dialog);
+            harness.Gateway.Epoch++;
+            harness.Controller.RefreshConnection();
+            Assert.Null(harness.Controller.State.Dialog);
+            await reconnected;
+            Assert.Empty(harness.Gateway.Resets);
+        });
+    }
+
+    [Fact]
     public async Task ArchiveUndo_RejectsAnOldConnectionAndDoesNotDismissItsError()
     {
         await using var harness = await Harness.CreateAsync(ui);
@@ -767,6 +798,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
 
         await ui.RunOnUIAsync(() => harness.Presentation.ApplyTopInset(0));
         await harness.RenderAsync();
+        await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+            () => harness.Find<ScrollView>("SessionsHubPageScroll").TransformToVisual(root!).TransformPoint(default).Y <= 0.5,
+            "page viewport without inset"));
         await ui.RunOnUIAsync(() =>
         {
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
@@ -777,6 +811,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
 
         await ui.RunOnUIAsync(() => harness.Presentation.ApplyTopInset(56));
         await harness.RenderAsync();
+        await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+            () => harness.Find<ScrollView>("SessionsHubPageScroll").TransformToVisual(root!).TransformPoint(default).Y >= 55.5,
+            "page viewport with restored inset"));
         await ui.RunOnUIAsync(() =>
         {
             var scroll = harness.Find<ScrollView>("SessionsHubPageScroll");
@@ -802,12 +839,8 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             harness.Controller.OpenDetails(first.Key);
         });
         await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            var firstRow = harness.Find<Expander>("SessionsHubRow:" + first.Key);
-            var secondRow = harness.Find<Expander>("SessionsHubRow:" + second.Key);
-            AssertCardGap(harness.Root!, firstRow, secondRow);
-        });
+        await ui.RunOnUIAsync(() => AssertCardGapAsync(harness,
+            "SessionsHubRow:" + first.Key, "SessionsHubRow:" + second.Key));
 
         await ui.RunOnUIAsync(async () =>
         {
@@ -823,22 +856,27 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             harness.Controller.SetWorktreeDetails("wt-one");
         });
         await harness.RenderAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            var firstRow = harness.Find<Expander>("SessionsHubWorktree:wt-one");
-            var secondRow = harness.Find<Expander>("SessionsHubWorktree:wt-two");
-            AssertCardGap(harness.Root!, firstRow, secondRow);
-        });
+        await ui.RunOnUIAsync(() => AssertCardGapAsync(harness, "SessionsHubWorktree:wt-one", "SessionsHubWorktree:wt-two"));
     }
 
-    private static void AssertCardGap(FrameworkElement root, FrameworkElement first, FrameworkElement second)
+    /// <summary>Waits for the two shown cards to settle (tab switches and loads re-lay them out), then checks their gap.</summary>
+    private static async Task AssertCardGapAsync(Harness harness, string firstId, string secondId)
     {
-        var firstBounds = first.TransformToVisual(root).TransformBounds(
-            new global::Windows.Foundation.Rect(0, 0, first.ActualWidth, first.ActualHeight));
-        var secondTop = second.TransformToVisual(root).TransformPoint(default).Y;
-        Assert.InRange(secondTop - firstBounds.Bottom,
-            PageResponsiveLayout.GapInner - 0.5,
-            PageResponsiveLayout.GapInner + 0.5);
+        double? Gap()
+        {
+            var first = TestSupport.FindDescendants<Expander>(harness.Root!).FirstOrDefault(element =>
+                AutomationProperties.GetAutomationId(element) == firstId && IsShown(element, harness.Root!));
+            var second = TestSupport.FindDescendants<Expander>(harness.Root!).FirstOrDefault(element =>
+                AutomationProperties.GetAutomationId(element) == secondId && IsShown(element, harness.Root!));
+            if (first is not { ActualHeight: > 0 } || second is not { ActualHeight: > 0 })
+                return null;
+            var firstBottom = first.TransformToVisual(harness.Root!).TransformPoint(default).Y + first.ActualHeight;
+            return second.TransformToVisual(harness.Root!).TransformPoint(default).Y - firstBottom;
+        }
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => Gap() is { } gap && Math.Abs(gap - PageResponsiveLayout.GapInner) <= 0.5,
+            $"{PageResponsiveLayout.GapInner} DIP gap between {firstId} and {secondId}",
+            () => $"Measured gap: {Gap()?.ToString() ?? "rows not laid out"}.");
     }
 
     [Fact]
@@ -941,10 +979,14 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             ((IExpandCollapseProvider)new ExpanderAutomationPeer(row).GetPattern(PatternInterface.ExpandCollapse)).Expand();
         });
         await harness.RenderAsync();
+        await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+            () => TestSupport.FindDescendants<TextBox>(harness.Root!).Any(box =>
+                AutomationProperties.GetAutomationId(box) == "SessionsHubLabel" && IsShown(box, harness.Root!)),
+            "re-expanded session details"));
         await ui.RunOnUIAsync(() =>
         {
             Assert.Equal(Harness.Key, harness.Controller.State.DetailsKey);
-            Assert.Equal("Initial name", harness.Find<TextBox>("SessionsHubLabel").Text);
+            Assert.Equal("Initial name", harness.FindShown<TextBox>("SessionsHubLabel").Text);
         });
     }
 
@@ -991,6 +1033,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             harness.Controller.SetGroupBy(SessionsGroupBy.Category);
         });
         await harness.RenderAsync();
+        await ui.RunOnUIAsync(() => WaitForElementAsync(harness, "SessionsHubGroup:Release"));
         await ui.RunOnUIAsync(() =>
         {
             Invoke(harness.Find<Button>("SessionsHubGroup:Release"));
@@ -1011,14 +1054,15 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         await harness.RenderAsync();
         await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
             () => TestSupport.FindDescendants<Expander>(harness.Root!)
-                .Any(row => AutomationProperties.GetAutomationId(row) == "SessionsHubRow:" + targetKey),
+                .Any(row => AutomationProperties.GetAutomationId(row) == "SessionsHubRow:" + targetKey
+                    && IsShown(row, harness.Root!)),
             "revealed transcript session row"));
         await ui.RunOnUIAsync(() =>
         {
             Assert.False(harness.Controller.State.Transcript.IsOpen);
             Assert.Equal(1, harness.Controller.State.PageIndex);
             Assert.Equal(targetKey, harness.Controller.State.DetailsKey);
-            var row = harness.Find<Expander>("SessionsHubRow:" + targetKey);
+            var row = harness.FindShown<Expander>("SessionsHubRow:" + targetKey);
             Assert.True(row.IsExpanded);
             Assert.Contains(TestSupport.FindDescendants<FrameworkElement>(row),
                 element => AutomationProperties.GetAutomationId(element) == "SessionsHubDetails");
@@ -1347,9 +1391,14 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             "completed transcript result button"));
         await ui.RunOnUIAsync(() => Invoke(harness.Find<Button>("SessionsHubTranscriptDetails:0")));
         await harness.RenderAsync();
+        await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+            () => TestSupport.FindDescendants<Expander>(harness.Root!)
+                .Any(row => AutomationProperties.GetAutomationId(row) == "SessionsHubRow:" + Harness.Key
+                    && IsShown(row, harness.Root!)),
+            "revealed completed session row"));
         await ui.RunOnUIAsync(() =>
         {
-            Assert.True(harness.Find<Expander>("SessionsHubRow:" + Harness.Key).IsExpanded);
+            Assert.True(harness.FindShown<Expander>("SessionsHubRow:" + Harness.Key).IsExpanded);
             Assert.Equal(0, harness.ShowCompletedWrites);
             Assert.False(harness.ShowCompletedSessions);
         });
@@ -2018,6 +2067,7 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         public Task<IReadOnlyList<WorktreeRecord>?> Worktrees = Task.FromResult<IReadOnlyList<WorktreeRecord>?>([]);
         public Func<string, Task<WorktreeBranchList>> Branches = _ => Task.FromResult(SessionsHubRegressionTests.Branches("initial"));
         public bool Connected = true;
+        public List<string> Resets { get; } = [];
         public long Epoch = 1;
         public string[] Methods = ["sessions.list", "sessions.patch", "sessions.search", "worktrees.list"];
         public List<SessionPatch> Patches { get; } = [];
@@ -2068,6 +2118,9 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
                     Patches.Add((SessionPatch)args![1]!);
                     return PatchAcknowledgement;
                 case nameof(IOperatorGatewayClient.RequestSessionsAsync): return Task.CompletedTask;
+                case nameof(IOperatorGatewayClient.ResetSessionAsync):
+                    Resets.Add((string)args![0]!);
+                    return Task.FromResult(true);
                 default: throw new NotSupportedException($"Unexpected Sessions proof call: {method.Name}");
             }
         }
