@@ -2713,6 +2713,17 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         await WaitUiAsync(run, () => FindById(run, "SessionsHubList") is not null
             && FindById(run, StoppedSessionRowId) is not null,
             "sessions baseline restored");
+        // Rows stay expanded across states; an expanded row can be taller than the window.
+        if (FindById(run, StoppedSessionRowId) is { } stopped
+            && stopped.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var stoppedExpand)
+            && ((ExpandCollapsePattern)stoppedExpand).Current.ExpandCollapseState == ExpandCollapseState.Expanded)
+        {
+            ((ExpandCollapsePattern)stoppedExpand).Collapse();
+            await WaitUiAsync(run, () => FindById(run, StoppedSessionRowId) is { } row
+                && row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var state)
+                && ((ExpandCollapsePattern)state).Current.ExpandCollapseState == ExpandCollapseState.Collapsed,
+                "stopped session row collapsed");
+        }
     }
 
     private const string StoppedSessionRowId = "SessionsHubRow:agent:main:hub-deploy-failure";
