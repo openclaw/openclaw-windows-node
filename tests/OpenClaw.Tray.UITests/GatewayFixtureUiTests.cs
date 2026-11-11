@@ -2673,10 +2673,6 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await Task.Delay(100);
         }
 
-        if (FindById(run, "SessionsHubSearch") is { } nameSearch
-            && nameSearch.TryGetCurrentPattern(ValuePattern.Pattern, out var nameValue)
-            && ((ValuePattern)nameValue).Current.Value.Length > 0)
-            ((ValuePattern)nameValue).SetValue("");
         if (FindById(run, "SessionsHubTranscriptClose") is { } transcriptClose)
         {
             AssertVisibleInHub(run, transcriptClose, "close transcript search");
@@ -2686,6 +2682,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         {
             AssertVisibleInHub(run, clearSelection, "clear session selection");
             Invoke(clearSelection);
+        }
+        // The name filter is read-only while message search is open, so clear it after closing that.
+        if (FindById(run, "SessionsHubSearch") is { } nameSearch
+            && nameSearch.TryGetCurrentPattern(ValuePattern.Pattern, out var nameValue)
+            && ((ValuePattern)nameValue).Current.Value.Length > 0)
+        {
+            await WaitUiAsync(run, () => FindById(run, "SessionsHubSearch") is { Current.IsEnabled: true },
+                "name filter editable");
+            ((ValuePattern)FindById(run, "SessionsHubSearch")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("");
         }
         var worktreesTab = FindById(run, "SessionsHubTabWorktrees")
             ?? throw new InvalidOperationException("Worktrees tab is unavailable while restoring the baseline.");
