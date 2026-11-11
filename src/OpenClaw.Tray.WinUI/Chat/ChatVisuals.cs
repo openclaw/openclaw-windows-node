@@ -192,6 +192,23 @@ internal static class ChatVisuals
     internal const double ReasoningSize = 12;
     internal const double ReasoningLineHeight = 18;
     internal const double BlockGap = 8;
+    // Web --chat-block-gap: top-level Markdown blocks and text/media stacks are one text size apart.
+    internal const double MessageBlockGap = 14;
+    // Headings that follow other blocks get the web's 1.5x block gap.
+    internal const double HeadingTopInset = MessageBlockGap / 2;
+    // Web .code-block-wrapper: 10px corners, 36px header (8/8/4/14 insets) and pre insets that
+    // place code 14 pixels from the side and bottom edges.
+    internal const double CodeRadius = 10;
+    internal const double CodeInset = 14;
+    internal const double CodeHeaderTopInset = 8;
+    internal const double CodeHeaderTrailingInset = 8;
+    internal const double CodeHeaderBottomInset = 4;
+    internal const double CodeLabelSize = 12;
+    // Web lists reserve a 24px marker column (16px marker box plus 8px gap) and space items 0.4em apart.
+    internal const double ListMarkerColumn = 20;
+    internal const double ListItemGap = 6;
+    // Compact thinking text keeps Reactor's original 2px list rhythm.
+    internal const double CompactListItemGap = 2;
     internal const double CompactGap = 4;
     internal const double TurnGap = 4;
     internal const double DetailHorizontalInset = 12;
@@ -209,7 +226,6 @@ internal static class ChatVisuals
     internal const double QueueVerticalInset = 6;
     internal const double QueueTrailingInset = 4;
     internal const double QueueCompactGap = 6;
-    internal const double HeadingTopInset = 8;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;

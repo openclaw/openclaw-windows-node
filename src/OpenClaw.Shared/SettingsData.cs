@@ -162,7 +162,8 @@ public record class SettingsData
     /// </summary>
     public List<string>? A2UIImageHosts { get; set; }
     /// <summary>
-    /// Local sidebar page pins keyed by saved Gateway id (or "unconfigured"). Absent means no pins.
+    /// Local sidebar page pins keyed by saved Gateway id (or "(unconfigured)").
+    /// Absent scopes use native defaults; an explicit empty list means no pins.
     /// Holds only canonical page tags; never credentials or user data.
     /// </summary>
     public Dictionary<string, List<string>>? PinnedPagesByGateway { get; set; }

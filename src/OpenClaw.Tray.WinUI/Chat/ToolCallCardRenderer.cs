@@ -276,6 +276,8 @@ internal static class ToolCallCardRenderer
         var body = RichTextBlock(content)
             .Set(text =>
             {
+                // Reactor pools RichTextBlocks without clearing Markdown highlighters.
+                text.TextHighlighters.Clear();
                 text.Style = (Style)Application.Current.Resources[
                     input is null ? "ChatSecondaryRichTextStyle" : "ChatRichTextStyle"];
                 text.TextWrapping = TextWrapping.Wrap;

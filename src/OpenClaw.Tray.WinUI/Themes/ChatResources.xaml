@@ -12,10 +12,15 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF79C0FF" />
-            <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFFF7B72" />
+            <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFFF8A80" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="#FFA5D6FF" />
-            <SolidColorBrush x:Key="ChatSyntaxCommentBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatSyntaxCommentBrush" Color="{ThemeResource TextFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatSyntaxTitleBrush" Color="#FFD2A8FF" />
+            <SolidColorBrush x:Key="ChatSyntaxTypeBrush" Color="#FFFFA657" />
+            <SolidColorBrush x:Key="ChatSyntaxAttributeBrush" Color="#FF7EE787" />
             <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemAccentColorLight2}" />
             <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource ControlFillColorDefault}" />
             <SolidColorBrush x:Key="ChatQuestionOptionHoverBrush" Color="{ThemeResource ControlFillColorSecondary}" />
@@ -63,10 +68,15 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF0550AE" />
-            <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFCF222E" />
+            <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFB81B27" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="#FF0A3069" />
             <SolidColorBrush x:Key="ChatSyntaxCommentBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatSyntaxTitleBrush" Color="#FF7040D0" />
+            <SolidColorBrush x:Key="ChatSyntaxTypeBrush" Color="#FF953800" />
+            <SolidColorBrush x:Key="ChatSyntaxAttributeBrush" Color="#FF116329" />
             <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource ControlFillColorDefault}" />
             <SolidColorBrush x:Key="ChatQuestionOptionHoverBrush" Color="{ThemeResource ControlFillColorSecondary}" />
@@ -117,6 +127,11 @@
             <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSyntaxCommentBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSyntaxTitleBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSyntaxTypeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSyntaxAttributeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -335,6 +350,12 @@
     </Style>
     <Style x:Key="ChatSecondaryTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
+    <Style x:Key="ChatMutedTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatMutedTextBrush}" />
+    </Style>
+    <Style x:Key="ChatProseRichTextStyle" TargetType="RichTextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatProseTextBrush}" />
     </Style>
     <Style x:Key="ChatQuestionCardStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource ChatCardBrush}" />

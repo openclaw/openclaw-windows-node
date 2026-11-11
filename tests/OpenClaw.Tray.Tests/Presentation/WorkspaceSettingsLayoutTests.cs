@@ -77,4 +77,37 @@ public sealed class WorkspaceSettingsLayoutTests
     [InlineData("usage", "ms-appx:///Assets/SidebarIcons/Usage.svg")]
     public void HeroIcon_ReusesExistingSidebarAsset(string tag, string expected) =>
         Assert.Equal(expected, PinnedPages.Find(tag)!.IconUri);
+
+    [Fact]
+    public void DashboardRoot_ReconcilesStateAfterSubscriptionAndFencesQueuedUnmountedRefresh()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.Tray.WinUI", "Dashboards", "ReactorDashboardsRoot.cs"));
+        var subscription = source[source.IndexOf("var current = true;", StringComparison.Ordinal)..
+            source.IndexOf("}), state);", StringComparison.Ordinal)];
+        Assert.Contains("state.Changed += OnChanged;\n            OnChanged();", subscription.Replace("\r\n", "\n"));
+        Assert.Contains("if (current)", subscription);
+        Assert.Contains("current = false;", subscription);
+        Assert.Contains("state.Changed -= OnChanged;", subscription);
+        Assert.DoesNotContain("LoadAsync", subscription);
+        Assert.DoesNotContain("Mount(", subscription);
+    }
+
+    [Theory]
+    [InlineData(false, 56)]
+    [InlineData(true, 0)]
+    public void DashboardSessionRoute_RetainsStandaloneIdentityAcrossHistoryAllocation(bool paneOpen, double expectedInset)
+    {
+        var route = DashboardsRoute.ForSession("agent:main:report with spaces");
+        var destination = WorkspaceDestination.Settings(route);
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(destination);
+        var allocation = WorkspaceSettingsLayout.EmbeddedPageTopAllocation(destination.Embedded, paneOpen, supportsInset: true);
+        Assert.Equal(0, allocation.HostMarginTop);
+        Assert.Equal(expectedInset, allocation.PageTopInset);
+        Assert.True(destination.Embedded);
+        Assert.Equal(route, history.Current.CompanionTag);
+        Assert.Same(destination, history.Current);
+    }
 }

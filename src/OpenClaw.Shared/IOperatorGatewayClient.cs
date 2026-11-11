@@ -9,6 +9,7 @@
 // </summary>
 
 using System.Text.Json;
+using OpenClaw.Shared.Usage;
 
 namespace OpenClaw.Shared;
 
@@ -241,6 +242,17 @@ public interface IOperatorGatewayClient
     /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
     Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
         => Task.FromResult(new SessionListResult { IsSupported = false });
+
+    // ─── Usage analytics (Usage page) ───
+    // Response-aware reads; defaults report Unsupported so test doubles keep compiling.
+    /// <summary>Per-session usage report (<c>sessions.usage</c>).</summary>
+    Task<UsageReadResult<SessionsUsageReport>> GetSessionsUsageAsync(
+        SessionsUsageQuery query, int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<SessionsUsageReport>.Unsupported());
+    /// <summary>Provider plans, quotas and billing (<c>usage.status</c>) as a typed response.</summary>
+    Task<UsageReadResult<ProviderUsageSummary>> GetProviderUsageAsync(
+        int timeoutMs = 30000, CancellationToken cancellationToken = default)
+        => Task.FromResult(UsageReadResult<ProviderUsageSummary>.Unsupported());
     /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
     Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
         => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));

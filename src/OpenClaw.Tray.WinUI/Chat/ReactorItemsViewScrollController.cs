@@ -120,6 +120,7 @@ file sealed class InitialTailPositioner : IDisposable
 {
     private const double FollowThreshold = 60;
     private const double TailVisibilityTolerance = 1;
+    private const double OffsetCorrectionAnchorRatio = 0.5;
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -139,6 +140,7 @@ file sealed class InitialTailPositioner : IDisposable
     private readonly PointerEventHandler _readerPointerPressed;
     private readonly TypedEventHandler<UIElement, GettingFocusEventArgs> _readerGettingFocus;
     private bool _disclosureAnchored;
+    private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
     private Microsoft.UI.Xaml.Controls.Primitives.IScrollController? _inputScrollController;
@@ -178,6 +180,7 @@ file sealed class InitialTailPositioner : IDisposable
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
 
+        RestoreTailAnchor();
         _requestKey = requestKey;
         _version++;
         _reflowCorrection.Clear();
@@ -489,7 +492,25 @@ file sealed class InitialTailPositioner : IDisposable
 
                 // An indexed bring can complete without moving restored, virtualized history.
                 // Correct to the live extent within the existing retry budget, not the stale bring target.
+                // Keep the tail as the native anchor while recycled rows change the extent.
+                // Disabling anchoring can cycle layout; an edge anchor can undo the correction.
                 _following = true;
+                if (_offsetCorrectionAnchorRequested is not null)
+                    scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
+                _offsetCorrectionAnchorRequested = (sender, args) =>
+                {
+                    if (IsInitialConfirmationCurrent(version, generation)
+                        && ReferenceEquals(sender, _scrollView)
+                        && TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+                        && sender.Content is ItemsRepeater repeater
+                        && repeater.TryGetElement(request.Index) is FrameworkElement { IsLoaded: true, Visibility: Visibility.Visible } target
+                        && ReferenceEquals(target.DataContext, targetItem))
+                    {
+                        args.AnchorElement = target;
+                    }
+                };
+                scrollView.AnchorRequested += _offsetCorrectionAnchorRequested;
+                scrollView.VerticalAnchorRatio = OffsetCorrectionAnchorRatio;
                 var correlationId = scrollView.ScrollTo(
                     scrollView.HorizontalOffset, scrollView.ScrollableHeight,
                     new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
@@ -513,6 +534,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void CompleteInitialLanding()
     {
+        RestoreTailAnchor();
         CancelRealization();
         DetachConfirmation();
         _confirmation.Invalidate();
@@ -664,12 +686,17 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void RestoreTailAnchor()
     {
-        if (!_disclosureAnchored)
+        if (!_disclosureAnchored && _offsetCorrectionAnchorRequested is null)
             return;
 
         _disclosureAnchored = false;
         if (_scrollView is not null)
+        {
+            if (_offsetCorrectionAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
             _scrollView.VerticalAnchorRatio = 1.0;
+        }
+        _offsetCorrectionAnchorRequested = null;
     }
 
     private void OnReaderFocus(UIElement sender, GettingFocusEventArgs args)
@@ -869,6 +896,8 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachLayout()
     {
+        if (_offsetCorrectionAnchorRequested is not null)
+            RestoreTailAnchor();
         CancelRealization();
         DetachRendering();
         DetachConfirmation();
@@ -909,6 +938,8 @@ file sealed class InitialTailPositioner : IDisposable
         _inputScrollController = null;
         if (_scrollView is not null)
         {
+            if (_offsetCorrectionAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
             _scrollView.VerticalAnchorRatio = double.NaN;
             _scrollView.ViewChanged -= OnViewChanged;
             _scrollView.StateChanged -= OnScrollStateChanged;
@@ -919,6 +950,7 @@ file sealed class InitialTailPositioner : IDisposable
 
         _scrollView = null;
         _disclosureAnchored = false;
+        _offsetCorrectionAnchorRequested = null;
         _reportedAtTail = null;
     }
 

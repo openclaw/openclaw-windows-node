@@ -772,7 +772,9 @@ foreach ($token in @(
         './scripts/test-gateway-fixture.ps1',
         '-AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe',
         '-ArtifactsDirectory .\TestResults\GatewayFixture',
+        '-TestTimeoutSeconds 1200',
         '-Screenshots',
+        '-NativeInputProof',
         '-NoBuild'
     )) {
     Assert-Contains -Text $fixtureStep -Expected $token -Message "Mock Gateway CI step is missing '$token'."
@@ -874,6 +876,8 @@ Assert-NotContains -Text $fixtureRunner -Unexpected '-p:Platform=' `
 Assert-Contains -Text $fixtureRunner -Expected "if (`$NoBuild) { `$testArguments += @('--no-build', '--no-restore') }" `
     -Message 'Prebuilt fixture execution must not spend its test deadline rebuilding or restoring.'
 $releasedProfileStep = Get-StepBlock -Text $fixtureJob -Name 'Run latest stable profile compatibility'
+Assert-NotContains -Text $releasedProfileStep -Unexpected '-TestTimeoutSeconds' `
+    -Message 'The longer deadline belongs only to the ordinary mock-Gateway scenarios step.'
 Assert-Contains -Text $releasedProfileStep -Expected '-NoBuild' `
     -Message 'Released-profile compatibility must reuse the same prebuilt integration tests.'
 foreach ($token in @('releases/latest', 'Get-FileHash', 'SHA256', '$asset.digest.Substring(7)',
@@ -886,13 +890,91 @@ Assert-Contains -Text $fixtureRunner -Expected "'FullyQualifiedName~GatewayFixtu
 foreach ($token in @(
         "`$start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] = '1'",
         "`$start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] = `$resolvedApp",
-        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui'",
+        "'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:`$NativeInputProof",
         "'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof",
         "`$start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] = if (`$EnableKeyboardProof) { '1' } else { '0' }",
         '[int]$counters.total -le 0 -or [int]$counters.passed -ne [int]$counters.total'
     )) {
     Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture runner lost its explicit-app, category or all-pass contract: '$token'."
 }
+# Exercise the production child-launch construction without launching dotnet or native input.
+$fixtureTokens = $null
+$fixtureParseErrors = $null
+$fixtureAst = [Management.Automation.Language.Parser]::ParseInput($fixtureRunner, [ref]$fixtureTokens, [ref]$fixtureParseErrors)
+if ($fixtureParseErrors.Count -ne 0) { throw 'Fixture runner must parse before its launch contract is checked.' }
+# Exercise the real parameter binder without resolving or launching an app.
+$fixtureTimeoutProbe = [scriptblock]::Create($fixtureAst.ParamBlock.Extent.Text + "`n[int](`$TestTimeoutSeconds * 1000)")
+if ((& $fixtureTimeoutProbe -AppPath 'unused-built-app.exe') -ne 900000) {
+    throw 'Existing fixture callers must retain the 900-second default.'
+}
+foreach ($case in @(@{ Seconds = 1; Milliseconds = 1000 }, @{ Seconds = 1200; Milliseconds = 1200000 },
+        @{ Seconds = 1800; Milliseconds = 1800000 })) {
+    if ((& $fixtureTimeoutProbe -AppPath 'unused-built-app.exe' -TestTimeoutSeconds $case.Seconds) -ne $case.Milliseconds) {
+        throw "Fixture timeout conversion failed for $($case.Seconds) seconds."
+    }
+}
+foreach ($invalid in @(0, -1, 1801, [int]::MaxValue, ([long][int]::MaxValue + 1), [double]::PositiveInfinity)) {
+    try {
+        & $fixtureTimeoutProbe -AppPath 'unused-built-app.exe' -TestTimeoutSeconds $invalid | Out-Null
+        throw "Fixture timeout accepted invalid or overflowing value: $invalid."
+    }
+    catch [System.Management.Automation.ParameterBindingException] { }
+}
+foreach ($token in @('$process.WaitForExit($TestTimeoutSeconds * 1000)', '$process.Kill($true)',
+        '$process.ExitCode -ne 0', 'if (-not (Test-Path -LiteralPath $resultFile))')) {
+    Assert-Contains -Text $fixtureRunner -Expected $token -Message "Fixture timeout/result admission lost '$token'."
+}
+$startInfoFunction = @($fixtureAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'New-FixtureTestStartInfo'
+}, $true))
+if ($startInfoFunction.Count -ne 1) { throw 'Expected one fixture child ProcessStartInfo owner.' }
+& {
+    param($Definition, $Root)
+    . ([scriptblock]::Create($Definition))
+    $repoRoot = $Root
+    $Configuration = 'Debug'
+    $NoBuild = $false
+    $rid = 'win-x64'
+    $resultsDirectory = Join-Path $Root 'TestResults'
+    $resolvedApp = Join-Path $Root 'candidate.exe'
+    $resolvedStableApp = $null
+    $artifacts = $resultsDirectory
+    $Screenshots = $true
+    $inherited = $env:OPENCLAW_RUN_KEYBOARD_PROOF
+    try {
+        $env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+        foreach ($enabled in @($false, $true)) {
+            $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'Category=GatewayFixture&KeyboardProof!=Required' -ResultName 'fixture-ui' -EnableKeyboardProof:$enabled
+            $expected = if ($enabled) { '1' } else { '0' }
+            if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne $expected -or $start.UseShellExecute -or
+                $start.Environment['OPENCLAW_GATEWAY_FIXTURE_APP'] -ne $resolvedApp -or
+                $start.Environment['OPENCLAW_RUN_GATEWAY_FIXTURE_UI'] -ne '1' -or
+                -not $start.ArgumentList.Contains('Category=GatewayFixture&KeyboardProof!=Required')) {
+                throw "Fixture UI native input must follow the explicit child option ($enabled), preserving owned-app/filter binding."
+            }
+        }
+        foreach ($resultName in @('fixture-profile-app', 'fixture-released-profile')) {
+            $resolvedStableApp = if ($resultName -eq 'fixture-released-profile') { Join-Path $Root 'stable.exe' } else { $null }
+            $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'profile' -ResultName $resultName
+            if ($start.Environment['OPENCLAW_RUN_KEYBOARD_PROOF'] -ne '0') {
+                throw 'Profile and upgrade children must not inherit native-input authorization.'
+            }
+        }
+        $NoBuild = $true
+        $start = New-FixtureTestStartInfo -Project 'tests/fixture.csproj' -Filter 'profile' -ResultName 'prebuilt'
+        if (-not $start.ArgumentList.Contains('--no-build') -or -not $start.ArgumentList.Contains('--no-restore') -or
+            @($start.ArgumentList | Where-Object { $_ -like '-p:Platform=*' }).Count -ne 0) {
+            throw 'Prebuilt fixture execution must retain canonical RID outputs without building or restoring.'
+        }
+        if ($env:OPENCLAW_RUN_KEYBOARD_PROOF -ne '1') { throw 'Child launch planning changed the parent input opt-in.' }
+    } finally { $env:OPENCLAW_RUN_KEYBOARD_PROOF = $inherited }
+} $startInfoFunction[0].Extent.Text $repoRootPath
+if ([regex]::Matches($fixtureRunner, [regex]::Escape('-EnableKeyboardProof:$NativeInputProof')).Count -ne 1) {
+    throw 'The ordinary UI child must be the sole consumer of NativeInputProof.'
+}
+Assert-NotContains -Text $fixtureStep -Unexpected 'OPENCLAW_RUN_KEYBOARD_PROOF' -Message 'Fixture native input must use the explicit child option, not a step/global environment bypass.'
+Assert-NotContains -Text $releasedProfileStep -Unexpected '-NativeInputProof' -Message 'Released-profile compatibility must not request native wheel input.'
+
 foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-dump-type"', '"none"')) {
     Assert-Contains -Text $runner -Expected $token `
         -Message "CI test runner is missing hang diagnostic argument '$token'."

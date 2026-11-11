@@ -105,6 +105,26 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Empty(server.UnexpectedRequests);
     }
 
+    [Fact]
+    public async Task Dashboards_UseSupportedCompactRowsAndRejectTheObsoleteDashboardRowMode()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateDashboards(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var page = await connected.Client.ListDashboardSessionsAsync("main").WaitAsync(Deadline);
+        Assert.NotNull(page);
+        Assert.Equal(6, page.Rows.Length);
+        Assert.Contains(page.Rows, row => row.Key == FixtureBoards.OpsSessionKey);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.SendWizardRequestAsync("sessions.list", new
+            {
+                source = "dashboard", rowMode = "dashboard", hasBoard = true, agentId = "main",
+            }));
+        Assert.Contains("/rowMode", error.Message);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1085,6 +1105,8 @@ public sealed partial class GatewayFixtureProtocolTests
                 "exec.approval.resolve",
                 new { id = "fixture-approval-invalid", decision = "approve" }));
         await connected.Client.ResolveExecApprovalAsync("fixture-approval-invalid", "allow-once");
+        // The reply can arrive before the fixture finishes publishing its request log.
+        await server.WaitForCompletedRequestAsync("exec.approval.resolve", occurrence: 2);
 
         Assert.Contains("Unsupported approval decision", error.Message);
         var requests = server.Requests

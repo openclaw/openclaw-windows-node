@@ -251,6 +251,24 @@ public sealed class WorkspaceNavigationTests
         Assert.False(history.CanGoForward);
     }
 
+    [Theory]
+    [InlineData("dashboards")]
+    [InlineData("dashboards?session=agent%3Amain%3Adashboard%3Aops&agent=main")]
+    public void DashboardsRoutes_AlwaysUseStandalonePagePresentation_AndShareWorkspaceHistory(string tag)
+    {
+        var destination = WorkspaceDestination.Settings(tag);
+        Assert.True(destination.Embedded);
+        Assert.Equal(tag, destination.CompanionTag);
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "kept-chat"));
+        history.Navigate(destination);
+        Assert.True(history.GoBack());
+        Assert.Equal("kept-chat", history.Current.SessionKey);
+        Assert.True(history.GoForward());
+        Assert.Equal(destination, history.Current);
+        Assert.False(WorkspaceDestination.Settings("connection").Embedded);
+    }
+
     [Fact]
     public void Settings_ReturnsToExactPriorChat_AndForwardRestoresSection()
     {
@@ -1080,7 +1098,11 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("2", (string?)bell.Attribute("Grid.Column"));
         Assert.Equal("OnDashboardClick", (string?)dashboard.Attribute("Click"));
         Assert.Equal("WorkspaceShell_DashboardButton", (string?)dashboard.Attribute(x + "Uid"));
-        Assert.Null(bell.Attribute("Click"));
+        Assert.Equal("OnNotificationsClick", (string?)bell.Attribute("Click"));
+        var footerCode = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("new FlyoutShowRequest(NotificationsFlyout, ReopenNotifications)", footerCode);
+        Assert.Contains("_notificationsShow.DeferUntilClosed();", footerCode);
+        Assert.Contains("_notificationsShow.Cancel();", footerCode);
         var flyout = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "Flyout");
         Assert.Equal("OnNotificationsOpening", (string?)flyout.Attribute("Opening"));
         Assert.Equal("OnNotificationsClosed", (string?)flyout.Attribute("Closed"));

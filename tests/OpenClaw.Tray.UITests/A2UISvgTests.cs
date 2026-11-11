@@ -30,10 +30,10 @@ public sealed class A2UISvgTests
 
     private const string SvgDecodeSlackVariable = "OPENCLAW_UI_SVG_DECODE_SLACK_SECONDS";
     // Slack beyond MediaResolver.SvgRenderTimeout for ONE admitted decode (the pre-existing 2 s).
-    // Do not widen it to absorb a late return: PathologicalGeometry returns long after the cap
-    // fires because SvgImageSource.SetSourceAsync blocks the UI thread past SvgRenderTimeout (see
-    // docs/CI_FAILURES.md). Queue wait is excluded by AssertSingleDecodeBoundedAsync and covered
-    // separately by Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees.
+    // Do not widen it to absorb a late return. Pathological geometry is rejected before decode by
+    // SvgGeometryBudget because SvgImageSource.SetSourceAsync can block the UI
+    // thread past SvgRenderTimeout (see docs/CI_FAILURES.md). Queue wait is excluded by
+    // AssertSingleDecodeBoundedAsync and covered separately by Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees.
     private static readonly TimeSpan SvgDecodeSlack =
         int.TryParse(Environment.GetEnvironmentVariable(SvgDecodeSlackVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(2);
@@ -296,7 +296,7 @@ public sealed class A2UISvgTests
     }
 
     [Fact]
-    public async Task PathologicalGeometry_BoundedByRenderTimeout()
+    public async Task PathologicalGeometry_RejectedBeforeDecode()
     {
         // Build an SVG with a very long path expression. Stay under the 2 MiB data-URL cap
         // by base64-encoding to avoid percent-escape bloat.
@@ -312,8 +312,108 @@ public sealed class A2UISvgTests
         sb.Append("'/></svg>");
         var url = DataSvgBase64(sb.ToString());
 
-        // Decode (or timeout) must complete within the single-decode bound.
-        await AssertSingleDecodeBoundedAsync(url, "pathological-geometry");
+        // Oversized geometry never reaches D2D, so the load fails fast instead of blocking the UI thread.
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(url);
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("SVG rejected before decode", StringComparison.Ordinal));
+            Assert.True(
+                sw.Elapsed < SvgDecodeSlack,
+                $"pathological-geometry rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task ManySmallShapes_RejectedBeforeDecode()
+    {
+        // The attribute budget cannot see element count: tiny shapes carry no path data, so a
+        // document of thousands of nodes would otherwise reach the decoder unmeasured.
+        var svg =
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
+            string.Concat(Enumerable.Repeat("<rect width='1' height='1'/>", SvgGeometryBudget.MaxElements)) +
+            "</svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("element count exceeds", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"element-count rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task DoctypeCommentContainingFakePath_StillRenders()
+    {
+        // Regression: the geometry guard used to scan before the DOCTYPE strip, so the '>' inside this
+        // DTD comment ended its skip early, the fake path inside the comment was counted, and this
+        // small SVG was rejected. The strip now runs first, so the image must render.
+        var fakePath = new string('1', SvgGeometryBudget.MaxAttributeChars + 1);
+        var svg = $"<!DOCTYPE svg [<!-- > <path d='{fakePath}'/> -->]>" + MinSvg;
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            Assert.True(src is SvgImageSource,
+                $"DOCTYPE comment made a small SVG fail; warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task OversizedGeometryAfterDoctype_StillRejectedBeforeDecode()
+    {
+        // '<' + '?' makes the unprefixed scan treat the DTD tail as an unclosed processing
+        // instruction and skip to end of input, so it misses the oversized path. The shipped policy
+        // strips the declaration first and counts it.
+        var svg =
+            "<!DOCTYPE svg [<!-- > <? -->]>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
+            $"<path d='{new string('1', SvgGeometryBudget.MaxAttributeChars + 1)}'/></svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("geometry attributes exceed", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task DoctypeSurvivingTheStrip_IsRejectedBeforeDecode()
+    {
+        // The decoy declaration inside the comment is the first textual match, so the strip removes
+        // it and leaves the real one; the scan would then skip that DTD only to its first '>'.
+        // The policy fails closed instead of decoding bytes it never accounted for.
+        var svg =
+            "<!-- <!DOCTYPE x> --><!DOCTYPE svg [<!-- > <![CDATA[ -->]>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='10' height='10'/></svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("DOCTYPE could not be stripped", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
     }
 
     [Fact]
