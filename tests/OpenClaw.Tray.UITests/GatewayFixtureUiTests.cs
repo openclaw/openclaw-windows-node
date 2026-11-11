@@ -974,7 +974,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 var archive = FindById(run, "SessionsHubCommandArchive")!;
                 AssertVisibleInHub(run, archive, "archive command for toast");
                 Invoke(archive);
-                await WaitUiAsync(run, () => FindById(run, "SessionsHubNotice") is not null, "archive toast");
+                await WaitUiAsync(run, () => FindById(run, "SessionsHubNoticeDismiss") is not null, "archive toast");
                 CaptureSessionsWindow(run, "sessions-toast.png");
             });
 
