@@ -8741,4 +8741,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Usage_Export_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>Last 7 days</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>The saved Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.</value></data>
 </root>

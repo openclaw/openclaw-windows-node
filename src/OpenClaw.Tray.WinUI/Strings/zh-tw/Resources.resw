@@ -8670,4 +8670,8 @@
   <data name="Usage_Export_Close" xml:space="preserve"><value>關閉</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>最近 7 天</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>無法驗證舊版本機 AI 模型設定以進行遷移。Gateway 設定未變更。</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>舊版本機 AI 模型設定在確認遷移前發生變更。請重新連線原始 Gateway 以協調設定。</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>本機 AI 模型設定已儲存，但無法確認 WSL Gateway 已重新啟動。重試前請協調原始 Gateway 的設定。</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>無法驗證已儲存的本機 AI 路由。請保留端點並協調原始 Gateway 的設定。</value></data>
 </root>

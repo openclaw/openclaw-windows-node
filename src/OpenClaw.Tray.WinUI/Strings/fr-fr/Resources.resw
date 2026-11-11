@@ -8670,4 +8670,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Export_Close" xml:space="preserve"><value>Fermer</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>7 derniers jours</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>30 derniers jours</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>Les anciens réglages du modèle d’IA locale n’ont pas pu être validés pour la migration. La configuration du Gateway n’a pas été modifiée.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>Les anciens réglages du modèle d’IA locale ont changé avant la confirmation de la migration. Reconnectez le Gateway d’origine pour les réconcilier.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>Les réglages du modèle d’IA locale ont été enregistrés, mais le redémarrage du Gateway WSL n’a pas été confirmé. Réconciliez le Gateway d’origine avant de réessayer.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>La route d’IA locale enregistrée n’a pas pu être vérifiée. Conservez le point de terminaison et réconciliez le Gateway d’origine.</value></data>
 </root>

@@ -35,6 +35,105 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Empty(Assert.Single(transport.ReplacementPaths));
     }
 
+    [Fact]
+    public async Task RpcPublish_MigratesOnlyLegacyModelArrayAndPreservesCredential()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("{}");
+        transport.SetManaged(install);
+        StripEffortMetadata((JsonObject)transport.Config["models"]!["providers"]!["llamacpp"]!["models"]![0]!);
+        var oldProvider = transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString();
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(oldProvider, install, "actual-local-secret"));
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(oldProvider, install, "actual-local-secret"));
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Equal([LocalAiGatewayProviderDefinition.ProviderModelsPath], Assert.Single(transport.ReplacementPaths));
+        Assert.False(transport.Patches[0].GetProperty("models").GetProperty("providers")
+            .GetProperty("llamacpp").TryGetProperty("apiKey", out _));
+        Assert.Equal("actual-local-secret", (string?)transport.Config["models"]?["providers"]?["llamacpp"]?["apiKey"]);
+        Assert.Equal("cloud/prior", install.Manifest.GatewayFallbackModel);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString(), install, "actual-local-secret"));
+    }
+
+    [Fact]
+    public async Task WslPublish_MigratesLegacyModelArrayWithoutOverwritingCredential()
+    {
+        var install = Install(28_765);
+        var commands = new FakeWslCommandRunner(LegacyProviderJson(install, "llama-local"),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var coordinator = CreateCoordinator(commands);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal("llama-local", JsonNode.Parse(commands.ProviderJson!)!["apiKey"]!.GetValue<string>());
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install, "llama-local"));
+        Assert.Contains(commands.Calls, call => call.Contains("--expect-current-json"));
+        Assert.Contains(commands.Calls, call => call.Contains("gateway") && call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslPublish_GatewayThatRejectsMigrationKeepsLegacyRouteUnchanged()
+    {
+        var install = Install(28_765);
+        var original = LegacyProviderJson(install);
+        var commands = new FakeWslCommandRunner(original,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)) { RejectModelsWrite = true };
+
+        var result = await CreateCoordinator(commands).PublishAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Equal(original, commands.ProviderJson);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("--expect-current-json"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
+    }
+
+    [Fact]
+    public async Task WslPublish_FinishesRestartAfterConfirmedWriteWhenCallerCancels()
+    {
+        var install = Install(28_765);
+        using var cancellation = new CancellationTokenSource();
+        FakeWslCommandRunner? observed = null;
+        var commands = new FakeWslCommandRunner(LegacyProviderJson(install),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            CommandObserved = _ =>
+            {
+                if (observed!.Calls[^1].Contains("--expect-current-json"))
+                    cancellation.Cancel();
+            },
+        };
+        observed = commands;
+
+        var result = await CreateCoordinator(commands).PublishAsync(install, cancellation.Token);
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(commands.Calls, call => call.Contains("restart"));
+    }
+
+    /// <summary>The exact provider shape published before effort metadata was added.</summary>
+    private static string LegacyProviderJson(LocalAiResolvedInstall install, string apiKey = "llama-local")
+    {
+        var provider = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install, apiKey))!.AsObject();
+        StripEffortMetadata((JsonObject)provider["models"]![0]!);
+        return provider.ToJsonString();
+    }
+
+    private static void StripEffortMetadata(JsonObject model)
+    {
+        var compat = (JsonObject)model["compat"]!;
+        compat.Remove("supportsReasoningEffort");
+        compat.Remove("supportedReasoningEfforts");
+        compat.Remove("reasoningEffortMap");
+        model.Remove("thinkingLevelMap");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1046,6 +1145,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public string? ActiveProviderJson { get; private set; } = providerJson;
         public string? PrimaryModel { get; private set; } = primaryModel;
         public string? ProviderAfterApply { get; init; }
+        public bool RejectModelsWrite { get; init; }
         public string? PrimaryAfterApply { get; init; }
         public bool FailReads { get; init; }
         public HashSet<int> FailedReadCalls { get; init; } = [];
@@ -1073,6 +1173,26 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
                 command.Contains(LocalAiGatewayProviderDefinition.ProviderPath);
             if (providerRead && (FailReads || FailedReadCalls.Contains(++_readCalls)))
                 return Result(1, string.Empty, "wsl.exe failed");
+            if (command.Contains("set") && command.Contains(LocalAiGatewayProviderDefinition.ProviderModelsPath))
+            {
+                int guard = command.ToList().IndexOf("--expect-current-json");
+                bool dryRun = command.Contains("--dry-run");
+                // An older Gateway schema rejects the new fields at validation.
+                if (RejectModelsWrite || ProviderJson is null || dryRun && guard >= 0 || !dryRun && guard < 0)
+                    return Result(1, string.Empty);
+                var provider = JsonNode.Parse(ProviderJson)!.AsObject();
+                if (!dryRun)
+                {
+                    using var current = JsonDocument.Parse(provider["models"]!.ToJsonString());
+                    using var expected = JsonDocument.Parse(command[guard + 1]);
+                    if (!JsonElement.DeepEquals(current.RootElement, expected.RootElement))
+                        return Result(1, string.Empty);
+                    int path = command.ToList().IndexOf(LocalAiGatewayProviderDefinition.ProviderModelsPath);
+                    provider["models"] = JsonNode.Parse(command[path + 1]);
+                    ProviderJson = provider.ToJsonString();
+                }
+                return Result(0, string.Empty);
+            }
             if (command.Contains("/bin/sh"))
             {
                 if (ProviderAfterApply is not null)

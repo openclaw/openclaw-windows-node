@@ -8671,4 +8671,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Export_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>Afgelopen 7 dagen</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Afgelopen 30 dagen</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationValidation" xml:space="preserve"><value>De oude modelinstellingen voor Lokale AI konden niet voor migratie worden gevalideerd. De Gateway-configuratie is niet gewijzigd.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationChanged" xml:space="preserve"><value>De oude modelinstellingen voor Lokale AI zijn gewijzigd voordat de migratie kon worden bevestigd. Maak opnieuw verbinding met de oorspronkelijke Gateway om dit te herstellen.</value></data>
+  <data name="LocalAi_GatewayLegacyMigrationRestart" xml:space="preserve"><value>De modelinstellingen voor Lokale AI zijn opgeslagen, maar het opnieuw starten van de WSL Gateway is niet bevestigd. Herstel de oorspronkelijke Gateway voordat je het opnieuw probeert.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>De opgeslagen route voor Lokale AI kon niet worden geverifieerd. Behoud het eindpunt en herstel de oorspronkelijke Gateway.</value></data>
 </root>
