@@ -958,10 +958,15 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
         {
             await ui.RunOnUIAsync(() => harness.Root!.Width = width);
             await harness.RenderAsync();
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
-                var details = harness.Find<FrameworkElement>("SessionsHubDetails");
-                var move = harness.Find<DropDownButton>("SessionsHubMoveGroup");
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => TestSupport.FindDescendants<DropDownButton>(harness.Root!).Any(button =>
+                        AutomationProperties.GetAutomationId(button) == "SessionsHubMoveGroup"
+                        && IsShown(button, harness.Root!) && button.ActualWidth > 0),
+                    $"laid-out Move group action at {width} DIP");
+                var details = harness.FindShown<FrameworkElement>("SessionsHubDetails");
+                var move = harness.FindShown<DropDownButton>("SessionsHubMoveGroup");
                 var moveBounds = move.TransformToVisual(details).TransformBounds(
                     new global::Windows.Foundation.Rect(0, 0, move.ActualWidth, move.ActualHeight));
                 Assert.InRange(move.ActualWidth, 149, 151);
