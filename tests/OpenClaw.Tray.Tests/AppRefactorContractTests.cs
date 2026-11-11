@@ -1513,7 +1513,29 @@ public sealed class AppRefactorContractTests
             "setupWindow.Closed += OnSetupClosed",
             "CompleteSetupCloseAsync(setupWindow)",
             "await setupWindow.CleanupCompleted",
-            "_setupWindow = null");
+            "_setupWindow = null",
+            "TryAdoptExternalSnapshot()",
+            "ExternalSnapshotAdoption.UnsavedEdits",
+            "NotifySetupRegistryRecovery()",
+            "ExternalSnapshotAdoption.Adopted",
+            "ReconcileSetupConnectionAsync(before, registry.GetActive())");
+    }
+
+    [Fact]
+    public void SavedGatewayRemoval_SavesBeforeDisconnectingTheActiveConnection()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var remove = ExtractMethod(connectionPage, "OnSavedRowRemoveAsync");
+        AssertInOrder(
+            remove,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
+            "await _connectionManager.DisconnectAsync()");
     }
 
     [Fact]
