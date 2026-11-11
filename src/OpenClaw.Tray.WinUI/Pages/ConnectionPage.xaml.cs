@@ -1069,7 +1069,7 @@ public sealed partial class ConnectionPage : Page
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
-        // Voice and Skills deep links were removed from the simplified node card.
+        // Voice deep link were removed from the simplified node card.
     }
 
     private void ApplyRecoveryBody(ConnectionPagePlan plan)
@@ -1919,6 +1919,16 @@ public sealed partial class ConnectionPage : Page
 
     // ─── User intent transitions ──────────────────────────────────────
 
+    /// <summary>
+    /// Opens the Add gateway form, as the page's own Add button does (account menu entry point).
+    /// An Add or Edit form already in progress is kept, so menu use never discards typed values.
+    /// </summary>
+    internal void BeginAddGateway()
+    {
+        if (_userIntent == UserIntent.AddingGateway) return;
+        OnEnterAddGateway(this, new RoutedEventArgs());
+    }
+
     private void OnEnterAddGateway(object sender, RoutedEventArgs e)
     {
         _editingGatewayId = null;
@@ -2403,7 +2413,7 @@ public sealed partial class ConnectionPage : Page
     // ─── Operator card navigation ────────────────────────────────────
 
     private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions");
-    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances");
+    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("systems");
 
     // ─── Node card navigation ────────────────────────────────────────
 
@@ -2588,11 +2598,19 @@ public sealed partial class ConnectionPage : Page
                 }
             }
 
-            var url = GatewayDashboardUrlBuilder.Build(
-                rec.Url,
-                path: null,
-                rec.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
+            if (!GatewayDashboardUrlBuilder.TryBuild(
+                    rec.Url,
+                    path: null,
+                    rec.SharedGatewayToken,
+                    appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken),
+                    out var url,
+                    out _))
+            {
+                CurrentApp.ShowTransientConnectionError(
+                    LocalizationHelper.GetString("ConnectionPage_SavedDashboardInvalidAddress"));
+                return;
+            }
+
             await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
         catch (Exception ex)

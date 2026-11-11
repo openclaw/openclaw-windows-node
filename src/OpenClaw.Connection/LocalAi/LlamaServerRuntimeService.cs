@@ -7,8 +7,8 @@
 //   var runtime = new LlamaServerRuntimeService(new LlamaServerRuntimeOptions { Paths = paths });
 //   runtime.StateChanged += (_, args) => UpdateUi(args.Snapshot);
 //   LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync(cancellationToken);
-//   if (snapshot.State is LocalAiRuntimeState.Healthy) { /* endpoint ready at snapshot.Endpoint */ }
-//   await using var _ = runtime; // StopAsync/RestartAsync/RefreshAsync also available on ILocalAiRuntime
+//   snapshot = await runtime.ReplaceInstallAsync(replacement, cancellationToken); // leaves it stopped
+//   await using var _ = runtime; // StopAsync, RestartAsync, and RefreshAsync are also available
 // </summary>
 using OpenClaw.Shared;
 using OpenClaw.Shared.Inference;
@@ -18,6 +18,7 @@ using System.Text;
 
 namespace OpenClaw.Connection.LocalAi;
 
+/// <summary>Configures paths, lifecycle ownership, timing, and process limits for a llama-server runtime.</summary>
 public sealed record LlamaServerRuntimeOptions
 {
     public required LocalAiPaths Paths { get; init; }
@@ -183,16 +184,21 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         };
     }
 
+    /// <summary>Raised after the service publishes a changed runtime snapshot.</summary>
     public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
 
+    /// <summary>Whether the configured endpoint lifecycle retains durable Gateway ownership.</summary>
     public bool HasReleasableOwnership => _options.EndpointLifecycle.HasReleasableOwnership;
+    /// <summary>Whether callers must select a native Gateway before starting the runtime.</summary>
     public bool RequiresNativeSelection => _options.EndpointLifecycle.RequiresNativeSelection;
+    /// <summary>Forwards native Gateway selection changes from the configured endpoint lifecycle.</summary>
     public event EventHandler? SelectionChanged
     {
         add => _options.EndpointLifecycle.SelectionChanged += value;
         remove => _options.EndpointLifecycle.SelectionChanged -= value;
     }
 
+    /// <summary>Releases durable Gateway ownership after the runtime has stopped cleanly.</summary>
     public async Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -209,19 +215,155 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>
+    /// Stops and withdraws the current installation, then atomically commits a validated replacement.
+    /// The replacement stays stopped until callers explicitly start it.
+    /// </summary>
+    public async Task<LocalAiRuntimeSnapshot> ReplaceInstallAsync(
+        LocalAiInstallManifest replacement,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            if (_install is null && !await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
+                throw new LocalAiModelSwitchException("Local AI is not installed.");
+            LocalAiResolvedInstall previous = _install!;
+
+            // The old route is withdrawn with the old receipt before the new one is saved, so
+            // the Gateway never routes a primary model the receipt no longer describes.
+            _automaticResumeSuppressed = true;
+            await _options.EndpointLifecycle.SetAutomaticRecoveryEnabledAsync(false, cancellationToken).ConfigureAwait(false);
+            _explicitStopRequested = true;
+            LocalAiRuntimeSnapshot stopped = await StopCoreAsync(LocalAiQuiesceReason.Teardown, cancellationToken)
+                .ConfigureAwait(false);
+            if (stopped.State != LocalAiRuntimeState.Stopped || _gatewayRouteRequiresResolution)
+            {
+                throw new LocalAiModelSwitchException(stopped.Detail ??
+                    "The previous Local AI model could not be withdrawn from the Gateway. Its installation was kept.");
+            }
+
+            LocalAiResolvedInstall next = _manifestStore.ResolveAndValidate(replacement with
+            {
+                Endpoint = null,
+                RequestedPort = previous.Manifest.RequestedPort,
+                GatewayFallbackModel = previous.Manifest.GatewayFallbackModel,
+            });
+            // The lifecycle journals the previous model, then runs this commit inside its receipt lease,
+            // so binding and manifest change as one transaction. An interrupted commit is settled by the
+            // next manifest load (TryLoadInstallAsync).
+            await _options.EndpointLifecycle.CommitModelRebindAsync(previous, next, async () =>
+            {
+                try
+                {
+                    await _manifestStore.SaveAsync(next.Manifest, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    throw new LocalAiModelSwitchException(
+                        $"The new Local AI model could not be saved, so the previous model was kept: {Sanitize(ex.Message)}");
+                }
+            }, cancellationToken).ConfigureAwait(false);
+            _install = next;
+            DisposeVerifiedModelHandle();
+            return Publish(
+                LocalAiRuntimeState.Stopped,
+                LocalAiOwnership.None,
+                null,
+                modelState: LocalAiModelAvailabilityState.Verified);
+        }
+        finally { _operationGate.Release(); }
+    }
+
+    /// <summary>Records the cloud primary to restore when the managed Local AI route is withdrawn.</summary>
+    public async Task SetGatewayFallbackModelAsync(string? model, CancellationToken cancellationToken = default)
+    {
+        LocalAiGatewayModelPolicy.ValidateFallbackModel(model);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            if (_install is null && !await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
+                return;
+            // The lifecycle receipt is updated first and is idempotent: if the manifest write
+            // below fails, retrying the same fallback repairs both instead of returning early.
+            await _options.EndpointLifecycle.SetFallbackModelAsync(model, cancellationToken).ConfigureAwait(false);
+            await SaveGatewayFallbackManifestAsync(model, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _operationGate.Release(); }
+    }
+
+    /// <summary>
+    /// Writes a cloud primary through the caller callback and records it as the fallback under the
+    /// endpoint lifecycle's durable ownership rules.
+    /// </summary>
+    public async Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(writePrimary);
+        LocalAiGatewayModelPolicy.ValidateFallbackModel(model);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            bool installed = _install is not null || await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false);
+            // Without an install there is no manifest to update, but a durable receipt may still exist,
+            // so the lifecycle check runs either way.
+            await _options.EndpointLifecycle.SetPrimaryAndFallbackModelAsync(model, writePrimary, cancellationToken)
+                .ConfigureAwait(false);
+            if (installed)
+                await SaveGatewayFallbackManifestAsync(model, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _operationGate.Release(); }
+    }
+
+    private async Task SaveGatewayFallbackManifestAsync(string? model, CancellationToken cancellationToken)
+    {
+        if (string.Equals(_install!.Manifest.GatewayFallbackModel, model, StringComparison.Ordinal))
+            return;
+        LocalAiInstallManifest updated = _install.Manifest with { GatewayFallbackModel = model };
+        await _manifestStore.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        _install = _manifestStore.ResolveAndValidate(updated);
+    }
+
+    /// <summary>Returns the latest thread-safe published runtime snapshot.</summary>
     public LocalAiRuntimeSnapshot Snapshot
     {
         get { lock (_snapshotGate) return _snapshot; }
     }
 
-    public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
+    /// <summary>Starts the runtime and publishes its route after endpoint health verification.</summary>
+    public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+        EnsureStartedAsync(cancellationToken, null);
+
+    private StartProgress? _explicitStartProgress;
+
+    private sealed class StartProgress(IProgress<LocalAiRuntimeStartStage> target, CancellationToken cancellationToken)
+        : IProgress<LocalAiRuntimeStartStage>, IDisposable
+    {
+        private volatile bool _active = true;
+        public void Report(LocalAiRuntimeStartStage stage)
+        {
+            if (_active && !cancellationToken.IsCancellationRequested) target.Report(stage);
+        }
+        public void Dispose() => _active = false;
+    }
+
+    /// <summary>Starts the runtime while reporting startup stages through the supplied progress sink.</summary>
+    public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
+        IProgress<LocalAiRuntimeStartStage>? progress)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Held only by this explicit Start under the existing operation gate.
+        _explicitStartProgress = progress is null ? null : new(progress, cancellationToken);
         bool admitted = false;
         bool completedSuccessfully = false;
         try
         {
             ThrowIfDisposed();
+            _explicitStartProgress?.Report(LocalAiRuntimeStartStage.CheckingConfiguration);
             if (_install is not null || await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
                 await _options.EndpointLifecycle.PrepareStartAsync(_install!, cancellationToken).ConfigureAwait(false);
             await _options.EndpointLifecycle.SetAutomaticRecoveryEnabledAsync(false, cancellationToken).ConfigureAwait(false);
@@ -229,10 +371,12 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             _automaticResumeSuppressed = false;
             _explicitStopRequested = false;
             _restartAttempts = 0;
+            _explicitStartProgress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
             var started = await EnsureStartedCoreAsync(cancellationToken).ConfigureAwait(false);
             if (started.State == LocalAiRuntimeState.Healthy)
             {
-                var completed = await _options.EndpointLifecycle.CompleteStartAsync(_install!, cancellationToken).ConfigureAwait(false);
+                var completed = await _options.EndpointLifecycle.CompleteStartAsync(
+                    _install!, cancellationToken, _explicitStartProgress).ConfigureAwait(false);
                 if (!completed.Success)
                 {
                     _gatewayRouteRequiresResolution = true;
@@ -245,9 +389,16 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
         finally
         {
-            if (admitted && !completedSuccessfully)
-                SuppressIncompleteStart();
-            _operationGate.Release();
+            try
+            {
+                if (admitted && !completedSuccessfully) SuppressIncompleteStart();
+            }
+            finally
+            {
+                _explicitStartProgress?.Dispose();
+                _explicitStartProgress = null;
+                _operationGate.Release();
+            }
         }
     }
 
@@ -269,6 +420,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         return Snapshot;
     }
 
+    /// <summary>Resumes automatic operation when recovery is enabled and no explicit stop is pending.</summary>
     public async Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -283,6 +435,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>Reconciles a stopped runtime with durable route ownership before returning its state.</summary>
     public async Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -297,6 +450,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    /// <summary>Refreshes the runtime snapshot from the current process and endpoint state.</summary>
     public async Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -311,6 +465,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
     }
 
+    /// <summary>Stops the native runtime and withdraws its managed Gateway route.</summary>
     public async Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -359,6 +514,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
     }
 
+    /// <summary>Stops and then starts the runtime as one serialized explicit operation.</summary>
     public async Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default)
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -527,12 +683,17 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             string? draftModelPath = GetRuntimeDraftModelPath();
             if (draftModelPath is not null)
                 draftModelPath = ResolveChildProcessPath(draftModelPath);
+            // The projector is the last additional asset, after the draft checkpoint.
+            string? projectorPath = LlamaServerRouterConfiguration.ResolveInstalledPlan(install).Model.Recipe.VisionProjector is null
+                ? null
+                : ResolveChildProcessPath(_verifiedAdditionalAssets[^1].ResolvedPath);
             LlamaServerRouterLaunchPlan launchPlan = LlamaServerRouterConfiguration.BuildForVerifiedRuntime(
                 _options.Paths,
                 install,
                 _runtimeModelPath,
                 draftModelPath,
-                requestedPort);
+                requestedPort,
+                projectorPath);
             if (string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId,
                     StringComparison.OrdinalIgnoreCase))
             {
@@ -1080,7 +1241,20 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
 
         if (_install is not null)
+        {
+            try
+            {
+                await _options.EndpointLifecycle.SettleModelRebindAsync(_manifestStore.LoadAsync, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+            {
+                _logger.Error("Could not settle the Local AI Gateway binding with the installation manifest.", ex);
+                if (!preserveUnavailableSnapshot)
+                    Publish(LocalAiRuntimeState.Failed, LocalAiOwnership.None, Sanitize(ex.Message));
+                return false;
+            }
             return true;
+        }
         if (!preserveUnavailableSnapshot)
             Publish(LocalAiRuntimeState.NotInstalled, LocalAiOwnership.None, "Local AI is not installed.");
         return false;
@@ -1417,7 +1591,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         CancellationToken cancellationToken)
     {
         LocalAiEndpointLifecycleResult result = await _options.EndpointLifecycle
-            .PublishAsync(install, cancellationToken)
+            .PublishAsync(install, cancellationToken, _explicitStartProgress)
             .ConfigureAwait(false);
         if (result.Success)
             _gatewayRouteRequiresResolution = false;
@@ -1883,6 +2057,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             _ => LocalAiModelEvidence.Unknown(now),
         };
 
+    /// <summary>Stops owned resources and releases process, file, and synchronization handles.</summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
@@ -1957,11 +2132,11 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     /// <summary>
     /// The handle-resolved path of the draft checkpoint this process verified and still
     /// holds open, or null when the recipe has no additional assets. Additional assets are
-    /// verified in catalog order and the draft checkpoint is always last, matching
+    /// verified in catalog order and the draft checkpoint is always first, matching
     /// <see cref="LocalModelCatalog.AdditionalArtifacts"/>.
     /// </summary>
     private string? GetRuntimeDraftModelPath() =>
-        _verifiedAdditionalAssets.Count == 0 ? null : _verifiedAdditionalAssets[^1].ResolvedPath;
+        _verifiedAdditionalAssets.Count == 0 ? null : _verifiedAdditionalAssets[0].ResolvedPath;
 
     private string GetRuntimeModelPath(LocalAiResolvedInstall install)
     {

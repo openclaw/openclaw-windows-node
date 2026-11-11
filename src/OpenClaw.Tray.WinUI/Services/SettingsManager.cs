@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,11 +7,19 @@ using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mxc;
+using OpenClawTray.Presentation;
 
 namespace OpenClawTray.Services;
 
 internal sealed class SettingsPersistenceConflictException()
     : InvalidOperationException("Settings changed in another writer. Reload before saving.");
+
+/// <summary>Immutable presentation values and version captured by a successful settings commit.</summary>
+public sealed class SettingsSavedEventArgs(SettingsSnapshot snapshot) : EventArgs
+{
+    public SettingsSnapshot Snapshot { get; } = snapshot;
+}
 
 /// <summary>
 /// Manages application settings with JSON persistence.
@@ -23,7 +32,8 @@ public class SettingsManager
     private readonly string _settingsFilePath;
     private string? _persistedJson;
     private const string ProtectedSecretPrefix = "dpapi:";
-    private const int CurrentSettingsSchemaVersion = 1;
+    // v2: TTS provider migration (see MigrateTtsProvider).
+    private const int CurrentSettingsSchemaVersion = 2;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
     public const string AppThemeSystem = "System";
     public const string AppThemeLight = "Light";
@@ -34,14 +44,16 @@ public class SettingsManager
     public string SettingsDirectory => _settingsDirectory;
 
     /// <summary>Raised after settings are persisted to disk.</summary>
-    public event EventHandler? Saved;
+    public event EventHandler<SettingsSavedEventArgs>? Saved;
 
     internal event EventHandler? PersistenceStateChanged;
     internal bool HasPersistenceConflict => _hasPersistenceConflict;
     private volatile bool _hasPersistenceConflict;
 
     private readonly object _saveLock = new();
+    private long _saveVersion;
     private SettingsData _data = CreateDefaultData();
+    public NodeSandboxPolicyStore SandboxPolicies { get; } = new(CreateDefaultData());
     private volatile bool _persistedSystemRunEnabled;
     private string? _preservedElevenLabsCipher;
     private string? _preservedMiniMaxCipher;
@@ -167,6 +179,8 @@ public class SettingsManager
     public bool VoiceTtsEnabled { get => _data.VoiceTtsEnabled; set => _data = _data with { VoiceTtsEnabled = value }; }
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get => _data.ShowChatToolCalls; set => _data = _data with { ShowChatToolCalls = value }; }
+    /// <summary>Show supplied assistant reasoning in the chat timeline.</summary>
+    public bool ShowChatThinking { get => _data.ShowChatThinking; set => _data = _data with { ShowChatThinking = value }; }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
     public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
@@ -177,6 +191,7 @@ public class SettingsManager
     /// from, and does not change, the app-managed Local AI gateway provider.
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get => _data.NodeOllamaInferenceEnabled; set => _data = _data with { NodeOllamaInferenceEnabled = value }; }
+    public bool UseGatewayVoice { get => _data.UseGatewayVoice; set => _data = _data with { UseGatewayVoice = value }; }
     public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.KokoroProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
     public string TtsElevenLabsApiKey
     {
@@ -200,6 +215,8 @@ public class SettingsManager
     public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
     /// <summary>Kokoro voice name, e.g. "af_maple".</summary>
     public string TtsKokoroVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsKokoroVoiceId) ? KokoroModelManager.DefaultVoiceId : _data.TtsKokoroVoiceId; set => _data = _data with { TtsKokoroVoiceId = value }; }
+    /// <summary>Background download of the selected Kokoro voice pack; cleared when the user deletes the pack.</summary>
+    public bool TtsKokoroAutoDownload { get => _data.TtsKokoroAutoDownload; set => _data = _data with { TtsKokoroAutoDownload = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
     // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
@@ -216,6 +233,48 @@ public class SettingsManager
         set => _data = _data with { A2UIImageHosts = value ?? new() };
     }
     public bool HasSeenActivityStreamTip { get => _data.HasSeenActivityStreamTip; set => _data = _data with { HasSeenActivityStreamTip = value }; }
+    /// <summary>Detached copy of the local per-Gateway page pins; edits never alias persisted state.</summary>
+    public System.Collections.Immutable.ImmutableDictionary<string, System.Collections.Immutable.ImmutableArray<string>> PinnedPagesByGateway =>
+        ClonePinnedPages(_data.PinnedPagesByGateway)
+            .ToImmutableDictionary(entry => entry.Key, entry => entry.Value.ToImmutableArray(), StringComparer.Ordinal);
+    public System.Collections.Immutable.ImmutableArray<string> GetPinnedPages(string scopeKey) =>
+        PinnedPagesByGateway.TryGetValue(OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey), out var pins)
+            ? pins : OpenClawTray.Presentation.PinnedPages.DefaultPins;
+    public void TogglePinnedPage(string scopeKey, string tag, bool pinned)
+    {
+        if (OpenClawTray.Presentation.PinnedPages.Find(tag) is null)
+            return;
+        var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
+        var all = ClonePinnedPages(_data.PinnedPagesByGateway);
+        IEnumerable<string> current = all.TryGetValue(key, out var stored)
+            ? stored : OpenClawTray.Presentation.PinnedPages.DefaultPins;
+        var next = OpenClawTray.Presentation.PinnedPages.Toggle(current, tag, pinned);
+        all[key] = [.. next];
+        _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
+    }
+    public void SetPinnedPages(string scopeKey, IEnumerable<string>? tags)
+    {
+        var key = OpenClawTray.Presentation.PinnedPages.ScopeKey(scopeKey);
+        var all = ClonePinnedPages(_data.PinnedPagesByGateway);
+        var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
+        all[key] = [.. normalized];
+        _data = _data with { PinnedPagesByGateway = all.Count == 0 ? null : all };
+    }
+    private static Dictionary<string, List<string>>? NullIfEmpty(Dictionary<string, List<string>> pins) =>
+        pins.Count == 0 ? null : pins;
+
+    private static Dictionary<string, List<string>> ClonePinnedPages(Dictionary<string, List<string>>? source)
+    {
+        var clone = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        if (source is null) return clone;
+        foreach (var (key, tags) in source)
+        {
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            var normalized = OpenClawTray.Presentation.PinnedPages.Normalize(tags);
+            clone[key.Trim()] = [.. normalized];
+        }
+        return clone;
+    }
     public string SkippedUpdateTag { get => _data.SkippedUpdateTag ?? ""; set => _data = _data with { SkippedUpdateTag = value }; }
     public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
@@ -243,6 +302,8 @@ public class SettingsManager
     }
     public int SandboxTimeoutMs { get => _data.SandboxTimeoutMs > 0 ? _data.SandboxTimeoutMs : 30_000; set => _data = _data with { SandboxTimeoutMs = value }; }
     public long SandboxMaxOutputBytes { get => _data.SandboxMaxOutputBytes > 0 ? _data.SandboxMaxOutputBytes : 4 * 1024 * 1024; set => _data = _data with { SandboxMaxOutputBytes = value }; }
+    public string? SandboxUploadStagingPath { get => _data.SandboxUploadStagingPath; set => _data = _data with { SandboxUploadStagingPath = value }; }
+    public long SandboxMaxTransferBytes { get => _data.SandboxMaxTransferBytes; set => _data = _data with { SandboxMaxTransferBytes = value }; }
 
     public SettingsManager() : this(GetDefaultSettingsDirectory())
     {
@@ -289,10 +350,11 @@ public class SettingsManager
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
                 {
-                    _data = NormalizeLoadedData(loaded, json);
+                    _data = NormalizeLoadedData(loaded, _settingsDirectory, json);
                 }
             }
             _persistedSystemRunEnabled = _data.NodeSystemRunEnabled;
+            SandboxPolicies.Persist(_data, () => { });
             loadSucceeded = true;
         }
         catch (Exception ex)
@@ -374,8 +436,10 @@ public class SettingsManager
         HubNavPaneOpen = true,
         TtsPiperVoiceId = "en_US-amy-low",
         TtsKokoroVoiceId = KokoroModelManager.DefaultVoiceId,
+        TtsKokoroAutoDownload = true,
         EnableMcpServer = false,
         A2UIImageHosts = new(),
+        PinnedPagesByGateway = null,
         HasSeenActivityStreamTip = false,
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
@@ -390,7 +454,7 @@ public class SettingsManager
         SandboxMaxOutputBytes = 4 * 1024 * 1024
     };
 
-    private SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
+    private SettingsData NormalizeLoadedData(SettingsData loaded, string settingsDirectory, string? rawJson)
     {
         using var document = rawJson is null ? null : JsonDocument.Parse(rawJson);
         var legacyScope = document is null ||
@@ -413,7 +477,7 @@ public class SettingsManager
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
-            TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? SettingsData.LegacyDefaultTtsProvider : loaded.TtsProvider,
+            TtsProvider = MigrateTtsProvider(loaded, settingsDirectory, defaults.TtsProvider),
             TtsElevenLabsApiKey = elevenLabs.Plaintext ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
             TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
@@ -425,6 +489,7 @@ public class SettingsManager
             TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
             TtsKokoroVoiceId = string.IsNullOrWhiteSpace(loaded.TtsKokoroVoiceId) ? defaults.TtsKokoroVoiceId : loaded.TtsKokoroVoiceId,
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
+            PinnedPagesByGateway = NullIfEmpty(ClonePinnedPages(loaded.PinnedPagesByGateway)),
             SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
             AppTheme = NormalizeAppTheme(loaded.AppTheme),
@@ -438,6 +503,8 @@ public class SettingsManager
                     ? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders : null,
             SandboxTimeoutMs = loaded.SandboxTimeoutMs > 0 ? loaded.SandboxTimeoutMs : defaults.SandboxTimeoutMs,
             SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes > 0 ? loaded.SandboxMaxOutputBytes : defaults.SandboxMaxOutputBytes,
+            SandboxMaxTransferBytes = loaded.SandboxMaxTransferBytes is > 0 and <= OpenClaw.Shared.FileTransfer.FileLimits.MaximumTransferBytes
+                ? loaded.SandboxMaxTransferBytes : defaults.SandboxMaxTransferBytes,
             McpOnlyMode = null
         };
 
@@ -479,6 +546,36 @@ public class SettingsManager
         }
 
         return data;
+    }
+
+    /// <summary>
+    /// Schema v1 files resolved a missing provider to Piper, and setup writes settings.json
+    /// without a provider, so fresh setup installs landed on Piper with no voice and spoke
+    /// through the Windows fallback. On the first v2 load a Piper choice with no downloaded
+    /// voice moves to Kokoro; a working Piper voice is kept, and later choices stick.
+    /// </summary>
+    private static string MigrateTtsProvider(SettingsData loaded, string settingsDirectory, string defaultProvider)
+    {
+        if (string.IsNullOrWhiteSpace(loaded.TtsProvider))
+            return defaultProvider;
+        if (loaded.SettingsSchemaVersion >= 2
+            || !string.Equals(loaded.TtsProvider.Trim(), TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase))
+            return loaded.TtsProvider;
+
+        var piperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? "en_US-amy-low" : loaded.TtsPiperVoiceId;
+        try
+        {
+            if (new PiperVoiceManager(settingsDirectory, new AppLogger()).IsVoiceDownloaded(piperVoiceId))
+                return loaded.TtsProvider;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Piper voice check during settings migration failed: {ex.Message}");
+            return loaded.TtsProvider;
+        }
+
+        Logger.Info("Settings migration: Piper had no downloaded voice; TTS provider set to Kokoro");
+        return defaultProvider;
     }
 
     private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
@@ -552,17 +649,21 @@ public class SettingsManager
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
         TtsKokoroVoiceId = TtsKokoroVoiceId,
+        TtsKokoroAutoDownload = TtsKokoroAutoDownload,
         AppTheme = AppTheme,
         ShowDiagnostics = ShowDiagnosticsOverride,
         OpenTelemetryEndpoint = NormalizeOptionalString(OpenTelemetryEndpoint),
         OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(OpenTelemetryProtocol),
         A2UIImageHosts = A2UIImageHosts.Count == 0 ? null : new List<string>(A2UIImageHosts),
+        PinnedPagesByGateway = NullIfEmpty(ClonePinnedPages(_data.PinnedPagesByGateway)),
         SkippedUpdateTag = string.IsNullOrWhiteSpace(SkippedUpdateTag) ? null : SkippedUpdateTag,
         PreferredGatewayId = string.IsNullOrWhiteSpace(PreferredGatewayId) ? null : PreferredGatewayId,
         UserRules = new List<UserNotificationRule>(UserRules),
         SandboxCustomFolders = SandboxCustomFolders.Count == 0 ? null : CloneSandboxCustomFolders(SandboxCustomFolders),
         SandboxTimeoutMs = SandboxTimeoutMs,
         SandboxMaxOutputBytes = SandboxMaxOutputBytes,
+        SandboxUploadStagingPath = SandboxUploadStagingPath,
+        SandboxMaxTransferBytes = SandboxMaxTransferBytes,
         McpOnlyMode = null
     };
 
@@ -592,29 +693,55 @@ public class SettingsManager
 
     internal void SaveOrThrow()
     {
-        lock (_saveLock)
-        {
-            try
-            {
-                SaveCore();
-                SetPersistenceConflict(false);
-            }
-            catch (SettingsPersistenceConflictException)
-            {
-                SetPersistenceConflict(true);
-                throw;
-            }
-        }
+        PersistAndNotify(null);
     }
 
-    private void SetPersistenceConflict(bool conflict)
+    internal SettingsSnapshot CapturePresentationSnapshot()
     {
         lock (_saveLock)
+            return SettingsSnapshot.FromData(ToSettingsData(), _saveVersion);
+    }
+
+    private void PersistAndNotify(Action? edit)
+    {
+        Exception? failure = null;
+        SettingsSavedEventArgs? notification = null;
+        var notifyConflict = false;
+        lock (_saveLock)
         {
-            if (!conflict && !_hasPersistenceConflict) return;
-            _hasPersistenceConflict = conflict;
+            var before = edit is null ? null : ToSettingsData();
+            var hadPersistedGatewayUrl = HasPersistedGatewayUrl;
+            try
+            {
+                edit?.Invoke();
+                notification = new SettingsSavedEventArgs(SaveCore());
+                notifyConflict = _hasPersistenceConflict;
+                _hasPersistenceConflict = false;
+            }
+            catch (Exception ex)
+            {
+                if (before is not null)
+                {
+                    _data = before;
+                    HasPersistedGatewayUrl = hadPersistedGatewayUrl && !string.IsNullOrWhiteSpace(before.GatewayUrl);
+                }
+                if (ex is SettingsPersistenceConflictException)
+                {
+                    _hasPersistenceConflict = true;
+                    notifyConflict = true;
+                }
+                failure = ex;
+            }
         }
-        NotifyPersistenceStateChanged();
+        // Persistence and policy publication precede every external notification.
+        if (notifyConflict) NotifyPersistenceStateChanged();
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        Logger.Info("Settings saved");
+        try { Saved?.Invoke(this, notification!); }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
+        }
     }
 
     private void NotifyPersistenceStateChanged()
@@ -626,7 +753,7 @@ public class SettingsManager
         }
     }
 
-    private void SaveCore()
+    private SettingsSnapshot SaveCore()
     {
         lock (_saveLock)
         {
@@ -643,6 +770,8 @@ public class SettingsManager
             OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
 
             var data = ToSettingsData();
+            var sandboxSnapshot = MxcRequestBuilder.Snapshot(data);
+            var notificationSnapshot = SettingsSnapshot.FromData(data, _saveVersion + 1);
             // Apply DPAPI protection to the API key for on-disk storage only.
             // A failed decrypt keeps the original ciphertext so this save cannot
             // replace it with null.
@@ -679,51 +808,28 @@ public class SettingsManager
             try
             {
                 File.WriteAllText(temp, json);
-                File.Move(temp, _settingsFilePath, overwrite: true);
-                _persistedJson = json;
-                _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
+                SandboxPolicies.Persist(sandboxSnapshot, () =>
+                {
+                    File.Move(temp, _settingsFilePath, overwrite: true);
+                    _persistedJson = json;
+                    _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
+                    _saveVersion = notificationSnapshot.Version;
+                });
             }
             finally
             {
                 if (File.Exists(temp)) File.Delete(temp);
             }
+            return notificationSnapshot;
             }
 
-            Logger.Info("Settings saved");
-            try
-            {
-                Saved?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
-            }
         }
 
     }
 
     internal void UpdateAndSave(Action edit)
     {
-        lock (_saveLock)
-        {
-            var before = ToSettingsData();
-            var hadPersistedGatewayUrl = HasPersistedGatewayUrl;
-            try
-            {
-                edit();
-                SaveOrThrow();
-            }
-            catch
-            {
-                // The GatewayUrl setter stores explicit-target provenance beside
-                // SettingsData. Restoring the record alone leaves that flag set,
-                // and the getter then presents the setup default as a saved gateway.
-                _data = before;
-                HasPersistedGatewayUrl = hadPersistedGatewayUrl &&
-                    !string.IsNullOrWhiteSpace(before.GatewayUrl);
-                throw;
-            }
-        }
+        PersistAndNotify(edit);
     }
 
     private readonly record struct LoadedSettingSecret(string? Plaintext, string? Preserved);

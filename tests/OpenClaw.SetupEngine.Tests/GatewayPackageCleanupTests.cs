@@ -7,6 +7,12 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class GatewayPackageCleanupTests
 {
+    private const string WorkerTimeoutEnvironmentVariable = "OPENCLAW_GATEWAY_CLEANUP_TEST_TIMEOUT_SECONDS";
+    // Bounds one PowerShell 5.1 worker run; hosted runners exceeded 30 s on cold start under load.
+    private static readonly TimeSpan WorkerTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(WorkerTimeoutEnvironmentVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(120);
+
     [Fact]
     public async Task Startup_PreservesUnboundLegacyDistroWithoutRegisteringCleanup()
     {
@@ -247,7 +253,7 @@ public sealed class GatewayPackageCleanupTests
         var result = await new CommandRunner(logger).RunAsync(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
                 "WindowsPowerShell", "v1.0", "powershell.exe"),
-            ["-NoProfile", "-NonInteractive", "-File", harness], TimeSpan.FromSeconds(30));
+            ["-NoProfile", "-NonInteractive", "-File", harness], WorkerTimeout);
         Assert.False(result.TimedOut);
         Assert.True(result.ExitCode == 0, result.Stderr);
         Assert.Equal(valid ? "valid" : "invalid", result.Stdout.Trim());
@@ -332,7 +338,7 @@ public sealed class GatewayPackageCleanupTests
         var result = await new CommandRunner(logger).RunAsync(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
                 "WindowsPowerShell", "v1.0", "powershell.exe"),
-            ["-NoProfile", "-NonInteractive", "-File", harness], TimeSpan.FromSeconds(30));
+            ["-NoProfile", "-NonInteractive", "-File", harness], WorkerTimeout);
         Assert.False(result.TimedOut);
         Assert.True(result.ExitCode == 0, result.Stderr);
         using var output = JsonDocument.Parse(result.Stdout);

@@ -16,6 +16,8 @@ internal interface IChatComposerRuntimePort
 {
     /// <summary>True when the underlying provider supports native lifecycle commands.</summary>
     bool SupportsNativeLifecycle { get; }
+    bool SupportsSessionScopedModelCatalog { get; }
+    long ModelCatalogRevision { get; }
 
     Task<bool> SendMessageAsync(
         string threadId,
@@ -34,6 +36,10 @@ internal interface IChatComposerRuntimePort
     Task SetModelAsync(string threadId, string model, CancellationToken cancellationToken);
 
     Task ClearModelAsync(string threadId, CancellationToken cancellationToken);
+
+    Task<ModelsListInfo?> RequestSessionModelsListAsync(
+        string threadId,
+        CancellationToken cancellationToken);
 
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken);
 

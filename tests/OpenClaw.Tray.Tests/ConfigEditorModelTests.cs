@@ -5,6 +5,25 @@ namespace OpenClaw.Tray.Tests;
 
 public class ConfigEditorModelTests
 {
+    [Theory]
+    [InlineData("optional.enabled", "optional")]
+    [InlineData("optional", "optional")]
+    [InlineData("optional.nested.value", "optional.nested")]
+    [InlineData("rootValue", "")]
+    [InlineData("optional.missing", null)]
+    public void SearchResolvesTheSchemaSectionIndependentlyOfSavedValues(string path, string? expected)
+    {
+        using var schema = JsonDocument.Parse("""
+        {"type":"object","properties":{
+          "optional":{"type":"object","properties":{
+            "enabled":{"type":"boolean"},
+            "nested":{"type":"object","properties":{"value":{"type":"string"}}}}},
+          "rootValue":{"type":"string"}
+        }}
+        """);
+        Assert.Equal(expected, ConfigEditorModel.ResolveSearchSection(schema.RootElement, path));
+    }
+
     [Fact]
     public void CaptureSnapshot_UsesParsedRootAndBaseHash()
     {
@@ -133,7 +152,6 @@ public class ConfigEditorModelTests
         Assert.Equal("existing", updated.GetProperty("secret").GetString());
         Assert.Equal("manual", updated.GetProperty("mode").GetString());
     }
-
     [Fact]
     public void FindUneditedRedactionSentinel_OmitsUntouchedRedactedSibling()
     {
@@ -1460,101 +1478,5 @@ public class ConfigEditorModelTests
 
             return -1;
         }
-    }
-
-    [Fact]
-    public void ReadBindingRoutes_UsesTheParsedEnvelope()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "parsed": {
-            "bindings": [
-              {
-                "channel": "telegram",
-                "accountId": "work",
-                "agentId": "ops",
-                "peer": "dm",
-                "priority": 2
-              }
-            ]
-          },
-          "config": {
-            "bindings": [
-              { "channel": "wrong" }
-            ]
-          }
-        }
-        """);
-
-        var route = Assert.Single(ConfigEditorModel.ReadBindingRoutes(document.RootElement));
-
-        Assert.Equal("telegram", route.Channel);
-        Assert.Equal("work", route.AccountId);
-        Assert.Equal("ops", route.AgentId);
-        Assert.Equal("dm", route.Peer);
-        Assert.Equal(2, route.Priority);
-    }
-
-    [Fact]
-    public void ReadBindingRoutes_UsesConfigWhenParsedIsAbsent()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "config": {
-            "bindings": [
-              { "channel": "discord", "agentId": "main" }
-            ]
-          }
-        }
-        """);
-
-        var route = Assert.Single(ConfigEditorModel.ReadBindingRoutes(document.RootElement));
-
-        Assert.Equal("discord", route.Channel);
-        Assert.Equal("*", route.AccountId);
-        Assert.Equal("main", route.AgentId);
-        Assert.Null(route.Peer);
-        Assert.Null(route.Priority);
-    }
-
-    [Fact]
-    public void ReadBindingRoutes_ReadsTheGatewayMatchObject()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "parsed": {
-            "bindings": [
-              {
-                "agentId": "ops",
-                "match": {
-                  "channel": "telegram",
-                  "accountId": "work",
-                  "peer": { "kind": "direct", "id": "chat-1" }
-                }
-              }
-            ]
-          }
-        }
-        """);
-
-        var route = Assert.Single(ConfigEditorModel.ReadBindingRoutes(document.RootElement));
-
-        Assert.Equal("telegram", route.Channel);
-        Assert.Equal("work", route.AccountId);
-        Assert.Equal("ops", route.AgentId);
-        Assert.Equal("direct:chat-1", route.Peer);
-    }
-
-    [Fact]
-    public void ReadBindingRoutes_TopLevelEnvelopeWithoutBindings_IsEmpty()
-    {
-        using var document = JsonDocument.Parse("""
-        {
-          "path": "/tmp/openclaw.json",
-          "parsed": { "gateway": { "mode": "local" } }
-        }
-        """);
-
-        Assert.Empty(ConfigEditorModel.ReadBindingRoutes(document.RootElement));
     }
 }

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "environment": "microsoft-store",
+  "oidcAudience": "api://AzureADTokenExchange",
+  "apiBaseUri": "https://manage.devcenter.microsoft.com",
+  "oauthScope": "https://manage.devcenter.microsoft.com/.default",
+  "commitSubmission": true,
+  "submissionWriterPolicy": "exclusive-github-environment",
+  "pendingSubmissionPolicy": "reject",
+  "failedDraftPolicy": "delete-owned-before-commit",
+  "packageRolloutPercentage": 100,
+  "uploadTimeoutSeconds": 1800,
+  "minimumAccessTokenLifetimeSeconds": 2400
+}

@@ -2,6 +2,9 @@ using System.Text.Json;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.ExecApprovals;
+#if !OPENCLAW_TRAY_TESTS
+using OpenClawTray.Helpers;
+#endif
 
 namespace OpenClawTray.Chat;
 
@@ -19,7 +22,7 @@ internal sealed record ChatFlattenedToolEvents(
 
 internal static class ChatEventMapper
 {
-    internal static ChatEventMapping Map(AgentEventInfo evt)
+    internal static ChatEventMapping Map(AgentEventInfo evt, Func<string, string>? getString = null)
     {
         var stream = evt.Stream?.ToLowerInvariant();
         if (string.IsNullOrEmpty(stream))
@@ -29,13 +32,20 @@ internal static class ChatEventMapper
         {
             "assistant" => new(MapAssistant(evt)),
             "reasoning" => new(MapReasoning(evt)),
-            "lifecycle" => new(MapLifecycle(evt)),
+            "thinking" => new(MapThinking(evt)),
+            "lifecycle" => new(MapLifecycle(evt, getString)),
             "tool" => new(MapTool(evt)),
             "item" => new(MapItem(evt)),
             "command_output" => new(MapCommandOutput(evt)),
             "patch" => new(MapPatch(evt)),
             "job" => new(MapJob(evt)),
             "approval" => MapApproval(evt),
+            "compaction" => new(MapCompaction(evt)),
+            "run_status" => new(MapRunStatus(evt)),
+            "fallback" => new(MapFallback(evt, getString)),
+            "notice" => new(MapNotice(evt, getString)),
+            "codex_app_server.guardian" => new(MapGuardianNotice(evt, getString)),
+            "usage" => new(MapUsage(evt)),
             _ => new(null),
         };
     }
@@ -45,6 +55,32 @@ internal static class ChatEventMapper
         evt.Data.ValueKind == JsonValueKind.Object &&
         evt.Data.TryGetProperty("phase", out var phase) &&
         string.Equals(phase.GetString(), "start", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Character count of a gateway <c>thinking</c> archive delta (<c>{ text, delta }</c>). The
+    /// timeline ignores this stream, but it is the only live signal while a model reasons.
+    /// Persistence receipts on the same stream carry no <c>delta</c> and return null.
+    /// </summary>
+    internal static int? ThinkingDeltaLength(AgentEventInfo evt) =>
+        string.Equals(evt.Stream, "thinking", StringComparison.OrdinalIgnoreCase) &&
+        evt.Data.ValueKind == JsonValueKind.Object &&
+        evt.Data.TryGetProperty("delta", out var delta) &&
+        delta.ValueKind == JsonValueKind.String
+            ? delta.GetString()?.Length ?? 0
+            : null;
+
+    /// <summary>
+    /// Run-cumulative output tokens from a gateway <c>usage</c> event, emitted once per completed
+    /// model call as <c>{ outputTokens, usageReport? }</c>.
+    /// </summary>
+    internal static long? RunOutputTokens(AgentEventInfo evt) =>
+        string.Equals(evt.Stream, "usage", StringComparison.OrdinalIgnoreCase) &&
+        evt.Data.ValueKind == JsonValueKind.Object &&
+        evt.Data.TryGetProperty("outputTokens", out var tokens) &&
+        tokens.ValueKind == JsonValueKind.Number &&
+        tokens.TryGetInt64(out var value)
+            ? value
+            : null;
 
     internal static bool IsTerminalRunEvent(AgentEventInfo evt)
     {
@@ -80,7 +116,7 @@ internal static class ChatEventMapper
         return mapped switch
         {
             ChatMessageEvent or ChatMessageDeltaEvent => ChatResponseOutputKind.Assistant,
-            ChatThinkingEvent or ChatReasoningEvent or ChatReasoningDeltaEvent or
+            ChatThinkingEvent or ChatReasoningEvent or ChatReasoningDeltaEvent or ChatReasoningStreamEvent or ChatReasoningReceiptEvent or
                 ChatIntentEvent => ChatResponseOutputKind.Reasoning,
             ChatToolStartEvent or ChatToolPresentationEvent or
                 ChatToolOutputEvent or ChatToolErrorEvent or
@@ -176,7 +212,7 @@ internal static class ChatEventMapper
             deltaProperty.ValueKind == JsonValueKind.String &&
             deltaProperty.GetString() is { Length: > 0 } delta)
         {
-            return new ChatMessageDeltaEvent(delta);
+            return new ChatMessageDeltaEvent(delta, AssistantPresentation(evt));
         }
         return null;
     }
@@ -189,7 +225,7 @@ internal static class ChatEventMapper
             deltaProperty.ValueKind == JsonValueKind.String &&
             deltaProperty.GetString() is { Length: > 0 } delta)
         {
-            return new ChatReasoningDeltaEvent(delta);
+            return new ChatReasoningDeltaEvent(delta, AssistantPresentation(evt));
         }
 
         var content = evt.Data.TryGetProperty("content", out var contentProperty) &&
@@ -199,10 +235,69 @@ internal static class ChatEventMapper
               textProperty.ValueKind == JsonValueKind.String
                 ? textProperty.GetString()
                 : null;
-        return string.IsNullOrEmpty(content) ? null : new ChatReasoningEvent(content);
+        return string.IsNullOrEmpty(content) ? null : new ChatReasoningEvent(content, AssistantPresentation(evt), IsStreaming: true);
     }
 
-    private static ChatEvent? MapLifecycle(AgentEventInfo evt)
+    private static ChatEvent? MapThinking(AgentEventInfo evt)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(evt.RunId))
+            return null;
+        var itemId = NativeToolProjector.GetStringProperty(evt.Data, "itemId").Trim();
+        if (itemId.Length == 0)
+            return null;
+        if (NativeToolProjector.GetStringProperty(evt.Data, "phase") == "persisted")
+        {
+            var messageId = NativeToolProjector.GetStringProperty(evt.Data, "messageId").Trim();
+            var messageRunId = NativeToolProjector.GetStringProperty(evt.Data, "messageRunId").Trim();
+            return messageId.Length > 0 && messageRunId.Length > 0
+                ? new ChatReasoningReceiptEvent(evt.RunId, itemId, messageRunId, messageId) : null;
+        }
+        return evt.Data.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String
+            ? new ChatReasoningStreamEvent(evt.RunId, itemId, text.GetString()!.Trim(), evt.Ts) : null;
+    }
+
+    private static ChatMessagePresentation AssistantPresentation(AgentEventInfo evt)
+    {
+        var source = evt.Data;
+        foreach (var key in new[] { "message", "partial", "item" })
+            if (evt.Data.TryGetProperty(key, out var child) && child.ValueKind == JsonValueKind.Object)
+            {
+                source = child;
+                break;
+            }
+        var facts = OpenClawGatewayClient.ReadChatPresentation(
+            source, JsonSerializer.SerializeToElement(new { runId = evt.RunId }));
+        return facts with
+        {
+            RunId = facts.RunId ?? evt.RunId,
+            Phase = OpenClawGatewayClient.ReadAssistantEventPhase(evt.Data),
+        };
+    }
+
+    internal static IEnumerable<ChatEvent> MapContentTool(ChatToolContentInfo tool, string? runId, string? sessionId = null)
+    {
+        if (tool.Kind == ChatToolContentKind.Call)
+        {
+            var args = ChatHistoryReplayProjection.ProjectToolArgs(tool.Args);
+            yield return new ChatToolStartEvent(
+                ChatHistoryReplayProjection.ToolLabel(tool.ToolName, args),
+                tool.ToolName, args, tool.CallId, RunId: runId, HandoffInput: tool.HandoffInput,
+                InputDetails: NativeToolProjector.ProjectInputDetails(tool.Args, tool.ToolName),
+                ParentCallId: tool.ParentCallId);
+        }
+        else
+        {
+            var output = NativeToolProjector.TruncateToolOutput(tool.Text ?? "");
+            yield return tool.IsError
+                ? new ChatToolErrorEvent(output, tool.CallId, RunId: runId,
+                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId))
+                : new ChatToolOutputEvent(output, tool.CallId, RunId: runId,
+                    HandoffReceipt: tool.HandoffReceipt,
+                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId));
+        }
+    }
+
+    private static ChatEvent? MapLifecycle(AgentEventInfo evt, Func<string, string>? getString)
     {
         if (evt.Data.ValueKind != JsonValueKind.Object ||
             !evt.Data.TryGetProperty("phase", out var phaseProperty))
@@ -212,7 +307,10 @@ internal static class ChatEventMapper
 
         return phaseProperty.GetString()?.ToLowerInvariant() switch
         {
-            "start" => new ChatThinkingEvent(""),
+            "start" => new ChatThinkingEvent("", evt.RunId),
+            "waiting-approval" => new ChatProgressEvent("Waiting for approval"),
+            "approval-resolved" => new ChatProgressEvent("Working"),
+            "fallback" or "fallback_cleared" => MapFallback(evt, getString),
             "end" => new ChatTurnEndEvent(),
             "error" => new ChatErrorEvent(
                 evt.Summary ??
@@ -236,13 +334,29 @@ internal static class ChatEventMapper
 
         return phase.ToLowerInvariant() switch
         {
+            "input_delta" when !string.IsNullOrEmpty(toolCallId) => new ChatToolStartEvent(
+                label, identity.Name, ToolArgs: toolArgs, ToolCallId: toolCallId,
+                IdentityStrength: identity.Strength, RunId: evt.RunId,
+                Feedback: new(evt.Seq, PreparingInput: true, Diff: ReadLiveDiff(evt.Data))),
+            "review" when !string.IsNullOrEmpty(toolCallId) && ReadToolReview(evt.Data) is { } review =>
+                new ChatToolStartEvent(label, identity.Name, ToolCallId: toolCallId,
+                    IdentityStrength: identity.Strength, RunId: evt.RunId,
+                    Feedback: new(evt.Seq, Review: review)),
+            "update" => new ChatToolProgressEvent(
+                NativeToolProjector.ExtractToolResultText(evt.Data, string.Empty, "partialResult"),
+                toolCallId, evt.RunId, evt.Seq),
             "start" => new ChatToolStartEvent(
                 label,
                 identity.Name,
                 ToolArgs: toolArgs,
                 ToolCallId: toolCallId,
                 IdentityStrength: identity.Strength,
-                RunId: evt.RunId),
+                RunId: evt.RunId,
+                HandoffInput: ChatToolHandoff.ReadInput(identity.Name,
+                    evt.Data.TryGetProperty("args", out var args) ? args : null),
+                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, identity.Name),
+                ParentCallId: NativeToolProjector.GetStringProperty(evt.Data, "parentToolCallId") is { Length: > 0 } parent
+                    ? parent : null),
             "result" when NativeToolProjector.IsToolResultError(evt.Data) =>
                 new ChatToolErrorEvent(
                     NativeToolProjector.ExtractToolResultErrorText(evt.Data),
@@ -254,13 +368,75 @@ internal static class ChatEventMapper
             "result" => new ChatToolOutputEvent(
                 NativeToolProjector.ExtractToolResultText(evt.Data, string.Empty),
                 ToolCallId: toolCallId,
-                RunId: evt.RunId),
+                RunId: evt.RunId,
+                HandoffReceipt: evt.Data.TryGetProperty("result", out var result)
+                    ? ChatToolHandoff.ReadReceipt(result) : null),
             "error" => new ChatToolErrorEvent(
                 NativeToolProjector.ExtractToolErrorText(evt.Data, label),
                 ToolCallId: toolCallId,
                 RunId: evt.RunId),
             _ => null,
         };
+    }
+
+    private static ChatToolDiffStat? ReadLiveDiff(JsonElement data) =>
+        data.TryGetProperty("diff", out var diff) && diff.ValueKind == JsonValueKind.Object
+        && diff.TryGetProperty("added", out var added) && added.ValueKind == JsonValueKind.Number
+        && added.TryGetInt64(out var a) && a >= 0
+        && diff.TryGetProperty("removed", out var removed) && removed.ValueKind == JsonValueKind.Number
+        && removed.TryGetInt64(out var r) && r >= 0
+            ? new(a, r) : null;
+
+    private static string? ReviewText(JsonElement data, string key, int limit)
+    {
+        var value = NativeToolProjector.SanitizeToolDisplayValue(
+            NativeToolProjector.GetStringProperty(data, key))?.Trim();
+        if (string.IsNullOrEmpty(value))
+            return null;
+        if (value.Length <= limit)
+            return value;
+        return value[..(char.IsHighSurrogate(value[limit - 1]) ? limit - 1 : limit)];
+    }
+
+    private static ChatToolReview? ReadToolReview(JsonElement data)
+    {
+        if (!data.TryGetProperty("review", out var review) || review.ValueKind != JsonValueKind.Object
+            || ReviewText(review, "id", 256) is not { } id
+            || ReviewText(review, "label", 80) is not { } label
+            || ReviewText(review, "status", 32) is not { } status
+            || status is not ("in_progress" or "approved" or "denied" or "timed_out" or "aborted"))
+            return null;
+        return new(id, label, status, ReviewText(review, "riskLevel", 40),
+            ReviewText(review, "userAuthorization", 40), ReviewText(review, "rationale", 2000));
+    }
+
+    private static ChatEvent? MapGuardianNotice(AgentEventInfo evt, Func<string, string>? getString)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        var phase = NativeToolProjector.GetStringProperty(evt.Data, "phase");
+        var status = NativeToolProjector.GetStringProperty(evt.Data, "status");
+        // Targeted reviews are delivered on the generic, correlated tool review path.
+        if (phase is "started" or "completed"
+            && ReviewText(evt.Data, "targetItemId", 256) is not null)
+            return null;
+        var (key, label) = (phase, status) switch
+        {
+            ("strict_review_required", _) => ("Required", "Provider review required"),
+            ("warning", _) => ("Warning", "Provider review warning"),
+            ("started", "inProgress") => ("Working", "Provider review in progress"),
+            ("completed", "approved") => ("Approved", "Provider review approved"),
+            ("completed", "denied") => ("Denied", "Provider review did not approve the request"),
+            ("completed", "timedOut") => ("TimedOut", "Provider review timed out"),
+            ("completed", "aborted") => ("Aborted", "Provider review canceled"),
+            _ => ((string?)null, (string?)null),
+        };
+        if (label is null)
+            return null;
+        var text = string.Join("\n", new[] { Localized("Chat_Review_" + key, label, getString), ReviewText(evt.Data, "message", 2000),
+            ReviewText(evt.Data, "rationale", 2000) }.Where(value => value is not null));
+        return new ChatStatusEvent(text, phase is "warning" or "strict_review_required" ||
+            status is "denied" or "timedOut" or "aborted" ? ChatTone.Warning : ChatTone.Info);
     }
 
     private static ChatEvent? MapItem(AgentEventInfo evt)
@@ -316,7 +492,8 @@ internal static class ChatEventMapper
                         childIdentity.Strength,
                         commandArgs,
                         ActivatesTurn: false,
-                        RunId: evt.RunId);
+                        RunId: evt.RunId,
+                        InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, childIdentity.Name));
             }
 
             if (string.IsNullOrWhiteSpace(toolCallId))
@@ -328,7 +505,8 @@ internal static class ChatEventMapper
                 childIdentity.Strength,
                 commandArgs,
                 ActivatesTurn: normalizedPhase == "start",
-                RunId: evt.RunId);
+                RunId: evt.RunId,
+                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, childIdentity.Name));
         }
 
         if (!string.Equals(kind, "tool", StringComparison.OrdinalIgnoreCase))
@@ -351,7 +529,8 @@ internal static class ChatEventMapper
                 ToolArgs: toolArgs,
                 ToolCallId: itemId,
                 IdentityStrength: identity.Strength,
-                RunId: evt.RunId),
+                RunId: evt.RunId,
+                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, identity.Name)),
             "end" when IsErrorLikeToolStatus(status) => new ChatToolErrorEvent(
                 NativeToolProjector.ExtractToolErrorText(
                     evt.Data,
@@ -372,14 +551,15 @@ internal static class ChatEventMapper
 
     private static ChatEvent? MapCommandOutput(AgentEventInfo evt)
     {
-        if (evt.Data.ValueKind != JsonValueKind.Object ||
-            !string.Equals(
-                StringProperty(evt.Data, "phase"),
-                "end",
-                StringComparison.OrdinalIgnoreCase))
-        {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
             return null;
-        }
+        var phase = StringProperty(evt.Data, "phase").ToLowerInvariant();
+        if (phase is "update" or "delta")
+            return new ChatToolProgressEvent(
+                phase == "delta" ? StringProperty(evt.Data, "delta") : NativeToolProjector.ExtractCommandOutputText(evt.Data),
+                NativeToolProjector.ExtractToolCorrelationId(evt.Data), evt.RunId, evt.Seq, Append: phase == "delta");
+        if (phase != "end")
+            return null;
 
         var output = NativeToolProjector.ExtractCommandOutputText(evt.Data);
         var itemId = NativeToolProjector.ExtractToolCorrelationId(evt.Data);
@@ -433,6 +613,71 @@ internal static class ChatEventMapper
             ? "Tool blocked"
             : "Tool failed";
 
+    private static ChatEvent? MapCompaction(AgentEventInfo evt)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        return StringProperty(evt.Data, "phase") switch
+        {
+            "start" => new ChatProgressEvent("Compacting context"),
+            "end" when evt.Data.TryGetProperty("willRetry", out var retry) && retry.ValueKind == JsonValueKind.True =>
+                new ChatProgressEvent("Retrying after context compaction"),
+            "end" => new ChatProgressEvent("Working"),
+            _ => null,
+        };
+    }
+
+    private static ChatEvent? MapRunStatus(AgentEventInfo evt) =>
+        evt.Data.ValueKind == JsonValueKind.Object && StringProperty(evt.Data, "phase") == "retrying"
+            ? new ChatProgressEvent("Retrying the model request",
+                evt.Data.TryGetProperty("retryAt", out var retryAt)
+                && retryAt.ValueKind == JsonValueKind.Number
+                && retryAt.TryGetDouble(out var retryAtMs) && double.IsFinite(retryAtMs)
+                && retryAtMs is > 0 and < 253402300799999
+                    ? (long)retryAtMs : null)
+            : null;
+
+    private static ChatEvent? MapUsage(AgentEventInfo evt) =>
+        !string.IsNullOrWhiteSpace(evt.RunId) && evt.Seq > 0
+        && evt.Data.ValueKind == JsonValueKind.Object
+        && evt.Data.TryGetProperty("outputTokens", out var value)
+        && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var tokens) && tokens >= 0
+            ? new ChatRunUsageEvent(evt.RunId, tokens, evt.Seq) : null;
+
+    private static ChatEvent? MapFallback(AgentEventInfo evt, Func<string, string>? getString)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        var model = NativeToolProjector.SanitizeToolDisplayValue(
+            StringProperty(evt.Data, "activeModel"));
+        if (string.IsNullOrWhiteSpace(model))
+            model = NativeToolProjector.SanitizeToolDisplayValue(StringProperty(evt.Data, "toModel"));
+        return new ChatStatusEvent(
+            StringProperty(evt.Data, "phase") == "fallback_cleared"
+                ? Localized("Chat_Status_PrimaryRestored", "Primary model restored", getString)
+                : string.IsNullOrWhiteSpace(model)
+                    ? Localized("Chat_Status_FallbackSwitching", "Switching to a fallback model", getString)
+                    : string.Format(Localized("Chat_Status_FallbackModel", "Using fallback model: {0}", getString), model),
+            ChatTone.Warning);
+    }
+
+    private static ChatEvent? MapNotice(AgentEventInfo evt, Func<string, string>? getString)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        if (StringProperty(evt.Data, "reason") == "chat_stream_incomplete")
+            return new ChatStatusEvent(Localized("Chat_Status_StreamIncomplete",
+                "Live response is incomplete. Reconnect or reload conversation history to recover.", getString), ChatTone.Info);
+        var text = NativeToolProjector.SanitizeToolDisplayValue(StringProperty(evt.Data, "message"));
+        return string.IsNullOrWhiteSpace(text) ? null : new ChatStatusEvent(text, ChatTone.Info);
+    }
+
+    private static string Localized(string key, string fallback, Func<string, string>? getString)
+    {
+        var value = (getString ?? LocalizationHelper.GetString)(key);
+        return string.IsNullOrEmpty(value) || value == key ? fallback : value;
+    }
+
     private static ChatEvent? MapJob(AgentEventInfo evt)
     {
         if (evt.Data.ValueKind != JsonValueKind.Object)
@@ -462,9 +707,11 @@ internal static class ChatEventMapper
         if (string.IsNullOrEmpty(requestId))
             return new(null);
 
-        var host = StringProperty(evt.Data, "host");
+        var hostStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "host"));
+        var host = hostStatus.Text;
         var commandStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "command"));
-        var title = StringProperty(evt.Data, "title");
+        var titleStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "title"));
+        var title = titleStatus.Text;
         var messageStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "message"));
         var detail = string.IsNullOrEmpty(messageStatus.Text)
             ? commandStatus.Text
@@ -480,7 +727,9 @@ internal static class ChatEventMapper
 
         var canReviewInFull = !string.IsNullOrWhiteSpace(commandStatus.Text)
             && !commandStatus.Truncated && !commandStatus.Oversized && !commandStatus.UnsafeConcealment
-            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment;
+            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment
+            && !hostStatus.Truncated && !hostStatus.Oversized && !hostStatus.UnsafeConcealment
+            && !titleStatus.Truncated && !titleStatus.Oversized && !titleStatus.UnsafeConcealment;
         var mapped = new ChatPermissionRequestEvent(
             requestId,
             !string.IsNullOrEmpty(title) ? title : "Exec approval",

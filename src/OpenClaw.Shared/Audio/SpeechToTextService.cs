@@ -12,7 +12,7 @@ namespace OpenClaw.Shared.Audio;
 /// Lazily loads the model on first use and caches the factory.
 /// Thread-safe: concurrent calls are serialized by a semaphore.
 /// </summary>
-public sealed class SpeechToTextService : IDisposable
+public sealed class SpeechToTextService : ISpeechToTextService
 {
     private readonly IOpenClawLogger _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);

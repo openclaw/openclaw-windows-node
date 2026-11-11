@@ -2,9 +2,9 @@ namespace OpenClawTray.Presentation;
 
 /// <summary>
 /// Default <see cref="INavigationService"/> implementation. It forwards navigation
-/// requests to delegates supplied by <c>App</c>, which drive the existing
-/// <c>HubWindow</c> navigation path. This keeps HubWindow as the single owner of
-/// frame navigation, back-stack, and rail selection while giving future view models
+/// requests to delegates supplied by <c>App</c>, which drive the same-window Workspace
+/// navigation path. <c>WorkspaceNavigationHistory</c> stays the single owner of
+/// the back-stack while giving future view models
 /// a WinUI-free navigation surface to depend on.
 /// </summary>
 /// <remarks>

@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.TestSupport;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests.Mxc;
@@ -14,9 +15,11 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
         ".mxc-test-runs", Guid.NewGuid().ToString("N"));
     private SettingsData _settings = new();
+    private readonly List<NodeSandboxExecutor> _executors = [];
     private static CommandRequest Command => new() { Argv = [Path.Combine(Environment.SystemDirectory, "whoami.exe")], TimeoutMs = 10_000 };
     public void Dispose()
     {
+        foreach (var executor in _executors) executor.Dispose();
         var cleanup = Stopwatch.StartNew();
         while (Directory.Exists(_root))
         {
@@ -29,9 +32,14 @@ public sealed class MxcCommandRunnerTests : IDisposable
         }
     }
     private MxcCommandRunner Runner(Func<ContainerRequest, Task<IMxcProcess>> spawn, Func<ContainerRequest, ProbeOutput>? probe = null,
-        MxcAvailability? availability = null) => new(() => _settings, () => Path.Combine(_root, "settings"),
+        MxcAvailability? availability = null)
+    {
+        var executor = new NodeSandboxExecutor(new NodeSandboxPolicyStore(() => _settings), () => Path.Combine(_root, "settings"),
             () => availability ?? new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
             spawn: spawn, probe: probe ?? (_ => MxcAvailabilityTests.BaseProbe()), scratchRoot: _root);
+        _executors.Add(executor);
+        return new(executor);
+    }
 
     [Fact]
     public async Task ApprovedCommand_ExecutesOnceWithTypedRequestAndMapsNonzero()
@@ -58,10 +66,50 @@ public sealed class MxcCommandRunnerTests : IDisposable
     [InlineData("\t")]
     public void DefaultScratchRoot_IgnoresMissingOrBlankOverride(string? value)
     {
-        var root = MxcCommandRunner.GetDefaultScratchRoot(value, _root);
+        var root = NodeSandboxExecutor.GetDefaultScratchRoot(value, _root);
         Assert.Equal(Path.Combine(_root, "OpenClawMxc", "Runs"), root);
         Assert.True(Path.IsPathFullyQualified(root));
         Assert.False(Directory.Exists(_root));
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0xC0000142), "native detail", true)]
+    [InlineData(unchecked((int)0xC0000142), "", true)]
+    [InlineData(42, "native detail", false)]
+    public async Task DllInitializationFailure_PreservesResultWithoutGuessingCause(
+        int exitCode, string stderr, bool hasHint)
+    {
+        ContainerRequest? captured = null;
+        var calls = 0;
+        var process = new FakeProcess(exitCode, "original output", stderr);
+        var runner = Runner(request =>
+        {
+            captured = request;
+            calls++;
+            return Task.FromResult<IMxcProcess>(process);
+        });
+        var result = await runner.RunAsync(Command);
+
+        Assert.Equal(exitCode, result.ExitCode);
+        Assert.Equal("original output", result.Stdout);
+        Assert.False(result.TimedOut);
+        if (hasHint)
+        {
+            Assert.StartsWith(stderr, result.Stderr);
+            Assert.Contains("0xC0000142", result.Stderr);
+            Assert.Contains("Windows UI APIs (USER32)", result.Stderr);
+            Assert.Contains("Containment was not relaxed.", result.Stderr);
+            Assert.DoesNotContain("sandbox UI is disabled", result.Stderr);
+        }
+        else
+        {
+            Assert.Equal(stderr, result.Stderr);
+        }
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.CommandFailed, result.ErrorCategory);
+        Assert.NotNull(captured);
+        Assert.False(captured.Ui!.Disable);
+        Assert.Equal(1, calls);
     }
 
     [Fact]
@@ -69,7 +117,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     {
         var explicitRoot = Path.Combine(_root, "local");
         Assert.Equal(Path.Combine(explicitRoot, "OpenClawMxc", "Runs"),
-            MxcCommandRunner.GetDefaultScratchRoot(explicitRoot, Path.Combine(_root, "fallback")));
+            NodeSandboxExecutor.GetDefaultScratchRoot(explicitRoot, Path.Combine(_root, "fallback")));
     }
 
     [Theory]
@@ -117,16 +165,31 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Assert.Empty(Directory.GetDirectories(_root));
     }
 
-    [Fact]
-    public async Task UnsupportedWindows_RevalidatesApprovalBeforeHostSpawn()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PrelaunchRevalidation_BlocksWithoutConfusingFailureAndPolicyDenial(
+        bool unsupportedWindows, bool policyDenied)
     {
+        var calls = 0;
         var command = Command;
         command.RevalidateApproval = _ => ValueTask.FromResult(
-            OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.NotCurrent("revoked"));
-        var result = await Runner(_ => throw new Exception("must not spawn"),
-            availability: new(false, false, false, [], isWindowsUnsupported: true)).RunAsync(command);
-        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
-        Assert.Equal(NodeToolExecutionMode.Host, result.ExecutionMode);
+            policyDenied
+                ? OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.PolicyDenied("revoked")
+                : OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.NotCurrent("revalidation-failed"));
+        var result = await Runner(_ =>
+        {
+            calls++;
+            throw new Exception("must not spawn");
+        }, availability: unsupportedWindows
+            ? new(false, false, false, [], isWindowsUnsupported: true) : null).RunAsync(command);
+        Assert.Equal(policyDenied ? NodeToolErrorCategory.ExecPolicyDenied : NodeToolErrorCategory.InternalFailure,
+            result.ErrorCategory);
+        Assert.Equal(unsupportedWindows ? NodeToolExecutionMode.Host : NodeToolExecutionMode.Sandbox,
+            result.ExecutionMode);
+        Assert.Equal(0, calls);
     }
 
     [Fact]
@@ -402,7 +465,8 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Assert.True(process.Disposed);
         Assert.False(process.Killed);
         Assert.Equal(0, process.ExitProbesAfterWait);
-        await WaitForScratchCleanup();
+        // Failed SDK finalization cannot establish descendant/launch settlement.
+        Assert.Single(Directory.GetDirectories(_root));
     }
 
     [Fact]
@@ -720,7 +784,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
             return MxcAvailabilityTests.BaseProbe();
         });
         var result = await runner.RunAsync(Command);
-        Assert.Equal(NodeToolErrorCategory.SandboxDenied, result.ErrorCategory);
+        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
         Assert.Contains("changed before launch", result.Stderr);
     }
 
@@ -729,7 +793,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     {
         var command = Command;
         command.RevalidateApproval = _ => ValueTask.FromResult(
-            OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.NotCurrent("revoked"));
+            OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.PolicyDenied("revoked"));
         var result = await Runner(_ => throw new Exception("must not spawn")).RunAsync(command);
         Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
         var telemetry = NodeToolInvocation.GetSandboxTelemetry(result.ExecutionMode, result.ErrorCategory);
@@ -747,6 +811,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
         command.ExpectedMxcPolicy = runner.CapturePolicy();
         _settings.SandboxClipboard = SandboxClipboardMode.Both;
         var result = await runner.RunAsync(command);
+        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
         Assert.Contains("awaiting approval", result.Stderr);
     }
 
@@ -989,10 +1054,18 @@ public sealed class MxcCommandRunnerTests : IDisposable
         using var reader = new StreamReader(stream);
         var identity = reader.ReadToEnd().Trim().Split('|');
         var child = Process.GetProcessById(int.Parse(identity[0]));
-        _ = child.SafeHandle;
-        Assert.Equal(long.Parse(identity[1]), child.StartTime.ToUniversalTime().Ticks);
-        Assert.Equal("OpenClaw.Shared.TestHost.exe", Path.GetFileName(child.MainModule!.FileName));
-        return child;
+        try
+        {
+            _ = child.SafeHandle;
+            Assert.Equal(long.Parse(identity[1]), child.StartTime.ToUniversalTime().Ticks);
+            Assert.Equal("OpenClaw.Shared.TestHost.exe", Path.GetFileName(ProcessImagePath.Read(child.SafeHandle)));
+            return child;
+        }
+        catch
+        {
+            child.Dispose();
+            throw;
+        }
     }
 
     internal sealed class FakeProcess : IMxcProcess

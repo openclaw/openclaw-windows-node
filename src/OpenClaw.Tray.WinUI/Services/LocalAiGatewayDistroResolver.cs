@@ -5,10 +5,11 @@ namespace OpenClawTray.Services;
 internal sealed record LocalAiGatewayDistroResolution(
     bool Success,
     string? DistroName,
-    string? Detail)
+    string? Detail,
+    string? GatewayId = null)
 {
-    public static LocalAiGatewayDistroResolution Resolved(string distroName) =>
-        new(true, distroName, null);
+    public static LocalAiGatewayDistroResolution Resolved(string distroName, string gatewayId) =>
+        new(true, distroName, null, gatewayId);
 
     public static LocalAiGatewayDistroResolution Failed(string detail) =>
         new(false, null, detail);
@@ -85,10 +86,29 @@ internal static class LocalAiSetupRoutePolicy
 }
 
 /// <summary>
-/// Pins the singleton Local AI installation to the one explicitly setup-managed
-/// local WSL gateway in the loaded registry. Every resolution revalidates the
-/// pinned record so a registry replacement or ownership drift cannot redirect
-/// lifecycle commands to another distro.
+/// Resolves the WSL distro that owns the Local AI installation and rejects any
+/// registry change that would redirect lifecycle commands to a different distro.
+/// The resolver pins a unique owner at construction when one is already registered.
+/// During first-run setup it binds on the first <see cref="Resolve"/> after the
+/// canonical registry adopts the completed setup; subsequent calls revalidate
+/// the pinned owner against the current registry.
+///
+/// Use <see cref="LocalAiSetupRouteResolver.ResolveAsync"/> (not raw
+/// <see cref="LocalAiSetupRoutePolicy.Decide"/> flags) for setup route decisions:
+/// it observes real gateway/distro state and supplies the RecoveryTarget.
+///
+/// <example>
+/// var resolver = new LocalAiGatewayDistroResolver(registry);
+/// LocalAiGatewayDistroResolution result = resolver.Resolve();
+/// if (result.Success) { /* run lifecycle commands against result.DistroName */ }
+/// else { /* show setup or recovery guidance for result.Detail */ }
+///
+/// // Setup route (production path, also the only supported way to get RecoveryTarget):
+/// LocalAiSetupResolution setup = await new LocalAiSetupRouteResolver(
+///     () => registry, dataDir, localDataDir, defaultDistroName).ResolveAsync(ct);
+/// LocalAiRecoveryTarget? target = setup.Route is LocalAiSetupRoute.Recovery
+///     ? setup.RecoveryTarget : null;
+/// </example>
 /// </summary>
 internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolver
 {
@@ -164,7 +184,7 @@ internal sealed class LocalAiGatewayDistroResolver : ILocalAiGatewayDistroResolv
                 "The setup-managed WSL gateway owner changed after Local AI startup; refusing to route lifecycle commands to an unknown distro.");
         }
 
-        return LocalAiGatewayDistroResolution.Resolved(_distroName);
+        return LocalAiGatewayDistroResolution.Resolved(_distroName, _gatewayId);
     }
 
     internal static IReadOnlyList<GatewayRecord> FindOwners(IEnumerable<GatewayRecord> records) =>

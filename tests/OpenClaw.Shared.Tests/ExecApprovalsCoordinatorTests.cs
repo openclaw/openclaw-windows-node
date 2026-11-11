@@ -13,6 +13,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Tests.Mxc;
 using Microsoft.Mxc.Sdk.V1;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -20,6 +21,7 @@ namespace OpenClaw.Shared.Tests;
 /// Tests for ExecApprovalsCoordinator: full pipeline, observability, UI-free guarantee,
 /// concurrency, production wiring inert by default, env injection guard, and log injection prevention.
 /// </summary>
+[Collection("MxcOwnership")]
 public class ExecApprovalsCoordinatorTests : IDisposable
 {
     private readonly string _dir;
@@ -78,6 +80,28 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     private void WriteStoreFile(string json)
         => File.WriteAllText(Path.Combine(_dir, "exec-approvals.json"), json);
 
+    private IDisposable? MakeStoreUnavailable(ExecApprovalsSnapshotFailureKind failure)
+    {
+        var path = Path.Combine(_dir, "exec-approvals.json");
+        switch (failure)
+        {
+            case ExecApprovalsSnapshotFailureKind.MalformedJson:
+                WriteStoreFile("{");
+                return null;
+            case ExecApprovalsSnapshotFailureKind.UnsupportedVersion:
+                WriteStoreFile("""{"version":2}""");
+                return null;
+            case ExecApprovalsSnapshotFailureKind.UntrustedPath:
+                File.Delete(path);
+                Directory.CreateDirectory(path);
+                return null;
+            case ExecApprovalsSnapshotFailureKind.ReadFailed:
+                return new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(failure), failure, null);
+        }
+    }
+
     // Coordinator requests cannot carry a custom env (the validator returns
     // custom-env-not-supported), so a bare payload name resolves against the process
     // PATH. Pick the first candidate this host can actually pin: where a toolchain such
@@ -102,15 +126,17 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         ICanPresentEvaluator? canPresent = null,
         IExecApprovalV2PromptHandler? prompt = null,
         IOpenClawLogger? logger = null,
-        TimeSpan? promptTimeout = null)
+        TimeSpan? promptTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         var log = logger ?? NullLogger.Instance;
         return new(
-            new ExecApprovalsStore(_dir, log),
+            new ExecApprovalsStore(_dir, log, stateDirOverride: _dir),
             canPresent ?? AlwaysCannotPresentEvaluator.Instance,
             prompt ?? ExecApprovalV2NullPromptHandler.Instance,
             log,
-            promptTimeout);
+            promptTimeout,
+            timeProvider);
     }
 
     // ── 1. No file → prompt on miss; unattended fallback denies ───────────────
@@ -187,7 +213,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task InvalidV2_WithLegacyV1_RemainsHardDenyAndPreservesBothFiles()
+    public async Task InvalidV2_WithLegacyV1_FailsClosedWithoutClaimingPolicyDenial()
     {
         const string legacy =
             """{"defaultAction":"allow","rules":[{"pattern":"where *","action":"allow"}]}""";
@@ -197,7 +223,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "v1-invalid-v2");
 
-        Assert.Equal(ExecApprovalV2Code.SecurityDeny, result.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.Equal("approval-store-unavailable", result.Reason);
+        Assert.False(result.IsDefiniteDenial);
+        Assert.Null(result.Execution);
         Assert.Equal(legacy, File.ReadAllText(LegacyPolicyPath));
         Assert.Equal(invalidV2, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
     }
@@ -342,6 +371,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: handler).HandleAsync(DefaultReq(), "cur1");
         Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
         Assert.Equal("policy-changed-before-execution", result.Reason);
+        Assert.True(result.IsDefiniteDenial);
     }
 
     [Fact]
@@ -368,6 +398,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var revalidation = await coordinator.RevalidateAsync(approval.Execution!, "cur3");
 
         Assert.False(revalidation.IsCurrent);
+        Assert.True(revalidation.IsPolicyDenial);
         Assert.Equal("policy-changed-before-execution", revalidation.Reason);
     }
 
@@ -382,19 +413,131 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var revalidation = await coordinator.RevalidateAsync(approval.Execution!, "cur4");
 
         Assert.True(revalidation.IsCurrent);
+        Assert.False(revalidation.IsPolicyDenial);
     }
 
     [Fact]
-    public async Task Prompt_Timeout_ResolvesDeny()
+    public async Task PreApproved_RevalidationStoreFailure_IsNotAConfirmedPolicyDenial()
     {
-        // A dialog the owner never answers must not hang the request: the prompt timeout
-        // cancels it and the coordinator denies.
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        var coordinator = new ExecApprovalsCoordinator(
+            store,
+            AlwaysCannotPresentEvaluator.Instance,
+            ExecApprovalV2NullPromptHandler.Instance,
+            NullLogger.Instance);
+        var approval = await coordinator.HandleAsync(DefaultReq(), "revalidation-failure");
+        Assert.True(approval.IsAllow);
+
+        store.Dispose();
+        var revalidation = await coordinator.RevalidateAsync(
+            approval.Execution!, "revalidation-failure");
+
+        Assert.False(revalidation.IsCurrent);
+        Assert.False(revalidation.IsPolicyDenial);
+        Assert.Equal("policy-revalidation-failed", revalidation.Reason);
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(ExecApprovalsSnapshotFailureKind.MalformedJson)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UnsupportedVersion)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UntrustedPath)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.ReadFailed)]
+    public async Task StoreUnavailableOnInitialRead_FailsClosedWithoutDefiniteDenial(
+        ExecApprovalsSnapshotFailureKind failure)
+    {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
-        var result = await MakeCoordinator(
+        using var unavailable = MakeStoreUnavailable(failure);
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        var prompt = new CapturingPromptHandler(ExecApprovalPromptOutcome.AllowOnce);
+        var coordinator = new ExecApprovalsCoordinator(
+            store, AlwaysCanPresentEvaluator.Instance, prompt, NullLogger.Instance);
+        var result = await coordinator.HandleAsync(DefaultReq(), "initial-store-unavailable");
+
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.Equal("approval-store-unavailable", result.Reason);
+        Assert.False(result.IsDefiniteDenial);
+        Assert.Null(result.Execution);
+        Assert.Null(prompt.Captured);
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(ExecApprovalsSnapshotFailureKind.MalformedJson)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UnsupportedVersion)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UntrustedPath)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.ReadFailed)]
+    public async Task Prompt_StoreBecomesUnavailable_DoesNotClaimPolicyRevocation(
+        ExecApprovalsSnapshotFailureKind failure)
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        IDisposable? unavailable = null;
+        var prompt = new StoreMutatingPromptHandler(
+            () => unavailable = MakeStoreUnavailable(failure),
+            ExecApprovalPromptOutcome.AllowAlways);
+        try
+        {
+            var coordinator = new ExecApprovalsCoordinator(
+                store, AlwaysCanPresentEvaluator.Instance, prompt, NullLogger.Instance);
+            var result = await coordinator.HandleAsync(DefaultReq(), "prompt-store-unavailable");
+
+            Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+            Assert.Equal("approval-store-unavailable", result.Reason);
+            Assert.False(result.IsDefiniteDenial);
+            Assert.Null(result.Execution);
+        }
+        finally
+        {
+            unavailable?.Dispose();
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(ExecApprovalsSnapshotFailureKind.MalformedJson)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UnsupportedVersion)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UntrustedPath)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.ReadFailed)]
+    public async Task PreApproved_StoreBecomesUnavailable_FailsWithoutPolicyDenial(
+        ExecApprovalsSnapshotFailureKind failure)
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        var coordinator = new ExecApprovalsCoordinator(
+            store, AlwaysCannotPresentEvaluator.Instance,
+            ExecApprovalV2NullPromptHandler.Instance, NullLogger.Instance);
+        var approval = await coordinator.HandleAsync(DefaultReq(), "launch-store-unavailable");
+        Assert.True(approval.IsAllow);
+
+        using var unavailable = MakeStoreUnavailable(failure);
+        var revalidation = await coordinator.RevalidateAsync(
+            approval.Execution!, "launch-store-unavailable");
+
+        Assert.False(revalidation.IsCurrent);
+        Assert.False(revalidation.IsPolicyDenial);
+        Assert.Equal("approval-store-unavailable", revalidation.Reason);
+    }
+
+    [Fact]
+    public async Task Prompt_Timeout_FailsClosedWithoutClaimingUserDenial()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var clock = new ManualTimeProvider();
+        var timeout = TimeSpan.FromMinutes(1);
+        var prompt = new TokenAwaitingPromptHandler();
+        var pending = MakeCoordinator(
             canPresent: AlwaysCanPresentEvaluator.Instance,
-            prompt: new TokenAwaitingPromptHandler(),
-            promptTimeout: TimeSpan.FromMilliseconds(50)).HandleAsync(DefaultReq(), "to1");
+            prompt: prompt,
+            promptTimeout: timeout,
+            timeProvider: clock).HandleAsync(DefaultReq(), "to1");
+        await prompt.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        clock.Advance(timeout);
+        var result = await pending;
         Assert.False(result.IsAllow);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.False(result.IsDefiniteDenial);
         Assert.Equal("prompt-timeout", result.Reason);
     }
 
@@ -538,10 +681,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Equal("prompt-returned-allow", result.Reason);
     }
 
-    // ── 10. Prompt throws → UserDenied, no fallback ───────────────────────────
+    // Presenter failure is not a user refusal and must never use fallback.
 
     [Fact]
-    public async Task PromptThrows_ReturnsUserDenied_FallbackNotUsed()
+    public async Task PromptThrows_ReturnsInternalError_FallbackNotUsed()
     {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
         var log = new CapturingLogger();
@@ -549,10 +692,11 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new ThrowingPromptHandler(),
             logger: log).HandleAsync(DefaultReq(), "c10");
-        Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
         Assert.Equal("prompt-failed", result.Reason);
+        Assert.False(result.IsDefiniteDenial);
         // Must not delegate to fallback after presenter failure
-        Assert.Contains("fallbackUsed=False", log.LastWarn!, StringComparison.Ordinal);
+        Assert.Contains("fallbackUsed=False", log.LastError!, StringComparison.Ordinal);
     }
 
     // ── 11. Input invalid → ValidationFailed ─────────────────────────────────
@@ -676,11 +820,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: new ThrowingPromptHandler());
 
         var first = await coordinator.HandleAsync(DefaultReq(), "lock-1");
-        Assert.Equal(ExecApprovalV2Code.UserDenied, first.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, first.Code);
+        Assert.False(first.IsDefiniteDenial);
 
         // Second call must complete — if lock was not released this would deadlock
         var second = await coordinator.HandleAsync(DefaultReq(), "lock-2");
-        Assert.Equal(ExecApprovalV2Code.UserDenied, second.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, second.Code);
+        Assert.False(second.IsDefiniteDenial);
     }
 
     // ── 21a. Concurrency with actual lock contention ───────────────────────────
@@ -895,7 +1041,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var executable = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
         const string script = "Write-Output 'first'\r\nWrite-Output 'second'";
         string[] argv = [executable, "-NoProfile", "-NonInteractive", "-Command", script];
-        var request = Req(JsonSerializer.Serialize(new { command = argv, timeoutMs = 10_000 }));
+        var request = Req(JsonSerializer.Serialize(new { command = argv }));
         ContainerRequest? captured = null;
         var cap = new SystemCapability(NullLogger.Instance);
         cap.SetV2Handler(coordinator);
@@ -917,7 +1063,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         Assert.True(response.Ok, response.Error);
         var payload = JsonSerializer.SerializeToElement(response.Payload);
-        Assert.True(payload.GetProperty("success").GetBoolean());
+        Assert.True(payload.GetProperty("success").GetBoolean(), payload.GetRawText());
         Assert.Equal("first\r\nsecond\r\n", payload.GetProperty("stdout").GetString());
         if (unsupportedWindows)
             Assert.Null(captured);
@@ -2156,10 +2302,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     // then it denies (mirroring the real dialog's cancellation-to-Deny behavior).
     private sealed class TokenAwaitingPromptHandler : IExecApprovalV2PromptHandler
     {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public async Task<ExecApprovalPromptOutcome> PromptAsync(
             ExecApprovalV2PromptRequest _,
             CancellationToken cancellationToken = default)
         {
+            Entered.TrySetResult();
             try { await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             return ExecApprovalPromptOutcome.Deny;

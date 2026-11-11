@@ -68,6 +68,27 @@ public sealed class LocalAiLogTailTests
     private const string ModelFormatFailureLog =
         "llama_model_load: error loading model architecture: unknown model architecture";
 
+    /// <summary>
+    /// Abridged from a real Nemotron Bolt failure on Windows ARM64: the router retried the load,
+    /// each instance (new "[pid]") failed on the LiLiCorr draft model, and the router's stderr
+    /// consequences follow the stdout tail. A plain last-4 window showed only consequences and
+    /// dropped the tensor mismatch that names the cause.
+    /// </summary>
+    private const string RepeatedDraftLoadFailureLog =
+        """
+        [53805] llama_model_load: error loading model: check_tensor_dims: tensor 'lilicorr.feature_mlp.0.weight' not found
+        [53805] llama_model_load_from_file_impl: failed to load model
+        [53805] common_speculative_init_result: failed to load draft model, 'draft.gguf'
+        [53805] srv    load_model: failed to load draft model, 'draft.gguf'
+        [56741] llama_model_load: error loading model: check_tensor_dims: tensor 'lilicorr.feature_mlp.0.weight' not found
+        [56741] llama_model_load_from_file_impl: failed to load model
+        [56741] common_speculative_init_result: failed to load draft model, 'draft.gguf'
+        [56741] srv    load_model: failed to load draft model, 'draft.gguf'
+
+        srv           run: instance name=nemotron-3.5-bolt-74b-a9b-iq2-lilicorr exited with status 1
+        srv   operator (): got exception: {"error":{"code":500,"message":"model name=nemotron-3.5-bolt-74b-a9b-iq2-lilicorr failed to load","type":"server_error"}}
+        """;
+
     [Fact]
     public void ExtractDiagnosticLines_ReturnsCudaAndExitStatusLines()
     {
@@ -121,6 +142,20 @@ public sealed class LocalAiLogTailTests
         IReadOnlyList<string> lines = LocalAiLogTail.ExtractDiagnosticLines(ModelFormatFailureLog);
 
         Assert.Contains(lines, line => line.Contains("error loading model", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ExtractDiagnosticLines_KeepsCauseAheadOfLaterConsequencesAndCollapsesRetries()
+    {
+        IReadOnlyList<string> lines = LocalAiLogTail.ExtractDiagnosticLines(RepeatedDraftLoadFailureLog);
+
+        Assert.Equal(
+        [
+            "[56741] llama_model_load: error loading model: check_tensor_dims: tensor 'lilicorr.feature_mlp.0.weight' not found",
+            "[56741] srv load_model: failed to load draft model, 'draft.gguf'",
+            "srv run: instance name=nemotron-3.5-bolt-74b-a9b-iq2-lilicorr exited with status 1",
+            "srv operator (): got exception: {\"error\":{\"code\":500,\"message\":\"model name=nemotron-3.5-bolt-74b-a9b-iq2-lilicorr failed to load\",\"type\":\"server_error\"}}",
+        ], lines);
     }
 
     [Fact]

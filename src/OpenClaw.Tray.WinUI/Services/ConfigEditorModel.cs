@@ -3,16 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
-
-internal readonly record struct BindingRoute(
-    string Channel,
-    string AccountId,
-    string AgentId,
-    string? Peer,
-    int? Priority);
 
 internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
 {
@@ -23,6 +15,57 @@ internal sealed record ConfigEditorSnapshot(JsonElement Root, string? BaseHash)
 
 internal static class ConfigEditorModel
 {
+    /// <summary>Exact mask <c>config.get</c> substitutes for a stored secret.
+    /// The gateway restores this value before it writes, so a save must still
+    /// send it. It is not a redaction sentinel.</summary>
+    internal const string NativeGatewayRedactionMask = "__OPENCLAW_REDACTED__";
+
+    private static readonly HashSet<string> RedactionSentinels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "[REDACTED]",
+        "<redacted>",
+        "***",
+        "*****",
+        "********",
+    };
+
+    private static bool IsRedactionSentinel(string? value) =>
+        value != null && RedactionSentinels.Contains(value.Trim());
+
+    private static bool IsNativeGatewayRedactionMask(string? value) =>
+        string.Equals(value, NativeGatewayRedactionMask, StringComparison.Ordinal);
+
+    internal static JsonElement? ResolveSchemaAtPath(JsonElement schema, string path)
+    {
+        var current = schema;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty("properties", out var properties) ||
+                properties.ValueKind != JsonValueKind.Object ||
+                !properties.TryGetProperty(segment, out current))
+                return null;
+        }
+        return current;
+    }
+
+    internal static string? ResolveSearchSection(JsonElement schema, string path)
+    {
+        if (ResolveSchemaAtPath(schema, path) is null) return null;
+        var section = path;
+        while (true)
+        {
+            var node = ResolveSchemaAtPath(schema, section);
+            if (node is { ValueKind: JsonValueKind.Object } value &&
+                value.TryGetProperty("properties", out var properties) &&
+                properties.ValueKind == JsonValueKind.Object)
+                return section;
+            if (section.Length == 0) return null;
+            var separator = section.LastIndexOf('.');
+            section = separator < 0 ? "" : section[..separator];
+        }
+    }
+
     public static ConfigEditorSnapshot CaptureSnapshot(JsonElement configResponse)
     {
         var root = ExtractConfigRoot(configResponse);
@@ -37,75 +80,6 @@ internal static class ConfigEditorModel
         if (configResponse.TryGetProperty("config", out var config))
             return config;
         return configResponse;
-    }
-
-    public static IReadOnlyList<BindingRoute> ReadBindingRoutes(JsonElement configResponse)
-    {
-        var root = ExtractConfigRoot(configResponse);
-        if (root.ValueKind != JsonValueKind.Object
-            || !root.TryGetProperty("bindings", out var bindingsEl)
-            || bindingsEl.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var routes = new List<BindingRoute>();
-        foreach (var item in bindingsEl.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object)
-                continue;
-
-            var match = item.TryGetProperty("match", out var matchElement)
-                && matchElement.ValueKind == JsonValueKind.Object
-                ? matchElement
-                : default;
-            var channel = ReadString(item, "channel") ?? ReadString(match, "channel") ?? "";
-            var accountId = ReadString(item, "accountId") ?? ReadString(match, "accountId") ?? "*";
-            var agentId = ReadString(item, "agentId") ?? "main";
-            var peer = ReadString(item, "peer") ?? ReadPeer(match);
-            int? priority = null;
-            if (item.TryGetProperty("priority", out var priorityElement)
-                && priorityElement.TryGetInt32(out var priorityValue))
-            {
-                priority = priorityValue;
-            }
-
-            routes.Add(new BindingRoute(channel, accountId, agentId, peer, priority));
-        }
-
-        return routes;
-    }
-
-    private static string? ReadString(JsonElement item, string name)
-    {
-        if (item.ValueKind != JsonValueKind.Object
-            || !item.TryGetProperty(name, out var value)
-            || value.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        return value.GetString();
-    }
-
-    private static string? ReadPeer(JsonElement match)
-    {
-        if (match.ValueKind != JsonValueKind.Object
-            || !match.TryGetProperty("peer", out var peer))
-        {
-            return null;
-        }
-
-        if (peer.ValueKind == JsonValueKind.String)
-            return peer.GetString();
-        if (peer.ValueKind != JsonValueKind.Object)
-            return null;
-
-        var kind = ReadString(peer, "kind");
-        var id = ReadString(peer, "id");
-        if (string.IsNullOrEmpty(id))
-            return kind;
-        return string.IsNullOrEmpty(kind) ? id : kind + ":" + id;
     }
 
     public static string? ExtractBaseHash(JsonElement configResponse)
@@ -290,10 +264,10 @@ internal static class ConfigEditorModel
             }
         }
         else if (updated.ValueKind == JsonValueKind.String &&
-                 ChannelConfigPatchBuilder.IsRedactionSentinel(updated.GetString()))
+                 IsRedactionSentinel(updated.GetString()))
         {
             var loadedSentinel = baseDocument.ValueKind == JsonValueKind.String &&
-                                 ChannelConfigPatchBuilder.IsRedactionSentinel(baseDocument.GetString());
+                                 IsRedactionSentinel(baseDocument.GetString());
             // __OPENCLAW_REDACTED__ stays out of the Channels sentinel set.
             // A direct edit of a credential that replaces that mask with a
             // legacy placeholder is the same refusal as the parent-object edit.
@@ -386,15 +360,15 @@ internal static class ConfigEditorModel
 
                 if (property.Value is JsonValue value &&
                     value.TryGetValue<string>(out var text) &&
-                    (ChannelConfigPatchBuilder.IsRedactionSentinel(text) ||
-                     ChannelConfigPatchBuilder.IsNativeGatewayRedactionMask(text)) &&
+                    (IsRedactionSentinel(text) ||
+                     IsNativeGatewayRedactionMask(text)) &&
                     !edited.Contains(childPath) &&
                     ShouldOmitUntouchedSentinel(childPath))
                 {
                     // Leave a native mask on a non-credential leaf, including a
                     // SecretRef id. The gateway uses that mask to restore the
                     // stored id or to refuse a provider change.
-                    if (ChannelConfigPatchBuilder.IsNativeGatewayRedactionMask(text) &&
+                    if (IsNativeGatewayRedactionMask(text) &&
                         !IsCredentialPath(childPath))
                     {
                         continue;
@@ -661,15 +635,15 @@ internal static class ConfigEditorModel
     private static bool LoadedCredentialIsNativeMask(JsonElement loaded, string path) =>
         IsCredentialPath(path) &&
         loaded.ValueKind == JsonValueKind.String &&
-        ChannelConfigPatchBuilder.IsNativeGatewayRedactionMask(loaded.GetString());
+        IsNativeGatewayRedactionMask(loaded.GetString());
 
     private static bool LoadedValueIsSentinel(JsonElement loaded) =>
         loaded.ValueKind == JsonValueKind.String &&
-        ChannelConfigPatchBuilder.IsRedactionSentinel(loaded.GetString());
+        IsRedactionSentinel(loaded.GetString());
 
     private static bool LoadedValueIsRealSecret(JsonElement loaded) =>
         loaded.ValueKind == JsonValueKind.String &&
-        !ChannelConfigPatchBuilder.IsRedactionSentinel(loaded.GetString());
+        !IsRedactionSentinel(loaded.GetString());
 
     private static bool LoadedValueIsRealSecret(JsonElement baseRoot, JsonElement submittedRoot, string path) =>
         TryReadIdAware(baseRoot, submittedRoot, path, out var loaded) &&
@@ -698,7 +672,7 @@ internal static class ConfigEditorModel
             return false;
         }
 
-        return ChannelConfigPatchBuilder.IsRedactionSentinel(element.GetString());
+        return IsRedactionSentinel(element.GetString());
     }
 
     private static bool TryReadIdAware(

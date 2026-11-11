@@ -340,31 +340,6 @@ public partial class OpenClawGatewayClient
 
     // ── commands.list ──
 
-    /// <summary>Reads the connected Gateway's shared web welcome catalog.</summary>
-    public async Task<ChatWelcomeCatalog?> GetChatWelcomeCatalogAsync(string? locale, int timeoutMs = 15000)
-    {
-        const string method = "controlUi.welcome.get";
-        if (!IsConnectedToGateway)
-            throw new InvalidOperationException("Gateway connection is not open.");
-        if (!AdvertisedServerMethods.Contains(method, StringComparer.Ordinal))
-            return null;
-
-        var epoch = SessionMutationConnectionEpoch;
-        try
-        {
-            var parameters = string.IsNullOrWhiteSpace(locale)
-                ? new Dictionary<string, string>()
-                : new Dictionary<string, string> { ["locale"] = locale };
-            var payload = await SendResponseRequestAsync(method, parameters, timeoutMs, epoch).ConfigureAwait(false);
-            return ChatWelcomeCatalog.Parse(payload);
-        }
-        catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
-        {
-            _logger.Warn("controlUi.welcome.get unsupported on Gateway");
-            return null;
-        }
-    }
-
     /// <summary>
     /// Fetches the gateway command catalog. When <paramref name="query"/> is
     /// supplied it is applied as a client-side filter over the full catalog.
@@ -577,6 +552,56 @@ public partial class OpenClawGatewayClient
             sessions.Add(session);
         }
         return sessions;
+    }
+
+    public async Task<GatewaySearchResult> SearchSessionsAsync(
+        string query, bool messages, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (query.Length > GatewaySearchProtocol.MaximumQueryLength)
+            throw new ArgumentOutOfRangeException(nameof(query));
+        if (messages)
+        {
+            var payload = await SendResponseRequestAsync("sessions.search",
+                new { query, limit = GatewaySearchProtocol.MessageLimit, scope = GatewaySearchProtocol.Scope() },
+                GatewaySearchProtocol.MessageTimeoutMilliseconds, requestCancellationToken: cancellationToken, searchRead: true).ConfigureAwait(false);
+            if (payload.ValueKind != JsonValueKind.Object ||
+                !payload.TryGetProperty("results", out var hits) || hits.ValueKind != JsonValueKind.Array)
+                throw new InvalidDataException("Invalid transcript search response.");
+            return GatewaySearchProtocol.ParseTranscript(payload, ParseDetachedSessionRows(payload));
+        }
+        return await SearchSessionMetadataAsync(query, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<GatewaySearchResult> SearchSessionMetadataAsync(string query, CancellationToken cancellationToken)
+    {
+        var rows = await SendResponseRequestAsync("sessions.list", new
+        {
+            search = query, limit = 50, includeDerivedTitles = true,
+            includeGlobal = false, includeUnknown = false, configuredAgentsOnly = true,
+            excludeSubagents = true, excludeCron = true, excludeSystem = true, excludeDock = true
+        }, GatewaySearchProtocol.CatalogTimeoutMilliseconds, requestCancellationToken: cancellationToken, searchRead: true).ConfigureAwait(false);
+        if (!TryGetSessionsPayload(rows, out var sessions) || sessions.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Invalid session search response.");
+        return new(ParseDetachedSessionRows(rows), [],
+            Truncated: rows.ValueKind == JsonValueKind.Object &&
+                rows.TryGetProperty("hasMore", out var more) && more.ValueKind == JsonValueKind.True);
+    }
+
+    public Task<JsonElement> ReadSearchCatalogAsync(
+        string method, object? parameters, CancellationToken cancellationToken)
+    {
+        if (method is not ("cron.list" or "skills.status" or "config.schema" or "agents.list" or "models.list"))
+            throw new ArgumentException("Not a read-only search catalog method.", nameof(method));
+        if (method == "cron.list")
+        {
+            var epoch = GetReadyConnectionGeneration(method);
+            return GatewaySearchProtocol.ReadAutomationPagesAsync(
+                (args, ct) => SendResponseRequestAsync(method, args, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
+                    expectedConnectionEpoch: epoch, requestCancellationToken: ct, searchRead: true), parameters, cancellationToken);
+        }
+        return SendResponseRequestAsync(method, parameters, GatewaySearchProtocol.CatalogTimeoutMilliseconds,
+            requestCancellationToken: cancellationToken, searchRead: true);
     }
 
     // ── sessions.files.list / sessions.files.get ──

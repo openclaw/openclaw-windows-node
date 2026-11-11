@@ -124,7 +124,20 @@ internal sealed record OperatorConnectEnvelopeOptions(
     string? Nonce,
     long? ChallengeTimestampMs,
     bool UseV2Signature,
-    bool SupportsExecApprovals = false);
+    bool SupportsExecApprovals = false,
+    OperatorClientIdentity ClientIdentity = OperatorClientIdentity.Cli);
+
+/// <summary>
+/// Operator connect identity serialized on the wire and covered by the device signature.
+/// <see cref="Cli"/> is the default for command-line, setup, and validation clients.
+/// <see cref="Interactive"/> is for the tray's long-lived UI connection: the Gateway
+/// classifies <c>cli</c> mode as ephemeral and attaches no owner profile to it.
+/// </summary>
+public enum OperatorClientIdentity
+{
+    Cli = 0,
+    Interactive = 1,
+}
 
 internal sealed record NodeConnectEnvelopeOptions(
     string RequestId,
@@ -341,9 +354,13 @@ internal static class ConnectEnvelopeBuilder
 {
     private const string OperatorClientId = "cli";
     private const string OperatorClientMode = "cli";
+    // Generic registered client id; not the Mac, Control UI, or browser identity.
+    private const string InteractiveClientId = "gateway-client";
+    private const string InteractiveClientMode = "ui";
     private const string OperatorDisplayName = "OpenClaw Windows Tray";
+    private const string ModelSelectionPolicyCapability = "model-selection-policy";
     // Advertising this cap keeps approvals routable, so headless clients must omit it.
-    private static readonly string[] OperatorCaps = ["exec-approvals"];
+    private static readonly string[] OperatorCaps = ["exec-approvals", ModelSelectionPolicyCapability];
     private const string NodeClientId = "node-host";
     private const string NodeClientMode = "node";
     private const string NodeRole = "node";
@@ -362,8 +379,8 @@ internal static class ConnectEnvelopeBuilder
             options.UseV2Signature,
             nonce,
             signedAt,
-            OperatorClientId,
-            OperatorClientMode,
+            options.ClientIdentity == OperatorClientIdentity.Interactive ? InteractiveClientId : OperatorClientId,
+            options.ClientIdentity == OperatorClientIdentity.Interactive ? InteractiveClientMode : OperatorClientMode,
             options.Role,
             scopes,
             options.Credential.Value,
@@ -378,7 +395,9 @@ internal static class ConnectEnvelopeBuilder
             WindowsClientMetadata.Platform,
             WindowsClientMetadata.DeviceFamily,
             OperatorDisplayName,
-            options.SupportsExecApprovals && options.Role == "operator" ? OperatorCaps : [],
+            options.Role == "operator"
+                ? options.SupportsExecApprovals ? OperatorCaps : [ModelSelectionPolicyCapability]
+                : [],
             [],
             new Dictionary<string, bool>(),
             options.Credential,

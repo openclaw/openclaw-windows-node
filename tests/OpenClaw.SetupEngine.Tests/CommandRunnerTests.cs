@@ -1,11 +1,119 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace OpenClaw.SetupEngine.Tests;
 
 public class CommandRunnerTests
 {
     private static readonly string s_largeStdin = new('x', 8 * 1024 * 1024);
+    private static readonly TimeSpan s_cancellationTestDeadline = TimeSpan.FromSeconds(15);
+
+    [Fact]
+    public async Task RunAsync_CancellationDuringInputLogsStateWithoutOutputAndPreservesToken()
+    {
+        using var logger = new SetupLogger(filePath: null);
+        var entries = new List<LogEntry>();
+        logger.LogEmitted += (_, entry) => entries.Add(entry);
+        using var cancellation = new CancellationTokenSource(s_cancellationTestDeadline);
+        await using var input = new CancelOnCopyStream(cancellation);
+
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new CommandRunner(logger).RunAsync(
+                FindTestHost(), ["--process-fixture", "hold-silent", "30000"],
+                TimeSpan.FromSeconds(30), ct: cancellation.Token, stdinStream: input));
+
+        Assert.Equal(input.CopyToken, error.CancellationToken);
+        Assert.True(input.CopyStarted);
+        AssertCancellationState(entries, "execution");
+        Assert.DoesNotContain(entries, entry => entry.Message.StartsWith("cmd.done:", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_CancellationDuringPostExitDrainRecordsExitButNotPipeEof(bool allowInheritedPipeHandleEscape)
+    {
+        using var logger = new SetupLogger(filePath: null);
+        var entries = new List<LogEntry>();
+        using var cancellation = new CancellationTokenSource(s_cancellationTestDeadline);
+        var exitObserved = false;
+        logger.LogEmitted += (_, entry) =>
+        {
+            entries.Add(entry);
+            if (entry.Message == "cmd.exit: direct child exit observed")
+            {
+                exitObserved = true;
+                cancellation.Cancel();
+            }
+        };
+        var pidFile = Path.GetTempFileName();
+        var childPid = 0;
+        try
+        {
+            var runner = new CommandRunner(logger);
+            string[] arguments = ["--process-fixture", "inherit-handles", "30000", pidFile];
+            var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                allowInheritedPipeHandleEscape
+                    ? runner.RunAsyncAllowingInheritedPipeHandleEscape(
+                        FindTestHost(), arguments, TimeSpan.FromSeconds(30), ct: cancellation.Token)
+                    : runner.RunAsync(
+                        FindTestHost(), arguments, TimeSpan.FromSeconds(30), ct: cancellation.Token));
+
+            Assert.Equal(cancellation.Token, error.CancellationToken);
+            childPid = int.Parse(await File.ReadAllTextAsync(pidFile));
+            var state = AssertCancellationState(entries, "output-drain");
+            Assert.True(exitObserved);
+            Assert.True(state.GetProperty("direct_child_exit_observed").GetBoolean());
+            Assert.False(state.GetProperty("stdout_eof_observed").GetBoolean());
+            Assert.False(state.GetProperty("stderr_eof_observed").GetBoolean());
+            var exit = Assert.Single(entries, entry => entry.Message == "cmd.exit: direct child exit observed");
+            var exitState = JsonSerializer.SerializeToElement(exit.Data);
+            Assert.Equal(0, exitState.GetProperty("exit_code").GetInt32());
+            Assert.Equal(new[] { "elapsed_ms", "exit_code" },
+                exitState.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal));
+            Assert.DoesNotContain(entries, entry => entry.Message.StartsWith("cmd.done:", StringComparison.Ordinal));
+        }
+        finally
+        {
+            // Also recover the owned descendant when an assertion fails before parsing its PID.
+            if (childPid == 0 && int.TryParse(await File.ReadAllTextAsync(pidFile), out var writtenPid))
+                childPid = writtenPid;
+            KillProcessTree(childPid);
+            File.Delete(pidFile);
+        }
+    }
+
+    private static JsonElement AssertCancellationState(List<LogEntry> entries, string phase)
+    {
+        var entry = Assert.Single(entries, e => e.Message == "cmd.cancelled: caller cancellation observed");
+        Assert.Equal(LogLevel.Warn, entry.Level);
+        var state = JsonSerializer.SerializeToElement(entry.Data);
+        Assert.Equal(phase, state.GetProperty("phase").GetString());
+        Assert.False(state.GetProperty("timed_out").GetBoolean());
+        Assert.True(state.GetProperty("elapsed_ms").GetDouble() >= 0);
+        Assert.Contains(state.GetProperty("direct_child_exit_observed").ValueKind,
+            new[] { JsonValueKind.True, JsonValueKind.False });
+        Assert.Equal(
+            new[] { "direct_child_exit_observed", "elapsed_ms", "phase", "stderr_eof_observed", "stdout_eof_observed", "timed_out" },
+            state.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal));
+        return state;
+    }
+
+    private sealed class CancelOnCopyStream(CancellationTokenSource cancellation) : MemoryStream
+    {
+        public bool CopyStarted { get; private set; }
+        public CancellationToken CopyToken { get; private set; }
+
+        public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
+        {
+            CopyStarted = true;
+            CopyToken = cancellationToken;
+            cancellation.Cancel();
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+    }
 
     [Fact]
     public async Task RunAsync_WslVersion_DecodesOutputBeforeLogging()
@@ -194,16 +302,33 @@ public class CommandRunnerTests
     public async Task WaitForOutputDrainAsync_CancellationInterruptsNormalPostExitDrain()
     {
         var outputClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var cancellation = new CancellationTokenSource();
+        var wait = CommandRunner.WaitForOutputDrainAsync(
+            outputClosed.Task,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.Zero,
+            timedOut: false,
+            allowInheritedPipeHandleEscape: false,
+            cancellation.Token);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            CommandRunner.WaitForOutputDrainAsync(
-                outputClosed.Task,
-                TimeSpan.FromSeconds(30),
-                TimeSpan.Zero,
-                timedOut: false,
-                allowInheritedPipeHandleEscape: false,
-                cancellation.Token));
+        Assert.False(wait.IsCompleted);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task WaitForOutputDrainAsync_AlreadyObservedEofWinsCancellation(
+        bool timedOut, bool allowInheritedPipeHandleEscape)
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await CommandRunner.WaitForOutputDrainAsync(
+            Task.CompletedTask, TimeSpan.FromSeconds(30), TimeSpan.Zero,
+            timedOut, allowInheritedPipeHandleEscape, cancellation.Token);
     }
 
     [Fact]

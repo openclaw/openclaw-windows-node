@@ -1,5 +1,14 @@
+// <summary>
+// Evaluates whether a pinned local inference plan fits the observed hardware and runtime prerequisites.
+// Stable total memory chooses capacity while free memory only reports launch readiness, never a new model.
+// Usage:
+//   LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(hardware, requestedModelId);
+//   if (result.CanInstall) Install(result.Plan!);
+// </summary>
+
 namespace OpenClaw.Shared.Inference.Catalog;
 
+/// <summary>Classifies whether a local inference plan can be installed or is temporarily busy.</summary>
 public enum LocalInferenceEligibilityStatus
 {
     Eligible = 0,
@@ -7,6 +16,7 @@ public enum LocalInferenceEligibilityStatus
     Unsupported = 2,
 }
 
+/// <summary>Identifies the stable reason local inference cannot be selected or installed.</summary>
 public enum LocalInferenceEligibilityFailureCode
 {
     None = 0,
@@ -20,6 +30,7 @@ public enum LocalInferenceEligibilityFailureCode
     ModelNotQualifiedForDevice = 8,
 }
 
+/// <summary>Reports eligibility, the selected plan when available, and capacity evidence for presentation.</summary>
 public sealed record LocalInferenceEligibilityResult(
     LocalInferenceEligibilityStatus Status,
     LocalInferenceEligibilityFailureCode FailureCode,
@@ -47,15 +58,14 @@ public sealed record LocalInferenceEligibilityResult(
 }
 
 /// <summary>
-/// Applies the pinned model capacity, driver, and CUDA guardrails after catalog
-/// selection. Total GPU memory is stable capacity. Free GPU memory is launch
-/// readiness and never changes the selected model automatically.
+/// Applies catalog selection and hardware guardrails to determine local inference eligibility.
 /// </summary>
 public static class LocalInferenceEligibility
 {
     public const long RuntimeWorkspaceReserveBytes = LocalModelCatalog.RuntimeWorkspaceReserveBytes;
     public static Version MinimumNvidiaDriverVersion { get; } = new(615, 0);
 
+    /// <summary>Returns the GPU memory required by a model profile, including its runtime reservation.</summary>
     public static long GetRequiredMemoryBytes(
         LocalModelInfo model,
         LocalInferenceRunProfile profile) =>
@@ -78,11 +88,19 @@ public static class LocalInferenceEligibility
     public static LocalInferenceEligibilityResult EvaluateForConfiguredAvailability(
         HostHardwareInfo hardware,
         string? configuredModelId,
-        bool hasInstalledReceipt = false)
+        bool hasInstalledReceipt = false,
+        LocalInferencePlan? installedPlan = null)
     {
         ArgumentNullException.ThrowIfNull(hardware);
         LocalInferenceEligibilityResult device = Evaluate(hardware);
-        if (!device.CanInstall && hasInstalledReceipt && !string.IsNullOrWhiteSpace(configuredModelId))
+        if (!device.CanInstall && installedPlan?.Model.CustomRecipe is not null)
+        {
+            LocalInferenceEligibilityResult custom = EvaluateRecordedProfile(hardware, installedPlan);
+            if (custom.CanInstall)
+                return custom;
+        }
+        if (!device.CanInstall && hasInstalledReceipt && !string.IsNullOrWhiteSpace(configuredModelId) &&
+            !LocalCustomModel.IsCustomId(configuredModelId))
         {
             LocalInferenceEligibilityResult installed = EvaluateInstalled(hardware, configuredModelId);
             if (installed.CanInstall)
@@ -98,6 +116,7 @@ public static class LocalInferenceEligibility
         return Evaluate(hardware, configuredModelId);
     }
 
+    /// <summary>Selects and evaluates a catalog model against the supplied hardware snapshot.</summary>
     public static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
         string? requestedModelId = null)
@@ -105,6 +124,24 @@ public static class LocalInferenceEligibility
         ArgumentNullException.ThrowIfNull(hardware);
 
         return Evaluate(hardware, LocalInferenceSelector.Select(hardware, requestedModelId));
+    }
+
+    /// <summary>Evaluates a user-supplied Hugging Face model with the catalog capacity rules.</summary>
+    public static LocalInferenceEligibilityResult EvaluateCustom(HostHardwareInfo hardware, LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        return Evaluate(hardware, LocalInferenceSelector.SelectCustom(hardware, model));
+    }
+
+    /// <summary>The catalog models this PC can be offered, each with its selected plan.</summary>
+    public static IReadOnlyList<LocalInferencePlan> OfferedPlans(Func<string, LocalInferenceEligibilityResult> evaluate)
+    {
+        ArgumentNullException.ThrowIfNull(evaluate);
+        return LocalModelCatalog.Models
+            .Select(model => evaluate(model.Id))
+            .Where(eligibility => eligibility.CanOffer && eligibility.Plan is not null)
+            .Select(eligibility => eligibility.Plan!)
+            .ToArray();
     }
 
     /// <summary>

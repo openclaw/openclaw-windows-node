@@ -298,6 +298,7 @@ test("collects every nested file and check page before reporting", async () => {
   const github = {
     graphql: async (query) => {
       if (query.includes("pullRequests(states: OPEN")) {
+        assert.match(query, /pullRequests\(states: OPEN, first: 10,/);
         return {
           repository: {
             pullRequests: {
@@ -388,6 +389,148 @@ test("collects every nested file and check page before reporting", async () => {
     skipped: 0,
   });
   assert.deepEqual(data.linkedPrsByIssue.get(20), [10]);
+});
+
+test("retries transient GraphQL failures and preserves the request", async () => {
+  const calls = [];
+  const warnings = [];
+  const github = {
+    graphql: async (query, variables) => {
+      calls.push({ query, variables });
+      if (calls.length === 1) {
+        const error = new Error("gateway timeout");
+        error.status = 504;
+        throw error;
+      }
+      return { repository: { pullRequests: { nodes: [] } } };
+    },
+  };
+
+  const result = await triage.graphqlWithRetry(
+    github,
+    "query Example { repository { name } }",
+    { cursor: "next" },
+    {
+      delaysMs: [0],
+      sleep: async () => {},
+      warn: (message) => warnings.push(message),
+    },
+  );
+
+  assert.deepEqual(result, { repository: { pullRequests: { nodes: [] } } });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], calls[1]);
+  assert.match(warnings[0], /HTTP 504/);
+  assert.match(warnings[0], /retry 1\/1/);
+});
+
+test("collects every small pull request inventory page", async () => {
+  const inventoryCursors = [];
+  const github = {
+    graphql: async (query, variables) => {
+      if (query.includes("issues(states: OPEN")) {
+        return {
+          repository: {
+            issues: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [],
+            },
+          },
+        };
+      }
+      if (query.includes("pullRequests(states: OPEN")) {
+        assert.match(query, /pullRequests\(states: OPEN, first: 10,/);
+        inventoryCursors.push(variables.cursor);
+        const page = inventoryCursors.length;
+        return {
+          repository: {
+            pullRequests: {
+              pageInfo: {
+                hasNextPage: page < 3,
+                endCursor: page < 3 ? `page-${page + 1}` : null,
+              },
+              nodes: [{
+                number: page,
+                title: `PR page ${page}`,
+                body: "",
+                baseRefName: "main",
+                mergeable: "MERGEABLE",
+                mergeStateStatus: "CLEAN",
+                changedFiles: 1,
+                labels: labels(),
+                assignees: { nodes: [] },
+                files: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: [{ path: `src/page-${page}.cs` }],
+                },
+              }],
+            },
+          },
+        };
+      }
+      return { repository: { defaultBranchRef: { name: "main" } } };
+    },
+    rest: { issues: { listEventsForTimeline: async () => ({ data: [] }) } },
+    paginate: async () => [],
+  };
+
+  const data = await triage.collectRepositoryData({
+    github,
+    owner: "openclaw",
+    repo: "openclaw-windows-node",
+    graphqlRetryOptions: {
+      delaysMs: [],
+      sleep: async () => {},
+      warn: () => {},
+    },
+  });
+
+  assert.deepEqual(inventoryCursors, [null, "page-2", "page-3"]);
+  assert.deepEqual(data.pullRequests.map((pr) => pr.number), [1, 2, 3]);
+});
+
+test("does not retry non-transient GraphQL failures", async () => {
+  let calls = 0;
+  const github = {
+    graphql: async () => {
+      calls += 1;
+      const error = new Error("forbidden");
+      error.status = 403;
+      throw error;
+    },
+  };
+
+  await assert.rejects(
+    triage.graphqlWithRetry(github, "query Example { viewer { login } }", {}, {
+      delaysMs: [0, 0],
+      sleep: async () => {},
+      warn: () => {},
+    }),
+    (error) => error.status === 403,
+  );
+  assert.equal(calls, 1);
+});
+
+test("fails after bounded transient GraphQL retries", async () => {
+  let calls = 0;
+  const github = {
+    graphql: async () => {
+      calls += 1;
+      const error = new Error("service unavailable");
+      error.status = 503;
+      throw error;
+    },
+  };
+
+  await assert.rejects(
+    triage.graphqlWithRetry(github, "query Example { viewer { login } }", {}, {
+      delaysMs: [0, 0],
+      sleep: async () => {},
+      warn: () => {},
+    }),
+    (error) => error.status === 503,
+  );
+  assert.equal(calls, 3);
 });
 
 test("isolates nullable and failed pull request detail collection", async () => {
@@ -482,6 +625,11 @@ test("isolates nullable and failed pull request detail collection", async () => 
     github,
     owner: "openclaw",
     repo: "openclaw-windows-node",
+    graphqlRetryOptions: {
+      delaysMs: [],
+      sleep: async () => {},
+      warn: () => {},
+    },
   });
 
   assert.equal(data.pullRequests.length, 2);
@@ -557,6 +705,11 @@ test("isolates active ownership timeline failures and keeps canonical issue owne
     github,
     owner: "openclaw",
     repo: "openclaw-windows-node",
+    graphqlRetryOptions: {
+      delaysMs: [],
+      sleep: async () => {},
+      warn: () => {},
+    },
   });
 
   assert.equal(timelineCalls, 1);
@@ -965,6 +1118,11 @@ test("run writes failure artifacts and cleanup journal before rethrowing", async
       outputDir,
       operation: triage.CLEANUP_OPERATION,
       now: new Date("2026-08-27T12:00:00Z"),
+      graphqlRetryOptions: {
+        delaysMs: [],
+        sleep: async () => {},
+        warn: () => {},
+      },
     }),
     collectionError,
   );

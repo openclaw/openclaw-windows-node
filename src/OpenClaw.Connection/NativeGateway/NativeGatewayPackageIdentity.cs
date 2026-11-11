@@ -13,6 +13,9 @@ public static class NativeGatewayPackageIdentity
     public const string StoreName = "OpenClawFoundation.OpenClawGateway";
     public const string StorePublisher = "CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC";
 
+    /// <summary>Store package family. The suffix is the Windows publisher ID hash of <see cref="StorePublisher"/>.</summary>
+    public const string StoreFamilyName = StoreName + "_rfcbke2p71se2";
+
     // Retain already installed development packages and their saved profiles, not local acquisition.
     public const string DevelopmentName = "OpenClaw.Gateway";
     public const string DevelopmentPublisher =

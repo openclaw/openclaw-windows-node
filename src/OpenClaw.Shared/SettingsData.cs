@@ -98,6 +98,8 @@ public record class SettingsData
     public bool VoiceTtsEnabled { get; set; } = false;
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get; set; } = true;
+    /// <summary>Show supplied assistant reasoning in the chat timeline (web <c>chatShowThinking</c>).</summary>
+    public bool ShowChatThinking { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;
@@ -111,13 +113,10 @@ public record class SettingsData
     /// provider (which is unaffected by this setting).
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get; set; } = false;
-    /// <summary>
-    /// Provider a settings file resolves to when it omits or blanks <see cref="TtsProvider"/>.
-    /// Stays Piper (the default before Kokoro) so upgrades keep their speech path; fresh installs
-    /// get Kokoro from the tray's default settings instead.
-    /// </summary>
-    public const string LegacyDefaultTtsProvider = OpenClaw.Shared.Capabilities.TtsCapability.PiperProvider;
-    public string TtsProvider { get; set; } = LegacyDefaultTtsProvider;
+    /// <summary>Opt-in Companion chat/preview route. Does not change node/MCP TTS.</summary>
+    public bool UseGatewayVoice { get; set; } = false;
+
+    public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.KokoroProvider;
     /// <summary>Persisted: whether the Hub's NavigationView pane is expanded
     /// (true) or collapsed/compact (false). Default true.</summary>
     public bool HubNavPaneOpen { get; set; } = true;
@@ -140,8 +139,13 @@ public record class SettingsData
     public string? TtsMiniMaxRegion { get; set; } = "global_en";
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low". Voice file is downloaded on first use.</summary>
     public string TtsPiperVoiceId { get; set; } = "en_US-amy-low";
-    /// <summary>Kokoro voice name, e.g. "af_maple". Its voice pack is downloaded from Voice Settings.</summary>
+    /// <summary>Kokoro voice name, e.g. "af_maple". Its voice pack downloads automatically while Kokoro TTS is in use.</summary>
     public string TtsKokoroVoiceId { get; set; } = OpenClaw.Shared.Audio.KokoroModelManager.DefaultVoiceId;
+    /// <summary>
+    /// Whether the tray downloads the selected Kokoro voice pack in the background. Deleting
+    /// the pack in Voice Settings clears it so the pack is not fetched again; Download sets it.
+    /// </summary>
+    public bool TtsKokoroAutoDownload { get; set; } = true;
     /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>
@@ -157,6 +161,12 @@ public record class SettingsData
     /// (e.g., "cdn.example.com") via the Settings window.
     /// </summary>
     public List<string>? A2UIImageHosts { get; set; }
+    /// <summary>
+    /// Local sidebar page pins keyed by saved Gateway id (or "(unconfigured)").
+    /// Absent scopes use native defaults; an explicit empty list means no pins.
+    /// Holds only canonical page tags; never credentials or user data.
+    /// </summary>
+    public Dictionary<string, List<string>>? PinnedPagesByGateway { get; set; }
     /// <summary>
     /// Legacy flag (replaced by EnableMcpServer + the EnableNodeMode pair).
     /// Kept for one-time migration on Load; not written on Save.
@@ -222,6 +232,10 @@ public record class SettingsData
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
+
+    /// <summary>Legacy staging configuration, preserved for compatibility. New uploads use executor-owned profile storage.</summary>
+    public string? SandboxUploadStagingPath { get; set; }
+    public long SandboxMaxTransferBytes { get; set; } = FileTransfer.FileLimits.DefaultCreateBytes;
     public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
 
     /// <summary>

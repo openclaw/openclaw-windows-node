@@ -22,14 +22,71 @@ allowlists, reapproval, routing, or `node.invoke`.
 
 ## Start an isolated development app
 
-Prefer isolated tray data so tests do not change
-`%APPDATA%\OpenClawTray`:
+First choose the required boundary and obtain launch/runtime authority using
+the [proof runtime selection](../openclaw-proof-validation/SKILL.md#select-the-runtime-and-its-authority).
+That section owns the launch flags and side-effect contract. `-Isolated`
+separates profile data only; `-NoBuild` can still prepare a Gateway, and
+`-DryRun` can build Companion and create directories. Do not use the launcher
+as a read-only planner.
+
+For supported deterministic app exploration, use the
+[fixture workflow](../../../docs/GATEWAY_FIXTURE_TESTING.md#build-and-explore)
+with an explicit current-build app. Its synthetic Gateway and disabled sensitive
+node capabilities cannot prove arbitrary node commands or real Gateway behavior.
+
+Before fixture discovery or invocation, bind the client to both the printed
+fixture profile and MCP endpoint. The fixture sets these only for its app
+process, not your client shell. These blocks work in both persistent PowerShell
+sessions and fresh-process agent shells. Replace the placeholders with values
+from the same active fixture run and run each block in full. Agent shell tools
+may start a fresh process per call, so variables and environment edits may not
+carry over, even when reusing a tool session ID.
+
+Discover tools first:
 
 ```powershell
-.\run-app-local.ps1 -Isolated
+$env:OPENCLAW_TRAY_DATA_DIR = '<printed-fixture-profile>'
+Remove-Item Env:\OPENCLAW_MCP_TOKEN -ErrorAction SilentlyContinue
+$fixtureMcpUrl = '<printed-fixture-loopback-MCP-url>'
+winnode --mcp-url $fixtureMcpUrl --list-tools
 ```
 
-Copy the data directory printed by the launcher:
+Only after discovery succeeds, run the invocation block in full:
+
+```powershell
+$env:OPENCLAW_TRAY_DATA_DIR = '<printed-fixture-profile>'
+Remove-Item Env:\OPENCLAW_MCP_TOKEN -ErrorAction SilentlyContinue
+$fixtureMcpUrl = '<printed-fixture-loopback-MCP-url>'
+winnode --mcp-url $fixtureMcpUrl --command app.status --params '{}'
+```
+
+For each later fixture command, repeat all three setup lines in the same tool
+invocation as that command. Do not carry only the URL into a fresh process.
+
+Use `--mcp-url $fixtureMcpUrl` on every fixture call, including later examples
+in this guide. An explicit URL takes precedence over `--mcp-port` and inherited
+`OPENCLAW_MCP_PORT`; setting the profile alone does not change the endpoint.
+Do not pass `--mcp-token`: it overrides `OPENCLAW_MCP_TOKEN`, which in turn
+overrides the profile token file. Clearing that inherited token in the dedicated
+shell ensures the CLI reads the fixture profile's token without printing it.
+The explicit data directory takes precedence over the app identity's default
+profile. Expect `app.status` to describe the selected fixture app; stop on
+discovery/authentication errors rather than retrying against the default 8765
+listener. Close a persistent dedicated client shell after proof to discard its
+overrides; fresh-process tool calls discard theirs when each process exits.
+
+For live MCP capability proof outside the fixture, prefer isolated tray data so
+tests do not change `%APPDATA%\OpenClawTray`. For example, when a live app launch
+and use of the installed Store Gateway are authorized:
+
+```powershell
+.\run-app-local.ps1 -Isolated -UseStoreGateway
+```
+
+This avoids development Gateway packaging/registration, not app side effects.
+The default launch without `-UseStoreGateway` can build/register a development
+Gateway and needs separate authority. Expect the selected output, Gateway and
+profile to be printed. Copy that data directory into the client shell:
 
 ```powershell
 $env:OPENCLAW_TRAY_DATA_DIR = '<isolated-data-dir>'

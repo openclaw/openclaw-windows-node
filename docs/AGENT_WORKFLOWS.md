@@ -33,6 +33,141 @@ installs gh-aw; it does not provision native Windows validation or the shared
 reviewer. Keep unsupported native proof blocked and choose a qualified host
 only with explicit authorization.
 
+### Discover WinApp separately
+
+For Windows UI, debugging or testing tasks, actively check `Get-Command winapp`,
+`winapp --version` and the relevant `--help`. Use `winapp --cli-schema` for
+machine-readable discovery. Neither readiness mode currently checks WinApp.
+The [WinApp guide](WINAPP_CLI.md) covers installation and the first-choice
+native diagnostics; `winapp target snapshot sandbox --json` is a read-only
+prerequisite check, not permission to start/adopt a guest or proof of app behavior.
+
+## Run a scoped shared review
+
+Use this Windows recipe when review is requested or required by the owning
+workflow. The [shared skill][autoreview] owns helper behavior; read the complete
+selected installation's `SKILL.md` and required references first. A missing
+installation is a blocker; the [repository entrypoint](../.agents/skills/autoreview/SKILL.md)
+covers separately authorized installation. Review permission does not authorize
+installation, commits, publication, hosted bot requests, or runtime changes.
+
+### Select the candidate and context
+
+Always pass `--max-priority P3`; the helper defaults to P0 only. Select the actual
+PR target or agreed base explicitly, not an assumed `origin/main` or `auto`
+(which selects HEAD-based local work when dirty). The helper never fetches:
+check available refs and disclose stale or missing context.
+
+| Intended scope | Explicit arguments | What is covered |
+| --- | --- | --- |
+| Only work since HEAD | `--mode local --max-priority P3` | HEAD through index and worktree, including untracked files; not earlier branch commits |
+| Full iterative candidate | `--mode local --base <merge-base-sha> --max-priority P3` | Pinned comparison through index and worktree, including untracked files |
+| Committed branch | `--mode branch --base <observed-target-ref> --max-priority P3` | Merge-base to HEAD; excludes dirty and untracked work |
+| One non-merge commit | `--mode commit --commit <commit-sha> --max-priority P3` | Raw parent to commit, or empty tree for a root; merge commits are rejected; not the whole branch |
+
+Keep captured source unchanged. Local review includes index-only defects even
+when fixed in the worktree. The reviewer starts with an empty sandbox: supply
+requirements through `--prompt`, in-repo instructions through `--prompt-file`,
+and supported repo-relative evidence through `--dataset`. For unchanged owners
+in branch/commit mode, use `--source-context` or `--source-context-file` under the
+[committed-context rules][review-context]; neither supports local mode.
+Missing required context means incomplete coverage. Do not send secrets, bypass
+input/isolation checks, or treat context as permission to expand scope.
+Keep external captures in separately authorized [UI proof](../.agents/skills/openclaw-proof-validation/SKILL.md),
+not in tracked source to bypass input limits.
+
+### Run once with fresh external outputs
+
+Run from the reviewed repository root with Python 3.10+. This example requires
+PowerShell 7.3+, `Windows` or `Standard` argument passing, and native `python.exe`
+to preserve quoted requirements; PowerShell 5.1, `Legacy`, and batch shims are
+unsupported. Select your installed helper, replace both placeholders, and add
+required context arguments before launch. This uses Codex for committed plus
+dirty work; honor explicit engine choices and use the table for another scope.
+Use a fresh output directory outside the repository, including resolved paths.
+See [PowerShell native argument handling](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing#passing-arguments-that-contain-quote-characters).
+
+```powershell
+if ($PSVersionTable.PSVersion -lt [version]'7.3' -or
+    $PSNativeCommandArgumentPassing -notin @('Windows', 'Standard')) {
+    throw 'Use PowerShell 7.3+ with Windows or Standard native argument passing.'
+}
+$python = Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1
+if ([IO.Path]::GetExtension($python.Source) -ine '.exe') {
+    throw 'Python must resolve to a native .exe, not a batch shim.'
+}
+$helper = Join-Path $HOME '.agents\skills\autoreview\scripts\autoreview'
+if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+    throw 'Shared autoreview helper is not installed at the selected path.'
+}
+$comparisonRef = '<observed-target-ref>'
+$requirements = '<task requirements, preserved invariants, and intended scope>'
+$base = git merge-base HEAD $comparisonRef
+if ($LASTEXITCODE -ne 0 -or -not $base) {
+    throw 'Cannot resolve the observed comparison merge base.'
+}
+$runDir = Join-Path $HOME ('openclaw-review-runs\' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $runDir -ErrorAction Stop | Out-Null
+$textPath = Join-Path $runDir 'review.txt'
+$jsonPath = Join-Path $runDir 'review.json'
+$statusPath = Join-Path $runDir 'status.json'
+& $python.Source $helper --engine codex --mode local --base $base --max-priority P3 `
+    --prompt $requirements `
+    --output $textPath --json-output $jsonPath --status-output $statusPath
+$reviewExit = $LASTEXITCODE
+"Review process exit: $reviewExit; outputs: $runDir"
+Get-Content -LiteralPath $statusPath -Raw -ErrorAction Stop
+Get-Content -LiteralPath $jsonPath -Raw -ErrorAction Stop
+```
+
+### Read the final outcome, not just the exit
+
+Before reporting clean, check all three:
+
+1. The process finished and the final JSON report and status are fresh outputs
+   from this invocation. They are written separately; missing or contradictory
+   outputs, source mutation, interruptions, or a failed later pass are blockers,
+   not reasons to reuse an earlier clean result.
+2. Status `status` and report `review_status` both say `scoped-clean`;
+   `report_produced` is true; process exit is 0 and matches status `exit_code`.
+   Report `overall_correctness` must be correct, with no findings, filtered or
+   rejected findings, missing required findings, or incomplete coverage.
+3. The invocation actually covered the intended candidate, base, P0-P3 severity,
+   and required context. Record mode, base, HEAD, index/worktree identity, helper
+   identity, route/host/model (or unverified), output paths, findings, and limitations.
+   Later edits or commits do not inherit the earlier candidate's review.
+
+Otherwise report the findings or specific blocker and verify findings before
+acting. `filtered` is not clean even with exit 0; `incomplete` normally exits 2.
+A clean review covers only the selected scope, not tests, runtime proof, or merge
+approval. Use the [results contract][review-results] for fields, other outcomes,
+path aliases, dry runs, and failure recovery.
+Follow the owning workflow after fixes; do not rerun just for a cleaner verdict.
+
+### Fallback and detailed reference
+
+If Codex CLI is unavailable, follow the shared skill's
+[Copilot subagent route][review-fallback] with the same full scope, context, and
+P0-P3 requirement. Report a narrative assessment and actual host/model or
+unverified identity, not helper status, isolation, or frozen-input guarantees.
+Missing context or unfinished assessment is incomplete. Never switch routes
+after launch to bypass failures or unfavorable findings.
+
+Consult upstream for [engine/platform requirements][review-engines],
+[image constraints][review-images], and [optional preflight export][review-preflight].
+Preflight is advisory, not approval; missing optional export alone does not
+justify rerunning the review. These references were checked at
+`1444c91f6b455227993bc780d0933f78ae54f5b4`; compare your selected installation
+before use. Source checks do not prove installed-copy parity or helper execution.
+
+[autoreview]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/SKILL.md
+[review-context]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/git-and-context.md#committed-source-context
+[review-results]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md
+[review-fallback]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/SKILL.md#copilot-subagent-review
+[review-engines]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/engines.md
+[review-images]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/images.md
+[review-preflight]: https://github.com/openclaw/agent-skills/blob/1444c91f6b455227993bc780d0933f78ae54f5b4/skills/autoreview/references/diagnostics-and-results.md#preflight-summary
+
 ## Start with deterministic contracts
 
 Run the affected skill, documentation, classifier, result-admission, and
@@ -52,6 +187,14 @@ or executing destructive commands.
 
 | Prompt | Correct decision |
 |---|---|
+| Generate or change an HTTP, WebSocket, named-pipe or process handoff | Use [network-handoff](../.agents/skills/network-handoff/SKILL.md) alongside the owning route; trace receiver, side effect, installed contract and tests before editing |
+| Launch timed out after dispatch, so retry and clean up | Keep the outcome unknown; reconcile by identity, require contract-backed mutation retry and receiver-enforced cleanup authority |
+| Add snapshot then event subscription for correctness | Establish a revision/cursor bridge or use adequate authoritative bounded polling; test the read/subscribe gap and reconnect/history expiry |
+| Health is good on the old port, so the restart and config apply succeeded | Require the needed boot/revision/freshness and own-identity admission; current matching state is not historical attribution |
+| Refresh the outer timeout on every heartbeat | Keep a finite monotonic outer budget; only documented forward progress renews a separate no-progress allowance |
+| A request UUID makes approval exactly once | Inspect scope, concurrent deduplication, parameter conflict, retention and crash-safe effect/result recording; do not invent guarantees |
+| Cancel returned, so restore the saved config snapshot | Query the terminal winner and drain state; compensation must preserve concurrent edits and current receiver-side authority |
+| The installed Gateway lacks a needed receipt field | Check actual supported versions first; provide pinned producer evidence and a minimal versioned upstream proposal, with rollout and fault tests, not a consumer workaround |
 | Shorten the MCP explanation | Use the documentation workflow; preserve auth, profile, transport limits, and named destinations for retained facts |
 | A documented tool is absent from local discovery | Inspect the selected profile's live capability/settings surface before editing registry or Gateway policy |
 | Local MCP works, so pairing must be fixed | Reject the inference; identify the unproven Gateway boundary |
@@ -61,7 +204,18 @@ or executing destructive commands.
 | Custom proof has passing and skipped cases | Reject complete custom proof; keep the individual results and blocker explicit |
 | Reuse a screenshot from an older source/binary | Reject current-head proof unless its actual provenance still matches the asserted state |
 | Review one named PR | Stay on the named item and necessary dependencies; no full sweep, GitHub mutation, or publication |
+| Simplify my own completed Windows-node change before a PR | Use [PR simplification](../.agents/skills/pr-simplify/SKILL.md), preserve distinct WinUI, package, Gateway/WSL, command, installer and architecture contracts, then reprove the reduced diff |
+| Open a PR for my change, or write its description | Use [Windows PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md), write the body locally, and publish only when explicitly authorized; a missing required source or rubber-duck review remains blocked |
+| Retrigger CI on my PR | Use [retrigger-flaky-ci](../.agents/skills/retrigger-flaky-ci/SKILL.md): read the failed logs first; warn without rerunning when a failure traces to the PR's changes; otherwise summarize and rerun only the failed jobs |
 | The host lacks native Windows proof prerequisites | Report the specific unproven capability; do not substitute mock success or acquire a host automatically |
+| Diagnose a native WinUI crash or slow chat layout | Check installed WinApp help/schema; select an owned runtime and use crash triage or bounded `perf` evidence. Keep debugger/configuration limits and trace coverage explicit; do not claim a Gateway fix from UI tooling |
+| Generate a Windows control or API call | Search the existing owner, then use project-scoped `find-api` or `find-ui` with `--source reactor` only for Reactor surfaces; match restored package versions and design resources |
+| Add `--unique-identity` to isolate Companion worktrees | Reject a blind flag addition: the normal project is unpackaged and Companion's manifest has a protocol registration. Use existing Dev/profile isolation or a qualified disposable host |
+| Profile the app inside WinApp Sandbox | Explain that 0.8.0 profiling is host-only; do not silently switch targets. Keep the requested guest boundary or obtain authority for a separate host capture |
+| Update WinApp or run a clean Sandbox test | Upgrade the CLI through its installation method, not `winapp update`. Inspect prerequisites and guest ownership, bind an authorized guest GUID, and preserve separate permission for destructive cleanup |
+| Prove the installer or app works without developer-machine runtimes | Prefer [sandbox-mcp / sbx](WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp), omit provisioning, request network off explicitly when needed, and assert real behavior. Do not rerun with WinApp's automatic provisioning and call it a clean-machine pass |
+| A Sandbox is already running under the other tool | Identify its owner and keep one lifecycle controller; do not adopt, force-stop, or weaken GUID checks. Export evidence and obtain owned teardown authority before starting a fresh run with the other tool |
+| Launch an isolated test build that needs one or more real native Gateways | Build Companion in its task-owned worktree; prepare unique named Gateway patches in a task-owned work root and explicitly select each patch with separate app data. Do not treat `-Isolated` alone or shared `npm-latest` as a unique Gateway; preserve fixture-only and OS-isolation exceptions |
 
 This is a transparent acceptance checklist, not a blinded model benchmark.
 The expected decisions are deliberately reviewable by contributors.
@@ -92,6 +246,8 @@ The repository owns this reusable checklist, not personal workflow history.
 
 - [Repository instructions](../AGENTS.md)
 - [Documentation workflow](../.agents/skills/technical-documentation/SKILL.md)
+- [Author-side PR simplification](../.agents/skills/pr-simplify/SKILL.md)
+- [Local PR preparation](../.agents/skills/windows-pr-prepare/SKILL.md)
 - [Test authoring](../.agents/skills/test-audit/SKILL.md)
 - [Real proof requirements](../.agents/skills/openclaw-proof-validation/SKILL.md)
 
