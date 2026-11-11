@@ -9,4 +9,18 @@ internal sealed class VoiceCapturePreviewGate
         Volatile.Read(ref _ended) == 0 && captureIsCurrent;
 
     public void End() => Volatile.Write(ref _ended, 1);
+
+    public void Post(Action<Action> enqueue, Func<bool> isCurrent, Action apply) =>
+        enqueue(() =>
+        {
+            if (TryApply(isCurrent()))
+                apply();
+        });
+
+    public void Complete(bool surfaceStillCurrent, Action clear)
+    {
+        End();
+        if (surfaceStillCurrent)
+            clear();
+    }
 }

@@ -42,4 +42,34 @@ public sealed class VoiceCapturePreviewGateTests
         var gate = new VoiceCapturePreviewGate();
         Assert.False(gate.TryApply(captureIsCurrent: false));
     }
+
+    [Fact]
+    public void DelayedPartial_AfterFreshRecording_CannotRestoreTheOldPreview()
+    {
+        var queued = new Queue<Action>();
+        string? shown = null;
+        float level = -1f;
+        var first = new VoiceCapturePreviewGate();
+        first.Post(queued.Enqueue, () => true, () => shown = "old partial");
+        first.Post(queued.Enqueue, () => true, () => level = 0.8f);
+        first.Complete(surfaceStillCurrent: true, () =>
+        {
+            shown = null;
+            level = 0f;
+        });
+        Assert.Null(shown);
+        Assert.Equal(0f, level);
+
+        var second = new VoiceCapturePreviewGate();
+        second.Post(apply => apply(), () => true, () => shown = "fresh partial");
+        second.Post(apply => apply(), () => true, () => level = 0.2f);
+        Assert.Equal("fresh partial", shown);
+        Assert.Equal(0.2f, level);
+
+        while (queued.TryDequeue(out var delayed))
+            delayed();
+
+        Assert.Equal("fresh partial", shown);
+        Assert.Equal(0.2f, level);
+    }
 }
