@@ -1,0 +1,31 @@
+{
+  "id": "windows-widgets",
+  "name": "Windows Widgets",
+  "description": "Create a native Windows Mercury retrograde tracker from a prompt.",
+  "categories": ["other"],
+  "skills": ["./skills"],
+  "contracts": {
+    "tools": ["windows_widgets"]
+  },
+  "toolMetadata": {
+    "windows_widgets": { "optional": true }
+  },
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "nodeId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact paired Windows node ID. Never inferred from the first connected device."
+      },
+      "refreshMinutes": {
+        "type": "integer",
+        "minimum": 15,
+        "maximum": 1440,
+        "default": 60
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@openclaw/windows-widgets-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw plugin proof of concept for native Windows Widgets Board trackers.",
+  "files": ["index.mjs", "mercury.mjs", "presentation.mjs", "artwork.mjs", "toolbox.mjs", "openclaw.plugin.json", "skills", "examples", "README.md"],
+  "scripts": {
+    "test": "node --test mercury.test.mjs"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.10.6"
+  },
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "card": {
+    "type": "AdaptiveCard",
+    "version": "1.6",
+    "header": "Is Mercury in Retrograde?",
+    "body": [
+      {
+        "type": "Container",
+        "$when": "${!$host.isSettingsPayload}",
+        "items": [
+          {
+            "type": "ColumnSet",
+            "columns": [
+              {
+                "type": "Column",
+                "width": "stretch",
+                "items": [
+                  {
+                    "type": "TextBlock",
+                    "text": "${if(value == 'Yes', 'In retrograde', 'Not in retrograde')}",
+                    "size": "${if($host.widgetSize == 'small', 'Medium', 'ExtraLarge')}",
+                    "weight": "Bolder",
+                    "wrap": true
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "width": "auto",
+                "verticalContentAlignment": "Center",
+                "$when": "${$host.widgetSize != 'small'}",
+                "items": [
+                  {
+                    "type": "Badge",
+                    "text": "${value}",
+                    "fallback": {
+                      "type": "TextBlock",
+                      "text": "${value}",
+                      "weight": "Bolder",
+                      "wrap": true
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "RichTextBlock",
+            "$when": "${$host.widgetSize != 'small' && state.showDetail}",
+            "inlines": [
+              { "type": "TextRun", "text": "${detail}" }
+            ]
+          },
+          {
+            "type": "Container",
+            "$when": "${$host.widgetSize == 'large' && state.showDetail}",
+            "items": [
+              {
+                "type": "TextBlock",
+                "$data": "${content.notes}",
+                "text": "${text}",
+                "size": "Small",
+                "isSubtle": true,
+                "wrap": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Container",
+        "$when": "${$host.isSettingsPayload}",
+        "items": [
+          {
+            "type": "Input.Toggle",
+            "id": "showDetail",
+            "label": "Display preferences",
+            "title": "Show supporting detail",
+            "valueOn": "true",
+            "valueOff": "false",
+            "value": "${if(state.showDetail, 'true', 'false')}"
+          },
+          {
+            "type": "ActionSet",
+            "actions": [
+              { "type": "Action.Execute", "title": "Save", "verb": "widget.set" },
+              { "type": "Action.Execute", "title": "Reset", "verb": "widget.reset", "associatedInputs": "none" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "data": {
+    "notes": [
+      { "text": "A failed refresh keeps the last successful observation." },
+      { "text": "Display preferences do not change the tracked source." }
+    ]
+  },
+  "initialState": { "showDetail": true }
+}

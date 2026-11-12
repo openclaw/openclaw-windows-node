@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <ApplicationIcon>Assets\openclaw.ico</ApplicationIcon>
     <AssemblyTitle>OpenClaw Companion</AssemblyTitle>
     <FileDescription>OpenClaw Companion</FileDescription>
@@ -235,7 +236,7 @@
                 "(<desktop:ToastNotificationActivation\\b[^>]*?\\bToastActivatorCLSID\\s*=\\s*[\"'])[^\"']+([\"'])",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var comClassRegex = new System.Text.RegularExpressions.Regex(
-                "(<com:Class\\b[^>]*?\\bId\\s*=\\s*[\"'])[^\"']+([\"'])",
+                "(<com:Class\\b[^>]*?\\bId\\s*=\\s*[\"'])EF9297B3-EEEB-4E50-8306-D1D118E04BC7([\"'])",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (!toastClsidRegex.IsMatch(text) || !comClassRegex.IsMatch(text)) {
                 Log.LogError("GenerateOpenClawAppxManifest: toast activation CLSID declarations missing from " + SourceManifestPath);
@@ -243,6 +244,8 @@
             }
             text = toastClsidRegex.Replace(text, "${1}" + ToastActivatorClsid + "$2", 1);
             text = comClassRegex.Replace(text, "${1}" + ToastActivatorClsid + "$2", 1);
+            text = text.Replace("45A6BDF0-B332-4861-AB0E-2A524D421EA1",
+                "0D582DA5-334F-4FCD-9524-80FE1D138C86");
         }
 
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(OutputManifestPath));

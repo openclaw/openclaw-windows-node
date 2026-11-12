@@ -10160,4 +10160,12 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Acompanhe o trabalho delegado desta conversa.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>Monitor do OpenClaw</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>Acompanhe informações com o OpenClaw no painel de widgets do Windows.</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>Peça ao OpenClaw para criar um widget e selecione o monitor aqui.</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>Monitor</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>Mostrar monitor</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>Desatualizado. Última observação:</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>Abrir fonte</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>Os dados do widget estão indisponíveis. Verifique os diagnósticos do Companion.</value></data>
 </root>

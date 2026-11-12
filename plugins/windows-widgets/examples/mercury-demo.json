@@ -1,0 +1,44 @@
+{
+  "card": {
+    "type": "AdaptiveCard",
+    "version": "1.5",
+    "header": "Is Mercury in Retrograde?",
+    "body": [
+      {
+        "type": "Container",
+        "height": "stretch",
+        "verticalContentAlignment": "Center",
+        "items": [
+          {
+            "type": "TextBlock",
+            "text": "In retrograde",
+            "size": "ExtraLarge",
+            "weight": "Bolder",
+            "horizontalAlignment": "Center",
+            "spacing": "Small",
+            "wrap": true,
+            "$when": "${value == 'Yes'}"
+          },
+          {
+            "type": "TextBlock",
+            "text": "Not in retrograde",
+            "size": "ExtraLarge",
+            "weight": "Bolder",
+            "horizontalAlignment": "Center",
+            "spacing": "Small",
+            "wrap": true,
+            "$when": "${value == 'No'}"
+          },
+          {
+            "type": "TextBlock",
+            "text": "Something else must be bumming you out.",
+            "horizontalAlignment": "Center",
+            "spacing": "Small",
+            "wrap": true,
+            "$when": "${value == 'No' && $host.widgetSize != 'small'}"
+          }
+        ]
+      }
+    ]
+  }
+}

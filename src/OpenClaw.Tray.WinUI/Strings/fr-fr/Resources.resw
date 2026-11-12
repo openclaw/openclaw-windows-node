@@ -10107,4 +10107,12 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Suivez le travail délégué depuis cette conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets et onglets publiés par cette session.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Aucun panneau n'est encore disponible pour cette conversation.</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>Suivi OpenClaw</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>Suivez des informations avec OpenClaw dans le tableau des widgets Windows.</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>Demandez à OpenClaw de créer un widget, puis sélectionnez son suivi ici.</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>Suivi</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>Afficher le suivi</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>Données périmées. Dernière observation :</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>Ouvrir la source</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>Les données du widget sont indisponibles. Consultez les diagnostics de Companion.</value></data>
 </root>

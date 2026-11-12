@@ -10108,4 +10108,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>OpenClaw-tracker</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>Volg informatie met OpenClaw op het Windows-widgetbord.</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>Vraag OpenClaw om een widget te maken en selecteer hier de tracker.</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>Tracker kiezen</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>Tracker tonen</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>Verouderd. Laatste waarneming:</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>Bron openen</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>Widgetgegevens zijn niet beschikbaar. Controleer de diagnostiek in Companion.</value></data>
 </root>

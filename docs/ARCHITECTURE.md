@@ -48,6 +48,33 @@ multi-PR refactor plan for the reasoning behind each boundary.
 
 These are the canonical homes. Do not reintroduce private copies elsewhere.
 
+The opt-in [Windows widget proof of concept](../plugins/windows-widgets/README.md)
+keeps tracking/source collection in the OpenClaw plugin. `WidgetCapability` and
+`WidgetSnapshotStore` own bounded data-only publication and atomic local state;
+`WidgetPresentation` enforces bounded native Adaptive Card publication and
+public-resource policy without inventing a second element/property schema.
+The plugin's `toolbox.mjs` owns offline authoring discovery through the
+`capabilities` tool action. It describes Designer registrations and native host
+limits without opening tracker state, publishing or asserting renderer support.
+`WidgetCard` forwards generated templates with separate data, authenticated-action
+guards and provider-owned observation/source controls. `WidgetArtwork` validates
+snapshot-owned PNG bytes and expands named image references at render time,
+without reading Gateway/local paths or relaxing HTTPS navigation. The plugin's
+`artworkFiles` adapter encodes explicitly selected Gateway-local PNGs. Artwork
+is presentation data, not a compiled-in design catalog. Expanded native templates
+remain bounded. New designs do not use
+preset names; old saved compositions migrate to cards. Presentation-only changes
+do not advance observation time. The plugin persists presentation across refresh
+and restart. `WidgetInstanceState` owns pure, bounded local interaction policy
+and versioned per-instance state. `NativeWidgetProvider` owns Windows lifecycle,
+customization callbacks, action dispatch and per-instance rendering. It never
+runs generated code or invokes Gateway commands from card callbacks.
+`Program` routes COM widget activation to `WidgetProviderHost` before WinUI
+startup. `App` retains ordinary composition/startup and must not absorb widget
+polling, website collection, or provider activation. Windows, not the agent,
+owns pinning. `WidgetTests` covers persistence, MCP, binding and card data;
+packaged activation and visible rendering require separate native proof.
+
 The tray icon's primary activation opens or focuses Workspace chat for configured
 profiles, including while disconnected. `TrayController` invokes its chat callback and
 `App` composes that callback with the `WindowManager` chat route. Explicit

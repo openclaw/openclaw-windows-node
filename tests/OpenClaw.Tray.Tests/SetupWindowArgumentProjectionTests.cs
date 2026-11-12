@@ -59,10 +59,15 @@ public sealed class SetupWindowArgumentProjectionTests
             "src",
             "OpenClaw.Tray.WinUI",
             "Package.appxmanifest"));
+        var toastClassId = Assert.Single(manifest.Descendants(),
+            element => element.Name.LocalName == "ToastNotificationActivation")
+            .Attribute("ToastActivatorCLSID")?.Value;
         var activationArgument = Assert.Single(
             manifest.Descendants(),
             element => element.Name.LocalName == "ExeServer" &&
-                (string?)element.Attribute("Executable") == "OpenClaw.Tray.WinUI.exe")
+                (string?)element.Attribute("Executable") == "OpenClaw.Tray.WinUI.exe" &&
+                element.Elements().Any(child => child.Name.LocalName == "Class" &&
+                    (string?)child.Attribute("Id") == toastClassId))
             .Attribute("Arguments")?.Value;
         Assert.False(string.IsNullOrWhiteSpace(activationArgument));
 

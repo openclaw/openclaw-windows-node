@@ -10107,4 +10107,12 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>跟踪此对话中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此会话发布的小组件和选项卡。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此对话暂无可用的面板。</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>OpenClaw 跟踪器</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>通过 OpenClaw 在 Windows 小组件面板中跟踪信息。</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>请让 OpenClaw 创建小组件，然后在此选择跟踪器。</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>跟踪器</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>显示跟踪器</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>已过期。上次观测时间：</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>打开来源</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>小组件数据不可用。请查看 Companion 诊断信息。</value></data>
 </root>

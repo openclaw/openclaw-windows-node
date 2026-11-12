@@ -10107,4 +10107,12 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>追蹤此對話中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此工作階段發布的小工具和索引標籤。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此對話尚無可用的面板。</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>OpenClaw 追蹤器</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>透過 OpenClaw 在 Windows 小工具面板中追蹤資訊。</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>請讓 OpenClaw 建立小工具，然後在此選取追蹤器。</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>追蹤器</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>顯示追蹤器</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>已過期。上次觀測時間：</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>開啟來源</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>小工具資料無法使用。請查看 Companion 診斷資訊。</value></data>
 </root>
