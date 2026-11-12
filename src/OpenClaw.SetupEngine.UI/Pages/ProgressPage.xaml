@@ -96,11 +96,11 @@
             </Grid>
         </StackPanel>
 
-        <StackPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
+        <controls:SetupFooterPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
             <Button x:Name="OnboardButton" Content="Start OpenClaw onboard"
                     Visibility="Collapsed" Style="{StaticResource SetupPrimaryButtonStyle}"
                     Click="Onboard_Click" />
-        </StackPanel>
+        </controls:SetupFooterPanel>
 
     </Grid>
 </Page>

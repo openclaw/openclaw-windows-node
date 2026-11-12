@@ -162,13 +162,13 @@
           </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
+        <controls:SetupFooterPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
             <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" AutomationProperties.AutomationId="WelcomeBackButton"
                     Content="Back" Style="{StaticResource SetupSecondaryButtonStyle}"
                     Click="Back_Click" />
             <Button x:Name="NextButton" x:Uid="Onboarding_V2_Next" AutomationProperties.AutomationId="WelcomeNextButton"
                     Content="Next" Style="{StaticResource SetupPrimaryButtonStyle}"
                     Click="Next_Click" />
-        </StackPanel>
+        </controls:SetupFooterPanel>
     </Grid>
 </Page>

@@ -211,7 +211,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is AiReadyPage { IsLoaded: true },
                     "native ready page mounted");
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
-                var chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
+                var chatActionPanel = Assert.IsType<SetupFooterPanel>(page.FindName("ChatActionPanel"));
                 Assert.Equal(Visibility.Collapsed, chatActionPanel.Visibility);
                 Assert.NotEqual("All set!", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
                 window.Invalidate();
@@ -223,7 +223,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                     Assert.IsType<Button>(beforeConsumption.FindName("RetryButton")).Visibility);
                 await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 page = Assert.IsType<AiReadyPage>(frame.Content);
-                chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
+                chatActionPanel = Assert.IsType<SetupFooterPanel>(page.FindName("ChatActionPanel"));
                 var root = Assert.IsType<Grid>(page.Content);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 window.CommitPresentation();

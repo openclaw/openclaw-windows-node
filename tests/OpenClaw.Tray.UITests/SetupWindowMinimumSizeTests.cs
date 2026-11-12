@@ -179,6 +179,66 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         });
     }
 
+    [Fact]
+    public async Task MinimumViewport_KeepsEveryFinishingRecoveryActionInsideThePageColumn()
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        using var temp = new TempDirectory("setup-minimum-recovery-");
+        var config = temp.Combine("setup.json");
+        File.WriteAllText(config, JsonSerializer.Serialize(new SetupConfig()));
+        await ui.RunOnUIAsync(async () =>
+        {
+            var resources = OnboardingWindowsFlowTests.LoadProgressResources(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!);
+            Application.Current.Resources.MergedDictionaries.Add(resources);
+            SetupWindow? window = null;
+            try
+            {
+                window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: config,
+                    dataDir: temp.Combine("data"), localDataDir: temp.Combine("local"), commandLineArgs: [],
+                    startupRegistrationAllowed: false));
+                var root = Assert.IsType<Grid>(window.Content);
+                var frame = Assert.IsType<Frame>(root.FindName("RootFrame"));
+                frame.Navigate(typeof(AiCompletionPage));
+                window.Activate();
+                window.AppWindow.Move(new(-32000, -32000));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => frame.Content is AiCompletionPage { IsLoaded: true }, "finishing recovery");
+                var page = Assert.IsType<AiCompletionPage>(frame.Content);
+                // A retryable finishing failure that can also return offers all three actions at once.
+                page.ShowFailure(retry: () => { }, back: () => { }, error: new IOException("Synthetic finishing failure"),
+                    close: () => { });
+                await ResizeBelowMinimumAsync(window, ui, output, "finishing-recovery");
+                root.UpdateLayout();
+                await ui.YieldToRenderAsync();
+
+                var actions = new[] { "BackButton", "RetryButton", "CloseButton" }
+                    .Select(name => Assert.IsType<Button>(page.FindName(name))).ToArray();
+                var bounds = actions.Select(action => action.TransformToVisual(page).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, action.ActualWidth, action.ActualHeight))).ToArray();
+                for (var i = 0; i < actions.Length; i++)
+                {
+                    Assert.Equal(Visibility.Visible, actions[i].Visibility);
+                    Assert.True(bounds[i].Left >= -0.5 && bounds[i].Right <= page.ActualWidth + 0.5 &&
+                        bounds[i].Width >= actions[i].MinWidth - 0.5,
+                        $"{actions[i].Name} must keep its width inside the page column. Bounds: {bounds[i]}; page width: {page.ActualWidth}.");
+                    for (var j = 0; j < i; j++)
+                    {
+                        var overlapWidth = Math.Min(bounds[i].Right, bounds[j].Right) - Math.Max(bounds[i].Left, bounds[j].Left);
+                        var overlapHeight = Math.Min(bounds[i].Bottom, bounds[j].Bottom) - Math.Max(bounds[i].Top, bounds[j].Top);
+                        Assert.True(overlapWidth < 0.5 || overlapHeight < 0.5,
+                            $"{actions[i].Name} overlaps {actions[j].Name}: {bounds[i]} / {bounds[j]}.");
+                    }
+                }
+                await MountedControlCapture.OptionalAsync(window, "setup-minimum-finishing-recovery");
+            }
+            finally
+            {
+                if (window is not null) { window.Close(); await window.CleanupCompleted; }
+                Application.Current.Resources.MergedDictionaries.Remove(resources);
+            }
+        });
+    }
+
     internal static void AssertInitialWindowSize(Window window, ITestOutputHelper output)
     {
         var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));

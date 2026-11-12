@@ -94,13 +94,13 @@
         <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto"
               ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="{StaticResource SetupGutterMargin}">
             <Button x:Name="BackButton" Grid.Row="0" x:Uid="Onboarding_Native_Back" Content="Back"
-                    Click="Back_Click" MinWidth="110" MinHeight="40" HorizontalAlignment="Right"
+                    Click="Back_Click" MinWidth="{StaticResource SetupFooterButtonMinWidth}" MinHeight="40" HorizontalAlignment="Right"
                     ContentTemplate="{StaticResource WrappedFooterAction}" />
             <Button x:Name="CancelButton" Grid.Row="0" Grid.Column="1" x:Uid="Onboarding_Native_Cancel" Content="Cancel setup"
-                    MinWidth="180" MinHeight="40" HorizontalAlignment="Right" ContentTemplate="{StaticResource WrappedFooterAction}"
+                    MinWidth="{StaticResource SetupFooterButtonMinWidth}" MinHeight="40" HorizontalAlignment="Right" ContentTemplate="{StaticResource WrappedFooterAction}"
                     Visibility="Collapsed" Click="Cancel_Click" />
             <Button x:Name="RetryButton" Grid.Row="0" Grid.Column="1" x:Uid="Onboarding_Native_Retry" Content="Retry setup"
-                    MinWidth="180" MinHeight="40" HorizontalAlignment="Right" ContentTemplate="{StaticResource WrappedFooterAction}"
+                    MinWidth="{StaticResource SetupFooterButtonMinWidth}" MinHeight="40" HorizontalAlignment="Right" ContentTemplate="{StaticResource WrappedFooterAction}"
                     Style="{StaticResource AccentButtonStyle}" Visibility="Collapsed" Click="Retry_Click" />
         </Grid>
     </Grid>

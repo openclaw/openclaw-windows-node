@@ -2063,7 +2063,7 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("x:Name=\"InstallCard\"", xaml);
         Assert.DoesNotContain("x:Name=\"ConnectCard\"", xaml);
         Assert.DoesNotContain("UpdateCardSelection", welcomePage);
-        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<StackPanel Grid.Row=\"2\"");
+        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<controls:SetupFooterPanel Grid.Row=\"2\"");
         Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
         Assert.Contains("_suppressSelectionWrite = true", welcomePage);
         Assert.Contains("SetupWindow.Active?.WelcomeGatewayChoice", welcomePage);

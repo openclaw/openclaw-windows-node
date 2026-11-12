@@ -126,7 +126,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await WithPublishedReadyAsync(window, registry, server, Assert.Single(completed), theme,
                 async (readyWindow, ready, navigated, normalRuntime) =>
                 {
-                    var choices = Find<StackPanel>(ready, "ChatActionPanel");
+                    var choices = Find<SetupFooterPanel>(ready, "ChatActionPanel");
                     Assert.Single(choices.Children);
                     AssertNoCompletionFooterActions(ready);
                     Assert.Null(ready.FindName("SkipButton"));
@@ -401,7 +401,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     ready.UpdateLayout();
                     await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
                     var readyRoot = Assert.IsAssignableFrom<FrameworkElement>(readyWindow.Content);
-                    Assert.Single(Find<StackPanel>(ready, "ChatActionPanel").Children);
+                    Assert.Single(Find<SetupFooterPanel>(ready, "ChatActionPanel").Children);
                     OnboardingNativeProof.AssertFullyVisible(SetupCompanion.Find(ready)!.Steps, readyRoot);
                     await SetupWindowMinimumSizeTests.SaveViewportsAsync(
                         readyWindow, ready, ui, output, $"setup-minimum-ready-{theme}");
@@ -695,7 +695,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     await readyWindow.ShowReadyAsync(route, ct);
                     var pending = Assert.IsType<AiReadyPage>(readyFrame.Content);
                     Assert.NotEqual("All set!", Find<TextBlock>(pending, "Heading").Text);
-                    Assert.Equal(Visibility.Collapsed, Find<StackPanel>(pending, "ChatActionPanel").Visibility);
+                    Assert.Equal(Visibility.Collapsed, Find<SetupFooterPanel>(pending, "ChatActionPanel").Visibility);
                     Assert.Empty(navigated);
                     if (exerciseUnrelatedMetadata)
                         await AssertUnrelatedMetadataPreservesReadyAsync();
@@ -726,7 +726,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             if (exerciseUnrelatedMetadata)
             {
                 await AssertUnrelatedMetadataPreservesReadyAsync();
-                Assert.Equal(Visibility.Visible, Find<StackPanel>(ready, "ChatActionPanel").Visibility);
+                Assert.Equal(Visibility.Visible, Find<SetupFooterPanel>(ready, "ChatActionPanel").Visibility);
             }
             await OnboardingNativeProof.ApplyThemeSurfaceAsync(
                 Assert.IsType<Grid>(Assert.IsType<SetupShellLayout>(readyWindow.Content).Content), theme);

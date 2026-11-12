@@ -65,9 +65,14 @@ prove that uncertainty cleared across Companion restarts. A completed managed
 startup that remains stopped or uninstalled fails
 readiness promptly instead of waiting for the full recovery deadline.
 
-Native installation keeps Back at the left and Cancel setup (or Retry setup) at
-the right, using the same content-sized, 100 px minimum buttons as earlier setup
-screens. Progress stays centered on its own row and action labels can wrap.
+Native installation keeps its actions right-aligned in the footer: Back, then
+Cancel setup (or Retry setup). Both share the setup footer minimum width
+(`SetupFooterButtonMinWidth`, 180 DIPs) and their labels can wrap. Installation
+progress is shown in the page body and in the companion's step timeline, not on
+a separate footer row. Other setup pages use `SetupFooterPanel`, which keeps
+actions in one right-aligned row and stacks them one per row when the page
+column is too narrow, for example the Back, Retry and Close finishing-failure
+actions at the minimum window width.
 
 The Gateway chooser shows Local AI availability in a subtle, transparent status row
 below all three choices and above "Remote, local MCP or set up later", not inside

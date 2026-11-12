@@ -58,8 +58,7 @@ public sealed class NativeGatewaySetupUxContractTests
             Assert.Equal("0", (string?)action.Attribute("Grid.Row"));
             if (file == "NativeGatewaySetupPage.xaml")
             {
-                Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "110" : "180",
-                    (string?)action.Attribute("MinWidth"));
+                Assert.Equal("{StaticResource SetupFooterButtonMinWidth}", (string?)action.Attribute("MinWidth"));
                 Assert.Equal("Right", (string?)action.Attribute("HorizontalAlignment"));
             }
             else

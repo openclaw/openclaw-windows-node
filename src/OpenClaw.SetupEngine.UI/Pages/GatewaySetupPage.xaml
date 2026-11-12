@@ -73,9 +73,9 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
-        <StackPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
+        <controls:SetupFooterPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
             <Button x:Uid="Onboarding_V2_Back" Content="Back" Style="{StaticResource SetupSecondaryButtonStyle}" Click="Back_Click" />
             <Button x:Name="PrimaryButton" Content="Install" Style="{StaticResource SetupPrimaryButtonStyle}" Click="Install_Click" />
-        </StackPanel>
+        </controls:SetupFooterPanel>
     </Grid>
 </Page>
