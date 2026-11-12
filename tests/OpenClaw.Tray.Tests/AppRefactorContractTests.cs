@@ -6,6 +6,39 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void AutomationsOverview_HasOneLazyHostOwnerBoundToTheLiveClientAndDisposedBeforeGateway()
+    {
+        var source = ReadAppSources();
+        Assert.Single(Regex.Matches(source, @"new OpenClaw\.Shared\.Cron\.AutomationsOverviewSource\("));
+        Assert.Contains("internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview", source);
+        Assert.DoesNotContain("_automationsOverview?.RefreshAsync", source);
+        Assert.DoesNotContain("_automationsOverview.RefreshAsync", source);
+        foreach (var hook in new[] { "OnOperatorClientChanged", "OnManagerStateChanged" })
+            Assert.Contains("_automationsOverview?.SetConnection(GatewayClient);", ExtractMethod(source, hook));
+        AssertInOrder(source, "automationsOverview.Dispose();", "await connectionManager.DisposeAsync();");
+
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
+        Assert.Contains("overviewSource: CurrentApp.AutomationsOverview", page);
+        Assert.DoesNotContain("new AutomationsOverviewSource", page);
+    }
+
+    [Fact]
+    public void NodeService_ShutsDownProducersBeforeReleasingExecutorCleanupLeases()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+        var teardown = ExtractMethod(source, "DisposeCoreAsync");
+        var release = teardown.IndexOf("_sandboxExecutor?.Dispose()", StringComparison.Ordinal);
+        Assert.True(release >= 0);
+        foreach (var producer in new[] { "await StopMcpServerAsync()", "await _uploadRetention.DisposeAsync()", "DetachClientHandlers(client)" })
+        {
+            var stop = teardown.IndexOf(producer, StringComparison.Ordinal);
+            Assert.True(stop >= 0 && stop < release, $"{producer} must precede executor cleanup release.");
+        }
+    }
+
+    [Fact]
     public void E2ESetupFixture_UsesSeparateRoamingRootThroughoutItsLifecycle()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -81,7 +114,7 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
 
         Assert.Contains("new CredentialResolver", source);
-        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true }", source);
+        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true, ClientIdentity = OperatorClientIdentity.Interactive }", source);
         Assert.Contains("new NodeConnector", source);
         Assert.Contains("_connectionManager = new GatewayConnectionManager", source);
         Assert.Contains("nodeConnector.ClientCreated +=", source);
@@ -558,10 +591,17 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var entry = ExtractMethod(source, "OpenDashboard");
+        Assert.Contains("TryOpenDashboardAsync(path)", entry);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", entry);
+        var method = ExtractMethod(source, "TryOpenDashboardAsync");
 
-        Assert.Contains("new GatewayDashboardLauncher(", method);
-        Assert.Contains("EnsureSshTunnelConfigured,", method);
+        Assert.Contains("CreateDashboardLauncher(", method);
+        var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
+        launcher = launcher[..launcher.IndexOf("// ── IAppCommands", StringComparison.Ordinal)];
+        Assert.Contains("EnsureSshTunnelConfigured,", launcher);
+        Assert.Contains("new DashboardBrowser(", launcher);
+        Assert.DoesNotContain("Process.Start", launcher);
         Assert.Contains("ShowDashboardLaunchFailureAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
@@ -1432,9 +1472,16 @@ public sealed class AppRefactorContractTests
         var restart = ExtractMethod(source, "RestartAfterSetupAsync");
         AssertInOrder(
             restart,
-            "if (nativeCompletion is null)",
+            "var verifiedCompletion = preparation?.Verification ?? nativeCompletion?.Verification;",
+            "if (verifiedCompletion is null)",
             "SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart",
+            "if (verifiedCompletion is not null)",
+            "store.IssuePreparation(preparation) : store.Issue(nativeCompletion!)",
             "Process.Start(psi)");
+        Assert.Contains("if (verifiedCompletion is null)\n            " +
+            "await SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart",
+            restart.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.DoesNotContain("if (nativeCompletion is null)", restart);
     }
 
     [Fact]
@@ -1466,7 +1513,29 @@ public sealed class AppRefactorContractTests
             "setupWindow.Closed += OnSetupClosed",
             "CompleteSetupCloseAsync(setupWindow)",
             "await setupWindow.CleanupCompleted",
-            "_setupWindow = null");
+            "_setupWindow = null",
+            "TryAdoptExternalSnapshot()",
+            "ExternalSnapshotAdoption.UnsavedEdits",
+            "NotifySetupRegistryRecovery()",
+            "ExternalSnapshotAdoption.Adopted",
+            "ReconcileSetupConnectionAsync(before, registry.GetActive())");
+    }
+
+    [Fact]
+    public void SavedGatewayRemoval_SavesBeforeDisconnectingTheActiveConnection()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var remove = ExtractMethod(connectionPage, "OnSavedRowRemoveAsync");
+        AssertInOrder(
+            remove,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
+            "await _connectionManager.DisconnectAsync()");
     }
 
     [Fact]
@@ -1672,10 +1741,9 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var reset = ExtractMethod(source, "ResetInputs");
 
-        // The "More ▾" overflow button is a sibling of SelectOptions in the shared
-        // StackPanel, so ResetInputs must remove it between steps or it leaks forward.
+        // The XAML owner must remove More even before the page joins the live tree.
         Assert.Contains("_moreOptionsButton", reset);
-        Assert.Contains("morePanel.Children.Remove(_moreOptionsButton)", reset);
+        Assert.Contains("StepInputsPanel.Children.Remove(_moreOptionsButton)", reset);
         Assert.Contains("_moreOptionsButton = null", reset);
     }
 
@@ -1816,23 +1884,30 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
+        Assert.Contains("var activeGateway = CurrentApp.Registry?.GetActive();", code);
+        Assert.Contains("GatewayHostAccessClassifier.Classify(activeGateway)", code);
+        Assert.Contains("SetupExistingGatewayClassifier.HasWslInstallationForSettings(", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
         Assert.Contains("CurrentApp.Registry?.Load();", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
     }
 
     [Fact]
-    public void HubBackNavigation_PrunesUnavailableGatewayPages()
+    public void WorkspaceBackForward_PrunesUnavailableGatewaySettingsHistory()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+        var workspace = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
+        var view = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
 
-        Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
-        Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
-        Assert.Contains("RemoveBackStackEntries(HubPageRegistry.IsGatewayPageTag)", source);
-        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
-        Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
+        Assert.Contains("PruneUnavailableGatewayHistory();", ExtractMethod(workspace, "NavigateBack"));
+        Assert.Contains("PruneUnavailableGatewayHistory();", ExtractMethod(workspace, "NavigateForward"));
+        var prune = ExtractMethod(workspace, "PruneUnavailableGatewayHistory");
+        Assert.Contains("_state.Status != ConnectionStatus.Connected", prune);
+        Assert.Contains("PruneSettingsHistory(HubPageRegistry.IsGatewayPageTag, null)", prune);
+        Assert.Contains("_navigation.PruneSettings(", ExtractMethod(workspace, "PruneSettingsHistory"));
+        Assert.Contains("PruneUnavailableGatewayEntries(fallbackTag: null);", ExtractMethod(view, "UpdateGatewayNavVisibility"));
+        Assert.Contains("PruneRequested?.Invoke(HubPageRegistry.IsGatewayPageTag", ExtractMethod(view, "PruneUnavailableGatewayEntries"));
+        Assert.DoesNotContain("BackStack", view);
     }
 
     [Fact]
@@ -2053,19 +2128,22 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void HubWindow_DesktopIconMirrorsStatusAccent()
+    public void SettingsView_DoesNotOwnWindowIcon_WorkspaceKeepsSingleBrandIcon()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(
-            root, "src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs"));
+        var view = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs"));
+        var workspace = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
 
-        // The desktop/taskbar icon is refreshed from the same accent as the pill.
-        var apply = ExtractMethod(source, "ApplyWindowStatusIcon");
-        Assert.Contains("StatusBadgeIconFactory.GetBadgedIconPath(accent)", apply);
-
-        // Both status-update paths must repaint the window icon.
-        var update = ExtractMethod(source, "UpdateTitleBarStatus");
-        Assert.Contains("ApplyWindowStatusIcon(accent)", update);
+        // The status-accent desktop icon belonged to the removed Settings window. The embedded
+        // view must not repaint any window icon; the Workspace owns the one static brand icon.
+        Assert.DoesNotContain("ApplyWindowStatusIcon", view);
+        Assert.DoesNotContain("StatusBadgeIconFactory", view);
+        Assert.DoesNotContain("AppWindow.SetIcon", view);
+        Assert.DoesNotContain("UpdateTitleBarStatus", view);
+        Assert.Contains("WorkspaceTitleBar.IconSource = new BitmapIconSource", workspace);
+        Assert.Contains("new Uri(BrandAssets.RedBotMarkUri)", workspace);
     }
 
     [Fact]

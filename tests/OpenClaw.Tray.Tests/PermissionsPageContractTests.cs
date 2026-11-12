@@ -65,9 +65,9 @@ public sealed class PermissionsPageContractTests
     }
 
     [Fact]
-    public void HubWindow_NoLongerInitializesPermissionsPageDirectly()
+    public void SettingsShellView_NoLongerInitializesPermissionsPageDirectly()
     {
-        var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
 
         Assert.DoesNotContain("case PermissionsPage permissions: permissions.Initialize();", hub);
     }

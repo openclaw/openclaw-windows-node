@@ -146,29 +146,32 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     }
 
     public ExecApprovalsResolved ResolveReadOnly(string? agentId)
+        => ResolveReadOnlyWithFailure(agentId).Resolved;
+
+    internal (ExecApprovalsResolved Resolved, ExecApprovalsSnapshotFailure? Failure)
+        ResolveReadOnlyWithFailure(string? agentId)
     {
         ThrowIfDisposed();
 
-        if (_legacyFilePath is not null)
+        // Keep the policy and its load provenance tied to the same read.
+        var result = LoadFile();
+        if (_legacyFilePath is not null && result.Status == LoadFileStatus.Missing)
         {
-            var targetStatus = LoadFile().Status;
             var legacyStatus = LoadFile(_legacyFilePath).Status;
-            if (targetStatus == LoadFileStatus.Missing
-                && legacyStatus != LoadFileStatus.Missing)
+            if (legacyStatus != LoadFileStatus.Missing)
             {
-                return UnmigratedLegacyFallback(agentId);
+                return (UnmigratedLegacyFallback(agentId), CreateLegacyMigrationFailure(_legacyFilePath));
             }
         }
 
-        var result = LoadFile();
         return result.Status switch
         {
             LoadFileStatus.Loaded when result.File is not null =>
-                ResolveFromFile(result.File, agentId),
+                (ResolveFromFile(result.File, agentId), null),
             LoadFileStatus.Missing =>
-                DefaultResolved(NormalizeAgentId(agentId)),
+                (DefaultResolved(NormalizeAgentId(agentId)), null),
             _ =>
-                FailClosedResolved(NormalizeAgentId(agentId)),
+                (FailClosedResolved(NormalizeAgentId(agentId)), CreateFailure(result)),
         };
     }
 
@@ -1269,11 +1272,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
             if (result.Status == LoadFileStatus.Missing
                 && legacyStatus != LoadFileStatus.Missing)
             {
-                var failure = new ExecApprovalsSnapshotFailure(
-                    ExecApprovalsSnapshotFailureKind.LegacyMigrationRequired,
-                    ComputeFailureSignature("legacy-migration-required", Path.GetFullPath(_legacyFilePath)),
-                    Version: null,
-                    "Legacy exec approvals must be migrated before a read-only snapshot is available.");
+                var failure = CreateLegacyMigrationFailure(_legacyFilePath);
                 return new ReadOnlySnapshotLoadResult(null, failure, failure.Hash);
             }
         }
@@ -1297,6 +1296,13 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
         var typedFailure = CreateFailure(result);
         return new ReadOnlySnapshotLoadResult(null, typedFailure, typedFailure.Hash);
     }
+
+    private static ExecApprovalsSnapshotFailure CreateLegacyMigrationFailure(string legacyFilePath) =>
+        new(
+            ExecApprovalsSnapshotFailureKind.LegacyMigrationRequired,
+            ComputeFailureSignature("legacy-migration-required", Path.GetFullPath(legacyFilePath)),
+            Version: null,
+            "Legacy exec approvals must be migrated before a read-only snapshot is available.");
 
     private static ExecApprovalsSnapshotFailure CreateFailure(LoadFileResult result)
     {

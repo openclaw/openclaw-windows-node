@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClaw.Connection;
 using OpenClawTray.Helpers;
 using System.Linq;
 
@@ -41,7 +42,7 @@ internal sealed class TrayTooltipBuilder
         if (_snapshot.Channels.Length == 0 && isHealthy) warningCount++;
 
         var tooltip = $"{AppIdentity.TrayName} - {statusText}; " +
-            $"{topology.DisplayName}; " +
+            $"{BuildTopologyLabel(topology)}; " +
             $"Channels {channelReady}/{_snapshot.Channels.Length}; " +
             $"Nodes {nodeOnline}/{nodeTotal}; " +
             $"Warnings {warningCount}; " +
@@ -54,6 +55,14 @@ internal sealed class TrayTooltipBuilder
 
         return TrayTooltipFormatter.FitShellTooltip(tooltip);
     }
+
+    // WSL and native Gateways both use loopback URLs, so URL topology alone labels WSL as native.
+    private string BuildTopologyLabel(GatewayTopologyInfo topology) =>
+        topology.DetectedKind == GatewayKind.WindowsNative &&
+        _snapshot.ActiveGateway is { } gateway &&
+        GatewayRecordEditing.IsSetupManagedLocalRecord(gateway)
+            ? "WSL"
+            : topology.DisplayName;
 
     private string BuildStatusText()
     {

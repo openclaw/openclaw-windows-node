@@ -131,13 +131,13 @@ public class ExecApprovalV2PipelineIntegrationTests : IDisposable
     [Fact]
     public async Task MaliciousDialogReturnsPlainAllow_NeutralizedBeforeCoordinator()
     {
-        // A rogue dialog returning plain Allow is clamped to Deny by the handler itself,
-        // so the coordinator never sees an Allow: the end-to-end result is a denial, not
-        // the coordinator's own invariant-violation path. Defense in depth.
+        // An invalid dialog result fails closed without claiming a user refusal.
         var result = await MakeCoordinator(dialog: _ => ExecApprovalPromptOutcome.Allow)
             .HandleAsync(Req("""{"command":["where","hello"]}"""), "p5");
 
-        Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.False(result.IsDefiniteDenial);
+        Assert.Null(result.Execution);
     }
 
     // ── Attack battery: the three hard-deny paths must cut BEFORE the prompt and

@@ -14,6 +14,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     private readonly SetupGatewaySessionBinding _binding;
     private readonly Func<CancellationToken, Task> _authorize;
     private readonly GatewayAiSetupRoute _route;
+    private readonly EventHandler<GatewayHandshakeObservation> _handshakeObserver;
     public OpenClawGatewayClient Client { get; }
     public long Generation => Client.ServerHandshakeGeneration;
     public bool IsConnected => Client.IsConnectedToGateway && Client.HasHandshakeSnapshot;
@@ -27,11 +28,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     }
 
     private NativeGatewaySetupConnection(NativeGatewaySetupSession owner, OpenClawGatewayClient client,
-        Func<CancellationToken, Task> authorize)
+        Func<CancellationToken, Task> authorize, EventHandler<GatewayHandshakeObservation> handshakeObserver)
     {
         _owner = owner;
         Client = client;
         _authorize = authorize;
+        _handshakeObserver = handshakeObserver;
         _binding = new(owner.Record);
         _route = CaptureRoute();
     }
@@ -56,19 +58,54 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         }
     }
 
-    public static async Task<NativeGatewaySetupConnection> ConnectAsync(
-        NativeGatewaySetupSession owner, CancellationToken ct = default)
+    public static Task<NativeGatewaySetupConnection> ConnectAsync(
+        NativeGatewaySetupSession owner, CancellationToken ct = default, IProgress<SetupLoadingStep>? progress = null)
+        => ConnectWithBudgetAsync(owner, owner.AuthorizeAsync, allowPairing: true, ct, progress);
+
+    internal static async Task<NativeGatewaySetupConnection> ConnectWithBudgetAsync(
+        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing,
+        CancellationToken ct, IProgress<SetupLoadingStep>? progress)
     {
-        await owner.PrepareConnectionAsync(ct);
-        return await ConnectCoreAsync(owner, owner.AuthorizeAsync, allowPairing: true, ct);
+        if (allowPairing && owner.GetAdmissionRemaining() is TimeSpan priorRemaining &&
+            priorRemaining == TimeSpan.Zero)
+            throw new TimeoutException("The native Gateway connection budget expired before operator admission.");
+
+        if (allowPairing)
+            await owner.PrepareConnectionForAdmissionAsync(ct);
+
+        var remaining = owner.BeginAdmission();
+        using var deadline = new CancellationTokenSource(remaining, owner.AdmissionTimeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, owner.LifetimeToken, deadline.Token);
+        progress?.Report(SetupLoadingStep.ConnectGateway);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            owner.LifetimeToken.ThrowIfCancellationRequested();
+            if (remaining == TimeSpan.Zero)
+                throw new TimeoutException("The native Gateway connection budget expired before operator admission.");
+            if (allowPairing)
+                await owner.AuthorizeAsync(linked.Token);
+            var connection = await ConnectCoreAsync(owner, authorize, allowPairing, linked.Token, progress);
+            owner.EndAdmission();
+            return connection;
+        }
+        catch (OperationCanceledException error) when (
+            deadline.IsCancellationRequested && !ct.IsCancellationRequested && !owner.LifetimeToken.IsCancellationRequested)
+        {
+            if (error is NativeAdmissionCanceledException pending)
+                throw new GatewayStartupUnavailableException(pending.Startup);
+            throw new TimeoutException("The native Gateway did not admit this Companion within its connection budget.", error);
+        }
     }
 
     internal static Task<NativeGatewaySetupConnection> ConnectForFinalizationAsync(
-        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, CancellationToken ct) =>
-        ConnectCoreAsync(owner, authorize, allowPairing: false, ct);
+        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, CancellationToken ct,
+        IProgress<SetupLoadingStep>? progress = null) =>
+        ConnectWithBudgetAsync(owner, authorize, allowPairing: false, ct, progress);
 
     private static async Task<NativeGatewaySetupConnection> ConnectCoreAsync(
-        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing, CancellationToken ct)
+        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing, CancellationToken ct,
+        IProgress<SetupLoadingStep>? progress)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, owner.LifetimeToken);
         var pairingAttempted = false;
@@ -82,9 +119,15 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             var token = storedDeviceToken
                 ?? owner.Record.SharedGatewayToken
                 ?? throw new InvalidOperationException("No native Gateway credential found.");
+            // General client traces carry wire data. Only typed observations reach setup logs.
             var client = new OpenClawGatewayClient(owner.Record.Url, token,
                 logger: NullLogger.Instance, identityPath: owner.IdentityDirectory,
                 requireExistingIdentity: !allowPairing) { UseV2Signature = true };
+            var connectionAttempt = owner.NextConnectionAttempt();
+            void HandshakeObserved(object? sender, GatewayHandshakeObservation observation) =>
+                owner.ReportHandshakeObservation(connectionAttempt, observation);
+            client.HandshakeObserved += HandshakeObserved;
+            var retained = false;
             client.HandshakeAuthorizationAsync = client.ReconnectAuthorizationAsync = async cancellation =>
             {
                 await authorize(cancellation);
@@ -106,18 +149,39 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             client.ConnectionFailure += ConnectionFailure;
             client.StatusChanged += StatusChanged;
             client.PairingRequired += PairingRequired;
-            using var cancellation = linked.Token.Register(client.Dispose);
+            GatewayStartupUnavailable? startupAtCancellation = null;
+            using var cancellation = linked.Token.Register(() =>
+            {
+                startupAtCancellation = client.StartupUnavailable;
+                client.Dispose();
+            });
             try
             {
+                progress?.Report(SetupLoadingStep.ConnectGateway);
                 await client.ConnectAsync().WaitAsync(linked.Token);
-                await connected.Task.WaitAsync(TimeSpan.FromSeconds(20), linked.Token);
+                // Preparation, challenge authorization and typed startup retries all
+                // spend the same deadline. A terminal handshake error still fails now.
+                await connected.Task.WaitAsync(linked.Token);
                 linked.Token.ThrowIfCancellationRequested();
-                return new(owner, client, authorize);
+                var connection = new NativeGatewaySetupConnection(owner, client, authorize, HandshakeObserved);
+                retained = true;
+                return connection;
+            }
+            catch (OperationCanceledException error) when (linked.IsCancellationRequested)
+            {
+                // Join an in-flight disposal callback before reading its current-transport snapshot.
+                cancellation.Dispose();
+                var startup = startupAtCancellation ?? client.StartupUnavailable;
+                client.Dispose();
+                if (startup is not null)
+                    throw new NativeAdmissionCanceledException(startup, error, linked.Token);
+                throw;
             }
             catch (NativePairingException error) when (allowPairing && !pairingAttempted)
             {
                 pairingAttempted = true;
                 client.Dispose();
+                progress?.Report(SetupLoadingStep.PairGateway);
                 await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token);
             }
             catch (Exception error) when (
@@ -142,6 +206,8 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 client.ConnectionFailure -= ConnectionFailure;
                 client.StatusChanged -= StatusChanged;
                 client.PairingRequired -= PairingRequired;
+                if (!retained)
+                    client.HandshakeObserved -= HandshakeObserved;
             }
         }
         throw new InvalidOperationException("The Gateway did not accept this Companion after pairing.");
@@ -182,12 +248,23 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     {
         try { await Client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
         catch (TimeoutException) { Trace.TraceWarning("Native setup connection shutdown timed out."); }
-        finally { Client.Dispose(); }
+        finally
+        {
+            Client.HandshakeObserved -= _handshakeObserver;
+            Client.Dispose();
+        }
     }
 
     private sealed class NativePairingException(string? requestId)
         : InvalidOperationException(NativeGatewaySetupSession.GetPairingGuidance(requestId))
     {
         public string? RequestId { get; } = requestId;
+    }
+
+    private sealed class NativeAdmissionCanceledException(
+        GatewayStartupUnavailable startup, Exception inner, CancellationToken ct)
+        : OperationCanceledException("Native Gateway operator admission is still starting.", inner, ct)
+    {
+        public GatewayStartupUnavailable Startup { get; } = startup;
     }
 }

@@ -54,6 +54,7 @@ function Get-BinaryClassification {
         '^OpenClaw\.SetupEngine\.dll$' { return "OpenClawOwned" }
         '^OpenClaw\.Shared\.dll$' { return "OpenClawOwned" }
         '^OpenClawTray\.FunctionalUI\.dll$' { return "OpenClawOwned" }
+        '^Workers\\FileWorker\\win-(x64|arm64)\\[0-9a-f]{32}\\OpenClaw\.FileWorker\.(exe|dll)$' { return "OpenClawOwned" }
         '(^|\\)createdump\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)RestartAgent\.exe$' { return "ThirdPartyExcluded" }
         '^(plm|wxc-wslc-daemon)\.exe$' { return "ThirdPartyExcluded" }
@@ -154,5 +155,10 @@ if ($errors.Count -gt 0) {
     $errors | ForEach-Object { Write-Error $_ }
     exit 1
 }
+
+& (Join-Path $PSScriptRoot 'Test-CleanupHostSignature.ps1') `
+    -AssemblyPath (Join-Path $payloadRoot 'OpenClaw.SetupEngine.dll') `
+    -RequireSigned:$RequireSignedOpenClaw -SignerSubject $OpenClawSignerSubject
+if ($LASTEXITCODE -ne 0) { throw 'Embedded cleanup helper signing policy failed.' }
 
 Write-Host "Release binary signing policy passed." -ForegroundColor Green

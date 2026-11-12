@@ -12,20 +12,35 @@ public class AgentCreationServiceTests
         public bool Connected = true;
         public IReadOnlyList<string> Scopes = ["operator.admin"];
         public List<(string Method, JsonElement Payload)> Requests = [];
+        public List<int> Timeouts = [];
         public Func<Task<JsonElement>> Response = () => Task.FromResult(
             JsonSerializer.SerializeToElement(new { ok = true, agentId = "research" }));
+
+        public Func<string, string?, Task<UserAvatarResult>> Avatar = (_, _) => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));
+        public List<(string ProfileId, string? Revision)> AvatarRequests = [];
+        public Func<string, string?, CancellationToken, Task<UserAvatarResult>>? AvatarWithToken;
 
         protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
         {
             "get_IsConnectedToGateway" => Connected,
             "get_GrantedOperatorScopes" => Scopes,
             "SendWizardRequestAsync" => Send(args!),
+            "ResolveUserAvatarAsync" => ResolveAvatar(args!),
             _ => throw new NotSupportedException(method?.Name)
         };
+
+        private Task<UserAvatarResult> ResolveAvatar(object?[] args)
+        {
+            AvatarRequests.Add(((string)args[0]!, (string?)args[1]));
+            return AvatarWithToken is { } withToken
+                ? withToken((string)args[0]!, (string?)args[1], (CancellationToken)args[2]!)
+                : Avatar((string)args[0]!, (string?)args[1]);
+        }
 
         private Task<JsonElement> Send(object?[] args)
         {
             Requests.Add(((string)args[0]!, JsonSerializer.SerializeToElement(args[1])));
+            Timeouts.Add((int)args[2]!);
             return Response();
         }
     }

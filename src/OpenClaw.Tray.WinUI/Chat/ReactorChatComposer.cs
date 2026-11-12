@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -63,6 +64,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         long CurrentRevision() => vm.RenderRevision + (placement?.Revision ?? 0);
         var (renderRevision, setRenderRevision) = UseState(CurrentRevision(), threadSafe: true);
         var inputControl = UseRef<TextBox?>(null);
+        var sandboxAnchor = UseRef<Button?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
         var controllerRef = UseRef(controller);
@@ -100,7 +102,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             props.Session.ApplyInputs(inputs);
             _ = controller.ReconcileModelCatalogAsync(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty, inputs.IsVisible);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;
@@ -200,15 +202,28 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             string automationName,
             Action onClick,
             bool enabled = true,
-            string? automationId = null)
+            string? automationId = null,
+            string? foreground = null,
+            double glyphSize = 16,
+            string? overlayGlyph = null)
         {
-            return Button(
-                    TextBlock(glyph)
-                        .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
-                        .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .FontSize(16)
-                        .Set(text => text.IsTextScaleFactorEnabled = false),
-                    onClick)
+            Element Glyph(string value, double size)
+            {
+                var text = TextBlock(value)
+                    .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                    .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                    .FontSize(size)
+                    .HAlign(HorizontalAlignment.Center)
+                    .VAlign(VerticalAlignment.Center)
+                    .Set(text => text.IsTextScaleFactorEnabled = false);
+                return foreground is null ? text : text.Foreground(Theme.Ref(foreground));
+            }
+
+            // Segoe MDL2 (Windows 10) lacks a shield-check glyph, so the check is layered at half size there.
+            var icon = overlayGlyph is null
+                ? Glyph(glyph, glyphSize)
+                : Grid([GridSize.Auto], [GridSize.Auto], Glyph(glyph, glyphSize), Glyph(overlayGlyph, glyphSize / 2));
+            return Button(icon, onClick)
                 .AutomationName(automationName)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .Resources(ChatVisuals.ToolbarButtonResources)
@@ -425,12 +440,19 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         }
 
         var transparentInputBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        var agent = ChatWelcomePresentation.AgentIdentity(
+            placement?.State.Catalog,
+            inputs.CurrentThread.AgentId,
+            inputs.AgentIdentity,
+            inputs.AgentRosterPresentation);
+        var placeholder = PlaceholderFor(inputs.ConnectionState, agent.Name);
         var input = TextBox(
                 text,
                 vm.SetDraft,
-                PlaceholderFor(inputs.ConnectionState))
+                placeholder)
             .AutomationId("ChatComposerInput")
-            .AutomationName(PlaceholderFor(inputs.ConnectionState))
+            .AutomationName(placeholder)
+            .HelpText(Localized("Chat_Composer_InputHelp", "Enter to send, Shift+Enter for a new line."))
             // Multiline TextBox consumes Enter before bubbling KeyDown. Handle
             // composer shortcuts in preview so only Shift+Enter inserts a newline.
             .OnPreviewKeyDown((sender, args) =>
@@ -504,12 +526,12 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .BorderBrush(transparentInputBrush)
             .Background(transparentInputBrush)
             .AcceptsReturn(true)
-            .FontSize(16)
+            .FontSize(ChatVisuals.ComposerInputSize)
             .Foreground(Theme.Ref("ChatTextBrush"))
+            .ItemStatus(renderItemStatus)
             .Set(control =>
             {
                 inputControl.Current = control;
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(control, renderItemStatus);
                 control.Resources["TextControlBorderThemeThickness"] = new Thickness(0);
                 control.Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(0);
                 control.Resources["TextControlBackground"] = transparentInputBrush;
@@ -524,6 +546,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             {
                 var textBox = (TextBox)control;
                 textBox.Paste += pasteHandler.Current;
+                ChatVisuals.AttachComposerPlaceholder(textBox);
                 textBox.ContextFlyout = CreateComposerContextFlyout(
                     textBox,
                     () => controllerRef.Current);
@@ -532,6 +555,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             {
                 var textBox = (TextBox)control;
                 textBox.Paste -= pasteHandler.Current;
+                ChatVisuals.DetachComposerPlaceholder(textBox);
                 textBox.ContextFlyout = null;
                 ComposerAutomationVisibility.Detach(textBox);
             });
@@ -590,7 +614,85 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             Localized("Chat_Composer_Tooltip_Attach", "Attach"),
             () => props.Session.HostActions.AttachmentPickerRequest?.Invoke(),
             props.Session.HostActions.AttachmentPickerRequest is not null,
-            "ChatComposerAttach");
+            "ChatComposerAttach",
+            glyphSize: ChatVisuals.ComposerAttachGlyphSize);
+        var sandboxState = vm.SandboxStatus switch
+        {
+            SandboxStatus.Available => Localized("Chat_Composer_Sandbox_Available", "On"),
+            SandboxStatus.Compatibility => Localized("Chat_Composer_Sandbox_Compatibility", "Compatibility"),
+            SandboxStatus.Unavailable => Localized("Chat_Composer_Sandbox_Unavailable", "Unavailable"),
+            SandboxStatus.Disabled => Localized("Chat_Composer_Sandbox_Disabled", "Tools off"),
+            _ => Localized("Chat_Composer_Sandbox_Checking", "Checking"),
+        };
+        var sandboxDescription = vm.SandboxStatus switch
+        {
+            SandboxStatus.Available => Localized("Chat_Composer_Sandbox_AvailableDescription",
+                "Windows supports sandboxing. Each command is checked before it runs."),
+            SandboxStatus.Compatibility => Localized("Chat_Composer_Sandbox_CompatibilityDescription",
+                "This Windows version does not support sandboxing. Approved commands run without it."),
+            SandboxStatus.Unavailable => Localized("Chat_Composer_Sandbox_UnavailableDescription",
+                "Sandboxing could not be verified. Commands are blocked."),
+            SandboxStatus.Disabled => Localized("Chat_Composer_Sandbox_DisabledDescription",
+                "System tools are off. Commands cannot run on this node."),
+            _ => Localized("Chat_Composer_Sandbox_CheckingDescription", "Checking Windows sandbox support."),
+        };
+        var sandboxTitle = $"{Localized("Chat_Composer_Sandbox_Title", "Node Sandbox")}: {sandboxState}";
+        var sandboxForeground = vm.SandboxStatus == SandboxStatus.Available ? "ChatSandboxOnBrush" : "ChatSecondaryTextBrush";
+        var sandboxSettingsLabel = Localized("Chat_Composer_Sandbox_OpenSettings", "Sandbox settings");
+        var sandboxOn = vm.SandboxStatus == SandboxStatus.Available;
+        // Windows 11's Segoe Fluent Icons has a real shield-check; Windows 10's MDL2 font does not.
+        var nativeShieldCheck = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+        var sandboxButton = Flyout(
+            IconButton(sandboxOn && nativeShieldCheck ? FluentIconCatalog.SandboxOn : FluentIconCatalog.Sandbox,
+                sandboxTitle, () => { },
+                automationId: "ChatComposerSandbox",
+                foreground: sandboxForeground,
+                overlayGlyph: sandboxOn && !nativeShieldCheck ? FluentIconCatalog.Check : null)
+                .OnMountAdd(control => sandboxAnchor.Current = (Button)control),
+            VStack(0,
+                VStack(8,
+                    Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        TextBlock(Localized("Chat_Composer_Sandbox_Title", "Node Sandbox"))
+                            .TextWrapping(TextWrapping.Wrap)
+                            .Set(ChatVisuals.StyleFlyoutHeading),
+                        TextBlock(sandboxState)
+                            .Set(ChatVisuals.StyleFlyoutCaption)
+                            .Foreground(Theme.Ref(sandboxForeground))
+                            .Margin(12, 0, 0, 0)
+                            .VAlign(VerticalAlignment.Center)
+                            .AutomationId("ChatSandboxStatus")
+                            .Grid(column: 1)),
+                    TextBlock(sandboxDescription).TextWrapping(TextWrapping.Wrap)
+                        .Set(ChatVisuals.StyleFlyoutCaption)
+                        .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                        .AutomationId("ChatSandboxDescription"))
+                    .Padding(16),
+                Border(null).Height(1).Background(Theme.Ref("ChatStrokeBrush")),
+                Button(Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        TextBlock(sandboxSettingsLabel).TextWrapping(TextWrapping.Wrap)
+                            .Set(ChatVisuals.StyleFlyoutCaption),
+                        TextBlock(FluentIconCatalog.ChevronR)
+                            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                            .FontSize(12)
+                            .AccessibilityView(AccessibilityView.Raw)
+                            .Set(text => text.IsTextScaleFactorEnabled = false)
+                            .Margin(12, 0, 0, 0)
+                            .VAlign(VerticalAlignment.Center)
+                            .Grid(column: 1)), () =>
+                    {
+                        sandboxAnchor.Current?.Flyout?.Hide();
+                        props.Session.HostActions.SandboxSettingsNavigation?.Invoke();
+                    })
+                    .SubtleButton().MinHeight(36).Padding(12, 8).CornerRadius(8).Margin(4)
+                    .AutomationId("ChatSandboxOpenSettings")
+                    .AutomationName(sandboxSettingsLabel)
+                    .IsEnabled(props.Session.HostActions.SandboxSettingsNavigation is not null)
+                    .HAlign(HorizontalAlignment.Stretch)
+                    .HorizontalContentAlignment(HorizontalAlignment.Stretch))
+                .Width(Math.Min(280, Math.Max(200, viewportWidth - 24)))
+                .AutomationId("ChatSandboxPopup")
+                .AutomationName(sandboxTitle))
+            .Set(ChatVisuals.StyleLeadingPicker);
         var voiceButton = IconButton(
             isRecording
                 ? FluentIconCatalog.Stop
@@ -608,12 +710,21 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             props.Session.HostActions.VoiceCaptureRequest is not null,
             "ChatComposerVoice");
 
+        var primaryEnabled = inputs.TurnActive || vm.CanSend;
         Element primaryAction = Button(
-                    TextBlock(inputs.TurnActive ? FluentIconCatalog.Stop : FluentIconCatalog.ChatSubmit)
-                        .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
-                        .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .FontSize(16)
-                        .Set(text => text.IsTextScaleFactorEnabled = false),
+                    Border(
+                        TextBlock(inputs.TurnActive ? FluentIconCatalog.StopFilled : FluentIconCatalog.ChatSubmit)
+                            .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                            .FontSize(inputs.TurnActive ? ChatVisuals.ComposerStopGlyphSize : ChatVisuals.ComposerSendGlyphSize)
+                            .Foreground(Theme.Ref(primaryEnabled ? "TextOnAccentFillColorPrimaryBrush" : "ChatSendDisabledTextBrush"))
+                            .HAlign(HorizontalAlignment.Center)
+                            .VAlign(VerticalAlignment.Center)
+                            .Set(text => text.IsTextScaleFactorEnabled = false))
+                        .Width(ChatVisuals.ComposerSendSize)
+                        .Height(ChatVisuals.ComposerSendSize)
+                        .CornerRadius(ChatVisuals.ComposerSendSize / 2)
+                        .Background(Theme.Ref(primaryEnabled ? "AccentFillColorDefaultBrush" : "ChatSendDisabledBrush")),
                     () =>
                     {
                         if (inputs.TurnActive)
@@ -621,28 +732,32 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                         else
                             Send();
                     })
-                .AccentButton()
+                .Resources(ChatVisuals.SendButtonResources)
                 .AutomationName(actionLabel)
-                .Width(32)
-                .Height(32)
-                .MinWidth(32)
-                .MinHeight(32)
+                .Width(ChatVisuals.ComposerSendTargetSize)
+                .Height(ChatVisuals.ComposerSendTargetSize)
+                .MinWidth(ChatVisuals.ComposerSendTargetSize)
+                .MinHeight(ChatVisuals.ComposerSendTargetSize)
                 .Padding(0)
-                .CornerRadius(16)
+                .BorderThickness(0)
+                .CornerRadius(ChatVisuals.ComposerSendTargetSize / 2)
                 .AutomationId("ChatComposerPrimaryAction")
-                .IsEnabled(inputs.TurnActive || vm.CanSend)
+                .IsEnabled(primaryEnabled)
                 .ToolTip(actionLabel)
                 .Set(button => ComposerAutomationVisibility.Prepare(button))
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
 
-        Element leading = attachButton.VAlign(VerticalAlignment.Center);
+        Element leading = HStack(4, attachButton, sandboxButton).VAlign(VerticalAlignment.Center);
+        var contextRing = Component<ChatContextUsageIndicator, ChatContextUsageIndicatorProps>(
+            new(inputs.ContextUsage, viewportWidth));
         var pickers = Grid(
-            [GridSize.Star(), GridSize.Auto],
+            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],
-            Grid([GridSize.Star()], [GridSize.Auto], modelPicker).Grid(column: 0),
-            Grid([GridSize.Star()], [GridSize.Auto], reasoningPicker).Grid(column: 1))
-            .MaxWidth(320)
+            contextRing.Grid(column: 0),
+            Grid([GridSize.Star()], [GridSize.Auto], modelPicker).Grid(column: 1),
+            Grid([GridSize.Star()], [GridSize.Auto], reasoningPicker).Grid(column: 2))
+            .MaxWidth(360)
             .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center);
         var rightToolbar = HStack(4, voiceButton, primaryAction)
             .HAlign(HorizontalAlignment.Right)
@@ -652,11 +767,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             [GridSize.Auto],
             leading.Margin(0, 0, 4, 0).Grid(column: 0),
             pickers.Grid(column: 1),
-            rightToolbar.Margin(4, 0, 0, 0).Grid(column: 2));
+            rightToolbar.Margin(4, 0, 0, 0).Grid(column: 2))
+            // The web footer sits 8px from the frame while the editor keeps the wider prose inset.
+            .Margin(ChatVisuals.ComposerToolbarInset - ChatVisuals.ProseInset, 0,
+                ChatVisuals.ComposerToolbarInset - ChatVisuals.ProseInset, 0);
 
         var composerChildren = new List<Element>();
         if (inputs.ConnectionState != "connected")
-            composerChildren.Add(TextBlock(PlaceholderFor(inputs.ConnectionState))
+            composerChildren.Add(TextBlock(placeholder)
                 .FontSize(12).TextWrapping(TextWrapping.Wrap)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatComposerConnectionStatus")
@@ -683,26 +801,23 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
                     scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                 }));
-        composerChildren.Add(input);
-        composerChildren.Add(toolbar);
+        // Status and attachment rows can be inserted before this stable editor/toolbar tail.
+        composerChildren.Add(input.WithKey("chat-composer-input"));
+        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
 
         var writingSurface = Border(
-            VStack(8, composerChildren.ToArray())
-            .Padding(16, 12, 16, 8))
+            VStack(ChatVisuals.CompactGap, composerChildren.ToArray())
+            .Padding(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset))
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
-            .MinHeight(112)
+            .MinHeight(ChatVisuals.ComposerMinHeight)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId("ChatWritingSurface");
         var surfaces = new List<Element>();
-        var agentId = inputs.CurrentThread.AgentId;
-        var catalog = placement?.State.Catalog;
         surfaces.Add(inputs.ShowPlacementPickers
-            ? ReactorChatWelcome.Header(
-                ChatWelcomePresentation.AgentIdentity(catalog, agentId),
-                viewportWidth)
+            ? ReactorChatWelcome.Header(agent, viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
         {
@@ -736,7 +851,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
-                .Margin(ChatVisuals.Gutter(viewportWidth), 12)
+                .Margin(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
+                    ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset)
                 .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
@@ -1217,9 +1333,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         }
     }
 
-    private static string PlaceholderFor(string connectionState) => connectionState switch
+    private static string PlaceholderFor(string connectionState, string agentName) => connectionState switch
     {
-        "connected" => Localized("Chat_Composer_Placeholder_Connected", "Message Assistant (Enter to send)"),
+        "connected" => string.Format(
+            Localized("Chat_Composer_Placeholder_ConnectedFormat", "Message {0}"),
+            agentName),
         "connecting" => Localized("Chat_Composer_Placeholder_Connecting", "Connecting…"),
         "incompatible-gateway" => Localized(
             "Chat_Composer_Placeholder_IncompatibleGateway",

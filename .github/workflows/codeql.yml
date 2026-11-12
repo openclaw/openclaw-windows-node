@@ -13,9 +13,11 @@ on:
           - csharp
           - actions
   push:
-    branches: [main, master]
+    branches: [master]
     tags: ["**"]
     paths:
+      - ".gitattributes"
+      - "**/.gitattributes"
       - ".github/codeql/**"
       - ".github/workflows/**"
       - "src/**"
@@ -28,10 +30,14 @@ on:
       - "NuGet.Config"
       - "package.json"
       - "package-lock.json"
+      - "!src/**/*.md"
+      - "!tests/**/*.md"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master]
     paths:
+      - ".gitattributes"
+      - "**/.gitattributes"
       - ".github/codeql/**"
       - ".github/workflows/**"
       - "src/**"
@@ -44,8 +50,10 @@ on:
       - "NuGet.Config"
       - "package.json"
       - "package-lock.json"
+      - "!src/**/*.md"
+      - "!tests/**/*.md"
   schedule:
-    - cron: "29 6 * * 1"
+    - cron: "29 */6 * * *"
 
 permissions:
   actions: read
@@ -53,35 +61,13 @@ permissions:
   security-events: write
 
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  group: codeql-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'schedule' && 'schedule' || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  advanced-setup:
-    name: Advanced setup gate
-    runs-on: ubuntu-latest
-    outputs:
-      enabled: ${{ steps.advanced-setup.outputs.enabled }}
-    steps:
-      - name: Decide whether to run advanced CodeQL
-        id: advanced-setup
-        run: |
-          if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Advanced CodeQL enabled for this run." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "Advanced CodeQL is disabled for this repository workflow."
-              echo "The repository currently uses GitHub CodeQL default setup; default setup and advanced setup cannot upload SARIF for the same repository at the same time."
-              echo "After maintainers disable default setup, set OPENCLAW_CODEQL_ADVANCED_SETUP=true and dispatch this workflow."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
   csharp:
     name: C# security
-    needs: advanced-setup
-    if: ${{ needs.advanced-setup.outputs.enabled == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'csharp') }}
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'csharp') }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -96,7 +82,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/Initialize-ReactorPackages.ps1
+          dotnet restore
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -115,8 +104,7 @@ jobs:
 
   actions:
     name: Actions security
-    needs: advanced-setup
-    if: ${{ needs.advanced-setup.outputs.enabled == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'actions') }}
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'actions') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -10,7 +10,8 @@ namespace OpenClawTray.Chat;
 internal sealed record ChatHistoryLoadResult(
     ChatHistoryCommitToken Token,
     bool PublishSnapshot,
-    ChatProviderNotification? Notification = null);
+    ChatProviderNotification? Notification = null,
+    ChatInFlightRunInfo? InFlightRun = null);
 
 /// <summary>
 /// Owns history request lifetime, in-flight coalescing, cancellation, retries,
@@ -46,7 +47,8 @@ internal sealed class ChatHistoryLoader : IDisposable
 
     private readonly record struct PendingReload(
         ChatHistoryCommitToken Token,
-        bool Replacement);
+        bool Replacement,
+        bool Authoritative);
 
     private const int MaxRetries = 3;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
@@ -63,6 +65,8 @@ internal sealed class ChatHistoryLoader : IDisposable
     private readonly Dictionary<string, ChatHistoryCommitToken> _authoritativePending =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatHistoryCommitToken> _replacementPending =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ChatHistoryCommitToken> _forcePending =
         new(StringComparer.Ordinal);
     private readonly Dictionary<ChatHistoryCommitToken, int> _retryCounts = new();
     private CancellationTokenSource _generationCancellation = new();
@@ -94,6 +98,11 @@ internal sealed class ChatHistoryLoader : IDisposable
 
     internal event EventHandler<ChatHistoryLoadResult>? Completed;
 
+    internal Task LoadOlderAsync(string threadId, CancellationToken cancellationToken = default) =>
+        _state.CaptureOlderHistory(threadId) is { } request
+            ? LoadCoreAsync(threadId, true, cancellationToken, false, request.Token,
+                false, false, olderPage: request.Page) : Task.CompletedTask;
+
     internal Task LoadAsync(
         string threadId,
         bool force = false,
@@ -120,6 +129,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                 return Task.CompletedTask;
             _authoritativePending.Remove(threadId);
             _replacementPending.Remove(threadId);
+            _forcePending.Remove(threadId);
             foreach (var retryToken in _retryCounts.Keys
                          .Where(candidate => string.Equals(
                              candidate.ThreadId,
@@ -158,6 +168,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                 _inFlight.Clear();
                 _authoritativePending.Clear();
                 _replacementPending.Clear();
+                _forcePending.Clear();
                 _retryCounts.Clear();
                 _state.ActivateHistoryGeneration(transition.HistoryGeneration);
             }
@@ -177,6 +188,10 @@ internal sealed class ChatHistoryLoader : IDisposable
                 resetGeneration);
             RemoveOlderPendingReload(
                 _replacementPending,
+                threadId,
+                resetGeneration);
+            RemoveOlderPendingReload(
+                _forcePending,
                 threadId,
                 resetGeneration);
             foreach (var token in _retryCounts.Keys
@@ -216,6 +231,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             _inFlight.Clear();
             _authoritativePending.Clear();
             _replacementPending.Clear();
+            _forcePending.Clear();
             _retryCounts.Clear();
         }
         cancellation.Cancel();
@@ -230,7 +246,9 @@ internal sealed class ChatHistoryLoader : IDisposable
         bool authoritative,
         ChatHistoryCommitToken? expectedToken,
         bool replacement,
-        bool supersedeReplacement)
+        bool supersedeReplacement,
+        bool retry = false,
+        ChatHistoryPageRequest? olderPage = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(threadId))
@@ -246,6 +264,11 @@ internal sealed class ChatHistoryLoader : IDisposable
         {
             if (_disposed)
                 return;
+            if (retry && !authoritative && expectedToken is { } scheduledRetryToken &&
+                !_state.CanRetryHistory(scheduledRetryToken, authoritative: false))
+            {
+                return;
+            }
             if (expectedToken is { } expected &&
                 !_state.IsHistoryRequestCurrent(expected))
             {
@@ -253,6 +276,8 @@ internal sealed class ChatHistoryLoader : IDisposable
             }
             if (_inFlight.ContainsKey(threadId))
             {
+                if (olderPage is not null)
+                    return;
                 if (replacement)
                 {
                     var replacementToken = expectedToken ??
@@ -273,6 +298,10 @@ internal sealed class ChatHistoryLoader : IDisposable
                         _authoritativePending[threadId] =
                             _state.CaptureHistoryToken(threadId);
                     }
+                }
+                else if (force && expectedToken is null)
+                {
+                    _forcePending[threadId] = _state.CaptureHistoryToken(threadId);
                 }
                 return;
             }
@@ -296,6 +325,10 @@ internal sealed class ChatHistoryLoader : IDisposable
                 out var pendingReload);
             if (pendingReload is { } pending)
             {
+                if (replacement && !pending.Replacement)
+                    pending = new(commitToken, Replacement: true, Authoritative: false);
+                else if (authoritative && !pending.Replacement)
+                    pending = pending with { Authoritative = true };
                 _ = ObserveRetryAsync(RerunAfterActivationAsync(
                     threadId,
                     generationActivation,
@@ -319,7 +352,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                         authoritative,
                         commitToken,
                         replacement,
-                        supersedeReplacement: false)
+                        supersedeReplacement: false,
+                        olderPage: olderPage)
                     .ConfigureAwait(false);
             }
             return;
@@ -334,9 +368,11 @@ internal sealed class ChatHistoryLoader : IDisposable
         var outcome = ChatTelemetryOutcome.Success;
         Exception? failure = null;
         Task<ChatHistoryInfo>? request = null;
+        var requiresReload = false;
         try
         {
-            request = _bridge.RequestChatHistoryAsync(threadId);
+            request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
+                : _bridge.RequestOlderChatHistoryAsync(threadId, olderPage);
             var history = await request
                 .WaitAsync(linkedCancellation.Token)
                 .ConfigureAwait(false);
@@ -346,11 +382,27 @@ internal sealed class ChatHistoryLoader : IDisposable
                 return;
             }
 
+            if (olderPage is not null && history.WindowReset)
+            {
+                requiresReload = true;
+                throw new InvalidDataException(LocalizationHelper.GetString("Chat_History_CursorStalled"));
+            }
+            var olderMessageId = history.HasMore && string.IsNullOrEmpty(history.OlderCursor)
+                ? history.Messages.FirstOrDefault()?.OpenClawId : null;
+            if (olderPage is not null &&
+                (olderPage.Cursor is not null && history.OlderCursor == olderPage.Cursor ||
+                 olderPage.MessageId is not null && olderMessageId == olderPage.MessageId))
+                throw new InvalidDataException(LocalizationHelper.GetString("Chat_History_CursorStalled"));
             var plan = BuildPlan(
                 history,
                 threadId,
                 model,
-                commitToken.ResetGeneration);
+                commitToken.ResetGeneration) with
+                {
+                    OlderPage = olderPage,
+                    OlderCursor = history.OlderCursor,
+                    OlderMessageId = olderMessageId,
+                };
             var committed = _state.CommitHistory(
                 commitToken,
                 plan,
@@ -367,7 +419,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                 this,
                 new ChatHistoryLoadResult(
                     commitToken,
-                    PublishSnapshot: true));
+                    PublishSnapshot: true,
+                    InFlightRun: olderPage is null ? history.InFlightRun : null));
         }
         catch (OperationCanceledException)
         {
@@ -389,7 +442,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             var shouldRetry = false;
             lock (_gate)
             {
-                if (!_disposed &&
+                if (olderPage is null && !_disposed &&
                     _state.CanRetryHistory(commitToken, authoritative))
                 {
                     _retryCounts.TryGetValue(commitToken, out var retryCount);
@@ -398,13 +451,15 @@ internal sealed class ChatHistoryLoader : IDisposable
                         _retryCounts[commitToken] = retryCount + 1;
                 }
             }
+            var failedTerminally = (requiresReload || olderPage is null && !shouldRetry)
+                && _state.MarkHistoryFailed(commitToken);
             if (_state.IsHistoryRequestCurrent(commitToken))
             {
                 Completed?.Invoke(
                     this,
                     new ChatHistoryLoadResult(
                         commitToken,
-                        PublishSnapshot: false,
+                        PublishSnapshot: failedTerminally,
                         new ChatProviderNotification(
                             ChatProviderNotificationKind.Error,
                             threadId,
@@ -430,7 +485,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                         authoritative,
                         commitToken,
                         replacement,
-                        supersedeReplacement: false)));
+                        supersedeReplacement: false,
+                        retry: true)));
             }
         }
         finally
@@ -443,7 +499,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                     threadId,
                     force: true,
                     CancellationToken.None,
-                    authoritative: !pending.Replacement,
+                    authoritative: pending.Authoritative,
                     expectedToken: pending.Token,
                     replacement: pending.Replacement,
                     supersedeReplacement: false);
@@ -468,7 +524,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                 threadId,
                 force: true,
                 CancellationToken.None,
-                authoritative: !pending.Replacement,
+                authoritative: pending.Authoritative,
                 expectedToken: pending.Token,
                 replacement: pending.Replacement,
                 supersedeReplacement: false)
@@ -654,6 +710,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                         replayPart.AssistantContentParts)
                     : null)
             {
+                Presentation = replayPart.Presentation,
                 UsageSnapshotTimestamp = role == "assistant" && message.Ts > 0
                     ? message.Ts
                     : null,
@@ -666,6 +723,12 @@ internal sealed class ChatHistoryLoader : IDisposable
                     userProjection?.HasMediaEnvelope == true
                         ? userProjection.ReconciliationText
                         : rawText));
+            if (role == "assistant" && replayPart.IsReasoning)
+            {
+                timeline = Apply(timeline, new ChatReasoningEvent(text, replayPart.Presentation), entryMetadata);
+                timeline = ChatTimelineReducer.Apply(timeline, new ChatReasoningEndEvent());
+                continue;
+            }
             if (userProjection is not null)
             {
                 var cachedAttachment = attachmentMatcher.TryMatch(
@@ -806,7 +869,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                                 timeline,
                                 new ChatMessageEvent(
                                     ChatContentFormatting.RepairContentBlockSeams(
-                                        text)),
+                                        text),
+                                    Presentation: replayPart.Presentation),
                                 entryMetadata);
                             if (timeline.ActiveToolCalls.Count > 0 ||
                                 timeline.ActiveToolCallId is not null)
@@ -905,7 +969,13 @@ internal sealed class ChatHistoryLoader : IDisposable
                                 args),
                             toolBlock.ToolName,
                             args,
-                            callId),
+                            callId,
+                            RunId: message.Presentation.RunId,
+                            HandoffInput: !string.IsNullOrWhiteSpace(toolBlock.CallId)
+                                ? toolBlock.HandoffInput : null,
+                            InputDetails: NativeToolProjector.ProjectInputDetails(toolBlock.Args, toolBlock.ToolName),
+                            ParentCallId: !string.IsNullOrWhiteSpace(toolBlock.CallId)
+                                ? toolBlock.ParentCallId : null),
                         entryMetadata);
                     continue;
                 }
@@ -921,9 +991,18 @@ internal sealed class ChatHistoryLoader : IDisposable
                             : AllocateSyntheticToolCallId();
                 }
                 var resolvedCallId = resultCallId!;
+                var resultRunId = message.Presentation.RunId;
+                if (resultRunId is null && hasVerifiedCallId)
+                {
+                    var matchingRuns = timeline.ActiveToolCalls.Keys
+                        .Where(key => key.ToolCallId == resolvedCallId)
+                        .Select(key => key.RunId).Distinct().ToArray();
+                    if (matchingRuns.Length == 1)
+                        resultRunId = matchingRuns[0];
+                }
                 var correlationKey = new ChatToolCorrelationKey(
-                    RunId: null,
-                    LegacyTurn: timeline.ToolLegacyTurn,
+                    RunId: resultRunId,
+                    LegacyTurn: resultRunId is null ? timeline.ToolLegacyTurn : 0,
                     ToolCallId: resolvedCallId);
                 var verifiedCached = hasVerifiedCallId
                     ? MatchVerifiedToolMetadata(
@@ -948,7 +1027,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                             IdentityStrength:
                                 cached?.IdentityStrength ??
                                 NativeToolProjector.ClassifyHistoryIdentityStrength(
-                                    toolName)),
+                                toolName),
+                            RunId: resultRunId),
                         entryMetadata);
                 }
                 var output = NativeToolProjector.TruncateToolOutput(
@@ -958,10 +1038,15 @@ internal sealed class ChatHistoryLoader : IDisposable
                     toolBlock.IsError
                         ? new ChatToolErrorEvent(
                             output,
-                            resolvedCallId)
+                            resolvedCallId,
+                            RunId: resultRunId,
+                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId))
                         : new ChatToolOutputEvent(
                             output,
-                            resolvedCallId),
+                            resolvedCallId,
+                            RunId: resultRunId,
+                            HandoffReceipt: hasVerifiedCallId ? toolBlock.HandoffReceipt : null,
+                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId)),
                     entryMetadata);
             }
         }
@@ -1008,13 +1093,33 @@ internal sealed class ChatHistoryLoader : IDisposable
             pendingReload = null;
             if (_disposed)
                 return;
-            if (_replacementPending.Remove(threadId, out var replacementToken))
+            if (_replacementPending.Remove(threadId, out var replacementToken) &&
+                _state.IsHistoryRequestCurrent(replacementToken))
             {
-                pendingReload = new(replacementToken, Replacement: true);
+                _forcePending.Remove(threadId);
+                pendingReload = new(
+                    replacementToken,
+                    Replacement: true,
+                    Authoritative: false);
                 return;
             }
-            if (_authoritativePending.Remove(threadId, out var authoritativeToken))
-                pendingReload = new(authoritativeToken, Replacement: false);
+            if (_authoritativePending.Remove(threadId, out var authoritativeToken) &&
+                _state.IsHistoryRequestCurrent(authoritativeToken))
+            {
+                _forcePending.Remove(threadId);
+                pendingReload = new(
+                    authoritativeToken,
+                    Replacement: false,
+                    Authoritative: true);
+                return;
+            }
+            if (_forcePending.Remove(threadId, out var forceToken))
+            {
+                pendingReload = new(
+                    forceToken,
+                    Replacement: false,
+                    Authoritative: false);
+            }
         }
     }
 

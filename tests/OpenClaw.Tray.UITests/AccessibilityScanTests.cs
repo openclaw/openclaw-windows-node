@@ -38,21 +38,19 @@ public sealed class AccessibilityScanTests
 
     public static IEnumerable<object[]> PageTestData()
     {
-        yield return ["AgentEventsPage", "agentevents", "AgentEventsPageMarker"];
-        yield return ["BindingsPage", "bindings", "BindingsPageMarker"];
-        yield return ["ChannelsPage", "channels", "ChannelsPageMarker"];
         yield return ["ChatPage", "chat", "ChatComposerInput"];
         yield return ["ConfigPage", "config", "ConfigPageMarker"];
         yield return ["ConnectionPage", "connection", "ConnectionPageMarker"];
         yield return ["CronPage", "cron", "CronPageMarker"];
+        yield return ["DashboardsPage", "dashboards", "DashboardsOpenConnection"];
         yield return ["DebugPage", "debug", "DebugPageMarker"];
-        yield return ["InstancesPage", "instances", "InstancesPageMarker"];
+        yield return ["SystemsPage", "systems", "SystemsPageMarker"];
+        yield return ["AboutPage", "about", "AboutPageMarker"];
         yield return ["NotificationsPage", "notifications", "NotificationsPageMarker"];
         yield return ["PermissionsPage", "permissions", "PermissionsPageMarker"];
         yield return ["SandboxPage", "sandbox", "SandboxPageMarker"];
         yield return ["SessionsPage", "sessions", "SessionsPageMarker"];
         yield return ["SettingsPage", "settings", "SettingsPageMarker"];
-        yield return ["SkillsPage", "skills", "SkillsPageMarker"];
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
         yield return ["ChatPage", "workspace", "ChatComposerInput"];
@@ -76,6 +74,47 @@ public sealed class AccessibilityScanTests
             _app.HubWindowHandle,
             exclusions,
             context: pageName);
+    }
+
+    [Fact]
+    [Trait("Category", "Accessibility")]
+    public async Task SandboxExpanders_ExposeNamesWhenExpandedAndCollapsed()
+    {
+        await _app.NavigateAsync("sandbox", "SandboxPage", "SandboxPageMarker");
+        var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
+        foreach (var automationId in new[]
+        {
+            "SandboxFoldersExpander",
+            "SandboxClipboardExpander",
+            "SandboxNetworkExpander",
+            "SandboxLimitsExpander",
+        })
+        {
+            var expander = hub.FindFirst(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+            Assert.NotNull(expander);
+
+            var label = Assert.IsAssignableFrom<AutomationElement>(
+                expander.GetCurrentPropertyValue(AutomationElement.LabeledByProperty));
+            var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(
+                ExpandCollapsePattern.Pattern);
+            var originalState = pattern.Current.ExpandCollapseState;
+            try
+            {
+                pattern.Collapse();
+                Assert.Equal(label.Current.Name, expander.Current.Name);
+                pattern.Expand();
+                Assert.Equal(label.Current.Name, expander.Current.Name);
+            }
+            finally
+            {
+                if (originalState == ExpandCollapseState.Collapsed)
+                    pattern.Collapse();
+                else
+                    pattern.Expand();
+            }
+        }
     }
 
     [Fact]
@@ -104,6 +143,21 @@ public sealed class AccessibilityScanTests
         }
         Assert.Null(hub.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [Trait("Category", "Accessibility")]
+    public async Task AutomationsDisconnected_PassesAccessibilityInBothThemes(string theme)
+    {
+        using var fixture = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "cron");
+        await fixture.NavigateAsync("cron", "CronPage", "CronPageMarker");
+        var hub = AutomationElement.FromHandle(fixture.HubWindowHandle);
+        Assert.NotNull(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "AutomationsOpenConnection")));
+        AxeHelper.AssertNoAccessibilityErrors(hub.Current.ProcessId, fixture.HubWindowHandle,
+            context: $"Disconnected Automations {theme}");
     }
 
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(

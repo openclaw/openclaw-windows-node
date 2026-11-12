@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using CommunityToolkit.WinUI.Controls;
@@ -9,10 +10,12 @@ using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
+using OpenClawTray.Services;
 using Xunit.Abstractions;
 
 namespace OpenClaw.Tray.UITests;
@@ -22,24 +25,15 @@ namespace OpenClaw.Tray.UITests;
 public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     private const string Token = "native-ui-loopback-fixture-not-a-production-token";
-    private const string Model = "fixture/native-ai";
+    private const string Model = "fixture/browse";
     private const string Family = "OpenClaw.Gateway_123456789abcd";
 
     [Theory]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark, true)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark, true)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark, true)]
-    public async Task NativeInstall_UsesSharedAiVerificationAndAllThreeDestinations(
-        SetupNativeDestination destination, ElementTheme theme, bool isolated)
+    [InlineData(ElementTheme.Light, false)]
+    [InlineData(ElementTheme.Dark, false)]
+    [InlineData(ElementTheme.Light, true)]
+    [InlineData(ElementTheme.Dark, true)]
+    public async Task NativeInstall_UsesSharedAiVerificationAndOnlyOffersChat(ElementTheme theme, bool isolated)
     {
         await WithNativeAsync(async (window, frame, registry, runtime, server, completed) =>
         {
@@ -57,40 +51,11 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(20, Assert.IsType<Border>(progress.Children[4]).Width);
             page.UpdateLayout();
             await ui.YieldToRenderAsync();
-            await SaveViewportsAsync(window, page, $"native-shared-ai-{destination}-{theme}");
+            await SaveViewportsAsync(window, page, $"native-shared-ai-Chat-{theme}");
             var card = Assert.Single(TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(page, "CandidateChoices")));
             TestSupport.InvokeSettingsCardAction(page, card, "ChoiceAction_Click");
-            await WaitAsync(() => frame.Content is AiReadyPage { IsLoaded: true }, "native verified chooser");
-            var ready = Assert.IsType<AiReadyPage>(frame.Content);
-            var choices = Find<StackPanel>(ready, "Choices");
-            Assert.Equal(["Chat", "Channels", "Skills"], choices.Children.Cast<FrameworkElement>().Select(element => element.Tag));
-            Assert.Empty(completed);
-            Assert.Empty(registry.GetAll());
-            Assert.Null(ready.FindName("NativeSummary"));
-            Assert.Null(ready.FindName("NativeGatewaySummary"));
-            Assert.Null(ready.FindName("NativeCapabilitiesSummary"));
-            ready.UpdateLayout();
-            await ui.YieldToRenderAsync();
-            await SaveViewportsAsync(window, ready, $"native-shared-ready-{destination}-{theme}");
-            var target = Assert.Single(choices.Children.Cast<SettingsCard>(), choice => (string)choice.Tag == destination.ToString());
-            TestSupport.InvokeSettingsCardAction(ready, target, "Choose_Click");
-            await TestSupport.WaitForRenderedConditionAsync(
-                () => completed.Count == 1, "native publication", () =>
-                {
-                    var error = Find<InfoBar>(ready, "ErrorBar");
-                    var requests = server.Requests;
-                    var methods = string.Join(", ", requests
-                        .GroupBy(request => request.Method)
-                        .OrderBy(group => group.Key, StringComparer.Ordinal)
-                        .Select(group => $"{group.Key}:{group.Count()}"));
-                    return $"CompletedCount={completed.Count}, " +
-                        $"ErrorOpen={error.IsOpen}, ErrorVisibility={error.Visibility}, " +
-                        $"ErrorMessage={error.Message}, " +
-                        $"Status={Find<TextBlock>(ready, "StatusText").Text}, " +
-                        $"BusyVisibility={Find<ProgressBar>(ready, "BusyProgress").Visibility}, " +
-                        $"Requests=[{methods}]";
-                });
-            Assert.Equal(destination, Assert.Single(completed).Target.Destination);
+            await WaitAsync(() => completed.Count == 1, "native preparation publication before Ready");
+            Assert.IsType<AiCompletionPage>(frame.Content);
             Assert.False(runtime.Running);
             Assert.Equal("native-ui", registry.ActiveGatewayId);
             if (isolated)
@@ -102,7 +67,120 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             }
             Assert.True(server.Requests.Count(request => request.Method == "openclaw.setup.verify") >= 3);
             Assert.DoesNotContain(server.Requests, request => request.Method == "wizard.start");
+            await WithPublishedReadyAsync(window, registry, server, Assert.Single(completed), theme,
+                async (readyWindow, ready, navigated, normalRuntime) =>
+                {
+                    var choices = Find<StackPanel>(ready, "ChatActionPanel");
+                    Assert.Single(choices.Children);
+                    AssertNoCompletionFooterActions(ready);
+                    Assert.Null(ready.FindName("SkipButton"));
+                    Assert.Null(ready.FindName("FinishButton"));
+                    Assert.False(Find<InfoBar>(ready, "ErrorBar").IsOpen);
+                    Assert.Same(Find<Button>(ready, "RecoveryButton"), Find<InfoBar>(ready, "ErrorBar").ActionButton);
+                    Assert.Empty(navigated);
+                    Assert.Null(ready.FindName("NativeSummary"));
+                    Assert.Null(ready.FindName("NativeGatewaySummary"));
+                    Assert.Null(ready.FindName("NativeCapabilitiesSummary"));
+                    await SaveViewportsAsync(readyWindow, ready, $"native-shared-ready-Chat-{theme}");
+                    var probes = server.Requests.Count(request => request.Method == "openclaw.setup.verify");
+                    var starts = normalRuntime.Starts;
+                    var stops = normalRuntime.Stops;
+                    var target = Assert.IsType<SetupActionCard>(ready.FindName("ChatAction"));
+                    var handle = WinRT.Interop.WindowNative.GetWindowHandle(readyWindow);
+                    var automationId = target.Name;
+                    await Task.Run(() =>
+                    {
+                        var nativeWindow = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                        var nativeChoice = nativeWindow.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                            new System.Windows.Automation.PropertyCondition(
+                                System.Windows.Automation.AutomationElement.AutomationIdProperty, automationId));
+                        Assert.NotNull(nativeChoice);
+                        Assert.IsType<System.Windows.Automation.InvokePattern>(nativeChoice.GetCurrentPattern(
+                            System.Windows.Automation.InvokePattern.Pattern)).Invoke();
+                    });
+                    await WaitAsync(() => navigated.Count == 1, "native destination navigation");
+                    Assert.Equal(SetupNativeDestination.Chat, Assert.Single(navigated).Target.Destination);
+                    Assert.Single(completed);
+                    Assert.Equal(probes, server.Requests.Count(request => request.Method == "openclaw.setup.verify"));
+                    Assert.Equal(starts, normalRuntime.Starts);
+                    Assert.Equal(stops, normalRuntime.Stops);
+                });
         }, theme: theme, isolated: isolated);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfigurationChangeWithdrawsReadyWithoutReplayingSetup(bool duringMount)
+    {
+        await WithNativeAsync(async (window, frame, registry, _, server, completed) =>
+        {
+            var ai = Assert.IsType<AiSetupPage>(frame.Content);
+            await WaitAsync(() => Find<ItemsControl>(ai, "CandidateChoices").IsEnabled &&
+                TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices")).Any(),
+                "AI candidate loaded");
+            TestSupport.InvokeSettingsCardAction(ai,
+                Assert.Single(TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices"))),
+                "ChoiceAction_Click");
+            await WaitAsync(() => completed.Count == 1, "setup preparation published");
+            await WithPublishedReadyAsync(window, registry, server, Assert.Single(completed), ElementTheme.Light,
+                async (readyWindow, _, navigated, runtime) =>
+                {
+                    var before = await WaitForRequestQuiescenceAsync(server);
+                    var starts = runtime.Starts;
+                    var stops = runtime.Stops;
+                    await server.NotifyConfigurationChangedAsync();
+                    var readyFrame = Assert.IsType<Frame>(readyWindow.Content);
+                    await WaitAsync(() => readyFrame.Content is AiCompletionPage recovery &&
+                        Find<InfoBar>(recovery, "ErrorBar").IsOpen, "configuration event withdraws Ready");
+                    Assert.Empty(navigated);
+                    AssertNoNewRequests(server, before);
+                    Assert.Equal(starts, runtime.Starts);
+                    Assert.Equal(stops, runtime.Stops);
+                }, invalidateDuringMount: duringMount, exerciseUnrelatedMetadata: true);
+        }, isolated: true);
+    }
+
+    [Fact]
+    public async Task FailedReturnFromFinishingStillOffersCloseWithoutRetryingSetup()
+    {
+        await WithNativeAsync(async (window, frame, _, runtime, _, completed) =>
+        {
+            await Assert.IsType<AiSetupPage>(frame.Content).CloseAsync();
+            var proof = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+                "native-ui", new string('A', 64), Model, "main", 1,
+                IdentityBinding: new string('B', 64), SessionKey: "agent:main:main");
+            using var owner = new SetupCompletionPreparation(proof,
+                _ => Task.CompletedTask,
+                (_, _) => throw new InvalidOperationException("Must not verify"),
+                (_, _) => throw new InvalidOperationException("Must not finalize"),
+                (_, _) => throw new InvalidOperationException("Must not publish"));
+            typeof(SetupWindow).GetField("_completionPreparation", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(window, owner);
+            frame.Navigate(typeof(AiCompletionPage));
+            runtime.DisposeFailure = new IOException("Synthetic native release failure");
+            await Assert.IsAssignableFrom<Task>(typeof(SetupWindow)
+                .GetMethod("ReturnFromFinishingAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, [owner]));
+            var recovery = Assert.IsType<AiCompletionPage>(frame.Content);
+            Assert.True(Find<InfoBar>(recovery, "ErrorBar").IsOpen);
+            Assert.Equal(Visibility.Collapsed, Find<Button>(recovery, "RetryButton").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<Button>(recovery, "BackButton").Visibility);
+            var close = Find<Button>(recovery, "CloseButton");
+            Assert.Equal(Visibility.Visible, close.Visibility);
+            Assert.True(close.IsEnabled);
+            await WaitAsync(() => close.IsLoaded, "failed cleanup Close action loaded");
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
+            {
+                window.AppWindow.Move(new(120, 120));
+                OnboardingNativeProof.ActivateOwned(window);
+                using (await OnboardingNativeProof.CaptureAsync(window, "finishing-cleanup-failed-close", output,
+                    ["Finishing setup", "Close"], requiredContent: recovery)) { }
+            }
+            Invoke(close);
+            await WaitAsync(() => window.IsClosed, "failed cleanup can close setup");
+            Assert.Empty(completed);
+        }, isolated: true);
     }
 
     [Fact]
@@ -118,6 +196,18 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         }, supported: false);
     }
 
+    private static void AssertNoCompletionFooterActions(AiReadyPage page)
+    {
+        var root = Assert.IsType<Grid>(page.Content);
+        var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
+        var footerContent = root.Children.OfType<FrameworkElement>()
+            .Where(element => Grid.GetRow(element) == Grid.GetRow(progress)).ToArray();
+        Assert.Empty(footerContent.OfType<Button>());
+        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<Button>(element)));
+        Assert.Empty(footerContent.OfType<SettingsCard>());
+        Assert.Empty(footerContent.SelectMany(element => TestSupport.FindDescendants<SettingsCard>(element)));
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -126,7 +216,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         bool selectedStartup, bool failOnce, bool isolated)
     {
         var applications = new List<bool>();
-        await WithNativeAsync(async (window, frame, registry, _, _, completed) =>
+        await WithNativeAsync(async (window, frame, registry, runtime, server, completed) =>
         {
             var ai = Assert.IsType<AiSetupPage>(frame.Content);
             await WaitAsync(() => Find<ItemsControl>(ai, "CandidateChoices").IsEnabled &&
@@ -134,23 +224,33 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Empty(applications);
             var candidate = Assert.Single(TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices")));
             TestSupport.InvokeSettingsCardAction(ai, candidate, "ChoiceAction_Click");
-            await WaitAsync(() => frame.Content is AiReadyPage { IsLoaded: true }, "native ready");
-            var ready = Assert.IsType<AiReadyPage>(frame.Content);
-            var chat = Find<SettingsCard>(ready, "ChatChoice");
-            TestSupport.InvokeSettingsCardAction(ready, chat, "Choose_Click");
+            (int Stops, int Verifications)? beforeRetry = null;
             if (failOnce)
             {
-                await WaitAsync(() => Find<InfoBar>(ready, "ErrorBar").IsOpen && chat.IsEnabled, "startup failure and retry");
+                await WaitAsync(() => frame.Content is AiCompletionPage finishing &&
+                    Find<InfoBar>(finishing, "ErrorBar").IsOpen &&
+                    Find<Button>(finishing, "RetryButton").IsEnabled, "startup failure before Ready");
+                var finishing = Assert.IsType<AiCompletionPage>(frame.Content);
                 Assert.Empty(completed);
                 Assert.Equal([selectedStartup], applications);
                 Assert.Equal(selectedStartup, window.AutoStartAfterSetup);
-                TestSupport.InvokeSettingsCardAction(ready, chat, "Choose_Click");
+                beforeRetry = (runtime.Stops,
+                    server.Requests.Count(request => request.Method == "openclaw.setup.verify"));
+                Assert.True(beforeRetry.Value.Stops > 0);
+                Assert.True(beforeRetry.Value.Verifications >= 3);
+                Invoke(Find<Button>(finishing, "RetryButton"));
             }
-            await WaitAsync(() => completed.Count == 1, "startup choice applied");
+            await WaitAsync(() => completed.Count == 1, "startup choice applied before preparation publication");
+            if (beforeRetry is { } finalized)
+            {
+                Assert.Equal(finalized.Stops, runtime.Stops);
+                Assert.Equal(finalized.Verifications,
+                    server.Requests.Count(request => request.Method == "openclaw.setup.verify"));
+            }
+            Assert.IsType<AiCompletionPage>(frame.Content);
             Assert.Equal(failOnce ? [selectedStartup, selectedStartup] : new[] { selectedStartup }, applications);
             Assert.Equal("native-ui", registry.ActiveGatewayId);
-            var data = Assert.IsType<string>(typeof(SetupWindow).GetProperty("DataDir",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window));
+            var data = window.DataDir;
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "settings.json")));
             Assert.Equal(selectedStartup, saved.RootElement.GetProperty("AutoStart").GetBoolean());
         }, isolated: isolated, startupRegistrationAllowed: true,
@@ -216,9 +316,9 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
-    public async Task MinimumWindow_SharedAiAndVerifiedChoicesRemainReachable(ElementTheme theme)
+    public async Task MinimumWindow_SharedAiAndVerifiedChatRemainsReachable(ElementTheme theme)
     {
-        await WithNativeAsync(async (window, frame, registry, _, _, completed) =>
+        await WithNativeAsync(async (window, frame, registry, _, server, completed) =>
         {
             var page = Assert.IsType<AiSetupPage>(frame.Content);
             await WaitAsync(() => Find<ItemsControl>(page, "CandidateChoices").IsEnabled &&
@@ -233,18 +333,23 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await SetupWindowMinimumSizeTests.SaveViewportsAsync(window, page, ui, output, $"setup-minimum-shared-ai-{theme}");
             var card = Assert.Single(TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(page, "CandidateChoices")));
             TestSupport.InvokeSettingsCardAction(page, card, "ChoiceAction_Click");
-            await WaitAsync(() => frame.Content is AiReadyPage { IsLoaded: true }, "minimum verified chooser");
-            var ready = Assert.IsType<AiReadyPage>(frame.Content);
-            Assert.Null(ready.FindName("NativeSummary"));
-            ready.UpdateLayout();
-            await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
-            Assert.Equal(3, Find<StackPanel>(ready, "Choices").Children.Count);
-            OnboardingNativeProof.AssertFullyVisible(
-                Find<OpenClaw.SetupEngine.UI.Controls.SetupProgressIndicator>(ready, "FlowProgress"), root);
-            await SettleCaptureAsync(window);
-            await SetupWindowMinimumSizeTests.SaveViewportsAsync(window, ready, ui, output, $"setup-minimum-ready-{theme}");
-            Assert.Empty(registry.GetAll());
-            Assert.Empty(completed);
+            await WaitAsync(() => completed.Count == 1, "minimum preparation completed");
+            Assert.Equal("native-ui", registry.ActiveGatewayId);
+            await WithPublishedReadyAsync(window, registry, server, Assert.Single(completed), theme,
+                async (readyWindow, ready, navigated, _) =>
+                {
+                    await SetupWindowMinimumSizeTests.ResizeBelowMinimumAsync(readyWindow, ui, output, $"native-ready-{theme}");
+                    Assert.Null(ready.FindName("NativeSummary"));
+                    ready.UpdateLayout();
+                    await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
+                    var readyRoot = Assert.IsAssignableFrom<FrameworkElement>(readyWindow.Content);
+                    Assert.Single(Find<StackPanel>(ready, "ChatActionPanel").Children);
+                    OnboardingNativeProof.AssertFullyVisible(
+                        Find<OpenClaw.SetupEngine.UI.Controls.SetupProgressIndicator>(ready, "FlowProgress"), readyRoot);
+                    await SetupWindowMinimumSizeTests.SaveViewportsAsync(
+                        readyWindow, ready, ui, output, $"setup-minimum-ready-{theme}");
+                    Assert.Empty(navigated);
+                });
         }, theme: theme);
     }
 
@@ -261,7 +366,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
             Invoke(Assert.Single(TestSupport.FindDescendants<Button>(recovery), button => (string?)button.Tag == "CancelSetup"));
             await WaitAsync(() => frame.Content is CapabilitiesPage { IsLoaded: true }, "native cancel returns to access");
-            Assert.Null(typeof(SetupWindow).GetProperty("NativeSetupSession", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
+            Assert.Null(window.NativeSetupSession);
             Assert.False(runtime.Running);
             Assert.Empty(completed);
             Assert.Empty(registry.GetAll());
@@ -324,7 +429,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await SetupWindowMinimumSizeTests.SaveViewportsAsync(window, page, ui, output, $"native-error-recovery-{theme}");
             Invoke(Find<Button>(page, "RefreshButton"));
             await WaitAsync(() => Find<ItemsControl>(page, "CandidateChoices").IsEnabled &&
-                !Find<InfoBar>(page, "ErrorBar").IsOpen, "healthy native choices restored");
+                !Find<InfoBar>(page, "ErrorBar").IsOpen, "healthy native setup restored");
             Assert.Equal(Visibility.Collapsed, recovery.Visibility);
             Assert.False(recovery.IsExpanded);
             Assert.Empty(Find<TextBlock>(page, "NativeOutput").Text);
@@ -339,7 +444,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     private async Task WithNativeAsync(
-        Func<SetupWindow, Frame, GatewayRegistry, Runtime, FixtureGatewayServer, List<SetupNativeCompletion>, Task> assertion,
+        Func<SetupWindow, Frame, GatewayRegistry, Runtime, FixtureGatewayServer, List<SetupNativePreparation>, Task> assertion,
         ElementTheme theme = ElementTheme.Light, bool supported = true, bool holdProvider = false, bool failDetectionOnce = false,
         Func<string, JsonElement, object>? wizardReply = null, bool isolated = false,
         Func<JsonElement, object>? logReply = null, bool startupRegistrationAllowed = false,
@@ -407,7 +512,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             var resources = OnboardingWindowsFlowTests.LoadProgressResources(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!);
             Application.Current.Resources.MergedDictionaries.Add(resources);
             SetupWindow? window = null;
-            var completed = new List<SetupNativeCompletion>();
+            var completed = new List<SetupNativePreparation>();
             try
             {
                 window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: setupConfig,
@@ -415,11 +520,17 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     startupRegistrationAllowed: startupRegistrationAllowed,
                     applyNativeStartup: applyStartup ??
                         ((_, _) => throw new InvalidOperationException("No OS startup changes in this fixture.")),
-                    publishNativeCompletion: (choice, _) => { completed.Add(choice); return Task.CompletedTask; }));
+                    publishNativePreparation: (preparation, _) =>
+                    {
+                        Assert.Equal(native.Record.Id, registry.ActiveGatewayId);
+                        Assert.False(runtime.Running);
+                        Assert.IsType<AiCompletionPage>(Find<Frame>(Assert.IsType<Grid>(window!.Content), "RootFrame").Content);
+                        completed.Add(preparation);
+                        return Task.CompletedTask;
+                    }));
                 window.SelectGatewayRoute(SetupGatewayRoute.Native);
                 if (beforeAi is null)
-                    typeof(SetupWindow).GetMethod("NavigateToNativeAiSetup", BindingFlags.NonPublic | BindingFlags.Instance)!
-                        .Invoke(window, [native]);
+                    await NavigatePreparedAiAsync(window, native);
                 else
                     window.NavigateToCapabilities();
                 window.Activate();
@@ -430,8 +541,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                 if (beforeAi is not null)
                 {
                     await beforeAi(window, frame);
-                    typeof(SetupWindow).GetMethod("NavigateToNativeAiSetup", BindingFlags.NonPublic | BindingFlags.Instance)!
-                        .Invoke(window, [native]);
+                    await NavigatePreparedAiAsync(window, native);
                 }
                 await WaitAsync(() => frame.Content is AiSetupPage { IsLoaded: true }, "shared native AI mounted");
                 await assertion(window, frame, registry, runtime, server, completed);
@@ -444,8 +554,170 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
+    private static async Task NavigatePreparedAiAsync(SetupWindow window, NativeGatewaySetupSession native)
+    {
+        await using var preparation = await GatewayAiPreparation.PrepareNativeAsync(native, CancellationToken.None);
+        var page = new NativeGatewaySetupPage();
+        Action<NativeAiPreparation> navigate = prepared =>
+            typeof(SetupWindow).GetMethod("NavigateToNativeAiSetup", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, [native, prepared]);
+        Func<CancellationToken, Task> authorize = native.AuthorizeAsync;
+        await Assert.IsAssignableFrom<Task>(
+            typeof(NativeGatewaySetupPage).GetMethod("CompleteAiPreparationAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(page, [preparation, null, native.IsIsolated ? native.Record : null,
+                    authorize, native.LifetimeToken, navigate, CancellationToken.None]));
+    }
+
+    private async Task WithPublishedReadyAsync(SetupWindow setupWindow, GatewayRegistry registry,
+        FixtureGatewayServer server, SetupNativePreparation preparation, ElementTheme theme,
+        Func<SetupReadyWindow, AiReadyPage, List<SetupNativeCompletion>, Runtime, Task> assertion,
+        bool invalidateDuringMount = false, bool exerciseUnrelatedMetadata = false)
+    {
+        var data = Assert.IsType<string>(typeof(SetupWindow).GetProperty("DataDir",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(setupWindow));
+        var normalRuntime = new Runtime(server);
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
+            registry, NullLogger.Instance, nativeGatewayRuntime: normalRuntime);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var startupOccurrence = server.Requests.Count(request => request.Method == "agents.list") + 1;
+        await manager.ConnectAsync(preparation.Verification.GatewayId, deadline.Token);
+        // Connect completes before the client's initial background reads. Drain their final request
+        // before asserting that Ready invalidation and navigation issue no new requests.
+        await server.WaitForCompletedRequestAsync("agents.list", occurrence: startupOccurrence,
+            cancellationToken: deadline.Token);
+        Task<SetupVerifiedNativeRoute> VerifyAsync(CancellationToken ct) =>
+            SetupNativeCompletionVerifier.VerifyAsync(data, preparation.Verification, ct, manager, captureReadiness: true);
+        var store = new SetupDashboardHandoffStore(data);
+        var handle = store.IssuePreparation(preparation);
+        var navigated = new List<SetupNativeCompletion>();
+        var failures = new List<SetupNativeLaunchFailure>();
+        SetupReadyWindow? readyWindow = null;
+        SetupReadyObservation? observation = null;
+        try
+        {
+            readyWindow = OnboardingNativeProof.CreateWindow(() => new SetupReadyWindow(VerifyAsync,
+                (choice, _) => { navigated.Add(choice); return Task.CompletedTask; },
+                binding => observation = new SetupReadyObservation(manager, registry, null, binding,
+                    () => readyWindow!.DispatcherQueue.TryEnqueue(() => readyWindow.Invalidate())),
+                () => Assert.IsType<SetupReadyObservation>(observation).RequireCurrent(),
+                () => throw new InvalidOperationException("No Connection navigation expected.")));
+            SetupWindowMinimumSizeTests.AssertInitialWindowSize(readyWindow, output);
+            readyWindow.Activate();
+            readyWindow.AppWindow.Move(new(-32000, -32000));
+            var readyFrame = Assert.IsType<Frame>(readyWindow.Content);
+            async Task AssertUnrelatedMetadataPreservesReadyAsync()
+            {
+                var page = Assert.IsType<AiReadyPage>(readyFrame.Content);
+                var requests = await WaitForRequestQuiescenceAsync(server);
+                var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var client = Assert.IsType<OpenClawGatewayClient>(manager.OperatorClient);
+                EventHandler observer = (_, _) => received.TrySetResult();
+                client.ModelCatalogInvalidated += observer;
+                try
+                {
+                    await server.NotifyChatMetadataChangedAsync();
+                    await received.Task.WaitAsync(deadline.Token);
+                    await ui.YieldToRenderAsync();
+                    Assert.Same(page, readyFrame.Content);
+                    AssertNoNewRequests(server, requests);
+                    Assert.Empty(navigated);
+                }
+                finally { client.ModelCatalogInvalidated -= observer; }
+            }
+            var launcher = new SetupNativeHandoffLauncher(() => registry.GetActive(),
+                (_, ct) => VerifyAsync(ct),
+                (_, _) => throw new InvalidOperationException("Preparation must not select a destination."),
+                failures.Add,
+                showPreparing: (_, _) => { readyWindow.ShowPreparing(); return Task.CompletedTask; },
+                verifyPreparation: (_, ct) => readyWindow.VerifyAsync(ct),
+                showReady: async (route, ct) =>
+                {
+                    await readyWindow.ShowReadyAsync(route, ct);
+                    var pending = Assert.IsType<AiReadyPage>(readyFrame.Content);
+                    Assert.NotEqual("Your AI is ready", Find<TextBlock>(pending, "Heading").Text);
+                    Assert.Equal(Visibility.Collapsed, Find<StackPanel>(pending, "ChatActionPanel").Visibility);
+                    Assert.Empty(navigated);
+                    if (exerciseUnrelatedMetadata)
+                        await AssertUnrelatedMetadataPreservesReadyAsync();
+                    if (invalidateDuringMount)
+                    {
+                        var requests = await WaitForRequestQuiescenceAsync(server);
+                        await server.NotifyConfigurationChangedAsync();
+                        await WaitAsync(() => readyFrame.Content is AiCompletionPage,
+                            "configuration event invalidates pending mount");
+                        AssertNoNewRequests(server, requests);
+                    }
+                },
+                readyConsumed: readyWindow.CommitPresentation);
+            var opened = await launcher.OpenAsync(store, handle, ct: deadline.Token);
+            if (invalidateDuringMount)
+            {
+                Assert.False(opened);
+                Assert.Single(failures);
+                Assert.Empty(navigated);
+                Assert.IsType<AiCompletionPage>(readyFrame.Content);
+                return;
+            }
+            Assert.True(opened);
+            Assert.Empty(failures);
+            Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+            var ready = Assert.IsType<AiReadyPage>(readyFrame.Content);
+            Assert.Equal("Your AI is ready", Find<TextBlock>(ready, "Heading").Text);
+            if (exerciseUnrelatedMetadata)
+            {
+                await AssertUnrelatedMetadataPreservesReadyAsync();
+                Assert.Equal(Visibility.Visible, Find<StackPanel>(ready, "ChatActionPanel").Visibility);
+            }
+            await OnboardingNativeProof.ApplyThemeSurfaceAsync(Assert.IsType<Grid>(ready.Content), theme);
+            await ui.YieldToRenderAsync();
+            await assertion(readyWindow, ready, navigated, normalRuntime);
+        }
+        finally
+        {
+            observation?.Dispose();
+            if (readyWindow is not null)
+            {
+                if (!readyWindow.IsClosed) readyWindow.Close();
+                await readyWindow.CleanupCompleted;
+            }
+        }
+    }
+
     private static T Find<T>(FrameworkElement owner, string name) where T : FrameworkElement => Assert.IsType<T>(owner.FindName(name));
     private static Task WaitAsync(Func<bool> condition, string label) => TestSupport.WaitForRenderedConditionAsync(condition, label);
+
+    private const string RequestQuietWindowVariable = "OPENCLAW_UI_REQUEST_QUIET_MS";
+    private const string RequestQuietTimeoutVariable = "OPENCLAW_UI_REQUEST_QUIET_TIMEOUT_SECONDS";
+    // Longer than the client's 500 ms delayed post-hello batch.
+    private static readonly TimeSpan RequestQuietWindow =
+        int.TryParse(Environment.GetEnvironmentVariable(RequestQuietWindowVariable), out var ms) && ms > 0
+            ? TimeSpan.FromMilliseconds(ms) : TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RequestQuietTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(RequestQuietTimeoutVariable), out var s) && s > 0
+            ? TimeSpan.FromSeconds(s) : TimeSpan.FromSeconds(15);
+
+    private static async Task<int> WaitForRequestQuiescenceAsync(FixtureGatewayServer server)
+    {
+        var total = Stopwatch.StartNew();
+        var quiet = Stopwatch.StartNew();
+        var count = server.Requests.Count;
+        while (quiet.Elapsed < RequestQuietWindow)
+        {
+            if (total.Elapsed > RequestQuietTimeout)
+                Assert.Fail($"Fixture Gateway requests did not go quiet within {RequestQuietTimeout}. Latest: " +
+                    string.Join(", ", server.Requests.Skip(Math.Max(0, count - 10)).Select(request => request.Method)));
+            await Task.Delay(50);
+            var now = server.Requests.Count;
+            if (now != count) { count = now; quiet.Restart(); }
+        }
+        return count;
+    }
+
+    private static void AssertNoNewRequests(FixtureGatewayServer server, int before) =>
+        Assert.True(server.Requests.Count == before,
+            $"Expected no new Gateway requests; got: {string.Join(", ", server.Requests.Skip(before).Select(request => request.Method))}");
+
     private static void Invoke(Button button) =>
         Assert.IsAssignableFrom<IInvokeProvider>(
             FrameworkElementAutomationPeer.CreatePeerForElement(button).GetPattern(PatternInterface.Invoke)).Invoke();
@@ -509,12 +781,90 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Single(server.Requests, request => request.Method == "wizard.next");
             Assert.Single(server.Requests, request => request.Method == "wizard.cancel");
             Assert.Equal(0, runtime.Disposals);
-            Assert.NotNull(typeof(SetupWindow).GetProperty("NativeSetupSession", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
+            Assert.NotNull(window.NativeSetupSession);
             Assert.Empty(registry.GetAll());
             Assert.Empty(completed);
         }, supported: false, wizardReply: (method, _) => method == "wizard.cancel"
             ? new { status = "cancelled" } : FallbackQuestion());
         Assert.Equal(1, Assert.IsType<Runtime>(ownedRuntime).Disposals);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WizardMore_BuildAndResetBeforeMountKeepOneExpansionButton(bool gatewayMore)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var resources = OnboardingWindowsFlowTests.LoadProgressResources(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!);
+            Application.Current.Resources.MergedDictionaries.Add(resources);
+            WizardPage? wizard = null;
+            try
+            {
+                wizard = new WizardPage();
+                var select = Find<ListView>(wizard, "SelectOptions");
+                var panel = Assert.IsType<StackPanel>(Find<Border>(wizard, "StepCard").Child);
+                var originalChildren = panel.Children.ToArray();
+                Assert.False(wizard.IsLoaded);
+                Assert.Null(wizard.XamlRoot);
+                Assert.Null(select.Parent);
+
+                const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+                typeof(WizardPage).GetField("_stepType", flags)!.SetValue(wizard, "select");
+                var build = typeof(WizardPage).GetMethod("BuildOptions", flags)!;
+                var reset = typeof(WizardPage).GetMethod("ResetInputs", flags)!;
+                var moreField = typeof(WizardPage).GetField("_moreOptionsButton", flags)!;
+                var options = gatewayMore
+                    ? new[] { new { value = "skip", label = "Skip for now" }, new { value = "__more", label = "More" } }
+                    : new[] { new { value = "skip", label = "Skip for now" } }
+                        .Concat(Enumerable.Range(1, 6).Select(i => new { value = $"provider-{i}", label = $"Provider {i}" })).ToArray();
+                var step = JsonSerializer.SerializeToElement(new { options });
+                string[] expectedVisible = gatewayMore
+                    ? ["skip"]
+                    : ["skip", "provider-1", "provider-2", "provider-3", "provider-4", "provider-5"];
+
+                Button Build()
+                {
+                    Assert.True(Assert.IsType<bool>(build.Invoke(wizard, [step, default(JsonElement)])));
+                    Assert.Equal(expectedVisible, select.Items.Cast<ListViewItem>()
+                        .Select(item => Assert.IsType<WizardOptionValue>(item.Tag).Value));
+                    var builtMore = Assert.Single(panel.Children.OfType<Button>());
+                    Assert.Same(builtMore, moreField.GetValue(wizard));
+                    Assert.Same(builtMore, panel.Children[panel.Children.IndexOf(select) + 1]);
+                    return builtMore;
+                }
+
+                var previousMore = Build();
+                reset.Invoke(wizard, null);
+                Assert.Null(moreField.GetValue(wizard));
+                Assert.Empty(select.Items);
+                Assert.Equal(originalChildren, panel.Children.ToArray());
+                var more = Build();
+                Assert.NotSame(previousMore, more);
+                Assert.False(wizard.IsLoaded);
+                ui.Container.Children.Add(wizard);
+                await WaitAsync(() => wizard.IsLoaded && more.IsLoaded, "pre-mount More button loaded");
+                if (!gatewayMore)
+                {
+                    Invoke(more);
+                    Assert.Null(moreField.GetValue(wizard));
+                    Assert.DoesNotContain(more, panel.Children);
+                    Assert.Equal(["skip", "provider-1", "provider-2", "provider-3", "provider-4", "provider-5", "provider-6"],
+                        select.Items.Cast<ListViewItem>().Select(item => Assert.IsType<WizardOptionValue>(item.Tag).Value));
+                }
+            }
+            finally
+            {
+                if (wizard is not null)
+                {
+                    ui.Container.Children.Remove(wizard);
+                    await Assert.IsAssignableFrom<Task>(typeof(WizardPage)
+                        .GetMethod("CancelAndWaitAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(wizard, null));
+                }
+                Application.Current.Resources.MergedDictionaries.Remove(resources);
+            }
+        });
     }
 
     [Fact]
@@ -530,8 +880,10 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                 var moreField = typeof(WizardPage)
                     .GetField("_moreOptionsButton", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 Button? more = null;
-                await WaitAsync(() => (more = moreField.GetValue(wizard) as Button) is { IsLoaded: true },
-                    "Gateway More button loaded");
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => (more = moreField.GetValue(wizard) as Button) is { IsLoaded: true },
+                    "Gateway More button loaded",
+                    () => $"field={(moreField.GetValue(wizard) is Button b ? $"Button(Parent={b.Parent?.GetType().Name ?? "null"}, IsLoaded={b.IsLoaded}, XamlRoot={(b.XamlRoot is null ? "null" : "set")})" : "null")}, page.IsLoaded={wizard.IsLoaded}");
                 var continueButton = Find<Button>(wizard, "PrimaryButton");
 
                 Invoke(more!);
@@ -614,12 +966,12 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await Assert.IsAssignableFrom<Task>(typeof(WizardPage).GetMethod("StartOverAsync", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(wizard, null));
             Assert.NotSame(connection, typeof(WizardPage).GetField("_connection", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(wizard));
             Assert.Equal(2, server.Requests.Count(request => request.Method == "wizard.start"));
-            var before = server.Requests.Count;
+            var before = await WaitForRequestQuiescenceAsync(server);
             var request = Assert.IsAssignableFrom<Task>(typeof(WizardPage).GetMethod("SendWizardRequestAsync",
                 BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(wizard,
                     [connection, generation, "wizard.next", new { sessionId = "native-fallback-1" }, 1000]));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
-            Assert.Equal(before, server.Requests.Count);
+            AssertNoNewRequests(server, before);
         }, supported: false, wizardReply: (method, _) => method == "wizard.cancel"
             ? new { status = "cancelled" }
             : FallbackQuestion("native-fallback-" + Interlocked.Increment(ref starts)));
@@ -635,6 +987,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         {
             nativeRuntime = runtime;
             var wizard = await EnterFallbackAsync(frame);
+            await WaitForRequestQuiescenceAsync(server);
             Invoke(Find<Button>(wizard, "PrimaryButton"));
             await WaitAsync(() => loseAfterCancel
                 ? Find<TextBlock>(wizard, "ErrorText").Visibility == Visibility.Visible
@@ -668,20 +1021,20 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
-    private static async Task SettleCaptureAsync(SetupWindow window)
+    private static async Task SettleCaptureAsync(Window window)
     {
-        var root = Assert.IsType<Grid>(window.Content);
+        var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
         foreach (var mascot in TestSupport.FindDescendants<OpenClaw.SetupEngine.UI.Controls.OnboardingMascot>(root))
             mascot.IsAnimationEnabled = false;
         root.UpdateLayout();
         await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
     }
 
-    private async Task SaveViewportsAsync(SetupWindow window, Page page, string name)
+    private async Task SaveViewportsAsync(Window window, Page page, string name)
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR"))) return;
         await SettleCaptureAsync(window);
-        var root = Assert.IsType<Grid>(window.Content);
+        var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
         var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
         var original = scroll.VerticalOffset;
         var offset = 0d;
@@ -734,13 +1087,24 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     private sealed class Runtime(FixtureGatewayServer server) : INativeGatewayRuntime
     {
         public bool Running { get; private set; }
+        public int Starts { get; private set; }
         public int Stops { get; private set; }
         public int Disposals { get; private set; }
+        public Exception? DisposeFailure { get; set; }
         public GatewayEndpointProvenanceKind Provenance { get; set; } = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
         public GatewayEndpointProvenance Inspect(GatewayRecord record) => new(Provenance, server.Endpoint.Port);
         public Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken ct) => Task.FromResult(Inspect(record));
-        public Task EnsureRunningAsync(GatewayRecord record, CancellationToken ct) { Running = true; return Task.CompletedTask; }
+        public Task EnsureRunningAsync(GatewayRecord record, CancellationToken ct) { Starts++; Running = true; return Task.CompletedTask; }
         public async Task StopAsync(CancellationToken ct) { Stops++; Running = false; await server.CloseConnectionsAsync(ct); }
-        public ValueTask DisposeAsync() { Disposals++; return new(StopAsync(default)); }
+        public async ValueTask DisposeAsync()
+        {
+            Disposals++;
+            await StopAsync(default);
+            if (DisposeFailure is { } failure)
+            {
+                DisposeFailure = null;
+                throw failure;
+            }
+        }
     }
 }
