@@ -490,10 +490,49 @@ public sealed class ChatTimelinePresentationTests
     public void TailReflowCorrection_CancellationRejectsLateExtentChanges()
     {
         var correction = new TailReflowCorrection();
+        var revision = new object();
+        correction.ContentChanged(revision);
         correction.Arm();
         correction.Clear();
+        correction.ContentChanged(revision);
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false);
 
         Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_StreamingGrowthUsesOneCorrectionPerContentRevision()
+    {
+        var correction = new TailReflowCorrection();
+        var revision = new object();
+        correction.ContentChanged(revision);
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false);
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        correction.ContentChanged(revision);
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false);
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.ContentChanged(new object());
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false);
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    public void TailReflowCorrection_StreamingGrowthPreservesReaderTailAndInitialGates(
+        bool following, bool atBottom, bool initialPending)
+    {
+        var correction = new TailReflowCorrection();
+        correction.ContentChanged(new object());
+        correction.ArmForExtentGrowth(following, atBottom, initialPending);
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false);
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
     }
 
     [Fact]

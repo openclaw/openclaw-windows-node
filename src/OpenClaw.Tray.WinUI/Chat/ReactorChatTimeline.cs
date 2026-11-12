@@ -268,6 +268,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                         jumpRevision,
                         initialTailRequestKey,
                         displayedTailKey,
+                        contentRevision,
                         setAtTail)
                     .AutomationName("Chat messages")
                     .HAlign(HorizontalAlignment.Stretch)

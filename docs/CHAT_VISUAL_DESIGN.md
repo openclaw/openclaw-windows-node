@@ -457,6 +457,10 @@ rows moves the extent away from a followed tail. This correction waits for
 layout, a rendering boundary, and an idle scroll view. It adjusts the offset to
 the current extent without synchronously realizing another item. Initial,
 new-message and explicit jump navigation retain index-based brings.
+Streaming extent growth can also arm one correction per immutable transcript
+content revision while following more than one DIP away from the exact bottom.
+Typing and tail-visibility rerenders retain that revision. Correction-induced
+remeasurement cannot replenish its budget, and reader input clears unused credit.
 Resizing does not itself start a bring, and this is not a continuous extent-follow loop. A correction does
 not start while initial positioning is still pending, so it cannot impose its
 follow requirement on that initial request. A reader who has scrolled up is not
@@ -482,8 +486,8 @@ not WinUI's special extent-edge mode at exactly `1.0`, which can undo an offset
 as variable-height virtualized rows remeasure. The native scrollbar-end proof
 uses the same 900/1300-DIP window widths at every display scale; it still requires
 the actual final message to be visible without invoking **Jump to latest**.
-Streaming follow retains its exact-bottom assertions and introduces no extra
-scroll requests or extent-follow loop. The existing follow threshold is unchanged.
+Streaming follow retains its exact-bottom assertions and the bounded correction
+above, not an extent-follow loop. The existing follow threshold is unchanged.
 Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
 transcript then anchors to the top, so the header stays put and its details
 grow downward, as on the web. Any other reader input or programmatic tail scroll
