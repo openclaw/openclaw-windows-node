@@ -2,127 +2,137 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
-      xmlns:tk="using:CommunityToolkit.WinUI.Controls">
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_V2_CapabilitiesTitle" Text="PC capabilities" Style="{StaticResource TitleTextBlockStyle}"
-                       TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Uid="Onboarding_V3_ProfileHelp" Text="Choose a preset. Open Fine-tune to inspect or change individual capabilities."
-                       TextAlignment="Center" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+      xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+      xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes">
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <themes:SetupResources />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
+    <Grid Padding="{StaticResource SetupPagePadding}" RowDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Row="0" Style="{StaticResource SetupHeroPanelStyle}">
+            <TextBlock x:Uid="Onboarding_V2_CapabilitiesTitle" Text="What can your assistant use?"
+                       Style="{StaticResource SetupHeroTitleTextStyle}" />
+            <TextBlock x:Uid="Onboarding_V3_ProfileHelp" Text="Start with a set that suits you. Change it any time."
+                       Style="{StaticResource SetupHeroSubtitleTextStyle}" />
         </StackPanel>
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="600"
+        <ScrollViewer Grid.Row="1" Margin="{StaticResource SetupBodyMargin}"
                       HorizontalContentAlignment="Stretch" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
+            <StackPanel Margin="{StaticResource SetupGutterMargin}" Spacing="8">
                 <InfoBar x:Name="TransportRequired" x:Uid="Onboarding_V3_TransportRequired" IsOpen="True"
                          IsClosable="False" Severity="Informational" Title="Capabilities are unavailable"
                          Message="Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept." />
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                <StackPanel x:Name="CapabilityControls" Spacing="0">
-                    <ListView x:Name="ProfileSelector" x:Uid="Onboarding_V2_ProfileSelector"
-                              AutomationProperties.Name="Capability profile"
-                              SelectionMode="Single" SingleSelectionFollowsFocus="True"
-                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                              ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                              SelectionChanged="Profile_Changed">
-                        <ListViewItem x:Name="ReadOnlyChoice" x:Uid="Onboarding_V2_ProfileReadOnly"
-                                      AutomationProperties.Name="Strict: Canvas and screen capture. Command execution is off."
-                                      HorizontalContentAlignment="Stretch" Padding="16,12">
-                            <StackPanel Spacing="4">
-                                <TextBlock x:Uid="Onboarding_V2_ProfileReadOnlyTitle" Text="Strict"
-                                           TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock x:Uid="Onboarding_V2_ProfileReadOnlyDescription" Text="Canvas and screen capture. Command execution is off."
-                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </ListViewItem>
-                        <ListViewItem x:Name="StandardChoice" x:Uid="Onboarding_V2_ProfileStandard"
-                                      AutomationProperties.Name="Balanced (Recommended): commands, Canvas, screen capture and voice."
-                                      HorizontalContentAlignment="Stretch" Padding="16,12">
-                            <StackPanel Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
-                                    <TextBlock x:Uid="Onboarding_V2_ProfileStandardTitle" Text="Balanced"
-                                               TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}"
-                                               VerticalAlignment="Center" />
-                                    <controls:RecommendedBadge Grid.Column="1" />
+                <Border BorderThickness="0">
+                    <StackPanel x:Name="CapabilityControls" Spacing="0">
+                        <ListView x:Name="ProfileSelector" x:Uid="Onboarding_V2_ProfileSelector"
+                                  AutomationProperties.Name="Capability profile"
+                                  SelectionMode="Single" SingleSelectionFollowsFocus="True"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                  ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                  ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  SelectionChanged="Profile_Changed">
+                            <ListViewItem x:Name="ReadOnlyChoice" x:Uid="Onboarding_V2_ProfileReadOnly"
+                                          AutomationProperties.Name="Strict: Canvas and screen capture. Command execution is off."
+                                          HorizontalContentAlignment="Stretch" Style="{StaticResource SetupChoiceItemStyle}">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                    <controls:SetupGlyphTile Glyph="&#xE924;" />
+                                    <StackPanel Grid.Column="1" Spacing="2" Margin="0,12,16,12" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="Onboarding_V2_ProfileReadOnlyTitle" Text="Strict"
+                                                   Style="{StaticResource SetupRowTitleTextStyle}" />
+                                        <TextBlock x:Uid="Onboarding_V2_ProfileReadOnlyDescription" Text="Canvas and screen capture. Command execution is off."
+                                                   Style="{StaticResource SetupRowDescriptionTextStyle}" />
+                                    </StackPanel>
+                                    <Rectangle Grid.Column="1" VerticalAlignment="Bottom" Style="{StaticResource SetupHairlineStyle}" />
                                 </Grid>
-                                <TextBlock x:Uid="Onboarding_V2_ProfileStandardDescription" Text="Commands, Canvas, screen capture and voice."
-                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </ListViewItem>
-                        <ListViewItem x:Name="FullChoice" x:Uid="Onboarding_V2_ProfileFull"
-                                      AutomationProperties.Name="Open: all eight capabilities, including Camera, Location and Browser control."
-                                      HorizontalContentAlignment="Stretch" Padding="16,12">
-                            <StackPanel Spacing="4">
-                                <TextBlock x:Uid="Onboarding_V2_ProfileFullTitle" Text="Open"
-                                           TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock x:Uid="Onboarding_V2_ProfileFullDescription" Text="All eight capabilities, including Camera, Location and Browser control."
-                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </ListViewItem>
-                    </ListView>
-                    <tk:SettingsExpander x:Name="FineTuneExpander" IsExpanded="False"
-                                         Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0"
-                                         Expanded="FineTune_Changed" Collapsed="FineTune_Changed">
-                        <tk:SettingsExpander.Header>
-                            <StackPanel Spacing="4">
-                                <TextBlock x:Uid="Onboarding_V3_FineTune" Text="Fine-tune"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock x:Name="CustomProfileText" x:Uid="Onboarding_V2_Custom" Text="Custom capabilities"
-                                           Visibility="Collapsed" Style="{StaticResource CaptionTextBlockStyle}" />
-                            </StackPanel>
-                        </tk:SettingsExpander.Header>
-                        <tk:SettingsExpander.Description>
-                            <TextBlock x:Name="SelectedSummary" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
-                                       Style="{StaticResource CaptionTextBlockStyle}" />
-                        </tk:SettingsExpander.Description>
-                        <tk:SettingsExpander.ItemsFooter>
-                            <StackPanel Spacing="8" Padding="16,12">
-                                <TextBlock x:Uid="Onboarding_V2_DeviceFixed" TextWrapping="Wrap"
-                                           Text="Basic device information and status remain available while a node service is running. They are not a profile toggle."
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Uid="Onboarding_V2_NativeSettings" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Text="Execution approvals, sandbox grants, remembered capture consent, MCP tokens and voice configuration stay in Companion Settings." />
-                            </StackPanel>
-                        </tk:SettingsExpander.ItemsFooter>
-                    </tk:SettingsExpander>
-                </StackPanel>
+                            </ListViewItem>
+                            <ListViewItem x:Name="StandardChoice" x:Uid="Onboarding_V2_ProfileStandard"
+                                          AutomationProperties.Name="Balanced (Recommended): commands, Canvas, screen capture and voice."
+                                          HorizontalContentAlignment="Stretch" Style="{StaticResource SetupChoiceItemStyle}">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                    <controls:SetupGlyphTile Glyph="&#xE945;" />
+                                    <StackPanel Grid.Column="1" Spacing="2" Margin="0,12,16,12" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock x:Uid="Onboarding_V2_ProfileStandardTitle" Text="Balanced"
+                                                       Style="{StaticResource SetupRowTitleTextStyle}" VerticalAlignment="Center" />
+                                            <controls:RecommendedBadge />
+                                        </StackPanel>
+                                        <TextBlock x:Uid="Onboarding_V2_ProfileStandardDescription" Text="Commands, Canvas, screen capture and voice."
+                                                   Style="{StaticResource SetupRowDescriptionTextStyle}" />
+                                    </StackPanel>
+                                    <Rectangle Grid.Column="1" VerticalAlignment="Bottom" Style="{StaticResource SetupHairlineStyle}" />
+                                </Grid>
+                            </ListViewItem>
+                            <ListViewItem x:Name="FullChoice" x:Uid="Onboarding_V2_ProfileFull"
+                                          AutomationProperties.Name="Open: all eight capabilities, including Camera, Location and Browser control."
+                                          HorizontalContentAlignment="Stretch" Style="{StaticResource SetupChoiceItemStyle}">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                    <controls:SetupGlyphTile Glyph="&#xE71D;" />
+                                    <StackPanel Grid.Column="1" Spacing="2" Margin="0,12,16,12" VerticalAlignment="Center">
+                                        <TextBlock x:Uid="Onboarding_V2_ProfileFullTitle" Text="Open"
+                                                   Style="{StaticResource SetupRowTitleTextStyle}" />
+                                        <TextBlock x:Uid="Onboarding_V2_ProfileFullDescription" Text="All eight capabilities, including Camera, Location and Browser control."
+                                                   Style="{StaticResource SetupRowDescriptionTextStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </ListViewItem>
+                        </ListView>
+                        <tk:SettingsExpander x:Name="FineTuneExpander" IsExpanded="False" BorderThickness="0,1"
+                                             Expanded="FineTune_Changed" Collapsed="FineTune_Changed">
+                            <tk:SettingsExpander.Header>
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Uid="Onboarding_V3_FineTune" Text="Choose tools individually"
+                                               Style="{StaticResource SetupRowTitleTextStyle}" />
+                                    <TextBlock x:Name="CustomProfileText" x:Uid="Onboarding_V2_Custom" Text="Custom capabilities"
+                                               Visibility="Collapsed" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </tk:SettingsExpander.Header>
+                            <tk:SettingsExpander.Description>
+                                <TextBlock x:Name="SelectedSummary" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                                           Style="{StaticResource SetupRowDescriptionTextStyle}" />
+                            </tk:SettingsExpander.Description>
+                            <tk:SettingsExpander.ItemsFooter>
+                                <StackPanel Spacing="8" Padding="16,12">
+                                    <TextBlock x:Uid="Onboarding_V2_DeviceFixed" TextWrapping="Wrap"
+                                               Text="Basic device information and status remain available while a node service is running. They are not a profile toggle."
+                                               Style="{StaticResource SetupFootnoteTextStyle}" />
+                                    <TextBlock x:Uid="Onboarding_V2_NativeSettings" TextWrapping="Wrap" Style="{StaticResource SetupFootnoteTextStyle}"
+                                               Text="Execution approvals, sandbox grants, remembered capture consent, MCP tokens and voice configuration stay in Companion Settings." />
+                                </StackPanel>
+                            </tk:SettingsExpander.ItemsFooter>
+                        </tk:SettingsExpander>
+                    </StackPanel>
                 </Border>
-                <TextBlock x:Uid="Onboarding_V4_ConnectionOptions" Text="Connection options" Margin="0,12,0,0"
-                           Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                <StackPanel Spacing="4">
-                <tk:SettingsCard x:Uid="Onboarding_V2_NodeMode" Header="Node mode" Description="Offer this PC's capabilities through a connected Gateway.">
-                    <ToggleSwitch x:Name="NodeModeToggle" x:Uid="Onboarding_V2_NodeModeToggle" AutomationProperties.Name="Node mode"
-                                  OnContent="" OffContent="" MinWidth="0" Toggled="Transport_Toggled" />
-                </tk:SettingsCard>
-                <tk:SettingsCard x:Uid="Onboarding_V2_Mcp" Header="Local MCP Server" Description="Use local MCP clients without requiring a Gateway.">
-                    <ToggleSwitch x:Name="McpToggle" x:Uid="Onboarding_V2_McpToggle" AutomationProperties.Name="Local MCP Server"
-                                  OnContent="" OffContent="" MinWidth="0" Toggled="Transport_Toggled" />
-                </tk:SettingsCard>
+                <TextBlock x:Uid="Onboarding_V4_ConnectionOptions" Text="Connection options" Margin="0,8,0,4"
+                           Style="{StaticResource SetupSectionTextStyle}" />
+                <StackPanel BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SetupHairlineBrush}">
+                    <tk:SettingsCard x:Name="NodeModeCard" x:Uid="Onboarding_V2_NodeMode" Header="Node mode" Description="Offer this PC's capabilities through a connected Gateway.">
+                        <ToggleSwitch x:Name="NodeModeToggle" x:Uid="Onboarding_V2_NodeModeToggle" AutomationProperties.Name="Node mode"
+                                      OnContent="" OffContent="" MinWidth="0" Toggled="Transport_Toggled" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard x:Name="McpCard" x:Uid="Onboarding_V2_Mcp" Header="Local MCP Server" Description="Use local MCP clients without requiring a Gateway.">
+                        <ToggleSwitch x:Name="McpToggle" x:Uid="Onboarding_V2_McpToggle" AutomationProperties.Name="Local MCP Server"
+                                      OnContent="" OffContent="" MinWidth="0" Toggled="Transport_Toggled" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard x:Name="OllamaCard" x:Uid="Onboarding_V2_Ollama" Header="Ollama sharing"
+                                     Description="Share an existing Windows Ollama service. This does not install Local AI or change your capability profile.">
+                        <ToggleSwitch x:Name="OllamaToggle" x:Uid="Onboarding_V2_OllamaToggle"
+                                      AutomationProperties.Name="Ollama sharing" OnContent="" OffContent="" MinWidth="0"
+                                      Toggled="Ollama_Toggled" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard x:Name="StartupPreferenceRow" x:Uid="Onboarding_V2_StartupCard"
+                                     Header="Launch OpenClaw at sign-in" Visibility="Collapsed">
+                        <ToggleSwitch x:Name="StartupPreferenceToggle" x:Uid="Onboarding_Flow_AutoStartToggle"
+                                      AutomationProperties.Name="Launch OpenClaw at sign-in"
+                                      OnContent="" OffContent="" MinWidth="0" Toggled="Startup_Toggled" />
+                    </tk:SettingsCard>
                 </StackPanel>
-                <tk:SettingsCard x:Uid="Onboarding_V2_Ollama" Header="Ollama sharing"
-                                 Description="Share an existing Windows Ollama service. This does not install Local AI or change your capability profile.">
-                    <ToggleSwitch x:Name="OllamaToggle" x:Uid="Onboarding_V2_OllamaToggle"
-                                  AutomationProperties.Name="Ollama sharing" OnContent="" OffContent="" MinWidth="0"
-                                  Toggled="Ollama_Toggled" />
-                </tk:SettingsCard>
-                <tk:SettingsCard x:Name="StartupPreferenceRow" x:Uid="Onboarding_V2_StartupCard"
-                                 Header="Launch OpenClaw at sign-in" Visibility="Collapsed">
-                    <ToggleSwitch x:Name="StartupPreferenceToggle" x:Uid="Onboarding_Flow_AutoStartToggle"
-                                  AutomationProperties.Name="Launch OpenClaw at sign-in"
-                                  OnContent="" OffContent="" MinWidth="0" Toggled="Startup_Toggled" />
-                </tk:SettingsCard>
             </StackPanel>
         </ScrollViewer>
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" Click="Back_Click" HorizontalAlignment="Left" />
-            <Button x:Name="ContinueButton" Grid.Column="1" x:Uid="Onboarding_V2_Next" Content="Next" MinWidth="100" Click="Next_Click" Style="{StaticResource AccentButtonStyle}" />
-        </Grid>
+        <StackPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
+            <Button x:Uid="Onboarding_V2_Back" Content="Back" Style="{StaticResource SetupSecondaryButtonStyle}" Click="Back_Click" />
+            <Button x:Name="ContinueButton" x:Uid="Onboarding_V2_Next" Content="Next" Style="{StaticResource SetupPrimaryButtonStyle}" Click="Next_Click" />
+        </StackPanel>
     </Grid>
 </Page>

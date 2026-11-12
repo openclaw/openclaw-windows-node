@@ -6,44 +6,39 @@
     xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
     xmlns:tk="using:CommunityToolkit.WinUI.Controls"
     xmlns:icons="using:OpenClawTray.Helpers"
+    xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes"
     NavigationCacheMode="Disabled">
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <themes:SetupResources />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
 
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
+    <Grid Padding="{StaticResource SetupPagePadding}" RowDefinitions="Auto,*,Auto">
         <VisualStateManager.VisualStateGroups>
+            <!-- Recommendation only moves the inline label; the accent tile follows selection. -->
             <VisualStateGroup>
                 <VisualState x:Name="WslRecommendedState" />
-                <VisualState x:Name="NativeRecommendedState">
-                    <VisualState.Setters>
-                        <Setter Target="NativeIconBackground.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                        <Setter Target="NativeIcon.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                        <Setter Target="WslIconBackground.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                        <Setter Target="WslIcon.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
-                    </VisualState.Setters>
-                </VisualState>
+                <VisualState x:Name="NativeRecommendedState" />
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <StackPanel Grid.Row="0" HorizontalAlignment="Stretch" Spacing="4">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious"
-                                      HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_Copy_GatewayTitle" Text="Set up OpenClaw"
-                       Style="{StaticResource TitleTextBlockStyle}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Uid="Onboarding_Copy_GatewayIntro" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="560"
-                       Style="{StaticResource BodyTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       HorizontalAlignment="Center"
+        <StackPanel Grid.Row="0" Style="{StaticResource SetupHeroPanelStyle}">
+            <TextBlock x:Uid="Onboarding_Copy_GatewayTitle" Text="Where should OpenClaw live?"
+                       Style="{StaticResource SetupHeroTitleTextStyle}" />
+            <TextBlock x:Uid="Onboarding_Copy_GatewayIntro" Style="{StaticResource SetupHeroSubtitleTextStyle}"
                        Text="The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later." />
         </StackPanel>
 
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,0"
-                      MaxWidth="560"
+        <ScrollViewer Grid.Row="1" Margin="0,28,0,16"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch"
                       IsTabStop="False"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Spacing="12">
+          <StackPanel Spacing="16" Margin="{StaticResource SetupGutterMargin}">
             <ListView x:Name="GatewayChoiceSelector" x:Uid="Onboarding_Copy_GatewaySelector"
                       AutomationProperties.Name="Gateway setup method"
                       AutomationProperties.HelpText="Choose one gateway setup method."
@@ -57,20 +52,14 @@
                               AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
                               AutomationProperties.Name="Install a local Gateway (WSL), recommended"
                               AutomationProperties.LiveSetting="Polite"
-                              HorizontalContentAlignment="Stretch"
-                              VerticalContentAlignment="Center"
-                              Padding="16,12">
+                              HorizontalContentAlignment="Stretch" Style="{StaticResource SetupChoiceItemStyle}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                        <Border x:Name="WslIconBackground" Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center">
-                            <FontIcon x:Name="WslIcon" Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                      Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="3">
+                        <controls:SetupGlyphTile x:Name="WslIconBackground" Glyph="&#xE756;" />
+                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,12,16,12" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock x:Name="InstallTitle" x:Uid="Onboarding_Copy_GatewayLocalTitle"
                                            Text="Install a local Gateway (WSL)" TextWrapping="Wrap"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           Style="{StaticResource SetupRowTitleTextStyle}"
                                            VerticalAlignment="Center" />
                                 <ProgressRing x:Name="InstallCheckProgress"
                                               AutomationProperties.AutomationId="WelcomeInstallCheckProgress"
@@ -79,79 +68,74 @@
                                               IsActive="False" Visibility="Collapsed" />
                                 <controls:RecommendedBadge x:Name="WslRecommendedBadge" />
                             </StackPanel>
-                            <TextBlock x:Uid="Onboarding_Copy_GatewayLocalDescription" TextWrapping="Wrap"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <TextBlock x:Uid="Onboarding_Copy_GatewayLocalDescription"
+                                       Style="{StaticResource SetupRowDescriptionTextStyle}"
                                        Text="Install a private OpenClaw Gateway in WSL." />
                         </StackPanel>
+                        <Rectangle x:Name="InstallSeparator" Grid.Column="1"
+                                   VerticalAlignment="Bottom" Style="{StaticResource SetupHairlineStyle}" />
                     </Grid>
                 </ListViewItem>
 
                 <ListViewItem x:Name="ConnectChoice" x:Uid="Onboarding_Copy_GatewayExistingChoice"
                               AutomationProperties.AutomationId="WelcomeConnectExistingGatewayChoice"
                               AutomationProperties.Name="Connect to an existing Gateway"
-                              HorizontalContentAlignment="Stretch"
-                              VerticalContentAlignment="Center"
-                              Padding="16,12">
+                              HorizontalContentAlignment="Stretch" Style="{StaticResource SetupChoiceItemStyle}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE71B;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="3">
-                            <TextBlock x:Uid="Onboarding_Copy_GatewayExistingTitle" Text="Connect to an existing Gateway" TextWrapping="Wrap"
-                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock x:Uid="Onboarding_Copy_GatewayExistingDescription" TextWrapping="Wrap"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        <controls:SetupGlyphTile Glyph="&#xE71B;" />
+                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,12,16,12" VerticalAlignment="Center">
+                            <TextBlock x:Uid="Onboarding_Copy_GatewayExistingTitle" Text="Connect to an existing Gateway"
+                                       Style="{StaticResource SetupRowTitleTextStyle}" />
+                            <TextBlock x:Uid="Onboarding_Copy_GatewayExistingDescription"
+                                       Style="{StaticResource SetupRowDescriptionTextStyle}"
                                        Text="Connect without installing a Gateway or Local AI on this PC." />
                         </StackPanel>
+                        <Rectangle x:Name="ConnectSeparator" Grid.Column="1"
+                                   VerticalAlignment="Bottom" Style="{StaticResource SetupHairlineStyle}" />
                     </Grid>
                 </ListViewItem>
                 <ListViewItem x:Name="NativeChoice"
                               AutomationProperties.AutomationId="WelcomeNativeGatewayChoice"
                               AutomationProperties.Name="Install a local native gateway, recommended"
-                              HorizontalContentAlignment="Stretch" IsEnabled="False" Padding="16,12">
+                              IsEnabled="False" HorizontalContentAlignment="Stretch" Style="{StaticResource SetupChoiceItemStyle}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                        <Border x:Name="NativeIconBackground" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
-                            <FontIcon x:Name="NativeIcon" Glyph="&#xE770;" FontSize="20" IsTextScaleFactorEnabled="False" />
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="3">
+                        <controls:SetupGlyphTile x:Name="NativeIconBackground" Glyph="&#xE770;" />
+                        <StackPanel Grid.Column="1" Spacing="2" Margin="0,12,16,12" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                           Style="{StaticResource SetupRowTitleTextStyle}" />
                                 <controls:RecommendedBadge x:Name="NativeRecommendedBadge" />
                             </StackPanel>
                             <TextBlock x:Uid="Onboarding_Native_Description"
                                        Text="Install and set up an OpenClaw gateway on this device"
-                                       TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                                       Style="{StaticResource SetupRowDescriptionTextStyle}" />
                         </StackPanel>
+                        <Rectangle x:Name="NativeSeparator" Grid.Column="1"
+                                   VerticalAlignment="Bottom" Style="{StaticResource SetupHairlineStyle}" />
                     </Grid>
                 </ListViewItem>
             </ListView>
-            <Border x:Name="NativeSupportCard" Padding="14,12" CornerRadius="4"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    AutomationProperties.AutomationId="WelcomeNativeSupportCard">
-                <StackPanel Spacing="8">
+            <Grid x:Name="NativeSupportCard" ColumnDefinitions="Auto,*" ColumnSpacing="8"
+                  AutomationProperties.AutomationId="WelcomeNativeSupportCard">
+                <FontIcon Glyph="&#xE946;" FontSize="14" Margin="0,1,0,0" VerticalAlignment="Top"
+                          IsTextScaleFactorEnabled="False" Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                <StackPanel Grid.Column="1" Spacing="8">
                     <StackPanel x:Name="NativeSupportStatusPanel" Orientation="Horizontal" Spacing="8">
-                        <ProgressRing x:Name="NativeCheckProgress" Width="16" Height="16"
+                        <ProgressRing x:Name="NativeCheckProgress" Width="14" Height="14"
                                       IsActive="True" AutomationProperties.Name="Checking native gateway support" />
-                        <TextBlock x:Name="NativeSupportStatus" TextWrapping="Wrap" MaxWidth="460"
+                        <TextBlock x:Name="NativeSupportStatus" TextWrapping="Wrap" MaxWidth="500"
                                    AutomationProperties.AutomationId="WelcomeNativeSupportStatus"
                                    AutomationProperties.LiveSetting="Polite"
-                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                                   Style="{StaticResource SetupFootnoteTextStyle}" />
                     </StackPanel>
                     <Button x:Name="WindowsUpdateButton" x:Uid="Onboarding_Native_WindowsUpdate"
                             Content="Open Windows Update" Visibility="Collapsed"
                             AutomationProperties.AutomationId="WelcomeWindowsUpdate"
-                            Style="{StaticResource AccentButtonStyle}" Click="WindowsUpdate_Click" />
+                            Click="WindowsUpdate_Click" />
                 </StackPanel>
-            </Border>
-            <tk:SettingsCard x:Name="LocalAiAvailabilityPanel" Visibility="Collapsed"
-                             Background="Transparent" BorderThickness="0" Padding="16,8"
+            </Grid>
+            <tk:SettingsCard x:Name="LocalAiAvailabilityPanel" Visibility="Collapsed" Background="Transparent" BorderThickness="0"
                              AutomationProperties.AutomationId="WelcomeLocalAiAvailable"
                              AutomationProperties.LiveSetting="Polite">
                 <tk:SettingsCard.HeaderIcon>
@@ -161,12 +145,11 @@
                 <tk:SettingsCard.Header>
                     <TextBlock x:Uid="Onboarding_Welcome_LocalAiAvailableBadge"
                                Text="Your PC supports Local AI" TextWrapping="Wrap"
-                               Style="{StaticResource BodyTextBlockStyle}" />
+                               Style="{StaticResource SetupRowTitleTextStyle}" />
                 </tk:SettingsCard.Header>
                 <tk:SettingsCard.Description>
-                    <TextBlock x:Name="LocalAiAvailabilityText" TextWrapping="Wrap"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="LocalAiAvailabilityText"
+                               Style="{StaticResource SetupRowDescriptionTextStyle}" />
                 </tk:SettingsCard.Description>
             </tk:SettingsCard>
             <InfoBar x:Name="ReadinessError" IsOpen="False" IsClosable="False" Severity="Error">
@@ -175,22 +158,17 @@
                 </InfoBar.ActionButton>
             </InfoBar>
             <HyperlinkButton x:Uid="Onboarding_V2_AlternativeRoutes" Content="Remote, local MCP or set up later"
-                             Click="Alternatives_Click" />
+                             Style="{StaticResource SetupLinkButtonStyle}" Click="Alternatives_Click" />
           </StackPanel>
         </ScrollViewer>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <StackPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
             <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" AutomationProperties.AutomationId="WelcomeBackButton"
-                    Grid.Column="0" Content="Back"
-                    MinWidth="100" HorizontalAlignment="Left"
+                    Content="Back" Style="{StaticResource SetupSecondaryButtonStyle}"
                     Click="Back_Click" />
             <Button x:Name="NextButton" x:Uid="Onboarding_V2_Next" AutomationProperties.AutomationId="WelcomeNextButton"
-                    Grid.Column="1" Content="Next"
-                    MinWidth="100" HorizontalAlignment="Right"
-                    Style="{StaticResource AccentButtonStyle}"
+                    Content="Next" Style="{StaticResource SetupPrimaryButtonStyle}"
                     Click="Next_Click" />
-        </Grid>
+        </StackPanel>
     </Grid>
 </Page>

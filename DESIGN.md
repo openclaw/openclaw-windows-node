@@ -13,12 +13,22 @@ colors:
   accentText: "#003e92"
   setupCardFill: "#ffffffb3"
   setupCardStroke: "#0000000f"
+  setupHairline: "#0000000f"
+  setupTile: "#00000009"
+  setupTileSelected: "#0067c01f"
+  setupGlow: "#ef4b5838"
+  setupBackdropTint: "#e0607a1a"
+  setupMascotShadow: "#00000033"
+  setupBubble: "#ffffff"
+  setupBubbleInk: "#1b1f26"
+  setupStepFuture: "#0000005c"
+  setupStepConnector: "#00000037"
+  setupStepDoneGlyph: "#ffffff"
   flyoutFill: "#f9f9f9"
   flyoutStroke: "#0000000f"
   nativeSecondary: "#0000009e"
   nativeTertiary: "#00000072"
   notificationBadgeFill: "#fff4ce"
-  setupOptionDisabled: "#f9f9f94d"
   providerArtworkFill: "#202020"
   providerArtworkStroke: "#00000019"
   providerArtworkText: "#ffffff"
@@ -256,6 +266,26 @@ typography:
     fontSize: 13px
     fontWeight: 400
     lineHeight: 13px
+  setupBubbleText:
+    fontFamily: '"Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontSize: 18px
+    fontWeight: 600
+    lineHeight: 24px
+  setupRowTitle:
+    fontFamily: '"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontSize: 15px
+    fontWeight: 600
+    lineHeight: 22px
+  smallStrong:
+    fontFamily: '"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontSize: 13px
+    fontWeight: 600
+    lineHeight: 18px
+  captionStrong:
+    fontFamily: '"Segoe UI Variable Small", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontSize: 12px
+    fontWeight: 600
+    lineHeight: 16px
   notificationDismissIcon:
     fontFamily: '"Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif'
     fontSize: 11px
@@ -290,6 +320,10 @@ spacing:
   notificationTextGap: 3px
   notificationBadgeX: 7px
   notificationBadgeY: 1px
+  setupRowY: 10px
+  setupHeroGap: 10px
+  setupBubbleX: 18px
+  setupTitleBarStart: 14px
 rounded:
   sm: 4px
   md: 8px
@@ -299,6 +333,7 @@ rounded:
   pill: 999px
   workspaceContent: 8px 0 0 0
   notificationBadge: 10px
+  setupBubble: 16px
 x-colophon:
   version: 1
   tokens:
@@ -307,9 +342,10 @@ x-colophon:
       - id: setup
         name: Setup
         description: Onboarding controls and wizard compositions.
-        content: Production reference from OpenClaw.SetupEngine.UI. Basic controls remain in Components; these previews compose those shared definitions.
+        content: Production reference from OpenClaw.SetupEngine.UI. The two-pane setup window pairs the SetupCompanion pane (speech bubble, mascot placeholder and four-step SetupStepTimeline) with a right content column of left-aligned hero text, hairline-separated rows without a card backplate, and a right-aligned footer. Basic controls remain in Components; these previews compose those shared definitions.
         components:
-          - SetupProgressIndicator
+          - SetupCompanion
+          - SetupStepTimeline
           - ProviderArtwork
           - SetupOptionCard
           - CapabilityOptionRow
@@ -330,7 +366,7 @@ x-colophon:
       - id: settings
         name: Settings
         description: Settings patterns, workspace chrome, identity controls, and flyouts.
-        content: References from OpenClaw.Tray.WinUI settings pages, HubWindow, and the Home and Sessions workspace. Iconless settings rows share the setup backplate and 16px left text inset. Ordinary rows and expanded children stay passive around their trailing actions; the entire expander header has hover/pressed feedback and immediate browser-native expand/collapse. Native WinUI animation remains a port requirement. The Settings shell sample has no left pane. Shared building blocks remain in Components.
+        content: References from OpenClaw.Tray.WinUI settings pages, HubWindow, and the Home and Sessions workspace. Iconless settings rows share the card backplate and 16px left text inset. Ordinary rows and expanded children stay passive around their trailing actions; the entire expander header has hover/pressed feedback and immediate browser-native expand/collapse. Native WinUI animation remains a port requirement. The Settings shell sample has no left pane. Shared building blocks remain in Components.
         components:
           - SettingsSectionHeader
           - SettingsCard
@@ -500,15 +536,55 @@ x-colophon:
       setupCardFill:
         resource: CardBackgroundFillColorDefaultBrush
         themes: { dark: "#ffffff0d", highContrast: "#000000" }
-        usage: Shared alpha-preserving backplate for setup choice groups and settings cards. Paint once behind transparent rows, not on every nested row.
+        usage: Shared alpha-preserving backplate for settings cards. Paint once behind transparent rows, not on every nested row. Setup rows no longer use it.
       setupCardStroke:
         resource: CardStrokeColorDefaultBrush
         themes: { dark: "#00000019", highContrast: "#ffffff" }
-        usage: Native 1px setup/settings frame border and dividers. Unlike the generic line swatch, preserves native alpha.
-      setupOptionDisabled:
-        resource: SettingsCardBackgroundDisabled
-        themes: { dark: "#ffffff0b", highContrast: "#000000" }
-        usage: Disabled provider row uses ControlFillColorDisabledBrush; high contrast uses SystemControlBackgroundBaseLowBrush.
+        usage: Native 1px settings frame border and dividers. Unlike the generic line swatch, preserves native alpha.
+      setupHairline:
+        resource: DividerStrokeColorDefault
+        themes: { dark: "#ffffff15", highContrast: "#808080" }
+        usage: SetupHairlineBrush. 1px dividers between setup rows, phase rows and groups, and the setup-scoped SettingsCardBorderBrush. High contrast uses SystemColorGrayTextColor.
+      setupTile:
+        resource: SubtleFillColorSecondary
+        themes: { dark: "#ffffff0f", highContrast: "#000000" }
+        usage: SetupTileBrush. Resting 40px glyph and provider tiles in setup rows. High contrast uses SystemColorButtonFaceColor.
+      setupTileSelected:
+        resource: SetupTileSelectedBrush
+        themes: { dark: "#4cc2ff29", highContrast: "#ffff00" }
+        usage: Glyph tile of the selected choice row. SystemAccentColorDark1 at 12% in light and SystemAccentColorLight2 at 16% in dark; high contrast uses solid SystemColorHighlightColor.
+      setupGlow:
+        resource: SetupGlowBrush
+        themes: { dark: "#a83b3861", highContrast: transparent }
+        usage: Core of the 680px radial brand glow behind the setup mascot. Light core is EF4B58 at about 22% alpha and dark core is A83B38 at about 38%, both fading to transparent. Brand decoration only; removed in high contrast.
+      setupBackdropTint:
+        resource: SetupBackdropTintBrush
+        themes: { dark: "#4a14181f", highContrast: transparent }
+        usage: Start color of the left-to-right setup window tint over Mica. Light starts E0607A at 10% and dark 4A1418 at 12%, fading to transparent toward the right. Removed in high contrast.
+      setupMascotShadow:
+        resource: SetupMascotShadowBrush
+        themes: { dark: "#00000066", highContrast: transparent }
+        usage: Core of the 158x44 radial shadow under the setup mascot, fading to transparent. Removed in high contrast.
+      setupBubble:
+        resource: SetupBubbleBackgroundBrush
+        themes: { dark: "#ffffff", highContrast: "#000000" }
+        usage: Companion speech-bubble fill, white in light and dark. High contrast uses SystemColorWindowColor.
+      setupBubbleInk:
+        resource: SetupBubbleForegroundBrush
+        themes: { dark: "#1b1f26", highContrast: "#ffffff" }
+        usage: Companion speech-bubble text on the white bubble in light and dark. High contrast uses SystemColorWindowTextColor.
+      setupStepFuture:
+        resource: SetupStepFutureBrush
+        themes: { dark: "#ffffff5d", highContrast: "#808080" }
+        usage: TextFillColorDisabled ring of an upcoming step in the setup timeline. High contrast uses SystemColorGrayTextColor.
+      setupStepConnector:
+        resource: SetupStepConnectorBrush
+        themes: { dark: "#ffffff28", highContrast: "#808080" }
+        usage: ControlStrongStrokeColorDisabled 1px connectors between setup timeline steps. High contrast uses SystemColorGrayTextColor.
+      setupStepDoneGlyph:
+        resource: SetupStepDoneGlyphBrush
+        themes: { dark: "#20242b", highContrast: "#000000" }
+        usage: Check glyph inside a done step's success circle. High contrast uses SystemColorHighlightTextColor.
       providerArtworkFill:
         resource: SolidBackgroundFillColorBaseBrush
         themes: { dark: "#202020", highContrast: "#000000" }
@@ -995,7 +1071,19 @@ x-colophon:
           resource: CaptionTextBlockStyle
         small:
           role: body
-          usage: App-specific dense text at 13/18. Not a named WinUI TextBlock style.
+          usage: App-specific dense text at 13/18. Not a named WinUI TextBlock style; setup row descriptions use it through SetupRowDescriptionTextStyle.
+        smallStrong:
+          role: body
+          usage: SemiBold 13/18. SetupRowStatusTextStyle and the current setup timeline step label.
+        captionStrong:
+          role: body
+          usage: SemiBold caption. SetupInlineRecommendedTextStyle for the inline Recommended label in setup.
+        setupRowTitle:
+          role: body
+          usage: SetupRowTitleTextStyle, BodyStrongTextBlockStyle at 15/22, for setup choice and phase row titles.
+        setupBubbleText:
+          role: display
+          usage: Setup companion speech bubble, Segoe UI Variable Display 18/24 SemiBold. Not a named WinUI TextBlock style.
         personInitials:
           role: body
           usage: PersonPicture template text, not a TextBlock style. Default 96px diameter times 0.42, SemiBold; ContentControlThemeFontFamily.
@@ -1039,7 +1127,8 @@ Personality: native, trustworthy, calm, precise.
 - **accent** {colors.accent}: Primary actions, links, selection, focus. Follows SystemAccentColor (default AccentDark1 on light).
 - **accentInk** {colors.accentInk}: Text/glyphs on accent fills.
 - **accentText** {colors.accentText}: `AccentTextFillColorPrimaryBrush` for outlined accent badge text and border. It uses Dark2 in light and Light3 in dark, not the primary button fill palette.
-- **Setup and settings cards:** {colors.setupCardFill} and {colors.setupCardStroke} preserve `CardBackgroundFillColorDefaultBrush` and `CardStrokeColorDefaultBrush`, including their alpha. The frame owns the single backplate and 1px border. Setup choice rows and actionable expander headers have separate hover/pressed layers; ordinary settings rows and expanded children stay static around their action controls. Existing token names are retained because both surfaces bind the same native resources.
+- **Settings cards:** {colors.setupCardFill} and {colors.setupCardStroke} preserve `CardBackgroundFillColorDefaultBrush` and `CardStrokeColorDefaultBrush`, including their alpha. The frame owns the single backplate and 1px border. Actionable expander headers have separate hover/pressed layers; ordinary settings rows and expanded children stay static around their action controls. The setup wizard no longer paints this backplate: its rows are transparent and separated by `setupHairline`. The `setup*` token names are retained because Settings still binds these native resources.
+- **Setup window:** {colors.setupHairline} (`DividerStrokeColorDefault`) separates setup rows and groups. {colors.setupTile} (`SubtleFillColorSecondary`) fills resting 40px glyph and provider tiles, and {colors.setupTileSelected} marks the selected choice's tile. The companion pane uses {colors.setupBubble} and {colors.setupBubbleInk} for the speech bubble, and the brand decoration {colors.setupGlow}, {colors.setupMascotShadow} and {colors.setupBackdropTint}, which is transparent in high contrast. The step timeline uses {colors.setupStepFuture} rings, {colors.setupStepConnector} connectors and {colors.setupStepDoneGlyph} checks on `positive` circles.
 - **Automations agenda:** measure the agenda's own width. Its columns stack below 820 DIPs; below 1000 DIPs the collapsed upcoming budget is four rows (at most three per group) and the earlier-runs budget is three. Wider agendas use six upcoming rows (at most four per group) and five earlier runs. A lone row stays visible regardless of budget. Expansion state survives resizing, and each automation uses an independent native Expander with Windows-owned animation and reduced-motion behavior. Only an explicit reveal scrolls and focuses a row.
 - **positive** {colors.positive}: Success / connected states. Fluent SystemFillColorSuccess.
 - **warning** {colors.warning}: Warnings / attention. Fluent SystemFillColorCaution.
@@ -1291,14 +1380,14 @@ The named `flyout` shadow uses an 8px downward offset, 16px CSS blur and 14% bla
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
 Optional click-through flows would live in `.agents/design/prototypes.jsonc`; none are defined yet.
 
-The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 39 definitions has exactly one standalone page assignment: Components 15, Setup 6, Chat 7, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
+The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 40 definitions has exactly one standalone page assignment: Components 15, Setup 7, Chat 7, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
 
 Every interactive control documents its hover and pressed states; static controls say so. States bind Fluent resources (`SubtleFillColorSecondary` for hover, `SubtleFillColorTertiary` for pressed, accent variants for primary actions), never raw hex.
 
 ComposerPickerOptions rows use full-row `subtleHover` and `subtlePressed` fills with `sm` corners, both in the catalog and in opened composer flyouts. Pointer exit restores transparency; hover never changes the checked row, accent checkmark or layout. These tokens stay transparent in high contrast, so the preview does not reproduce native MenuFlyout system-highlight overrides.
 
 - **Basic controls and their examples (15).** Button (accent), ButtonStandard (normal), SubtleButton (native default style), HyperlinkButton, TextBox, Field, Badge, BadgeAccent, ToggleSwitch, StatusDot, Avatar, AvatarStates, InfoBar, InfoBarStates, and Card. ButtonStandard references Button and overrides its state brushes, just as BadgeAccent references Badge; neither duplicates shared markup. TextBox is the reusable default WinUI single-line input. Field composes a label and TextBox; its Gateway address example passes the label and placeholder into that shared control. AvatarStates and InfoBarStates demonstrate their parent control's presentations, not separate app features.
-- **Setup (6).** SetupProgressIndicator, ProviderArtwork, SetupOptionCard, CapabilityOptionRow, SetupPhaseStatus, and the SetupWizardShell frame, ported from `OpenClaw.SetupEngine.UI`. Recommended labels reuse BadgeAccent from Components.
+- **Setup (7).** SetupCompanion, SetupStepTimeline, ProviderArtwork, SetupOptionCard, CapabilityOptionRow, SetupPhaseStatus, and the SetupWizardShell frame, ported from `OpenClaw.SetupEngine.UI`. Setup shows Recommended as inline accent text, not BadgeAccent. See the Setup window section.
 - **Chat (7).** ChatBubble (assistant prose), ChatUserBubble (sent user message), ChatComposer, ChatThread, ComposerPicker, ComposerPickerOptions, and ChatCopyButton. See the Chat surface section.
 - **Settings and workspace (11).** SettingsSectionHeader, SettingsCard, SettingsToggleRow, SettingsExpanderRow, and SettingsWindowShell, plus the native workspace identity controls (AgentIdentityBadge, UserIdentityBadge), ConnectionStatusFlyout, NotificationFlyout, NotificationFlyoutEmpty, and WorkspaceShell. These come from `OpenClaw.Tray.WinUI` pages, `HubWindow`, and `WorkspaceWindow`. See the Workspace shell section.
 
@@ -1319,29 +1408,41 @@ resources and wider three-column layouts remain unchanged.
 
 ### Native normal and accent buttons
 
-Button is the accent example; ButtonStandard is its reusable normal variation. Both appear on Components. SetupWizardShell uses ButtonStandard for Back and Button for Continue; SettingsCard also uses ButtonStandard for Change. The old `variant` prop was ineffective because a CSS class could not override explicit accent appearance and states. Named component references now select the actual brushes, without duplicating button markup.
+Button is the accent example; ButtonStandard is its reusable normal variation. Both appear on Components. SetupWizardShell uses ButtonStandard for Back and Button for Next; SettingsCard also uses ButtonStandard for Change. The old `variant` prop was ineffective because a CSS class could not override explicit accent appearance and states. Named component references now select the actual brushes, without duplicating button markup.
 
 The [native Button styles](https://github.com/microsoft/microsoft-ui-xaml/blob/09cfc8ff3fbf556166dd813ae9b81646716f54bf/controls/dev/CommonStyles/Button_themeresources.xaml) own exact 11,5,11,6 padding, a 1px border, 4px corners, normal-weight 14px content and an 83ms linear background transition. Foreground and border changes are discrete, not part of a generic all-color transition. The normal variation binds `Button*` resource aliases for every state; accent reuses the existing `accent`, `accentInk` and `chatAction*` aliases where their native resource values match. Its pressed foreground and borders have dedicated `buttonAccent*` tokens.
 
 High-contrast aliases are resolved through the Windows SDK's system resource dictionary, not inferred from their names: `SystemControlForegroundTransparentBrush` becomes button text, `SystemControlHighlightBaseHighBrush` and `SystemControlHighlightTransparentBrush` become highlight, and `SystemControlDisabledTransparentBrush` becomes gray text. The preview uses its representative black/white/yellow system palette; it is not a Windows high-contrast screenshot.
 
-`Pages/CapabilitiesPage.xaml` at production commit `0131e4ce1f7937b22c69b289564087061687fa14` uses an unstyled normal Back button and an `AccentButtonStyle` Next button, each with `MinWidth=100`. The catalog preserves its existing Continue sample label and shows both footer instances at 100px. That fixed preview width represents these short labels only: shipping code must retain the native minimum and grow for localization. The shared button itself is content-sized, with no universal 100px minimum.
+Setup pages use `Themes/SetupResources.xaml` styles in a right-aligned footer (`SetupNavPanelStyle`, 8px spacing): Back uses `SetupSecondaryButtonStyle` (based on `DefaultButtonStyle`, `MinWidth=110`, `MinHeight=40`) and the primary action uses `SetupPrimaryButtonStyle` (based on `AccentButtonStyle`, `MinWidth=180`, `MinHeight=40`). SetupWizardShell shows Back at 110x40 and Next at 180x40. Those fixed preview sizes represent short labels only: shipping code must retain the native minimums and grow for localization. The shared button itself is content-sized, with no universal minimum.
 
 These are direct native style/resource mappings, **not a verified pixel-identical browser port**. Colophon cannot express `ControlElevationBorderBrush` / `AccentControlElevationBorderBrush` gradients or the normal button's `BackgroundSizing=InnerBorderEdge`; their preview borders use flat default stroke swatches. Body uses a 20px browser line box, and native font measurement/rasterization and the system focus visual (`FocusVisualMargin=-3`) remain WinUI-owned. Ship the stock Button styles and templates, not the browser approximation.
 
-### Setup badge and choice cards
+### Setup window
 
-These references follow production commit `0131e4ce1f7937b22c69b289564087061687fa14`: `Controls/RecommendedBadge.xaml`, `Controls/ProviderArtwork.xaml`, `Pages/AiSetupPage.xaml`, and `Pages/CapabilitiesPage.xaml`. The shipped SettingsControls package is `8.3.260402-preview2`, whose [SettingsCard template](https://github.com/CommunityToolkit/Windows/blob/39c45efed2601b22170b9f6258c9cbe7e51031d1/components/SettingsControls/src/SettingsCard/SettingsCard.xaml) owns inherited padding, action-icon metrics, and interaction resources.
+The setup wizard (`OpenClaw.SetupEngine.UI`) restyle changes presentation only: the same pages and features render in a two-pane window. `SetupWindow.xaml` opens at 1120x720 DIPs, clamped to the monitor work area, with a 960x640 minimum (`SetupWindowSizing`). A 32px custom title bar shows a 24px mascot icon and the "OpenClaw setup" caption. Mica is the backdrop, with the `setupBackdropTint` gradient fading from the left edge.
 
-- **Accent badge:** BadgeAccent composes Badge with Caption typography, a transparent fill, 1px `accentText` border, `sm` corners, and exact 8,4 padding. Both text and border use `AccentTextFillColorPrimaryBrush`; disabled uses `TextFillColorDisabledBrush`. It is read-only and has no hover/pressed action. Recommended is example text, not a separate control or Setup-page preview. Existing status-pill Badge instances keep their existing geometry and tones.
-- **Provider option:** the 8px-rounded group owns a 1px `setupCardStroke` border and `setupCardFill` backplate. The inner row is transparent at rest, with a bottom-only 1px divider and native MinHeight 64. Its preview uses `sm` corners to match CapabilityOptionRow, rather than the native `CompactChoice` square corners. Toolkit padding is 16 on all sides, not 16,12. Its 32px Viewbox contains the 42px ProviderArtwork tile (24px content + 8px padding + 1px border on each side); the title/detail stack sits 12px after the tile. Body Strong and Caption are separated by 4px. Trailing body action text precedes a 13px chevron with 14px leading margin. The artwork explicitly requests Dark, even on light pages; the representative glyph is not provider branding.
-- **Capability option:** the same group backplate surrounds a transparent ListViewItem with 16,12 padding. Body Strong title and BadgeAccent share the first line with an 8px gap; Caption detail follows 4px below. A full-width right-aligned badge is not the production layout. Nested rows in SetupWizardShell clear their standalone group paint so the parent paints the backplate once. The grouped wizard example adds one straight, full-width 1px `setupCardStroke` separator between options, with no gap or rounded divider ends.
+- **Companion pane.** `Controls/SetupCompanion.xaml` fills the left column: 472px at the 1120px reference width, proportional below it with a 380px floor, and growing by half the extra width on wider windows. It shows a white speech bubble (`setupBubble`, `setupBubbleInk`, 16px corners, Segoe UI Variable Display 18/24 SemiBold), the 230x230 OnboardingMascot over a 680px radial `setupGlow` and a 158x44 `setupMascotShadow`, optional Restart (caution) and Success badges, and the step timeline. The mascot appears only here; pages no longer embed their own mascot heroes.
+- **Content column.** Capped at 648px: a 600px content width plus a 48px right gutter shared by the hero, body and footer. Pages use 40px top and bottom padding, a left-aligned hero (`SetupHeroTitleTextStyle` 40/52 and `SetupHeroSubtitleTextStyle` 18/24, 10px apart), a scrolling body with 24/16 margins, and a right-aligned Back and primary button pair.
+- **Step timeline.** `Controls/SetupStepTimeline.xaml` always shows four steps: Choose your PC tools, Set up, Connect your AI, and Start chatting. Current is a 12px accent dot with a soft accent glow, a SemiBold label and its detail line. Upcoming is a 10px `setupStepFuture` ring. Done is a 10px `positive` circle with a `setupStepDoneGlyph` check. Skipped looks like Done but is announced as skipped. 1px `setupStepConnector` lines join the nodes with 3px gaps. Hovering a row reveals its detail and echoes it in the bubble. The timeline has no actions or keyboard stops; it is named "Step N of 4" and each row "{label}, {state}".
+- **Motion.** Bubble text cross-fades 75ms out and 75ms in. A step detail expands over 160ms. Advancing pours accent down the connector over 300ms (quadratic ease in-out), pops the new current node over 320ms, fades the pour over 150ms, and the mascot hops 6px over 360ms. All of this motion is skipped when the Windows animation setting is off.
+- **High contrast.** The glow, mascot shadow, backdrop tint and step glow become transparent. The bubble, hairlines, tiles, timeline and selection use system colors (window, window text, gray text, button face and highlight).
 
-The catalog deliberately gives SetupOptionCard the same hover/pressed treatment as CapabilityOptionRow: `subtleHover` / `subtlePressed`, `sm` corners, and the shared renderer transition. The outer border and bottom divider stay `setupCardStroke`, with no extra hover underline. Pointer exit restores transparency without changing layout or tinting text/artwork. This user-directed preview choice differs from the stock SettingsCard state brushes, gradient border and 83ms transition; it does not change shipping code. Native minimum sizes, the action label's 112px maximum width, SettingsCard adaptive reflow, ListView selection/focus visuals, and provider image loading remain native behavior. Both preview controls use transparent interaction fills in high contrast, rather than simulating native system-highlight states.
+### Setup badge and choice rows
+
+Setup rows follow the current `Themes/SetupResources.xaml`, `Controls/RecommendedBadge.xaml`, `Controls/SetupGlyphTile.xaml`, `Pages/AiSetupPage.xaml`, `Pages/CapabilitiesPage.xaml` and `Pages/WelcomePage.xaml`. The shipped SettingsControls package is `8.3.260402-preview2`, whose [SettingsCard template](https://github.com/CommunityToolkit/Windows/blob/39c45efed2601b22170b9f6258c9cbe7e51031d1/components/SettingsControls/src/SettingsCard/SettingsCard.xaml) owns action-icon metrics and the interaction template. `SetupResources` overrides its resources only inside setup: a transparent background with `SubtleFillColorSecondary` / `SubtleFillColorTertiary` pointer-over and pressed fills, a bottom-only 1px `DividerStrokeColorDefault` border, 0,10,0,10 padding and MinHeight 56. Setup rows have no card backplate; a group adds one top `setupHairline` and each row draws its own bottom hairline.
+
+- **Accent badge:** BadgeAccent composes Badge with Caption typography, a transparent fill, 1px `accentText` border, `sm` corners, and exact 8,4 padding. Both text and border use `AccentTextFillColorPrimaryBrush`; disabled uses `TextFillColorDisabledBrush`. It is read-only and has no hover/pressed action. It remains a Components control and existing status-pill Badge instances keep their geometry and tones. Setup no longer uses it: `RecommendedBadge` renders inline SemiBold caption text (`SetupInlineRecommendedTextStyle`, `captionStrong`) in the setup accent, 8px after the row title, and switches to `TextFillColorDisabledBrush` when disabled.
+- **Provider option:** SetupOptionCard is the `CompactChoice` SettingsCard row in `Pages/AiSetupPage.xaml`: transparent, square corners, bottom-only `setupHairline` and MinHeight 64. A 40px `setupTile` tile with 8px corners holds a 24x24 Viewbox containing the 42px ProviderArtwork, 16px before the title (`SetupRowTitleTextStyle`, 15/22 SemiBold) and detail (`SetupRowDescriptionTextStyle`, 13/18 secondary), which are 2px apart. Trailing body action text (112px maximum width) precedes the 13px chevron with a 14px leading margin. The artwork explicitly requests Dark, even on light pages; the representative glyph is not provider branding.
+- **Capability and gateway choices:** CapabilityOptionRow is a ListViewItem with `SetupChoiceItemStyle` (padding 16,0,0,0, MinHeight 64). A 40px SetupGlyphTile precedes the title, inline Recommended text and 13/18 detail, with 12px top/bottom and 16px trailing text margins. A 1px `setupHairline` runs along the bottom of the text column, starting after the tile; the last choice has none. Selection shows the native ListView accent pill and turns the tile `setupTileSelected` with an accent glyph; `ListViewItemBackgroundSelected` is transparent, so the row itself is not filled. The Welcome gateway choice uses the same pattern. Capabilities keeps the Choose tools individually SettingsExpander, with the eight capability toggle rows inside.
+
+SetupOptionCard and CapabilityOptionRow both preview `subtleHover` / `subtlePressed` fills. In setup these now match the native pointer-over and pressed brushes (`SubtleFillColorSecondary` / `SubtleFillColorTertiary`), including selected rows. The hairline never changes on hover, and pointer exit restores transparency without changing layout or tinting text, tiles or artwork. The provider row previews square corners like native; choice rows preview `sm` corners. Native minimum sizes, Toolkit transitions and adaptive reflow, ListView selection animation and focus visuals, and provider image loading remain native behavior. Both preview controls use transparent interaction fills in high contrast, rather than simulating native system-highlight states.
+
+SetupPhaseStatus is the full installation phase row on ProgressPage: a leading 18x22 state slot, a 15/22 title with an optional live activity line, and right-aligned 13/18 SemiBold status text, over a bottom `setupHairline` with MinHeight 56. Pending shows a 9px tertiary ring; Running shows an 18x18 accent ProgressRing and makes the title primary SemiBold; Complete, Failed and Cancelled show StatusOk (`positive`), StatusErr (`critical`) and Exit (secondary) glyphs. Status text is tertiary at rest, accent while running, `positive` when complete and `critical` when failed.
 
 ### Settings cards and disclosure feedback
 
-SettingsCard, SettingsToggleRow and SettingsExpanderRow reuse the setup cards' `setupCardFill` backplate, 1px `setupCardStroke` border and `md` outer corners. These map to the actual `CardBackgroundFillColorDefaultBrush` / `CardStrokeColorDefaultBrush` pair used by the hand-rolled Borders in `Pages/SettingsPage.xaml`, rather than painting the page background on the card. No new palette or duplicate control definitions are needed.
+SettingsCard, SettingsToggleRow and SettingsExpanderRow share the `setupCardFill` backplate, 1px `setupCardStroke` border and `md` outer corners (token names kept from the earlier setup cards). These map to the actual `CardBackgroundFillColorDefaultBrush` / `CardStrokeColorDefaultBrush` pair used by the hand-rolled Borders in `Pages/SettingsPage.xaml`, rather than painting the page background on the card. No new palette or duplicate control definitions are needed.
 
 The supplied Windows Settings screenshot guides alignment and spacing, not a new set of icons. OpenClaw's examples are iconless: SettingsCard, SettingsToggleRow, the expander header and its children all start text 16px inside the frame. There is no leading icon, empty icon column, or 58px child indentation. Body titles and Caption descriptions are left-aligned with zero stack gap and a 24px margin before trailing controls. Standalone cards use 16px padding and a content-derived 68px inner height for the shown two-line labels (70px including the frame). The expander header and expanded child use the same 20px/16px text line heights and 16px top/bottom padding, so both two-line rows are equally tall. SettingsWindowShell uses a 4px gap between cards. Its General section heading uses `bodyStrong` (`BodyStrongTextBlockStyle`, 14/20 SemiBold), as do other shared SettingsSectionHeader instances.
 

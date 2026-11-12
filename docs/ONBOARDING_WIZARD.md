@@ -326,7 +326,7 @@ The native path:
    Native console output and scoped terminal/restart/cancel recovery appear only
    for errors, skipped/unavailable console output or uncertain outcomes in the
    shared page/provider dialog. Healthy provider selection has no extra native controls.
-4. The verified chooser offers **Talk to my agent**.
+4. The verified ready screen offers **Open chat**.
    Choosing a destination rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
    After draining the operator, setup retains isolated stop ownership through
@@ -458,15 +458,16 @@ the [artwork section](#artwork-and-motion) covers motion and asset packaging.
 ### Verified native completion
 
 `AiReadyPage` is mounted only through the setup window's current verified
-completion coordinator. Its celebrating mascot and "Your AI is ready" heading
-follow real primary-model verification, not discovery or browser sign-in.
-Showing the page creates no pending handoff and performs no finalization.
+completion coordinator. Its "All set!" heading, graduation-cap celebration and
+summary rows follow real primary-model verification, not discovery or browser
+sign-in. Showing the page creates no pending handoff and performs no finalization.
 
-The final screen has one action: **Talk to my agent**, which opens Chat for the
-verified agent. There is no recommendation badge or prompt implying multiple
-destinations.
-There are no bottom Return or Skip buttons; the progress dots remain. Selecting
-a card is the final action, with no extra Finish button. This removes the new
+The final screen mirrors `CompletePage`'s success layout: rows with success
+checks for the local Gateway, device pairing, the applied capability profile and
+**AI ready** (the verified primary model), and one footer action, **Open chat**,
+which opens Chat for the verified agent. There is no recommendation badge or
+prompt implying multiple destinations, and no Return, Skip or Finish button.
+Open chat is the final action. This removes the new
 Channels and Skills setup destinations; ordinary Dashboard access from
 Connection settings and the tray remains unchanged. The Chat action does not
 sign in to channels, change channel configuration, or install skills.

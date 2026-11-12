@@ -37,34 +37,39 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Theory]
-    [InlineData("NativeGatewaySetupPage.xaml", "ProgressMascot")]
-    [InlineData("WizardPage.xaml", "MascotHero")]
-    public void NativePackagePages_UseSharedHeroAndSeparateProgressFromWrappingActions(string file, string hero)
+    [InlineData("NativeGatewaySetupPage.xaml")]
+    [InlineData("WizardPage.xaml")]
+    public void NativePackagePages_UseSharedHeroAndKeepWrappingActions(string file)
     {
         var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI", "Pages");
         var document = XDocument.Load(Path.Combine(pages, file));
         XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
         XElement Named(string name) => document.Descendants().Single(
             element => (string?)element.Attribute(names + "Name") == name);
-        Assert.Equal("OnboardingMascot", Named(hero).Name.LocalName);
-        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "Image");
+        // The setup companion owns the mascot and step timeline; pages keep the shared hero.
+        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName is "OnboardingMascot" or "Image");
+        Assert.Contains(document.Descendants(), element =>
+            (string?)element.Attribute("Style") == "{StaticResource SetupHeroTitleTextStyle}");
         var footer = Named("NavigationFooter");
-        Assert.Equal("Auto,Auto", (string?)footer.Attribute("RowDefinitions"));
-        Assert.Same(footer, Named("FlowProgress").Parent);
+        Assert.Equal("Auto", (string?)footer.Attribute("RowDefinitions"));
         foreach (var action in footer.Elements().Where(element =>
                      element.Name.LocalName is "Button" or "DropDownButton"))
         {
-            Assert.Equal("1", (string?)action.Attribute("Grid.Row"));
-            Assert.Equal(file == "NativeGatewaySetupPage.xaml" ? "100" : "0", (string?)action.Attribute("MinWidth"));
+            Assert.Equal("0", (string?)action.Attribute("Grid.Row"));
             if (file == "NativeGatewaySetupPage.xaml")
-                Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "Left" : "Right",
-                    (string?)action.Attribute("HorizontalAlignment"));
+            {
+                Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "110" : "180",
+                    (string?)action.Attribute("MinWidth"));
+                Assert.Equal("Right", (string?)action.Attribute("HorizontalAlignment"));
+            }
+            else
+                Assert.Equal("0", (string?)action.Attribute("MinWidth"));
             Assert.Equal("{StaticResource WrappedFooterAction}", (string?)action.Attribute("ContentTemplate"));
         }
         var source = File.ReadAllText(Path.Combine(pages, "NativeGatewaySetupPage.xaml.cs"));
-        Assert.Contains("new SettingsCard", source);
+        Assert.Contains("status.Header = header", source);
         Assert.DoesNotContain("Width = 280", source);
-        Assert.Contains("Content = status", source);
+        Assert.Contains("StepsPanel.Children.Add(status)", source);
     }
 
     [Fact]
@@ -314,8 +319,8 @@ public sealed class NativeGatewaySetupUxContractTests
         var card = Named("NativeSupportCard");
         var selector = Named("GatewayChoiceSelector");
         Assert.Contains(card, selector.ElementsAfterSelf());
-        Assert.Equal("{ThemeResource CardBackgroundFillColorDefaultBrush}", (string?)card.Attribute("Background"));
-        Assert.Equal("1", (string?)card.Attribute("BorderThickness"));
+        // A quiet note under the choices, not a separate card surface.
+        Assert.Null(card.Attribute("Background"));
         Assert.Contains(card, Named("NativeSupportStatus").Ancestors());
         Assert.Contains(card, Named("WindowsUpdateButton").Ancestors());
         Assert.DoesNotContain(native, card.Ancestors());
@@ -377,13 +382,12 @@ public sealed class NativeGatewaySetupUxContractTests
             (string?)element.Attribute(names + "Name") is "NativeSupportAvailablePanel" or "NativeSupportAvailableText");
         var state = Assert.Single(document.Descendants(), element =>
             (string?)element.Attribute(names + "Name") == "NativeRecommendedState");
-        var setters = state.Descendants().Where(element => element.Name.LocalName == "Setter")
-            .ToDictionary(element => (string)element.Attribute("Target")!, element => (string?)element.Attribute("Value"));
-        Assert.Equal("{ThemeResource AccentFillColorDefaultBrush}", setters["NativeIconBackground.Background"]);
-        Assert.Equal("{ThemeResource TextOnAccentFillColorPrimaryBrush}", setters["NativeIcon.Foreground"]);
-        Assert.Equal("{ThemeResource SubtleFillColorSecondaryBrush}", setters["WslIconBackground.Background"]);
-        Assert.Equal("{ThemeResource TextFillColorPrimaryBrush}", setters["WslIcon.Foreground"]);
+        // Recommendation only moves the inline label; the accent glyph tile follows selection.
+        Assert.DoesNotContain(state.Descendants(), element => element.Name.LocalName == "Setter");
+        Assert.Equal("SetupGlyphTile", Assert.Single(document.Descendants(), element =>
+            (string?)element.Attribute(names + "Name") == "NativeIconBackground").Name.LocalName);
         var source = File.ReadAllText(Path.Combine(pages, "WelcomePage.xaml.cs"));
+        Assert.Contains("SetupGlyphTile.SyncSelection(GatewayChoiceSelector)", source);
         Assert.Contains("VisualStateManager.GoToState(this, \"WslRecommendedState\", false)", source);
         Assert.Contains("available ? \"NativeRecommendedState\" : \"WslRecommendedState\"", source);
         Assert.Contains("NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible", source);

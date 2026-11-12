@@ -143,10 +143,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 var page = Assert.IsAssignableFrom<Page>(frame.Content);
                 await ResizeBelowMinimumAsync(window, ui, output, captureName);
                 if (compactViewport)
-                {
-                    page.Width = 704;
                     Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>()).Height = 170;
-                }
                 if (page is NativeGatewaySetupPage)
                 {
                     Assert.Null(typeof(NativeGatewaySetupPage).GetField("_operation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(page));
@@ -163,7 +160,8 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
                 var grid = Assert.IsType<Grid>(page.Content);
-                var footer = Assert.Single(grid.Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
+                var footer = Assert.Single(grid.Children.OfType<Panel>(),
+                    child => Grid.GetRow(child) == 2 && TestSupport.FindDescendants<Button>(child).Any());
                 OnboardingNativeProof.AssertFullyVisible(footer, root);
                 foreach (var action in TestSupport.FindDescendants<Button>(footer).Where(button => button.Visibility == Visibility.Visible))
                     OnboardingNativeProof.AssertFullyVisible(action, root);
@@ -215,7 +213,8 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         var dpi = GetDpiForWindow(hwnd);
-        var minimum = SetupWindowSizing.MinimumPixels(dpi);
+        var work = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        var minimum = SetupWindowSizing.FitMinimumPixels(SetupWindowSizing.MinimumPixels(dpi), (work.Width, work.Height));
         var presenter = Assert.IsType<OverlappedPresenter>(window.AppWindow.Presenter);
         Assert.Equal(minimum.Width, presenter.PreferredMinimumWidth);
         Assert.Equal(minimum.Height, presenter.PreferredMinimumHeight);
@@ -224,7 +223,6 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         Assert.True(GetWindowRect(hwnd, out var rect));
         Assert.True(rect.Right - rect.Left >= minimum.Width);
         Assert.True(rect.Bottom - rect.Top >= minimum.Height);
-        var work = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         var measurement = new
         {
             scene, actualDpi = dpi, rasterizationScale = Assert.IsAssignableFrom<FrameworkElement>(window.Content).XamlRoot.RasterizationScale,

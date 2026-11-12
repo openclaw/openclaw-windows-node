@@ -110,7 +110,8 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 progress.AppWindow.Move(new(-32000, -32000));
                 await ready.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 ready.CommitPresentation();
-                var frame = Assert.IsType<Frame>(ready.Content);
+                var shell = Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupShellLayout>(ready.Content);
+                var frame = shell.Frame;
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
                 var readyRoot = Assert.IsType<Grid>(page.Content);
                 var progressRoot = Assert.IsType<SetupLoadingView>(progress.Content);
@@ -125,7 +126,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                     Assert.Equal(2, applied.Count);
                     Assert.Contains(ready, applied);
                     Assert.Contains(progress, applied);
-                    Assert.Equal(theme, frame.RequestedTheme);
+                    Assert.Equal(theme, shell.RequestedTheme);
                     Assert.Equal(theme, progressRoot.RequestedTheme);
                     Assert.Same(page, frame.Content);
                     output.WriteLine($"Live theme {theme}: Ready={readyRoot.ActualTheme}; restart progress={progressRoot.ActualTheme}.");
@@ -140,14 +141,14 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 preference = null;
                 manager.ApplyThemeToOpenWindows();
                 await ui.YieldToRenderAsync();
-                Assert.Equal(ElementTheme.Default, frame.RequestedTheme);
+                Assert.Equal(ElementTheme.Default, shell.RequestedTheme);
                 Assert.Equal(ElementTheme.Default, progressRoot.RequestedTheme);
                 applied.Clear();
                 manager.BeginShutdown();
                 preference = SettingsManager.AppThemeDark;
                 manager.ApplyThemeToOpenWindows();
                 Assert.Empty(applied);
-                Assert.Equal(ElementTheme.Default, frame.RequestedTheme);
+                Assert.Equal(ElementTheme.Default, shell.RequestedTheme);
                 Assert.Equal(ElementTheme.Default, progressRoot.RequestedTheme);
             }
             finally
@@ -199,7 +200,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                     _ => new Observation(), () => { }, () => { }));
                 SetupWindowMinimumSizeTests.AssertInitialWindowSize(window, output);
                 var size = window.AppWindow.Size;
-                var frame = Assert.IsType<Frame>(window.Content);
+                var frame = Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupShellLayout>(window.Content).Frame;
                 using var navigation = OnboardingNativeProof.TrackNavigation(frame);
                 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                     window.Activate();
@@ -212,7 +213,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
                 var chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
                 Assert.Equal(Visibility.Collapsed, chatActionPanel.Visibility);
-                Assert.NotEqual("Your AI is ready", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
+                Assert.NotEqual("All set!", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
                 window.Invalidate();
                 var beforeConsumption = Assert.IsType<AiCompletionPage>(frame.Content);
                 var returnButton = Assert.IsType<Button>(beforeConsumption.FindName("BackButton"));
@@ -227,15 +228,17 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 window.CommitPresentation();
                 Assert.Equal(Visibility.Visible, chatActionPanel.Visibility);
-                var chatAction = Assert.IsType<SetupActionCard>(page.FindName("ChatAction"));
+                var chatAction = Assert.IsType<Button>(page.FindName("ChatAction"));
                 Assert.Same(chatAction, Assert.Single(chatActionPanel.Children));
                 Assert.True(chatAction.IsEnabled);
                 Assert.Null(page.FindName("SkipButton"));
                 Assert.Null(page.FindName("ReturnButton"));
                 Assert.Null(page.FindName("FinishButton"));
                 Assert.Null(page.FindName("RecommendedBadge"));
-                Assert.Equal("Talk to my agent",
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(chatAction));
+                Assert.Equal("Open chat", chatAction.Content);
+                Assert.Equal("synthetic/model", Assert.IsType<TextBlock>(page.FindName("ModelSummary")).Text);
+                Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(page.FindName("SummaryPanel")).Visibility);
+                Assert.Equal("AI ready", Assert.IsType<TextBlock>(page.FindName("ModelTitle")).Text);
                 Assert.False(Assert.IsType<InfoBar>(page.FindName("ErrorBar")).IsOpen);
                 Assert.False(Directory.Exists(Path.Combine(data, "setup-dashboard-handoff")));
                 Assert.False(File.Exists(Path.Combine(data, "settings.json")));
@@ -250,11 +253,11 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                 {
                     using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-{theme}", output,
-                        ["Talk to my agent"], requiredContent: page)) { }
+                        ["Open chat"], requiredContent: page)) { }
                     chatAction.IsEnabled = false;
                     Assert.False(chatAction.IsEnabled);
                     using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-disabled-{theme}", output,
-                        ["Talk to my agent"], requiredContent: page)) { }
+                        ["Open chat"], requiredContent: page)) { }
                     chatAction.IsEnabled = true;
                 }
                 window.Invalidate();
