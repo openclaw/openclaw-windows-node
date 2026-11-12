@@ -318,6 +318,73 @@ public class GatewayWizardRestartRecoveryPolicyTests
         Assert.Equal(2, attempts);
     }
 
+    [Fact]
+    public async Task WaitForExpectedManagedGateway_RelayBeforeRestartedOwnerBinds_RetriesBeforeConnection()
+    {
+        var attempts = 0;
+
+        var result =
+            await GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync(
+                _ => Task.FromResult(
+                    ++attempts < 3
+                        ? Provenance(
+                            GatewayEndpointProvenanceKind.UnknownListener,
+                            GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening)
+                        : Provenance(GatewayEndpointProvenanceKind.ExpectedManagedGateway)),
+                noListenerRetryCount: 30,
+                retryDelay: TimeSpan.Zero,
+                CancellationToken.None,
+                retryRelayWithoutGuestOwner: true);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task WaitForExpectedManagedGateway_RelayWithoutOwnerAfterHandshake_FailsClosedWithoutRetry()
+    {
+        var attempts = 0;
+
+        var result =
+            await GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync(
+                _ => Task.FromResult(
+                    ++attempts == 1
+                        ? Provenance(
+                            GatewayEndpointProvenanceKind.UnknownListener,
+                            GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening)
+                        : Provenance(GatewayEndpointProvenanceKind.ExpectedManagedGateway)),
+                noListenerRetryCount: 30,
+                retryDelay: TimeSpan.Zero,
+                CancellationToken.None);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public async Task WaitForExpectedManagedGateway_RelayWithoutOwnerExhaustsRetryBound()
+    {
+        var attempts = 0;
+
+        var result =
+            await GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync(
+                _ =>
+                {
+                    attempts++;
+                    return Task.FromResult(
+                        Provenance(
+                            GatewayEndpointProvenanceKind.UnknownListener,
+                            GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening));
+                },
+                noListenerRetryCount: 2,
+                retryDelay: TimeSpan.Zero,
+                CancellationToken.None,
+                retryRelayWithoutGuestOwner: true);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(3, attempts);
+    }
+
     private static GatewayEndpointProvenance Provenance(
         GatewayEndpointProvenanceKind kind,
         GatewayEndpointProvenanceFailureReason failureReason =
