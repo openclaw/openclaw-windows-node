@@ -427,12 +427,9 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () =>
             {
                 var viewport = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
-                var toggle = Find("SettingsTogglePane");
-                if (windowPattern.Current.WindowVisualState != WindowVisualState.Normal ||
-                    viewport is null || toggle is not { Current.IsOffscreen: false, Current.IsEnabled: true })
-                    return false;
-                paneToggle = toggle;
-                return true;
+                paneToggle = Find("SettingsTogglePane");
+                return windowPattern.Current.WindowVisualState == WindowVisualState.Normal &&
+                    viewport is not null && paneToggle is { Current.IsOffscreen: false, Current.IsEnabled: true };
             }, "normal Systems window");
             Assert.NotNull(paneToggle);
             var records = new List<object>();
@@ -610,9 +607,7 @@ public sealed partial class GatewayFixtureUiTests
                 {
                     var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
                     lastStatsHostObservation = frame;
-                    if (frame is null || !(Math.Abs(frame.Bounds.Width / scale - 1000) <= 2))
-                        return false;
-                    return true;
+                    return frame is not null && Math.Abs(frame.Bounds.Width / scale - 1000) <= 2;
                 },
                     "1000 DIP Systems page host for the resource-tile minimum");
             }
@@ -769,25 +764,15 @@ public sealed partial class GatewayFixtureUiTests
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(twoRowTarget / twoRowRange * 100, 0, 100));
             AutomationElement? selectedName = null;
             await WaitUiAsync(run, () =>
-            {
-                var selected = Find("SystemsSelectedName");
-                if (selected is not { Current.IsOffscreen: false } || gatewayRow.Current.IsOffscreen)
-                    return false;
-                selectedName = selected;
-                return true;
-            },
+                (selectedName = Find("SystemsSelectedName")) is { Current.IsOffscreen: false } &&
+                !gatewayRow.Current.IsOffscreen,
                 "both expanded machine rows occupy the viewport");
             Assert.NotNull(selectedName);
             await Capture("two-open-rows", selectedName);
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
             AutomationElement? issuesButton = null;
             await WaitUiAsync(run, () =>
-            {
-                if (Find("SystemsIssuesTile") is not { Current.IsOffscreen: false, Current.IsEnabled: true } button)
-                    return false;
-                issuesButton = button;
-                return true;
-            },
+                (issuesButton = Find("SystemsIssuesTile")) is { Current.IsOffscreen: false, Current.IsEnabled: true },
                 "Issues tile retains access to badged rows");
             Assert.NotNull(issuesButton);
             Invoke(issuesButton);
@@ -811,12 +796,7 @@ public sealed partial class GatewayFixtureUiTests
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
             AutomationElement? refreshButton = null;
             await WaitUiAsync(run, () =>
-            {
-                if (Find("SystemsRefreshButton") is not { Current.IsOffscreen: false, Current.IsEnabled: true } button)
-                    return false;
-                refreshButton = button;
-                return true;
-            },
+                (refreshButton = Find("SystemsRefreshButton")) is { Current.IsOffscreen: false, Current.IsEnabled: true },
                 "inventory refresh remains reachable after Issues jump");
             Assert.NotNull(refreshButton);
             run.Gateway.SetSystemsInventoryUnavailable(true);
@@ -824,14 +804,10 @@ public sealed partial class GatewayFixtureUiTests
             AutomationElement? retryButton = null, inventoryConnection = null;
             await WaitUiAsync(run, () =>
             {
-                var retry = Find("SystemsRetry");
-                var connection = Find("SystemsInventoryConnection");
-                if (retry is not { Current.IsOffscreen: false, Current.IsEnabled: true } ||
-                    connection is not { Current.IsOffscreen: false })
-                    return false;
-                retryButton = retry;
-                inventoryConnection = connection;
-                return true;
+                retryButton = Find("SystemsRetry");
+                inventoryConnection = Find("SystemsInventoryConnection");
+                return retryButton is { Current.IsOffscreen: false, Current.IsEnabled: true } &&
+                    inventoryConnection is { Current.IsOffscreen: false };
             },
                 "inventory transport failure exposes Retry and Connection");
             Assert.NotNull(retryButton);
@@ -941,18 +917,12 @@ public sealed partial class GatewayFixtureUiTests
             AutomationElement? knownCapabilities = null, knownStatistics = null, knownSample = null, knownDisk = null;
             await WaitUiAsync(run, () =>
             {
-                var capabilities = GatewayContent("SystemsCapabilitiesHeading");
-                var statistics = GatewayContent("SystemsStatisticsHeading");
-                var sample = GatewayContent("SystemsStatsSampled");
-                var disk = GatewayContent("SystemsStat_disk:/data");
-                if (capabilities is not { Current.IsOffscreen: false } || statistics is not { Current.IsOffscreen: false } ||
-                    sample is not { Current.IsOffscreen: false } || disk is not { Current.IsOffscreen: false })
-                    return false;
-                knownCapabilities = capabilities;
-                knownStatistics = statistics;
-                knownSample = sample;
-                knownDisk = disk;
-                return true;
+                knownCapabilities = GatewayContent("SystemsCapabilitiesHeading");
+                knownStatistics = GatewayContent("SystemsStatisticsHeading");
+                knownSample = GatewayContent("SystemsStatsSampled");
+                knownDisk = GatewayContent("SystemsStat_disk:/data");
+                return knownCapabilities is { Current.IsOffscreen: false } && knownStatistics is { Current.IsOffscreen: false } &&
+                    knownSample is { Current.IsOffscreen: false } && knownDisk is { Current.IsOffscreen: false };
             },
                 "last-known expanded resource heading, report age and trailing Disk are visible together");
             Assert.NotNull(knownCapabilities);
