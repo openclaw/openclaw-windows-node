@@ -53,6 +53,11 @@ internal sealed record ChatComposerInputs(
     internal bool PlacementTargetIsEmpty { get; init; }
     internal bool PlacementHistoryReady { get; init; }
     internal bool PlacementTargetIsNew { get; init; }
+    /// <summary>Gateway-resolved identity for the thread's agent; the welcome header combines it with the roster.</summary>
+    internal ChatAgentIdentity? AgentIdentity { get; init; }
+    internal ChatAgentPresentation? AgentRosterPresentation { get; init; }
+    /// <summary>Context-window usage for the composer ring; null when the window size is unknown.</summary>
+    internal ChatContextUsage? ContextUsage { get; init; }
     internal bool CanChangeSessionOptions => ConnectionState == "connected" && !MessageOptionsDisabled;
     internal ThinkingProfile? ThinkingProfile => ChatThinkingProfile.Resolve(CurrentThread, ModelChoices);
 
@@ -72,7 +77,10 @@ internal sealed record ChatComposerInputs(
         && ShowPlacementPickers == other.ShowPlacementPickers
         && PlacementTargetIsEmpty == other.PlacementTargetIsEmpty
         && PlacementHistoryReady == other.PlacementHistoryReady
-        && PlacementTargetIsNew == other.PlacementTargetIsNew;
+        && PlacementTargetIsNew == other.PlacementTargetIsNew
+        && Equals(AgentIdentity, other.AgentIdentity)
+        && Equals(AgentRosterPresentation, other.AgentRosterPresentation)
+        && Equals(ContextUsage, other.ContextUsage);
 
     private static bool SequenceEqual<T>(IReadOnlyList<T>? left, IReadOnlyList<T>? right)
     {

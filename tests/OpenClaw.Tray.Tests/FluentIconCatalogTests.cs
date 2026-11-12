@@ -19,7 +19,7 @@ public sealed class FluentIconCatalogTests
         "StatusOk", "StatusWarn", "StatusErr",
         "Sessions", "Approvals", "Devices", "Hostname", "Permissions", "SandboxStrict",
         "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
-        "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings",
+        "Dashboard", "OpenInBrowser", "OpenPane", "Chat", "CanvasAct", "VoiceAct", "Settings",
         "Setup", "About", "Notifications", "Exit",
         "Add", "Back", "Sync", "Lock", "Key", "Plug", "MoreOverflow",
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
@@ -54,9 +54,27 @@ public sealed class FluentIconCatalogTests
     }
 
     [Fact]
+    public void PureTestGlyphConstantsMatchTheProductionCatalog()
+    {
+        var actual = ParseConstants(ReadCatalogSource());
+        foreach (var field in typeof(OpenClawTray.Helpers.FluentIconCatalog)
+            .GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            if (!field.IsLiteral || field.FieldType != typeof(string)) continue;
+            Assert.Equal(actual[field.Name], (string)field.GetRawConstantValue()!);
+        }
+    }
+
+    [Fact]
     public void StrictPreset_UsesPublishedLockGlyph()
     {
         Assert.Equal("\uE72E", ParseConstants(ReadCatalogSource())["SandboxStrict"]);
+    }
+
+    [Fact]
+    public void ConversationPanel_UsesPublishedOpenPaneGlyph()
+    {
+        Assert.Equal("\uE8A0", ParseConstants(ReadCatalogSource())["OpenPane"]);
     }
 
     [Fact]
@@ -300,15 +318,13 @@ public sealed class TrayMenuPopupCompositionTests
             TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Presentation", "HubPageRegistry.cs"));
 
-        // Legacy "nodes" deep links must still land on the Instances rail
-        // item. NavigateTo applies the registry normalization before the host
-        // renders the section (which highlights the rail item via
-        // FindNavItemForTag and calls Frame.Navigate).
-        var aliasIndex = registry.IndexOf("\"nodes\" => \"instances\"", StringComparison.Ordinal);
+        // Legacy "nodes" and "instances" deep links must land on the Systems rail
+        // item through Workspace history before the Settings view applies selection.
+        var aliasIndex = registry.IndexOf("\"nodes\" or \"instances\" => \"systems\"", StringComparison.Ordinal);
         var funnelIndex = src.IndexOf("NavigateRequested?.Invoke(WorkspaceNavigation.NormalizeSettingsTag(tag, _currentAgentId))", StringComparison.Ordinal);
         var selectIndex = src.IndexOf("FindNavItemForTag(NavView.MenuItems, tag)", StringComparison.Ordinal);
 
-        Assert.True(aliasIndex >= 0, "HubPageRegistry must keep legacy 'nodes' deep links pointing at 'instances'.");
+        Assert.True(aliasIndex >= 0, "HubPageRegistry must keep legacy 'nodes' and 'instances' deep links pointing at 'systems'.");
         Assert.Contains("HubPageRegistry.NormalizeTag(tag, agentId)", navigation);
         Assert.True(funnelIndex >= 0, "NavigateTo must normalize the tag before handing it to the host history.");
         Assert.True(selectIndex >= 0, "The rail sync must select a nav item by tag before falling back to direct navigation.");

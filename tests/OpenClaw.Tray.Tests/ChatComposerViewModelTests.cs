@@ -294,6 +294,7 @@ public sealed class ChatComposerViewModelTests
             baseline with { CommandsSupported = true, Revision = 2 },
             baseline with { SessionModelCatalogEligible = true, Revision = 2 },
             baseline with { ModelCatalogRevision = 1, Revision = 2 },
+            baseline with { ContextUsage = new ChatContextUsage(1_000, 5_000, 20), Revision = 2 },
         };
 
         Assert.True(baseline.HasSameProjection(baseline with { Revision = 2 }));

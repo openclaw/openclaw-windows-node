@@ -195,6 +195,7 @@ New-Item -Path $msixBuildDirectory -ItemType Directory -Force | Out-Null
 $platform = if ($Architecture -eq 'arm64') { 'ARM64' } else { 'x64' }
 
 try {
+    & (Join-Path $PSScriptRoot 'Initialize-ReactorPackages.ps1')
     $appxOutput = $msixBuildDirectory.TrimEnd('\') + '\'
     Write-Host "Building unsigned win-$Architecture MSIX with MSBuild."
     Invoke-CheckedCommand `

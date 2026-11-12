@@ -98,7 +98,7 @@ public sealed class NativeToolIdentityScreenshotProofTests
             $"head={Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_HEAD") ?? "local"}",
         };
 
-        ExpandToolActivity(proof);
+        ExpandToolActivities(proof);
         ExpandTool("Tool call Bash. Done.", proof);
         ExpandTool("Tool call Apply Patch. Done.", proof);
         ExpandTool("Tool call Tool. Done.", proof);
@@ -138,14 +138,26 @@ public sealed class NativeToolIdentityScreenshotProofTests
         WriteProofArtifactIfRequested(proof);
     }
 
-    private void ExpandToolActivity(ICollection<string> proof)
+    private void ExpandToolActivities(ICollection<string> proof)
     {
-        var activity = WaitForElement(
+        WaitForElement(
             element => element.Current.AutomationId.StartsWith(
                 "ChatToolActivity_",
                 StringComparison.Ordinal),
             "native tool activity to appear");
-        Expand(activity, activity.Current.Name, proof);
+        var activityIds = AutomationElement.FromHandle(_app.HubWindowHandle)
+            .FindAll(TreeScope.Descendants, Condition.TrueCondition)
+            .Cast<AutomationElement>()
+            .Select(element => element.Current.AutomationId)
+            .Where(id => id.StartsWith("ChatToolActivity_", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(activityIds);
+        foreach (var id in activityIds)
+        {
+            var activity = WaitForElement(new PropertyCondition(
+                AutomationElement.AutomationIdProperty, id));
+            Expand(activity, activity.Current.Name, proof);
+        }
     }
 
     private void ExpandTool(string automationName, ICollection<string> proof)

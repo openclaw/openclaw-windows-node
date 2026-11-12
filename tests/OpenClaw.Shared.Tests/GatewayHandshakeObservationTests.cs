@@ -20,17 +20,124 @@ public sealed class GatewayHandshakeObservationTests
         using var client = new OpenClawGatewayClient($"ws://127.0.0.1:{endpoint.Port}", "fixture-token",
             NullLogger.Instance, identityPath: temp.Path);
         var failed = new TaskCompletionSource<GatewayHandshakeObservation>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var connectionFailed = new TaskCompletionSource<GatewayErrorKind>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.HandshakeObserved += (_, observation) =>
         {
             if (observation.Phase == GatewayHandshakePhase.Failed)
                 failed.TrySetResult(observation);
         };
+        client.ConnectionFailure += (_, kind) => connectionFailed.TrySetResult(kind);
 
         await client.ConnectAsync();
         var observation = await failed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var connectionFailure = await connectionFailed.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(GatewayErrorKind.Network, observation.FailureKind);
+        Assert.Equal(GatewayErrorKind.Network, connectionFailure);
         Assert.True(observation.TransportGeneration > 0);
+    }
+
+    [Theory]
+    [InlineData(55001)]
+    [InlineData(54291)]
+    [InlineData(54011)]
+    public async Task RefusedTransport_UsesTypedSocketCauseBeforePortText(int port)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        await client.BeginAttemptAsync(1);
+
+        var exception = new System.Net.WebSockets.WebSocketException(
+            "Unable to connect to the remote server",
+            new System.Net.Http.HttpRequestException(
+                $"No connection could be made because the target machine actively refused it. (127.0.0.1:{port})",
+                new SocketException((int)SocketError.ConnectionRefused)));
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed, exception);
+
+        Assert.Equal(GatewayErrorKind.Network, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+    }
+
+    [Fact]
+    public async Task TimeoutFailure_UsesTypedCauseBeforeCollidingMessage()
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed,
+            new System.Net.Http.HttpRequestException(
+                "The request timed out at 127.0.0.1:55001",
+                new TimeoutException()));
+
+        Assert.Equal(GatewayErrorKind.Network, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, GatewayErrorKind.Auth)]
+    [InlineData(HttpStatusCode.TooManyRequests, GatewayErrorKind.RateLimited)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, GatewayErrorKind.Server)]
+    public async Task TransportFailure_PreservesHttpStatusOverSocketCause(
+        HttpStatusCode statusCode, GatewayErrorKind expected)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed,
+            new System.Net.Http.HttpRequestException(
+                "Upgrade rejected at 127.0.0.1:55001",
+                new SocketException((int)SocketError.ConnectionRefused),
+                statusCode));
+
+        Assert.Equal(expected, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+    }
+
+    [Fact]
+    public async Task TransportFailure_PreservesTlsOverSocketCause()
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed,
+            new System.Security.Authentication.AuthenticationException(
+                "TLS handshake failed",
+                new SocketException((int)SocketError.ConnectionRefused)));
+
+        Assert.Equal(GatewayErrorKind.Tls, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+    }
+
+    [Fact]
+    public async Task TlsHandshakeSocketReset_UsesTypedHttpErrorBeforeNetworkCause()
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        await client.BeginAttemptAsync(1);
+
+        var exception = new System.Net.WebSockets.WebSocketException(
+            "Unable to connect to the remote server",
+            new System.Net.Http.HttpRequestException(
+                System.Net.Http.HttpRequestError.SecureConnectionError,
+                "The SSL connection could not be established (127.0.0.1:55001).",
+                new SocketException((int)SocketError.ConnectionReset)));
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed, exception);
+
+        Assert.Equal(GatewayErrorKind.Tls, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
     }
 
     [Theory]
@@ -59,6 +166,113 @@ public sealed class GatewayHandshakeObservationTests
         Assert.Equal(expected, Assert.Single(observations,
             observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
         Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(observations));
+    }
+
+    [Theory]
+    [InlineData(54012)]
+    [InlineData(54290)]
+    [InlineData(55001)]
+    [InlineData(55020)]
+    [InlineData(55030)]
+    public async Task RefusedTransport_WrappedPortMessage_IsNetwork(int port)
+    {
+        await AssertTransportFailureAsync(
+            new System.Net.WebSockets.WebSocketException(
+                $"No connection could be made because the target machine actively refused it. (127.0.0.1:{port})",
+                new SocketException((int)SocketError.ConnectionRefused)),
+            GatewayErrorKind.Network);
+    }
+
+    [Theory]
+    [InlineData(GatewayErrorKind.Network, "unauthorized")]
+    [InlineData(GatewayErrorKind.Network, "503 server error")]
+    [InlineData(GatewayErrorKind.Tls, "unauthorized")]
+    [InlineData(GatewayErrorKind.Tls, "503 server error")]
+    public async Task TransportFailure_TypedCauseWinsOverWrapperMessage(GatewayErrorKind expected, string message)
+    {
+        Exception cause = expected == GatewayErrorKind.Tls
+            ? new System.Security.Authentication.AuthenticationException("sensitive-sentinel")
+            : new SocketException((int)SocketError.ConnectionRefused);
+
+        await AssertTransportFailureAsync(
+            new InvalidOperationException(message, new IOException("unrecognized wrapper", cause)), expected);
+    }
+
+    [Fact]
+    public async Task TransportFailure_TypedTimeoutWinsOverWrapperMessage()
+    {
+        await AssertTransportFailureAsync(
+            new InvalidOperationException("HTTP 401", new TimeoutException("sensitive-sentinel")),
+            GatewayErrorKind.Network);
+    }
+
+    [Theory]
+    [InlineData(SocketError.ConnectionReset)]
+    [InlineData(SocketError.TimedOut)]
+    public async Task TransportFailure_TypedSecureConnectionError_IsTls(SocketError socketError)
+    {
+        await AssertTransportFailureAsync(
+            new System.Net.WebSockets.WebSocketException("unable to connect",
+                new System.Net.Http.HttpRequestException(
+                    System.Net.Http.HttpRequestError.SecureConnectionError, "sensitive-sentinel",
+                    new IOException("connection failed", new SocketException((int)socketError)))),
+            GatewayErrorKind.Tls);
+    }
+
+    [Theory]
+    [InlineData("401", GatewayErrorKind.Auth)]
+    [InlineData("429", GatewayErrorKind.RateLimited)]
+    [InlineData("500", GatewayErrorKind.Server)]
+    [InlineData("502", GatewayErrorKind.Server)]
+    [InlineData("503", GatewayErrorKind.Server)]
+    public async Task TransportFailure_HttpStatusWithoutTypedCause_RemainsActionable(
+        string status, GatewayErrorKind expected)
+    {
+        await AssertTransportFailureAsync(
+            new System.Net.WebSockets.WebSocketException(
+                $"The server returned status code '{status}' when status code '101' was expected."),
+            expected);
+    }
+
+    private static async Task AssertTransportFailureAsync(Exception error, GatewayErrorKind expected)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        var connectionFailures = new List<GatewayErrorKind>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        client.ConnectionFailure += (_, kind) => connectionFailures.Add(kind);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed, error);
+        client.ObserveConnectionException(error);
+
+        Assert.Equal(expected, Assert.Single(observations,
+            observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
+        Assert.Equal(expected, Assert.Single(connectionFailures));
+        Assert.DoesNotContain("sensitive-", JsonSerializer.Serialize(observations));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TransportFailure_TypedCauseTakesPrecedenceOverEndpointDigits(bool tls)
+    {
+        using var temp = new TempDirectory();
+        using var client = new ObservationClient(temp.Path);
+        var observations = new List<GatewayHandshakeObservation>();
+        client.HandshakeObserved += (_, observation) => observations.Add(observation);
+        Exception cause = tls
+            ? new System.Security.Authentication.AuthenticationException("certificate validation failed")
+            : new SocketException((int)SocketError.ConnectionRefused);
+        await client.BeginAttemptAsync(1);
+
+        client.ObserveTransport(1, GatewayHandshakePhase.Failed,
+            new HttpRequestException("Unable to connect to 127.0.0.1:50321", cause));
+
+        Assert.Equal(tls ? GatewayErrorKind.Tls : GatewayErrorKind.Network,
+            Assert.Single(observations,
+                observation => observation.Phase == GatewayHandshakePhase.Failed).FailureKind);
     }
 
     [Theory]
@@ -166,6 +380,8 @@ public sealed class GatewayHandshakeObservationTests
 
         public void ObserveTransport(long generation, GatewayHandshakePhase phase, Exception? error = null) =>
             OnTransportObservation(generation, phase, error);
+
+        public void ObserveConnectionException(Exception error) => OnConnectionException(error);
 
         public void CancelLifetime() =>
             ((CancellationTokenSource)typeof(WebSocketClientBase)

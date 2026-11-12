@@ -174,7 +174,8 @@ public sealed class PairOperatorStep : SetupStep
         SetupContext ctx,
         CancellationToken cancellationToken,
         int noListenerRetryCount = 0,
-        TimeSpan? noListenerRetryDelay = null)
+        TimeSpan? noListenerRetryDelay = null,
+        bool beforeConnectionAfterRestart = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(noListenerRetryCount);
         var retryDelay = noListenerRetryDelay ?? TimeSpan.FromSeconds(1);
@@ -195,7 +196,8 @@ public sealed class PairOperatorStep : SetupStep
                 cancellationToken => probe(record, cancellationToken),
                 noListenerRetryCount,
                 retryDelay,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                retryRelayWithoutGuestOwner: beforeConnectionAfterRestart).ConfigureAwait(false);
 
         return provenance.Kind switch
         {
@@ -589,7 +591,7 @@ public sealed class PairOperatorStep : SetupStep
 
     internal static bool IsSetupManagedLocalRecord(GatewayRecord record, SetupContext ctx)
     {
-        if (!record.IsLocal || record.SshTunnel != null)
+        if (record.NativePackageFamilyName is not null || !record.IsLocal || record.SshTunnel != null)
             return false;
 
         if (string.Equals(record.SetupManagedDistroName, ctx.DistroName, StringComparison.Ordinal))

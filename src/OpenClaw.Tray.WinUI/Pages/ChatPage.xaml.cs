@@ -34,6 +34,8 @@ public sealed partial class ChatPage : Page
     private string? _pendingSessionKey;
     private readonly PendingVoiceActivation _pendingVoice = new();
     private MountedReactorChat? _reactorHost;
+    private string _userDisplayName = "";
+    private Microsoft.UI.Xaml.Media.ImageSource? _userProfilePicture;
     private IChatDataProvider? _mountedProvider;
     private IChatDataProvider? _accessibilityTestProvider;
     private string? _mountedThreadId;
@@ -48,6 +50,15 @@ public sealed partial class ChatPage : Page
     private SetupNativeChatWarning? _displayedNativeSetupWarning;
     // Invalidates queued refreshes and async credential work on surface, binding, or lifetime changes.
     private int _surfaceGeneration;
+
+    internal string? CurrentSessionKey => _reactorHost?.CurrentThreadId ?? _mountedThreadId;
+
+    internal void ApplyUserIdentity(string displayName, Microsoft.UI.Xaml.Media.ImageSource? profilePicture)
+    {
+        _userDisplayName = displayName;
+        _userProfilePicture = profilePicture;
+        _reactorHost?.ApplyUserIdentity(displayName, profilePicture);
+    }
 
     private void RequireNativeSetupOwner()
     {
@@ -568,7 +579,10 @@ public sealed partial class ChatPage : Page
             onReadAloud: readAloud,
             onStopSpeaking: () => app?.StopChatSpeaking(),
             onOpenCheckpoints: OpenSessionCheckpoints,
-            initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
+            initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey),
+            userDisplayName: _userDisplayName,
+            userProfilePicture: _userProfilePicture,
+            agentRosterSource: app?.AppState);
         _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;

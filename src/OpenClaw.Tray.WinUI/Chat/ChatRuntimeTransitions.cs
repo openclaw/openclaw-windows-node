@@ -96,7 +96,10 @@ internal sealed record ChatHistoryRebuildPlan(
     string? SessionId,
     ChatTimelineState Timeline,
     IReadOnlyDictionary<string, ChatEntryMetadata> Metadata,
-    int MaxHistorySequence);
+    int MaxHistorySequence,
+    string? OlderCursor = null,
+    ChatHistoryPageRequest? OlderPage = null,
+    string? OlderMessageId = null);
 
 internal sealed record ChatQueuedAdmission(
     string MessageId,
@@ -123,7 +126,7 @@ internal sealed record ChatSendCommit(
     string? StaleRunIdToAbort,
     bool BindAcceptedRun,
     bool RequeueRequired,
-    bool RetryDeferredSend,
+    bool ScheduleQueueDrain,
     TimeSpan DeferredRetryDelay,
     ChatOpenedLifecycleTransition? OpenedLifecycle,
     ChatRuntimeGeneration RuntimeGeneration);
@@ -162,10 +165,10 @@ internal sealed record ChatLocalEchoTransition(
     bool Consumed,
     ChatDataSnapshot? Snapshot);
 
-internal sealed record ChatAssistantPreparation(
-    AssistantQueueFrameDisposition Disposition,
-    ChatDataSnapshot? PromotionSnapshot,
-    ChatEntryMetadata Metadata,
+internal sealed record ChatAssistantTransition(
+    bool Rendered,
+    bool SuppressNotification,
+    ChatDataSnapshot? Snapshot,
     string? ActiveRunId,
-    bool IsBackgroundFinal,
-    ChatDataSnapshot? BackgroundFinalSnapshot);
+    string? CompletedRunId,
+    bool TurnComplete);
