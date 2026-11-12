@@ -2388,6 +2388,8 @@ public sealed partial class GatewayConnectionManager :
         errorKind switch
         {
             GatewayErrorKind.Auth or
+            GatewayErrorKind.PersonalIdentityUnverified or
+            GatewayErrorKind.PersonalIdentityReverificationRequired or
             GatewayErrorKind.TokenDrift or
             GatewayErrorKind.DeviceTokenMismatch or
             GatewayErrorKind.ScopeMismatch => ConnectionErrorCategory.AuthFailure,
@@ -2687,6 +2689,7 @@ public sealed partial class GatewayConnectionManager :
             }
             if (personal.Disposition == PersonalVerification.Rejected)
             {
+                _stateMachine.SetOperatorErrorKind(GatewayErrorKind.PersonalIdentityUnverified);
                 _stateMachine.TryTransition(_stateMachine.Current.OperatorState == RoleConnectionState.Connected
                         ? ConnectionTrigger.WebSocketError : ConnectionTrigger.AuthenticationFailed,
                     "Personal Tailscale identity could not be verified. Reconnect this Gateway.");

@@ -123,6 +123,7 @@ internal enum RecoveryCategory
     LocalPortConflict,
     /// <summary>The Gateway and Windows app do not share a supported wire protocol.</summary>
     ProtocolMismatch,
+    PersonalIdentity,
 }
 
 /// <summary>
@@ -246,6 +247,25 @@ internal sealed record ConnectionPagePlan
 
         if (snap.ProtocolCompatibility.IsMismatch)
             return BuildProtocolMismatchRecovery(snap, activeRecord, displayName);
+
+        if (snap.OperatorState == RoleConnectionState.Error &&
+            OpenClawTray.Helpers.GatewayPersonalErrorPresentation.ResourceKey(snap.OperatorErrorKind) is { } personalErrorKey)
+        {
+            return new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.PersonalIdentity,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
+                StripAccent = ConnectionAccent.Critical,
+                StripHeadlineResourceKey = "ConnectionPage_PersonalIdentityHeader",
+                StripSubResourceKey = personalErrorKey,
+                RecoveryHeaderResourceKey = "ConnectionPage_PersonalIdentityHeader",
+                RecoveryBulletResourceKeys = [personalErrorKey],
+                ActiveGatewayDisplayName = displayName,
+                ActiveGatewayDetailLine = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(activeRecord?.Url ?? snap.GatewayUrl),
+                RelevantGatewayId = activeRecord?.Id,
+            };
+        }
 
         // ─── Derived layout ───
         return snap.OverallState switch

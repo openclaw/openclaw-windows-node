@@ -115,7 +115,10 @@ public sealed partial class ConnectionStatusWindow : WindowEx
             else if (snapshot.OverallState == OverallConnectionState.Error)
             {
                 ConnectButton.Content = LocalizationHelper.GetString("ConnectionStatus_Connect");
-                var errorText = $"✗ {snapshot.OperatorError ?? snapshot.NodeError ?? LocalizationHelper.GetString("ConnectionPage_GatewayConnectionFailed")}";
+                var personalErrorKey = GatewayPersonalErrorPresentation.ResourceKey(snapshot.OperatorErrorKind);
+                var errorText = $"✗ {(personalErrorKey is null
+                    ? snapshot.OperatorError ?? snapshot.NodeError ?? LocalizationHelper.GetString("ConnectionPage_GatewayConnectionFailed")
+                    : LocalizationHelper.GetString(personalErrorKey))}";
                 SetupCodeResult.Text = errorText;
                 DirectConnectResult.Text = errorText;
             }
@@ -170,10 +173,12 @@ public sealed partial class ConnectionStatusWindow : WindowEx
 
         var elapsed = DateTime.Now - _lastStateChangeTime;
         var elapsedStr = elapsed.TotalSeconds < 60 ? $"{elapsed.TotalSeconds:F0}s" : $"{elapsed.TotalMinutes:F0}m";
+        var personalErrorKey = GatewayPersonalErrorPresentation.ResourceKey(snapshot.OperatorErrorKind);
+        var operatorError = personalErrorKey is null ? snapshot.OperatorError : LocalizationHelper.GetString(personalErrorKey);
         OpDetailText.Text = snapshot.OperatorState switch
         {
             RoleConnectionState.Connected => $"✓ {elapsedStr}  device={snapshot.OperatorDeviceId ?? "—"}",
-            RoleConnectionState.Error => $"✗ {elapsedStr}: {snapshot.OperatorError ?? "unknown"}",
+            RoleConnectionState.Error => $"✗ {elapsedStr}: {operatorError ?? "unknown"}",
             RoleConnectionState.PairingRequired => $"⏳ {LocalizationHelper.GetString("ConnectionStatus_AwaitingApproval")}",
             _ => elapsedStr
         };
@@ -463,7 +468,8 @@ public sealed partial class ConnectionStatusWindow : WindowEx
         if (result.Outcome == GatewayDirectConnectOutcome.Failed)
         {
             InvalidatePendingStatusMessages();
-            DirectConnectResult.Text = $"✗ {result.Error}";
+            var errorKey = GatewayPersonalErrorPresentation.ResourceKey(result.ErrorKind, result.RollbackIncomplete);
+            DirectConnectResult.Text = $"✗ {(errorKey is null ? result.Error : LocalizationHelper.GetString(errorKey))}";
             return;
         }
 

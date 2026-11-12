@@ -9967,4 +9967,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessões não roteadas exibidas</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" arquivada ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dispensar notificação</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Login pessoal indisponível</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Não foi possível verificar sua identidade do Tailscale. Reconecte este Gateway. As credenciais compartilhadas não serão usadas.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Sua identidade do Tailscale precisa ser verificada novamente. Reconecte este Gateway. As credenciais compartilhadas não serão usadas.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>O login pessoal falhou e a recuperação não foi concluída. Revise as configurações de Conexão antes de tentar novamente.</value></data>
 </root>

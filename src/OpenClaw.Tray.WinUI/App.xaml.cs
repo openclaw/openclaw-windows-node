@@ -2914,11 +2914,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             title = LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title");
             var rawError = snapshot.OperatorError;
-            message = string.IsNullOrWhiteSpace(rawError)
-                ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
-                : rawError;
+            var personalErrorKey = GatewayPersonalErrorPresentation.ResourceKey(snapshot.OperatorErrorKind);
+            message = personalErrorKey is not null
+                ? LocalizationHelper.GetString(personalErrorKey)
+                : string.IsNullOrWhiteSpace(rawError)
+                    ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
+                    : rawError;
             severity = AppNotificationSeverity.Error;
-            key = $"operator-error:{rawError ?? "default"}";
+            key = $"operator-error:{personalErrorKey ?? rawError ?? "default"}";
             return true;
         }
 

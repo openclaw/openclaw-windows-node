@@ -44,6 +44,7 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
         var self = await peer.ReceiveAsync();
         await peer.SelfAsync(self, profile);
         await harness.WaitAsync(RoleConnectionState.Error);
+        Assert.Equal(GatewayErrorKind.PersonalIdentityUnverified, harness.Manager.CurrentSnapshot.OperatorErrorKind);
         Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
         Assert.Null(harness.Manager.CurrentSnapshot.PersonalIdentityProfileId);
     }
@@ -115,6 +116,7 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
         await peer.SelfAsync(await peer.ReceiveAsync(), "different-person");
         Assert.Null(await signing);
         Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
+        Assert.Equal(GatewayErrorKind.PersonalIdentityReverificationRequired, harness.Manager.CurrentSnapshot.OperatorErrorKind);
         Assert.NotEqual(RoleConnectionState.Connected, harness.Manager.CurrentSnapshot.OperatorState);
     }
 

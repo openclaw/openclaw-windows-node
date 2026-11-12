@@ -2945,7 +2945,8 @@ public sealed partial class ConnectionPage : Page
                         OperatorAuthentication: personal ? OperatorAuthenticationMode.PersonalTailscale : OperatorAuthenticationMode.GatewayCredential));
             if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
-                AddResultText.Text = $"✗ {result.Error}";
+                var errorKey = GatewayPersonalErrorPresentation.ResourceKey(result.ErrorKind, result.RollbackIncomplete);
+                AddResultText.Text = $"✗ {(errorKey is null ? result.Error : LocalizationHelper.GetString(errorKey))}";
                 return;
             }
 

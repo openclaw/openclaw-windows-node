@@ -86,7 +86,26 @@ public sealed partial class GatewayFixtureUiTests
                 await run.InvokeAsync("app.navigate", new { page = "chat" });
                 await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize") is { Current.IsOffscreen: false },
                     "Chat pin customization");
-                var window = FindHub(run);
+                AutomationElement window;
+                try { window = FindHub(run); }
+                catch (InvalidOperationException error)
+                {
+                    string diagnostic;
+                    try
+                    {
+                        diagnostic = JsonSerializer.Serialize(AppWindows(run).Select(candidate => new
+                        {
+                            window = Describe(candidate),
+                            hasComposer = candidate.FindFirst(TreeScope.Descendants,
+                                new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerInput")) is not null,
+                            hasCustomizer = candidate.FindFirst(TreeScope.Descendants,
+                                new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspacePagesCustomize")) is not null,
+                        }).ToArray());
+                    }
+                    catch (Exception diagnosticError) { diagnostic = diagnosticError.ToString(); }
+                    throw new InvalidOperationException(
+                        $"Pinned Usage {theme}: owned chat-window lookup failed after the customize control became visible. Owned-window observations: {diagnostic}", error);
+                }
                 var handle = new IntPtr(window.Current.NativeWindowHandle);
                 await NativeKeyboardProof.ActivateAsync(handle);
                 var scale = UsageGetDpiForWindow(handle) / 96d;
@@ -625,6 +644,13 @@ public sealed partial class GatewayFixtureUiTests
                                         collapsedHeader = bounds;
                                         return true;
                                     }
+                                }
+                                if (candidate is null && FindById(run, "UsageSessionsShowAll") is { Current.IsOffscreen: false } more)
+                                {
+                                    Invoke(more);
+                                    requestedPercent = 0;
+                                    scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
+                                    return false;
                                 }
                                 Assert.True(requestedPercent < 100 && position.VerticalViewSize is > 0 and < 100,
                                     "Main Usage session header has no visible measured geometry at the end of the page.");

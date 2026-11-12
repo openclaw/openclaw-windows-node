@@ -9914,4 +9914,8 @@
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>顯示未路由的工作階段</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已封存「{0}」（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>關閉通知</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>個人登入無法使用</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>無法驗證你的 Tailscale 身分。請重新連線至此閘道。不會使用共用認證。</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>需要重新驗證你的 Tailscale 身分。請重新連線至此閘道。不會使用共用認證。</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>個人登入失敗，且復原未完成。請先檢查「連線」設定，再重試。</value></data>
 </root>

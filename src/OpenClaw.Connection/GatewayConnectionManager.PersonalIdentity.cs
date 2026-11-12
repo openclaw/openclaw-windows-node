@@ -124,6 +124,7 @@ public sealed partial class GatewayConnectionManager
         try
         {
             if (!ReferenceEquals(expected, CurrentPersonalOperatorLease)) return;
+            _stateMachine.SetOperatorErrorKind(GatewayErrorKind.PersonalIdentityReverificationRequired);
             _stateMachine.TryTransition(ConnectionTrigger.WebSocketError,
                 "Personal identity changed. Reconnect this Gateway.");
             _stateMachine.Current = _stateMachine.Current with { PersonalIdentityProfileId = null };

@@ -9985,4 +9985,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>unrouted shown</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>Archived "{0}" ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dismiss notification</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Personal sign-in unavailable</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Your Tailscale identity could not be verified. Reconnect this Gateway. Shared credentials will not be used.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Your Tailscale identity needs to be verified again. Reconnect this Gateway. Shared credentials will not be used.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>Personal sign-in failed, and recovery did not complete. Review Connection settings before retrying.</value></data>
 </root>

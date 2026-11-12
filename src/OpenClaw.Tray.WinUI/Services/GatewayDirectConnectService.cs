@@ -27,7 +27,8 @@ internal sealed record GatewayDirectConnectResult(
     bool GatewayCommitted,
     string? Error = null,
     bool RollbackIncomplete = false,
-    string? EndpointBinding = null);
+    string? EndpointBinding = null,
+    GatewayErrorKind? ErrorKind = null);
 
 /// <summary>
 /// Owns the direct-connect commit/rollback workflow. WinUI surfaces provide input and render the
@@ -114,6 +115,7 @@ internal sealed class GatewayDirectConnectService
         var settingsMutated = false;
         var connectionAttemptStarted = false;
         var previousConnectionStopped = false;
+        GatewayErrorKind? connectionFailureKind = null;
         DeviceIdentityReplacementTransaction? candidateIdentityCreation = null;
         GatewayValidationIdentity? validationIdentity = null;
         DeviceIdentityReplacementTransaction? nativeIdentityRollback = null;
@@ -181,6 +183,7 @@ internal sealed class GatewayDirectConnectService
             cancellationToken.ThrowIfCancellationRequested();
             if (snapshot.OperatorState == RoleConnectionState.Error)
             {
+                connectionFailureKind = snapshot.OperatorErrorKind;
                 throw new InvalidOperationException(
                     snapshot.OperatorError ??
                     snapshot.NodeError ??
@@ -288,7 +291,8 @@ internal sealed class GatewayDirectConnectService
                 error,
                 rollbackIncomplete: !string.IsNullOrWhiteSpace(cleanupError) ||
                     !string.IsNullOrWhiteSpace(rollback.Error) ||
-                    !string.IsNullOrWhiteSpace(connectionRestoreError));
+                    !string.IsNullOrWhiteSpace(connectionRestoreError),
+                errorKind: connectionFailureKind);
         }
         finally
         {
@@ -686,13 +690,15 @@ internal sealed class GatewayDirectConnectService
         GatewayConnectionSnapshot snapshot,
         bool gatewayCommitted,
         string error,
-        bool rollbackIncomplete = false) =>
+        bool rollbackIncomplete = false,
+        GatewayErrorKind? errorKind = null) =>
         new(
             GatewayDirectConnectOutcome.Failed,
             snapshot,
             gatewayCommitted,
             error,
-            rollbackIncomplete);
+            rollbackIncomplete,
+            ErrorKind: errorKind);
 
     private sealed record ConnectionSettingsSnapshot(
         string GatewayUrl,

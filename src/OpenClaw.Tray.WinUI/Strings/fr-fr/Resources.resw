@@ -9914,4 +9914,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessions non routées affichées</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>« {0} » archivée ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Fermer la notification</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Connexion personnelle indisponible</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Votre identité Tailscale n’a pas pu être vérifiée. Reconnectez cette passerelle. Les identifiants partagés ne seront pas utilisés.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Votre identité Tailscale doit être vérifiée à nouveau. Reconnectez cette passerelle. Les identifiants partagés ne seront pas utilisés.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>La connexion personnelle a échoué et la récupération n’a pas abouti. Vérifiez les paramètres de connexion avant de réessayer.</value></data>
 </root>

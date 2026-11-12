@@ -9915,4 +9915,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>niet-gerouteerde sessies weergegeven</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" gearchiveerd ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Melding sluiten</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Persoonlijk aanmelden niet beschikbaar</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Je Tailscale-identiteit kon niet worden geverifieerd. Maak opnieuw verbinding met deze Gateway. Gedeelde inloggegevens worden niet gebruikt.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Je Tailscale-identiteit moet opnieuw worden geverifieerd. Maak opnieuw verbinding met deze Gateway. Gedeelde inloggegevens worden niet gebruikt.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>Persoonlijk aanmelden is mislukt en het herstel is niet voltooid. Controleer de verbindingsinstellingen voordat je het opnieuw probeert.</value></data>
 </root>
