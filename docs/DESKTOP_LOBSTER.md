@@ -1,14 +1,29 @@
 # Desktop lobster
 
-Enable **Settings > General > Desktop lobster** to keep the OpenClaw mascot on
-the desktop while Companion runs. It is off by default. Drag it to move it,
-right-click for options, or focus it and use Enter/F10 for its native menu.
-**Hide desktop lobster** persists the off setting. Closing Workspace does not
-close the lobster; exiting Companion does.
+The OpenClaw mascot appears on the desktop by default while Companion runs.
+An explicitly saved off setting is preserved. Drag it to move it,
+left-click or press Enter for quick chat, or right-click/use F10 for options.
+**Desktop lobster settings** opens **Settings > General**, where the
+**Desktop lobster** card controls visibility and size. Use its header toggle
+to turn the lobster off. Closing Workspace does not close the lobster;
+exiting Companion does.
+
+Expand the **Desktop lobster** settings card and choose **Lobster size** from
+the dropdown: 50%, 75%, 100%, 125%, 150%, 175% or 200%. The saved default is 100%.
+The header toggle stays available when the card is collapsed. Chat and notification text
+keep their normal size. Changing size preserves the bottom-right anchor within
+the monitor work area and does not close an open chat.
+
+Quick-chat recovery uses the same compact content inset, with no reserved
+spinner space after loading. **Open Connection** appears for unavailable chat
+connections, not a failed session operation on an otherwise connected Gateway.
+For interactive preview, use the `chat-interactive` Gateway fixture: the
+default browse fixture is read-only and rejects the dedicated conversation's
+`sessions.create` request.
 
 Hold the left mouse button on the lobster, move it, and release to reposition
 the overlay. Its speech bubble follows it. Releasing a drag does not open the
-menu; a normal click or right-click still does. Placement stays within the
+menu; a normal click opens chat and right-click opens options. Placement stays within the
 monitor work area and is not saved across app restarts.
 
 New app notifications, including Gateway notifications and `system.notify`,
@@ -20,7 +35,7 @@ be dismissed immediately. Long messages scroll. **Open notifications** opens
 the existing notification surface. Dismissing a bubble does not dismiss the
 app notification. Existing Windows toasts and notification history are unchanged.
 
-This opt-in exposes notification text outside the app, including during screen
+The lobster exposes notification text outside the app, including during screen
 sharing. Disable the lobster when that is inappropriate. **Show notifications**
 off also clears and suppresses bubbles; enabling either toggle does not replay
 old notifications. Existing upstream category filters continue to apply.
@@ -80,6 +95,10 @@ animator or a raster conversion.
 
 `DesktopCompanionSurface` declares the mascot, speech bubble, literal notification
 text and actions in C# using the app's existing Microsoft.UI.Reactor dependency.
+The bubble and its tail fill with the native `LayerOnAcrylicFillColorDefaultBrush`
+and stroke with `SurfaceStrokeColorFlyoutBrush`, matching the chat flyouts. The
+transparent overlay window has no backdrop, so this is the flyout fill and stroke
+only, not blurred acrylic.
 One `ReactorHostControl` reconciles updates from its presentation state.
 A Reactor `XamlHostElement` retains the exact setup control and animator across
 updates. Only notification arrivals restart its
@@ -106,7 +125,7 @@ The input adapter observes handled pointer events because the native WinUI
 button's pointer capture and accessibility behavior, clears dragging when capture
 is lost or canceled, and suppresses only the drag gesture's click.
 
-`DesktopCompanionController` owns the opt-in lifetime and observes the canonical
+`DesktopCompanionController` owns the settings-controlled lifetime and observes the canonical
 `AppNotificationService` plus `ISettingsStore`. `DesktopCompanionState` recognizes
 new/coalesced arrivals without replaying selection, dismissal, startup backlog,
 or stale dispatched snapshots. App remains only the composition/lifecycle owner.
@@ -122,12 +141,16 @@ independently of Companion. Those features are separate future scope.
 Run the required `build.ps1`, Shared.Tests and Tray.Tests closeout plus focused
 `DesktopCompanionWindowTests` in Tray.UITests on the host's native architecture,
 including Reactor reconciliation, retained mascot identity and close/unmount.
-Use `.\run-app-local.ps1 -Isolated` for the real app. Enable the
-desktop lobster, select **Preview notification** from its menu, and send a
-real `system.notify` through an isolated local MCP endpoint. Confirm happy
-arrival, readable text, dismiss/timeout, drag, hide/re-enable, and no foreground
+Use `.\run-app-local.ps1 -Isolated` for the real app. If previously disabled,
+enable the desktop lobster and send `system.notify` through an isolated local MCP endpoint
+when a preview is requested. There is no production preview menu item. Confirm happy
+arrival, readable text, dismiss/timeout, drag, the Settings shortcut,
+disable/re-enable through Settings, and no foreground
 activation on arrival. No Gateway is necessary for the local notification path;
 Gateway notification delivery needs a connected Gateway for end-to-end proof.
+Exercise the size dropdown at 50%, 100% and 200%, including with chat open.
+Check the native hit region, popup spacing, unchanged text size and persistence
+after restarting the isolated app.
 
 On an interactive desktop, set `OPENCLAW_DESKTOP_COMPANION_POINTER_PROOF=1` for
 the focused UI tests to also exercise real mouse input: repeated dragging with

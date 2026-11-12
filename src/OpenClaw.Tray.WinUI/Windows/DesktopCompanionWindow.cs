@@ -18,10 +18,12 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 {
     private readonly Action _openNotifications;
     private readonly Action _openChat;
-    private readonly Action _preview;
+    private readonly Action _openSettings;
+    private int _scalePercent = OpenClaw.Shared.DesktopCompanionScale.DefaultPercent;
     private readonly DispatcherTimer _bubbleTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly DesktopCompanionPresentation _presentation = new();
     private readonly ReactorHostControl _host = new();
+    private readonly DesktopCompanionChatHost _chat;
     private readonly IntPtr _hwnd;
     private readonly WinUIEx.Messaging.WindowMessageMonitor _frameMonitor;
     private StackPanel? _bubble;
@@ -29,15 +31,18 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private XamlRoot? _xamlRoot;
     private PointInt32? _dragStart;
     private PointInt32 _windowStart;
+    private string? _notificationGatewayId;
+    private (int Width, int Height, double Dpi, double MascotSize, int? BubbleTop, bool Modal)? _regionLayout;
     private bool _closed, _positioning, _dragged, _bubbleHovered;
 
     public event EventHandler? HideRequested;
 
-    internal DesktopCompanionWindow(Action openNotifications, Action openChat, Action preview)
+    internal DesktopCompanionWindow(Action openNotifications, Action openChat, Action openSettings)
     {
         _openNotifications = openNotifications;
         _openChat = openChat;
-        _preview = preview;
+        _openSettings = openSettings;
+        _chat = new DesktopCompanionChatHost(this, _presentation);
         Title = LocalizationHelper.GetString("DesktopCompanion_Name");
         SystemBackdrop = new TransparentTintBackdrop();
         var presenter = OverlappedPresenter.Create();
@@ -50,6 +55,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _frameMonitor = DesktopCompanionNative.CreateFrameMonitor(_hwnd);
         _bubbleTimer.Tick += OnBubbleTimeout;
         _host.Loaded += OnLoaded;
+        _host.LayoutUpdated += OnHostLayoutUpdated;
         _host.KeyDown += OnKeyDown;
         _host.OnRenderComplete = (_, _, _) =>
         {
@@ -59,7 +65,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         };
         XamlInterop.Register(_host.Reconciler);
         var props = new DesktopCompanionSurfaceProps(
-            _presentation, () => Present(null), OnOpenNotifications, OnBubbleMounted, OnMascotMounted);
+            _presentation, DismissBubble, OnOpenNotifications, OnReply, _chat.Content, OnBubbleMounted, OnMascotMounted);
         _host.Mount(_ => Component<DesktopCompanionSurface, DesktopCompanionSurfaceProps>(props));
         Content = _host;
         DesktopCompanionNative.ConfigureOverlay(_hwnd);
@@ -75,6 +81,15 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     public void ApplyTheme(string theme) => ThemeHelper.ApplyTheme(this, theme);
 
+    public void ApplyScale(int percent)
+    {
+        if (_closed) return;
+        var normalized = OpenClaw.Shared.DesktopCompanionScale.Normalize(percent);
+        if (_scalePercent == normalized) return;
+        _scalePercent = normalized;
+        PositionInWorkArea();
+    }
+
     void IDesktopCompanionView.Close()
     {
         if (!_closed) Close();
@@ -83,9 +98,17 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     public void Present(AppNotification? notification)
     {
         if (_closed) return;
+        if (_presentation.IsChatOpen)
+        {
+            if (notification is null) return;
+            _chat.Hide();
+            _bubbleHovered = false;
+        }
         _bubbleTimer.Stop();
         if (notification is null) _bubbleHovered = false;
+        _notificationGatewayId = (Application.Current as App)?.Registry?.GetActive()?.Id;
         _presentation.Present(notification);
+        PositionInWorkArea();
         if (notification is not null && !_bubbleHovered)
             _bubbleTimer.Start();
     }
@@ -117,12 +140,17 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         {
             var scale = DesktopCompanionNative.GetDpiForWindow(_hwnd) / 96d;
             var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-            var width = (int)Math.Ceiling(360 * scale);
-            var height = (int)Math.Ceiling(420 * scale);
+            var mascotSize = Math.Min(DesktopCompanionPresentation.DefaultMascotSize * _scalePercent / 100,
+                Math.Min(work.Width, work.Height) / scale);
+            _presentation.SetMascotSize(mascotSize);
+            var width = Math.Min(work.Width, (int)Math.Ceiling(Math.Max(_presentation.IsChatOpen ? 440 : 360, mascotSize) * scale));
+            var height = Math.Min(work.Height, (int)Math.Ceiling(((_presentation.IsChatOpen ? 640 : 420) +
+                mascotSize - DesktopCompanionPresentation.DefaultMascotSize) * scale));
+            _chat.Content.MaxHeight = Math.Max(0, height / scale - mascotSize - 84);
             var pos = AppWindow.Position;
             var bounds = DesktopCompanionBounds.Clamp(
-                initial ? work.X + work.Width - width - 16 : pos.X,
-                initial ? work.Y + work.Height - height - 8 : pos.Y,
+                initial ? work.X + work.Width - width - 16 : pos.X + AppWindow.Size.Width - width,
+                initial ? work.Y + work.Height - height - 8 : pos.Y + AppWindow.Size.Height - height,
                 width, height, new(work.X, work.Y, work.Width, work.Height));
             if (pos.X != bounds.X || pos.Y != bounds.Y ||
                 AppWindow.Size.Width != width || AppWindow.Size.Height != height)
@@ -139,9 +167,15 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         int? bubbleTop = _bubble is { Visibility: Visibility.Visible, ActualHeight: > 0 }
             ? (int)Math.Floor(_bubble.TransformToVisual(_host).TransformPoint(new(0, 0)).Y * scale)
             : null;
-        DesktopCompanionNative.SetRegion(_hwnd, AppWindow.Size.Width, AppWindow.Size.Height, scale, bubbleTop);
+        var layout = (Width: AppWindow.Size.Width, Height: AppWindow.Size.Height, Dpi: scale,
+            MascotSize: _presentation.MascotSize, BubbleTop: bubbleTop, Modal: _presentation.InputPrompt is not null);
+        if (_regionLayout == layout) return;
+        DesktopCompanionNative.SetRegion(_hwnd, layout.Width, layout.Height, layout.Dpi, layout.MascotSize, layout.BubbleTop,
+            modal: layout.Modal);
+        _regionLayout = layout;
     }
 
+    private void OnHostLayoutUpdated(object? sender, object args) => UpdateRegion();
     private void OnBubbleSizeChanged(object sender, SizeChangedEventArgs args) => UpdateRegion();
     private void OnBubbleTimeout(object? sender, object args) => Present(null);
     private void OnBubbleEntered(object sender, PointerRoutedEventArgs args)
@@ -152,12 +186,43 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private void OnBubbleExited(object sender, PointerRoutedEventArgs args)
     {
         _bubbleHovered = false;
-        if (_presentation.Notification is not null) _bubbleTimer.Start();
+        if (!_presentation.IsChatOpen && _presentation.Notification is not null) _bubbleTimer.Start();
     }
     private void OnOpenNotifications()
     {
-        Present(null);
+        DismissBubble();
         _openNotifications();
+    }
+
+    private void DismissBubble()
+    {
+        _bubbleTimer.Stop();
+        _chat.Hide();
+        _presentation.ShowChat(false);
+        PositionInWorkArea();
+        _mascotTarget?.Focus(FocusState.Programmatic);
+    }
+
+    private void OnReply()
+    {
+        if (_notificationGatewayId != (Application.Current as App)?.Registry?.GetActive()?.Id)
+        {
+            DismissBubble();
+            (Application.Current as App)?.ShowHub("connection");
+            return;
+        }
+        if (AppNotificationActionRoutes.TryGetChatSessionKey(_presentation.Notification?.ActionRoute, out var key))
+            OpenQuickChat(key);
+    }
+
+    private void OpenQuickChat(string? sessionKey = null)
+    {
+        if (_closed) return;
+        _bubbleTimer.Stop();
+        _presentation.ShowChat(true);
+        PositionInWorkArea();
+        Activate();
+        _ = _chat.OpenAsync(sessionKey);
     }
 
     private void OnBubbleMounted(FrameworkElement element)
@@ -229,7 +294,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     private void OnMascotClick(object sender, RoutedEventArgs args)
     {
-        if (!_dragged) ShowMenu(null);
+        if (!_dragged) OpenQuickChat();
     }
 
     private void ShowMenu(global::Windows.Foundation.Point? position)
@@ -238,9 +303,8 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         var menu = new MenuFlyout();
         AddMenuItem(menu, "DesktopCompanion_Open", _openChat);
         AddMenuItem(menu, "DesktopCompanion_Notifications", _openNotifications);
-        AddMenuItem(menu, "DesktopCompanion_Preview", _preview);
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenuItem(menu, "DesktopCompanion_Hide", () => HideRequested?.Invoke(this, EventArgs.Empty));
+        AddMenuItem(menu, "DesktopCompanion_Settings", _openSettings);
         if (position is { } point) menu.ShowAt(_mascotTarget, point);
         else menu.ShowAt(_mascotTarget);
     }
@@ -261,7 +325,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
             return;
         }
         if (args.Key != VirtualKey.Escape) return;
-        Present(null);
+        DismissBubble();
         args.Handled = true;
     }
 
@@ -276,6 +340,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _host.Loaded -= OnLoaded;
+        _host.LayoutUpdated -= OnHostLayoutUpdated;
         _host.KeyDown -= OnKeyDown;
         _host.OnRenderComplete = null;
         if (_bubble is { } bubble)
@@ -294,6 +359,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
             target.RemoveHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(OnMascotCaptureLost));
             target.RightTapped -= OnMascotRightTapped;
         }
+        _chat.Dispose();
         _host.Dispose();
         Content = null;
         _presentation.Present(null);

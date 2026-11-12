@@ -6,6 +6,432 @@
   },
   "components": [
     {
+      "name": "LobsterNotification",
+      "note": "DesktopCompanionSurface notification preview. The bubble retains 4-DIP padding and 8-DIP row gaps. The title has 8-DIP left and 4-DIP top margins; Close has a 4-DIP top margin and padding. The message has 8-DIP horizontal margins, and actions have 8-DIP left and bottom margins. Synthetic content only; dismissal, speech tail, animated mascot and desktop transparency are not simulated.",
+      "props": {
+        "title": "Hello from OpenClaw",
+        "message": "I'm here when you need me. New notifications appear here."
+      },
+      "root": {
+        "id": "lobster-notification",
+        "el": "section",
+        "attrs": {
+          "aria-label": "Lobster notification"
+        },
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "padding": "1",
+          "width": 352,
+          "height": "hug"
+        },
+        "appearance": {
+          "background": "paper",
+          "borderColor": "line",
+          "borderWidth": 1,
+          "radius": "bubble"
+        },
+        "children": [
+          {
+            "id": "lobster-notification-header",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "lobster-notification-title",
+                "el": "span",
+                "layout": {
+                  "width": "fill"
+                },
+                "margin": {
+                  "top": "1",
+                  "left": "2"
+                },
+                "appearance": {
+                  "textStyle": "bodyStrong",
+                  "color": "ink"
+                },
+                "children": [
+                  "{title}"
+                ]
+              },
+              {
+                "id": "lobster-notification-close",
+                "component": "SubtleButton",
+                "props": {
+                  "label": "",
+                  "accessibleName": "Dismiss"
+                },
+                "layout": {
+                  "width": 28,
+                  "height": 28,
+                  "padding": "1"
+                },
+                "appearance": {
+                  "textStyle": "notificationDismissIcon"
+                },
+                "margin": {
+                  "top": "1"
+                }
+              }
+            ]
+          },
+          {
+            "id": "lobster-notification-message",
+            "el": "p",
+            "margin": {
+              "top": "0",
+              "right": "2",
+              "bottom": "0",
+              "left": "2"
+            },
+            "appearance": {
+              "textStyle": "body",
+              "color": "ink"
+            },
+            "children": [
+              "{message}"
+            ]
+          },
+          {
+            "id": "lobster-notification-open",
+            "component": "HyperlinkButton",
+            "props": {
+              "children": "Open notifications"
+            },
+            "layout": {
+              "padding": "0"
+            },
+            "margin": {
+              "bottom": "2",
+              "left": "2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LobsterQuickComposer",
+      "note": "Compact variant of the shared native ReactorChatComposer, not the Workspace toolbar. Attach, transparent editor, Voice and Send share one row. Native targets are 32 DIPs, surface padding is 8 DIPs, editor top padding is 4 DIPs, minimum outer height is 50 DIPs, radius is 20 DIPs. The textarea is editable, but native automatic height growth up to 200 DIPs and send eligibility are not simulated. Native Attach opens the owned multi-file picker; Voice uses the shared local speech service with permission/model readiness guidance and hidden-host cancellation. This preview does not attach, record, send or contact a Gateway.",
+      "props": {
+        "draft": "",
+        "placeholder": "Message Assistant (Enter to send)"
+      },
+      "root": {
+        "id": "lobster-composer",
+        "el": "div",
+        "layout": {
+          "mode": "horizontal",
+          "gap": "1",
+          "align": "end",
+          "padding": "2",
+          "width": "fill",
+          "height": "hug"
+        },
+        "appearance": {
+          "background": "chatSurface",
+          "borderColor": "chatStroke",
+          "borderWidth": 1,
+          "radius": "composer"
+        },
+        "children": [
+          {
+            "id": "lobster-attach",
+            "component": "SubtleButton",
+            "props": {
+              "label": "",
+              "accessibleName": "Attach"
+            },
+            "layout": {
+              "width": 32,
+              "height": 32,
+              "padding": "0"
+            },
+            "appearance": {
+              "textStyle": "chatIcon",
+              "color": "chatSecondary"
+            }
+          },
+          {
+            "id": "lobster-input",
+            "el": "textarea",
+            "attrs": {
+              "rows": "1",
+              "placeholder": "{placeholder}",
+              "aria-label": "Message Assistant"
+            },
+            "layout": {
+              "width": "fill",
+              "height": 32,
+              "padding": {
+                "top": "1",
+                "right": "0",
+                "bottom": "0",
+                "left": "0"
+              }
+            },
+            "appearance": {
+              "textStyle": "chatInput",
+              "color": "chatText",
+              "background": "$none",
+              "borderWidth": 0
+            },
+            "control": {
+              "chrome": "none",
+              "focus": {
+                "kind": "outline",
+                "color": "chatCanvas"
+              }
+            },
+            "children": [
+              "{draft}"
+            ]
+          },
+          {
+            "id": "lobster-mic",
+            "component": "SubtleButton",
+            "props": {
+              "label": "",
+              "accessibleName": "Voice"
+            },
+            "layout": {
+              "width": 32,
+              "height": 32,
+              "padding": "0"
+            },
+            "appearance": {
+              "textStyle": "chatIcon",
+              "color": "chatSecondary"
+            }
+          },
+          {
+            "id": "lobster-send",
+            "component": "Button",
+            "props": {
+              "children": ""
+            },
+            "attrs": {
+              "aria-label": "Send",
+              "title": "Send"
+            },
+            "layout": {
+              "width": 32,
+              "height": 32,
+              "padding": "0"
+            },
+            "appearance": {
+              "textStyle": "chatIcon",
+              "radius": "pill"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LobsterQuickChat",
+      "note": "Editable reference for DesktopCompanionSurface and the compact Reactor chat, with user-directed November 11 spacing tweaks ported to production. Outer bubble is approximately 432 DIPs wide inside the 440-DIP window, with 4-DIP padding, 12-DIP corners and a subtle 28-DIP Close button. Notifications use the same inset and replace open chat while preserving its draft. No Quick chat heading. Synthetic transcript content is illustrative, not live history. The screenshot's partially scrolled thinking panel/table, clipping, native scrollbar, speech tail, animated mascot, desktop transparency and window hit region are not reproduced here. Paper approximates the native SolidBackgroundFillColorBaseBrush shell; shipping code remains authoritative. Edit draft and answer props to explore content. Close/Copy/Send controls are visual only.",
+      "props": {
+        "draft": "",
+        "answer": "This is a synthetic streaming answer."
+      },
+      "root": {
+        "id": "lobster-quick-chat",
+        "el": "section",
+        "attrs": {
+          "aria-label": "Lobster quick chat"
+        },
+        "layout": {
+          "mode": "vertical",
+          "gap": "0",
+          "padding": "1",
+          "width": 432,
+          "height": "hug"
+        },
+        "appearance": {
+          "background": "paper",
+          "borderColor": "line",
+          "borderWidth": 1,
+          "radius": "bubble"
+        },
+        "children": [
+          {
+            "id": "lobster-header",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "justify": "end",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "lobster-close",
+                "component": "SubtleButton",
+                "props": {
+                  "label": "",
+                  "accessibleName": "Dismiss"
+                },
+                "layout": {
+                  "width": 28,
+                  "height": 28,
+                  "padding": "1"
+                },
+                "appearance": {
+                  "textStyle": "notificationDismissIcon"
+                }
+              }
+            ]
+          },
+          {
+            "id": "lobster-transcript",
+            "el": "div",
+            "layout": {
+              "mode": "vertical",
+              "gap": "4",
+              "padding": "4",
+              "width": "fill"
+            },
+            "appearance": {
+              "textStyle": "chatProse",
+              "color": "chatText"
+            },
+            "children": [
+              {
+                "id": "lobster-answer",
+                "el": "p",
+                "margin": "0",
+                "children": [
+                  "{answer}"
+                ]
+              },
+              {
+                "id": "lobster-code",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "3",
+                  "padding": "3",
+                  "width": "fill"
+                },
+                "appearance": {
+                  "background": "chatSurface",
+                  "borderColor": "chatStroke",
+                  "borderWidth": 1,
+                  "radius": "bubble",
+                  "fontFamily": "mono",
+                  "textStyle": "caption"
+                },
+                "children": [
+                  {
+                    "id": "lobster-code-header",
+                    "el": "div",
+                    "layout": {
+                      "mode": "horizontal",
+                      "justify": "space-between",
+                      "align": "center",
+                      "width": "fill"
+                    },
+                    "children": [
+                      {
+                        "id": "lobster-code-language",
+                        "el": "span",
+                        "children": [
+                          "csharp"
+                        ]
+                      },
+                      {
+                        "id": "lobster-code-copy",
+                        "component": "ChatCopyButton"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "lobster-code-text",
+                    "el": "code",
+                    "children": [
+                      "var ready = true;"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "lobster-table",
+                "el": "table",
+                "layout": {
+                  "width": "fill"
+                },
+                "children": [
+                  {
+                    "id": "lobster-table-head",
+                    "el": "thead",
+                    "children": [
+                      {
+                        "id": "lobster-table-head-row",
+                        "el": "tr",
+                        "children": [
+                          {
+                            "id": "lobster-table-check",
+                            "el": "th",
+                            "children": [
+                              "Check"
+                            ]
+                          },
+                          {
+                            "id": "lobster-table-result",
+                            "el": "th",
+                            "children": [
+                              "Result"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "lobster-table-body",
+                    "el": "tbody",
+                    "children": [
+                      {
+                        "id": "lobster-table-row",
+                        "el": "tr",
+                        "children": [
+                          {
+                            "id": "lobster-table-provider",
+                            "el": "td",
+                            "children": [
+                              "Provider"
+                            ]
+                          },
+                          {
+                            "id": "lobster-table-status",
+                            "el": "td",
+                            "children": [
+                              "Not contacted"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "lobster-composer-slot",
+            "component": "LobsterQuickComposer",
+            "props": {
+              "draft": "{draft}"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Button",
       "note": "Basic control. Accent variation: ship the stock WinUI Button with AccentButtonStyle. ButtonStandard references this shared markup and overrides its state brushes for the normal style; a variant class cannot override inline token styling. Both use exact ButtonPadding 11,5,11,6, a retained 1px ButtonBorderThemeThickness, ControlCornerRadius 4, normal-weight 14px content, and the native 83ms linear background-only transition. Accent fill/foreground use accent/accentInk at rest; existing chatAction tokens already bind the same AccentButton hover, pressed-fill, and disabled resources. Pressed text and state borders have dedicated aliases, including high-contrast system colors. Width and height follow content; MinWidth 100 belongs only to wizard instances. Browser limits: elevation borders are flat swatches, the body line box is 20px, and the focus outline is not WinUI's system focus visual. Keep the native template, gradient brush, text measurement and FocusVisualMargin=-3 when shipping.",
       "props": {
@@ -43,16 +469,41 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "outline", "color": "accent" }
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "color": "accentInk", "background": "chatActionHover", "borderColor": "buttonAccentBorder" },
-          "pressed": { "color": "buttonAccentPressedText", "background": "chatActionPressed", "borderColor": "buttonAccentPressedBorder" },
-          "hoverPressed": { "color": "buttonAccentPressedText", "background": "chatActionPressed", "borderColor": "buttonAccentPressedBorder" },
-          "disabled": { "color": "chatActionDisabledText", "background": "chatActionDisabled", "borderColor": "buttonAccentDisabledBorder" }
+          "hover": {
+            "color": "accentInk",
+            "background": "chatActionHover",
+            "borderColor": "buttonAccentBorder"
+          },
+          "pressed": {
+            "color": "buttonAccentPressedText",
+            "background": "chatActionPressed",
+            "borderColor": "buttonAccentPressedBorder"
+          },
+          "hoverPressed": {
+            "color": "buttonAccentPressedText",
+            "background": "chatActionPressed",
+            "borderColor": "buttonAccentPressedBorder"
+          },
+          "disabled": {
+            "color": "chatActionDisabledText",
+            "background": "chatActionDisabled",
+            "borderColor": "buttonAccentDisabledBorder"
+          }
         },
         "transitions": [
-          { "properties": ["background-color"], "duration": 83, "easing": "linear" }
+          {
+            "properties": [
+              "background-color"
+            ],
+            "duration": 83,
+            "easing": "linear"
+          }
         ],
         "children": [
           "{children}"
@@ -69,17 +520,36 @@
       "root": {
         "id": "button-standard-root",
         "component": "Button",
-        "props": { "children": "{children}", "disabled": "{disabled}" },
+        "props": {
+          "children": "{children}",
+          "disabled": "{disabled}"
+        },
         "appearance": {
           "color": "buttonText",
           "background": "buttonFill",
           "borderColor": "buttonBorder"
         },
         "states": {
-          "hover": { "color": "buttonHoverText", "background": "buttonHoverFill", "borderColor": "buttonHoverBorder" },
-          "pressed": { "color": "buttonPressedText", "background": "buttonPressedFill", "borderColor": "buttonPressedBorder" },
-          "hoverPressed": { "color": "buttonPressedText", "background": "buttonPressedFill", "borderColor": "buttonPressedBorder" },
-          "disabled": { "color": "buttonDisabledText", "background": "buttonDisabledFill", "borderColor": "buttonDisabledBorder" }
+          "hover": {
+            "color": "buttonHoverText",
+            "background": "buttonHoverFill",
+            "borderColor": "buttonHoverBorder"
+          },
+          "pressed": {
+            "color": "buttonPressedText",
+            "background": "buttonPressedFill",
+            "borderColor": "buttonPressedBorder"
+          },
+          "hoverPressed": {
+            "color": "buttonPressedText",
+            "background": "buttonPressedFill",
+            "borderColor": "buttonPressedBorder"
+          },
+          "disabled": {
+            "color": "buttonDisabledText",
+            "background": "buttonDisabledFill",
+            "borderColor": "buttonDisabledBorder"
+          }
         }
       }
     },
@@ -119,13 +589,25 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "underline", "color": "accent" }
+          "focus": {
+            "kind": "underline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "background": "controlHover" },
-          "pressed": { "background": "controlHover" },
-          "hoverPressed": { "background": "controlHover" },
-          "disabled": { "color": "disabledText", "background": "controlDisabled" }
+          "hover": {
+            "background": "controlHover"
+          },
+          "pressed": {
+            "background": "controlHover"
+          },
+          "hoverPressed": {
+            "background": "controlHover"
+          },
+          "disabled": {
+            "color": "disabledText",
+            "background": "controlDisabled"
+          }
         }
       }
     },
@@ -258,12 +740,22 @@
     {
       "name": "BadgeAccent",
       "note": "Outlined accent variation of Badge, derived from production Controls/RecommendedBadge.xaml at 0131e4ce1f7937b22c69b289564087061687fa14. Caption text and a 1px border bind AccentTextFillColorPrimaryBrush (accentText), not AccentFillColorDefaultBrush. Transparent fill, sm (4px) corners, and native 8,4 padding. Disabled text and border bind TextFillColorDisabledBrush. Read-only, with no hover/pressed action. This component reference is a named variant of the shared Badge, not a second implementation.",
-      "props": { "children": "Recommended" },
+      "props": {
+        "children": "Recommended"
+      },
       "root": {
         "id": "badge-accent-root",
         "component": "Badge",
-        "props": { "children": "{children}", "tone": "neutral" },
-        "layout": { "padding": { "x": "2", "y": "1" } },
+        "props": {
+          "children": "{children}",
+          "tone": "neutral"
+        },
+        "layout": {
+          "padding": {
+            "x": "2",
+            "y": "1"
+          }
+        },
         "appearance": {
           "fontFamily": "body",
           "textStyle": "caption",
@@ -274,7 +766,10 @@
           "radius": "sm"
         },
         "states": {
-          "disabled": { "color": "disabledText", "borderColor": "disabledText" }
+          "disabled": {
+            "color": "disabledText",
+            "borderColor": "disabledText"
+          }
         }
       }
     },
@@ -318,13 +813,32 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "outline", "color": "accent" }
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "color": "subtleButtonHoverText", "background": "subtleButtonHoverFill", "borderColor": "subtleButtonHoverBorder" },
-          "pressed": { "color": "subtleButtonPressedText", "background": "subtleButtonPressedFill", "borderColor": "subtleButtonPressedBorder" },
-          "hoverPressed": { "color": "subtleButtonPressedText", "background": "subtleButtonPressedFill", "borderColor": "subtleButtonPressedBorder" },
-          "disabled": { "color": "subtleButtonDisabledText", "background": "subtleButtonFill", "borderColor": "subtleButtonBorder" }
+          "hover": {
+            "color": "subtleButtonHoverText",
+            "background": "subtleButtonHoverFill",
+            "borderColor": "subtleButtonHoverBorder"
+          },
+          "pressed": {
+            "color": "subtleButtonPressedText",
+            "background": "subtleButtonPressedFill",
+            "borderColor": "subtleButtonPressedBorder"
+          },
+          "hoverPressed": {
+            "color": "subtleButtonPressedText",
+            "background": "subtleButtonPressedFill",
+            "borderColor": "subtleButtonPressedBorder"
+          },
+          "disabled": {
+            "color": "subtleButtonDisabledText",
+            "background": "subtleButtonFill",
+            "borderColor": "subtleButtonBorder"
+          }
         },
         "children": [
           "{label}"
@@ -361,13 +875,25 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "outline", "color": "accent" }
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "background": "subtleHover" },
-          "pressed": { "background": "subtlePressed" },
-          "hoverPressed": { "background": "subtlePressed" },
-          "disabled": { "color": "muted", "background": "$none" }
+          "hover": {
+            "background": "subtleHover"
+          },
+          "pressed": {
+            "background": "subtlePressed"
+          },
+          "hoverPressed": {
+            "background": "subtlePressed"
+          },
+          "disabled": {
+            "color": "muted",
+            "background": "$none"
+          }
         },
         "children": [
           "{children}"
@@ -390,62 +916,273 @@
           "aria-label": "{label}",
           "aria-disabled": "{disabled}"
         },
-        "state": { "checked": true },
-        "on": { "click": { "toggle": "checked" } },
-        "layout": { "mode": "freeform", "width": 40, "height": 20, "padding": "0" },
-        "appearance": { "background": "$none", "borderColor": "$none", "borderWidth": 0, "radius": "pill" },
-        "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+        "state": {
+          "checked": true
+        },
+        "on": {
+          "click": {
+            "toggle": "checked"
+          }
+        },
+        "layout": {
+          "mode": "freeform",
+          "width": 40,
+          "height": 20,
+          "padding": "0"
+        },
+        "appearance": {
+          "background": "$none",
+          "borderColor": "$none",
+          "borderWidth": 0,
+          "radius": "pill"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
+        },
         "children": [
           {
             "id": "toggle-switch-track",
             "el": "span",
-            "attrs": { "aria-hidden": "true" },
-            "position": { "mode": "absolute", "x": 0, "y": 0 },
-            "layout": { "width": 40, "height": 20 },
-            "appearance": { "background": "toggleOffFill", "borderColor": "toggleOffStroke", "borderWidth": 1, "radius": "pill" },
-            "transitions": [{ "properties": ["background-color", "border-color"], "duration": 83, "easing": "linear" }],
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "position": {
+              "mode": "absolute",
+              "x": 0,
+              "y": 0
+            },
+            "layout": {
+              "width": 40,
+              "height": 20
+            },
+            "appearance": {
+              "background": "toggleOffFill",
+              "borderColor": "toggleOffStroke",
+              "borderWidth": 1,
+              "radius": "pill"
+            },
+            "transitions": [
+              {
+                "properties": [
+                  "background-color",
+                  "border-color"
+                ],
+                "duration": 83,
+                "easing": "linear"
+              }
+            ],
             "states": {
-              "hover": { "background": "toggleOffHoverFill", "borderColor": "toggleOffHotStroke" },
-              "pressed": { "background": "toggleOffPressedFill", "borderColor": "toggleOffHotStroke" },
-              "disabled": { "background": "toggleOffDisabledFill", "borderColor": "toggleDisabledStroke" }
+              "hover": {
+                "background": "toggleOffHoverFill",
+                "borderColor": "toggleOffHotStroke"
+              },
+              "pressed": {
+                "background": "toggleOffPressedFill",
+                "borderColor": "toggleOffHotStroke"
+              },
+              "disabled": {
+                "background": "toggleOffDisabledFill",
+                "borderColor": "toggleDisabledStroke"
+              }
             },
             "when": [
-              { "state": { "checked": true }, "style": { "background": "accent", "borderColor": "toggleOnStroke", "transitions": [] } },
-              { "state": { "checked": true }, "interaction": "hover", "style": { "background": "toggleOnHoverFill", "borderColor": "toggleOnHotStroke" } },
-              { "state": { "checked": true }, "interaction": "pressed", "style": { "background": "toggleOnPressedFill", "borderColor": "toggleOnHotStroke" } },
-              { "state": { "checked": true }, "interaction": "disabled", "style": { "background": "toggleOnDisabledFill", "borderColor": "toggleOnDisabledStroke" } }
+              {
+                "state": {
+                  "checked": true
+                },
+                "style": {
+                  "background": "accent",
+                  "borderColor": "toggleOnStroke",
+                  "transitions": []
+                }
+              },
+              {
+                "state": {
+                  "checked": true
+                },
+                "interaction": "hover",
+                "style": {
+                  "background": "toggleOnHoverFill",
+                  "borderColor": "toggleOnHotStroke"
+                }
+              },
+              {
+                "state": {
+                  "checked": true
+                },
+                "interaction": "pressed",
+                "style": {
+                  "background": "toggleOnPressedFill",
+                  "borderColor": "toggleOnHotStroke"
+                }
+              },
+              {
+                "state": {
+                  "checked": true
+                },
+                "interaction": "disabled",
+                "style": {
+                  "background": "toggleOnDisabledFill",
+                  "borderColor": "toggleOnDisabledStroke"
+                }
+              }
             ]
           },
           {
             "id": "toggle-switch-carrier",
             "el": "span",
-            "attrs": { "aria-hidden": "true" },
-            "position": { "mode": "absolute", "x": -0.5, "y": 0 },
-            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 20, "height": 20 },
-            "geometry": { "translateX": 0 },
-            "transitions": [{ "properties": ["translate"], "duration": 367, "easing": [0.1, 0.9, 0.2, 1] }],
-            "when": [{ "state": { "checked": true }, "style": { "geometry": { "translateX": 20 } } }],
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "position": {
+              "mode": "absolute",
+              "x": -0.5,
+              "y": 0
+            },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "justify": "center",
+              "width": 20,
+              "height": 20
+            },
+            "geometry": {
+              "translateX": 0
+            },
+            "transitions": [
+              {
+                "properties": [
+                  "translate"
+                ],
+                "duration": 367,
+                "easing": [
+                  0.1,
+                  0.9,
+                  0.2,
+                  1
+                ]
+              }
+            ],
+            "when": [
+              {
+                "state": {
+                  "checked": true
+                },
+                "style": {
+                  "geometry": {
+                    "translateX": 20
+                  }
+                }
+              }
+            ],
             "children": [
               {
                 "id": "toggle-switch-thumb",
                 "el": "span",
-                "layout": { "width": 12, "height": 12 },
-                "appearance": { "background": "toggleOffKnob", "radius": "pill" },
-                "geometry": { "translateX": 0 },
-                "transitions": [{ "properties": ["width", "height"], "duration": 83, "easing": [0, 0, 0, 1] }],
+                "layout": {
+                  "width": 12,
+                  "height": 12
+                },
+                "appearance": {
+                  "background": "toggleOffKnob",
+                  "radius": "pill"
+                },
+                "geometry": {
+                  "translateX": 0
+                },
+                "transitions": [
+                  {
+                    "properties": [
+                      "width",
+                      "height"
+                    ],
+                    "duration": 83,
+                    "easing": [
+                      0,
+                      0,
+                      0,
+                      1
+                    ]
+                  }
+                ],
                 "states": {
-                  "hover": { "background": "toggleOffHotKnob", "geometry": { "width": 14, "height": 14 } },
-                  "pressed": { "background": "toggleOffHotKnob", "geometry": { "width": 17, "height": 14, "translateX": 2 } },
+                  "hover": {
+                    "background": "toggleOffHotKnob",
+                    "geometry": {
+                      "width": 14,
+                      "height": 14
+                    }
+                  },
+                  "pressed": {
+                    "background": "toggleOffHotKnob",
+                    "geometry": {
+                      "width": 17,
+                      "height": 14,
+                      "translateX": 2
+                    }
+                  },
                   "disabled": {
                     "background": "disabledText",
-                    "transitions": [{ "properties": ["width", "height"], "duration": 250, "easing": [0, 0, 0, 1] }]
+                    "transitions": [
+                      {
+                        "properties": [
+                          "width",
+                          "height"
+                        ],
+                        "duration": 250,
+                        "easing": [
+                          0,
+                          0,
+                          0,
+                          1
+                        ]
+                      }
+                    ]
                   }
                 },
                 "when": [
-                  { "state": { "checked": true }, "style": { "background": "accentInk" } },
-                  { "state": { "checked": true }, "interaction": "hover", "style": { "background": "toggleOnHotKnob" } },
-                  { "state": { "checked": true }, "interaction": "pressed", "style": { "background": "toggleOnHotKnob", "geometry": { "translateX": -1 } } },
-                  { "state": { "checked": true }, "interaction": "disabled", "style": { "background": "toggleOnDisabledKnob" } }
+                  {
+                    "state": {
+                      "checked": true
+                    },
+                    "style": {
+                      "background": "accentInk"
+                    }
+                  },
+                  {
+                    "state": {
+                      "checked": true
+                    },
+                    "interaction": "hover",
+                    "style": {
+                      "background": "toggleOnHotKnob"
+                    }
+                  },
+                  {
+                    "state": {
+                      "checked": true
+                    },
+                    "interaction": "pressed",
+                    "style": {
+                      "background": "toggleOnHotKnob",
+                      "geometry": {
+                        "translateX": -1
+                      }
+                    }
+                  },
+                  {
+                    "state": {
+                      "checked": true
+                    },
+                    "interaction": "disabled",
+                    "style": {
+                      "background": "toggleOnDisabledKnob"
+                    }
+                  }
                 ]
               }
             ]
@@ -517,11 +1254,38 @@
       "root": {
         "id": "avatar-states-root",
         "el": "div",
-        "layout": { "mode": "horizontal", "gap": "6", "wrap": true },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "6",
+          "wrap": true
+        },
         "children": [
-          { "id": "avatar-initials", "component": "Avatar" },
-          { "id": "avatar-contact", "component": "Avatar", "props": { "initials": "\uE77B", "name": "Person without photo or initials" }, "appearance": { "textStyle": "personSymbol" } },
-          { "id": "avatar-group", "component": "Avatar", "props": { "initials": "\uE716", "name": "Group" }, "appearance": { "textStyle": "personSymbol" } }
+          {
+            "id": "avatar-initials",
+            "component": "Avatar"
+          },
+          {
+            "id": "avatar-contact",
+            "component": "Avatar",
+            "props": {
+              "initials": "",
+              "name": "Person without photo or initials"
+            },
+            "appearance": {
+              "textStyle": "personSymbol"
+            }
+          },
+          {
+            "id": "avatar-group",
+            "component": "Avatar",
+            "props": {
+              "initials": "",
+              "name": "Group"
+            },
+            "appearance": {
+              "textStyle": "personSymbol"
+            }
+          }
         ]
       }
     },
@@ -532,15 +1296,19 @@
         "title": "Couldn't reach the gateway",
         "message": "Check that the gateway is running, then retry.",
         "iconTone": "infoErrorIcon",
-        "iconGlyph": "\uF13D"
+        "iconGlyph": ""
       },
       "root": {
         "id": "info-bar-root",
         "el": "div",
-        "attrs": { "role": "status" },
+        "attrs": {
+          "role": "status"
+        },
         "layout": {
           "mode": "horizontal",
-          "padding": { "left": "4" },
+          "padding": {
+            "left": "4"
+          },
           "align": "start",
           "width": "fill"
         },
@@ -560,58 +1328,150 @@
               "width": 16,
               "height": 16
             },
-            "layout": { "width": 16, "height": 16 },
-            "margin": { "top": "4", "right": "infoIconGap", "bottom": "4" },
-            "appearance": { "textStyle": "infoSymbol" },
+            "layout": {
+              "width": 16,
+              "height": 16
+            },
+            "margin": {
+              "top": "4",
+              "right": "infoIconGap",
+              "bottom": "4"
+            },
+            "appearance": {
+              "textStyle": "infoSymbol"
+            },
             "children": [
-              { "id": "info-bar-icon-background", "el": "text", "attrs": { "x": 8, "y": 8, "text-anchor": "middle", "dominant-baseline": "central", "fill": "var(--color-{iconTone})" }, "children": [ "\uF136" ] },
-              { "id": "info-bar-icon-foreground", "el": "text", "attrs": { "x": 8, "y": 8, "text-anchor": "middle", "dominant-baseline": "central", "fill": "var(--color-infoIconForeground)" }, "children": [ "{iconGlyph}" ] }
+              {
+                "id": "info-bar-icon-background",
+                "el": "text",
+                "attrs": {
+                  "x": 8,
+                  "y": 8,
+                  "text-anchor": "middle",
+                  "dominant-baseline": "central",
+                  "fill": "var(--color-{iconTone})"
+                },
+                "children": [
+                  ""
+                ]
+              },
+              {
+                "id": "info-bar-icon-foreground",
+                "el": "text",
+                "attrs": {
+                  "x": 8,
+                  "y": 8,
+                  "text-anchor": "middle",
+                  "dominant-baseline": "central",
+                  "fill": "var(--color-infoIconForeground)"
+                },
+                "children": [
+                  "{iconGlyph}"
+                ]
+              }
             ]
           },
           {
             "id": "info-bar-text",
             "el": "div",
-            "layout": { "mode": "horizontal", "gap": "3", "wrap": true, "grow": true },
-            "margin": { "top": "infoTextTop", "right": "4" },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "3",
+              "wrap": true,
+              "grow": true
+            },
+            "margin": {
+              "top": "infoTextTop",
+              "right": "4"
+            },
             "children": [
               {
                 "id": "info-bar-title",
                 "el": "span",
-                "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "nativeText" },
-                "children": [ "{title}" ]
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "bodyStrong",
+                  "color": "nativeText"
+                },
+                "children": [
+                  "{title}"
+                ]
               },
               {
                 "id": "info-bar-message",
                 "el": "span",
-                "appearance": { "fontFamily": "body", "textStyle": "body", "color": "nativeText" },
-                "children": [ "{message}" ]
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "body",
+                  "color": "nativeText"
+                },
+                "children": [
+                  "{message}"
+                ]
               }
             ]
           },
           {
             "id": "info-bar-close",
             "el": "button",
-            "attrs": { "type": "button", "aria-label": "Close (visual reference only)", "title": "Visual states only. Dismissal is not supported by this renderer." },
-            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 38, "height": 38 },
+            "attrs": {
+              "type": "button",
+              "aria-label": "Close (visual reference only)",
+              "title": "Visual states only. Dismissal is not supported by this renderer."
+            },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "justify": "center",
+              "width": 38,
+              "height": 38
+            },
             "margin": "buttonTop",
-            "appearance": { "color": "nativeText", "background": "$none", "borderColor": "$none", "borderWidth": 1, "radius": "sm" },
+            "appearance": {
+              "color": "nativeText",
+              "background": "$none",
+              "borderColor": "$none",
+              "borderWidth": 1,
+              "radius": "sm"
+            },
             "control": {
               "chrome": "none",
-              "focus": { "kind": "outline", "color": "accent" }
+              "focus": {
+                "kind": "outline",
+                "color": "accent"
+              }
             },
             "states": {
-              "hover": { "background": "infoCloseHoverFill", "color": "infoCloseHoverText" },
-              "pressed": { "background": "infoClosePressedFill", "color": "infoClosePressedText" },
-              "hoverPressed": { "background": "infoClosePressedFill", "color": "infoClosePressedText" },
-              "disabled": { "background": "$none", "color": "subtleButtonDisabledText" }
+              "hover": {
+                "background": "infoCloseHoverFill",
+                "color": "infoCloseHoverText"
+              },
+              "pressed": {
+                "background": "infoClosePressedFill",
+                "color": "infoClosePressedText"
+              },
+              "hoverPressed": {
+                "background": "infoClosePressedFill",
+                "color": "infoClosePressedText"
+              },
+              "disabled": {
+                "background": "$none",
+                "color": "subtleButtonDisabledText"
+              }
             },
             "children": [
               {
                 "id": "info-bar-close-glyph",
                 "el": "span",
-                "attrs": { "aria-hidden": "true" },
-                "appearance": { "textStyle": "infoSymbol" },
-                "children": [ "\uE711" ]
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "appearance": {
+                  "textStyle": "infoSymbol"
+                },
+                "children": [
+                  ""
+                ]
               }
             ]
           }
@@ -624,12 +1484,59 @@
       "root": {
         "id": "info-bar-states-root",
         "el": "div",
-        "layout": { "mode": "vertical", "gap": "3", "width": "fill" },
+        "layout": {
+          "mode": "vertical",
+          "gap": "3",
+          "width": "fill"
+        },
         "children": [
-          { "id": "info-bar-informational", "component": "InfoBar", "props": { "title": "Informational", "message": "Gateway settings are ready to review.", "iconTone": "infoAttentionIcon", "iconGlyph": "\uF13F" }, "appearance": { "background": "infoAttentionFill" } },
-          { "id": "info-bar-success", "component": "InfoBar", "props": { "title": "Success", "message": "The gateway is connected.", "iconTone": "infoSuccessIcon", "iconGlyph": "\uF13E" }, "appearance": { "background": "infoSuccessFill" } },
-          { "id": "info-bar-warning", "component": "InfoBar", "props": { "title": "Warning", "message": "Pairing approval is required.", "iconTone": "infoWarningIcon", "iconGlyph": "\uF13C" }, "appearance": { "background": "infoWarningFill" } },
-          { "id": "info-bar-error", "component": "InfoBar", "props": { "title": "Error", "message": "The gateway could not be reached." } }
+          {
+            "id": "info-bar-informational",
+            "component": "InfoBar",
+            "props": {
+              "title": "Informational",
+              "message": "Gateway settings are ready to review.",
+              "iconTone": "infoAttentionIcon",
+              "iconGlyph": ""
+            },
+            "appearance": {
+              "background": "infoAttentionFill"
+            }
+          },
+          {
+            "id": "info-bar-success",
+            "component": "InfoBar",
+            "props": {
+              "title": "Success",
+              "message": "The gateway is connected.",
+              "iconTone": "infoSuccessIcon",
+              "iconGlyph": ""
+            },
+            "appearance": {
+              "background": "infoSuccessFill"
+            }
+          },
+          {
+            "id": "info-bar-warning",
+            "component": "InfoBar",
+            "props": {
+              "title": "Warning",
+              "message": "Pairing approval is required.",
+              "iconTone": "infoWarningIcon",
+              "iconGlyph": ""
+            },
+            "appearance": {
+              "background": "infoWarningFill"
+            }
+          },
+          {
+            "id": "info-bar-error",
+            "component": "InfoBar",
+            "props": {
+              "title": "Error",
+              "message": "The gateway could not be reached."
+            }
+          }
         ]
       }
     },
@@ -668,15 +1575,34 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "outline", "color": "accent" }
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "background": "subtleHover", "color": "subtleButtonHoverText" },
-          "pressed": { "background": "subtlePressed", "color": "subtleButtonPressedText" },
-          "hoverPressed": { "background": "subtlePressed", "color": "subtleButtonPressedText" },
-          "disabled": { "color": "disabledText", "background": "$none" }
+          "hover": {
+            "background": "subtleHover",
+            "color": "subtleButtonHoverText"
+          },
+          "pressed": {
+            "background": "subtlePressed",
+            "color": "subtleButtonPressedText"
+          },
+          "hoverPressed": {
+            "background": "subtlePressed",
+            "color": "subtleButtonPressedText"
+          },
+          "disabled": {
+            "color": "disabledText",
+            "background": "$none"
+          }
         },
-        "on": { "click": { "open": "ComposerPickerOptions" } },
+        "on": {
+          "click": {
+            "open": "ComposerPickerOptions"
+          }
+        },
         "children": [
           {
             "id": "composer-picker-label",
@@ -688,9 +1614,15 @@
           {
             "id": "composer-picker-chevron",
             "el": "span",
-            "attrs": { "aria-hidden": "true" },
-            "appearance": { "textStyle": "chatChevron" },
-            "children": [ "\uE70D" ]
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "appearance": {
+              "textStyle": "chatChevron"
+            },
+            "children": [
+              ""
+            ]
           }
         ]
       }
@@ -701,55 +1633,164 @@
       "root": {
         "id": "composer-picker-options",
         "el": "div",
-        "attrs": { "role": "menu", "aria-label": "Model" },
-        "layout": { "mode": "vertical", "gap": "1", "padding": "1", "width": "hug" },
-        "appearance": { "background": "surface", "color": "ink", "textStyle": "small", "radius": "lg", "shadow": "md" },
+        "attrs": {
+          "role": "menu",
+          "aria-label": "Model"
+        },
+        "layout": {
+          "mode": "vertical",
+          "gap": "1",
+          "padding": "1",
+          "width": "hug"
+        },
+        "appearance": {
+          "background": "surface",
+          "color": "ink",
+          "textStyle": "small",
+          "radius": "lg",
+          "shadow": "md"
+        },
         "children": [
           {
             "id": "composer-option-sonnet",
             "el": "label",
-            "attrs": { "role": "menuitemradio", "aria-checked": "true" },
-            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
-            "appearance": { "background": "$none", "radius": "sm" },
+            "attrs": {
+              "role": "menuitemradio",
+              "aria-checked": "true"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "padding": {
+                "x": "2",
+                "y": "1"
+              }
+            },
+            "appearance": {
+              "background": "$none",
+              "radius": "sm"
+            },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              }
             },
             "children": [
-              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "textStyle": "chatChevron", "color": "accent", "textAlign": "center" }, "children": ["\uE73E"] },
+              {
+                "id": "composer-option-sonnet-check",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "width": 16
+                },
+                "appearance": {
+                  "textStyle": "chatChevron",
+                  "color": "accent",
+                  "textAlign": "center"
+                },
+                "children": [
+                  ""
+                ]
+              },
               "Claude Sonnet 5"
             ]
           },
           {
             "id": "composer-option-opus",
             "el": "label",
-            "attrs": { "role": "menuitemradio", "aria-checked": "false" },
-            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
-            "appearance": { "background": "$none", "radius": "sm" },
+            "attrs": {
+              "role": "menuitemradio",
+              "aria-checked": "false"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "padding": {
+                "x": "2",
+                "y": "1"
+              }
+            },
+            "appearance": {
+              "background": "$none",
+              "radius": "sm"
+            },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              }
             },
             "children": [
-              { "id": "composer-option-opus-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
+              {
+                "id": "composer-option-opus-check",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "width": 16
+                }
+              },
               "Claude Opus 4.8"
             ]
           },
           {
             "id": "composer-option-gpt",
             "el": "label",
-            "attrs": { "role": "menuitemradio", "aria-checked": "false" },
-            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
-            "appearance": { "background": "$none", "radius": "sm" },
+            "attrs": {
+              "role": "menuitemradio",
+              "aria-checked": "false"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "padding": {
+                "x": "2",
+                "y": "1"
+              }
+            },
+            "appearance": {
+              "background": "$none",
+              "radius": "sm"
+            },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              }
             },
             "children": [
-              { "id": "composer-option-gpt-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
+              {
+                "id": "composer-option-gpt-check",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "width": 16
+                }
+              },
               "GPT-5.6"
             ]
           }
@@ -792,7 +1833,9 @@
                 "layout": {
                   "mode": "vertical",
                   "gap": "4",
-                  "padding": { "y": "1" },
+                  "padding": {
+                    "y": "1"
+                  },
                   "width": "fill"
                 },
                 "appearance": {
@@ -811,7 +1854,9 @@
                   "gap": "1",
                   "align": "center"
                 },
-                "margin": { "top": "1" },
+                "margin": {
+                  "top": "1"
+                },
                 "appearance": {
                   "textStyle": "chatFooter",
                   "color": "chatSecondary"
@@ -820,7 +1865,9 @@
                   {
                     "id": "chat-bubble-identity",
                     "el": "span",
-                    "margin": { "right": "1" },
+                    "margin": {
+                      "right": "1"
+                    },
                     "children": [
                       "{sender} · {time} · {model} · {usage}"
                     ]
@@ -850,19 +1897,40 @@
                       "background": "$none",
                       "radius": "sm"
                     },
-                    "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                    "control": {
+                      "chrome": "none",
+                      "focus": {
+                        "kind": "outline",
+                        "color": "accent"
+                      }
+                    },
                     "states": {
-                      "hover": { "background": "subtleHover", "color": "chatSecondary" },
-                      "pressed": { "background": "chatReadAloudPressed", "color": "chatSecondary" },
-                      "hoverPressed": { "background": "chatReadAloudPressed", "color": "chatSecondary" }
+                      "hover": {
+                        "background": "subtleHover",
+                        "color": "chatSecondary"
+                      },
+                      "pressed": {
+                        "background": "chatReadAloudPressed",
+                        "color": "chatSecondary"
+                      },
+                      "hoverPressed": {
+                        "background": "chatReadAloudPressed",
+                        "color": "chatSecondary"
+                      }
                     },
                     "children": [
                       {
                         "id": "chat-bubble-readaloud-glyph",
                         "el": "span",
-                        "attrs": { "aria-hidden": "true" },
-                        "appearance": { "textStyle": "chatActionIcon" },
-                        "children": [ "\uE767" ]
+                        "attrs": {
+                          "aria-hidden": "true"
+                        },
+                        "appearance": {
+                          "textStyle": "chatActionIcon"
+                        },
+                        "children": [
+                          ""
+                        ]
                       }
                     ]
                   }
@@ -876,23 +1944,47 @@
     {
       "name": "ChatUserBubble",
       "note": "Sent user bubble from ReactorChatTimeline.BuildUser at production 9e4999c6. Native ChatUserBrush is the system accent at 8% in Light and 12% in Dark, not a solid blue card. Text uses ChatUserTextBrush (primary text; highlight text in HC), 14/21, with 16px horizontal and 12px vertical padding, no stroke and 12px corners. The native width is content-sized and capped at 720px. The shared 32px Copy action sits below with 8px of stack spacing plus the native 2px top and 4px trailing margin, preserving the measured 10px gap for a sent message. Hover-only native metadata and queued-message states are not reproduced by this sent-message reference.",
-      "props": { "children": "Can we browse the synthetic Gateway?" },
+      "props": {
+        "children": "Can we browse the synthetic Gateway?"
+      },
       "root": {
         "id": "chat-user-root",
         "el": "div",
-        "layout": { "mode": "vertical", "gap": "2", "align": "end", "width": "hug" },
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "align": "end",
+          "width": "hug"
+        },
         "children": [
           {
             "id": "chat-user-surface",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "2", "padding": { "x": "4", "y": "3" } },
-            "appearance": { "textStyle": "chatProse", "background": "chatUser", "color": "chatUserText", "radius": "bubble" },
-            "children": [ "{children}" ]
+            "layout": {
+              "mode": "vertical",
+              "gap": "2",
+              "padding": {
+                "x": "4",
+                "y": "3"
+              }
+            },
+            "appearance": {
+              "textStyle": "chatProse",
+              "background": "chatUser",
+              "color": "chatUserText",
+              "radius": "bubble"
+            },
+            "children": [
+              "{children}"
+            ]
           },
           {
             "id": "chat-user-copy",
             "component": "ChatCopyButton",
-            "margin": { "top": "half", "right": "1" }
+            "margin": {
+              "top": "half",
+              "right": "1"
+            }
           }
         ]
       }
@@ -912,7 +2004,12 @@
         "layout": {
           "mode": "vertical",
           "gap": "2",
-          "padding": { "left": "4", "top": "3", "right": "4", "bottom": "2" },
+          "padding": {
+            "left": "4",
+            "top": "3",
+            "right": "4",
+            "bottom": "2"
+          },
           "width": 768,
           "height": 112
         },
@@ -946,7 +2043,10 @@
             },
             "control": {
               "chrome": "none",
-              "focus": { "kind": "outline", "color": "chatCanvas" }
+              "focus": {
+                "kind": "outline",
+                "color": "chatCanvas"
+              }
             },
             "children": [
               "{draft}"
@@ -995,20 +2095,35 @@
                     },
                     "control": {
                       "chrome": "none",
-                      "focus": { "kind": "outline", "color": "accent" }
+                      "focus": {
+                        "kind": "outline",
+                        "color": "accent"
+                      }
                     },
                     "states": {
-                      "hover": { "background": "subtleHover" },
-                      "pressed": { "background": "subtlePressed" },
-                      "hoverPressed": { "background": "subtlePressed" }
+                      "hover": {
+                        "background": "subtleHover"
+                      },
+                      "pressed": {
+                        "background": "subtlePressed"
+                      },
+                      "hoverPressed": {
+                        "background": "subtlePressed"
+                      }
                     },
                     "children": [
                       {
                         "id": "chat-composer-add-glyph",
                         "el": "span",
-                        "attrs": { "aria-hidden": "true" },
-                        "appearance": { "textStyle": "chatIcon" },
-                        "children": [ "\uE723" ]
+                        "attrs": {
+                          "aria-hidden": "true"
+                        },
+                        "appearance": {
+                          "textStyle": "chatIcon"
+                        },
+                        "children": [
+                          ""
+                        ]
                       }
                     ]
                   }
@@ -1026,10 +2141,26 @@
                   {
                     "id": "chat-composer-pickers",
                     "el": "div",
-                    "layout": { "mode": "horizontal", "gap": "0", "align": "center" },
+                    "layout": {
+                      "mode": "horizontal",
+                      "gap": "0",
+                      "align": "center"
+                    },
                     "children": [
-                      { "id": "chat-composer-model", "component": "ComposerPicker", "props": { "label": "{model}" } },
-                      { "id": "chat-composer-effort", "component": "ComposerPicker", "props": { "label": "{effort}" } }
+                      {
+                        "id": "chat-composer-model",
+                        "component": "ComposerPicker",
+                        "props": {
+                          "label": "{model}"
+                        }
+                      },
+                      {
+                        "id": "chat-composer-effort",
+                        "component": "ComposerPicker",
+                        "props": {
+                          "label": "{effort}"
+                        }
+                      }
                     ]
                   },
                   {
@@ -1055,20 +2186,35 @@
                     },
                     "control": {
                       "chrome": "none",
-                      "focus": { "kind": "outline", "color": "accent" }
+                      "focus": {
+                        "kind": "outline",
+                        "color": "accent"
+                      }
                     },
                     "states": {
-                      "hover": { "background": "subtleHover" },
-                      "pressed": { "background": "subtlePressed" },
-                      "hoverPressed": { "background": "subtlePressed" }
+                      "hover": {
+                        "background": "subtleHover"
+                      },
+                      "pressed": {
+                        "background": "subtlePressed"
+                      },
+                      "hoverPressed": {
+                        "background": "subtlePressed"
+                      }
                     },
                     "children": [
                       {
                         "id": "chat-composer-mic-glyph",
                         "el": "span",
-                        "attrs": { "aria-hidden": "true" },
-                        "appearance": { "textStyle": "chatIcon" },
-                        "children": [ "\uE720" ]
+                        "attrs": {
+                          "aria-hidden": "true"
+                        },
+                        "appearance": {
+                          "textStyle": "chatIcon"
+                        },
+                        "children": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -1093,20 +2239,43 @@
                       "color": "accentInk",
                       "radius": "pill"
                     },
-                    "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                    "control": {
+                      "chrome": "none",
+                      "focus": {
+                        "kind": "outline",
+                        "color": "accent"
+                      }
+                    },
                     "states": {
-                      "hover": { "background": "chatActionHover" },
-                      "pressed": { "background": "chatActionPressed", "color": "chatActionPressedText" },
-                      "hoverPressed": { "background": "chatActionPressed", "color": "chatActionPressedText" },
-                      "disabled": { "background": "chatActionDisabled", "color": "chatActionDisabledText" }
+                      "hover": {
+                        "background": "chatActionHover"
+                      },
+                      "pressed": {
+                        "background": "chatActionPressed",
+                        "color": "chatActionPressedText"
+                      },
+                      "hoverPressed": {
+                        "background": "chatActionPressed",
+                        "color": "chatActionPressedText"
+                      },
+                      "disabled": {
+                        "background": "chatActionDisabled",
+                        "color": "chatActionDisabledText"
+                      }
                     },
                     "children": [
                       {
                         "id": "chat-composer-send-glyph",
                         "el": "span",
-                        "attrs": { "aria-hidden": "true" },
-                        "appearance": { "textStyle": "chatIcon" },
-                        "children": [ "\uE74A" ]
+                        "attrs": {
+                          "aria-hidden": "true"
+                        },
+                        "appearance": {
+                          "textStyle": "chatIcon"
+                        },
+                        "children": [
+                          ""
+                        ]
                       }
                     ]
                   }
@@ -1127,9 +2296,14 @@
           "mode": "vertical",
           "gap": "3",
           "width": 848,
-          "padding": { "x": "chatGutter", "y": "4" }
+          "padding": {
+            "x": "chatGutter",
+            "y": "4"
+          }
         },
-        "appearance": { "background": "chatLayer" },
+        "appearance": {
+          "background": "chatLayer"
+        },
         "children": [
           {
             "id": "chat-thread-user",
@@ -1138,7 +2312,9 @@
               "mode": "horizontal",
               "justify": "end",
               "width": "fill",
-              "padding": { "x": "4" }
+              "padding": {
+                "x": "4"
+              }
             },
             "children": [
               {
@@ -1150,7 +2326,10 @@
           {
             "id": "chat-thread-assistant",
             "component": "ChatBubble",
-            "margin": { "x": "4", "y": "3" },
+            "margin": {
+              "x": "4",
+              "y": "3"
+            },
             "props": {
               "time": "11:01 PM",
               "usage": "200/128.0K (0%)"
@@ -1189,13 +2368,28 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "outline", "color": "accent" }
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "background": "subtleHover", "color": "subtleButtonHoverText" },
-          "pressed": { "background": "subtlePressed", "color": "subtleButtonPressedText" },
-          "hoverPressed": { "background": "subtlePressed", "color": "subtleButtonPressedText" },
-          "disabled": { "background": "$none", "color": "disabledText" }
+          "hover": {
+            "background": "subtleHover",
+            "color": "subtleButtonHoverText"
+          },
+          "pressed": {
+            "background": "subtlePressed",
+            "color": "subtleButtonPressedText"
+          },
+          "hoverPressed": {
+            "background": "subtlePressed",
+            "color": "subtleButtonPressedText"
+          },
+          "disabled": {
+            "background": "$none",
+            "color": "disabledText"
+          }
         },
         "children": [
           {
@@ -1204,8 +2398,12 @@
             "attrs": {
               "aria-hidden": "true"
             },
-            "appearance": { "textStyle": "chatActionIcon" },
-            "children": [ "\uE8C8" ]
+            "appearance": {
+              "textStyle": "chatActionIcon"
+            },
+            "children": [
+              ""
+            ]
           }
         ]
       }
@@ -1238,12 +2436,21 @@
         },
         "control": {
           "chrome": "none",
-          "focus": { "kind": "outline", "color": "accent" }
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
         },
         "states": {
-          "hover": { "background": "subtleHover" },
-          "pressed": { "background": "subtlePressed" },
-          "hoverPressed": { "background": "subtlePressed" }
+          "hover": {
+            "background": "subtleHover"
+          },
+          "pressed": {
+            "background": "subtlePressed"
+          },
+          "hoverPressed": {
+            "background": "subtlePressed"
+          }
         },
         "children": [
           {
@@ -1524,7 +2731,6 @@
         ]
       }
     },
-
     {
       "name": "ConnectionStatusFlyout",
       "note": "Gateway/Operator/Node status flyout from Controls/GatewayStatusContent.xaml (#1541), opened from the Workspace connection affordance. A 304px column of three status rows split by 1px `line` (CardStrokeColorDefault) dividers, closing with an Open Connection link. Each row pairs a 10px status dot with a body-strong label over a caption `muted` detail; a trailing accent HyperlinkButton (Reconnect / Approve) appears only when that layer needs action. The dot binds the Fluent system fill that matches state: `positive` (SystemFillColorSuccess) connected, `warning` (SystemFillColorCaution) attention, `critical` (SystemFillColorCritical) error, `muted` (SystemFillColorNeutral) unknown. Row vertical padding 10px maps to token 2; column spacing 11px to token 3. The flyout sheet, `md` overlay radius and shadow are supplied by the WinUI Flyout presenter; previewed here as a `surface` sheet.",
@@ -1784,12 +2990,21 @@
                 },
                 "control": {
                   "chrome": "none",
-                  "focus": { "kind": "outline", "color": "accent" }
+                  "focus": {
+                    "kind": "outline",
+                    "color": "accent"
+                  }
                 },
                 "states": {
-                  "hover": { "background": "subtleHover" },
-                  "pressed": { "background": "subtlePressed" },
-                  "hoverPressed": { "background": "subtlePressed" }
+                  "hover": {
+                    "background": "subtleHover"
+                  },
+                  "pressed": {
+                    "background": "subtlePressed"
+                  },
+                  "hoverPressed": {
+                    "background": "subtlePressed"
+                  }
                 },
                 "children": [
                   "Approve…"
@@ -1836,12 +3051,21 @@
             },
             "control": {
               "chrome": "none",
-              "focus": { "kind": "outline", "color": "accent" }
+              "focus": {
+                "kind": "outline",
+                "color": "accent"
+              }
             },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              }
             },
             "children": [
               "Open Connection"
@@ -1865,10 +3089,20 @@
         "layout": {
           "mode": "vertical",
           "gap": "0",
-          "padding": { "left": "4", "top": "flyoutTop", "right": "4", "bottom": "flyoutBottom" },
+          "padding": {
+            "left": "4",
+            "top": "flyoutTop",
+            "right": "4",
+            "bottom": "flyoutBottom"
+          },
           "width": 386
         },
-        "margin": { "left": "textControlLeft", "top": "half", "right": "textControlLeft", "bottom": "flyoutShadowBottom" },
+        "margin": {
+          "left": "textControlLeft",
+          "top": "half",
+          "right": "textControlLeft",
+          "bottom": "flyoutShadowBottom"
+        },
         "appearance": {
           "background": "flyoutFill",
           "borderColor": "flyoutStroke",
@@ -1885,12 +3119,18 @@
               "mode": "horizontal",
               "justify": "end"
             },
-            "margin": { "left": "half", "right": "half", "bottom": "2" },
+            "margin": {
+              "left": "half",
+              "right": "half",
+              "bottom": "2"
+            },
             "children": [
               {
                 "id": "notif-clear",
                 "component": "HyperlinkButton",
-                "props": { "children": "Clear all" },
+                "props": {
+                  "children": "Clear all"
+                },
                 "appearance": {
                   "color": "accentText",
                   "borderColor": "subtleButtonBorder",
@@ -1909,7 +3149,9 @@
               "align": "start",
               "width": "fill"
             },
-            "margin": { "y": "1" },
+            "margin": {
+              "y": "1"
+            },
             "appearance": {
               "background": "setupCardFill",
               "borderColor": "setupCardStroke",
@@ -1924,13 +3166,20 @@
                 "attrs": {
                   "aria-hidden": "true"
                 },
-                "layout": { "width": 16, "height": 16 },
-                "margin": { "top": "half" },
+                "layout": {
+                  "width": 16,
+                  "height": 16
+                },
+                "margin": {
+                  "top": "half"
+                },
                 "appearance": {
                   "textStyle": "chatIcon",
                   "color": "nativeText"
                 },
-                "children": ["\uE7BA"]
+                "children": [
+                  ""
+                ]
               },
               {
                 "id": "notif-card-text",
@@ -1969,7 +3218,12 @@
                           "tone": "neutral",
                           "children": "{count}"
                         },
-                        "layout": { "padding": { "x": "notificationBadgeX", "y": "notificationBadgeY" } },
+                        "layout": {
+                          "padding": {
+                            "x": "notificationBadgeX",
+                            "y": "notificationBadgeY"
+                          }
+                        },
                         "appearance": {
                           "fontFamily": "body",
                           "textStyle": "caption",
@@ -2029,20 +3283,44 @@
                   "color": "nativeText",
                   "radius": "sm"
                 },
-                "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                "control": {
+                  "chrome": "none",
+                  "focus": {
+                    "kind": "outline",
+                    "color": "accent"
+                  }
+                },
                 "states": {
-                  "hover": { "background": "buttonHoverFill", "color": "buttonHoverText" },
-                  "pressed": { "background": "buttonPressedFill", "color": "buttonPressedText" },
-                  "hoverPressed": { "background": "buttonPressedFill", "color": "buttonPressedText" },
-                  "disabled": { "background": "buttonDisabledFill", "color": "buttonDisabledText" }
+                  "hover": {
+                    "background": "buttonHoverFill",
+                    "color": "buttonHoverText"
+                  },
+                  "pressed": {
+                    "background": "buttonPressedFill",
+                    "color": "buttonPressedText"
+                  },
+                  "hoverPressed": {
+                    "background": "buttonPressedFill",
+                    "color": "buttonPressedText"
+                  },
+                  "disabled": {
+                    "background": "buttonDisabledFill",
+                    "color": "buttonDisabledText"
+                  }
                 },
                 "children": [
                   {
                     "id": "notif-card-dismiss-glyph",
                     "el": "span",
-                    "attrs": { "aria-hidden": "true" },
-                    "appearance": { "textStyle": "notificationDismissIcon" },
-                    "children": ["\uE711"]
+                    "attrs": {
+                      "aria-hidden": "true"
+                    },
+                    "appearance": {
+                      "textStyle": "notificationDismissIcon"
+                    },
+                    "children": [
+                      ""
+                    ]
                   }
                 ]
               }
@@ -2057,12 +3335,18 @@
               "align": "center",
               "justify": "space-between"
             },
-            "margin": { "left": "half", "top": "2", "right": "half" },
+            "margin": {
+              "left": "half",
+              "top": "2",
+              "right": "half"
+            },
             "children": [
               {
                 "id": "notif-footer-open",
                 "component": "HyperlinkButton",
-                "props": { "children": "Open notifications" },
+                "props": {
+                  "children": "Open notifications"
+                },
                 "appearance": {
                   "color": "accentText",
                   "borderColor": "subtleButtonBorder",
@@ -2095,10 +3379,20 @@
         "layout": {
           "mode": "vertical",
           "gap": "0",
-          "padding": { "left": "4", "top": "flyoutTop", "right": "4", "bottom": "flyoutBottom" },
+          "padding": {
+            "left": "4",
+            "top": "flyoutTop",
+            "right": "4",
+            "bottom": "flyoutBottom"
+          },
           "width": 386
         },
-        "margin": { "left": "textControlLeft", "top": "half", "right": "textControlLeft", "bottom": "flyoutShadowBottom" },
+        "margin": {
+          "left": "textControlLeft",
+          "top": "half",
+          "right": "textControlLeft",
+          "bottom": "flyoutShadowBottom"
+        },
         "appearance": {
           "background": "flyoutFill",
           "borderColor": "flyoutStroke",
@@ -2111,15 +3405,28 @@
           {
             "id": "notif-empty-header",
             "el": "div",
-            "attrs": { "aria-hidden": "true" },
-            "layout": { "mode": "vertical" },
-            "margin": { "bottom": "2" }
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "layout": {
+              "mode": "vertical"
+            },
+            "margin": {
+              "bottom": "2"
+            }
           },
           {
             "id": "notif-empty-card",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "textControlEnd", "padding": "notificationEmpty", "width": "fill" },
-            "margin": { "y": "1" },
+            "layout": {
+              "mode": "vertical",
+              "gap": "textControlEnd",
+              "padding": "notificationEmpty",
+              "width": "fill"
+            },
+            "margin": {
+              "y": "1"
+            },
             "appearance": {
               "background": "setupCardFill",
               "borderColor": "setupCardStroke",
@@ -2130,28 +3437,53 @@
               {
                 "id": "notif-empty-title",
                 "el": "span",
-                "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "nativeText" },
-                "children": ["No notifications"]
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "bodyStrong",
+                  "color": "nativeText"
+                },
+                "children": [
+                  "No notifications"
+                ]
               },
               {
                 "id": "notif-empty-description",
                 "el": "p",
-                "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "nativeSecondary" },
-                "children": ["New app notifications will appear here until you dismiss or clear them."]
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "nativeSecondary"
+                },
+                "children": [
+                  "New app notifications will appear here until you dismiss or clear them."
+                ]
               }
             ]
           },
           {
             "id": "notif-empty-footer",
             "el": "div",
-            "layout": { "mode": "horizontal", "align": "center" },
-            "margin": { "left": "half", "top": "2", "right": "half" },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center"
+            },
+            "margin": {
+              "left": "half",
+              "top": "2",
+              "right": "half"
+            },
             "children": [
               {
                 "id": "notif-empty-open",
                 "component": "HyperlinkButton",
-                "props": { "children": "Open notifications" },
-                "appearance": { "color": "accentText", "borderColor": "subtleButtonBorder", "borderWidth": 1 }
+                "props": {
+                  "children": "Open notifications"
+                },
+                "appearance": {
+                  "color": "accentText",
+                  "borderColor": "subtleButtonBorder",
+                  "borderWidth": 1
+                }
               }
             ]
           }
@@ -3054,20 +4386,70 @@
         ]
       }
     },
-
     {
       "name": "SetupProgressIndicator",
       "note": "Setup control. The wizard step dots (SetupProgressIndicator.cs). Non-interactive, non-focusable, accessibility-hidden, so no hover/pressed states. The active step is a 20x8 pill in `accent` (SetupIndicatorAccentBrush = SystemAccentColorLight2 dark / Dark1 light); inactive steps are 8x8 dots in `muted` (SetupInactiveDotBrush = ControlStrongFill). Dot spacing is token `2` (8px); every dot uses the `sm` radius (4px).",
       "root": {
         "id": "setup-progress-root",
         "el": "div",
-        "attrs": { "role": "img", "aria-label": "Step 2 of 4" },
-        "layout": { "mode": "horizontal", "gap": "2", "align": "center" },
+        "attrs": {
+          "role": "img",
+          "aria-label": "Step 2 of 4"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "2",
+          "align": "center"
+        },
         "children": [
-          { "id": "setup-progress-d1", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } },
-          { "id": "setup-progress-d2", "el": "span", "layout": { "width": 20, "height": 8 }, "appearance": { "background": "accent", "radius": "sm" } },
-          { "id": "setup-progress-d3", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } },
-          { "id": "setup-progress-d4", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } }
+          {
+            "id": "setup-progress-d1",
+            "el": "span",
+            "layout": {
+              "width": 8,
+              "height": 8
+            },
+            "appearance": {
+              "background": "muted",
+              "radius": "sm"
+            }
+          },
+          {
+            "id": "setup-progress-d2",
+            "el": "span",
+            "layout": {
+              "width": 20,
+              "height": 8
+            },
+            "appearance": {
+              "background": "accent",
+              "radius": "sm"
+            }
+          },
+          {
+            "id": "setup-progress-d3",
+            "el": "span",
+            "layout": {
+              "width": 8,
+              "height": 8
+            },
+            "appearance": {
+              "background": "muted",
+              "radius": "sm"
+            }
+          },
+          {
+            "id": "setup-progress-d4",
+            "el": "span",
+            "layout": {
+              "width": 8,
+              "height": 8
+            },
+            "appearance": {
+              "background": "muted",
+              "radius": "sm"
+            }
+          }
         ]
       }
     },
@@ -3077,7 +4459,11 @@
       "root": {
         "id": "provider-artwork-root",
         "el": "svg",
-        "attrs": { "viewBox": "0 0 42 42", "aria-hidden": "true", "focusable": "false" },
+        "attrs": {
+          "viewBox": "0 0 42 42",
+          "aria-hidden": "true",
+          "focusable": "false"
+        },
         "layout": {
           "width": 42,
           "height": 42
@@ -3087,7 +4473,11 @@
             "id": "provider-artwork-backplate",
             "el": "rect",
             "attrs": {
-              "x": 0.5, "y": 0.5, "width": 41, "height": 41, "rx": 3.5,
+              "x": 0.5,
+              "y": 0.5,
+              "width": 41,
+              "height": 41,
+              "rx": 3.5,
               "fill": "var(--color-providerArtworkFill)",
               "stroke": "var(--color-providerArtworkStroke)",
               "stroke-width": 1
@@ -3096,9 +4486,20 @@
           {
             "id": "provider-artwork-glyph",
             "el": "text",
-            "attrs": { "x": 21, "y": 21, "text-anchor": "middle", "dominant-baseline": "central", "fill": "currentColor" },
-            "appearance": { "textStyle": "providerSymbol", "color": "providerArtworkText" },
-            "children": [ "\uE99A" ]
+            "attrs": {
+              "x": 21,
+              "y": 21,
+              "text-anchor": "middle",
+              "dominant-baseline": "central",
+              "fill": "currentColor"
+            },
+            "appearance": {
+              "textStyle": "providerSymbol",
+              "color": "providerArtworkText"
+            },
+            "children": [
+              ""
+            ]
           }
         ]
       }
@@ -3114,7 +4515,10 @@
       "root": {
         "id": "setup-option-root",
         "el": "div",
-        "layout": { "mode": "vertical", "width": "fill" },
+        "layout": {
+          "mode": "vertical",
+          "width": "fill"
+        },
         "appearance": {
           "background": "setupCardFill",
           "borderColor": "setupCardStroke",
@@ -3125,7 +4529,10 @@
           {
             "id": "setup-option-action",
             "el": "button",
-            "attrs": { "type": "button", "aria-label": "{title}" },
+            "attrs": {
+              "type": "button",
+              "aria-label": "{title}"
+            },
             "layout": {
               "mode": "horizontal",
               "padding": "4",
@@ -3140,57 +4547,134 @@
             },
             "control": {
               "chrome": "none",
-              "focus": { "kind": "outline", "color": "accent" }
+              "focus": {
+                "kind": "outline",
+                "color": "accent"
+              }
             },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" },
-              "disabled": { "color": "disabledText", "background": "setupOptionDisabled" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              },
+              "disabled": {
+                "color": "disabledText",
+                "background": "setupOptionDisabled"
+              }
             },
             "children": [
               {
                 "id": "setup-option-art-slot",
                 "el": "span",
-                "layout": { "mode": "horizontal", "width": 32, "height": 32 },
-                "margin": { "right": "3" },
+                "layout": {
+                  "mode": "horizontal",
+                  "width": 32,
+                  "height": 32
+                },
+                "margin": {
+                  "right": "3"
+                },
                 "children": [
-                  { "id": "setup-option-art", "component": "ProviderArtwork", "layout": { "width": 32, "height": 32 } }
+                  {
+                    "id": "setup-option-art",
+                    "component": "ProviderArtwork",
+                    "layout": {
+                      "width": 32,
+                      "height": 32
+                    }
+                  }
                 ]
               },
               {
                 "id": "setup-option-text",
                 "el": "div",
-                "layout": { "mode": "vertical", "gap": "1", "grow": true },
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "1",
+                  "grow": true
+                },
                 "children": [
-                  { "id": "setup-option-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "nativeText" }, "children": [ "{title}" ] },
-                  { "id": "setup-option-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+                  {
+                    "id": "setup-option-title",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "bodyStrong",
+                      "color": "nativeText"
+                    },
+                    "children": [
+                      "{title}"
+                    ]
+                  },
+                  {
+                    "id": "setup-option-detail",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "{detail}"
+                    ]
+                  }
                 ]
               },
               {
                 "id": "setup-option-action-label",
                 "el": "span",
-                "layout": { "mode": "horizontal", "width": "hug" },
-                "margin": { "left": "3" },
-                "appearance": { "textStyle": "body", "color": "nativeText" },
-                "children": [ "{action}" ]
+                "layout": {
+                  "mode": "horizontal",
+                  "width": "hug"
+                },
+                "margin": {
+                  "left": "3"
+                },
+                "appearance": {
+                  "textStyle": "body",
+                  "color": "nativeText"
+                },
+                "children": [
+                  "{action}"
+                ]
               },
               {
                 "id": "setup-option-chevron",
                 "el": "span",
-                "attrs": { "aria-hidden": "true" },
-                "margin": { "left": "infoIconGap" },
-                "appearance": { "textStyle": "setupActionIcon", "color": "nativeText" },
-                "children": [ "\uE76C" ]
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "margin": {
+                  "left": "infoIconGap"
+                },
+                "appearance": {
+                  "textStyle": "setupActionIcon",
+                  "color": "nativeText"
+                },
+                "children": [
+                  ""
+                ]
               }
             ]
           },
           {
             "id": "setup-option-divider",
             "el": "div",
-            "attrs": { "aria-hidden": "true" },
-            "layout": { "height": 1, "width": "fill" },
-            "appearance": { "background": "setupCardStroke" }
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "layout": {
+              "height": 1,
+              "width": "fill"
+            },
+            "appearance": {
+              "background": "setupCardStroke"
+            }
           }
         ]
       }
@@ -3205,17 +4689,31 @@
       "root": {
         "id": "capability-row-root",
         "el": "div",
-        "layout": { "mode": "vertical", "width": "fill" },
-        "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+        "layout": {
+          "mode": "vertical",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "setupCardFill",
+          "borderColor": "setupCardStroke",
+          "borderWidth": 1,
+          "radius": "md"
+        },
         "children": [
           {
             "id": "capability-row-action",
             "el": "button",
-            "attrs": { "type": "button", "aria-label": "{title}: {detail}" },
+            "attrs": {
+              "type": "button",
+              "aria-label": "{title}: {detail}"
+            },
             "layout": {
               "mode": "vertical",
               "gap": "1",
-              "padding": { "x": "4", "y": "3" },
+              "padding": {
+                "x": "4",
+                "y": "3"
+              },
               "align": "start",
               "width": "fill"
             },
@@ -3227,24 +4725,63 @@
             },
             "control": {
               "chrome": "none",
-              "focus": { "kind": "outline", "color": "accent" }
+              "focus": {
+                "kind": "outline",
+                "color": "accent"
+              }
             },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              }
             },
             "children": [
               {
                 "id": "capability-row-heading",
                 "el": "div",
-                "layout": { "mode": "horizontal", "gap": "2", "align": "center", "width": "hug" },
+                "layout": {
+                  "mode": "horizontal",
+                  "gap": "2",
+                  "align": "center",
+                  "width": "hug"
+                },
                 "children": [
-                  { "id": "capability-row-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "nativeText" }, "children": [ "{title}" ] },
-                  { "id": "capability-row-badge", "component": "BadgeAccent" }
+                  {
+                    "id": "capability-row-title",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "bodyStrong",
+                      "color": "nativeText"
+                    },
+                    "children": [
+                      "{title}"
+                    ]
+                  },
+                  {
+                    "id": "capability-row-badge",
+                    "component": "BadgeAccent"
+                  }
                 ]
               },
-              { "id": "capability-row-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+              {
+                "id": "capability-row-detail",
+                "el": "span",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "muted"
+                },
+                "children": [
+                  "{detail}"
+                ]
+              }
             ]
           }
         ]
@@ -3259,8 +4796,14 @@
       "root": {
         "id": "setup-phase-root",
         "el": "div",
-        "attrs": { "role": "status" },
-        "layout": { "mode": "horizontal", "gap": "2", "align": "center" },
+        "attrs": {
+          "role": "status"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "2",
+          "align": "center"
+        },
         "children": [
           {
             "id": "setup-phase-glyph",
@@ -3269,14 +4812,24 @@
               "aria-hidden": "true",
               "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
             },
-            "appearance": { "color": "positive" },
-            "children": [ "\uE73E" ]
+            "appearance": {
+              "color": "positive"
+            },
+            "children": [
+              ""
+            ]
           },
           {
             "id": "setup-phase-text",
             "el": "span",
-            "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" },
-            "children": [ "{children}" ]
+            "appearance": {
+              "fontFamily": "body",
+              "textStyle": "caption",
+              "color": "muted"
+            },
+            "children": [
+              "{children}"
+            ]
           }
         ]
       }
@@ -3290,59 +4843,178 @@
         "layout": {
           "mode": "vertical",
           "gap": "5",
-          "padding": { "left": "chatGutter", "right": "chatGutter", "top": "1", "bottom": "5" },
+          "padding": {
+            "left": "chatGutter",
+            "right": "chatGutter",
+            "top": "1",
+            "bottom": "5"
+          },
           "width": "fill"
         },
-        "appearance": { "background": "paper" },
+        "appearance": {
+          "background": "paper"
+        },
         "children": [
           {
             "id": "setup-wizard-header",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "1", "align": "center" },
+            "layout": {
+              "mode": "vertical",
+              "gap": "1",
+              "align": "center"
+            },
             "children": [
-              { "id": "setup-wizard-title", "el": "h1", "appearance": { "fontFamily": "display", "textStyle": "title", "color": "ink", "textAlign": "center" }, "children": [ "Set up your Windows node" ] },
-              { "id": "setup-wizard-status", "el": "p", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted", "textAlign": "center" }, "children": [ "Step 2 of 4 · Choose capabilities" ] }
+              {
+                "id": "setup-wizard-title",
+                "el": "h1",
+                "appearance": {
+                  "fontFamily": "display",
+                  "textStyle": "title",
+                  "color": "ink",
+                  "textAlign": "center"
+                },
+                "children": [
+                  "Set up your Windows node"
+                ]
+              },
+              {
+                "id": "setup-wizard-status",
+                "el": "p",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "muted",
+                  "textAlign": "center"
+                },
+                "children": [
+                  "Step 2 of 4 · Choose capabilities"
+                ]
+              }
             ]
           },
           {
             "id": "setup-wizard-card",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "2", "width": "fill" },
+            "layout": {
+              "mode": "vertical",
+              "gap": "2",
+              "width": "fill"
+            },
             "children": [
-              { "id": "setup-wizard-card-title", "el": "h2", "appearance": { "fontFamily": "display", "textStyle": "subtitle", "color": "ink" }, "children": [ "Choose what this node can do" ] },
+              {
+                "id": "setup-wizard-card-title",
+                "el": "h2",
+                "appearance": {
+                  "fontFamily": "display",
+                  "textStyle": "subtitle",
+                  "color": "ink"
+                },
+                "children": [
+                  "Choose what this node can do"
+                ]
+              },
               {
                 "id": "setup-wizard-option-group",
                 "el": "div",
-                "layout": { "mode": "vertical", "width": "fill" },
-                "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+                "layout": {
+                  "mode": "vertical",
+                  "width": "fill"
+                },
+                "appearance": {
+                  "background": "setupCardFill",
+                  "borderColor": "setupCardStroke",
+                  "borderWidth": 1,
+                  "radius": "md"
+                },
                 "children": [
                   {
                     "id": "setup-wizard-opt-1",
                     "component": "CapabilityOptionRow",
-                    "appearance": { "background": "$none", "borderColor": "$none", "borderWidth": 0, "radius": "$none" }
+                    "appearance": {
+                      "background": "$none",
+                      "borderColor": "$none",
+                      "borderWidth": 0,
+                      "radius": "$none"
+                    }
                   },
                   {
                     "id": "setup-wizard-option-divider",
                     "el": "div",
-                    "attrs": { "aria-hidden": "true" },
-                    "layout": { "width": "fill", "height": 1 },
-                    "appearance": { "background": "setupCardStroke", "radius": "$none" }
+                    "attrs": {
+                      "aria-hidden": "true"
+                    },
+                    "layout": {
+                      "width": "fill",
+                      "height": 1
+                    },
+                    "appearance": {
+                      "background": "setupCardStroke",
+                      "radius": "$none"
+                    }
                   },
                   {
                     "id": "setup-wizard-opt-2",
                     "el": "button",
-                    "attrs": { "type": "button" },
-                    "layout": { "mode": "vertical", "gap": "1", "padding": { "x": "4", "y": "3" }, "width": "fill", "align": "start" },
-                    "appearance": { "background": "$none", "borderWidth": 0, "radius": "sm", "textAlign": "left" },
-                    "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                    "attrs": {
+                      "type": "button"
+                    },
+                    "layout": {
+                      "mode": "vertical",
+                      "gap": "1",
+                      "padding": {
+                        "x": "4",
+                        "y": "3"
+                      },
+                      "width": "fill",
+                      "align": "start"
+                    },
+                    "appearance": {
+                      "background": "$none",
+                      "borderWidth": 0,
+                      "radius": "sm",
+                      "textAlign": "left"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": {
+                        "kind": "outline",
+                        "color": "accent"
+                      }
+                    },
                     "states": {
-                      "hover": { "background": "subtleHover" },
-                      "pressed": { "background": "subtlePressed" },
-                      "hoverPressed": { "background": "subtlePressed" }
+                      "hover": {
+                        "background": "subtleHover"
+                      },
+                      "pressed": {
+                        "background": "subtlePressed"
+                      },
+                      "hoverPressed": {
+                        "background": "subtlePressed"
+                      }
                     },
                     "children": [
-                      { "id": "setup-wizard-open-title", "el": "span", "appearance": { "textStyle": "bodyStrong", "color": "nativeText" }, "children": [ "Open" ] },
-                      { "id": "setup-wizard-open-detail", "el": "span", "appearance": { "textStyle": "caption", "color": "muted" }, "children": [ "All eight capabilities, including Camera, Location and Browser control." ] }
+                      {
+                        "id": "setup-wizard-open-title",
+                        "el": "span",
+                        "appearance": {
+                          "textStyle": "bodyStrong",
+                          "color": "nativeText"
+                        },
+                        "children": [
+                          "Open"
+                        ]
+                      },
+                      {
+                        "id": "setup-wizard-open-detail",
+                        "el": "span",
+                        "appearance": {
+                          "textStyle": "caption",
+                          "color": "muted"
+                        },
+                        "children": [
+                          "All eight capabilities, including Camera, Location and Browser control."
+                        ]
+                      }
                     ]
                   }
                 ]
@@ -3352,11 +5024,38 @@
           {
             "id": "setup-wizard-footer",
             "el": "div",
-            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "justify": "space-between", "width": "fill" },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "justify": "space-between",
+              "width": "fill"
+            },
             "children": [
-              { "id": "setup-wizard-back", "component": "ButtonStandard", "props": { "children": "Back" }, "layout": { "width": 100 } },
-              { "id": "setup-wizard-progress", "component": "SetupProgressIndicator" },
-              { "id": "setup-wizard-next", "component": "Button", "props": { "children": "Continue" }, "layout": { "width": 100 } }
+              {
+                "id": "setup-wizard-back",
+                "component": "ButtonStandard",
+                "props": {
+                  "children": "Back"
+                },
+                "layout": {
+                  "width": 100
+                }
+              },
+              {
+                "id": "setup-wizard-progress",
+                "component": "SetupProgressIndicator"
+              },
+              {
+                "id": "setup-wizard-next",
+                "component": "Button",
+                "props": {
+                  "children": "Continue"
+                },
+                "layout": {
+                  "width": 100
+                }
+              }
             ]
           }
         ]
@@ -3365,13 +5064,26 @@
     {
       "name": "SettingsSectionHeader",
       "note": "Settings control. The group label above a stack of settings cards (used across SettingsPage / PermissionsPage / SandboxPage), including General in SettingsWindowShell. Non-interactive. `bodyStrong` BodyStrongTextBlockStyle in `ink` gives the heading semibold weight without changing its 14px size or 20px line height, with margin 4,18,4,4 (previewed as token `1` sides, `4` top, `1` bottom; the 18px top is off-grid and a port note).",
-      "props": { "children": "Permissions" },
+      "props": {
+        "children": "Permissions"
+      },
       "root": {
         "id": "settings-section-header-root",
         "el": "h2",
-        "margin": { "top": "4", "right": "1", "bottom": "1", "left": "1" },
-        "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "ink" },
-        "children": [ "{children}" ]
+        "margin": {
+          "top": "4",
+          "right": "1",
+          "bottom": "1",
+          "left": "1"
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "bodyStrong",
+          "color": "ink"
+        },
+        "children": [
+          "{children}"
+        ]
       }
     },
     {
@@ -3384,26 +5096,77 @@
       "root": {
         "id": "settings-card-root",
         "el": "div",
-        "layout": { "mode": "vertical", "width": "fill" },
-        "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+        "layout": {
+          "mode": "vertical",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "setupCardFill",
+          "borderColor": "setupCardStroke",
+          "borderWidth": 1,
+          "radius": "md"
+        },
         "children": [
           {
             "id": "settings-card-row",
             "el": "div",
-            "layout": { "mode": "horizontal", "gap": "0", "padding": "4", "align": "center", "width": "fill" },
-            "appearance": { "background": "$none", "textAlign": "left" },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "0",
+              "padding": "4",
+              "align": "center",
+              "width": "fill"
+            },
+            "appearance": {
+              "background": "$none",
+              "textAlign": "left"
+            },
             "children": [
               {
                 "id": "settings-card-text",
                 "el": "div",
-                "layout": { "mode": "vertical", "gap": "0", "grow": true },
-                "margin": { "right": "5" },
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "0",
+                  "grow": true
+                },
+                "margin": {
+                  "right": "5"
+                },
                 "children": [
-                  { "id": "settings-card-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
-                  { "id": "settings-card-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+                  {
+                    "id": "settings-card-title",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "body",
+                      "color": "ink"
+                    },
+                    "children": [
+                      "{title}"
+                    ]
+                  },
+                  {
+                    "id": "settings-card-detail",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "{detail}"
+                    ]
+                  }
                 ]
               },
-              { "id": "settings-card-action", "component": "ButtonStandard", "props": { "children": "Change" } }
+              {
+                "id": "settings-card-action",
+                "component": "ButtonStandard",
+                "props": {
+                  "children": "Change"
+                }
+              }
             ]
           }
         ]
@@ -3419,31 +5182,88 @@
       "root": {
         "id": "settings-toggle-root",
         "el": "div",
-        "layout": { "mode": "vertical", "width": "fill" },
-        "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+        "layout": {
+          "mode": "vertical",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "setupCardFill",
+          "borderColor": "setupCardStroke",
+          "borderWidth": 1,
+          "radius": "md"
+        },
         "children": [
           {
             "id": "settings-toggle-row",
             "el": "div",
-            "layout": { "mode": "horizontal", "gap": "0", "padding": "4", "align": "center", "width": "fill" },
-            "appearance": { "background": "$none", "textAlign": "left" },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "0",
+              "padding": "4",
+              "align": "center",
+              "width": "fill"
+            },
+            "appearance": {
+              "background": "$none",
+              "textAlign": "left"
+            },
             "children": [
               {
                 "id": "settings-toggle-text",
                 "el": "div",
-                "layout": { "mode": "vertical", "gap": "0", "grow": true },
-                "margin": { "right": "5" },
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "0",
+                  "grow": true
+                },
+                "margin": {
+                  "right": "5"
+                },
                 "children": [
-                  { "id": "settings-toggle-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
-                  { "id": "settings-toggle-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+                  {
+                    "id": "settings-toggle-title",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "body",
+                      "color": "ink"
+                    },
+                    "children": [
+                      "{title}"
+                    ]
+                  },
+                  {
+                    "id": "settings-toggle-detail",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "{detail}"
+                    ]
+                  }
                 ]
               },
               {
                 "id": "settings-toggle-control",
                 "el": "div",
-                "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 40, "height": 36 },
+                "layout": {
+                  "mode": "horizontal",
+                  "align": "center",
+                  "justify": "center",
+                  "width": 40,
+                  "height": 36
+                },
                 "children": [
-                  { "id": "settings-toggle-switch", "component": "ToggleSwitch", "props": { "label": "{title}" } }
+                  {
+                    "id": "settings-toggle-switch",
+                    "component": "ToggleSwitch",
+                    "props": {
+                      "label": "{title}"
+                    }
+                  }
                 ]
               }
             ]
@@ -3461,36 +5281,106 @@
       "root": {
         "id": "settings-expander-root",
         "el": "details",
-        "attrs": { "open": "" },
-        "layout": { "mode": "none", "width": "fill" },
-        "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+        "attrs": {
+          "open": ""
+        },
+        "layout": {
+          "mode": "none",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "setupCardFill",
+          "borderColor": "setupCardStroke",
+          "borderWidth": 1,
+          "radius": "md"
+        },
         "children": [
           {
             "id": "settings-expander-header",
             "el": "summary",
-            "attrs": { "role": "button", "tabindex": "0", "aria-label": "{title}" },
-            "layout": { "mode": "horizontal", "gap": "0", "padding": { "left": "4", "top": "4", "right": "1", "bottom": "4" }, "align": "center", "width": "fill" },
-            "appearance": { "background": "$none", "borderWidth": 0, "radius": "md", "color": "ink", "textAlign": "left" },
+            "attrs": {
+              "role": "button",
+              "tabindex": "0",
+              "aria-label": "{title}"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "gap": "0",
+              "padding": {
+                "left": "4",
+                "top": "4",
+                "right": "1",
+                "bottom": "4"
+              },
+              "align": "center",
+              "width": "fill"
+            },
+            "appearance": {
+              "background": "$none",
+              "borderWidth": 0,
+              "radius": "md",
+              "color": "ink",
+              "textAlign": "left"
+            },
             "states": {
-              "hover": { "background": "subtleHover" },
-              "pressed": { "background": "subtlePressed" },
-              "hoverPressed": { "background": "subtlePressed" }
+              "hover": {
+                "background": "subtleHover"
+              },
+              "pressed": {
+                "background": "subtlePressed"
+              },
+              "hoverPressed": {
+                "background": "subtlePressed"
+              }
             },
             "children": [
               {
                 "id": "settings-expander-header-card",
                 "el": "span",
-                "layout": { "mode": "vertical", "padding": "0", "grow": true },
+                "layout": {
+                  "mode": "vertical",
+                  "padding": "0",
+                  "grow": true
+                },
                 "children": [
                   {
                     "id": "settings-expander-text",
                     "el": "span",
-                    "layout": { "mode": "vertical", "gap": "0" },
-                    "margin": { "right": "5" },
-                    "appearance": { "textAlign": "left" },
+                    "layout": {
+                      "mode": "vertical",
+                      "gap": "0"
+                    },
+                    "margin": {
+                      "right": "5"
+                    },
+                    "appearance": {
+                      "textAlign": "left"
+                    },
                     "children": [
-                      { "id": "settings-expander-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
-                      { "id": "settings-expander-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+                      {
+                        "id": "settings-expander-title",
+                        "el": "span",
+                        "appearance": {
+                          "fontFamily": "body",
+                          "textStyle": "body",
+                          "color": "ink"
+                        },
+                        "children": [
+                          "{title}"
+                        ]
+                      },
+                      {
+                        "id": "settings-expander-detail",
+                        "el": "span",
+                        "appearance": {
+                          "fontFamily": "body",
+                          "textStyle": "caption",
+                          "color": "muted"
+                        },
+                        "children": [
+                          "{detail}"
+                        ]
+                      }
                     ]
                   }
                 ]
@@ -3498,15 +5388,30 @@
               {
                 "id": "settings-expander-chevron-slot",
                 "el": "span",
-                "attrs": { "aria-hidden": "true" },
-                "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 32, "height": 32 },
-                "margin": { "right": "2" },
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "align": "center",
+                  "justify": "center",
+                  "width": 32,
+                  "height": 32
+                },
+                "margin": {
+                  "right": "2"
+                },
                 "children": [
                   {
                     "id": "settings-expander-chevron",
                     "el": "span",
-                    "appearance": { "textStyle": "chatIcon", "color": "ink" },
-                    "children": [ "\uE70D" ]
+                    "appearance": {
+                      "textStyle": "chatIcon",
+                      "color": "ink"
+                    },
+                    "children": [
+                      ""
+                    ]
                   }
                 ]
               }
@@ -3515,37 +5420,104 @@
           {
             "id": "settings-expander-divider",
             "el": "div",
-            "attrs": { "aria-hidden": "true" },
-            "layout": { "height": 1, "width": "fill" },
-            "appearance": { "background": "setupCardStroke" }
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "layout": {
+              "height": 1,
+              "width": "fill"
+            },
+            "appearance": {
+              "background": "setupCardStroke"
+            }
           },
           {
             "id": "settings-expander-content",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "0", "padding": "0", "width": "fill" },
+            "layout": {
+              "mode": "vertical",
+              "gap": "0",
+              "padding": "0",
+              "width": "fill"
+            },
             "children": [
               {
                 "id": "settings-expander-child",
                 "el": "div",
-                "layout": { "mode": "horizontal", "gap": "0", "padding": { "left": "4", "top": "4", "right": "settingsItemEnd", "bottom": "4" }, "align": "center", "width": "fill" },
-                "appearance": { "background": "$none", "borderWidth": 0, "textAlign": "left" },
+                "layout": {
+                  "mode": "horizontal",
+                  "gap": "0",
+                  "padding": {
+                    "left": "4",
+                    "top": "4",
+                    "right": "settingsItemEnd",
+                    "bottom": "4"
+                  },
+                  "align": "center",
+                  "width": "fill"
+                },
+                "appearance": {
+                  "background": "$none",
+                  "borderWidth": 0,
+                  "textAlign": "left"
+                },
                 "children": [
                   {
                     "id": "settings-expander-item-text",
                     "el": "div",
-                    "layout": { "mode": "vertical", "gap": "0", "grow": true },
-                    "margin": { "right": "5" },
+                    "layout": {
+                      "mode": "vertical",
+                      "gap": "0",
+                      "grow": true
+                    },
+                    "margin": {
+                      "right": "5"
+                    },
                     "children": [
-                      { "id": "settings-expander-item-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "Allow network access" ] },
-                      { "id": "settings-expander-item-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "Let sandboxed commands reach the network." ] }
+                      {
+                        "id": "settings-expander-item-title",
+                        "el": "span",
+                        "appearance": {
+                          "fontFamily": "body",
+                          "textStyle": "body",
+                          "color": "ink"
+                        },
+                        "children": [
+                          "Allow network access"
+                        ]
+                      },
+                      {
+                        "id": "settings-expander-item-detail",
+                        "el": "span",
+                        "appearance": {
+                          "fontFamily": "body",
+                          "textStyle": "caption",
+                          "color": "muted"
+                        },
+                        "children": [
+                          "Let sandboxed commands reach the network."
+                        ]
+                      }
                     ]
                   },
                   {
                     "id": "settings-expander-item-control",
                     "el": "div",
-                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 40, "height": 36 },
+                    "layout": {
+                      "mode": "horizontal",
+                      "align": "center",
+                      "justify": "center",
+                      "width": 40,
+                      "height": 36
+                    },
                     "children": [
-                      { "id": "settings-expander-item-switch", "component": "ToggleSwitch", "props": { "label": "Allow network access" } }
+                      {
+                        "id": "settings-expander-item-switch",
+                        "component": "ToggleSwitch",
+                        "props": {
+                          "label": "Allow network access"
+                        }
+                      }
                     ]
                   }
                 ]
@@ -3561,17 +5533,40 @@
       "root": {
         "id": "settings-window-root",
         "el": "section",
-        "layout": { "mode": "vertical", "width": "fill" },
-        "appearance": { "background": "paper" },
+        "layout": {
+          "mode": "vertical",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "paper"
+        },
         "children": [
           {
             "id": "settings-window-content",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "1", "padding": "5", "grow": true, "width": "fill" },
+            "layout": {
+              "mode": "vertical",
+              "gap": "1",
+              "padding": "5",
+              "grow": true,
+              "width": "fill"
+            },
             "children": [
-              { "id": "settings-window-section", "component": "SettingsSectionHeader", "props": { "children": "General" } },
-              { "id": "settings-window-row-1", "component": "SettingsToggleRow" },
-              { "id": "settings-window-row-2", "component": "SettingsExpanderRow" }
+              {
+                "id": "settings-window-section",
+                "component": "SettingsSectionHeader",
+                "props": {
+                  "children": "General"
+                }
+              },
+              {
+                "id": "settings-window-row-1",
+                "component": "SettingsToggleRow"
+              },
+              {
+                "id": "settings-window-row-2",
+                "component": "SettingsExpanderRow"
+              }
             ]
           }
         ]

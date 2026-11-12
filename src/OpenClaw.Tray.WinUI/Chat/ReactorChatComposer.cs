@@ -32,7 +32,8 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerSession Session,
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
-    Action OnSendRequested);
+    Action OnSendRequested,
+    bool Compact = false);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -500,9 +501,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 Send();
             })
             .TextWrapping(TextWrapping.Wrap)
-            .MinHeight(44)
+            .MinHeight(props.Compact ? 32 : 44)
             .MaxHeight(200)
-            .Padding(0)
+            .Padding(props.Compact ? new Thickness(0, 4, 0, 0) : new Thickness(0))
             .IsEnabled(inputs.ConnectionState == "connected")
             .BorderThickness(0)
             .BorderBrush(transparentInputBrush)
@@ -760,15 +761,26 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                 }));
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
-        composerChildren.Add(input.WithKey("chat-composer-input"));
-        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        if (props.Compact)
+            composerChildren.Add(Grid(
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto],
+                attachButton.VAlign(VerticalAlignment.Bottom).Grid(column: 0),
+                input.WithKey("chat-composer-input").Margin(8, 0).Grid(column: 1),
+                voiceButton.VAlign(VerticalAlignment.Bottom).Grid(column: 2),
+                primaryAction.VAlign(VerticalAlignment.Bottom).Margin(4, 0, 0, 0).Grid(column: 3)));
+        else
+        {
+            composerChildren.Add(input.WithKey("chat-composer-input"));
+            composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        }
 
         var writingSurface = Border(
             VStack(8, composerChildren.ToArray())
-            .Padding(16, 12, 16, 8))
+            .Padding(props.Compact ? new Thickness(8) : new Thickness(16, 12, 16, 8)))
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
-            .MinHeight(112)
+            .MinHeight(props.Compact ? 50 : 112)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .HAlign(HorizontalAlignment.Stretch)
@@ -776,7 +788,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var surfaces = new List<Element>();
         var agentId = inputs.CurrentThread.AgentId;
         var catalog = placement?.State.Catalog;
-        surfaces.Add(inputs.ShowPlacementPickers
+        if (!props.Compact)
+            surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(
                 ChatWelcomePresentation.AgentIdentity(
                     catalog, agentId, inputs.AgentIdentity, inputs.AgentRosterPresentation),
@@ -807,14 +820,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .MaxWidth(480).HAlign(HorizontalAlignment.Left)
                 .AutomationId("ChatPlacementPickers"));
         }
-        else
+        else if (!props.Compact)
         {
             surfaces.Add(Empty());
         }
         surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
-                .Margin(ChatVisuals.Gutter(viewportWidth), 12)
+                .Margin(props.Compact ? 0 : ChatVisuals.Gutter(viewportWidth), props.Compact ? 0 : 12)
                 .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);

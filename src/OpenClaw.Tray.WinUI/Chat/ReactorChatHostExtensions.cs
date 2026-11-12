@@ -100,7 +100,8 @@ public static class ReactorChatHostExtensions
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
         bool initialThreadIsExplicitSelection = true,
-        IChatAgentRosterSource? agentRosterSource = null)
+        IChatAgentRosterSource? agentRosterSource = null,
+        bool compact = false)
     {
         ArgumentNullException.ThrowIfNull(composerSession);
         MountedReactorChat? mounted = null;
@@ -128,7 +129,8 @@ public static class ReactorChatHostExtensions
                 onStopSpeaking,
                 onOpenCheckpoints,
                 InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
-                AgentRosterSource: agentRosterSource);
+                AgentRosterSource: agentRosterSource,
+                Compact: compact);
             var host = new ReactorHostControl();
             mounted = new MountedReactorChat(target, host, callbacks, composerSession);
             host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));

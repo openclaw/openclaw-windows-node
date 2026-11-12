@@ -333,7 +333,8 @@ The native path:
    the explicit package restart. The legacy path first stops its own runtime
    and restores its reload setting. Both check the selected
    local/loopback/token configuration, runs `config validate --json`, restarts
-   with owned-listener proof and runs authenticated `gateway health --json`.
+   with owned-listener proof and runs authenticated `gateway health --json`
+   with the configured native CLI timeout applied to both the process and RPC.
    It also verifies the exact primary model on the restarted runtime. A failed
    gate remains retryable and does not publish the staged record.
 5. Stops the setup-owned runtime before reloading and updating the registry.

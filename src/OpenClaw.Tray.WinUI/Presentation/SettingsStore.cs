@@ -144,6 +144,7 @@ internal sealed class SettingsStore : ISettingsStore
         UseLegacyWebChat = _settings.UseLegacyWebChat,
         ShowNotifications = _settings.ShowNotifications,
         ShowDesktopCompanion = _settings.ShowDesktopCompanion,
+        DesktopCompanionScalePercent = _settings.DesktopCompanionScalePercent,
         NotificationSound = _settings.NotificationSound,
         AppTheme = _settings.AppTheme,
         ShowDiagnosticsEffective = _settings.ShowDiagnosticsEffective,
@@ -196,6 +197,7 @@ internal sealed class SettingsStore : ISettingsStore
         public bool UseLegacyWebChat { set => _settings.UseLegacyWebChat = value; }
         public bool ShowNotifications { set => _settings.ShowNotifications = value; }
         public bool ShowDesktopCompanion { set => _settings.ShowDesktopCompanion = value; }
+        public int DesktopCompanionScalePercent { set => _settings.DesktopCompanionScalePercent = value; }
         public string NotificationSound { set => _settings.NotificationSound = value; }
         public string AppTheme { set => _settings.AppTheme = value; }
         public bool? ShowDiagnosticsOverride { set => _settings.ShowDiagnosticsOverride = value; }

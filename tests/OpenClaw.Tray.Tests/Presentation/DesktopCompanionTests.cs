@@ -24,34 +24,77 @@ public sealed class DesktopCompanionTests
     }
 
     [Fact]
-    public void MissingSetting_DefaultsOff()
+    public void MissingSetting_DefaultsOn_WhileExplicitOffIsPreserved()
     {
-        Assert.False(new SettingsData().ShowDesktopCompanion);
+        Assert.True(new SettingsData().ShowDesktopCompanion);
         var legacy = SettingsData.FromJson("""{"ShowNotifications":true}""");
         Assert.NotNull(legacy);
-        Assert.False(legacy.ShowDesktopCompanion);
+        Assert.True(legacy.ShowDesktopCompanion);
+        Assert.Equal(100, legacy.DesktopCompanionScalePercent);
+        var optedOut = SettingsData.FromJson("""{"ShowDesktopCompanion":false}""");
+        Assert.NotNull(optedOut);
+        Assert.False(optedOut.ShowDesktopCompanion);
+        Assert.False(SettingsData.FromJson(optedOut.ToJson())!.ShowDesktopCompanion);
     }
 
-    [Fact]
-    public void Setting_PersistsThroughViewModelAndReload_WithoutChangingOtherFields()
+    [Theory]
+    [InlineData(50)]
+    [InlineData(75)]
+    [InlineData(100)]
+    [InlineData(125)]
+    [InlineData(150)]
+    [InlineData(175)]
+    [InlineData(200)]
+    public void Setting_PersistsThroughViewModelAndReload_WithoutChangingOtherFields(int scale)
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
+        settings.ShowDesktopCompanion = false;
+        settings.DesktopCompanionScalePercent = scale == 50 ? 100 : 50;
         using var dispatcher = new RecordingUiDispatcher();
         using var store = new SettingsStore(settings, dispatcher);
         var commands = new FakeAppCommands();
         using var vm = new SettingsPageViewModel(store, commands);
         vm.Activate(null);
         vm.ShowDesktopCompanion = true;
+        vm.DesktopCompanionScalePercent = scale;
         Assert.True(store.Current.ShowDesktopCompanion);
+        Assert.Equal(scale, store.Current.DesktopCompanionScalePercent);
         var reloaded = new SettingsManager(temp.Path);
         reloaded.Load();
         Assert.True(reloaded.ShowDesktopCompanion);
         Assert.True(reloaded.ShowNotifications);
-        Assert.Equal(1, commands.NotifySettingsSavedCount);
-        store.Update(null, edit => edit.ShowDesktopCompanion = false);
+        Assert.Equal(scale, reloaded.DesktopCompanionScalePercent);
+        Assert.Equal(2, commands.NotifySettingsSavedCount);
+        store.Update(null, edit =>
+        {
+            edit.ShowDesktopCompanion = false;
+            edit.DesktopCompanionScalePercent = 50;
+        });
         Assert.False(vm.ShowDesktopCompanion);
-        Assert.Equal(1, commands.NotifySettingsSavedCount);
+        Assert.Equal(50, vm.DesktopCompanionScalePercent);
+        Assert.Equal(2, commands.NotifySettingsSavedCount);
+        reloaded.Load();
+        Assert.False(reloaded.ShowDesktopCompanion);
+    }
+
+    [Theory]
+    [InlineData(int.MinValue, 50)]
+    [InlineData(113, 125)]
+    [InlineData(int.MaxValue, 200)]
+    public void UnsupportedScale_IsNormalizedOnLoadAndSave(int stored, int expected)
+    {
+        using var temp = new TempDir();
+        File.WriteAllText(Path.Combine(temp.Path, "settings.json"),
+            new SettingsData { DesktopCompanionScalePercent = stored }.ToJson());
+        var settings = new SettingsManager(temp.Path);
+        settings.Load();
+        Assert.Equal(expected, settings.DesktopCompanionScalePercent);
+        settings.DesktopCompanionScalePercent = stored;
+        settings.Save();
+        var saved = SettingsData.FromJson(File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
+        Assert.NotNull(saved);
+        Assert.Equal(expected, saved.DesktopCompanionScalePercent);
     }
 
     [Fact]
@@ -115,19 +158,17 @@ public sealed class DesktopCompanionTests
     }
 
     [Fact]
-    public void Controller_TogglesLive_AndHidePersistsWithoutDismissingAppNotifications()
+    public void Controller_StartsByDefault_AndClosePersistsWithoutDismissingAppNotifications()
     {
         using var harness = new Harness();
-        harness.Controller.Start();
-        Assert.Empty(harness.Views);
         harness.Notifications.Show(Notification("old"));
-        harness.Store.Update(null, edit => edit.ShowDesktopCompanion = true);
+        harness.Controller.Start();
         var view = Assert.Single(harness.Views);
         Assert.Equal(1, view.ShowCount);
         Assert.Empty(view.Presented);
         harness.Notifications.Show(Notification("new"));
         Assert.Equal("new", Assert.Single(view.Presented)!.Id);
-        view.Hide();
+        view.RequestClose();
         Assert.True(view.Closed);
         Assert.False(harness.Store.Current.ShowDesktopCompanion);
         Assert.Equal(2, harness.Notifications.Snapshot.ActiveNotifications.Count);
@@ -172,6 +213,26 @@ public sealed class DesktopCompanionTests
     }
 
     [Fact]
+    public void Controller_ChangesScaleWithoutReplacingViewOrReplayingNotifications()
+    {
+        using var harness = new Harness();
+        harness.Store.Update(null, edit => edit.ShowDesktopCompanion = true);
+        harness.Controller.Start();
+        var view = Assert.Single(harness.Views);
+        Assert.Equal(100, view.ScalePercent);
+        harness.Notifications.Show(Notification("one"));
+        harness.Store.Update(null, edit => edit.DesktopCompanionScalePercent = 200);
+        Assert.Equal(200, view.ScalePercent);
+        Assert.Single(harness.Views);
+        Assert.Equal(1, view.ShowCount);
+        Assert.Equal("one", Assert.Single(view.Presented)!.Id);
+        harness.Store.Update(null, edit => edit.ShowDesktopCompanion = false);
+        harness.Store.Update(null, edit => edit.ShowDesktopCompanion = true);
+        Assert.Equal(200, harness.Views[1].ScalePercent);
+        Assert.Empty(harness.Views[1].Presented);
+    }
+
+    [Fact]
     public void Controller_DelayedSnapshotsCannotResurrectRemovedNotifications()
     {
         using var harness = new Harness();
@@ -210,11 +271,13 @@ public sealed class DesktopCompanionTests
         public bool Closed { get; private set; }
         public int ShowCount { get; private set; }
         public string? Theme { get; private set; }
+        public int ScalePercent { get; private set; }
         public void Show() => ShowCount++;
         public void ApplyTheme(string theme) => Theme = theme;
+        public void ApplyScale(int percent) => ScalePercent = percent;
         public void Present(AppNotification? notification) => Presented.Add(notification);
         public void Close() => Closed = true;
-        public void Hide() => HideRequested?.Invoke(this, EventArgs.Empty);
+        public void RequestClose() => HideRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private sealed class Harness : IDisposable

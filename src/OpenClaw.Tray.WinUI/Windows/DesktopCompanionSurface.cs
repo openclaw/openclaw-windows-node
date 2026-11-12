@@ -14,15 +14,47 @@ using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Windows;
 
+internal sealed record DesktopCompanionInputPrompt(
+    string Title, string Message, string? ActionLabel, Action<bool> Complete);
+
 internal sealed class DesktopCompanionPresentation
 {
+    internal const double DefaultMascotSize = OnboardingMascot.HeroSize;
+    internal const double BubbleOverlap = 6;
     public event EventHandler? Changed;
+    public double MascotSize { get; private set; } = DefaultMascotSize;
     public AppNotification? Notification { get; private set; }
+    public bool IsChatOpen { get; private set; }
     public long Revision { get; private set; }
+    public DesktopCompanionInputPrompt? InputPrompt { get; private set; }
+
+    public void SetMascotSize(double size)
+    {
+        if (MascotSize == size) return;
+        MascotSize = size;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ShowInputPrompt(DesktopCompanionInputPrompt? prompt)
+    {
+        if (ReferenceEquals(InputPrompt, prompt)) return;
+        InputPrompt = prompt;
+        Revision++;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     public void Present(AppNotification? notification)
     {
+        if (notification is not null) IsChatOpen = false;
         Notification = notification;
+        Revision++;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ShowChat(bool open)
+    {
+        IsChatOpen = open;
+        if (!open) Notification = null;
         Revision++;
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -32,6 +64,8 @@ internal sealed record DesktopCompanionSurfaceProps(
     DesktopCompanionPresentation Presentation,
     Action Dismiss,
     Action OpenNotifications,
+    Action Reply,
+    FrameworkElement ChatContent,
     Action<FrameworkElement> BubbleMounted,
     Action<FrameworkElement> MascotMounted);
 
@@ -43,12 +77,12 @@ internal sealed class DesktopCompanionSurface : Component<DesktopCompanionSurfac
         var presentation = props.Presentation;
         var mascot = UseRef<OnboardingMascot?>(null);
         var moodRevision = UseRef(-1L);
-        var (_, invalidate) = UseState(presentation.Revision);
+        var (_, invalidate) = UseState((presentation.Revision, presentation.MascotSize));
         UseEffect((Func<Action>)(() =>
         {
-            EventHandler changed = (_, _) => invalidate(presentation.Revision);
+            EventHandler changed = (_, _) => invalidate((presentation.Revision, presentation.MascotSize));
             presentation.Changed += changed;
-            invalidate(presentation.Revision);
+            invalidate((presentation.Revision, presentation.MascotSize));
             return () =>
             {
                 presentation.Changed -= changed;
@@ -58,12 +92,15 @@ internal sealed class DesktopCompanionSurface : Component<DesktopCompanionSurfac
         }), presentation);
 
         var notification = presentation.Notification;
+        var chatOpen = presentation.IsChatOpen;
+        var canReply = AppNotificationActionRoutes.TryGetChatSessionKey(notification?.ActionRoute, out _);
         var revision = presentation.Revision;
+        var prompt = presentation.InputPrompt;
         var announced = UseRef(0L);
         // Preview.12 does not map Shape.Fill in its theme-binding helper.
         var tailStyle = UseMemo(() => (Style)XamlReader.Load("""
             <Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Path">
-                <Setter Property="Fill" Value="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
+                <Setter Property="Fill" Value="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"/>
             </Style>
             """), Array.Empty<object>());
         var dismissLabel = LocalizationHelper.GetString("DesktopCompanion_Dismiss");
@@ -76,15 +113,17 @@ internal sealed class DesktopCompanionSurface : Component<DesktopCompanionSurfac
         };
         return Grid([GridSize.Star()], [GridSize.Star()],
             VStack(0,
-                Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto],
+                Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
                     Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                         TextBlock(notification?.Title ?? "").SemiBold()
                             .TextWrapping(TextWrapping.Wrap).MaxLines(2).VAlign(VerticalAlignment.Center)
-                            .AutomationId("DesktopCompanionTitle"),
+                            .Margin(8, 4, 0, 0)
+                            .AutomationId("DesktopCompanionTitle").IsVisible(!chatOpen),
                         Button(TextBlock(FluentIconCatalog.Exit)
                                 .FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(12)
                                 .AccessibilityView(AccessibilityView.Raw), props.Dismiss)
-                            .Padding(6).MinWidth(28).MinHeight(28)
+                            .SubtleButton().Padding(chatOpen ? 6 : 4).MinWidth(28).MinHeight(28)
+                            .Margin(0, chatOpen ? 0 : 4, 0, 0)
                             .AutomationId("DesktopCompanionDismiss").AutomationName(dismissLabel)
                             .ToolTip(dismissLabel).Grid(column: 1))
                         .Set(grid => grid.ColumnSpacing = 8),
@@ -104,21 +143,28 @@ internal sealed class DesktopCompanionSurface : Component<DesktopCompanionSurfac
                                 }))
                                     Logger.Warn("Desktop lobster could not announce its notification.");
                             }))
-                        .MaxHeight(118)
+                        .MaxHeight(118).Margin(8, 0, 8, 0)
                         .Set(scroll =>
                         {
                             scroll.HorizontalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Disabled;
                             scroll.VerticalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Auto;
-                        }).Grid(row: 1),
-                    HyperlinkButton(LocalizationHelper.GetString("DesktopCompanion_Notifications"),
+                        }).Grid(row: 1).IsVisible(!chatOpen),
+                    HStack(8,
+                        HyperlinkButton(LocalizationHelper.GetString("DesktopCompanion_QuickReply"),
+                                onClick: props.Reply)
+                            .Padding(0).AutomationId("DesktopCompanionReply").IsVisible(canReply),
+                        HyperlinkButton(LocalizationHelper.GetString("DesktopCompanion_Notifications"),
                             onClick: props.OpenNotifications)
                         .Padding(0).HAlign(HorizontalAlignment.Left)
-                        .AutomationId("DesktopCompanionNotifications").Grid(row: 2))
-                    .Set(grid => grid.RowSpacing = 8))
-                    .Background(Theme.Ref("SolidBackgroundFillColorBaseBrush"))
-                    .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-                    .BorderThickness(1).CornerRadius(12).Padding(14),
-                Path2D().Width(20).Height(12).Margin(0, -1, 74, 0).HAlign(HorizontalAlignment.Right)
+                        .AutomationId("DesktopCompanionNotifications"))
+                        .Margin(8, 0, 0, 8).Grid(row: 2).IsVisible(!chatOpen),
+                    new XamlHostElement(() => props.ChatContent)
+                        .MaxHeight(360).Grid(row: 3).IsVisible(chatOpen))
+                    .Set(grid => grid.RowSpacing = chatOpen ? 0 : 8))
+                    .Background(Theme.Ref("LayerOnAcrylicFillColorDefaultBrush"))
+                    .BorderBrush(Theme.Ref("SurfaceStrokeColorFlyoutBrush"))
+                    .BorderThickness(1).CornerRadius(12).Padding(4),
+                Path2D().Width(20).Height(12).Margin(0, -1, presentation.MascotSize / 2 - 16, 0).HAlign(HorizontalAlignment.Right)
                     .Set(path =>
                     {
                         path.Style = tailStyle;
@@ -139,22 +185,23 @@ internal sealed class DesktopCompanionSurface : Component<DesktopCompanionSurfac
                             },
                         };
                     }))
-                .VAlign(VerticalAlignment.Bottom).Margin(4, 4, 4, 174)
+                .VAlign(VerticalAlignment.Bottom).Margin(4, 4, 4, presentation.MascotSize - DesktopCompanionPresentation.BubbleOverlap)
                 .AutomationId("DesktopCompanionBubble")
-                .IsVisible(notification is not null)
+                .IsVisible(chatOpen || notification is not null)
                 .OnMount(props.BubbleMounted),
             Button(new XamlHostElement(
                     () => mascot.Current = new OnboardingMascot(),
                     element =>
                     {
+                        var control = (OnboardingMascot)element;
+                        control.Width = control.Height = presentation.MascotSize;
                         if (moodRevision.Current == revision) return;
                         moodRevision.Current = revision;
-                        var control = (OnboardingMascot)element;
                         // Only arrivals restart the entrance, not theme/layout renders.
                         control.Mood = OnboardingMascotMood.Idle;
                         control.Mood = mood;
                     }).AccessibilityView(AccessibilityView.Raw))
-                .Width(180).Height(180).Padding(0).BorderThickness(0)
+                .Width(presentation.MascotSize).Height(presentation.MascotSize).Padding(0).BorderThickness(0)
                 .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom)
                 .HorizontalContentAlignment(HorizontalAlignment.Stretch)
                 .VerticalContentAlignment(VerticalAlignment.Stretch)
@@ -164,7 +211,17 @@ internal sealed class DesktopCompanionSurface : Component<DesktopCompanionSurfac
                     .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTransparentBrush")))
                 .AutomationId("DesktopCompanionMascot")
                 .AutomationName(LocalizationHelper.GetString("DesktopCompanion_Name"))
-                .OnMount(props.MascotMounted))
+                .OnMount(props.MascotMounted),
+            ContentDialog(prompt?.Title ?? "",
+                VStack(8,
+                    TextBlock(prompt?.Message ?? "").TextWrapping(TextWrapping.Wrap),
+                    HyperlinkButton(prompt?.ActionLabel ?? "", onClick: () => prompt?.Complete(true))
+                        .IsVisible(prompt?.ActionLabel is not null)),
+                LocalizationHelper.GetString("ChatVoiceDialog_Dismiss")) with
+            {
+                IsOpen = prompt is not null,
+                OnClosed = _ => prompt?.Complete(false),
+            })
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"));
     }
 }

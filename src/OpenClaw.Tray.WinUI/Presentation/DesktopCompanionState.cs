@@ -53,3 +53,50 @@ internal readonly record struct DesktopCompanionBounds(int X, int Y, int Width, 
             Math.Clamp(y, workArea.Y, workArea.Y + Math.Max(0, workArea.Height - height)),
             width, height);
 }
+
+/// <summary>Retains one dedicated conversation per Gateway, including a creation still awaiting acknowledgment.</summary>
+internal sealed class DesktopCompanionChatSessions
+{
+    private readonly Dictionary<string, Task<string>> _sessions = new(StringComparer.Ordinal);
+
+    public Task<string> GetOrCreateAsync(string gatewayId, Func<Task<string>> create, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        Task<string> session;
+        lock (_sessions)
+        {
+            if (!_sessions.TryGetValue(gatewayId, out session!))
+            {
+                var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                session = completion.Task;
+                _sessions.Add(gatewayId, session);
+                _ = CreateAsync(gatewayId, create, completion);
+            }
+        }
+        // Closing the bubble cancels the caller, not a possibly accepted sessions.create.
+        return session.WaitAsync(ct);
+    }
+
+    public void Select(string gatewayId, string sessionKey)
+    {
+        lock (_sessions) _sessions[gatewayId] = Task.FromResult(sessionKey);
+    }
+
+    private async Task CreateAsync(string gatewayId, Func<Task<string>> create, TaskCompletionSource<string> completion)
+    {
+        try
+        {
+            var key = await create();
+            if (string.IsNullOrWhiteSpace(key))
+                throw new InvalidOperationException("The Gateway did not return a dedicated conversation.");
+            completion.TrySetResult(key);
+        }
+        catch (Exception ex)
+        {
+            lock (_sessions)
+                if (_sessions.TryGetValue(gatewayId, out var current) && ReferenceEquals(current, completion.Task))
+                    _sessions.Remove(gatewayId);
+            completion.TrySetException(ex);
+        }
+    }
+}

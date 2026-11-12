@@ -7,6 +7,7 @@ internal interface IDesktopCompanionView
     event EventHandler? HideRequested;
     void Show();
     void ApplyTheme(string theme);
+    void ApplyScale(int percent);
     void Present(AppNotification? notification);
     void Close();
 }
@@ -61,10 +62,14 @@ internal sealed class DesktopCompanionController : IDisposable
             _view = _createView();
             _view.HideRequested += OnHideRequested;
             _view.ApplyTheme(settings.AppTheme);
+            _view.ApplyScale(settings.DesktopCompanionScalePercent);
             _view.Show();
         }
         else
+        {
             _view.ApplyTheme(settings.AppTheme);
+            _view.ApplyScale(settings.DesktopCompanionScalePercent);
+        }
 
         if (!settings.ShowNotifications)
         {

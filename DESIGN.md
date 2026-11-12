@@ -310,6 +310,9 @@ x-colophon:
           - ChatComposer
           - ChatThread
           - ChatCopyButton
+          - LobsterQuickComposer
+          - LobsterQuickChat
+          - LobsterNotification
       - id: settings
         name: Settings
         description: Settings patterns, workspace chrome, identity controls, and flyouts.
@@ -1029,6 +1032,54 @@ The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fl
 
 ## Workspace shell
 
+### Desktop lobster quick chat
+
+Left-click opens a speech bubble containing the shared Reactor timeline and
+composer. Right-click retains the native options menu, and dragging does not
+open either surface. The quick-chat overlay uses a 440-DIP-wide, 640-DIP-tall
+window including the existing 180-DIP mascot, with a content-sized chat host
+capped at 360 DIPs. The empty bubble has no heading or reserved transcript gap.
+Its Close control uses the native SubtleButton style. Attach, the message field,
+Mic and Send share one row with 8-DIP padding and 32-DIP action targets. The
+quick-chat and notification bubbles both use a 4-DIP outer inset, and
+notification rows retain an 8-DIP gap. The title has an 8-DIP left and 4-DIP top
+margin; Close has a 4-DIP top margin and padding. The message has 8-DIP horizontal
+margins, and notification actions have 8-DIP left and bottom margins. The
+compact editor has 4 DIPs of top padding with zero padding on other sides.
+The editor grows vertically as text wraps, up to its existing 200-DIP limit. It
+shrinks to the monitor work area and retains the mascot's bottom-right anchor.
+Desktop lobster settings use a native settings expander with its independent
+enable toggle in the header and a size dropdown in the expanded child row.
+The lobster is enabled by default unless the user has explicitly saved it off.
+The options menu's Desktop lobster settings action opens General settings
+instead of hiding the lobster. Its settings toggle remains the visibility control.
+The fixed choices are 50%, 75%, 100%, 125%, 150%, 175% and 200%, defaulting to 100%.
+The persisted size affects only the mascot. The mascot's layout and native hit region grow
+together; the popup widths, text and action targets do not scale. The speech
+tail follows the mascot's center. The options menu contains no preview action.
+The bubble reuses its native surface/stroke resources and speech tail; chat
+inside binds the existing `ChatResources`, composer geometry and text styles.
+The compact layout omits model, reasoning and sandbox controls, welcome
+suggestions, placement pickers and usage
+strip, not the shared send, streaming, stop, permission or error behavior.
+
+The lobster retains a dedicated conversation per Gateway for its view lifetime.
+Dismissal hides its mounted composer rather than discarding the draft. Chat
+notifications offer Quick reply, which opens the originating session in the
+same bubble; system alerts without a chat route do not invent a reply target.
+Incoming notifications replace an open chat without discarding its draft or
+starting typing focus. Reopening chat restores its retained composer. Clearing
+notifications does not close an open chat. Attach uses the native multi-file
+picker owned by the lobster window; late selections are ignored after hiding or
+switching Gateway. Mic uses the shared voice service and local speech model,
+offers Permissions or Voice settings when unavailable, and cancels capture when
+chat is hidden. Disconnected chat offers
+Open Connection; an unavailable Gateway session-creation API is a visible error,
+not permission to send into the user's main conversation.
+Loading and recovery content use an 8-DIP inset. The inactive spinner reserves
+no space, and recovery actions share one row. Session failures offer Retry;
+Open Connection appears only when the chat connection is unavailable.
+
 ### Navigation search popup
 
 Workspace and Settings retain their existing 40px search icon buttons. There is
@@ -1104,7 +1155,7 @@ The named `flyout` shadow uses an 8px downward offset, 16px CSS blur and 14% bla
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
 Optional click-through flows would live in `.agents/design/prototypes.jsonc`; none are defined yet.
 
-The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 39 definitions has exactly one standalone page assignment: Components 15, Setup 6, Chat 7, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
+The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 41 definitions has exactly one standalone page assignment: Components 15, Setup 6, Chat 9, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
 
 Every interactive control documents its hover and pressed states; static controls say so. States bind Fluent resources (`SubtleFillColorSecondary` for hover, `SubtleFillColorTertiary` for pressed, accent variants for primary actions), never raw hex.
 

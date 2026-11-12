@@ -41,6 +41,71 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "```text\n09:00  Focus time\n11:00  Messages and reviews\n14:00  Collaborative work\n```\n\n" +
         "Would you like me to turn this into a schedule?";
 
+    [Fact]
+    public async Task CompactChat_UsesSingleRowAndGrowsOnlyWithMultilineDraft()
+    {
+        await WithChatAsync(420, async (surface, _, session, _) =>
+        {
+            double singleLineHeight = 0;
+            await ui.RunOnUIAsync(() => session.ViewModel.SetDraft("Hello"));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var input = FindControl<TextBox>(surface, "ChatComposerInput");
+                var writing = FindControl<Border>(surface, "ChatWritingSurface");
+                Assert.Equal(new Thickness(0, 4, 0, 0), input.Padding);
+                singleLineHeight = writing.ActualHeight;
+                Assert.InRange(singleLineHeight, 50, 64);
+                Assert.InRange(Bounds(writing, surface).Top, 0, 1);
+                var inputBounds = Bounds(input, surface);
+                foreach (var id in new[] { "ChatComposerAttach", "ChatComposerVoice", "ChatComposerPrimaryAction" })
+                {
+                    var bounds = Bounds(FindControl<Button>(surface, id), surface);
+                    Assert.True(bounds.Top < inputBounds.Bottom && bounds.Bottom > inputBounds.Top);
+                }
+                Assert.DoesNotContain(FindDescendants<Button>(surface), button =>
+                    AutomationProperties.GetAutomationId(button) is "ChatComposerModelPicker"
+                        or "ChatComposerReasoningPicker" or "ChatComposerSandbox");
+                session.ViewModel.SetDraft("First line\nSecond line\nThird line");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(FindControl<Border>(surface, "ChatWritingSurface").ActualHeight > singleLineHeight);
+                session.ViewModel.SetDraft("Short again");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+                Assert.Equal(singleLineHeight, FindControl<Border>(surface, "ChatWritingSurface").ActualHeight));
+        }, "empty", compact: true);
+    }
+
+    [Fact]
+    public async Task CompactChat_RetainsExactTargetWhenSessionDisappears_AndSendsThroughSharedComposer()
+    {
+        await WithChatAsync(420, async (surface, _, session, provider) =>
+        {
+            var original = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(original with
+            {
+                Threads = [.. original.Threads, new ChatThread { Id = "lobster", AgentId = "main", Title = "Lobster" }],
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(original));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("lobster", session.ViewModel.Inputs?.CurrentThread.Id);
+                Assert.DoesNotContain(FindDescendants<TextBlock>(surface), text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatWelcomeHint");
+                session.ViewModel.SetDraft("A quick reply from the lobster.");
+                Invoke(FindControl<Button>(surface, "ChatComposerPrimaryAction"));
+            });
+            await SettleAsync();
+            Assert.Equal(("lobster", "A quick reply from the lobster."), Assert.Single(provider.SentMessages));
+        }, initialThreadId: "lobster", compact: true);
+    }
+
     [Theory]
     [InlineData("en-us", "Pick where this session works, then say what to do.", "What can you do?")]
     [InlineData("fr-fr", "Choisissez où cette session s’exécute, puis indiquez quoi faire.", "Que pouvez-vous faire ?")]
@@ -2863,7 +2928,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Action? onSandboxSettings = null,
         SandboxStatusStore? sandboxStatus = null,
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
-        IChatAgentRosterSource? agentRosterSource = null)
+        IChatAgentRosterSource? agentRosterSource = null,
+        bool compact = false)
     {
         await ui.ResetContainerAsync();
         using var settingsDirectory = new TempDirectory();
@@ -2911,12 +2977,12 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
                     new(provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
                         InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
-                        AgentRosterSource: agentRosterSource)));
+                        AgentRosterSource: agentRosterSource, Compact: compact)));
                 surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
                     "Background=\"{ThemeResource NavigationViewContentBackground}\" />");
                 surface.Width = width;
-                surface.Height = 720;
+                surface.Height = compact ? 360 : 720;
                 surface.HorizontalAlignment = HorizontalAlignment.Left;
                 surface.VerticalAlignment = VerticalAlignment.Top;
                 surface.RequestedTheme = themeScope.ElementTheme;

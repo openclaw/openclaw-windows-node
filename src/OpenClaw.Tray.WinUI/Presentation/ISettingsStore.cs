@@ -68,6 +68,7 @@ public interface ISettingsEditor
     bool UseLegacyWebChat { set; }
     bool ShowNotifications { set; }
     bool ShowDesktopCompanion { set; }
+    int DesktopCompanionScalePercent { set; }
     string NotificationSound { set; }
     string AppTheme { set; }
 
@@ -123,6 +124,7 @@ public sealed record SettingsSnapshot
     public bool UseLegacyWebChat { get; init; }
     public bool ShowNotifications { get; init; }
     public bool ShowDesktopCompanion { get; init; }
+    public int DesktopCompanionScalePercent { get; init; } = OpenClaw.Shared.DesktopCompanionScale.DefaultPercent;
     public string NotificationSound { get; init; } = "Default";
     public string AppTheme { get; init; } = "System";
 

@@ -83,17 +83,20 @@ internal static class DesktopCompanionNative
     /// A native region excludes the unused bubble area from both paint and hit testing.
     /// XAML transparency alone would leave an invisible rectangle blocking other apps.
     /// </summary>
-    internal static void SetRegion(IntPtr hwnd, int width, int height, double scale, int? bubbleTop)
+    internal static void SetRegion(IntPtr hwnd, int width, int height, double scale, double mascotSize, int? bubbleTop, bool modal = false)
     {
-        var mascotSize = (int)Math.Ceiling(180 * scale);
-        var region = CreateEllipticRgn(width - mascotSize, height - mascotSize, width, height);
+        var mascotPixels = (int)Math.Ceiling(mascotSize * scale);
+        var region = modal
+            ? CreateRectRgn(0, 0, width, height)
+            : CreateEllipticRgn(width - mascotPixels, height - mascotPixels, width, height);
         if (region == IntPtr.Zero)
             throw new InvalidOperationException("Could not create the desktop lobster region.");
         try
         {
-            if (bubbleTop is { } top)
+            if (!modal && bubbleTop is { } top)
             {
-                var bubble = CreateRectRgn(0, top, width, height - (int)(174 * scale));
+                var bubble = CreateRectRgn(0, top, width,
+                    height - (int)((mascotSize - DesktopCompanionPresentation.BubbleOverlap) * scale));
                 if (bubble == IntPtr.Zero)
                     throw new InvalidOperationException("Could not create the notification bubble region.");
                 try
