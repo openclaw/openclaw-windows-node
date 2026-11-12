@@ -603,6 +603,19 @@ public sealed partial class GatewayFixtureUiTests
                         Assert.Equal(target == 0 ? PageWidthTier.Medium : PageWidthTier.Wide, PageResponsiveLayout.TierFor(host));
                         if (target == 1400)
                         {
+                            // Date-dependent recent activity can put the main session outside
+                            // the ten-row preview. Reveal the fixture's remaining loaded rows first.
+                            scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+                            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 100,
+                                "end of Usage loaded-session preview");
+                            if (FindById(run, "UsageSessionsShowAll") is { } showMore)
+                            {
+                                await WaitUiAsync(run, () => !showMore.Current.IsOffscreen && showMore.Current.IsEnabled,
+                                    "visible Show more loaded sessions action");
+                                Invoke(showMore);
+                                await WaitUiAsync(run, () => FindById(run, "UsageSessionsShowAll") is null,
+                                    "all fixture sessions revealed");
+                            }
                             var requestedPercent = 0d;
                             scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
                             AutomationElement? expander = null;
