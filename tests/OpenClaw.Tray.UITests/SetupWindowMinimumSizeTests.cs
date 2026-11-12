@@ -201,6 +201,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 frame.Navigate(typeof(AiCompletionPage));
                 window.Activate();
                 window.AppWindow.Move(new(-32000, -32000));
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, ElementTheme.Dark);
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => frame.Content is AiCompletionPage { IsLoaded: true }, "finishing recovery");
                 var page = Assert.IsType<AiCompletionPage>(frame.Content);
@@ -229,7 +230,8 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                             $"{actions[i].Name} overlaps {actions[j].Name}: {bounds[i]} / {bounds[j]}.");
                     }
                 }
-                await MountedControlCapture.OptionalAsync(window, "setup-minimum-finishing-recovery");
+                if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
+                    await OnboardingArtworkRenderingTests.SaveProofAsync(root, "setup-minimum-finishing-recovery", output);
             }
             finally
             {
