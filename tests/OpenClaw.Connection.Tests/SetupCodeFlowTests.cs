@@ -228,6 +228,62 @@ public class SetupCodeFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplySetupCode_RemoteRootSlashUrl_PreservesManagedRecordIdentityAndCredentials()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "managed-gw",
+            Url = "wss://gateway.example.com/",
+            SharedGatewayToken = "original-shared-token",
+            IsLocal = true,
+            RequiresV2Signature = true,
+            SetupManagedDistroName = "Ubuntu-24.04",
+            TrustTailscaleAuth = true
+        });
+        _registry.SetActive(null);
+        _registry.Save();
+        Assert.Null(_registry.GetActive());
+
+        var json = """{"url":"wss://gateway.example.com","bootstrapToken":"new-boot-tok"}""";
+        var code = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+        var resolver = new CredentialResolver(new FakeIdentityReader());
+        var factory = new RecordingClientFactory();
+        var manager = new GatewayConnectionManager(
+            resolver, factory, _registry, NullLogger.Instance);
+
+        var result = await manager.ApplySetupCodeAsync(code);
+
+        Assert.Equal(SetupCodeOutcome.Success, result.Outcome);
+        Assert.Single(_registry.GetAll());
+        var active = _registry.GetActive();
+        Assert.Equal("managed-gw", active!.Id);
+        Assert.Equal("wss://gateway.example.com", active.Url);
+        Assert.Equal("original-shared-token", active.SharedGatewayToken);
+        Assert.Equal("new-boot-tok", active.BootstrapToken);
+        Assert.True(active.IsLocal);
+        Assert.True(active.RequiresV2Signature);
+        Assert.Equal("Ubuntu-24.04", active.SetupManagedDistroName);
+        Assert.True(active.TrustTailscaleAuth);
+        Assert.Single(factory.Calls);
+        Assert.Equal(_registry.GetIdentityDirectory("managed-gw"), factory.Calls[0].IdentityPath);
+
+        var reloadedRegistry = new GatewayRegistry(_tempDir);
+        reloadedRegistry.Load();
+        Assert.Single(reloadedRegistry.GetAll());
+        Assert.Equal("managed-gw", reloadedRegistry.ActiveGatewayId);
+        var reloadedActive = reloadedRegistry.GetActive()!;
+        Assert.Equal("managed-gw", reloadedActive.Id);
+        Assert.Equal("original-shared-token", reloadedActive.SharedGatewayToken);
+        Assert.Equal("new-boot-tok", reloadedActive.BootstrapToken);
+        Assert.True(reloadedActive.IsLocal);
+        Assert.True(reloadedActive.RequiresV2Signature);
+        Assert.Equal("Ubuntu-24.04", reloadedActive.SetupManagedDistroName);
+        Assert.True(reloadedActive.TrustTailscaleAuth);
+
+        manager.Dispose();
+    }
+
+    [Fact]
     public async Task ApplySetupCode_InvalidCode_ReturnsError()
     {
         var resolver = new CredentialResolver(new FakeIdentityReader());

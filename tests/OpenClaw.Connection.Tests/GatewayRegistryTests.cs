@@ -360,6 +360,34 @@ public class GatewayRegistryTests : IDisposable
         Assert.NotNull(found);
     }
 
+    [Theory]
+    [InlineData("wss://Gateway.Example.com/", "wss://gateway.example.com")]
+    [InlineData("wss://gateway.example.com:443/?token=a#device", "wss://gateway.example.com?token=a#device")]
+    public void FindByUrl_TreatsEquivalentRemoteRootPathSpellingsAsSameEndpoint(string storedUrl, string lookupUrl)
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-remote", storedUrl));
+
+        Assert.Equal("gw-remote", _registry.FindByUrl(lookupUrl)?.Id);
+        Assert.Equal("gw-remote", Assert.Single(_registry.FindAllByUrl(lookupUrl)).Id);
+    }
+
+    [Theory]
+    [InlineData("wss://gateway.example.com/?token=old", "wss://gateway.example.com?token=new")]
+    [InlineData("wss://gateway.example.com/?token=a", "wss://gateway.example.com?token=A")]
+    [InlineData("wss://gateway.example.com/#old", "wss://gateway.example.com#new")]
+    [InlineData("wss://gateway.example.com/#Device", "wss://gateway.example.com#device")]
+    [InlineData("wss://gateway.example.com:8443/", "wss://gateway.example.com")]
+    [InlineData("wss://gateway.example.com:8443/", "ws://gateway.example.com:8443")]
+    [InlineData("wss://gateway-one.example.com/", "wss://gateway-two.example.com")]
+    [InlineData("wss://gateway.example.com/workspace/", "wss://gateway.example.com/workspace")]
+    [InlineData("wss://gateway.example.com/nested/..", "wss://gateway.example.com/")]
+    public void FindByUrl_DoesNotMergeRootSlashUrlsAcrossEndpointBoundaries(string storedUrl, string lookupUrl)
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-remote", storedUrl));
+
+        Assert.Null(_registry.FindByUrl(lookupUrl));
+    }
+
     [Fact]
     public void FindByUrl_TreatsLoopbackLocalhostAnd127AsSameGateway()
     {
