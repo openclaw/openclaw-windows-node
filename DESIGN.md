@@ -1257,12 +1257,13 @@ The options menu's Desktop lobster settings action opens General settings
 instead of hiding the lobster. Its settings toggle remains the visibility control.
 The fixed choices are 50%, 75%, 100%, 125%, 150%, 175% and 200%, defaulting to 100%.
 The persisted size affects only the mascot. The mascot's layout and native hit region grow
-together; the popup widths, text and action targets do not scale. The speech
-tail follows the mascot's center. The options menu contains no preview action.
-The bubble and speech tail use `LayerOnAcrylicFillColorDefaultBrush` with the
-`SurfaceStrokeColorFlyoutBrush` stroke, matching the flyout surface. This is fill
-and stroke only, not blurred acrylic, because the transparent overlay window has
-no backdrop. Chat inside binds the existing `ChatResources`, composer geometry and text styles.
+together; the popup widths, text and action targets do not scale. The bubble has no
+speech tail because acrylic fills its window rectangle. The options menu contains no preview action.
+The bubble and quick chat live in a windowed `Popup` that carries a
+`DesktopAcrylicBackdrop`, so the desktop behind them is blurred. Inside, the frame uses
+`LayerOnAcrylicFillColorDefaultBrush` with the `SurfaceStrokeColorFlyoutBrush` stroke,
+matching the flyout surface. The mascot stays in the transparent overlay window. The popup
+follows the app theme. Chat inside binds the existing `ChatResources`, composer geometry and text styles.
 The compact layout omits model, reasoning and sandbox controls, welcome
 suggestions, placement pickers and usage
 strip, not the shared send, streaming, stop, permission or error behavior.

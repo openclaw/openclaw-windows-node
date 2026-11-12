@@ -17,7 +17,10 @@ public sealed class DesktopCompanionTests
         var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Windows");
         var window = File.ReadAllText(Path.Combine(root, "DesktopCompanionWindow.cs"));
         Assert.Contains("Component<DesktopCompanionSurface, DesktopCompanionSurfaceProps>", window);
+        Assert.Contains("Component<DesktopCompanionBubble, DesktopCompanionBubbleProps>", window);
+        Assert.Contains("new DesktopAcrylicBackdrop()", window);
         Assert.Contains("_host.Dispose()", window);
+        Assert.Contains("_bubbleHost.Dispose()", window);
         Assert.DoesNotContain(".Text =", window);
         Assert.DoesNotContain(".Mood =", window);
         Assert.False(File.Exists(Path.Combine(root, "DesktopCompanionWindow.xaml")));

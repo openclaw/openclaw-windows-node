@@ -80,10 +80,11 @@ internal static class DesktopCompanionNative
     }
 
     /// <summary>
-    /// A native region excludes the unused bubble area from both paint and hit testing.
+    /// A native region excludes the unused overlay area from both paint and hit testing.
     /// XAML transparency alone would leave an invisible rectangle blocking other apps.
+    /// The bubble lives in its own popup window, so only the mascot needs a region.
     /// </summary>
-    internal static void SetRegion(IntPtr hwnd, int width, int height, double scale, double mascotSize, int? bubbleTop, bool modal = false)
+    internal static void SetRegion(IntPtr hwnd, int width, int height, double scale, double mascotSize, bool modal = false)
     {
         var mascotPixels = (int)Math.Ceiling(mascotSize * scale);
         var region = modal
@@ -93,19 +94,6 @@ internal static class DesktopCompanionNative
             throw new InvalidOperationException("Could not create the desktop lobster region.");
         try
         {
-            if (!modal && bubbleTop is { } top)
-            {
-                var bubble = CreateRectRgn(0, top, width,
-                    height - (int)((mascotSize - DesktopCompanionPresentation.BubbleOverlap) * scale));
-                if (bubble == IntPtr.Zero)
-                    throw new InvalidOperationException("Could not create the notification bubble region.");
-                try
-                {
-                    if (CombineRgn(region, region, bubble, 2 /* RGN_OR */) == 0)
-                        throw new InvalidOperationException("Could not combine the desktop lobster regions.");
-                }
-                finally { DeleteObject(bubble); }
-            }
             if (SetWindowRgn(hwnd, region, true) == 0)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             region = IntPtr.Zero; // USER owns the region after a successful SetWindowRgn.

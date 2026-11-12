@@ -2,7 +2,9 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
@@ -23,16 +25,25 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private readonly DispatcherTimer _bubbleTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly DesktopCompanionPresentation _presentation = new();
     private readonly ReactorHostControl _host = new();
+    private readonly ReactorHostControl _bubbleHost = new();
+    // A windowed popup is the only XAML surface that can own a system backdrop, so the
+    // bubble gets real acrylic while the overlay window itself stays transparent.
+    private readonly Popup _bubblePopup = new()
+    {
+        ShouldConstrainToRootBounds = false,
+        SystemBackdrop = new DesktopAcrylicBackdrop(),
+    };
     private readonly DesktopCompanionChatHost _chat;
     private readonly IntPtr _hwnd;
     private readonly WinUIEx.Messaging.WindowMessageMonitor _frameMonitor;
-    private StackPanel? _bubble;
+    private FrameworkElement? _bubble;
+    internal FrameworkElement BubbleHostForTests => _bubbleHost;
     private Button? _mascotTarget;
     private XamlRoot? _xamlRoot;
     private PointInt32? _dragStart;
     private PointInt32 _windowStart;
     private string? _notificationGatewayId;
-    private (int Width, int Height, double Dpi, double MascotSize, int? BubbleTop, bool Modal)? _regionLayout;
+    private (int Width, int Height, double Dpi, double MascotSize, bool Modal)? _regionLayout;
     private bool _closed, _positioning, _dragged, _bubbleHovered;
 
     public event EventHandler? HideRequested;
@@ -57,6 +68,8 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _host.Loaded += OnLoaded;
         _host.LayoutUpdated += OnHostLayoutUpdated;
         _host.KeyDown += OnKeyDown;
+        _bubbleHost.KeyDown += OnKeyDown;
+        _bubbleHost.SizeChanged += OnBubbleSizeChanged;
         _host.OnRenderComplete = (_, _, _) =>
         {
             if (_closed) return;
@@ -64,9 +77,14 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
             UpdateRegion();
         };
         XamlInterop.Register(_host.Reconciler);
-        var props = new DesktopCompanionSurfaceProps(
-            _presentation, DismissBubble, OnOpenNotifications, OnReply, _chat.Content, OnBubbleMounted, OnMascotMounted);
+        XamlInterop.Register(_bubbleHost.Reconciler);
+        var props = new DesktopCompanionSurfaceProps(_presentation, OnMascotMounted);
         _host.Mount(_ => Component<DesktopCompanionSurface, DesktopCompanionSurfaceProps>(props));
+        var bubbleProps = new DesktopCompanionBubbleProps(
+            _presentation, DismissBubble, OnOpenNotifications, OnReply, _chat.Content, OnBubbleMounted);
+        _bubbleHost.Mount(_ => Component<DesktopCompanionBubble, DesktopCompanionBubbleProps>(bubbleProps));
+        _bubblePopup.Child = _bubbleHost;
+        _presentation.Changed += OnPresentationChanged;
         Content = _host;
         DesktopCompanionNative.ConfigureOverlay(_hwnd);
         Closed += OnClosed;
@@ -79,7 +97,11 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         AppWindow.Show(activateWindow: false);
     }
 
-    public void ApplyTheme(string theme) => ThemeHelper.ApplyTheme(this, theme);
+    public void ApplyTheme(string theme)
+    {
+        ThemeHelper.ApplyTheme(this, theme);
+        _bubbleHost.RequestedTheme = ThemeHelper.GetRequestedTheme(theme);
+    }
 
     public void ApplyScale(int percent)
     {
@@ -117,6 +139,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     {
         if (_closed || _xamlRoot is not null) return;
         _xamlRoot = _host.XamlRoot;
+        _bubblePopup.XamlRoot = _xamlRoot;
         _xamlRoot.Changed += OnXamlRootChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
@@ -164,19 +187,37 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     {
         if (_closed) return;
         var scale = _host.XamlRoot?.RasterizationScale ?? DesktopCompanionNative.GetDpiForWindow(_hwnd) / 96d;
-        int? bubbleTop = _bubble is { Visibility: Visibility.Visible, ActualHeight: > 0 }
-            ? (int)Math.Floor(_bubble.TransformToVisual(_host).TransformPoint(new(0, 0)).Y * scale)
-            : null;
         var layout = (Width: AppWindow.Size.Width, Height: AppWindow.Size.Height, Dpi: scale,
-            MascotSize: _presentation.MascotSize, BubbleTop: bubbleTop, Modal: _presentation.InputPrompt is not null);
+            MascotSize: _presentation.MascotSize, Modal: _presentation.InputPrompt is not null);
         if (_regionLayout == layout) return;
-        DesktopCompanionNative.SetRegion(_hwnd, layout.Width, layout.Height, layout.Dpi, layout.MascotSize, layout.BubbleTop,
+        DesktopCompanionNative.SetRegion(_hwnd, layout.Width, layout.Height, layout.Dpi, layout.MascotSize,
             modal: layout.Modal);
         _regionLayout = layout;
+        UpdateBubblePopup();
+    }
+
+    private void OnPresentationChanged(object? sender, EventArgs args) => UpdateBubblePopup();
+
+    /// <summary>Anchors the popup bubble above the mascot, right-aligned to the overlay window.</summary>
+    private void UpdateBubblePopup()
+    {
+        if (_closed || _xamlRoot is null) return;
+        var visible = _presentation.IsChatOpen || _presentation.Notification is not null;
+        if (!visible)
+        {
+            _bubblePopup.IsOpen = false;
+            return;
+        }
+        _bubbleHost.Width = Math.Max(0, _host.ActualWidth - 8);
+        _bubblePopup.HorizontalOffset = 4;
+        _bubblePopup.VerticalOffset = Math.Max(
+            0, _host.ActualHeight - (_presentation.MascotSize - DesktopCompanionPresentation.BubbleOverlap) -
+            4 - _bubbleHost.ActualHeight);
+        _bubblePopup.IsOpen = true;
     }
 
     private void OnHostLayoutUpdated(object? sender, object args) => UpdateRegion();
-    private void OnBubbleSizeChanged(object sender, SizeChangedEventArgs args) => UpdateRegion();
+    private void OnBubbleSizeChanged(object sender, SizeChangedEventArgs args) => UpdateBubblePopup();
     private void OnBubbleTimeout(object? sender, object args) => Present(null);
     private void OnBubbleEntered(object sender, PointerRoutedEventArgs args)
     {
@@ -227,8 +268,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     private void OnBubbleMounted(FrameworkElement element)
     {
-        _bubble = (StackPanel)element;
-        _bubble.SizeChanged += OnBubbleSizeChanged;
+        _bubble = element;
         _bubble.PointerEntered += OnBubbleEntered;
         _bubble.PointerExited += OnBubbleExited;
     }
@@ -342,10 +382,14 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _host.Loaded -= OnLoaded;
         _host.LayoutUpdated -= OnHostLayoutUpdated;
         _host.KeyDown -= OnKeyDown;
+        _bubbleHost.KeyDown -= OnKeyDown;
+        _bubbleHost.SizeChanged -= OnBubbleSizeChanged;
+        _presentation.Changed -= OnPresentationChanged;
+        _bubblePopup.IsOpen = false;
+        _bubblePopup.Child = null;
         _host.OnRenderComplete = null;
         if (_bubble is { } bubble)
         {
-            bubble.SizeChanged -= OnBubbleSizeChanged;
             bubble.PointerEntered -= OnBubbleEntered;
             bubble.PointerExited -= OnBubbleExited;
         }
@@ -360,6 +404,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
             target.RightTapped -= OnMascotRightTapped;
         }
         _chat.Dispose();
+        _bubbleHost.Dispose();
         _host.Dispose();
         Content = null;
         _presentation.Present(null);

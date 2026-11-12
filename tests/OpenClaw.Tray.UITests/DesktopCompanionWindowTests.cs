@@ -30,11 +30,10 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 () => bubble.Visibility == Visibility.Visible, "notification bubble");
             var frame = Assert.IsType<Border>(bubble.Children[0]);
             Assert.Equal(new Thickness(4), frame.Padding);
-            Assert.Equal(new Thickness(4, 4, 4, 174), bubble.Margin);
             Assert.Equal(new Thickness(8, 4, 0, 0),
                 Control<TextBlock>(root, "DesktopCompanionTitle").Margin);
             var message = Control<TextBlock>(root, "DesktopCompanionMessage");
-            var messageScroller = TestSupport.FindDescendants<ScrollViewer>(root)
+            var messageScroller = TestSupport.FindDescendants<ScrollViewer>(BubbleRoot)
                 .Single(scroll => ReferenceEquals(scroll.Content, message));
             Assert.Equal(new Thickness(8, 0, 8, 0), messageScroller.Margin);
             var dismiss = Control<Button>(root, "DesktopCompanionDismiss");
@@ -50,11 +49,10 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             await TestSupport.WaitForRenderedConditionAsync(
                 () => Control<TextBlock>(root, "DesktopCompanionTitle").Visibility == Visibility.Collapsed, "quick chat");
             Assert.Equal(new Thickness(4), frame.Padding);
-            Assert.Equal(new Thickness(4, 4, 4, 174), bubble.Margin);
             Assert.Same(frame, bubble.Children[0]);
             Assert.Equal(new Thickness(0), dismiss.Margin);
             Assert.Equal(new Thickness(6), dismiss.Padding);
-            var loading = Assert.Single(TestSupport.FindLogical<ProgressRing>(root));
+            var loading = Assert.Single(TestSupport.FindLogical<ProgressRing>(BubbleRoot));
             Assert.Equal(Visibility.Collapsed, loading.Visibility);
             var recovery = Assert.IsType<StackPanel>(loading.Parent);
             var status = Assert.Single(recovery.Children.OfType<TextBlock>());
@@ -65,8 +63,8 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             await TestSupport.WaitForRenderedConditionAsync(() => status.ActualHeight > 0, "chat recovery layout");
             Assert.InRange(status.TransformToVisual(dismiss).TransformPoint(new(0, 0)).Y - dismiss.ActualHeight, 0, 8);
             Assert.Equal(new Thickness(8), recovery.Margin);
-            var retryCenter = retry.TransformToVisual(root).TransformPoint(new(0, 0)).Y + retry.ActualHeight / 2;
-            var connectionCenter = connection.TransformToVisual(root).TransformPoint(new(0, 0)).Y + connection.ActualHeight / 2;
+            var retryCenter = retry.TransformToVisual(BubbleRoot).TransformPoint(new(0, 0)).Y + retry.ActualHeight / 2;
+            var connectionCenter = connection.TransformToVisual(BubbleRoot).TransformPoint(new(0, 0)).Y + connection.ActualHeight / 2;
             Assert.InRange(Math.Abs(retryCenter - connectionCenter), 0, 1);
             Assert.Equal(new Thickness(0), connection.Padding);
 
@@ -75,7 +73,6 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 () => Control<TextBlock>(root, "DesktopCompanionTitle").Visibility == Visibility.Visible, "replacement notification");
             Assert.Same(frame, bubble.Children[0]);
             Assert.Equal(new Thickness(4), frame.Padding);
-            Assert.Equal(new Thickness(4, 4, 4, 174), bubble.Margin);
         });
 
     [Theory]
@@ -123,9 +120,6 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                     Assert.Equal(originalWidth, frame.ActualWidth);
                     Assert.Equal(originalHeight, frame.ActualHeight);
                     Assert.Equal(originalFontSize, Control<TextBlock>(root, "DesktopCompanionMessage").FontSize);
-                    Assert.Equal(new Thickness(4, 4, 4, expectedSize - 6), bubble.Margin);
-                    Assert.Equal(expectedSize / 2 - 16,
-                        Assert.Single(bubble.Children.OfType<Microsoft.UI.Xaml.Shapes.Path>()).Margin.Right);
                     Assert.Equal(anchor, new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
                         window.AppWindow.Position.Y + window.AppWindow.Size.Height));
                     Assert.InRange(window.AppWindow.Position.X, work.X, work.X + work.Width - window.AppWindow.Size.Width);
@@ -138,9 +132,8 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                         height - (int)(expectedSize * dpi / 2)));
                     Assert.False(PtInRegion(region, width - (int)(expectedSize * dpi) - 2,
                         height - (int)(expectedSize * dpi / 2)));
-                    var bubbleTop = bubble.TransformToVisual(root).TransformPoint(new(0, 0)).Y;
-                    Assert.True(PtInRegion(region, (int)(20 * dpi), (int)((bubbleTop + 20) * dpi)),
-                        $"Scale={percent}, DPI={dpi}, window={width}x{height}, bubbleTop={bubbleTop}, bubbleHeight={bubble.ActualHeight}");
+                    Assert.False(PtInRegion(region, (int)(20 * dpi), (int)(20 * dpi)),
+                        "The bubble popup owns its own window, so the overlay region must stay click-through there.");
                 }
                 Assert.Equal(originalMood, mascot.Mood);
                 Assert.Equal(0, moodChanges);
@@ -200,7 +193,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             await TestSupport.WaitForRenderedConditionAsync(
                 () => Control<TextBlock>(root, "DesktopCompanionTitle").Visibility == Visibility.Collapsed &&
                     Control<StackPanel>(root, "DesktopCompanionBubble").Visibility == Visibility.Visible, "quick chat");
-            Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
+            Assert.Empty(OpenPopups(root));
             window.Present(null);
             Assert.Equal(Visibility.Visible, Control<StackPanel>(root, "DesktopCompanionBubble").Visibility);
             Assert.Equal(Visibility.Collapsed, Control<TextBlock>(root, "DesktopCompanionTitle").Visibility);
@@ -314,16 +307,16 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 presentation.ShowInputPrompt(new("Voice Input Is Off", "Enable speech-to-text in Permissions.",
                     null, _ => presentation.ShowInputPrompt(null)));
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0 &&
+                    () => OpenPopups(root).Count > 0 &&
                         GetWindowRgn(hwnd, region) != 0 && PtInRegion(region, 10, 10), "unclipped input prompt");
-                var dialog = Assert.Single(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot)
+                var dialog = Assert.Single(OpenPopups(root)
                     .SelectMany(popup => TestSupport.FindLogical<ContentDialog>(popup.Child)));
                 Assert.Equal("Voice Input Is Off", dialog.Title);
                 var dismiss = FrameworkElementAutomationPeer.CreatePeerForElement(
                     Assert.Single(TestSupport.FindDescendants<Button>(dialog), button => button.Name == "PrimaryButton"));
                 ((IInvokeProvider)dismiss.GetPattern(PatternInterface.Invoke)).Invoke();
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count == 0 &&
+                    () => OpenPopups(root).Count == 0 &&
                         GetWindowRgn(hwnd, region) != 0 && !PtInRegion(region, 10, 10), "restored click-through region");
             }
             finally { DeleteObject(region); }
@@ -395,7 +388,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             window.Present(new() { Title = "Long message", Message = string.Join("\n", Enumerable.Repeat("Lobster news", 100)) });
             var root = (FrameworkElement)window.Content;
             await TestSupport.WaitForRenderedConditionAsync(() =>
-                TestSupport.FindDescendants<ScrollViewer>(root).Any(scroll => scroll.ScrollableHeight > 0),
+                TestSupport.FindDescendants<ScrollViewer>(BubbleRoot).Any(scroll => scroll.ScrollableHeight > 0),
                 "long message scrolling");
             window.Present(null);
             await TestSupport.WaitForRenderedConditionAsync(
@@ -417,8 +410,8 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             await TestSupport.WaitForRenderedConditionAsync(() => message.Text == "First arrival", "first Reactor render");
             Assert.Equal(OnboardingMascotMood.Happy, mascot.Mood);
             var bubble = Control<StackPanel>(host, "DesktopCompanionBubble");
-            var tail = Assert.Single(bubble.Children.OfType<Microsoft.UI.Xaml.Shapes.Path>());
-            var darkFill = Assert.IsType<SolidColorBrush>(tail.Fill).Color;
+            var frame = Assert.IsType<Border>(bubble.Children[0]);
+            var darkFill = Assert.IsType<SolidColorBrush>(frame.Background).Color;
             var moodChanges = 0;
             var token = mascot.RegisterPropertyChangedCallback(OnboardingMascot.MoodProperty, (_, _) => moodChanges++);
             try
@@ -426,7 +419,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 window.ApplyTheme("Light");
                 await TestSupport.WaitForRenderedConditionAsync(() => host.ActualTheme == ElementTheme.Light, "theme render");
                 await Task.Delay(100);
-                Assert.NotEqual(darkFill, Assert.IsType<SolidColorBrush>(tail.Fill).Color);
+                Assert.NotEqual(darkFill, Assert.IsType<SolidColorBrush>(frame.Background).Color);
                 Assert.Equal(0, moodChanges);
                 window.Present(new() { Title = "Second", Message = "Second arrival" });
                 await TestSupport.WaitForRenderedConditionAsync(() => message.Text == "Second arrival", "second Reactor render");
@@ -685,6 +678,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 openSettings ?? (() => { }));
             try
             {
+                s_bubbleRoot = window.BubbleHostForTests;
                 var foreground = GetForegroundWindow();
                 ((IDesktopCompanionView)window).Show();
                 await TestSupport.WaitForRenderedConditionAsync(() => ((FrameworkElement)window.Content).IsLoaded,
@@ -695,8 +689,18 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             finally { ((IDesktopCompanionView)window).Close(); }
         });
 
+    // The bubble lives in a windowed popup, outside the overlay window's visual tree.
+    [ThreadStatic] private static FrameworkElement? s_bubbleRoot;
+
+    private static FrameworkElement BubbleRoot => s_bubbleRoot!;
+
+    private static IReadOnlyList<Microsoft.UI.Xaml.Controls.Primitives.Popup> OpenPopups(FrameworkElement root) =>
+        VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot)
+            .Where(popup => !ReferenceEquals(popup.Child, BubbleRoot)).ToArray();
+
     private static T Control<T>(FrameworkElement root, string id) where T : FrameworkElement =>
-        Assert.Single(TestSupport.FindLogical<T>(root), element => AutomationProperties.GetAutomationId(element) == id);
+        Assert.Single(TestSupport.FindLogical<T>(root).Concat(TestSupport.FindLogical<T>(BubbleRoot)),
+            element => AutomationProperties.GetAutomationId(element) == id);
 
     private static OnboardingMascot Mascot(FrameworkElement root) =>
         Assert.Single(TestSupport.FindLogical<OnboardingMascot>(root));

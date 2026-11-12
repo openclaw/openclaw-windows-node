@@ -93,13 +93,15 @@ tap reactions, idle sleep, particles and accessories. Its 12 fps animation
 budget and reduced-motion/hidden-control behavior are reused without a second
 animator or a raster conversion.
 
-`DesktopCompanionSurface` declares the mascot, speech bubble, literal notification
-text and actions in C# using the app's existing Microsoft.UI.Reactor dependency.
-The bubble and its tail fill with the native `LayerOnAcrylicFillColorDefaultBrush`
-and stroke with `SurfaceStrokeColorFlyoutBrush`, matching the chat flyouts. The
-transparent overlay window has no backdrop, so this is the flyout fill and stroke
-only, not blurred acrylic.
-One `ReactorHostControl` reconciles updates from its presentation state.
+`DesktopCompanionSurface` declares the mascot in C# using the app's existing
+Microsoft.UI.Reactor dependency. `DesktopCompanionBubble` declares the speech bubble,
+literal notification text and actions. The bubble is hosted by a second
+`ReactorHostControl` inside a windowed `Popup` with `ShouldConstrainToRootBounds=false`
+and a `DesktopAcrylicBackdrop`, because WinUI connects a system backdrop only for
+windowed popups. The frame fills with `LayerOnAcrylicFillColorDefaultBrush` and strokes
+with `SurfaceStrokeColorFlyoutBrush`, matching the chat flyouts. The popup has no
+speech tail, follows the app theme, and is anchored above the mascot.
+Each host reconciles updates from the shared presentation state.
 A Reactor `XamlHostElement` retains the exact setup control and animator across
 updates. Only notification arrivals restart its
 entrance; theme/layout renders do not. Closing the window disposes the Reactor
@@ -108,8 +110,8 @@ No companion XAML or separate animation framework is required.
 
 `DesktopCompanionWindow` remains the native window/input adapter using the
 existing WinUIEx `TransparentTintBackdrop`. An undecorated topmost `AppWindow` is shown without
-activation and excluded from taskbar/Alt+Tab. A native region excludes the
-unused bubble area from hit testing, so a transparent 360 by 420 DIP canvas
+activation and excluded from taskbar/Alt+Tab. A native region leaves only the
+mascot (or the whole canvas while an input prompt is open) hit-testable, so a transparent 360 by 420 DIP canvas
 does not block the desktop underneath. Placement uses physical monitor work
 areas, DPI-aware sizing, drag-and-drop, and display-change clamping.
 The companion explicitly disables DWM non-client rendering, rounded window
