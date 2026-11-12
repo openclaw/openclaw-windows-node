@@ -311,8 +311,7 @@ public sealed partial class PersonalDashboardWindow : Window
             profile.Deleted += OnDeleted;
             subscribed = true;
             profile.Delete();
-            // Delete marks the profile synchronously; a missed callback must not block shutdown.
-            await Task.WhenAny(deleted.Task, DrainDispatcherAsync());
+            await deleted.Task;
         }
         catch (System.Runtime.InteropServices.COMException)
         {

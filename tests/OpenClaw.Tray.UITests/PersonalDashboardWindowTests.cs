@@ -34,12 +34,14 @@ public sealed class PersonalDashboardWindowTests(UIThreadFixture ui)
     [Fact]
     public Task CloseDeletesOwnedInPrivateProfile() => WithBrowserAsync(async (window, core, manager) =>
     {
-        Assert.True(core.Profile.IsInPrivateModeEnabled);
-        Assert.StartsWith("personal-", core.Profile.ProfileName);
+        var profile = core.Profile;
+        Assert.True(profile.IsInPrivateModeEnabled);
+        Assert.StartsWith("personal-", profile.ProfileName);
         var deleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        core.Profile.Deleted += (_, _) => deleted.TrySetResult();
-        await window.CloseAsync();
-        await deleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        profile.Deleted += (_, _) => deleted.TrySetResult();
+        await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(deleted.Task.IsCompletedSuccessfully);
+        GC.KeepAlive(profile);
     });
 
     private Task WithBrowserAsync(Func<PersonalDashboardWindow, CoreWebView2, ManagerProxy, Task> test) => ui.RunOnUIAsync(async () =>
@@ -79,7 +81,7 @@ public sealed class PersonalDashboardWindowTests(UIThreadFixture ui)
         finally
         {
             manager.Response.TrySetResult(null);
-            await window.CloseAsync();
+            await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
     });
 
