@@ -293,7 +293,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         var agent = IsSettingsVisible ? _settings!.CurrentAgentId : SelectedAgentId ?? "";
         var client = CurrentApp.GatewayClient;
         var items = HubCommandCatalog.BuildSearch(_state, agent, client?.GrantedOperatorScopes.Contains("operator.admin") == true);
-        return new(client, agent, _state.GatewaySelf?.ServerVersion, items,
+        return new(client, agent, items,
             _state.Sessions.Select(session => session.Clone()).ToArray(), _state.SelfProfileRevision,
             _state.Status == ConnectionStatus.Connected);
     }
@@ -1164,15 +1164,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         var sessionKey = destination.Page == WorkspacePageId.Home
             ? destination.SessionKey ?? _chat.CurrentSessionKey
             : null;
-        bool? isMain = sessionKey is null
-            ? null
-            : _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)?.IsMain;
-        if (sessionKey is not null && isMain is null &&
-            CurrentApp.GatewayClient?.MainSessionKey is { } mainSessionKey)
-            isMain = string.Equals(sessionKey, mainSessionKey, StringComparison.Ordinal);
-
         return HubSearchCatalog.ContextualDashboardPath(
-            destination, sessionKey, isMain, _state.GatewaySelf?.ServerVersion);
+            destination, sessionKey);
     }
 
     private void OpenDashboard(string? path = null) =>

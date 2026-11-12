@@ -7644,7 +7644,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portalen</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Werkbomen</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Uploads opruimen is geblokkeerd</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Controleer de maptoegang en machtigingen voor privégegevens. Oude uploads kunnen blijven staan totdat opruimen weer mogelijk is. Probeer voltooide uploads niet automatisch opnieuw.</value></data>
