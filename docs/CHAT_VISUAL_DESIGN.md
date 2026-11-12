@@ -459,6 +459,8 @@ the current extent without synchronously realizing another item. Initial,
 new-message and explicit jump navigation retain index-based brings.
 Streaming extent growth can also arm one correction per immutable transcript
 content revision while following more than one DIP away from the exact bottom.
+It cannot arm while a disclosure, keyboard reader, or pending reader bring owns
+the native anchor, even when the reader remains within the follow threshold.
 Typing and tail-visibility rerenders retain that revision. Correction-induced
 remeasurement cannot replenish its budget, and reader input clears unused credit.
 Resizing does not itself start a bring, and this is not a continuous extent-follow loop. A correction does

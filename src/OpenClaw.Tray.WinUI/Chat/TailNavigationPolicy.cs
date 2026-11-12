@@ -340,9 +340,9 @@ internal sealed class TailReflowCorrection
         _growthAvailable = true;
     }
 
-    public void ArmForExtentGrowth(bool following, bool atBottom, bool initialPending)
+    public void ArmForExtentGrowth(bool following, bool atBottom, bool initialPending, bool readerOwnsAnchor)
     {
-        if (!_growthAvailable || !following || atBottom || initialPending)
+        if (!_growthAvailable || !following || atBottom || initialPending || readerOwnsAnchor)
             return;
 
         // A correction can itself remeasure virtual rows. Only another content

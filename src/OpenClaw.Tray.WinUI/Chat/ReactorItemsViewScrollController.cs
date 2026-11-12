@@ -592,7 +592,9 @@ file sealed class InitialTailPositioner : IDisposable
     {
         var extentHeight = sender.ExtentHeight;
         if (extentHeight > _extentHeight)
-            _reflowCorrection.ArmForExtentGrowth(_following, IsAtBottom(sender), _initialPending);
+            _reflowCorrection.ArmForExtentGrowth(
+                _following, IsAtBottom(sender), _initialPending,
+                _disclosureAnchored || _readerAnchored || _readerBringCorrelationId is not null);
         _extentHeight = extentHeight;
         ObserveGeometry(sender);
     }
