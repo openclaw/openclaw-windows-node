@@ -3,14 +3,16 @@ using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.SetupEngine;
 
-public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification }
+public enum SetupNativeCompletionPhase { PageDrain, Connection, ModelRecovery, ModelVerification, Verification, Execution }
 
 public sealed class SetupNativeCompletionTimeoutException : TimeoutException
 {
     public SetupNativeCompletionPhase Phase { get; }
 
     internal SetupNativeCompletionTimeoutException(SetupNativeCompletionPhase phase, Exception innerException)
-        : base($"Native AI completion timed out while {Describe(phase)}. Retry when the Gateway is ready.", innerException)
+        : base(phase == SetupNativeCompletionPhase.Execution
+            ? "Native AI completion exceeded its execution deadline. Close setup and wait for admitted work to settle before starting again."
+            : $"Native AI completion timed out while {Describe(phase)}. Retry when the Gateway is ready.", innerException)
     {
         Phase = phase;
     }
@@ -26,7 +28,7 @@ public sealed class SetupNativeCompletionTimeoutException : TimeoutException
     };
 }
 
-/// <summary>Finite phase budgets for an already selected native setup destination.</summary>
+/// <summary>Finite phase budgets for native setup completion and its post-restart handoff.</summary>
 public static class SetupNativeCompletionTiming
 {
     private static readonly TimeSpan MinimumConnection = TimeSpan.FromSeconds(210);
@@ -34,11 +36,13 @@ public static class SetupNativeCompletionTiming
     // 420-second Gateway restarts, plus 90 seconds for the router to become healthy.
     public static readonly TimeSpan ModelRecovery = TimeSpan.FromSeconds(1020);
     public static readonly TimeSpan ModelVerification = TimeSpan.FromSeconds(150);
+    public static readonly TimeSpan PreparationDrain = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan Navigation = TimeSpan.FromSeconds(30);
     // The published borrow includes the native start budget (OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT) plus handshake.
     // Static initializers run in textual order: keep the constants above the values derived from them.
     public static readonly TimeSpan Connection = ConnectionFor(IsolatedGatewayRuntime.StartupTimeout);
     public static readonly TimeSpan PublishedVerification = Connection + ModelRecovery + Connection + ModelVerification;
+    public static readonly TimeSpan PreparationVerification = Connection + ModelVerification;
     public static readonly TimeSpan Execution = ExecutionFor(Connection);
     /// <summary>
     /// Bounds of an execution window any supported startup override can persist. A process restarted with a

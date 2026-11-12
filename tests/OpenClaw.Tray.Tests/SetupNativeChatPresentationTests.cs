@@ -481,6 +481,64 @@ public sealed class SetupNativeChatPresentationTests
         Assert.Equal(SetupNativeChatWarning.AuthorityUnconfirmed, state.Warning);
     }
 
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("gateway")]
+    [InlineData("identity")]
+    public async Task SetupDashboardDispatchRequiresTheOriginalGatewayAndIdentity(string mutation)
+    {
+        using var identity = new IdentityFixture();
+        using var temp = new TempDirectory();
+        var h = identity.Harness;
+        var completion = identity.Request.Completion with
+        {
+            Target = new(SetupNativeDestination.Channels, "agent:verified:main")
+        };
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(completion);
+        var browserLaunches = 0;
+        SetupNativeLaunchFailure? failure = null;
+        var launcher = new SetupNativeHandoffLauncher(() => identity.Registry.GetActive(),
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(
+                completion.Verification, completion.Target.SessionKey)),
+            async (selected, _) =>
+            {
+                var dashboard = new GatewayDashboardLauncher(
+                    () => true,
+                    _ =>
+                    {
+                        if (mutation == "gateway")
+                            identity.Registry.AddOrUpdate(Gateway with { Url = "wss://replaced.test/" });
+                        if (mutation == "identity")
+                        {
+                            File.Delete(identity.IdentityFile);
+                            new DeviceIdentity(Path.GetDirectoryName(identity.IdentityFile)!).Initialize();
+                        }
+                        return new GatewayDashboardLinkRequest(
+                            Gateway.Url, "channels", "synthetic shared", AppendBrowserCredential: true);
+                    },
+                    new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key),
+                    _ =>
+                    {
+                        browserLaunches++;
+                        return Task.FromResult(true);
+                    },
+                    _ => { },
+                    _ => { });
+                var request = new SetupNativeNavigationRequest(selected);
+                if (!await dashboard.OpenAsync("channels", authorizeDispatch: () =>
+                    request.GetConnectedClient(identity.Registry, h.Connection)))
+                    throw new InvalidOperationException("The bound dashboard was not dispatched.");
+            }, value => failure = value);
+
+        var opened = await launcher.OpenAsync(store, handle);
+
+        Assert.Equal(mutation == "valid", opened);
+        Assert.Equal(mutation == "valid" ? 1 : 0, browserLaunches);
+        Assert.Equal(mutation == "valid" ? null : SetupNativeLaunchFailure.Changed, failure);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
     [Fact]
     public void PersistedIdentityCanBeRecheckedWithoutAConnectionEventOrReceiptReplay()
     {

@@ -2,6 +2,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
+using System.Text.Json;
 
 namespace OpenClawTray.Chat;
 
@@ -20,14 +21,47 @@ internal static class ChatWelcomePresentation
         return value.ToLocalTime().ToString("d");
     }
 
-    internal static WorkspaceAgent AgentIdentity(ChatPlacementCatalog? catalog, string? agentId)
+    internal static WorkspaceAgent AgentIdentity(ChatPlacementCatalog? catalog, string? agentId,
+        ChatAgentIdentity? hydrated = null, ChatAgentPresentation? currentRoster = null)
     {
         var id = agentId ?? "main";
-        if (catalog?.AgentId != id)
-            return new(id, id, null);
-        return new(id, string.IsNullOrWhiteSpace(catalog.AgentName) ? id : catalog.AgentName, null,
-            catalog.AgentEmoji, catalog.AgentAvatarUrl);
+        if (currentRoster is { } current &&
+            string.Equals(current.AgentId, id, StringComparison.Ordinal))
+        {
+            return AgentAvatarPresentation.Compose(
+                id, null, current.Name, null, current.Emoji, null, current.AvatarUrl, null);
+        }
+
+        var roster = catalog?.AgentId == id ? catalog : null;
+        return AgentAvatarPresentation.Compose(id, null, roster?.AgentName, null, roster?.AgentEmoji,
+            roster?.AgentAvatar, roster?.AgentAvatarUrl, hydrated);
     }
+
+    internal static ChatAgentIdentity ParseAgentIdentity(string requestedAgentId, JsonElement response)
+    {
+        if (response.ValueKind != JsonValueKind.Object ||
+            ReadString(response, "agentId") is not { } responseAgentId ||
+            !string.Equals(responseAgentId, requestedAgentId, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The Gateway returned an identity for a different agent.");
+        }
+
+        var avatar = ReadString(response, "avatar");
+        return new ChatAgentIdentity(
+            requestedAgentId,
+            ReadString(response, "name"),
+            AgentAvatarPresentation.ImageUrl(avatar),
+            AgentAvatarPresentation.TextAvatar(ReadString(response, "emoji")) ??
+                AgentAvatarPresentation.TextAvatar(avatar));
+    }
+
+    private static string? ReadString(JsonElement response, string name) =>
+        response.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String &&
+        value.GetString() is { } text &&
+        !string.IsNullOrWhiteSpace(text)
+            ? text.Trim()
+            : null;
 
     internal static IReadOnlyList<ChatThread> RecentChats(
         IEnumerable<ChatThread> threads,

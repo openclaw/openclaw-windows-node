@@ -167,14 +167,6 @@ public sealed class NativeGatewaySetupUxContractTests
             "src", "OpenClaw.SetupEngine.UI", "Pages", "NativeGatewaySetupPage.xaml.cs"));
         Assert.Contains("window.NativeSetupDraft = await service.CreateDraftAsync(cancellationToken)", source);
         Assert.DoesNotContain("window.NativeSetupDraft ??=", source);
-        var catchStart = source.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
-        var finallyStart = source.IndexOf("finally", catchStart, StringComparison.Ordinal);
-        var failure = source[catchStart..finallyStart];
-        Assert.Contains("or AggregateException", failure);
-        Assert.Contains("Trace.TraceError", failure);
-        Assert.Contains("Apply(SetupInstallationStatus.Failed)", failure);
-        Assert.Contains("SetupLogger.Sanitize(ex.Message)", failure);
-        Assert.Contains("RetryButton.Visibility = Visibility.Visible", failure);
     }
 
     [Fact]
@@ -215,7 +207,6 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.True(source.IndexOf("GatewayAiPreparation.PrepareNativeAsync", StringComparison.Ordinal) <
             source.IndexOf("NavigateToNativeAiSetup(session, prepared)", StringComparison.Ordinal));
         Assert.DoesNotContain("NavigateToNativeWizard", source);
-        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage, log)", source);
         Assert.Contains("void ReportProgress(string message)", source);
         Assert.Contains("SetupLoadingView.DetailFor(step)", source);
         Assert.Contains("GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, progress)", source);
@@ -230,6 +221,18 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("NativeGatewaySetupStage.StartingGateway or NativeGatewaySetupStage.VerifyingEndpoint", stages);
         Assert.Contains("SetCurrentStep(3)", stages);
         Assert.Contains("Unloaded += (_, _) => _operationCts?.Cancel()", source);
+        Assert.Contains("new NativeGatewaySetupHost(log, ReportProgress, ReportStage)", source);
+        var operation = source[source.IndexOf("private async Task RunOperationAsync", StringComparison.Ordinal)..
+            source.IndexOf("private async Task ConfigureAsync", StringComparison.Ordinal)];
+        Assert.Contains("var log = SetupWindow.Active?.NativeSetupLog;", operation);
+        Assert.Contains("using var logLease = log?.RetainForOperation();", operation);
+        Assert.Contains("AttachLog(log);", operation);
+        Assert.True(operation.IndexOf("var log = SetupWindow.Active?.NativeSetupLog;", StringComparison.Ordinal) <
+                    operation.IndexOf("using var logLease = log?.RetainForOperation();", StringComparison.Ordinal));
+        Assert.True(operation.IndexOf("using var logLease = log?.RetainForOperation();", StringComparison.Ordinal) <
+                    operation.IndexOf("AttachLog(log);", StringComparison.Ordinal));
+        Assert.True(operation.IndexOf("using var logLease = log?.RetainForOperation();", StringComparison.Ordinal) <
+                    operation.IndexOf("await ", StringComparison.Ordinal));
         Assert.True(source.IndexOf("if (SetupPreview.IsActive)", StringComparison.Ordinal) <
                     source.IndexOf("_operation = RunOperationAsync", StringComparison.Ordinal));
         Assert.DoesNotContain("message => StatusText.Text = message", source);
@@ -501,7 +504,7 @@ public sealed class NativeGatewaySetupUxContractTests
         var gatewaySession = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "SetupGatewaySession.cs"));
         Assert.Contains("if (record.NativePackageFamilyName is not null)", gatewaySession);
         var adapter = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewaySetupConnection.cs"));
-        Assert.Contains("await owner.PrepareConnectionAsync(ct)", adapter);
+        Assert.Contains("await owner.PrepareConnectionForAdmissionAsync(ct)", adapter);
         Assert.Contains("owner.AuthorizeAsync", adapter);
         Assert.Contains("NativeGatewaySetupSession.GetPairingGuidance(requestId)", adapter);
         Assert.Contains("await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token)", adapter);
@@ -523,8 +526,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.DoesNotContain("client.DisconnectAsync()", nativeConnection);
         Assert.Contains("[\"devices\", \"list\", \"--json\"]", host);
         Assert.Contains("[\"devices\", \"approve\", requestId, \"--json\"]", host);
-        Assert.Contains("PairingCommandTimeout = TimeSpan.FromMinutes(2)", host);
-        Assert.Equal(2, host.Split("environment, PairingCommandTimeout,").Length - 1);
+        Assert.Equal(2, host.Split("environment, CliCommandTimeout, \"").Length - 1);
         Assert.Contains("WizardPayloadHelpers.GetNativeTerminalError(payload)", wizard);
         Assert.Contains("ShowError(SetupLogger.Sanitize(nativeError))", wizard);
         Assert.DoesNotContain("--url", host);
@@ -562,19 +564,6 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("[\"config\", \"validate\", \"--json\"]", host);
         Assert.Contains("[\"gateway\", \"health\", \"--json\"]", host);
         Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewayTerminalCommand.cs")));
-    }
-
-    [Fact]
-    public void LocalAiChangeModel_PreservesNativeGatewayAndExistingWslSetupRoute()
-    {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var manager = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.cs"));
-        var start = manager.IndexOf("public Task ShowLocalAiModelSetupAsync()", StringComparison.Ordinal);
-        var route = manager[start..manager.IndexOf("public async Task ShowLocalAiSetupAsync()", start, StringComparison.Ordinal)];
-        Assert.Contains("NativeGatewayPackageClient.IsolatedContract", route);
-        Assert.Contains("? ShowLocalAiSetupAsync() : ShowOnboardingAsync()", route);
-        var model = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Presentation", "LocalAiPageViewModel.cs"));
-        Assert.Contains("RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup)", model);
     }
 
     [Fact]

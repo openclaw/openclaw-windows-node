@@ -224,14 +224,13 @@ public partial class App
         app.SearchHandler = (query) =>
         {
             var workspace = ActiveHubWindow as OpenClawTray.Windows.WorkspaceWindow;
-            var commands = workspace is { IsSettingsVisible: true, SettingsView: { } settingsView }
-                ? settingsView.BuildCommandList()
-                : HubCommandCatalog.Build(_appState, _settings, workspace?.SelectedAgentId ?? "main");
-            var matches = commands
-                .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
+            var commands = HubCommandCatalog.BuildSearch(_appState, workspace?.SelectedAgentId ?? "main",
+                GatewayClient?.GrantedOperatorScopes.Contains("operator.admin") == true);
+            var matches = HubSearch.Find(commands, query, perGroupLimit: 10)
                 .Take(10)
-                .Select(c => new { c.Title, c.Subtitle, c.Icon })
+                .Select(match => new { match.Item.Title, match.Item.Subtitle, match.Item.Icon,
+                    Group = match.Item.Group.ToString(), match.Item.OpensDashboard,
+                    HasDashboardCounterpart = match.Item.DashboardPath is not null })
                 .ToArray();
             return matches;
         };

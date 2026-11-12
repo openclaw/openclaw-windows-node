@@ -56,6 +56,7 @@ static class FluentIconCatalog
     public const string Settings = "\uE713";       // Settings
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
+    public const string Help = "\uE897";           // Help — account menu Help & about
     public const string Notifications = "\uEA8F";  // Ringer
     public const string DashboardView = "\uF246";  // ViewDashboard
     public const string Plugins = "\uEA86";        // Puzzle
@@ -69,10 +70,6 @@ static class FluentIconCatalog
     public const string Inference = "\uE839";      // PC1 (alias of System/Plug) — Ollama local inference runs on this PC
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
 
-    // ── Channel actions ────────────────────────────────────────────
-    public const string ChannelLogout = "\uF3B1";   // SignOut — per-channel logout (WhatsApp/Signal in the header; non-QR channels' destructive "disconnect" body action)
-    public const string ChannelStart = "\uE768";    // Play — start-channel header action
-
     // ── Glance chips (Connection page) ─────────────────────────────
     public const string People = "\uE716";         // People — N clients chip
     public const string Money = "\uE9D9";          // Money — $today chip
@@ -83,8 +80,10 @@ static class FluentIconCatalog
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string ChevronDown = "\uE70D";    // ChevronDown
+    public const string BulletedList = "\uE8FD";   // BulletedList, chat tool activity summary row
     public const string Stop = "\uE71A";           // Stop
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
+    public const string ChatJumpLatest = "\uE74B"; // Down, returns to the latest chat content
     public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker
     public const string Check = "\uE73E";          // CheckMark
 
@@ -106,7 +105,7 @@ static class FluentIconCatalog
     public const string Clear = "\uE74D";          // Delete — clear/reset a buffer
     public const string Develop = "\uE943";        // Code — engineering / explorations action
     public const string Telemetry = "\uE9F5";      // Processing — ongoing telemetry endpoint/stream
-    public const string AgentEvents = "\uE81C";    // History — agent events feed
+    public const string AgentEvents = "\uE81C";    // History, used by the Connection Timeline action
     public const string Doctor = "\uE95E";         // Health — "Run gateway doctor" health-check action
 
     // ── Agents / Workspace surface ─────────────────────────────────

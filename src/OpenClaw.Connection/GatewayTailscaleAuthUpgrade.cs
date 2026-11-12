@@ -6,6 +6,11 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
 
+// Coordinates explicit Tailscale-auth upgrades for eligible managed Gateways.
+// Usage:
+//   var result = await upgrade.EnableAsync(gatewayId, client, cancellationToken);
+//   var trusted = await upgrade.RevalidateAsync(gatewayId, client, cancellationToken);
+/// <summary>Outcomes from a managed Gateway Tailscale-auth upgrade.</summary>
 public enum GatewayTailscaleAuthUpgradeOutcome
 {
     Succeeded,
@@ -21,17 +26,21 @@ public enum GatewayTailscaleAuthUpgradeOutcome
     IngressNotReady,
 }
 
+/// <summary>The outcome and optional diagnostic from a Tailscale-auth upgrade attempt.</summary>
 public sealed record GatewayTailscaleAuthUpgradeResult(
     GatewayTailscaleAuthUpgradeOutcome Outcome,
     string? Error = null)
 {
+    /// <summary>Whether the upgrade succeeded or the requested trust was already enabled.</summary>
     public bool IsSuccess => Outcome is
         GatewayTailscaleAuthUpgradeOutcome.Succeeded or
         GatewayTailscaleAuthUpgradeOutcome.AlreadyEnabled;
 }
 
+/// <summary>Eligibility rules for offering a managed Gateway Tailscale-auth upgrade.</summary>
 public static class GatewayTailscaleAuthUpgradePolicy
 {
+    /// <summary>Whether the record identifies a locally managed Tailscale Gateway.</summary>
     public static bool IsEligible(GatewayRecord? record)
     {
         if (record is null ||
@@ -46,6 +55,7 @@ public static class GatewayTailscaleAuthUpgradePolicy
             GatewayKind.Tailscale;
     }
 
+    /// <summary>Whether the upgrade can be offered without replacing existing trust.</summary>
     public static bool CanOffer(GatewayRecord? record) =>
         record?.TrustTailscaleAuth != true && IsEligible(record);
 }
@@ -54,10 +64,12 @@ internal interface IGatewayTailscaleAuthConfigClient
 {
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
+    long? SessionMutationConnectionEpoch { get; }
     Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000);
-    Task<ConfigPatchResult> PatchConfigDetailedAsync(
+    Task<ConfigPatchResult> PatchConfigOnConnectionAsync(
         JsonElement fullConfig,
         string? baseHash,
+        long connectionEpoch,
         int timeoutMs = 15000);
 }
 
@@ -66,13 +78,15 @@ internal sealed class GatewayTailscaleAuthConfigClientAdapter(IOperatorGatewayCl
 {
     public IReadOnlyList<string> GrantedOperatorScopes => client.GrantedOperatorScopes;
     public bool IsConnectedToGateway => client.IsConnectedToGateway;
+    public long? SessionMutationConnectionEpoch => client.SessionMutationConnectionEpoch;
     public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
         client.RequestConfigDetailedAsync(timeoutMs);
-    public Task<ConfigPatchResult> PatchConfigDetailedAsync(
+    public Task<ConfigPatchResult> PatchConfigOnConnectionAsync(
         JsonElement fullConfig,
         string? baseHash,
+        long connectionEpoch,
         int timeoutMs = 15000) =>
-        client.PatchConfigDetailedAsync(fullConfig, baseHash, timeoutMs);
+        client.PatchConfigOnConnectionAsync(fullConfig, baseHash, connectionEpoch, timeoutMs);
 }
 
 internal enum GatewayTailscaleAuthLiveState
@@ -356,6 +370,7 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
     }
 }
 
+/// <summary>Applies and revalidates Tailscale-auth trust for the active managed Gateway.</summary>
 internal sealed class GatewayTailscaleAuthUpgradeService
 {
     private static readonly TimeSpan ConfigTimeout = TimeSpan.FromSeconds(15);
@@ -375,6 +390,11 @@ internal sealed class GatewayTailscaleAuthUpgradeService
         _liveVerifier = liveVerifier;
     }
 
+    /// <summary>Verifies managed ingress, requests Tailscale auth, and persists accepted trust.</summary>
+    /// <param name="gatewayId">The active Gateway to upgrade.</param>
+    /// <param name="client">The connection-bound Gateway config client.</param>
+    /// <param name="cancellationToken">Requests cancellation of the upgrade flow.</param>
+    /// <returns>The upgrade outcome.</returns>
     public async Task<GatewayTailscaleAuthUpgradeResult> EnableAsync(
         string gatewayId,
         IGatewayTailscaleAuthConfigClient client,
@@ -389,6 +409,9 @@ internal sealed class GatewayTailscaleAuthUpgradeService
 
         if (!client.IsConnectedToGateway)
             return new(GatewayTailscaleAuthUpgradeOutcome.NotConnected);
+
+        if (client.SessionMutationConnectionEpoch is not { } connectionEpoch)
+            return new(GatewayTailscaleAuthUpgradeOutcome.ConfigUnavailable, "Gateway connection epoch is unavailable.");
 
         if (!OperatorScopeHelper.CanReadConfig(client.GrantedOperatorScopes) ||
             !OperatorScopeHelper.CanWriteConfig(client.GrantedOperatorScopes))
@@ -453,7 +476,7 @@ internal sealed class GatewayTailscaleAuthUpgradeService
         Task<ConfigPatchResult>? patchTask = null;
         try
         {
-            patchTask = client.PatchConfigDetailedAsync(configPatch, snapshot.BaseHash);
+            patchTask = client.PatchConfigOnConnectionAsync(configPatch, snapshot.BaseHash, connectionEpoch);
             patch = await patchTask.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -476,8 +499,6 @@ internal sealed class GatewayTailscaleAuthUpgradeService
         }
         catch (Exception ex)
         {
-            // An unknown result must not hide a new opt-in's retry. Existing trust
-            // remains intact; only authoritative applied config can revoke it.
             return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, ex.Message);
         }
 
@@ -516,6 +537,11 @@ internal sealed class GatewayTailscaleAuthUpgradeService
         return new(GatewayTailscaleAuthUpgradeOutcome.Succeeded);
     }
 
+    /// <summary>Checks whether persisted Tailscale-auth trust still matches Gateway config and ingress.</summary>
+    /// <param name="gatewayId">The Gateway whose trust is checked.</param>
+    /// <param name="client">The current Gateway config client.</param>
+    /// <param name="cancellationToken">Cancels config and ingress checks.</param>
+    /// <returns><see langword="true"/> when current config and ingress satisfy the trust policy.</returns>
     public async Task<bool> RevalidateAsync(
         string gatewayId,
         IGatewayTailscaleAuthConfigClient client,
@@ -649,8 +675,6 @@ internal sealed class GatewayTailscaleAuthUpgradeService
         mode.ValueKind == JsonValueKind.String &&
         string.Equals(mode.GetString(), "serve", StringComparison.Ordinal);
 
-    // Revalidation requires Core's explicit allowTailscale=true grant; omission is drift or revocation,
-    // not permission to infer Core's environment-sensitive default.
     private static bool AllowsTailscaleAuth(JsonElement config) =>
         config.ValueKind == JsonValueKind.Object &&
         config.TryGetProperty("gateway", out var gateway) &&

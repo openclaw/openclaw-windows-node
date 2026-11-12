@@ -2,13 +2,25 @@ using System.Text.Json;
 
 namespace OpenClaw.Shared;
 
+// Parses Tailscale Serve status and reports Gateway routing, Funnel state, and
+// the foreground proxy port.
+// Usage:
+//   if (TailscaleServeStatusPolicy.TryParse(status, port, endpoint, out var result) && result.RoutesToGateway) ...
+/// <summary>Parsed Gateway routing, Funnel state, and foreground proxy port.</summary>
 public sealed record TailscaleServeStatusResult(
     bool RoutesToGateway,
     bool FunnelEnabled,
     int? ForegroundProxyPort = null);
 
+/// <summary>Validates and interprets the JSON returned by Tailscale Serve status.</summary>
 public static class TailscaleServeStatusPolicy
 {
+    /// <summary>Parses Serve status and reports whether a parsed Serve route targets the Gateway port.</summary>
+    /// <param name="status">The Serve status JSON.</param>
+    /// <param name="port">The expected local Gateway port.</param>
+    /// <param name="expectedEndpoint">The expected tailnet endpoint, when known.</param>
+    /// <param name="parsed">The parsed route and Funnel state on success.</param>
+    /// <returns><see langword="true"/> when the status has a valid shape.</returns>
     public static bool TryParse(
         string status,
         int port,

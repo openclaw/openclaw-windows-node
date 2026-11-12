@@ -6,8 +6,8 @@ using OpenClawTray.Services;
 namespace OpenClawTray.Presentation;
 
 /// <summary>
-/// WinUI-free view model for the Settings page. It owns the settings surface's read/persist
-/// logic that previously lived in the page code-behind: it loads the current values from
+/// WinUI-free view model for General, including notification preferences. It owns its
+/// settings read/persist logic: it loads the current values from
 /// <see cref="ISettingsStore"/> on activation, exposes two-way-bindable properties, and persists
 /// each change through the store while preserving the exact auto-save contract
 /// (mutate -> save -> notify).
@@ -53,10 +53,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _notifyBuild;
     private bool _notifyStock;
     private bool _notifyInfo;
-    private bool _screenRecordingConsentGiven;
-    private bool _cameraRecordingConsentGiven;
-    private bool _locationConsentGiven;
     private bool _showChatToolCalls;
+    private bool _showChatThinking = true;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
     {
@@ -208,24 +206,6 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         set { if (SetField(ref _notifyInfo, value) && !_loading) Persist(e => e.NotifyInfo = value); }
     }
 
-    public bool ScreenRecordingConsentGiven
-    {
-        get => _screenRecordingConsentGiven;
-        set { if (SetField(ref _screenRecordingConsentGiven, value) && !_loading) Persist(e => e.ScreenRecordingConsentGiven = value); }
-    }
-
-    public bool CameraRecordingConsentGiven
-    {
-        get => _cameraRecordingConsentGiven;
-        set { if (SetField(ref _cameraRecordingConsentGiven, value) && !_loading) Persist(e => e.CameraRecordingConsentGiven = value); }
-    }
-
-    public bool LocationConsentGiven
-    {
-        get => _locationConsentGiven;
-        set { if (SetField(ref _locationConsentGiven, value) && !_loading) Persist(e => e.LocationConsentGiven = value); }
-    }
-
     /// <summary>
     /// "Show tool calls and usage" persists the setting. App's settings-save path
     /// applies it to every live Reactor chat host.
@@ -238,6 +218,22 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             if (SetField(ref _showChatToolCalls, value) && !_loading)
             {
                 Persist(e => e.ShowChatToolCalls = value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// "Show thinking" persists the setting. App's settings-save path applies it
+    /// to every live Reactor chat host.
+    /// </summary>
+    public bool ShowChatThinking
+    {
+        get => _showChatThinking;
+        set
+        {
+            if (SetField(ref _showChatThinking, value) && !_loading)
+            {
+                Persist(e => e.ShowChatThinking = value);
             }
         }
     }
@@ -344,10 +340,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _notifyBuild, s.NotifyBuild, nameof(NotifyBuild));
             SetField(ref _notifyStock, s.NotifyStock, nameof(NotifyStock));
             SetField(ref _notifyInfo, s.NotifyInfo, nameof(NotifyInfo));
-            SetField(ref _screenRecordingConsentGiven, s.ScreenRecordingConsentGiven, nameof(ScreenRecordingConsentGiven));
-            SetField(ref _cameraRecordingConsentGiven, s.CameraRecordingConsentGiven, nameof(CameraRecordingConsentGiven));
-            SetField(ref _locationConsentGiven, s.LocationConsentGiven, nameof(LocationConsentGiven));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
+            SetField(ref _showChatThinking, s.ShowChatThinking, nameof(ShowChatThinking));
         }
         finally
         {

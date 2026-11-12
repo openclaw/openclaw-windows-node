@@ -2,6 +2,10 @@ using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Services;
 
+// Builds Dashboard links with current Tailscale trust and credential requirements.
+// Usage:
+//   var result = await links.BuildAsync(request, cancellationToken);
+/// <summary>Inputs used to build a Gateway Dashboard link.</summary>
 public sealed record GatewayDashboardLinkRequest(
     string GatewayUrl,
     string? Path,
@@ -9,6 +13,7 @@ public sealed record GatewayDashboardLinkRequest(
     bool AppendBrowserCredential,
     string? TailscaleGatewayId = null);
 
+/// <summary>The Dashboard link and credential or revalidation result.</summary>
 public sealed record GatewayDashboardLinkResult(
     string? Url,
     bool TrustTailscaleAuth,
@@ -19,6 +24,7 @@ public sealed record GatewayDashboardLinkResult(
     public bool Success => Url is not null && Error is null;
 }
 
+/// <summary>Builds Dashboard URLs, revalidating trust when a Tailscale Gateway ID is supplied.</summary>
 public sealed class GatewayDashboardLinkService
 {
     internal const string NoBrowserCompatibleCredentialKey =
@@ -38,6 +44,10 @@ public sealed class GatewayDashboardLinkService
         _localize = localize ?? throw new ArgumentNullException(nameof(localize));
     }
 
+    /// <summary>Revalidates Tailscale trust when applicable and builds a browser-compatible URL.</summary>
+    /// <param name="request">The Gateway URL, path, and available browser credential.</param>
+    /// <param name="cancellationToken">Cancels trust revalidation.</param>
+    /// <returns>The built link or the reason a compatible link could not be created.</returns>
     public async Task<GatewayDashboardLinkResult> BuildAsync(
         GatewayDashboardLinkRequest request,
         CancellationToken cancellationToken = default)

@@ -1,3 +1,4 @@
+using OpenClaw.SetupEngine;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
@@ -15,7 +16,10 @@ internal sealed class GatewayDashboardLauncher(
 {
     internal const string FailureNotificationId = "setup-dashboard-launch";
 
-    public async Task<bool> OpenAsync(string? path = null, CancellationToken cancellationToken = default)
+    public async Task<bool> OpenAsync(
+        string? path = null,
+        Action? authorizeDispatch = null,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         GatewayDashboardLinkRequest? request;
@@ -37,22 +41,28 @@ internal sealed class GatewayDashboardLauncher(
             return false;
         }
 
-        return await PrepareAndLaunchAsync(request, validateBeforeLaunch: null, cancellationToken: cancellationToken);
+        return await PrepareAndLaunchAsync(
+            request,
+            validateBeforeLaunch: null,
+            authorizeDispatch,
+            cancellationToken);
     }
 
     internal Task<bool> OpenSavedAsync(
         GatewayDashboardLinkRequest request,
         Func<GatewayDashboardLinkResult, Task<bool>> validateBeforeLaunch,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action? authorizeDispatch = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(validateBeforeLaunch);
-        return PrepareAndLaunchAsync(request, validateBeforeLaunch, cancellationToken);
+        return PrepareAndLaunchAsync(request, validateBeforeLaunch, authorizeDispatch, cancellationToken);
     }
 
     private async Task<bool> PrepareAndLaunchAsync(
         GatewayDashboardLinkRequest request,
         Func<GatewayDashboardLinkResult, Task<bool>>? validateBeforeLaunch,
+        Action? authorizeDispatch,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -76,8 +86,13 @@ internal sealed class GatewayDashboardLauncher(
 
         try
         {
+            authorizeDispatch?.Invoke();
             if (!await launchBrowser(result.Url!))
                 throw new InvalidOperationException("Windows did not open the Dashboard.");
+        }
+        catch (SetupNativeOwnershipException)
+        {
+            throw;
         }
         catch (Exception ex) when (IsExpectedLaunchFailure(ex))
         {

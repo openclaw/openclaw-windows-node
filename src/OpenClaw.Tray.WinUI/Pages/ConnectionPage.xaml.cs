@@ -1069,7 +1069,7 @@ public sealed partial class ConnectionPage : Page
         }
 
         // Permissions link is always visible (entry point even when sharing is off);
-        // Voice and Skills deep links were removed from the simplified node card.
+        // Voice deep link were removed from the simplified node card.
     }
 
     private void ApplyRecoveryBody(ConnectionPagePlan plan)
@@ -1930,6 +1930,16 @@ public sealed partial class ConnectionPage : Page
 
     // ─── User intent transitions ──────────────────────────────────────
 
+    /// <summary>
+    /// Opens the Add gateway form, as the page's own Add button does (account menu entry point).
+    /// An Add or Edit form already in progress is kept, so menu use never discards typed values.
+    /// </summary>
+    internal void BeginAddGateway()
+    {
+        if (_userIntent == UserIntent.AddingGateway) return;
+        OnEnterAddGateway(this, new RoutedEventArgs());
+    }
+
     private void OnEnterAddGateway(object sender, RoutedEventArgs e)
     {
         _editingGatewayId = null;
@@ -2414,7 +2424,7 @@ public sealed partial class ConnectionPage : Page
     // ─── Operator card navigation ────────────────────────────────────
 
     private void OnOpenSessions(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("sessions");
-    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("instances");
+    private void OnOpenInstances(object sender, RoutedEventArgs e) => ((IAppCommands)CurrentApp).Navigate("systems");
 
     // ─── Node card navigation ────────────────────────────────────────
 
@@ -2733,18 +2743,36 @@ public sealed partial class ConnectionPage : Page
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
-            // If the user is removing the currently-active gateway, tear
-            // down the live connection first — otherwise the connection
-            // manager keeps trying to talk to a record that no longer
-            // exists in the registry, which leaves the UI in a stale state.
+            // Save first. A failed save restores the record and must leave the
+            // live connection up. Disconnecting first moves the snapshot to Idle,
+            // and that tick dismisses the removal error.
             var wasActive = string.Equals(_gatewayRegistry?.ActiveGatewayId, gwId, StringComparison.Ordinal);
+            try
+            {
+                _gatewayRegistry?.RemoveAndSave(gwId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"ConnectionPage: Failed to remove gateway: {ex.Message}");
+                try
+                {
+                    CurrentApp.ShowTransientConnectionError(ex.Message);
+                }
+                catch (Exception showError)
+                {
+                    Logger.Warn($"ConnectionPage: Failed to show gateway removal error: {showError.Message}");
+                }
+
+                LoadSavedGateways();
+                RefreshFromSnapshot(_lastSnapshot);
+                return;
+            }
+
             if (wasActive && _connectionManager != null)
             {
                 try { await _connectionManager.DisconnectAsync(); }
-                catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway before removal: {ex.Message}"); }
+                catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway after removal: {ex.Message}"); }
             }
-            _gatewayRegistry?.Remove(gwId);
-            _gatewayRegistry?.Save();
             LoadSavedGateways();
             RefreshFromSnapshot(_lastSnapshot);
         }

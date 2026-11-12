@@ -10,7 +10,9 @@ namespace OpenClawTray.Chat;
 ///   <item>Inline images <c>![alt](src)</c> render as <c>[Image: alt]</c>
 ///         text (no Uri instantiation, no <c>BitmapImage</c> fetch).</item>
 ///   <item>Inline links <c>[text](url)</c> render as plain
-///         <c>text (url)</c> with the URL visible but inert.</item>
+///         <c>text (url)</c> with the URL visible but inert, unless the
+///         caller opts into web-chat parity, which keeps http/https links
+///         as real links (the renderer still re-checks the scheme).</item>
 ///   <item>Reference link definitions <c>[ref]: url</c> render as
 ///         plain <c>ref: url</c> so any usage <c>[text][ref]</c>
 ///         degrades to literal text.</item>
@@ -72,7 +74,13 @@ internal static class ChatMarkdownSanitizer
     /// <summary>
     /// Sanitize a chat-bubble markdown string.
     /// </summary>
-    public static string Sanitize(string? text)
+    /// <param name="preserveWebLinks">
+    /// When true, inline links whose destination is an absolute http/https URL
+    /// stay real Markdown links, matching the web chat's anchor policy. Link
+    /// text is still sanitized (nested images/links flatten) and every other
+    /// destination is flattened to inert text as before.
+    /// </param>
+    public static string Sanitize(string? text, bool preserveWebLinks = false)
     {
         if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
         if (text.IndexOf('[') < 0 && text.IndexOf('!') < 0) return text;
@@ -208,6 +216,18 @@ internal static class ChatMarkdownSanitizer
             {
                 if (TryParseLinkOrImage(text, i, out _, out var linkText, out var url, out var afterParen, out var exceededScanLimit))
                 {
+                    if (preserveWebLinks && IsWebLinkDestination(url))
+                    {
+                        sb.Append('[');
+                        sb.Append(Sanitize(linkText));
+                        sb.Append("](<");
+                        sb.Append(url);
+                        sb.Append(">)");
+                        i = afterParen;
+                        atLineStart = false;
+                        continue;
+                    }
+
                     // Recursively sanitize the link text so a nested
                     // image / link inside the brackets (e.g.
                     // ``[![alt](http://img)](http://other)``) is also
@@ -245,6 +265,14 @@ internal static class ChatMarkdownSanitizer
 
     public static IReadOnlyList<TextSegment> SanitizeAndSplitStrongEmphasis(string? text) =>
         SplitStrongEmphasis(Sanitize(text));
+
+    // Web chat anchors only http/https destinations; the angle-bracket
+    // destination we emit cannot carry '<', '>' or line breaks.
+    private static bool IsWebLinkDestination(string? url) =>
+        !string.IsNullOrEmpty(url) &&
+        url.IndexOfAny(['<', '>', '\r', '\n']) < 0 &&
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static IReadOnlyList<TextSegment> SplitStrongEmphasis(string text)
     {

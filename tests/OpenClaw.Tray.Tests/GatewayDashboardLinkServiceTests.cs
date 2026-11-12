@@ -266,8 +266,9 @@ public sealed class GatewayDashboardLinkServiceTests
 
     private sealed class AppliedTailscaleConfigClient : IGatewayTailscaleAuthConfigClient
     {
-        public IReadOnlyList<string> GrantedOperatorScopes => ["operator.read"];
+        public IReadOnlyList<string> GrantedOperatorScopes => ["operator.admin"];
         public bool IsConnectedToGateway => true;
+        public long? SessionMutationConnectionEpoch => 1;
         public int ConfigRequests { get; private set; }
 
         public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000)
@@ -292,6 +293,13 @@ public sealed class GatewayDashboardLinkServiceTests
         public Task<ConfigPatchResult> PatchConfigDetailedAsync(
             JsonElement fullConfig, string? baseHash, int timeoutMs = 15000) =>
             throw new NotSupportedException();
+
+        public Task<ConfigPatchResult> PatchConfigOnConnectionAsync(
+            JsonElement fullConfig, string? baseHash, long connectionEpoch, int timeoutMs = 15000) =>
+            connectionEpoch == SessionMutationConnectionEpoch
+                ? PatchConfigDetailedAsync(fullConfig, baseHash, timeoutMs)
+                : Task.FromException<ConfigPatchResult>(new InvalidOperationException(
+                    "The Gateway connection changed before the request could be sent."));
     }
 
     private sealed class ExternalServeCommandRunner : IWslCommandRunner

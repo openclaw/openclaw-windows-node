@@ -63,6 +63,8 @@ public sealed class ChatComposerSession : IDisposable
     /// session-monotonic revision that survives composer view remounts.</summary>
     internal void ApplyInputs(ChatComposerInputs inputs)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        var previousThread = ViewModel.Inputs?.CurrentThread.Id;
         _composerVisible = inputs.IsVisible;
         Controller.SetComposerVisible(_hostVisible && _composerVisible);
         ViewModel.ApplyInputs(inputs with
@@ -70,6 +72,8 @@ public sealed class ChatComposerSession : IDisposable
             Revision = Interlocked.Increment(ref _inputRevision),
         });
         Placement?.ApplyInputs(inputs);
+        if (!string.Equals(previousThread, inputs.CurrentThread.Id, StringComparison.Ordinal))
+            HostActions.SpeechTargetChanged?.Invoke(inputs.CurrentThread.Id);
     }
 
     internal void SetHostVisible(bool visible)

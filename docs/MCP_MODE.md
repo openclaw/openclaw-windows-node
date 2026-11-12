@@ -24,7 +24,8 @@ Follow the [new-command checklist](../AGENTS.md#ui-mcp-and-pr-proof).
 ## Non-goals (for this iteration)
 
 - **No remote authentication.** Loopback bind + Origin/Host checks keep the endpoint unreachable from any other machine. A local bearer token guards against untrusted local processes on the same box (see [Authentication](#authentication) below). We will revisit ACLs / multi-user when we want remote MCP, multiple users on one box, or shared dev VMs.
-- **No SSE / streaming.** Plain JSON-RPC request/response is enough for the synchronous capabilities we have today.
+- **No SSE or second listener.** Unary calls remain plain JSON-RPC. Optional file
+  duplex uses the authenticated bounded polling extension below.
 - **No per-tool input schemas.** Capabilities don't expose schemas; MCP `inputSchema` is permissive (`{type: "object", additionalProperties: true}`). When/if `INodeCapability` grows a schema property, the MCP bridge picks it up with no other changes.
 - **No port configuration UI.** Default `8765` is hardcoded. Easy to lift into `SettingsManager` later.
 
@@ -92,6 +93,92 @@ no command-specific transport deadlines are applied.
 
 `GET /` returns a friendly text probe. `POST /` is JSON-RPC. Anything else → `405`. When a bearer token is configured, every verb must pass the token gate before method dispatch.
 
+### File channel extension v1
+
+This OpenClaw-specific extension is advertised by `initialize` under
+`capabilities.experimental["openclaw/file-channel"]`. It is not an MCP standard.
+The existing authenticated HTTP listener serves it; no SSE, second port, or
+WebSocket binary frames are involved. Clients not implementing it retain unary
+file commands and preflight. Explicit binary/create execution requires a channel.
+
+1. Call `openclaw/files/open` with
+   `{v:1,command:"file.fetch"|"file.create",requestId:"unique-call-id",timeoutMs:60000}`.
+   Retain the unpredictable `lease` from the response.
+2. Attach once to the real `tools/call` with that exact JSON-RPC request ID and
+   command. Put `{v:1,lease}` in `params._meta["openclaw/file-channel"]`, **not**
+   inside canonical command `arguments`.
+3. Call `openclaw/files/poll` with `{v:1,lease,ack:0}`. Polls return immediately
+   with `{v:1,frames:[{seq,payloadJSON}],completed}`. Each subsequent `ack` is the
+   next output sequence after consumed frames. Unacknowledged frames are retained;
+   retry a lost poll with the same cursor. Polls are not long-lived handlers.
+4. Feed received JSON strings to the v1 framing parser. Send framed input with
+   `openclaw/files/input` and `{v:1,lease,seq:0,payloadJSON:"..."}`. Input sequence
+   increases per frame. Retrying the immediately preceding identical input is
+   idempotent; changed or out-of-order input closes the transfer.
+5. Call `openclaw/files/close` with `{v:1,lease}` on completion or cancellation.
+   Timeout (at most ten minutes), token replacement, profile/server teardown also
+   cancel channels. Sandbox settings changes do not cancel admitted work.
+
+The HTTP server snapshots the bearer and file-channel epoch as one immutable
+authentication generation. Rotation first invalidates existing channels, then
+publishes the replacement generation. Requests holding an older snapshot cannot
+open or attach channels in the new generation, including requests concurrent
+with rotation.
+
+Frames match upstream `82df040c9c584fce0decbac9ebf260ec134e04c4`:
+`{v:1,kind:"ready"}` or
+`{v:1,kind:"data",message:0,index:0,last:true,data:"canonical-padded-base64"}`.
+Exact keys, safe integer counters, strict ordering, 8192-byte nonfinal fragments
+and a 16384-byte UTF-8 wire cap are enforced. File logical messages cap at 1 MiB.
+Pre-listener buffering caps at eight messages and 1 MiB including unfinished
+messages; active asynchronous delivery caps at eight messages and 2 MiB.
+Readiness is sent only after the worker registers its listener. Fetch receives
+opaque UTF-8 `start`, then repeatedly emits a nonempty logical message of up to
+1 MiB and waits for an opaque UTF-8 `ack` before reading the next chunk. The client
+must acknowledge every logical message, including the last, independently of
+the wire-frame polling cursor above. An empty file still requires `start` but
+emits no data messages and expects no `ack`. Fetch completes with the command
+result; it does not send an empty EOF message. Create receives messages, ACKs
+each nonempty one, and verifies size/hash at empty-message EOF. The client need
+not send reciprocal readiness.
+
+Gateway output sends at most sixteen ordered wire frames before waiting for
+all correlated progress responses. Readiness still waits for its response before
+delivering buffered input. Heartbeats share the same sequence and send gate.
+This does not change the wire format or the logical-message `ack` requirement.
+Local MCP retains its existing cursor-based backpressure.
+
+There are four leases/streaming handlers, sixteen ordinary tool handlers, eight
+independent control handlers, and thirty-two bounded ingress readers. Authentication
+and bounded parsing precede classification; full tool slots cannot consume the
+control slots needed for ACK/cancellation. Each output queue retains at most
+sixteen wire frames and backpressures producers until a poll acknowledges them.
+
+Normal bodies remain capped at 4 MiB. A client declaring an implemented file
+command in `X-OpenClaw-File-Command` gets a file-specific bounded allowance
+(`FileTransportJson.EnvelopeBytes`); the parsed `tools/call` command must match.
+Only two unary file envelopes/results can be retained concurrently; declared
+streaming calls release that reservation after their bounded metadata is parsed.
+Responses use a
+separate bounded file allowance accounting for base64 and nested MCP text.
+The file response bound does not apply to other tools; their previous response
+contract remains unchanged. File requests cannot escape their depth/size bounds
+through generic JSON fallback. Gateway file results use the same command-specific
+classification, including unary/preflight calls. Generic Gateway results retain
+their original serializer casing, depth and escaping. Invalid or oversized file
+result serialization settles the invoke with an explicit error on either
+Gateway invoke envelope.
+`winnode` sends this declaration automatically for file calls and supports
+`--input-file` / no-clobber `--output-file`; see its shipped command reference.
+
+Gateway transport uses the same frame parser with correlated
+`node.invoke.progress` RPC acknowledgments, ordered `node.invoke.input` events
+(`id`, not `invokeId`), and separate `node.invoke.cancel` events. Five-second
+empty progress heartbeats share the progress sequence. Connection generation,
+target node, deadline and cancellation are checked independently from file
+arguments. Plugin inner failures remain unchanged on the Gateway wire but count
+as telemetry failures and MCP `isError`, giving the CLI a nonzero exit.
+
 ## Authentication
 
 The HTTP transport requires a bearer token on every request. Defense-in-depth on top of loopback bind + Origin/Host checks: if an attacker can run code in *any* local user context they can reach `127.0.0.1:8765`, so we don't want the listener to be open-by-construction.
@@ -147,9 +234,9 @@ Local MCP changes that. Concrete benefits:
 
 - **Manual smoke tests in seconds.** `curl -s -X POST http://127.0.0.1:8765/ -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` validates that the capability dispatch path works, the WinUI dispatcher marshaling is correct, the result shape matches expectations. No gateway, no gateway token, no pairing, no SSH tunnel.
 - **Reproducible bug reports.** A repro becomes a `tools/call` body the bug filer can paste verbatim. No "what was the gateway doing at the time."
-- **Integration tests against a real instance.** A future `tests/integration/` project can spin up the tray in MCP-only mode, fire JSON-RPC, assert results. The same test bodies a developer runs by hand are the same ones CI runs. (Harnessing WinUI itself in CI is harder, but the bridge logic - `McpToolBridge` - is already covered by `McpToolBridgeTests` with no UI involvement.)
+- **Integration tests against a real instance.** `tests/OpenClaw.Tray.IntegrationTests` (for example `McpHttpServerIntegrationTests`) spawns the tray and drives MCP JSON-RPC over HTTP when `OPENCLAW_RUN_INTEGRATION=1`. The same requests a developer runs by hand are the ones these tests send. The bridge logic - `McpToolBridge` - is also covered by `McpToolBridgeTests` with no UI involvement.
 - **Coverage for the dispatch path itself.** `WindowsNodeClient`'s capability-routing logic (`CanHandle` → `ExecuteAsync`) was previously only exercised against a live gateway. The MCP server hits the same code paths, so any local MCP test is implicit coverage of the gateway dispatch.
-- **Bridge unit tests already exist.** `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` (9 cases) covers initialize, tools/list, runtime capability registration, tool calls, unknown tools, capability failures, JSON-RPC unknown method, notifications, and parse errors. These are pure C# unit tests with fake capabilities - no HTTP, no UI, no gateway.
+- **Bridge unit tests already exist.** `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` covers initialize, tools/list, runtime capability registration, tool calls, unknown tools, capability failures, JSON-RPC unknown method, notifications, and parse errors. These are pure C# unit tests with fake capabilities - no HTTP, no UI, no gateway.
 
 ### Access from CLIs and agents
 
@@ -323,7 +410,7 @@ These are reasonable next steps but explicitly out of scope for the initial impl
 | `src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs` | In-memory settings model + load/save. Migrates legacy `McpOnlyMode`. |
 | `src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml(.cs)` | Settings UI surface hosted by `HubWindow`. |
 | `src/OpenClaw.Tray.WinUI/App.xaml.cs` | Bootstraps `NodeService` based on the new mode matrix. |
-| `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | 9 unit tests for the bridge. |
+| `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | Unit tests for the bridge. |
 
 ## Quick verification
 

@@ -752,6 +752,24 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
     }
 
     [Fact]
+    public async Task EnableAsync_ConnectionChangeAfterConfigReadDoesNotDispatchPatch()
+    {
+        var registry = CreateRegistry();
+        var client = new FakeConfigClient(Config(allowTailscale: false));
+        client.AfterConfig = () => client.SessionMutationConnectionEpoch = 2;
+        var service = new GatewayTailscaleAuthUpgradeService(
+            registry, new FakeLiveVerifier(GatewayTailscaleAuthLiveState.Ready));
+
+        var result = await service.EnableAsync("gateway-1", client, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, result.Outcome);
+        Assert.Equal(1, client.PatchOnConnectionCalls);
+        Assert.Equal(1, client.RequestedPatchConnectionEpoch);
+        Assert.Equal(0, client.PatchCalls);
+        Assert.False(registry.GetActive()!.TrustTailscaleAuth);
+    }
+
+    [Fact]
     public async Task EnableAsync_CancellationAfterIngressProbeDoesNotPersistOrDispatch()
     {
         using var cancellation = new CancellationTokenSource();
@@ -963,9 +981,12 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
         public IReadOnlyList<string> Scopes { get; set; } = ["operator.admin"];
         public IReadOnlyList<string> GrantedOperatorScopes => Scopes;
         public bool IsConnectedToGateway { get; set; } = true;
+        public long? SessionMutationConnectionEpoch { get; set; } = 1;
         public int ConfigRequests { get; private set; }
         public int PatchCalls { get; private set; }
+        public int PatchOnConnectionCalls { get; private set; }
         public string? PatchBaseHash { get; private set; }
+        public long? RequestedPatchConnectionEpoch { get; private set; }
         public JsonElement? PatchedConfig { get; private set; }
         public ConfigPatchResult PatchResult { get; set; } = new() { Ok = true };
         public Exception? ConfigError { get; set; }
@@ -1003,6 +1024,20 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
             if (PatchError is not null)
                 return Task.FromException<ConfigPatchResult>(PatchError);
             return PatchCompletion?.Task ?? Task.FromResult(PatchResult);
+        }
+
+        public Task<ConfigPatchResult> PatchConfigOnConnectionAsync(
+            JsonElement fullConfig,
+            string? baseHash,
+            long connectionEpoch,
+            int timeoutMs = 15000)
+        {
+            PatchOnConnectionCalls++;
+            RequestedPatchConnectionEpoch = connectionEpoch;
+            return SessionMutationConnectionEpoch == connectionEpoch
+                ? PatchConfigDetailedAsync(fullConfig, baseHash, timeoutMs)
+                : Task.FromException<ConfigPatchResult>(
+                    new InvalidOperationException("The Gateway connection changed before the request could be sent."));
         }
     }
 

@@ -1728,6 +1728,14 @@ public class SetupStepsTests : IDisposable
                 IsLocal = true,
                 SetupManagedDistroName = ctx.DistroName,
             },
+            new GatewayRecord
+            {
+                Id = "05-native-legacy-looking",
+                Url = gatewayUrl,
+                FriendlyName = $"Local ({ctx.DistroName})",
+                IsLocal = true,
+                NativePackageFamilyName = "OpenClaw.Gateway_test",
+            },
         };
         var staleRecords = new[]
         {
@@ -6219,6 +6227,68 @@ public class SetupStepsTests : IDisposable
         var error = Assert.Throws<InvalidOperationException>(() =>
             ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
         Assert.Contains("could not safely inspect", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExistingConfigDetector_SelectsOnlyTargetWslRecordForReplacement()
+    {
+        var native = new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            FriendlyName = "Native Gateway",
+            IsLocal = true,
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+        };
+        var otherDistro = new GatewayRecord
+        {
+            Id = "other",
+            Url = "ws://127.0.0.1:18790",
+            IsLocal = true,
+            SetupManagedDistroName = "OtherGateway",
+        };
+        var target = new GatewayRecord
+        {
+            Id = "target",
+            Url = "ws://127.0.0.1:18791",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        Assert.Equal("target", ExistingConfigDetector.ClassifyWslRecords(
+            [native, otherDistro, target], "OpenClawGateway", expectedLocalGatewayId: null).LocalRecord?.Id);
+        Assert.Null(ExistingConfigDetector.ClassifyWslRecords(
+            [native, otherDistro], "OpenClawGateway", expectedLocalGatewayId: null).LocalRecord);
+        Assert.Null(ExistingConfigDetector.ClassifyWslRecords(
+            [native, target], "OpenClawGateway", expectedLocalGatewayId: "native").LocalRecord);
+    }
+
+    [Theory]
+    [InlineData(null, "target")]
+    [InlineData("duplicate", "duplicate")]
+    public void ExistingConfigDetector_DoesNotPromiseToPreserveSameDistroDuplicates(
+        string? expectedLocalGatewayId, string expectedReplacementId)
+    {
+        var target = new GatewayRecord
+        {
+            Id = "target",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+        var duplicate = target with { Id = "duplicate" };
+        var native = target with { Id = "native", NativePackageFamilyName = "OpenClaw.Gateway_test" };
+        var otherDistro = target with { Id = "other", SetupManagedDistroName = "OtherGateway" };
+        var ssh = target with { Id = "ssh", SshTunnel = new SshTunnelConfig("user", "example.test", 18789, 18789) };
+        var remote = new GatewayRecord { Id = "remote", Url = "wss://gateway.example.test" };
+
+        var result = ExistingConfigDetector.ClassifyWslRecords(
+            [target, duplicate, native, otherDistro, ssh, remote],
+            "OpenClawGateway",
+            expectedLocalGatewayId);
+
+        Assert.Equal(expectedReplacementId, result.LocalRecord?.Id);
+        Assert.Equal(["native", "other", "ssh", "remote"], result.PreservedRecords.Select(record => record.Id));
     }
 
     [Fact]

@@ -1,3 +1,11 @@
+// <summary>
+// Defines the application's owned-window and setup-presentation boundary for callers outside the UI shell.
+// The implementation serializes window lifetimes and must not expose roots from windows being shut down.
+// Usage:
+//   IWindowManager windows = windowManager;
+//   windows.ShowHub("settings");
+//   await windows.ShowLocalAiSetupAsync();
+// </summary>
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
@@ -6,6 +14,10 @@ using OpenClawTray.Windows;
 
 namespace OpenClawTray.Services;
 
+/// <summary>
+/// Coordinates application-owned windows, navigation and Local AI setup presentation.
+/// Callers use this contract instead of retaining concrete window references.
+/// </summary>
 internal interface IWindowManager
 {
     Window? ActiveHubWindow { get; }
@@ -20,11 +32,15 @@ internal interface IWindowManager
     void InitializeRuntimeAnchor();
     void BeginShutdown();
     void ShowCanvas(CanvasWindowRequest request);
+    /// <summary>Shows the workspace window and optionally navigates it before activation.</summary>
     void ShowHub(string? navigateTo = null, bool activate = true);
+    /// <summary>Reports native or Dashboard admission without reading ambient pending chat intent.</summary>
+    Task<bool> TryShowHubAsync(string navigateTo, string? chatSessionKey = null);
     void ShowConnectionStatus();
+    /// <summary>Shows the onboarding flow.</summary>
     Task ShowOnboardingAsync();
+    /// <summary>Shows the Local AI setup flow.</summary>
     Task ShowLocalAiSetupAsync();
-    Task ShowLocalAiModelSetupAsync() => ShowOnboardingAsync();
     Task ShowGatewayWizardAsync();
     Task ShowDashboardLaunchFailureAsync(Action? retry, string? localizedReason = null);
     Task ShowNativeSetupAsync(OpenClaw.SetupEngine.SetupNativeCompletion completion, CancellationToken ct);

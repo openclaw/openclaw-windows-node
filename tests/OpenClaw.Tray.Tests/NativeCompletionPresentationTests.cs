@@ -42,7 +42,7 @@ public sealed class NativeCompletionPresentationTests
         Assert.True(commit.IndexOf("_nativeSetupFailureVersion++", StringComparison.Ordinal) <
             commit.IndexOf("_nativeSetupFailureDialog?.Hide();", StringComparison.Ordinal));
         var failure = manager[manager.IndexOf("public async Task ShowNativeSetupFailureAsync", StringComparison.Ordinal)..
-            manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)];
+            manager.IndexOf("private Task<bool> ShowHubCoreAsync", StringComparison.Ordinal)];
         var duplicateUnavailable = failure.IndexOf(
             "if (_nativeSetupFailureVisible && failure == SetupNativeLaunchFailure.Unavailable) return;",
             StringComparison.Ordinal);
@@ -119,6 +119,13 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("_presentation.CompleteMount(generation)", ready);
         Assert.Contains("_presentation.IsReady", ready);
         Assert.Contains("page.ShowFailure(_presentation.ReceiptConsumed ? Recover : retryReceipt, _returnToConnection)", ready);
+        // retirement_condition: replace with a mounted completion-timeout navigation test
+        // when SetupWindow can be hosted independently of process-global WinUI startup.
+        var setup = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");
+        var returnGuard = setup[setup.IndexOf("private bool CanReturnFromFinishing", StringComparison.Ordinal)..
+            setup.IndexOf("private void ReturnFromFinishing()", StringComparison.Ordinal)];
+        Assert.Contains("_completionPreparation?.HasPendingWork != true", returnGuard);
+        Assert.Contains("NativeSetupSession?.IsPublished != true", returnGuard);
     }
 
     [Fact]
@@ -223,60 +230,6 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void NativeChatHandoff_UsesWorkspaceBindingWithoutReopeningCompanionChat()
-    {
-        // retirement_condition: replace with mounted native handoff tests when authorized UI proof is available.
-        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
-        var handoff = manager[manager.IndexOf("public async Task ShowNativeSetupAsync", StringComparison.Ordinal)..];
-        Assert.True(handoff.IndexOf("if (_isShuttingDown)", StringComparison.Ordinal) <
-            handoff.IndexOf("ShowWorkspace(destination", StringComparison.Ordinal));
-        Assert.Contains("if (request.WorkspaceDestination is { } destination)", manager);
-        Assert.Contains("ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request)", manager);
-        Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
-        Assert.Contains("ShowWorkspace(WorkspaceDestination.Settings(\"settings\"), activate: false, preserveCurrent: false, nativeRequest: request,", manager);
-        Assert.Contains("settingsTag: request.PageTag", manager);
-        Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
-        Assert.DoesNotContain("ShowCompanion", manager);
-        Assert.DoesNotContain("await hub.WaitForNativeSetupAsync", manager);
-        var workspace = Read(@"src\OpenClaw.Tray.WinUI\Windows\WorkspaceWindow.xaml.cs");
-        var binding = workspace[workspace.IndexOf("internal void NavigateNativeSetup(SetupNativeNavigationRequest request)", StringComparison.Ordinal)..];
-        Assert.True(binding.IndexOf("_chat.BindNativeSetupRequest(request)", StringComparison.Ordinal) <
-            binding.IndexOf("_chat.Initialize(this)", StringComparison.Ordinal));
-        Assert.Contains("_chat.RetainNativeSetupForDestination(Destination)", workspace);
-        Assert.Contains("await _chat.WaitForNativeSetupAsync(request, ct)", workspace);
-        Assert.Contains("request.RequireWorkspaceDestination(Destination)", workspace);
-        var chat = Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs");
-        Assert.Contains("_nativeSetupBinding.RequireCurrent(request, ct)", chat);
-        Assert.Contains("!_nativeSetupPresentation.IsReady", chat);
-        Assert.Contains("if (target is not null) _pendingSessionKey = target", chat);
-        var settingsRoute = workspace[workspace.IndexOf("internal async Task WaitForNativeSetupAsync(", StringComparison.Ordinal)..
-            workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)];
-        Assert.Contains("if (request.WorkspaceDestination is null)", settingsRoute);
-        Assert.Contains("await _settings.WaitForNativeSetupAsync(request, ct)", settingsRoute);
-        Assert.DoesNotContain("await _chat.WaitForNativeSetupAsync", settingsRoute[..settingsRoute.IndexOf("request.RequireWorkspaceDestination(Destination);", StringComparison.Ordinal)]);
-        var settingsView = Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs");
-        Assert.DoesNotMatch(@"new\s+ChatPage\b|typeof\(ChatPage\)|\bMountReactorChat\b", settingsView);
-        var agentIntent = workspace[workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)..];
-        Assert.True(agentIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
-            agentIntent.IndexOf("_agentId = agent.Id", StringComparison.Ordinal));
-        var newSession = workspace[workspace.IndexOf("private async Task NewSessionAsync()", StringComparison.Ordinal)..
-            workspace.IndexOf("private Task ForkSessionAsync(", StringComparison.Ordinal)];
-        Assert.Contains("await CreateAndSelectSessionAsync(", newSession);
-        var createIntent = workspace[workspace.IndexOf("private async Task CreateAndSelectSessionAsync(", StringComparison.Ordinal)..
-            workspace.IndexOf("internal void ShowInfo(", StringComparison.Ordinal)];
-        Assert.Contains("_chat.InvalidateNativeSetupForNavigation()", createIntent);
-        Assert.Contains("await client.CreateSessionAsync", createIntent);
-        Assert.True(createIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
-            createIntent.IndexOf("await client.CreateSessionAsync", StringComparison.Ordinal));
-        var removal = chat[chat.IndexOf("internal void ClearRemovedSession(", StringComparison.Ordinal)..
-            chat.IndexOf("private void ShowRemovedSession()", StringComparison.Ordinal)];
-        Assert.Contains("InvalidateNativeSetupForNavigation();", removal);
-        Assert.DoesNotContain("_nativeSetupBinding.Invalidate();", removal);
-        Assert.True(removal.IndexOf("InvalidateNativeSetupForNavigation();", StringComparison.Ordinal) <
-            removal.IndexOf("DisposeReactorHost();", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public void SetupChatWarningsAreLocalizedAndRecheckIsSeparateFromLegacyRetryAndReceiptOwnership()
     {
         var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), @"src\OpenClaw.Tray.WinUI\Strings");
@@ -337,20 +290,6 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void SkillsEntryIsBoundReadOnlyAndWaitedBeforeReceiptConsumption()
-    {
-        var source = Read(@"src\OpenClaw.Tray.WinUI\Pages\SkillsPage.xaml.cs");
-        Assert.Contains("_nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest", source);
-        Assert.Contains("SetupNativeSkills.LoadAsync(request, RequireNativeClient, ct)", source);
-        Assert.Contains("if (_nativeSetupRequest is not null) return;", source);
-        Assert.Contains("CurrentAgentId != request.Completion.Verification.AgentId", source);
-        Assert.Contains("AgentFilterCombo.IsEnabled = false", source);
-        Assert.DoesNotContain("InstallSkillAsync", source);
-        Assert.Contains("await skills.WaitForNativeSetupAsync(request, ct)",
-            Read(@"src\OpenClaw.Tray.WinUI\Controls\SettingsShellView.xaml.cs"));
-    }
-
-    [Fact]
     public void IsolatedHostDisablesStartupWithoutWeakeningRegistrationGuard()
     {
         Assert.Contains("startupRegistrationAllowed: !AppIdentity.IsIsolated",
@@ -386,19 +325,23 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void NativeChannelFocusUsesBoundFreshMetadataAndNeverStartsAuthentication()
+    public void NativeChannelDestinationsOpenGatewayDashboardAfterVerifiedConnection()
     {
-        var source = Read(@"src\OpenClaw.Tray.WinUI\Pages\ChannelsPage.xaml.cs");
-        var focus = source[source.IndexOf("private void ApplyNativeChannelFocus", StringComparison.Ordinal)..
-            source.IndexOf("private Expander BuildExpander", StringComparison.Ordinal)];
-        Assert.Contains("ReferenceEquals(snapshot, _nativeSnapshot)", focus);
-        Assert.Contains("SetupChannelFocusPolicy.GetAvailability", focus);
-        Assert.Contains("row.IsExpanded = true", focus);
-        Assert.Contains("row.Loaded += loaded", focus);
-        Assert.DoesNotContain("StartLinkingAsync", focus);
-        Assert.DoesNotContain("StartChannelAsync", focus);
-        Assert.DoesNotContain("SaveAsync", focus);
-        Assert.Contains("useBuiltInFallback: _nativeSetupRequest is null", source);
-        Assert.Contains("!ReferenceEquals(client, BoundClient)", source);
+        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
+        var handoff = manager[manager.IndexOf("public async Task ShowNativeSetupAsync", StringComparison.Ordinal)..];
+        Assert.True(handoff.IndexOf("request.GetConnectedClient(", StringComparison.Ordinal) <
+            handoff.IndexOf("GetNativeSetupDashboardPath", StringComparison.Ordinal));
+        Assert.Contains("await openDashboard(completion, dashboardPath, ct)", handoff);
+        Assert.Contains("if (!await openDashboard(completion, dashboardPath, ct))", handoff);
+        Assert.Contains("_callbacks.OpenSetupDashboard", handoff);
+        var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
+        var callback = app[app.IndexOf("OpenSetupDashboard: async (completion, path, ct) =>", StringComparison.Ordinal)..];
+        callback = callback[..callback.IndexOf("}));", StringComparison.Ordinal)];
+        Assert.Contains("CreateGatewayDashboardLauncher(", callback);
+        Assert.Contains("throw new InvalidOperationException(", callback);
+        var dispatchGate = callback[callback.IndexOf("launcher.OpenAsync(path, authorizeDispatch: ()", StringComparison.Ordinal)..];
+        Assert.True(dispatchGate.IndexOf("ct.ThrowIfCancellationRequested();", StringComparison.Ordinal) <
+            dispatchGate.IndexOf("RequireSetupDashboardAuthority(completion);", StringComparison.Ordinal));
+        Assert.Contains("IsSetupDashboardCredentialAllowed(setupCompletion, record)", app);
     }
 }

@@ -194,6 +194,29 @@ public sealed class SetupDashboardHandoffTests
     }
 
     [Fact]
+    public async Task SavedDashboard_AuthorizesDispatchAfterCredentialValidation()
+    {
+        var calls = new List<string>();
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            _ => { calls.Add("launch"); return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
+
+        var opened = await launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(
+                Gateway.Url, null, "shared-token", AppendBrowserCredential: true, TailscaleGatewayId: "gateway-a"),
+            _ => { calls.Add("validate"); return Task.FromResult(true); },
+            authorizeDispatch: () => calls.Add("authorize"));
+
+        Assert.True(opened);
+        Assert.Equal(new[] { "validate", "authorize", "launch" }, calls);
+    }
+
+    [Fact]
     public async Task SavedDashboard_ApprovedEmbeddedTokenStillRequiresEndpointAuthorization()
     {
         var launches = 0;
@@ -351,6 +374,23 @@ public sealed class SetupDashboardHandoffTests
     }
 
     [Fact]
+    public async Task CancelledDispatchGate_PropagatesWithoutLaunchingOrReportingFailure()
+    {
+        var launches = 0;
+        var failures = 0;
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var launcher = CreateDashboardLauncher(
+            _ => new(Gateway.Url, "channels", "synthetic", AppendBrowserCredential: true),
+            _ => { launches++; return Task.FromResult(true); },
+            reportFailure: _ => failures++);
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            launcher.OpenAsync("channels", () => cts.Token.ThrowIfCancellationRequested()));
+        Assert.Equal(0, launches);
+        Assert.Equal(0, failures);
+    }
+
+    [Fact]
     public async Task ExplicitDashboardRetry_KeepsRequestedPathAndClearsFailureOnlyAfterOpen()
     {
         var urls = new List<string>();
@@ -383,6 +423,33 @@ public sealed class SetupDashboardHandoffTests
             _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
             reportFailure ?? (_ => throw new InvalidOperationException("Unexpected launch failure")),
             reportOpened);
+
+    [Fact]
+    public async Task SetupChannelDashboardFailureRetainsReceiptForExplicitRetry()
+    {
+        using var directory = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(directory.Path);
+        var completion = new SetupNativeCompletion(Receipt(),
+            new(SetupNativeDestination.Channels, "agent:agent-a:main"));
+        var handle = store.Issue(completion);
+        var browserCalls = 0;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Receipt(), completion.Target.SessionKey)),
+            async (_, _) =>
+            {
+                var dashboard = CreateDashboardLauncher(
+                    _ => new GatewayDashboardLinkRequest(Gateway.Url, "channels", "synthetic", AppendBrowserCredential: true),
+                    _ => Task.FromResult(++browserCalls > 1));
+                if (!await dashboard.OpenAsync("channels"))
+                    throw new IOException("Synthetic browser dispatch failure");
+            }, _ => { });
+
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true));
+        Assert.Equal(2, browserCalls);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
 
     private sealed class StartupClock : TimeProvider
     {

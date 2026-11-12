@@ -601,7 +601,7 @@ public sealed class PairOperatorStep : SetupStep
 
     internal static bool IsSetupManagedLocalRecord(GatewayRecord record, SetupContext ctx)
     {
-        if (!record.IsLocal || record.SshTunnel != null)
+        if (record.NativePackageFamilyName is not null || !record.IsLocal || record.SshTunnel != null)
             return false;
 
         if (string.Equals(record.SetupManagedDistroName, ctx.DistroName, StringComparison.Ordinal))

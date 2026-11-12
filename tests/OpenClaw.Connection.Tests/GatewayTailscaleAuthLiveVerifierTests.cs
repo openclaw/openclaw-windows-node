@@ -828,8 +828,6 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             var root = _root.Replace('\\', '/');
             if (OperatingSystem.IsWindows())
                 root = "/" + char.ToLowerInvariant(root[0]) + root[2..];
-            // Synthetic file reads do not need repeated MSYS process launches.
-            // Keep the real verifier deadline and ownership assertions unchanged.
             var fixtureScript = "fixture_proc='" + root.Replace("'", "'\\''") + "'\n" +
                 "fixture_systemctl() { printf 101; }\n" +
                 "fixture_ss() { test -r \"$fixture_proc/listeners\" || return 1; printf '%s\\n' \"$(< \"$fixture_proc/listeners\")\"; }\n" +
