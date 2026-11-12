@@ -132,7 +132,6 @@ static class FluentIconCatalog
     public const string Export = "\uEDE1";        // Export — matches SessionsPage export glyph
     public const string Delete = "\uE74D";        // Delete — matches SessionsPage delete glyph
 
-    private static FontFamily? s_symbolThemeFontFamily;
     private static bool s_symbolThemeFallbackWarned;
 
     /// <summary>
@@ -141,15 +140,14 @@ static class FluentIconCatalog
     /// lookup throws or returns null — observed as a degraded resource state
     /// after extended uptime — falls back to Segoe MDL2 Assets (shipped on
     /// both Win10 and Win11) and warns once instead of failing silently, so
-    /// icon rows keep rendering instead of going blank.
+    /// icon rows keep rendering instead of going blank. Resolved on every call:
+    /// the lookup is a dictionary index, and skipping it would hide a
+    /// permanently degraded resource state from diagnosis.
     /// </summary>
     public static FontFamily SymbolThemeFontFamily
     {
         get
         {
-            if (s_symbolThemeFontFamily is not null)
-                return s_symbolThemeFontFamily;
-
             FontFamily? resolved = null;
             try
             {
@@ -163,10 +161,9 @@ static class FluentIconCatalog
             if (resolved is null)
             {
                 WarnSymbolThemeFallbackOnce("SymbolThemeFontFamily resource unavailable; falling back to Segoe MDL2 Assets");
-                resolved = new FontFamily("Segoe MDL2 Assets");
+                return new FontFamily("Segoe MDL2 Assets");
             }
 
-            s_symbolThemeFontFamily = resolved;
             return resolved;
         }
     }
