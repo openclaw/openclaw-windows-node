@@ -1,3 +1,6 @@
+// Native tail-navigation fencing and landing confirmation used by the conversation
+// scroll adapter. Whether to navigate is decided only by ChatScrollPolicy; these types
+// decide whether an already-admitted request is still current and whether it landed.
 namespace OpenClawTray.Chat;
 
 internal readonly record struct TailNavigationRequest(int Index, string DisplayedTailKey);
@@ -58,14 +61,6 @@ internal static class TailNavigationPolicy
             request.DisplayedTailKey,
             currentDisplayedTailKey,
             StringComparison.Ordinal);
-
-    // Initial history positioning must land even if an intermediate view change
-    // reported a position away from the tail; only reflow correction is follow-gated.
-    public static bool CanDispatch(bool reflowCorrection, bool following) =>
-        !reflowCorrection || following;
-
-    public static bool CanFollowTail(bool following, bool initialPending) =>
-        following && !initialPending;
 }
 
 internal sealed class TailNavigationQueue
@@ -320,51 +315,5 @@ internal sealed class InitialTailConfirmation
         _retries++;
         _settledFrames = 0;
         return _bringCompleted ? InitialTailLanding.CorrectOffset : InitialTailLanding.Retry;
-    }
-}
-
-internal sealed class TailReflowCorrection
-{
-    private bool _available;
-    private object? _contentRevision;
-    private bool _growthAvailable;
-
-    public void Arm() => _available = true;
-
-    public void ContentChanged(object revision)
-    {
-        if (ReferenceEquals(_contentRevision, revision))
-            return;
-
-        _contentRevision = revision;
-        _growthAvailable = true;
-    }
-
-    public void ArmForExtentGrowth(bool following, bool atBottom, bool initialPending, bool readerOwnsAnchor)
-    {
-        if (!_growthAvailable || !following || atBottom || initialPending || readerOwnsAnchor)
-            return;
-
-        // A correction can itself remeasure virtual rows. Only another content
-        // revision, not another native extent event, grants a new growth budget.
-        _growthAvailable = false;
-        Arm();
-    }
-
-    // A pending initial request already targets the tail. Starting a correction
-    // then would merge with it and impose the correction's follow gate on it.
-    public bool TryConsume(bool following, bool nearBottom, bool initialPending)
-    {
-        if (!_available || !following || nearBottom || initialPending)
-            return false;
-
-        _available = false;
-        return true;
-    }
-
-    public void Clear()
-    {
-        _available = false;
-        _growthAvailable = false;
     }
 }

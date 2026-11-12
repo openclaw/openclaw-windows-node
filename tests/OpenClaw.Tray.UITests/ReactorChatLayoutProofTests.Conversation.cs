@@ -861,6 +861,111 @@ public sealed partial class ReactorChatLayoutProofTests
         }, interactiveKeyboard: true);
     }
 
+    [Theory]
+    [InlineData(480)]
+    [InlineData(1100)]
+    public async Task ConversationScroll_FollowingKeepsTheExactBottomThroughStreamingResizeExpansionAndSessionSwitch(int width)
+    {
+        await WithChatAsync(width, async (surface, _, session, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            static ChatTimelineState History(string label)
+            {
+                var history = ChatTimelineState.Initial() with { HistoryLoaded = true };
+                for (var index = 0; index < 14; index++)
+                {
+                    history = ChatTimelineReducer.Apply(history, new ChatUserMessageEvent($"{label} question {index}"));
+                    history = ChatTimelineReducer.Apply(history, new ChatMessageEvent(
+                        string.Join("\n\n", Enumerable.Repeat($"{label} answer {index}.", 3))));
+                    history = ChatTimelineReducer.Apply(history, new ChatTurnEndEvent());
+                }
+                return history;
+            }
+            var proof = History("Proof");
+            var other = History("Other");
+            async Task PublishAsync()
+            {
+                await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+                {
+                    Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = proof, ["other"] = other },
+                    CurrentHistoryThreads = new HashSet<string> { "proof", "other" },
+                }));
+                await SettleAsync();
+            }
+            await ui.RunOnUIAsync(() => OpenClawReactorChatRoot.SetToolCallsVisible(true));
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", proof.Entries.Last().Id);
+            Task AwaitExactBottomAsync(string phase) => ui.RunOnUIAsync(() =>
+            {
+                var scroll = Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView;
+                return WaitForRenderedConditionAsync(
+                    () => scroll.State == ScrollingInteractionState.Idle
+                        && Math.Abs(scroll.ScrollableHeight - scroll.VerticalOffset) <= 1
+                        && FindControl<Button>(surface, "ChatJumpLatest").Opacity == 0,
+                    $"{phase}: exact transcript bottom with Jump to latest hidden",
+                    () => $"offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; state={scroll.State}; " +
+                        $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}");
+            });
+            await AwaitExactBottomAsync("landing");
+
+            proof = ChatTimelineReducer.Apply(proof, new ChatUserMessageEvent("Stream a long reply"));
+            proof = ChatTimelineReducer.Apply(proof, new ChatMessageEvent("Streaming reply.", IsStreaming: true));
+            await PublishAsync();
+            await AwaitExactBottomAsync("stream start");
+            for (var index = 0; index < 6; index++)
+            {
+                proof = ChatTimelineReducer.Apply(proof, new ChatMessageDeltaEvent(
+                    "\n\n" + string.Join(" ", Enumerable.Repeat($"Streamed sentence {index}.", 12 + index * 7))));
+                await PublishAsync();
+                await AwaitExactBottomAsync($"stream delta {index}");
+            }
+
+            await ui.RunOnUIAsync(() => surface.Width = width == 480 ? 1100 : 480);
+            await SettleAsync();
+            await AwaitExactBottomAsync("resize");
+            await ui.RunOnUIAsync(() => surface.Width = width);
+            await SettleAsync();
+            await AwaitExactBottomAsync("resize back");
+
+            void Tool(string data, int sequence) => proof = ChatTimelineReducer.Apply(proof,
+                ChatEventMapper.Map(new AgentEventInfo { RunId = "proof-run", Seq = sequence, Stream = "tool",
+                    Data = JsonDocument.Parse(data).RootElement.Clone() }).Event!);
+            Tool("""{"phase":"start","name":"exec","toolCallId":"scroll-tool","args":{"command":"dir"}}""", 1);
+            Tool(JsonSerializer.Serialize(new
+            {
+                phase = "result", toolCallId = "scroll-tool",
+                result = string.Join("\n", Enumerable.Range(0, 40).Select(line => $"output line {line}")),
+            }), 2);
+            await PublishAsync();
+            await AwaitExactBottomAsync("tool card");
+            // Completed work renders as a grouped disclosure at the tail; expanding it reflows while following.
+            await ui.RunOnUIAsync(() =>
+            {
+                var expander = FindDescendants<Expander>(Assert.Single(FindDescendants<ItemsView>(surface))).Last();
+                Assert.False(expander.IsExpanded);
+                expander.IsExpanded = true;
+            });
+            await SettleAsync();
+            await AwaitDisclosureAnimationsAsync(surface);
+            await AwaitExactBottomAsync("expanded tool card");
+            proof = ChatTimelineReducer.Apply(proof, new ChatMessageEvent("Done after the tool."));
+            proof = ChatTimelineReducer.Apply(proof, new ChatTurnEndEvent());
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", proof.Entries.Last().Id);
+            await AwaitExactBottomAsync("reply after tool");
+
+            await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession("other")));
+            await SettleAsync();
+            await AwaitInitialTailAsync(surface, "other", other.Entries.Last().Id);
+            await AwaitExactBottomAsync("switch to other session");
+            await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession("proof")));
+            await SettleAsync();
+            await AwaitInitialTailAsync(surface, "proof", proof.Entries.Last().Id);
+            await AwaitExactBottomAsync("switch back");
+            await CaptureAsync(surface, $"Scroll-owner-following-{width}");
+        });
+    }
+
     [Fact]
     public void ConversationParity_ReadinessRejectsClippedMissingAndWrongLogicalTails()
     {
