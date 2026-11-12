@@ -9976,4 +9976,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>unrouted shown</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>Archived "{0}" ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dismiss notification</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Open details beside chat</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tool details</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>These details are no longer available. Reconnect if needed, then reopen the tool from the current conversation.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Resize details panel</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Use Left and Right arrow keys to resize. Home selects the minimum width; End selects the maximum width.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Show details</value></data>
 </root>

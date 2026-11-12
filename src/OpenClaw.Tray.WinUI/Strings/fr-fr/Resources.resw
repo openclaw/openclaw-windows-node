@@ -9905,4 +9905,11 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessions non routées affichées</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>« {0} » archivée ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Fermer la notification</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau de détails</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Utilisez les flèches gauche et droite pour redimensionner. Début sélectionne la largeur minimale ; Fin sélectionne la largeur maximale.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher les détails</value></data>
 </root>

@@ -1363,7 +1363,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.False(avatar.IsHitTestVisible);
                 var reference = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ChatCardBrush}" Width="0" Height="0"><TextBlock Foreground="{ThemeResource ChatTextBrush}" /></Border>""");
-                var layout = Assert.IsType<Grid>(Assert.IsType<Border>(host.Content).Child);
+                var layout = Assert.IsType<Grid>(FindControl<Border>(host, "ChatConversation").Child);
                 layout.Children.Add(reference);
                 try
                 {
@@ -1534,8 +1534,10 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var root = Assert.IsType<Border>(host.Content);
-                var layout = Assert.IsType<Grid>(root.Child);
+                var conversation = FindControl<Border>(host, "ChatConversation");
+                var layout = Assert.IsType<Grid>(conversation.Child);
                 Assert.Null(root.Background);
+                Assert.Null(conversation.Background);
                 Assert.Equal(0, Assert.IsType<SolidColorBrush>(layout.Background).Color.A);
                 Assert.NotNull(surface.Background);
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
@@ -2317,12 +2319,15 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
-    [InlineData(480, "Model")]
-    [InlineData(800, "Model")]
-    [InlineData(480, "Reasoning")]
-    [InlineData(800, "Reasoning")]
-    public async Task ComposerFlyouts_UseBoundedNativePopoverPresentation(int width, string kind)
+    [InlineData(480, "Model", "Light")]
+    [InlineData(800, "Model", "Light")]
+    [InlineData(480, "Reasoning", "Light")]
+    [InlineData(800, "Reasoning", "Light")]
+    [InlineData(480, "Reasoning", "Dark")]
+    [InlineData(800, "Reasoning", "Dark")]
+    public async Task ComposerFlyouts_UseBoundedNativePopoverPresentation(int width, string kind, string theme)
     {
+        using var environment = new OpenClaw.TestSupport.EnvironmentScope("OPENCLAW_PROOF_THEME", theme);
         await WithChatAsync(width, async (surface, _, _, provider) =>
         {
             await ui.RunOnUIAsync(() => surface.Width = width + 16);
@@ -2363,12 +2368,15 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     var background = Assert.IsType<SolidColorBrush>(CaptureablePopupBackground(presenter.Background)).Color;
                     var light = Math.Max(Luminance(foreground), Luminance(background));
                     var dark = Math.Min(Luminance(foreground), Luminance(background));
-                    Assert.True((light + 0.05) / (dark + 0.05) >= 4.5, "Effort value must remain readable in the popup theme.");
+                    var contrast = (light + 0.05) / (dark + 0.05);
+                    Assert.True(contrast >= 4.5,
+                        $"Effort value contrast must be at least 4.5:1; measured {contrast:0.00}:1 " +
+                        $"(foreground {foreground}, background {background}).");
                 }
                 Assert.Null(provider.SelectedThinkingLevel);
                 Assert.Null(provider.SelectedModel);
             });
-            await CaptureAsync(surface, $"Composer-{kind}-popup-{width}");
+            await CaptureAsync(surface, $"Composer-{kind}-popup-{theme}-{width}");
             await ChangeFlyoutAsync(surface, $"ChatComposer{kind}Picker", open: false);
         }, kind == "Model" ? "provider-names" : "parity");
     }
@@ -3040,7 +3048,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null,
         IChatAgentRosterSource? agentRosterSource = null,
         string userDisplayName = "",
-        Action<MountedReactorChat>? onMounted = null)
+        Action<MountedReactorChat>? onMounted = null,
+        Func<CancellationToken, Action?, Task<string?>>? voiceRequest = null)
     {
         using var diagnosticScope = ui.Diagnostics.BeginChatScope();
         await ui.ResetContainerAsync();
@@ -3066,7 +3075,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore,
                     sandboxStatus ?? new SandboxStatusStore()).Create(
                     renderProvider ?? provider,
-                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), _ => { },
+                    new ChatComposerHostActions(null, () => { }, voiceRequest ?? ((_, _) => Task.FromResult<string?>(null)), _ => { },
                         SessionSelected: (key, _) => onSessionSelected?.Invoke(key),
                         SandboxSettingsNavigation: onSandboxSettings ?? (() => { })),
                     initialSpeakerMuted: false);

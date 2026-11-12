@@ -38,7 +38,7 @@ internal sealed class ChatToolDetailsProfile(
     internal bool IsAvailable => Snapshot.IsAvailable;
 
     /// <summary>Reads identity only. It never refreshes transcript data or grants mutation authority.</summary>
-    internal async Task RefreshAsync()
+    internal async Task RefreshAsync(bool profileInvalidated = false)
     {
         var epoch = client.IsConnectedToGateway ? client.SessionMutationConnectionEpoch : null;
         var device = client.AuthenticatedSigningDeviceId;
@@ -57,6 +57,9 @@ internal sealed class ChatToolDetailsProfile(
             {
                 _retired = true;
             }
+            // Without a baseline, an identity event cannot qualify already-loaded history.
+            if (profileInvalidated && epoch.HasValue && _profileId is null)
+                _retired = true;
             _epoch = epoch;
             _device = device;
             _available = false;

@@ -9905,4 +9905,11 @@
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>顯示未路由的工作階段</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已封存「{0}」（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>關閉通知</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁開啟詳細資料</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>工具詳細資料</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>這些詳細資料已無法使用。如有需要，請重新連線，然後從目前對話重新開啟工具。</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>調整詳細資料面板大小</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向鍵調整大小。Home 鍵選取最小寬度；End 鍵選取最大寬度。</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>返回對話</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>顯示詳細資料</value></data>
 </root>
