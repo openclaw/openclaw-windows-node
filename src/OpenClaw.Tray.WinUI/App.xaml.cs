@@ -2914,11 +2914,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             title = LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_Title");
             var rawError = snapshot.OperatorError;
-            message = string.IsNullOrWhiteSpace(rawError)
-                ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
-                : rawError;
+            var personalErrorKey = GatewayPersonalErrorPresentation.ResourceKey(snapshot.OperatorErrorKind);
+            message = personalErrorKey is not null
+                ? LocalizationHelper.GetString(personalErrorKey)
+                : string.IsNullOrWhiteSpace(rawError)
+                    ? LocalizationHelper.GetString("AppNotification_GatewayConnectionFailed_DefaultMessage")
+                    : rawError;
             severity = AppNotificationSeverity.Error;
-            key = $"operator-error:{rawError ?? "default"}";
+            key = $"operator-error:{personalErrorKey ?? rawError ?? "default"}";
             return true;
         }
 
@@ -4118,19 +4121,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }, new AppLogger(), nameof(OpenNativeSetupCompletion));
     }
 
-    private void OpenDashboard(string? path = null)
+    private void OpenDashboard(string? path = null, string? expectedPersonalGatewayId = null)
     {
-        AsyncEventHandlerGuard.Run(async () => await TryOpenDashboardAsync(path),
+        AsyncEventHandlerGuard.Run(async () => await TryOpenDashboardAsync(path, expectedPersonalGatewayId),
             new AppLogger(), nameof(OpenDashboard));
     }
 
-    private Task<bool> TryOpenDashboardAsync(string? path)
+    private Task<bool> TryOpenDashboardAsync(string? path, string? expectedPersonalGatewayId = null)
     {
         var launcher = CreateDashboardLauncher(
             () => AsyncEventHandlerGuard.Run(
                 () => _windowManager?.ShowDashboardLaunchFailureAsync(
-                    () => OpenDashboard(path))
-                    ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"));
+                    () => OpenDashboard(path, expectedPersonalGatewayId))
+                    ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
+            expectedPersonalGatewayId: expectedPersonalGatewayId);
         return launcher.OpenAsync(path);
     }
 
@@ -4152,19 +4156,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     }
 
     private GatewayDashboardLauncher CreateDashboardLauncher(
-        Action reportFailure, SetupNativeCompletion? setupCompletion = null) => new(
+        Action reportFailure, SetupNativeCompletion? setupCompletion = null,
+        string? expectedPersonalGatewayId = null) => new(
         EnsureSshTunnelConfigured,
         () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap, setupCompletion)
             ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
         new DashboardBrowser(
             async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)), Logger.Info).OpenAsync,
         reportFailure,
-        () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+        () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+        isPersonalMode: () => expectedPersonalGatewayId is not null ||
+            _gatewayRegistry?.GetActive()?.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale,
+        openPersonalDashboard: setupCompletion is null
+            ? target => _windowManager?.ShowPersonalDashboardAsync(target, expectedPersonalGatewayId) ?? Task.FromResult(false)
+            : null);
 
     // ── IAppCommands implementation ─────────────────────────────────────
 
     void IAppCommands.OpenDashboard(string? path) => OpenDashboard(path);
-    Task<bool> IAppCommands.TryOpenDashboardAsync(string? path) => TryOpenDashboardAsync(path);
+    Task<bool> IAppCommands.TryOpenDashboardAsync(string? path, string? expectedPersonalGatewayId) =>
+        TryOpenDashboardAsync(path, expectedPersonalGatewayId);
     void IAppCommands.Navigate(string pageTag) => ShowHub(pageTag);
     Task<bool> IAppCommands.TryNavigateAsync(string pageTag, string? chatSessionKey) =>
         _windowManager?.TryShowHubAsync(pageTag, chatSessionKey) ?? Task.FromResult(false);

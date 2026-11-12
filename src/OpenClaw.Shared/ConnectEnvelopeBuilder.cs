@@ -19,11 +19,17 @@ internal abstract class ConnectCredential
     internal string Value { get; }
     internal abstract string FieldName { get; }
 
-    internal Dictionary<string, string> ToAuthPayload() =>
+    internal virtual Dictionary<string, string> ToAuthPayload() =>
         new() { [FieldName] = Value };
 
     public sealed override string ToString() =>
         $"ConnectCredential {{ Kind = {FieldName} }}";
+}
+
+internal sealed class TailscaleConnectCredential() : ConnectCredential(string.Empty)
+{
+    internal override string FieldName => "tailscale";
+    internal override Dictionary<string, string> ToAuthPayload() => [];
 }
 
 internal sealed class TokenConnectCredential(string token)

@@ -23,6 +23,7 @@ internal interface IWindowManager
     Window? ActiveHubWindow { get; }
     bool IsHubOpen { get; }
     bool IsChatVisible { get; }
+    Task<bool> ShowPersonalDashboardAsync(string? path, string? expectedGatewayId = null) => Task.FromResult(false);
     XamlRoot? DialogXamlRoot { get; }
     XamlRoot? RuntimeAnchorXamlRoot { get; }
     XamlRoot? SetupXamlRoot { get; }

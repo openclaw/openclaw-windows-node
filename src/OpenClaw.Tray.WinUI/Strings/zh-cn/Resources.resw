@@ -7602,6 +7602,14 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在处理此问题。请刷新以查看其状态。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>请为每个问题选择有效的答案。</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>操作员身份验证</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>网关凭据</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>个人 Tailscale 身份</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>需要安全的 Tailscale 网关地址，且网关支持个人身份。不会发送共享令牌。</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>个人登录已更改</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>请在 OpenClaw Companion 中重新连接此网关，然后重新打开仪表板。</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>个人登录不可用。请在应用中重新连接。</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>个人登录需要以 .ts.net 结尾的安全 wss:// Tailscale Gateway 地址，且不能使用 SSH 隧道。</value></data>
   <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>搜索 OpenClaw</value></data>
   <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜索 OpenClaw</value></data>
   <data name="Search_Results" xml:space="preserve"><value>搜索结果</value></data>
@@ -9905,6 +9913,10 @@
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>显示未路由会话</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已归档“{0}”（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>关闭通知</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>个人登录不可用</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>无法验证你的 Tailscale 身份。请重新连接此网关。不会使用共享凭据。</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>需要重新验证你的 Tailscale 身份。请重新连接此网关。不会使用共享凭据。</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>个人登录失败，且恢复未完成。请先检查“连接”设置，然后重试。</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁打开详情</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>工具详情</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>这些详情已不可用。如有需要，请重新连接，然后从当前对话重新打开工具。</value></data>

@@ -1936,6 +1936,7 @@ public sealed partial class ConnectionPage : Page
         ClearAddGatewaySshFields();
         // Direct is default — make sure the selector is on Direct.
         // Pre-fill the most common local gateway URL.
+        DirectOperatorAuthentication.SelectedIndex = 0;
         DirectUrlBox.Text = "ws://127.0.0.1:18789";
         DirectTokenBox.Text = "";
         DirectNameBox.Text = "";
@@ -2475,6 +2476,7 @@ public sealed partial class ConnectionPage : Page
         _userIntent = UserIntent.AddingGateway;
         DirectUrlBox.Text = rec.Url;
         DirectTokenBox.Text = rec.SharedGatewayToken ?? "";
+        DirectOperatorAuthentication.SelectedIndex = rec.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale ? 1 : 0;
         DirectNameBox.Text = rec.FriendlyName ?? "";
         if (rec.SshTunnel != null)
         {
@@ -2578,6 +2580,12 @@ public sealed partial class ConnectionPage : Page
         if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
         var rec = _gatewayRegistry?.GetById(gwId);
         if (rec == null) return;
+        if (rec.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale)
+        {
+            if (!await ((IAppCommands)CurrentApp).TryOpenDashboardAsync(expectedPersonalGatewayId: gwId))
+                CurrentApp.ShowTransientConnectionError(LocalizationHelper.GetString("PersonalDashboard_Unavailable"));
+            return;
+        }
         try
         {
             if (!string.IsNullOrWhiteSpace(rec.SharedGatewayToken))
@@ -2629,6 +2637,7 @@ public sealed partial class ConnectionPage : Page
         _userIntent = UserIntent.AddingGateway;
         DirectUrlBox.Text = rec.Url;
         DirectTokenBox.Text = rec.SharedGatewayToken ?? "";
+        DirectOperatorAuthentication.SelectedIndex = rec.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale ? 1 : 0;
         DirectNameBox.Text = rec.FriendlyName ?? "";
         if (rec.SshTunnel != null)
         {
@@ -2716,6 +2725,16 @@ public sealed partial class ConnectionPage : Page
         UpdateRemoteSetupAdvice();
     }
 
+    private void OnDirectOperatorAuthenticationChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DirectTokenBox is null || DirectAuthHintText is null || DirectPersonalHint is null) return;
+        var personal = DirectOperatorAuthentication.SelectedIndex == 1;
+        DirectTokenBox.Visibility = personal ? Visibility.Collapsed : Visibility.Visible;
+        DirectAuthHintText.Visibility = personal ? Visibility.Collapsed : Visibility.Visible;
+        DirectPersonalHint.Visibility = personal ? Visibility.Visible : Visibility.Collapsed;
+        if (AddResultText is not null) AddResultText.Text = string.Empty;
+    }
+
     private void OnDirectUrlLostFocus(object sender, RoutedEventArgs e)
     {
         var url = DirectUrlBox.Text?.Trim();
@@ -2727,6 +2746,7 @@ public sealed partial class ConnectionPage : Page
 
     private void AutoFillTokenForUrl(string? url, bool force = false)
     {
+        if (DirectOperatorAuthentication?.SelectedIndex == 1) return;
         if (string.IsNullOrWhiteSpace(url) || (!force && !string.IsNullOrEmpty(DirectTokenBox.Text)))
             return;
         var match = _gatewayRegistry?.GetAll().FirstOrDefault(g =>
@@ -2858,7 +2878,8 @@ public sealed partial class ConnectionPage : Page
         if (_gatewayDirectConnectService is null) return;
 
         var url = DirectUrlBox.Text?.Trim();
-        var token = DirectTokenBox.Text?.Trim();
+        var personal = DirectOperatorAuthentication.SelectedIndex == 1;
+        var token = personal ? null : DirectTokenBox.Text?.Trim();
         var friendly = DirectNameBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -2866,6 +2887,11 @@ public sealed partial class ConnectionPage : Page
             return;
         }
 
+        if (personal && !GatewayPersonalAuthenticationPolicy.TryNormalizeGatewayUrl(url, out _, out _))
+        {
+            AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PersonalRouteRequired");
+            return;
+        }
         url = GatewayUrlHelper.NormalizeForWebSocket(url);
 
         if (!TryBuildAddSshTunnelConfig(out var sshConfig, out var sshError))
@@ -2874,6 +2900,11 @@ public sealed partial class ConnectionPage : Page
             return;
         }
 
+        if (personal && sshConfig is not null)
+        {
+            AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_PersonalRouteRequired");
+            return;
+        }
         AddSaveButton.IsEnabled = false;
         AddResultText.Text = sshConfig is null
             ? LocalizationHelper.GetString("ConnectionPage_Connecting")
@@ -2902,17 +2933,20 @@ public sealed partial class ConnectionPage : Page
                         friendly,
                         sshConfig,
                         _editingGatewayId,
-                        PreserveExistingSharedTokenWhenMissing: true)
+                        PreserveExistingSharedTokenWhenMissing: true,
+                        OperatorAuthentication: personal ? OperatorAuthenticationMode.PersonalTailscale : OperatorAuthenticationMode.GatewayCredential)
                     : new GatewayDirectConnectRequest(
                         url,
                         submittedToken,
                         friendly,
                         sshConfig,
                         _editingGatewayId,
-                        PreserveExistingSharedTokenWhenMissing: false));
+                        PreserveExistingSharedTokenWhenMissing: personal,
+                        OperatorAuthentication: personal ? OperatorAuthenticationMode.PersonalTailscale : OperatorAuthenticationMode.GatewayCredential));
             if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
-                AddResultText.Text = $"✗ {result.Error}";
+                var errorKey = GatewayPersonalErrorPresentation.ResourceKey(result.ErrorKind, result.RollbackIncomplete);
+                AddResultText.Text = $"✗ {(errorKey is null ? result.Error : LocalizationHelper.GetString(errorKey))}";
                 return;
             }
 

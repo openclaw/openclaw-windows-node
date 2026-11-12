@@ -184,6 +184,9 @@ public partial class OpenClawGatewayClient
         if (string.IsNullOrWhiteSpace(media.GatewaySource)
             || !AssistantMediaDirectiveParser.IsSendableLegacySource(media.GatewaySource))
             return AssistantMediaResolutionResult.Unavailable;
+        if (IsPersonalTailscaleAuthentication &&
+            !await VerifyPersonalMediaIdentityAsync(lease, cancellationToken).ConfigureAwait(false))
+            return AssistantMediaResolutionResult.Unavailable;
 
         var metadataUri = BuildLegacyMediaUri(
             lease.HttpBaseUri,
@@ -249,6 +252,7 @@ public partial class OpenClawGatewayClient
         int maximumBytes,
         CancellationToken cancellationToken)
     {
+        if (!IsCurrentMediaLease(lease)) return AssistantMediaResolutionResult.Unavailable;
         using var request = CreateAuthenticatedMediaRequest(uri, $"{MimePrefix(kind)}/*");
         using var response = await _assistantMediaHttpClient.SendAsync(
             request,
@@ -284,7 +288,12 @@ public partial class OpenClawGatewayClient
         var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
         var authToken = Volatile.Read(ref _assistantMediaAuthToken);
-        if (!string.IsNullOrWhiteSpace(authToken))
+        if (IsPersonalTailscaleAuthentication)
+        {
+            request.Headers.Add("Origin", uri.GetLeftPart(UriPartial.Authority));
+            request.Headers.TryAddWithoutValidation("x-openclaw-scopes", string.Join(",", GrantedOperatorScopes));
+        }
+        else if (!string.IsNullOrWhiteSpace(authToken))
             request.Headers.Authorization = new AuthenticationHeaderValue(
                 "Bearer",
                 authToken);
@@ -296,13 +305,17 @@ public partial class OpenClawGatewayClient
         lease = default;
         if (!IsConnectedToGateway || !TryBuildMediaHttpBaseUri(_currentGatewayUrl, out var baseUri))
             return false;
-        lease = new GatewayConnectionLease(_mediaClientId, ConnectionGeneration, baseUri);
+        lease = new GatewayConnectionLease(_mediaClientId, ConnectionGeneration, baseUri)
+        {
+            PersonalAuthority = IsPersonalTailscaleAuthentication ? Volatile.Read(ref _personalHandshake) : null
+        };
         return true;
     }
 
     private bool IsCurrentMediaLease(GatewayConnectionLease lease) =>
         lease.ClientId == _mediaClientId
         && lease.Generation == ConnectionGeneration
+        && (!IsPersonalTailscaleAuthentication || ReferenceEquals(lease.PersonalAuthority, Volatile.Read(ref _personalHandshake)))
         && IsConnectedToGateway;
 
     internal static bool TryBuildMediaHttpBaseUri(string gatewayUrl, out Uri baseUri)

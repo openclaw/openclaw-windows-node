@@ -7602,6 +7602,14 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2} s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>Cette question est en cours de résolution. Actualisez pour vérifier son état.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choisissez une réponse valide pour chaque question.</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>Authentification de l’opérateur</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>Identifiant de la passerelle</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>Identité Tailscale personnelle</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>Nécessite une adresse Tailscale sécurisée et la prise en charge de l’identité personnelle par la passerelle. Aucun jeton partagé n’est envoyé.</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>La connexion personnelle a changé</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>Reconnectez cette passerelle dans OpenClaw Companion, puis rouvrez le tableau de bord.</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>La connexion personnelle est indisponible. Reconnectez-vous dans l’application.</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>La connexion personnelle nécessite une adresse Gateway Tailscale sécurisée en wss:// se terminant par .ts.net, sans tunnel SSH.</value></data>
   <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Rechercher dans OpenClaw</value></data>
   <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Rechercher dans OpenClaw</value></data>
   <data name="Search_Results" xml:space="preserve"><value>Résultats de recherche</value></data>
@@ -9905,6 +9913,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessions non routées affichées</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>« {0} » archivée ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Fermer la notification</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Connexion personnelle indisponible</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Votre identité Tailscale n’a pas pu être vérifiée. Reconnectez cette passerelle. Les identifiants partagés ne seront pas utilisés.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Votre identité Tailscale doit être vérifiée à nouveau. Reconnectez cette passerelle. Les identifiants partagés ne seront pas utilisés.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>La connexion personnelle a échoué et la récupération n’a pas abouti. Vérifiez les paramètres de connexion avant de réessayer.</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>

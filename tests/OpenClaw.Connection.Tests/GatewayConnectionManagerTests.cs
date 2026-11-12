@@ -7,6 +7,7 @@ using OpenClaw.Shared.Telemetry;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.TestSupport;
+using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -2693,10 +2694,13 @@ public class GatewayConnectionManagerTests : IDisposable
     [Fact]
     public async Task ConnectWithSharedTokenAsync_RevalidatesDurableTokensUnderTransitionSemaphore()
     {
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(), "valid-shared-token");
+        var gatewayUrl = server.Endpoint.AbsoluteUri;
         _registry.AddOrUpdate(new GatewayRecord
         {
             Id = "gw-1",
-            Url = "ws://127.0.0.1:9",
+            Url = gatewayUrl,
             SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678)
         });
         _registry.SetActive("gw-1");
@@ -2711,17 +2715,23 @@ public class GatewayConnectionManagerTests : IDisposable
         var connectTask = manager.ConnectAsync("gw-1");
         await tunnel.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        var replaceTask = manager.ConnectWithSharedTokenAsync("ws://127.0.0.1:9", "bad-shared-token");
+        var replaceTask = manager.ConnectWithSharedTokenAsync(gatewayUrl, "bad-shared-token");
         var identityDir = _registry.GetIdentityDirectory("gw-1");
         var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
         identity.Initialize();
         identity.StoreDeviceTokenForRole("operator", "operator-token");
+        Assert.Empty(server.Requests);
         tunnel.AllowStart.SetResult(true);
         await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
 
-        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(10));
+        var rejectionTask = server.WaitForCompletedRequestAsync("connect");
+        await Task.WhenAll(replaceTask, rejectionTask).WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await replaceTask;
 
         Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        var rejection = await rejectionTask;
+        Assert.Equal(rejection, Assert.Single(server.Requests, request => request.Method == "connect"));
+        Assert.Equal("error:AUTH_TOKEN_MISMATCH", rejection.Outcome);
         Assert.Null(_registry.GetById("gw-1")?.SharedGatewayToken);
         Assert.Equal("operator-token", DeviceIdentity.TryReadStoredDeviceToken(identityDir));
     }

@@ -19,8 +19,8 @@ internal interface IAppCommands
 {
     /// <summary>Opens the dashboard, optionally at a supplied path.</summary>
     void OpenDashboard(string? path = null);
-    /// <summary>Returns whether Windows accepted the Dashboard browser launch, not whether the page loaded.</summary>
-    Task<bool> TryOpenDashboardAsync(string? path = null);
+    /// <summary>Returns native personal admission or accepted browser launch, not page readiness.</summary>
+    Task<bool> TryOpenDashboardAsync(string? path = null, string? expectedPersonalGatewayId = null);
     /// <summary>Navigates the application shell to a page tag.</summary>
     void Navigate(string pageTag);
     /// <summary>

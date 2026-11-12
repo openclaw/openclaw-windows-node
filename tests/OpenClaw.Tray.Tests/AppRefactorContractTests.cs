@@ -592,7 +592,7 @@ public sealed class AppRefactorContractTests
     {
         var source = ReadAppSources();
         var entry = ExtractMethod(source, "OpenDashboard");
-        Assert.Contains("TryOpenDashboardAsync(path)", entry);
+        Assert.Contains("TryOpenDashboardAsync(path, expectedPersonalGatewayId)", entry);
         Assert.Contains("AsyncEventHandlerGuard.Run(", entry);
         var method = ExtractMethod(source, "TryOpenDashboardAsync");
 
@@ -605,6 +605,38 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ShowDashboardLaunchFailureAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
+    }
+
+    [Fact]
+    public void SavedPersonalDashboard_CarriesRequestedGatewayThroughAdmissionAndRetry()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        var saved = ExtractMethod(page, "OnSavedRowOpenDashboardAsync");
+        AssertInOrder(saved,
+            "rec.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale",
+            "TryOpenDashboardAsync(expectedPersonalGatewayId: gwId)",
+            "return;",
+            "rec.SharedGatewayToken");
+
+        var app = ReadAppSources();
+        var open = ExtractMethod(app, "TryOpenDashboardAsync");
+        Assert.Contains("expectedPersonalGatewayId: expectedPersonalGatewayId", open);
+        Assert.Contains("OpenDashboard(path, expectedPersonalGatewayId)", open);
+        var factory = app[app.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
+        factory = factory[..factory.IndexOf("// ── IAppCommands", StringComparison.Ordinal)];
+        Assert.Contains("expectedPersonalGatewayId is not null ||", factory);
+        Assert.Contains("ShowPersonalDashboardAsync(target, expectedPersonalGatewayId)", factory);
+
+        var windows = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.PersonalDashboard.cs"));
+        var admission = ExtractMethod(windows, "ShowPersonalDashboardAsync");
+        AssertInOrder(admission,
+            "lease.GatewayId != expectedGatewayId",
+            "await retiring.CloseAsync()",
+            "!ReferenceEquals(lease, manager.CurrentPersonalOperatorLease)",
+            "new PersonalDashboardWindow(manager, lease, path)");
     }
 
     [Fact]

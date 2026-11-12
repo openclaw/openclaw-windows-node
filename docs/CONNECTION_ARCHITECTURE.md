@@ -870,7 +870,7 @@ the existing `SetupGatewaySession` reads credentials from the active registry.
 No browser-profile credentials are accepted by this port, and it does not change
 Node mode, local MCP, capability settings, or install WSL.
 
-Credential resolution order is intentionally strict:
+Credential resolution order for the default Gateway credential mode is intentionally strict:
 
 1. **Stored device token** in the per-gateway identity directory.
 2. **`GatewayRecord.SharedGatewayToken`** - shared token for HTTP/chat surfaces.
@@ -896,6 +896,34 @@ The legacy web-chat readiness probe bypasses the process proxy only for loopback
 URLs; remote HTTPS gateways retain proxy support. It accepts the original
 200-399 response without following redirects, so a readiness check never
 contacts a `Location` destination. Browser navigation remains a separate step.
+
+## Personal Tailscale operator identity
+
+The direct Gateway form offers **Personal Tailscale identity** as an explicit
+operator authentication mode. It requires a credential-free `wss://` address
+under `.ts.net`, without SSH forwarding. The hostname admits the route; it does
+not prove the caller's identity. The Gateway must support personal Tailscale
+authentication and a canonical `users.self` profile.
+
+`CredentialResolver` returns an empty personal credential without reading saved
+operator tokens. The client signs an interactive `gateway-client` / `ui` connect
+with empty `auth`. A current-socket hello must report `auth.method=tailscale`
+and a nonempty `recoveryScope`. Application readiness follows a successful
+`users.self` read on that same transport epoch. Node credential resolution and
+saved shared credentials remain unchanged. Personal failures do not activate
+shared-token or bootstrap recovery.
+
+The personal Dashboard opens in a native WebView. Each challenge rechecks
+`users.self` and the exact current lease before returning a signed credentialless
+response bound to the method and recovery scope. The shared Control UI must
+support this native response contract. Navigation, reconnect, profile changes
+and lease retirement prevent an old document from receiving a new proof.
+
+Each window uses its own named InPrivate browser profile. Closing or retiring
+that window calls the browser's profile deletion API and closes the control.
+WebView2 deletes the marked profile at browser-process exit and retries after
+later starts if another process holds its files. This does not assert immediate
+disk erasure.
 
 ## Self-recovery and automatic local-gateway repair
 

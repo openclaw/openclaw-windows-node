@@ -9,6 +9,48 @@ namespace OpenClaw.Tray.Tests;
 public sealed class GatewayDirectConnectServiceTests : IDisposable
 {
     [Theory]
+    [InlineData(GatewayErrorKind.PersonalIdentityUnverified, true, "ConnectionPage_PersonalIdentityUnverified")]
+    [InlineData(GatewayErrorKind.PersonalIdentityReverificationRequired, true, "ConnectionPage_PersonalIdentityReverificationRequired")]
+    [InlineData(GatewayErrorKind.PersonalIdentityUnverified, false, "ConnectionPage_PersonalIdentityRecoveryIncomplete")]
+    [InlineData(GatewayErrorKind.PersonalIdentityReverificationRequired, false, "ConnectionPage_PersonalIdentityRecoveryIncomplete")]
+    public async Task PersonalFailureKindSurvivesRestoringThePreviousConnection(GatewayErrorKind kind, bool restoreSucceeds, string resourceKey)
+    {
+        var previous = AddPreviousGateway();
+        _manager.SetCurrentSnapshot(Connected(previous.Id));
+        _manager.NextSnapshot = Failed(previous.Id, "untrusted-remote-detail-314159") with { OperatorErrorKind = kind };
+        _manager.RestoreSnapshot = restoreSucceeds ? Connected(previous.Id)
+            : Failed(previous.Id, "restoration-diagnostic") with { OperatorErrorKind = GatewayErrorKind.Network };
+
+        var result = await CreateService().ConnectAsync(new(
+            "wss://personal.example.ts.net", null, null, null,
+            OperatorAuthentication: OperatorAuthenticationMode.PersonalTailscale));
+
+        Assert.Equal(GatewayDirectConnectOutcome.Failed, result.Outcome);
+        Assert.Equal(kind, result.ErrorKind);
+        Assert.Equal(previous.Id, _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal(restoreSucceeds ? RoleConnectionState.Connected : RoleConnectionState.Error, _manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(restoreSucceeds ? null : (GatewayErrorKind?)GatewayErrorKind.Network, _manager.CurrentSnapshot.OperatorErrorKind);
+        Assert.Equal(!restoreSucceeds, result.RollbackIncomplete);
+        Assert.Equal(resourceKey, OpenClawTray.Helpers.GatewayPersonalErrorPresentation.ResourceKey(result.ErrorKind, result.RollbackIncomplete));
+        Assert.False(result.GatewayCommitted);
+    }
+
+    [Theory]
+    [InlineData("ws://fixture.example.ts.net", null, false)]
+    [InlineData("wss://fixture.example.com", null, false)]
+    [InlineData("wss://fixture.example.ts.net", "shared", false)]
+    [InlineData("wss://fixture.example.ts.net", null, true)]
+    public async Task InvalidPersonalRequestCannotMutateRegistryOrStartConnection(string url, string? token, bool nativeSetup)
+    {
+        var previous = AddPreviousGateway();
+        var result = await CreateService().ConnectAsync(new(url, token, null, null,
+            NativeSetup: nativeSetup, OperatorAuthentication: OperatorAuthenticationMode.PersonalTailscale));
+        Assert.False(result.GatewayCommitted);
+        Assert.Equal(previous.Id, _registry.ActiveGatewayId);
+        Assert.Equal(0, _manager.ConnectCount);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task InitialCommitCasConflictCleansOnlyUnadoptedNewRealmIdentity(bool adoptCandidate)

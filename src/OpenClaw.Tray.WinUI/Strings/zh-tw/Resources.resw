@@ -7602,6 +7602,14 @@
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}秒</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>正在處理此問題。請重新整理以查看其狀態。</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>請為每個問題選擇有效的答案。</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>操作員身分驗證</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>閘道憑證</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>個人 Tailscale 身分</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>需要安全的 Tailscale 閘道位址，且閘道支援個人身分。不會傳送共用權杖。</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>個人登入已變更</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>請在 OpenClaw Companion 中重新連線此閘道，然後重新開啟儀表板。</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>個人登入無法使用。請在應用程式中重新連線。</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>個人登入需要以 .ts.net 結尾的安全 wss:// Tailscale Gateway 位址，且不能使用 SSH 通道。</value></data>
   <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
   <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>搜尋 OpenClaw</value></data>
   <data name="Search_Results" xml:space="preserve"><value>搜尋結果</value></data>
@@ -9905,6 +9913,10 @@
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>顯示未路由的工作階段</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已封存「{0}」（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>關閉通知</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>個人登入無法使用</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>無法驗證你的 Tailscale 身分。請重新連線至此閘道。不會使用共用認證。</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>需要重新驗證你的 Tailscale 身分。請重新連線至此閘道。不會使用共用認證。</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>個人登入失敗，且復原未完成。請先檢查「連線」設定，再重試。</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁開啟詳細資料</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>工具詳細資料</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>這些詳細資料已無法使用。如有需要，請重新連線，然後從目前對話重新開啟工具。</value></data>
